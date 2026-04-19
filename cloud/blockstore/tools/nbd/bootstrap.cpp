@@ -44,8 +44,8 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/generic/guid.h>
-#include <util/stream/file.h>
-#include <util/string/strip.h>
+#include <util/system/env.h>
+#include <util/system/fs.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NBD {
@@ -59,35 +59,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
-const TString DefaultIamTokenFile = "~/.nbs-client/iam-token";
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ResolvePath(const TString& path)
-{
-    if (path.StartsWith('~')) {
-        return TStringBuilder() << GetHomeDir() << path.substr(1);
-    }
-
-    return path;
-}
-
-TString GetIamToken(const TString& iamTokenFile)
-{
-    auto filename = ResolvePath(iamTokenFile);
-    TFile file;
-    try {
-        file = TFile(filename, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-    } catch (...) {
-        return {};
-    }
-
-    if (!file.IsOpen()) {
-        return {};
-    }
-
-    return Strip(TFileInput(file).ReadAll());
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -223,19 +194,9 @@ void TBootstrap::InitClientConfig()
         monConfig.SetThreadsCount(1);  // reasonable defaults
     }
 
-    auto iamTokenFile = Options->IamTokenFile;
-    if (!iamTokenFile) {
-        auto& authConfig = appConfig.GetAuthConfig();
-        if (authConfig.HasIamTokenFile()) {
-            iamTokenFile = authConfig.GetIamTokenFile();
-        } else {
-            iamTokenFile = DefaultIamTokenFile;
-        }
-    }
-
     // Do not send token via insecure channel.
     if (clientConfig.GetSecurePort() != 0) {
-        clientConfig.SetAuthToken(GetIamToken(iamTokenFile));
+        clientConfig.SetAuthToken(GetEnv("IAM_TOKEN"));
     }
 
     if (!clientConfig.GetClientId()) {
