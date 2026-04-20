@@ -494,38 +494,41 @@ func (s *storageYDB) listNodes(
 	return nodes, nextCookie, nil
 }
 
-func (s *storageYDB) deleteSnapshotData(
+func (s *storageYDB) deleteFromTables(
 	ctx context.Context,
-	session *persistence.Session,
 	snapshotID string,
-) (bool, error) {
+	tables []string,
+) error {
 
-	tables := []string{
-		"node_refs",
-		"nodes",
-		"restoration_node_ids_mapping",
-		"hardlinks",
-	}
+	for {
+		var done bool
 
-	deletedCount := uint64(0)
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				deletedCount := uint64(0)
 
-	for _, table := range tables {
-		deleted, err := s.deleteFromTable(ctx, session, snapshotID, table)
+				for _, table := range tables {
+					deleted, err := s.deleteFromTable(ctx, session, snapshotID, table)
+					if err != nil {
+						return err
+					}
+
+					deletedCount += deleted
+				}
+
+				done = deletedCount == 0
+				return nil
+			},
+		)
 		if err != nil {
-			return false, err
+			return err
 		}
 
-		deletedCount += deleted
+		if done {
+			return nil
+		}
 	}
-
-	logging.Debug(
-		ctx,
-		"Deleted %v rows for snapshot %v",
-		deletedCount,
-		snapshotID,
-	)
-
-	return deletedCount == 0, nil
 }
 
 func (s *storageYDB) deleteFromTable(
@@ -581,6 +584,14 @@ func (s *storageYDB) deleteFromTable(
 			err,
 		)
 	}
+
+	logging.Debug(
+		ctx,
+		"Deleted %v rows from %v for snapshot %v",
+		count,
+		table,
+		snapshotID,
+	)
 
 	return count, nil
 }
@@ -743,22 +754,27 @@ func (s *storageYDB) ListNodes(
 	return result, nextCookie, err
 }
 
+func (s *storageYDB) CleanupRestorationNodeIDsMapping(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	return s.deleteFromTables(ctx, snapshotID, []string{
+		"restoration_node_ids_mapping",
+	})
+}
+
 func (s *storageYDB) DeleteSnapshotData(
 	ctx context.Context,
 	snapshotID string,
-) (bool, error) {
+) error {
 
-	var done bool
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			done, err = s.deleteSnapshotData(ctx, session, snapshotID)
-			return err
-		},
-	)
-	return done, err
+	return s.deleteFromTables(ctx, snapshotID, []string{
+		"node_refs",
+		"nodes",
+		"restoration_node_ids_mapping",
+		"hardlinks",
+	})
 }
 
 func (s *storageYDB) UpdateRestorationNodeIDMapping(
@@ -862,7 +878,7 @@ func (s *storageYDB) listHardLinks(
 	if res.Err() != nil {
 		return nil, errors.NewRetriableError(res.Err())
 	}
-	
+
 	nodeIDs := make([]uint64, 0, len(nodes))
 	for _, node := range nodes {
 		nodeIDs = append(nodeIDs, node.NodeID)

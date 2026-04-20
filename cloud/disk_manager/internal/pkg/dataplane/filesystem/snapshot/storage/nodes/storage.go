@@ -26,7 +26,7 @@ type Storage interface {
 	DeleteSnapshotData(
 		ctx context.Context,
 		snapshotID string,
-	) (bool, error)
+	) error
 
 	UpdateRestorationNodeIDMapping(
 		ctx context.Context,
@@ -48,4 +48,9 @@ type Storage interface {
 		limit int,
 		offset int,
 	) ([]nfs.Node, error)
+
+	CleanupRestorationNodeIDsMapping(
+		ctx context.Context,
+		snapshotID string,
+	) error
 }

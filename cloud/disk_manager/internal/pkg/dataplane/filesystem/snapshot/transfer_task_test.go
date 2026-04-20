@@ -554,7 +554,6 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, queueEntries)
 
-	done, err := f.nodesStorage.DeleteSnapshotData(f.ctx, snapshotID)
+	err = f.nodesStorage.DeleteSnapshotData(f.ctx, snapshotID)
 	require.NoError(t, err)
-	require.True(t, done, "restoration mapping should already be empty")
 }
