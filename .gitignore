@@ -1,5 +1,32 @@
 .git
 
+# Ignore all
+cloud/disk_manager/**
+cloud/tasks/**
+cloud/blockstore/**
+cloud/filestore/**
+cloud/storage/**
+
+# Unignore all with extensions
+!*.*
+# Unignore all dirs
+!*/
+# Allow docker files
+!Dockerfile
+# nginx default conf
+!default
+!LICENSE
+!crontab
+# id_rsa key used for testing vm created localy during the test
+!id_rsa
+
+!README
+!gradlew
+!conf
+!makefile
+!ya
+!run_testpack
+
 # build system generated files
 cmake-build-debug-system/*
 cmake-build-debug/*
