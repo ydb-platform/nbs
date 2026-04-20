@@ -1,3 +1,4 @@
 RECURSE(
+    config
     core
 )

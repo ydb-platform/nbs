@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
@@ -20,6 +19,7 @@
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <library/cpp/threading/future/future.h>
 

@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 namespace NCloud::NBlockStore::NRdma {
 

@@ -32,12 +32,6 @@
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/rdma/fake/client.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -75,6 +69,12 @@
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
+#include <cloud/storage/core/libs/rdma/impl/client.h>
+#include <cloud/storage/core/libs/rdma/impl/server.h>
+#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/tablet_flat/probes.h>

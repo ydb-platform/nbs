@@ -3,7 +3,7 @@
 #include "client.h"
 #include "test_verbs.h"
 
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>

@@ -16,7 +16,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/libs/rdma/iface
+    cloud/storage/core/libs/rdma/iface
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     library/cpp/monlib/dynamic_counters

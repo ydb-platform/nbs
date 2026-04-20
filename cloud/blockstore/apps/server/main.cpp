@@ -7,9 +7,6 @@
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/notify/impl/notify.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/impl/client.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -22,6 +19,9 @@
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_service_client.h>
+#include <cloud/storage/core/libs/rdma/impl/client.h>
+#include <cloud/storage/core/libs/rdma/impl/server.h>
+#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/core/security/ticket_parser.h>

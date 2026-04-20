@@ -1,6 +1,6 @@
 #include "client.h"
 
-#include <cloud/blockstore/config/rdma.pb.h>
+#include <cloud/storage/config/rdma.pb.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

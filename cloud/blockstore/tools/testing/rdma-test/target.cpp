@@ -8,12 +8,12 @@
 
 #include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <util/string/builder.h>
 #include <library/cpp/deprecated/atomic/atomic.h>

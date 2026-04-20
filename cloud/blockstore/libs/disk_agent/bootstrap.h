@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/rdma/config.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
@@ -16,6 +15,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/http/simple_http_server.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/library/actors/util/should_continue.h>

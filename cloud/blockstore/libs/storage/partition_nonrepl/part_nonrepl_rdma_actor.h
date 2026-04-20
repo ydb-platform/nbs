@@ -7,7 +7,6 @@
 #include "rdma_device_request_handler.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -17,6 +16,8 @@
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>

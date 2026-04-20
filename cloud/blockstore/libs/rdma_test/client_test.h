@@ -1,9 +1,8 @@
 #pragma once
 
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <library/cpp/threading/future/future.h>
 

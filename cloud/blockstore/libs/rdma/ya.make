@@ -1,5 +1,3 @@
 RECURSE(
     fake
-    iface
-    impl
 )

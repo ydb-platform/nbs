@@ -3,7 +3,7 @@
 #include "client.h"
 #include "server.h"
 
-#include <cloud/blockstore/config/rdma_common.pb.h>
+#include <cloud/storage/config/rdma.pb.h>
 
 #include <util/system/yassert.h>
 

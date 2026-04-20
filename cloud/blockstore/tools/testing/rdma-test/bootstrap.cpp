@@ -6,11 +6,6 @@
 #include "storage.h"
 #include "target.h"
 
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
-
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -20,6 +15,10 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/impl/client.h>
+#include <cloud/storage/core/libs/rdma/impl/server.h>
+#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 

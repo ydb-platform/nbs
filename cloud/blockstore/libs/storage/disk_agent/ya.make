@@ -34,7 +34,6 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/local_nvme/protos
-    cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/service_local
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/api
@@ -45,6 +44,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/model
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/rdma/iface
 
     library/cpp/containers/stack_vector
     library/cpp/deprecated/atomic

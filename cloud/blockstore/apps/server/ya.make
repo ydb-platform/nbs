@@ -14,7 +14,6 @@ PEERDIR(
     cloud/blockstore/libs/kms/impl
     cloud/blockstore/libs/logbroker/iface
     cloud/blockstore/libs/notify/impl
-    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/root_kms/impl
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface
@@ -22,6 +21,7 @@ PEERDIR(
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/iam/iface
     cloud/storage/core/libs/opentelemetry/impl
+    cloud/storage/core/libs/rdma/impl
 
     contrib/ydb/core/security
     contrib/ydb/library/keys

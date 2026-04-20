@@ -26,7 +26,7 @@ struct TClientConfig
     // cloud/blockstore/libs/storage/model/common_constants.h
     // cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync_util.h
     // Keep sync with MaxBufferSize in cloud/blockstore/vhost-server/options.h
-    // and cloud/blockstore/libs/rdma/iface/server.h
+    // and cloud/storage/core/libs/rdma/iface/server.h
     ui32 MaxBufferSize = 4_MB + 4_KB;
     EWaitMode WaitMode = EWaitMode::Poll;
     ui32 PollerThreads = 1;

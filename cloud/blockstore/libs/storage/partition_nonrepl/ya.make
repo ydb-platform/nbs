@@ -78,7 +78,6 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/common
     cloud/blockstore/libs/kikimr
-    cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/service_local
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
@@ -86,6 +85,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/rdma/iface
 
     library/cpp/containers/ring_buffer
 

@@ -8,8 +8,9 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

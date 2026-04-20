@@ -15,7 +15,6 @@ SRCS(
     logbroker.proto
     notify.proto
     plugin.proto
-    rdma_common.proto
     rdma.proto
     root_kms.proto
     server.proto
@@ -26,6 +25,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/public/api/protos
+    cloud/storage/config
     cloud/storage/core/config
     cloud/storage/core/protos
 )

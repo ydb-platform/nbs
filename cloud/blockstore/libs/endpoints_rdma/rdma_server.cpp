@@ -4,8 +4,6 @@
 #include <cloud/blockstore/libs/client_rdma/protocol.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -13,6 +11,8 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>

@@ -2,7 +2,7 @@
 
 #include "private.h"
 
-#include <cloud/blockstore/libs/rdma/iface/buffer.h>
+#include <cloud/storage/core/libs/rdma/iface/buffer.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
