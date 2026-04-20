@@ -104,6 +104,7 @@
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -303,6 +304,27 @@ void TBootstrapBase::Init()
     *versionCounter = 1;
 
     InitCriticalEventsCounter(serverGroup);
+
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        TVector<TCertificateFiles> certPathList;
+        for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback()) {
+            Y_ENSURE(cert.CertFile, "Empty CertFile");
+            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+            certPathList.push_back({
+                cert.CertPrivateKeyFile,
+                cert.CertFile
+            });
+        }
+
+        CertificateRefresher = GetCertificateRefresher();
+        CertificateRefresher->Init(
+            Logging,
+            serverGroup,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
+        CertificateProvider = CertificateRefresher->GetCertificateProvider();
+    }
 
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(
@@ -977,6 +999,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
+    START_COMMON_COMPONENT(CertificateProvider);
     START_COMMON_COMPONENT(GrpcEndpointListener);
     START_COMMON_COMPONENT(Executor);
     START_COMMON_COMPONENT(Server);
@@ -1051,6 +1074,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
+    STOP_COMMON_COMPONENT(CertificateProvider);
     STOP_COMMON_COMPONENT(Executor);
     STOP_COMMON_COMPONENT(GrpcEndpointListener);
     STOP_COMMON_COMPONENT(NbdServer);

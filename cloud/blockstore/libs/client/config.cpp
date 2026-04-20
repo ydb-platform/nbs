@@ -55,7 +55,6 @@ TDuration MSeconds(ui64 x)
                                                                                \
     xxx(MemoryQuotaBytes,       ui32,             0                           )\
     xxx(SecurePort,             ui32,             0                           )\
-    xxx(RefreshCertsPeriod,     ui32,             0                           )\
     xxx(RootCertsFile,          TString,          {}                          )\
     xxx(CertFile,               TString,          {}                          )\
     xxx(CertPrivateKeyFile,     TString,          {}                          )\
@@ -79,6 +78,7 @@ TDuration MSeconds(ui64 x)
     xxx(RdmaDevicePort,         ui32,             0                           )\
     xxx(LocalNonreplDisableDurableClient,         bool, false                 )\
     xxx(SkipCertVerification,   bool,             false                       )\
+    xxx(RefreshCertsPeriod,     TDuration,        MSeconds(0)                 )\
 // BLOCKSTORE_CLIENT_CONFIG
 
 #define BLOCKSTORE_CLIENT_DECLARE_CONFIG(name, type, value)                    \

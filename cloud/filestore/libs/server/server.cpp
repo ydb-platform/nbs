@@ -1561,7 +1561,9 @@ public:
 private:
     std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials()
     {
-        if (!Config->GetRefreshCertsPeriod()) {
+        auto provider = GetCertificateRefresher()->GetCertificateProvider();
+
+        if (!provider) {
             auto sslOptions = CreateSslOptions();
             return grpc::SslServerCredentials(sslOptions);
         }
@@ -1578,13 +1580,7 @@ private:
         }
         Y_ENSURE(!certPathList.empty(), "Empty Certs");
 
-        CertificateProvider = NCloud::CreatePeriodicCertificateProvider(
-            Logging->CreateLog("FILESTORE_CERTIFICATES"),
-            Config->GetRootCertsFile(),
-            std::move(certPathList),
-            Config->GetRefreshCertsPeriod());
-
-        grpc::experimental::TlsServerCredentialsOptions tlsOptions(CertificateProvider);
+        grpc::experimental::TlsServerCredentialsOptions tlsOptions(std::move(provider));
         tlsOptions.set_cert_request_type(GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
         tlsOptions.watch_identity_key_cert_pairs();
 

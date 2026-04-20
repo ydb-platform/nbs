@@ -1125,20 +1125,7 @@ grpc::SslServerCredentialsOptions TServer::CreateSslOptions()
         sslOptions.pem_root_certs = ReadFile(rootCertsFile);
     }
 
-    if (Config->GetCerts().empty()) {
-        // TODO: Remove, when old CertFile, CertPrivateKeyFile options are gone.
-        grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-
-        Y_ENSURE(Config->GetCertFile(), "Empty CertFile");
-        keyCert.cert_chain = ReadFile(Config->GetCertFile());
-
-        Y_ENSURE(Config->GetCertPrivateKeyFile(), "Empty CertPrivateKeyFile");
-        keyCert.private_key = ReadFile(Config->GetCertPrivateKeyFile());
-
-        sslOptions.pem_key_cert_pairs.push_back(keyCert);
-    }
-
-    for (const auto& cert: Config->GetCerts()) {
+    for (const auto& cert: Config->GetCertsWithLegacyFallback()) {
         grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
 
         Y_ENSURE(cert.CertFile, "Empty CertFile");
@@ -1155,39 +1142,25 @@ grpc::SslServerCredentialsOptions TServer::CreateSslOptions()
 
 std::shared_ptr<grpc::ServerCredentials> TServer::CreateSecureServerCredentials()
 {
-    if (!Config->GetRefreshCertsPeriod()) {
+    auto provider = GetCertificateRefresher()->GetCertificateProvider();
+
+    if (!provider) {
         auto sslOptions = CreateSslOptions();
         return grpc::SslServerCredentials(sslOptions);
     }
 
     TVector<NCloud::TCertificateFiles> certPathList;
-    if (Config->GetCerts().empty()) {
-        Y_ENSURE(Config->GetCertFile(), "Empty CertFile");
-        Y_ENSURE(Config->GetCertPrivateKeyFile(), "Empty CertPrivateKeyFile");
+    for (const auto& cert: Config->GetCertsWithLegacyFallback()) {
+        Y_ENSURE(cert.CertFile, "Empty CertFile");
+        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
 
         NCloud::TCertificateFiles certPaths;
-        certPaths.PrivateKeyPath = Config->GetCertPrivateKeyFile();
-        certPaths.CertChainPath = Config->GetCertFile();
+        certPaths.PrivateKeyPath = cert.CertPrivateKeyFile;
+        certPaths.CertChainPath = cert.CertFile;
         certPathList.push_back(std::move(certPaths));
-    } else {
-        for (const auto& cert: Config->GetCerts()) {
-            Y_ENSURE(cert.CertFile, "Empty CertFile");
-            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
-
-            NCloud::TCertificateFiles certPaths;
-            certPaths.PrivateKeyPath = cert.CertPrivateKeyFile;
-            certPaths.CertChainPath = cert.CertFile;
-            certPathList.push_back(std::move(certPaths));
-        }
     }
 
-    CertificateProvider = NCloud::CreatePeriodicCertificateProvider(
-        Log,
-        Config->GetRootCertsFile(),
-        std::move(certPathList),
-        Config->GetRefreshCertsPeriod());
-
-    grpc::experimental::TlsServerCredentialsOptions tlsOptions(CertificateProvider);
+    grpc::experimental::TlsServerCredentialsOptions tlsOptions(std::move(provider));
     tlsOptions.set_cert_request_type(GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
     tlsOptions.watch_identity_key_cert_pairs();
 
