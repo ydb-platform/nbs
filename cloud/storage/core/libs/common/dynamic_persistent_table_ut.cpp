@@ -1090,7 +1090,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxDataAreaStepSize = 1_GB,
                 .InitialDataCompactionBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
-                .ShrinkMode = TTable::EShrinkMode::AnyOp,
+                .ShrinkMode = EDynamicPersistentTableShrinkMode::AnyOp,
             });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
@@ -1404,7 +1404,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxDataAreaStepSize = maxDataAreaStepSize,
                 .InitialDataCompactionBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
-                .ShrinkMode = TTable::EShrinkMode::AnyOp,
+                .ShrinkMode = EDynamicPersistentTableShrinkMode::AnyOp,
             });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);

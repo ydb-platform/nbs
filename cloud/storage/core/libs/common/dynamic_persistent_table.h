@@ -34,17 +34,16 @@ enum class EDynamicPersistentTableShrinkMode
 
 struct TDynamicPersistentTableConfig
 {
-    using EShrinkMode = EDynamicPersistentTableShrinkMode;
-
-    const ui64 MaxRecords;
-    const ui64 InitialDataAreaSize;
-    const ui64 MaxDataAreaStepSize;
-    const ui64 InitialDataCompactionBufferSize;
-    const ui64 GapSpacePercentageCompactionThreshold = 30;
-    const ui64 ShrinkLowMemoryOpThreshold = 100;
-    const ui64 ShrinkTriggerPercent = 25;
-    const ui64 ShrinkReservePercent = 25;
-    const EShrinkMode ShrinkMode = EShrinkMode::AllocOnlyOp;
+    ui64 MaxRecords = 0;
+    ui64 InitialDataAreaSize = 0;
+    ui64 MaxDataAreaStepSize = 0;
+    ui64 InitialDataCompactionBufferSize = 0;
+    ui64 GapSpacePercentageCompactionThreshold = 30;
+    ui64 ShrinkLowMemoryOpThreshold = 100;
+    ui64 ShrinkTriggerPercent = 25;
+    ui64 ShrinkReservePercent = 25;
+    EDynamicPersistentTableShrinkMode ShrinkMode =
+        EDynamicPersistentTableShrinkMode::AllocOnlyOp;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,8 +76,6 @@ template <typename H>
 class TDynamicPersistentTable
 {
 public:
-    using EShrinkMode = TDynamicPersistentTableConfig::EShrinkMode;
-
     enum class EListOperationState
     {
         None = 0,
@@ -260,6 +257,7 @@ public:
         , MaxRecords(config.MaxRecords)
         , DataAreaSize(config.InitialDataAreaSize)
     {
+        Y_ABORT_UNLESS(Config.MaxRecords != 0, "MaxRecords must not be zero");
         Y_ABORT_UNLESS(
             Config.InitialDataAreaSize != 0,
             "InitialDataAreaSize must not be zero");
@@ -356,7 +354,7 @@ public:
 
         FreeRecordIndexes.push_back(index);
         UpdateShrinkCounters();
-        if (Config.ShrinkMode == EShrinkMode::AnyOp) {
+        if (Config.ShrinkMode == EDynamicPersistentTableShrinkMode::AnyOp) {
             TryShrinkDataArea();
         }
 
