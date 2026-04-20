@@ -222,7 +222,7 @@ func requestWithReEstablishSession[T any](
 		}
 
 		if i == SessionReEstablishMaxRetries {
-			continue
+			break
 		}
 
 		logging.Warn(
