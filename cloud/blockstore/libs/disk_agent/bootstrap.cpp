@@ -127,7 +127,8 @@ bool AgentHasDevices(
         {},   // allowedPaths
         std::ref(gen));
     if (HasError(error)) {
-        return false;
+        auto& Log = log;
+        STORAGE_ERROR("Failed to find devices: " << FormatError(error));
     }
 
     return !gen.ExtractResult().empty();
