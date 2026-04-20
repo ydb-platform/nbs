@@ -471,6 +471,13 @@ struct TTestVerbs
                 SafeCast<ui16>(connect->SendQueueSize + connect->RecvQueueSize),
             .MaxBufferSize = connect->MaxBufferSize,
         };
+
+        if (TestContext->ConnectRejectOverride) {
+            reject.Status = TestContext->ConnectRejectOverride->Status;
+            reject.QueueSize = TestContext->ConnectRejectOverride->QueueSize;
+            reject.MaxBufferSize =
+                TestContext->ConnectRejectOverride->MaxBufferSize;
+        }
         InitMessageHeader(&reject, RDMA_PROTO_VERSION);
 
         auto param2 = *param;
@@ -482,11 +489,17 @@ struct TTestVerbs
             RDMA_CM_EVENT_REJECTED,
             id,
             nullptr,    // listenId
-            param);
+            &param2);
     }
 
     void Connect(rdma_cm_id* id, rdma_conn_param* param) override
     {
+        if (TestContext->OnConnect) {
+            TestContext->OnConnect(
+                param->private_data,
+                SafeCast<ui8>(param->private_data_len));
+        }
+
         if (!TestContext->AllowConnect) {
             return Reject(id, param, RDMA_PROTO_FAIL);
         }

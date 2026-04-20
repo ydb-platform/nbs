@@ -2310,15 +2310,26 @@ void TClient::HandleRejected(
 
     if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
         if (endpoint->Config.QueueSize > msg->QueueSize) {
-            RDMA_INFO(endpoint->Log, "set QueueSize=" << msg->QueueSize
-                << " supported by " << endpoint->Host);
+            endpoint->Config.SendQueueSize =
+                Max(1u, endpoint->Config.SendQueueSize / 2);
+            endpoint->Config.RecvQueueSize =
+                Min(endpoint->Config.RecvQueueSize * 2, msg->QueueSize);
 
-            endpoint->Config.QueueSize = msg->QueueSize;
+            RDMA_INFO(
+                endpoint->Log,
+                "Server's QueueSize=" << msg->QueueSize << " supported by "
+                                      << endpoint->Host
+                                      << ". Decreasing send queue size to "
+                                      << endpoint->Config.SendQueueSize
+                                      << " and increasing recv queue size to "
+                                      << endpoint->Config.RecvQueueSize);
         }
 
         if (endpoint->Config.MaxBufferSize > msg->MaxBufferSize) {
-            RDMA_INFO(endpoint->Log, "set MaxBufferSize=" << msg->MaxBufferSize
-                << " supported by " << endpoint->Host);
+            RDMA_INFO(
+                endpoint->Log,
+                "set MaxBufferSize=" << msg->MaxBufferSize << " supported by "
+                                     << endpoint->Host);
 
             endpoint->Config.MaxBufferSize = msg->MaxBufferSize;
         }
