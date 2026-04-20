@@ -13,6 +13,7 @@ struct TOptions
 
     ui32 ProducerThreads{};
     ui32 ChildrenCount{};
+    ui32 SymlinkChildrenCount{};
     double SubdirProbability{};
     double DecayFactor{};
     ui64 Seed{};
