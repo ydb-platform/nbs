@@ -112,6 +112,7 @@ public:
     bool CheckChannelFreeSpaceShare(ui32 channel) const;
     bool IsCompactionAllowed() const;
     bool IsWriteAllowed(EChannelPermissions permissions) const;
+    bool IsFreshWriteAllowed(EChannelPermissions permissions) const;
     void RegisterReassignRequestFromBlobStorage(ui32 channel);
     TVector<ui32> GetChannelsToReassign() const;
     ui32 GetAlmostFullChannelCount() const;

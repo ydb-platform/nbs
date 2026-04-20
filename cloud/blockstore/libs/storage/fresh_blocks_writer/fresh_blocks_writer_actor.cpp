@@ -277,7 +277,7 @@ void TFreshBlocksWriterActor::ReassignChannelsIfNeeded(
     const NActors::TActorContext& ctx)
 {
     auto request =
-        std::make_unique<TEvPartitionCommonPrivate::TEvReassignChannels>();
+        std::make_unique<TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded>();
 
     NCloud::Send(ctx, PartitionActorId, std::move(request));
 }

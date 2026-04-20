@@ -760,6 +760,7 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
 {
     const auto* msg = ev->Get();
 
+    bool anyFreshChannelPermissionsUpdated = false;
     bool anyChannelYellow = false;
     for (const auto& channel: Info()->Channels) {
         bool diskSpaceYellowMove = false;
@@ -778,7 +779,11 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
         if (!diskSpaceYellowStop) {
             permissions |= EChannelPermission::UserWritesAllowed;
         }
-        UpdateChannelPermissions(ctx, channel.Channel, permissions);
+        bool updated =
+            UpdateChannelPermissions(ctx, channel.Channel, permissions);
+        anyFreshChannelPermissionsUpdated |=
+            updated && State->GetChannelDataKind(channel.Channel) ==
+                           EChannelDataKind::Fresh;
 
         anyChannelYellow |= diskSpaceYellowMove;
     }
@@ -788,7 +793,7 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
         ReassignChannelsIfNeeded(ctx);
     }
 
-    if (FreshBlocksWriter) {
+    if (FreshBlocksWriter && anyFreshChannelPermissionsUpdated) {
         ForwardMessageToActor(ev, ctx, FreshBlocksWriter);
     }
 }
@@ -1171,8 +1176,8 @@ STFUNC(TPartitionActor::StateWork)
             HandleProcessStorageStatusFlags);
 
         HFunc(
-            TEvPartitionCommonPrivate::TEvReassignChannels,
-            HandleReassignChannels);
+            TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded,
+            HandleReassignChannelsIfNeeded);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
@@ -1253,7 +1258,7 @@ STFUNC(TPartitionActor::StateZombie)
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags);
 
-        IgnoreFunc(TEvPartitionCommonPrivate::TEvReassignChannels);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -1459,6 +1464,7 @@ void TPartitionActor::ProcessStorageStatusFlags(
     }
 
     if (notifyFreshBlocksWriter && FreshBlocksWriter &&
+        State->GetChannelDataKind(channel) == EChannelDataKind::Fresh &&
         (isYellowMove || isYellowStop || channelPermissionsUpdated))
     {
         auto request = std::make_unique<
@@ -1484,8 +1490,8 @@ void TPartitionActor::HandleProcessStorageStatusFlags(
         false);   // without notifying FreshBlocksWriter
 }
 
-void TPartitionActor::HandleReassignChannels(
-    const TEvPartitionCommonPrivate::TEvReassignChannels::TPtr& ev,
+void TPartitionActor::HandleReassignChannelsIfNeeded(
+    const TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);

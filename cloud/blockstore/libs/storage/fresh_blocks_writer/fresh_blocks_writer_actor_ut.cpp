@@ -1516,7 +1516,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
-                    TEvPartitionCommonPrivate::EvReassignChannels)
+                    TEvPartitionCommonPrivate::EvReassignChannelsIfNeeded)
                 {
                     askPartitionToReassignWasObserved = true;
                     return TTestActorRuntime::EEventAction::DROP;

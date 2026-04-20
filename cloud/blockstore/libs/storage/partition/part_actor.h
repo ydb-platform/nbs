@@ -824,8 +824,8 @@ private:
         const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReassignChannels(
-        const TEvPartitionCommonPrivate::TEvReassignChannels::TPtr& ev,
+    void HandleReassignChannelsIfNeeded(
+        const TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

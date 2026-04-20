@@ -448,7 +448,7 @@ struct TEvPartitionCommonPrivate
     // ReassignChannels
     //
 
-    struct TReassignChannels
+    struct TReassignChannelsIfNeeded
     {
     };
 
@@ -475,7 +475,7 @@ struct TEvPartitionCommonPrivate
         EvZeroFreshBlocksCompleted,
         EvExecuteTransactions,
         EvProcessStorageStatusFlags,
-        EvReassignChannels,
+        EvReassignChannelsIfNeeded,
 
         EvEnd
     };
@@ -513,8 +513,8 @@ struct TEvPartitionCommonPrivate
     using TEvProcessStorageStatusFlags =
         TRequestEvent<TProcessStorageStatusFlags, EvProcessStorageStatusFlags>;
 
-    using TEvReassignChannels =
-        TRequestEvent<TReassignChannels, EvReassignChannels>;
+    using TEvReassignChannelsIfNeeded =
+        TRequestEvent<TReassignChannelsIfNeeded, EvReassignChannelsIfNeeded>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
