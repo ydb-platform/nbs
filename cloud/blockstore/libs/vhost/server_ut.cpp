@@ -49,6 +49,7 @@ private:
     const ui32 VhostQueuesCount = 1;
     const ui32 BlockSize;
     const ui64 BlocksCount = 256;
+    const bool DropDiscardRequests;
 
     IServerPtr VhostServer;
     std::shared_ptr<TTestStorage> TestStorage;
@@ -60,8 +61,9 @@ private:
     TLockFreeQueue<TPromise<void>> FrozenPromises;
 
 public:
-    TTestEnvironment(ui32 blockSize)
+    TTestEnvironment(ui32 blockSize, bool dropDiscardRequests = false)
         : BlockSize(blockSize)
+        , DropDiscardRequests(dropDiscardRequests)
     {
         InitVhostDeviceEnvironment();
     }
@@ -221,6 +223,7 @@ private:
             options.VhostQueuesCount = VhostQueuesCount;
             options.UnalignedRequestsDisabled = false;
             options.OptimalIoSize = 4_MB;
+            options.DropDiscardRequests = DropDiscardRequests;
 
             auto future = VhostServer->StartEndpoint(
                 SocketPath.GetPath(),
@@ -1066,10 +1069,84 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 EBlockStoreRequest::ZeroBlocks,
                 firstSector * sectorSize,
                 totalSectors * sectorSize,
-                {});
+                {},
+                true /* isDiscardRequest */);
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(response == TVhostRequest::SUCCESS);
 
+            TTestRequest request;
+            bool res = environment.DequeueRequest(request);
+            UNIT_ASSERT(res);
+            UNIT_ASSERT(request.Type == EBlockStoreRequest::ZeroBlocks);
+            UNIT_ASSERT(
+                request.StartIndex * blockSize == firstSector * sectorSize);
+            UNIT_ASSERT(
+                request.BlocksCount * blockSize == totalSectors * sectorSize);
+            UNIT_ASSERT(!environment.DequeueRequest(request));
+        }
+
+        {
+            auto future = device->SendTestRequest(
+                EBlockStoreRequest::ZeroBlocks,
+                firstSector * sectorSize,
+                totalSectors * sectorSize,
+                {},
+                false /* isDiscardRequest */);
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response == TVhostRequest::SUCCESS);
+
+            TTestRequest request;
+            bool res = environment.DequeueRequest(request);
+            UNIT_ASSERT(res);
+            UNIT_ASSERT(request.Type == EBlockStoreRequest::ZeroBlocks);
+            UNIT_ASSERT(
+                request.StartIndex * blockSize == firstSector * sectorSize);
+            UNIT_ASSERT(
+                request.BlocksCount * blockSize == totalSectors * sectorSize);
+            UNIT_ASSERT(!environment.DequeueRequest(request));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDropDiscardRequestsIfNeeded)
+    {
+        const ui32 blockSize = 4096;
+        const ui64 firstSector = 8;
+        const ui64 totalSectors = 32;
+        const ui64 sectorSize = 512;
+
+        UNIT_ASSERT(totalSectors * sectorSize % blockSize == 0);
+
+        auto environment =
+            TTestEnvironment(blockSize, true /* dropDiscardRequests */);
+        auto device = environment.GetVhostDevice();
+
+        {
+            auto future = device->SendTestRequest(
+                EBlockStoreRequest::ZeroBlocks,
+                firstSector * sectorSize,
+                totalSectors * sectorSize,
+                {},
+                true /* isDiscardRequest */);
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response == TVhostRequest::SUCCESS);
+
+            // Should drop the discard request.
+            TTestRequest request;
+            UNIT_ASSERT(!environment.DequeueRequest(request));
+        }
+
+        {
+            auto future = device->SendTestRequest(
+                EBlockStoreRequest::ZeroBlocks,
+                firstSector * sectorSize,
+                totalSectors * sectorSize,
+                {},
+                false /* isDiscardRequest */);
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response == TVhostRequest::SUCCESS);
+
+            // This is not a discard request but a write zeroes request.
+            // Should not drop it.
             TTestRequest request;
             bool res = environment.DequeueRequest(request);
             UNIT_ASSERT(res);

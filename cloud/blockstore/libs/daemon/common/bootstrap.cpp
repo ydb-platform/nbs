@@ -480,6 +480,7 @@ void TBootstrapBase::Init()
                 Configs->ServerConfig->GetVhostDiscardOnlyEnabled(),
             Configs->ServerConfig->GetVhostDiscardEnabled() ||
                 Configs->ServerConfig->GetVhostWriteZeroesEnabled(),
+            Configs->ServerConfig->GetDropDiscardRequests(),
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             Configs->ServerConfig->GetVhostOptimalIoSize());
 
