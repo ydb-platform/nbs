@@ -288,6 +288,8 @@ struct TTabletMetrics
 
     std::atomic<i64> ResponseLogEntryCount{0};
 
+    std::atomic<i64> RenameNotSupportedErrorCount{0};
+
     const NMetrics::IMetricsRegistryPtr StorageRegistry;
     const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
 
