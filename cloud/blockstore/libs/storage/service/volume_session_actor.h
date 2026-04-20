@@ -80,6 +80,7 @@ private:
     ui64 LastPipeResetTick = 0;
 
     EVolumeRequest CurrentRequest = NONE;
+    TRequestInfoPtr VolumeRequestInfo;
 
     bool ShuttingDown = false;
     NProto::TError ShuttingDownError;
