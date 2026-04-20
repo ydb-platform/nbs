@@ -182,7 +182,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
     if (Options->ImmediateControlsConfig) {
         auto& immediateControlsConfig =
             *KikimrConfig->MutableImmediateControlsConfig();
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->ImmediateControlsConfig,
             immediateControlsConfig);
     }

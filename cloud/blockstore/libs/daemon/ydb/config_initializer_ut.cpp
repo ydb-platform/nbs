@@ -227,7 +227,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
     Y_UNIT_TEST(ShouldIgnoreUnknownFieldsAndComponentsInStaticLogConfig)
     {
-        auto logConfigStr = R"(
+        auto configStr = R"(
             Entry {
                 Component: "BLOCKSTORE_SERVER"
                 Level: 6
@@ -243,14 +243,14 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         )";
 
         TTempDir dir;
-        auto logConfigPath = dir.Path() / "nbs-log.txt";
+        auto configPath = dir.Path() / "component.txt";
 
-        TOFStream(logConfigPath.GetPath()).Write(logConfigStr);
+        TOFStream(configPath.GetPath()).Write(configStr);
 
         auto options = CreateOptions();
 
         // - TConfigInitializerYdbBase
-        options->LogConfig = logConfigPath.GetPath();
+        options->LogConfig = configPath.GetPath();
 
         auto ci = TConfigInitializerYdb(std::move(options));
 
@@ -275,14 +275,14 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
     Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInStaticNbsConfigs)
     {
-        auto nbsComponentConfigStr = R"(
+        auto configStr = R"(
             NoSuchField: "x"
         )";
 
         TTempDir dir;
-        auto nbsComponentConfigPath = dir.Path() / "nbs-component.txt";
+        auto configPath = dir.Path() / "component.txt";
 
-        TOFStream(nbsComponentConfigPath.GetPath()).Write(nbsComponentConfigStr);
+        TOFStream(configPath.GetPath()).Write(configStr);
 
         auto options = CreateOptions();
 
@@ -295,7 +295,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         options->EndpointConfig          =
         options->ServerConfig            =
         options->RdmaConfig              =
-        options->CellsConfig             = nbsComponentConfigPath.GetPath();
+        options->CellsConfig             = configPath.GetPath();
         // - TConfigInitializerYdb: TOptionsYdb
         options->FeaturesConfig     =
         options->LogbrokerConfig    =
@@ -306,7 +306,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         options->KmsConfig          =
         options->RootKmsConfig      =
         options->ComputeConfig      =
-        options->LocalNVMeConfig    = nbsComponentConfigPath.GetPath();
+        options->LocalNVMeConfig    = configPath.GetPath();
         // clang-format on
 
         auto ci = TConfigInitializerYdb(std::move(options));
@@ -335,9 +335,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_NO_EXCEPTION(ci.InitLocalNVMeConfig());
     }
 
-    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInDynamicConfigs)
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInCmsConfigs)
     {
-        auto nbsComponentConfigStr = R"(
+        auto configStr = R"(
              NoSuchField: "x"
         )";
 
@@ -370,57 +370,114 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
         auto ci = TConfigInitializerYdb(CreateOptions());
 
-        // To detect mutual dependencies:
+        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+        NKikimrConfig::TAppConfig appCfg;
+        auto& directFullNamedConfigs = *appCfg.MutableNamedConfigs();
+
+        for (const auto& configName: configNames) {
+            auto* namedConfig = directFullNamedConfigs.Add();
+            namedConfig->SetName("Cloud.NBS." + configName);
+            namedConfig->SetConfig(configStr);
+        }
+
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+    }
+
+    Y_UNIT_TEST(ShouldApplyCmsConfigsInAnyOrder)
+    {
+        auto configStr = "";
+
+        // clang-format off
+        // Elements ordered as in TConfigInitializerYdb::ApplyNamedConfigs()
+        const TVector<TString> configNames {
+            "ActorSystemConfig",
+            "AuthConfig",
+            "DiagnosticsConfig",
+            "DiscoveryServiceConfig",
+            "DiskAgentConfig",
+            "DiskRegistryProxyConfig",
+            "FeaturesConfig",
+            "InterconnectConfig",
+            "LogbrokerConfig",
+            "LogConfig",
+            "MonitoringConfig",
+            "NotifyConfig",
+            "ServerAppConfig",
+            "SpdkEnvConfig",
+            "StorageServiceConfig",
+            "YdbStatsConfig",
+            "IamClientConfig",
+            "KmsClientConfig",
+            "RootKmsConfig",
+            "ComputeClientConfig",
+            "LocalNVMeConfig",
+        };
+        // clang-format on
+
+        auto ci = TConfigInitializerYdb(CreateOptions());
+
+        // To detect possible mutual dependencies:
         //  - one at time
         //  - all at once, direct and reverse order
 
         // 1. One at time
-        for (const auto& configName: configNames) {
-            ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
-            NKikimrConfig::TAppConfig singleAppCfg;
-            auto& singleNamedConfigs = *singleAppCfg.MutableNamedConfigs();
-
-            auto* singleNamedConfig = singleNamedConfigs.Add();
-            singleNamedConfig->SetName("Cloud.NBS." + configName);
-            singleNamedConfig->SetConfig(nbsComponentConfigStr);
-
-            Cerr << Endl << "Apply NamedConfigs['"
-                 << singleNamedConfig->GetName() << "'] = '"
-                 << singleNamedConfig->GetConfig() << "'" << Endl;
-            UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(singleAppCfg));
-        }
-
-        // 2. All at once, direct order
-        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
-        NKikimrConfig::TAppConfig directFullAppCfg;
-        auto& directFullNamedConfigs = *directFullAppCfg.MutableNamedConfigs();
-
-        for (const auto& configName: configNames) {
-            auto* directFullNamedConfig = directFullNamedConfigs.Add();
-            directFullNamedConfig->SetName("Cloud.NBS." + configName);
-            directFullNamedConfig->SetConfig(nbsComponentConfigStr);
-        }
-
-        Cerr << Endl << "Apply all NamedConfigs[] in direct order" << Endl;
-        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(directFullAppCfg));
-
-        // 3. All at once, reverse order
-        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
-        NKikimrConfig::TAppConfig reverseFullAppCfg;
-        auto& reverseFullNamedConfigs =
-            *reverseFullAppCfg.MutableNamedConfigs();
-
-        for (auto configName = configNames.rbegin();
-             configName != configNames.rend();
-             configName++)
         {
-            auto* reverseFullNamedConfig = reverseFullNamedConfigs.Add();
-            reverseFullNamedConfig->SetName("Cloud.NBS." + *configName);
-            reverseFullNamedConfig->SetConfig(nbsComponentConfigStr);
+            for (const auto& configName: configNames) {
+                ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+                NKikimrConfig::TAppConfig appCfg;
+                auto& namedConfigs = *appCfg.MutableNamedConfigs();
+
+                ::NKikimrConfig::TNamedConfig* namedConfig = nullptr;
+                for (auto i = 0; i < 3; i++) {
+                    // May be several NamedConfigs[] with same name
+                    namedConfig = namedConfigs.Add();
+                    namedConfig->SetName("Cloud.NBS." + configName);
+                    namedConfig->SetConfig(configStr);
+                }
+
+                Cerr << Endl << "Apply NamedConfigs['" << namedConfig->GetName()
+                     << "']" << Endl;
+                UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+            }
         }
 
-        Cerr << Endl << "Apply all NamedConfigs[] in reverse order" << Endl;
-        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(reverseFullAppCfg));
+        // 2. All at once, direct order, single entities
+        {
+            ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+            NKikimrConfig::TAppConfig appCfg;
+            auto& namedConfigs = *appCfg.MutableNamedConfigs();
+
+            for (const auto& configName: configNames) {
+                auto* namedConfig = namedConfigs.Add();
+                namedConfig->SetName("Cloud.NBS." + configName);
+                namedConfig->SetConfig(configStr);
+            }
+
+            Cerr << Endl << "Apply all NamedConfigs[] in direct order" << Endl;
+            UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+        }
+
+        // 3. All at once, reverse order, multiple entities
+        {
+            ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+            NKikimrConfig::TAppConfig appCfg;
+            auto& namedConfigs = *appCfg.MutableNamedConfigs();
+
+            for (auto i = 0; i < 3; i++) {
+                // May be several NamedConfigs[] with same name
+                for (auto configName = configNames.rbegin();
+                     configName != configNames.rend();
+                     configName++)
+                {
+                    auto* namedConfig = namedConfigs.Add();
+                    namedConfig->SetName("Cloud.NBS." + *configName);
+                    namedConfig->SetConfig(configStr);
+                }
+            }
+
+            Cerr << Endl << "Apply all NamedConfigs[] in reverse order" << Endl;
+            UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+        }
     }
 
     Y_UNIT_TEST(ShouldInitHostPerformanceProfile)

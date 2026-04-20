@@ -50,11 +50,11 @@ struct TConfigInitializer
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config);
 
     void InitKikimrConfig();
+    void InitServerConfig();
     void InitDiagnosticsConfig();
     void InitStorageConfig();
     void InitDiskAgentConfig();
     void InitDiskRegistryProxyConfig();
-    void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitFeaturesConfig();
     void InitRdmaConfig();

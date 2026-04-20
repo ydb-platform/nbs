@@ -297,6 +297,10 @@ void TConfigInitializerYdb::ApplyServerAppConfig(const TString& text)
     if (LogbrokerConfig) {
         ApplyLogbrokerConfig(ProtoToText(*LogbrokerConfig->GetConfig()));
     }
+    if (StorageConfig) {
+        ApplyStorageServiceConfig(
+            ProtoToText(StorageConfig->GetStorageConfigProto()));
+    }
     ApplyRootKmsConfig(ProtoToText(RootKmsConfig));
 }
 
@@ -439,6 +443,7 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
     using TSelf = TConfigInitializerYdb;
     using TApplyFn = void (TSelf::*)(const TString&);
 
+    // clang-format off
     const TVector<std::pair<TString, TApplyFn>> configHandlers {
         { "ActorSystemConfig",       &TSelf::ApplyActorSystemConfig       },
         { "AuthConfig",              &TSelf::ApplyAuthConfig              },
@@ -462,6 +467,7 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
         { "LocalNVMeConfig",         &TSelf::ApplyLocalNVMeConfig         },
     };
+    // clang-format on
 
     for (const auto& handler: configHandlers) {
         auto it = configs.find(handler.first);

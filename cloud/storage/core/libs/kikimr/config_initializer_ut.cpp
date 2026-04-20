@@ -102,6 +102,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         options->AuthConfig               =
         options->KikimrFeaturesConfig     =
         options->SharedCacheConfig        =
+        options->ImmediateControlsConfig  =
         options->InterconnectConfig       =
         options->MonitoringConfig         = configPath.GetPath();
         // clang-format on
@@ -111,7 +112,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_NO_EXCEPTION(ci.InitKikimrConfig());
     }
 
-    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInDynamicConfigs)
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInCmsConfigs)
     {
         auto configStr = R"(
             NoSuchField: "x"
