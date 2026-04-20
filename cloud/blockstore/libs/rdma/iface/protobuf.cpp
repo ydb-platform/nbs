@@ -2,8 +2,8 @@
 
 #include "protocol.h"
 
-#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <google/protobuf/message.h>
 
@@ -178,7 +178,7 @@ size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer)
 
     if (error.ByteSizeLong() > buffer.size()) {
         error.SetMessage("rdma error");
-        ReportFailedToSerializeRdmaError(FormatError(error));
+        NCloud::ReportFailedToSerializeRdmaError(FormatError(error));
     }
 
     if (error.SerializeToArray(
@@ -198,9 +198,9 @@ NProto::TError ParseError(TStringBuf buffer)
     if (!error.ParseFromArray(buffer.data(), buffer.size())) {
         error.SetCode(E_FAIL);
         error.SetMessage("rdma error");
-        ReportFailedToParseRdmaError(
-            FormatError(error),
-            {{"bufferSize", buffer.size()}});
+        NCloud::ReportFailedToParseRdmaError(
+            TStringBuilder()
+            << FormatError(error) << ", bufferSize=" << buffer.size());
     }
 
     return error;

@@ -1,0 +1,66 @@
+#pragma once
+
+#include <cloud/blockstore/config/rdma.pb.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
+
+#include <memory>
+#include <utility>
+
+namespace NCloud::NBlockStore::NRdma {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TRdmaConfig
+{
+private:
+    const NProto::TRdmaConfig Config;
+
+public:
+    explicit TRdmaConfig(NProto::TRdmaConfig config = {})
+        : Config(std::move(config))
+    {}
+
+    auto GetClientEnabled() const
+    {
+        return Config.GetClientEnabled();
+    }
+
+    const auto& GetClient() const
+    {
+        return Config.GetClient();
+    }
+
+    auto GetServerEnabled() const
+    {
+        return Config.GetServerEnabled();
+    }
+
+    const auto& GetServer() const
+    {
+        return Config.GetServer();
+    }
+
+    bool GetDiskAgentTargetEnabled() const
+    {
+        return Config.GetDiskAgentTargetEnabled();
+    }
+
+    const auto& GetDiskAgentTarget() const
+    {
+        return Config.GetDiskAgentTarget();
+    }
+
+    bool GetBlockstoreServerTargetEnabled() const
+    {
+        return Config.GetBlockstoreServerTargetEnabled();
+    }
+
+    const auto& GetBlockstoreServerTarget() const
+    {
+        return Config.GetBlockstoreServerTarget();
+    }
+};
+
+using TRdmaConfigPtr = std::shared_ptr<TRdmaConfig>;
+
+}   // namespace NCloud::NBlockStore::NRdma

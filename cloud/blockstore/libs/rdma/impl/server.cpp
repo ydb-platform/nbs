@@ -13,8 +13,8 @@
 #include <cloud/blockstore/libs/rdma/iface/log.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/service/context.h>
 
+#include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -34,7 +34,7 @@ namespace NCloud::NBlockStore::NRdma {
 
 using namespace NMonitoring;
 
-LWTRACE_USING(BLOCKSTORE_RDMA_PROVIDER);
+LWTRACE_USING(STORAGE_RDMA_PROVIDER);
 
 namespace {
 
@@ -84,7 +84,7 @@ struct TRequest
 
     ERequestState State = ERequestState::RecvRequest;
 
-    TCallContextPtr CallContext;
+    TCallContextBasePtr CallContext;
     ui32 ReqId = 0;
     ui32 Status = 0;
     ui32 ResponseBytes = 0;
@@ -835,7 +835,8 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
     auto req = std::make_unique<TRequest>(weak_from_this());
 
     // TODO restore context from request meta
-    req->CallContext = MakeIntrusive<TCallContext>();
+    req->CallContext = Handler->CreateCallContext();
+    Y_ABORT_UNLESS(req->CallContext);
     req->ReqId = msg->ReqId;
     req->In = msg->In;
     req->Out = msg->Out;

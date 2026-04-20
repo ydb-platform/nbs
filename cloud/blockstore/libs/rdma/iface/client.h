@@ -4,10 +4,7 @@
 
 #include "buffer.h"
 
-#include <cloud/blockstore/config/rdma.pb.h>
-
-#include <cloud/blockstore/libs/service/public.h>
-
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -46,7 +43,6 @@ struct TClientConfig
     ui32 RecvQueueSize = 0;
 
     TClientConfig();
-    TClientConfig(const NProto::TRdmaClient& config);
 
     void Validate(TLog& log);
     void DumpHtml(IOutputStream& out) const;
@@ -115,7 +111,7 @@ struct IClientEndpoint
     // request.
     virtual ui64 SendRequest(
         TClientRequestPtr req,
-        TCallContextPtr callContext) = 0;
+        TCallContextBasePtr callContext) = 0;
 
     virtual void CancelRequest(ui64 clientRequestId) = 0;
 

@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>

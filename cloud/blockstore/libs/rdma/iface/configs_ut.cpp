@@ -1,5 +1,4 @@
-#include "client.h"
-#include "server.h"
+#include "config.h"
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -24,7 +23,7 @@ struct TClientConfigTraits
 
     static TConfig Make(const TProto& proto)
     {
-        return TConfig(proto);
+        return CreateClientConfig(proto);
     }
 };
 
@@ -37,7 +36,7 @@ struct TServerConfigTraits
 
     static TConfig Make(const TProto& proto)
     {
-        return TConfig(proto);
+        return CreateServerConfig(proto);
     }
 };
 

@@ -4,10 +4,7 @@
 
 #include "buffer.h"
 
-#include <cloud/blockstore/config/rdma.pb.h>
-
-#include <cloud/blockstore/libs/service/public.h>
-
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -39,9 +36,9 @@ struct TServerConfig
     ui32 RecvQueueSize = 0;
 
     TServerConfig();
-    explicit TServerConfig(const NProto::TRdmaServer& config);
 
     void Validate(TLog& log);
+
     void DumpHtml(IOutputStream& out) const;
 };
 
@@ -51,9 +48,11 @@ struct IServerHandler
 {
     virtual ~IServerHandler() = default;
 
+    virtual TCallContextBasePtr CreateCallContext() = 0;
+
     virtual void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) = 0;
 };

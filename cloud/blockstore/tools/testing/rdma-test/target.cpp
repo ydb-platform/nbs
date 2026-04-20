@@ -68,24 +68,40 @@ public:
         Endpoint = std::move(endpoint);
     }
 
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return NCloud::NBlockStore::CreateCallContext();
+    }
+
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
     {
-        TaskQueue->ExecuteSimple([=, this] {
-            auto error = SafeExecute<NProto::TError>([=, this] {
-                return DoHandleRequest(context, callContext, in, out);
-            });
+        TaskQueue->ExecuteSimple(
+            [=,
+             this,
+             callContext =
+                 ToBlockStoreCallContext(std::move(callContext))]() mutable
+            {
+                auto error = SafeExecute<NProto::TError>(
+                    [=, this]()
+                    {
+                        return DoHandleRequest(
+                            context,
+                            std::move(callContext),
+                            in,
+                            out);
+                    });
 
-            if (HasError(error)) {
-                Endpoint->SendError(
-                    context,
-                    error.GetCode(),
-                    error.GetMessage());
-            }
-        });
+                if (HasError(error)) {
+                    Endpoint->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
+                }
+            });
     }
 
 private:

@@ -168,7 +168,7 @@ public:
         auto result = wrapper->Promise.GetFuture();
         Handler->HandleRequest(
             wrapper.release(),
-            MakeIntrusive<TCallContext>(),
+            Handler->CreateCallContext(),
             rawWrapper->Serialized,
             rawWrapper->OutBuffer);
 

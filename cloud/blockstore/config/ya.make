@@ -15,6 +15,7 @@ SRCS(
     logbroker.proto
     notify.proto
     plugin.proto
+    rdma_common.proto
     rdma.proto
     root_kms.proto
     server.proto

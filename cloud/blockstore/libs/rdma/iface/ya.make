@@ -13,9 +13,6 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/config
-    cloud/blockstore/libs/diagnostics
-    cloud/blockstore/libs/service
-
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 

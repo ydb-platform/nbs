@@ -54,8 +54,6 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \
     xxx(DiskRegistryBackupFailed)                                              \
-    xxx(FailedToParseRdmaError)                                                \
-    xxx(FailedToSerializeRdmaError)                                            \
     xxx(RegisterAgentWithEmptyRackName)                                        \
     xxx(AddConfirmedBlobsError)                                                \
     xxx(ConfirmBlobsError)                                                     \

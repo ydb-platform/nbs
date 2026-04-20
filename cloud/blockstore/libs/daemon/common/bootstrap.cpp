@@ -49,8 +49,8 @@
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
