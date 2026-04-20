@@ -12,15 +12,11 @@ struct IThrottlerLogger
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
     virtual void LogPostponedRequest(                                          \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
         IVolumeInfo* volumeInfo,                                               \
         const NProto::T##name##Request& request,                               \
         TDuration postponeDelay) = 0;                                          \
                                                                                \
     virtual void LogAdvancedRequest(                                           \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
         IVolumeInfo* volumeInfo,                                               \
         const NProto::T##name##Request& request) = 0;                          \
                                                                                \
