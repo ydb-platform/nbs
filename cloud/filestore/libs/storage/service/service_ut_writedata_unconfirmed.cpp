@@ -33,6 +33,7 @@ namespace {
 struct TTestSetup
 {
     NProto::TStorageConfig StorageConfig;
+    NKikimr::NSharedCache::TSharedCacheConfig SharedCacheConfig;
     std::unique_ptr<TTestEnv> Env;
     ui32 NodeIdx = 0;
     std::unique_ptr<TServiceClient> Service;
@@ -54,10 +55,11 @@ struct TTestSetup
         StorageConfig.SetUnalignedThreeStageWriteEnabled(
             unalignedThreeStageWriteEnabled);
 
+
         Env = std::make_unique<TTestEnv>(
             TTestEnvConfig{},
             StorageConfig,
-            NKikimr::NFake::TCaches{},
+            &SharedCacheConfig,
             std::move(profileLog));
         NodeIdx = Env->AddDynamicNode();
         Service = std::make_unique<TServiceClient>(Env->GetRuntime(), NodeIdx);

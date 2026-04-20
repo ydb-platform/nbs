@@ -74,7 +74,7 @@ ui64 ChangeDomain(ui64 tabletId, ui32 domainUid)
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnv::TTestEnv(
-    const TTestEnvConfig& config,
+    TTestEnvConfig config,
     NProto::TStorageConfig storageConfig,
     const NKikimr::NSharedCache::TSharedCacheConfig* sharedCacheConfig,
     IProfileLogPtr profileLog,
