@@ -119,7 +119,7 @@ func (t *transferFromFilesystemToSnapshotTask) Cancel(
 		return err
 	}
 
-	return nil
+	return t.nodesStorage.DeleteSnapshotData(ctx, snapshotID)
 }
 
 func (t *transferFromFilesystemToSnapshotTask) GetMetadata(

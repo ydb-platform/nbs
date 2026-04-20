@@ -251,15 +251,8 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, listed)
 
-	for i := 0; i < 5; i++ {
-		done, err := f.storage.DeleteSnapshotData(f.ctx, snapshotID)
-		require.NoError(t, err)
-		require.False(t, done)
-	}
-
-	done, err := f.storage.DeleteSnapshotData(f.ctx, snapshotID)
+	err = f.storage.DeleteSnapshotData(f.ctx, snapshotID)
 	require.NoError(t, err)
-	require.True(t, done)
 
 	listed, nextCookie, err := f.storage.ListNodes(
 		f.ctx,
@@ -358,6 +351,53 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, result)
+}
+
+func TestCleanupRestorationNodeIDsMapping(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-cleanup"
+	dstFilesystemID := "dst-filesystem"
+
+	nodeIDMapping := make(map[uint64]uint64, 10000)
+	for i := uint64(0); i < 10000; i++ {
+		nodeIDMapping[i] = i + 100000
+	}
+
+	err := f.storage.UpdateRestorationNodeIDMapping(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		nodeIDMapping,
+	)
+	require.NoError(t, err)
+
+	srcNodeIDs := make([]uint64, 10000)
+	for i := uint64(0); i < 10000; i++ {
+		srcNodeIDs[i] = i
+	}
+
+	mapping, err := f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcNodeIDs,
+	)
+	require.NoError(t, err)
+	require.Len(t, mapping, 10000)
+
+	err = f.storage.CleanupRestorationNodeIDsMapping(f.ctx, snapshotID)
+	require.NoError(t, err)
+
+	mapping, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcNodeIDs,
+	)
+	require.NoError(t, err)
+	require.Empty(t, mapping)
 }
 
 func makeHardlinkNode(

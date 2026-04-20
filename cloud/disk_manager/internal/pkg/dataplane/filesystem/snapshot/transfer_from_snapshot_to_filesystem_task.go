@@ -52,7 +52,7 @@ func (t *transferFromSnapshotToFilesystemTask) filesystemID() string {
 	return t.request.GetFilesystem().GetFilesystemId()
 }
 
-func (t *transferFromSnapshotToFilesystemTask) getParentMapping(
+func (t *transferFromSnapshotToFilesystemTask) getParentIDsInDestionationFs(
 	ctx context.Context,
 	nodes []nfs.Node,
 ) (map[uint64]uint64, error) {
@@ -75,7 +75,7 @@ func (t *transferFromSnapshotToFilesystemTask) getParentMapping(
 	)
 }
 
-func (t *transferFromSnapshotToFilesystemTask) getHardlinksByNodeID(
+func (t *transferFromSnapshotToFilesystemTask) groupHardlinksByNodeID(
 	nodes []nfs.Node,
 ) map[uint64][]nfs.Node {
 
@@ -137,8 +137,6 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		}
 	}()
 
-	// Number of nodes to fetch from the storage per batch (not the same
-	// as fetching from the traversal queue).
 	filesystemListerFactory := nodes_storage.NewNodeStorageListerFactory(
 		t.nodesStorage,
 		int(t.config.GetFetchNodesFromStorageLimit()),
@@ -215,7 +213,15 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		return err
 	}
 
-	return t.restoreHardlinks(ctx, execCtx, session)
+	err = t.restoreHardlinks(ctx, execCtx, session)
+	if err != nil {
+		return err
+	}
+
+	return t.nodesStorage.CleanupRestorationNodeIDsMapping(
+		ctx,
+		t.snapshotID(),
+	)
 }
 
 func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
@@ -240,9 +246,9 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 		return false, nil
 	}
 
-	hardlinksByNodeID := t.getHardlinksByNodeID(batch)
+	hardlinksByNodeID := t.groupHardlinksByNodeID(batch)
 
-	parentMapping, err := t.getParentMapping(ctx, batch)
+	parentMapping, err := t.getParentIDsInDestionationFs(ctx, batch)
 	if err != nil {
 		return false, err
 	}
@@ -350,19 +356,7 @@ func (t *transferFromSnapshotToFilesystemTask) Cancel(
 		return err
 	}
 
-	for {
-		done, err := t.nodesStorage.DeleteSnapshotData(
-			ctx,
-			snapshotID,
-		)
-		if err != nil {
-			return err
-		}
-
-		if done {
-			return nil
-		}
-	}
+	return t.nodesStorage.CleanupRestorationNodeIDsMapping(ctx, snapshotID)
 }
 
 func (t *transferFromSnapshotToFilesystemTask) GetMetadata(
