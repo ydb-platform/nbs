@@ -1,5 +1,7 @@
 #pragma once
 
+#include "numeric.h"
+
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/deque.h>
@@ -21,16 +23,29 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace {
-
-inline ui64 CalculatePercentage(ui64 value, ui64 percent)
+// When the deallocation condition is met, AnyOp will attempt to shrink the
+// data area for all operations, while AllocOnlyOp will attempt to shrink it
+// only during allocations.
+enum class EDynamicPersistentTableShrinkMode
 {
-    Y_ABORT_UNLESS(percent <= 100, "Invalid percentage %lu", percent);
+    AnyOp = 0,
+    AllocOnlyOp,
+};
 
-    return value / 100 * percent + value % 100 * percent / 100;
-}
+struct TDynamicPersistentTableConfig
+{
+    using EShrinkMode = EDynamicPersistentTableShrinkMode;
 
-}   // namespace
+    const ui64 MaxRecords;
+    const ui64 InitialDataAreaSize;
+    const ui64 MaxDataAreaStepSize;
+    const ui64 InitialDataCompactionBufferSize;
+    const ui64 GapSpacePercentageCompactionThreshold = 30;
+    const ui64 ShrinkLowMemoryOpThreshold = 100;
+    const ui64 ShrinkTriggerPercent = 25;
+    const ui64 ShrinkReservePercent = 25;
+    const EShrinkMode ShrinkMode = EShrinkMode::AllocOnlyOp;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,6 +77,8 @@ template <typename H>
 class TDynamicPersistentTable
 {
 public:
+    using EShrinkMode = TDynamicPersistentTableConfig::EShrinkMode;
+
     enum class EListOperationState
     {
         None = 0,
@@ -104,15 +121,6 @@ public:
         Stored,
     };
 
-    // When the deallocation condition is met, AnyOp will attempt to shrink the
-    // data area for all operations, while AllocOnlyOp will attempt to shrink it
-    // only during allocations.
-    enum class EShrinkMode
-    {
-        AnyOp = 0,
-        AllocOnlyOp,
-    };
-
     struct TRecordDescriptor
     {
         ui64 DataOffset = 0;
@@ -123,12 +131,6 @@ public:
         ui32 Crc32 = 0;
     };
 
-    static constexpr ui64 DefaultGapSpacePercentageCompactionThreshold = 30;
-    static constexpr ui64 DefaultShrinkLowMemoryOpThreshold = 100;
-    static constexpr ui64 DefaultShrinkTriggerPercent = 25;
-    static constexpr ui64 DefaultShrinkReservePercent = 25;
-    static constexpr EShrinkMode DefaultShrinkMode = EShrinkMode::AllocOnlyOp;
-
 private:
     enum class EDataRetrievalMode
     {
@@ -137,16 +139,8 @@ private:
     };
 
     TString FileName;
+    const TDynamicPersistentTableConfig Config;
     ui64 MaxRecords = 0;
-    ui64 InitialDataAreaSize = 0;
-    ui64 MaxDataAreaStepSize = 0;
-    ui64 InitialDataCompactionBufferSize = 0;
-
-    const ui64 GapSpacePercentageCompactionThreshold;
-    const ui64 ShrinkLowMemoryOpThreshold;
-    const ui64 ShrinkTriggerPercent;
-    const ui64 ShrinkReservePercent;
-    const EShrinkMode ShrinkMode;
     ui64 LowMemoryOps = 0;
 
     ui64 NextFreeRecordIndex = 0;
@@ -260,37 +254,21 @@ public:
 public:
     TDynamicPersistentTable(
         const TString& fileName,
-        ui64 maxRecords,
-        ui64 initialDataAreaSize,
-        ui64 maxDataAreaStepSize,
-        ui64 initialDataCompactionBufferSize,
-        ui64 gapSpacePercentageCompactionThreshold,
-        ui64 shrinkLowMemoryOpThreshold,
-        ui64 shrinkTriggerPercent,
-        ui64 shrinkReservePercent,
-        EShrinkMode shrinkMode)
+        const TDynamicPersistentTableConfig& config)
         : FileName(fileName)
-        , MaxRecords(maxRecords)
-        , InitialDataAreaSize(initialDataAreaSize)
-        , MaxDataAreaStepSize(maxDataAreaStepSize)
-        , InitialDataCompactionBufferSize(initialDataCompactionBufferSize)
-        , GapSpacePercentageCompactionThreshold(
-              gapSpacePercentageCompactionThreshold)
-        , ShrinkLowMemoryOpThreshold(shrinkLowMemoryOpThreshold)
-        , ShrinkTriggerPercent(shrinkTriggerPercent)
-        , ShrinkReservePercent(shrinkReservePercent)
-        , ShrinkMode(shrinkMode)
-        , DataAreaSize(initialDataAreaSize)
+        , Config(config)
+        , MaxRecords(config.MaxRecords)
+        , DataAreaSize(config.InitialDataAreaSize)
     {
         Y_ABORT_UNLESS(
-            InitialDataAreaSize != 0,
+            Config.InitialDataAreaSize != 0,
             "InitialDataAreaSize must not be zero");
         Y_ABORT_UNLESS(
-            IsPowerOf2(InitialDataAreaSize),
+            IsPowerOf2(Config.InitialDataAreaSize),
             "InitialDataAreaSize must be power of 2: %lu",
-            InitialDataAreaSize);
+            Config.InitialDataAreaSize);
         Y_ABORT_UNLESS(
-            MaxDataAreaStepSize != 0,
+            Config.MaxDataAreaStepSize != 0,
             "MaxDataAreaStepSize must not be zero");
         Init();
     }
@@ -378,7 +356,7 @@ public:
 
         FreeRecordIndexes.push_back(index);
         UpdateShrinkCounters();
-        if (ShrinkMode == EShrinkMode::AnyOp) {
+        if (Config.ShrinkMode == EShrinkMode::AnyOp) {
             TryShrinkDataArea();
         }
 
@@ -573,7 +551,7 @@ private:
                 sizeof(THeader) + MaxRecords * sizeof(TRecordDescriptor);
             HeaderPtr->DataAreaSize = DataAreaSize;
             HeaderPtr->DataCompactionBufferSize =
-                InitialDataCompactionBufferSize;
+                Config.InitialDataCompactionBufferSize;
             HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
             HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
         }
@@ -727,11 +705,11 @@ private:
 
     void TryCompactDataArea(ui64 requiredRecordDataSize)
     {
-        const ui64 threshold = CalculatePercentage(
+        const ui64 threshold = PercentOf(
             DataAreaSize,
-            GapSpacePercentageCompactionThreshold);
-        const bool shouldCompact =
-            GapSpaceSize > threshold || GapSpaceSize > MaxDataAreaStepSize;
+            Config.GapSpacePercentageCompactionThreshold);
+        const bool shouldCompact = GapSpaceSize > threshold ||
+                                   GapSpaceSize > Config.MaxDataAreaStepSize;
         if (shouldCompact && GapSpaceSize >= requiredRecordDataSize) {
             CompactDataArea();
         }
@@ -749,7 +727,7 @@ private:
 
     void TryShrinkDataArea()
     {
-        if (LowMemoryOps < ShrinkLowMemoryOpThreshold) {
+        if (LowMemoryOps < Config.ShrinkLowMemoryOpThreshold) {
             return;
         }
 
@@ -760,30 +738,30 @@ private:
     {
         const ui64 live = GetLiveDataSize();
         const ui64 shrinkTriggerThreshold =
-            CalculatePercentage(DataAreaSize, ShrinkTriggerPercent);
+            PercentOf(DataAreaSize, Config.ShrinkTriggerPercent);
 
-        ui64 reserve = InitialDataAreaSize;
+        ui64 reserve = Config.InitialDataAreaSize;
         const ui64 percentReserve =
-            CalculatePercentage(live, ShrinkReservePercent);
+            PercentOf(live, Config.ShrinkReservePercent);
         if (reserve < percentReserve) {
             reserve = percentReserve;
         }
 
         if (live > shrinkTriggerThreshold &&
-            DataAreaSize - live >= MaxDataAreaStepSize)
+            DataAreaSize - live >= Config.MaxDataAreaStepSize)
         {
-            const ui64 maxStepReserve = MaxDataAreaStepSize / 2;
+            const ui64 maxStepReserve = Config.MaxDataAreaStepSize / 2;
             if (reserve < maxStepReserve) {
                 reserve = maxStepReserve;
             }
         }
 
-        if (reserve > MaxDataAreaStepSize) {
-            reserve = MaxDataAreaStepSize;
+        if (reserve > Config.MaxDataAreaStepSize) {
+            reserve = Config.MaxDataAreaStepSize;
         }
 
         ui64 target = live + reserve;
-        target = AlignUp(target, InitialDataAreaSize);
+        target = AlignUp(target, Config.InitialDataAreaSize);
 
         if (target > DataAreaSize) {
             return DataAreaSize;
@@ -879,16 +857,18 @@ private:
 
         HeaderPtr->DataCompactionRecordIndex = InvalidIndex;
 
-        HeaderPtr->DataCompactionBufferSize = InitialDataCompactionBufferSize;
+        HeaderPtr->DataCompactionBufferSize =
+            Config.InitialDataCompactionBufferSize;
     }
 
     void ExpandDataArea(ui64 requiredRecordDataSize)
     {
         ui64 newDataAreaSize = DataAreaSize;
         while (requiredRecordDataSize > newDataAreaSize - NextDataOffset) {
-            const ui64 dataAreaStepSize = newDataAreaSize < MaxDataAreaStepSize
-                                              ? newDataAreaSize
-                                              : MaxDataAreaStepSize;
+            const ui64 dataAreaStepSize =
+                newDataAreaSize < Config.MaxDataAreaStepSize
+                    ? newDataAreaSize
+                    : Config.MaxDataAreaStepSize;
 
             newDataAreaSize += dataAreaStepSize;
         }
@@ -910,9 +890,9 @@ private:
     {
         const ui64 live = GetLiveDataSize();
         const ui64 threshold =
-            CalculatePercentage(DataAreaSize, ShrinkTriggerPercent);
+            PercentOf(DataAreaSize, Config.ShrinkTriggerPercent);
         return live <= threshold ||
-               (DataAreaSize - live >= MaxDataAreaStepSize);
+               (DataAreaSize - live >= Config.MaxDataAreaStepSize);
     }
 
     void ResetShrinkState()

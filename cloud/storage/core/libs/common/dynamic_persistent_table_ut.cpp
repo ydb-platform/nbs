@@ -107,31 +107,24 @@ struct TTestData
 };
 
 using TTable = TDynamicPersistentTable<TTestHeader>;
+using TTableConfig = TDynamicPersistentTableConfig;
 
-TTable CreateTable(
-    const TString& fileName,
-    ui64 maxRecords,
-    ui64 initialDataAreaSize,
-    ui64 maxDataAreaStepSize = 1_GB,
-    ui64 initialDataCompactionBufferSize = 100,
-    ui64 gapSpacePercentageCompactionThreshold =
-        TTable::DefaultGapSpacePercentageCompactionThreshold,
-    ui64 shrinkLowMemoryOpThreshold = TTable::DefaultShrinkLowMemoryOpThreshold,
-    ui64 shrinkTriggerPercent = TTable::DefaultShrinkTriggerPercent,
-    ui64 shrinkReservePercent = TTable::DefaultShrinkReservePercent,
-    TTable::EShrinkMode shrinkMode = TTable::DefaultShrinkMode)
+TTable CreateTable(const TString& fileName, const TTableConfig& config)
 {
-    return TTable(
+    return TTable(fileName, config);
+}
+
+TTable
+CreateTable(const TString& fileName, ui64 maxRecords, ui64 initialDataAreaSize)
+{
+    return CreateTable(
         fileName,
-        maxRecords,
-        initialDataAreaSize,
-        maxDataAreaStepSize,
-        initialDataCompactionBufferSize,
-        gapSpacePercentageCompactionThreshold,
-        shrinkLowMemoryOpThreshold,
-        shrinkTriggerPercent,
-        shrinkReservePercent,
-        shrinkMode);
+        TTableConfig{
+            .MaxRecords = maxRecords,
+            .InitialDataAreaSize = initialDataAreaSize,
+            .MaxDataAreaStepSize = 1_GB,
+            .InitialDataCompactionBufferSize = 100,
+        });
 }
 
 // Helper functions for accessing internal table structures
@@ -928,8 +921,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         ui64 grownDataAreaSize = 0;
 
         {
-            auto table =
-                CreateTable(tablePath, 32, initialDataAreaSize, 1_GB, 8_KB);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = initialDataAreaSize,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 8_KB,
+                });
 
             for (ui32 i = 0; i < totalRecords; ++i) {
                 TString payload(dataSize, static_cast<char>('a' + (i % 26)));
@@ -950,8 +949,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
 
         {
-            auto table =
-                CreateTable(tablePath, 32, initialDataAreaSize, 1_GB, 8_KB);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = initialDataAreaSize,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 8_KB,
+                });
 
             auto* header = GetTableHeader(table);
             UNIT_ASSERT_VALUES_EQUAL(8_KB, header->DataAreaSize);
@@ -980,12 +985,13 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            1_GB,
-            1_KB,
-            TTable::DefaultGapSpacePercentageCompactionThreshold,
-            shrinkLowMemoryOpThreshold);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataCompactionBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
 
@@ -1028,12 +1034,13 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            1_GB,
-            1_KB,
-            TTable::DefaultGapSpacePercentageCompactionThreshold,
-            shrinkLowMemoryOpThreshold);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataCompactionBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
 
@@ -1077,15 +1084,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            1_GB,
-            1_KB,
-            TTable::DefaultGapSpacePercentageCompactionThreshold,
-            shrinkLowMemoryOpThreshold,
-            TTable::DefaultShrinkTriggerPercent,
-            TTable::DefaultShrinkReservePercent,
-            TTable::EShrinkMode::AnyOp);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataCompactionBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+                .ShrinkMode = TTable::EShrinkMode::AnyOp,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
 
@@ -1132,12 +1138,13 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            1_GB,
-            1_KB,
-            TTable::DefaultGapSpacePercentageCompactionThreshold,
-            shrinkLowMemoryOpThreshold);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataCompactionBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
 
@@ -1174,12 +1181,13 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            1_GB,
-            1_KB,
-            TTable::DefaultGapSpacePercentageCompactionThreshold,
-            shrinkLowMemoryOpThreshold);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataCompactionBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
         UNIT_ASSERT_VALUES_EQUAL(totalRecords, indices.size());
@@ -1221,8 +1229,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TVector<ui64> indices;
 
         {
-            auto table =
-                CreateTable(tablePath, 32, initialDataAreaSize, 1_GB, 1_KB);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = initialDataAreaSize,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 1_KB,
+                });
             indices = FillTable(table, totalRecords, payload);
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1234,8 +1248,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
 
         {
-            auto table =
-                CreateTable(tablePath, 32, initialDataAreaSize, 1_GB, 1_KB);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = initialDataAreaSize,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 1_KB,
+                });
             auto* header = GetTableHeader(table);
 
             UNIT_ASSERT_VALUES_EQUAL(0, table.CountRecords());
@@ -1252,8 +1272,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         const TString payload(1_KB, 't');
         const ui64 totalRecords = 8;
 
-        auto table =
-            CreateTable(tablePath, 32, initialDataAreaSize, 1_GB, 1_KB);
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataCompactionBufferSize = 1_KB,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
         UNIT_ASSERT_VALUES_EQUAL(totalRecords, indices.size());
@@ -1285,11 +1311,13 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            maxDataAreaStepSize,
-            1_KB,
-            100);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = maxDataAreaStepSize,
+                .InitialDataCompactionBufferSize = 1_KB,
+                .GapSpacePercentageCompactionThreshold = 100,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
         UNIT_ASSERT_VALUES_EQUAL(totalRecords, indices.size());
@@ -1317,10 +1345,12 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            maxDataAreaStepSize,
-            4_KB);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = maxDataAreaStepSize,
+                .InitialDataCompactionBufferSize = 4_KB,
+            });
 
         auto assertDataAreaSize = [&](ui64 expectedSize)
         {
@@ -1368,15 +1398,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(
             tablePath,
-            32,
-            initialDataAreaSize,
-            maxDataAreaStepSize,
-            1_KB,
-            TTable::DefaultGapSpacePercentageCompactionThreshold,
-            shrinkLowMemoryOpThreshold,
-            TTable::DefaultShrinkTriggerPercent,
-            TTable::DefaultShrinkReservePercent,
-            TTable::EShrinkMode::AnyOp);
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = maxDataAreaStepSize,
+                .InitialDataCompactionBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+                .ShrinkMode = TTable::EShrinkMode::AnyOp,
+            });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
 
@@ -1504,7 +1533,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TVector<ui64> indices;
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 1);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 1,
+                });
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
@@ -1543,7 +1579,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 2);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 2,
+                });
 
             // All records should be accessible and valid
             UNIT_ASSERT_VALUES_EQUAL(testData.size(), table.CountRecords());
@@ -1570,7 +1613,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TVector<ui64> indices;
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 1);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 1,
+                });
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
@@ -1616,7 +1666,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 1);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 1,
+                });
 
             // All records should be accessible and valid
             UNIT_ASSERT_VALUES_EQUAL(testData.size(), table.CountRecords());
@@ -1643,7 +1700,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TVector<ui64> indices;
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 2);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 2,
+                });
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
@@ -1696,7 +1760,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 2);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 2,
+                });
 
             // All records should be accessible and valid
             UNIT_ASSERT_VALUES_EQUAL(testData.size(), table.CountRecords());
@@ -1723,7 +1794,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TVector<ui64> indices;
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 2);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 2,
+                });
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
@@ -1777,7 +1855,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
 
         {
-            auto table = CreateTable(tablePath, 32, 1024, 1_GB, 1);
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataCompactionBufferSize = 1,
+                });
 
             // All records should be accessible and valid
             UNIT_ASSERT_VALUES_EQUAL(testData.size(), table.CountRecords());

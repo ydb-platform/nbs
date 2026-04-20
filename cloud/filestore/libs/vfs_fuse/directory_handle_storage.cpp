@@ -19,15 +19,12 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
 {
     Table = std::make_unique<TDirectoryHandleTable>(
         filePath,
-        recordsCount,
-        initialDataAreaSize,
-        maxDataAreaStepSize,
-        initialDataCompactionBufferSize,
-        TDirectoryHandleTable::DefaultGapSpacePercentageCompactionThreshold,
-        TDirectoryHandleTable::DefaultShrinkLowMemoryOpThreshold,
-        TDirectoryHandleTable::DefaultShrinkTriggerPercent,
-        TDirectoryHandleTable::DefaultShrinkReservePercent,
-        TDirectoryHandleTable::DefaultShrinkMode);
+        TDynamicPersistentTableConfig{
+            .MaxRecords = recordsCount,
+            .InitialDataAreaSize = initialDataAreaSize,
+            .MaxDataAreaStepSize = maxDataAreaStepSize,
+            .InitialDataCompactionBufferSize = initialDataCompactionBufferSize,
+        });
 }
 
 void TDirectoryHandleStorage::StoreHandle(
