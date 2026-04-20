@@ -113,6 +113,7 @@ PEERDIR(
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
     cloud/filestore/libs/storage/tablet/resources
+    cloud/filestore/private/api/unsafe_protos
 
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common

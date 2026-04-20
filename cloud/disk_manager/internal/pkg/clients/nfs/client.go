@@ -12,6 +12,7 @@ import (
 	private_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"

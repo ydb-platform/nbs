@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+import "cloud/storage/core/protos/error.proto";
+import "cloud/filestore/public/api/protos/node.proto";
+
+package NCloud.NFileStore.NProtoPrivate;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Direct inode and node ref manipulation.
+
+message TUnsafeCreateNodeRequest
+{
+    string FileSystemId = 1;
+    NProto.TNodeAttr Node = 2;
+}
+
+message TUnsafeCreateNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeCreateNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}
+
+message TUnsafeCreateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfigureShards request/response.
+
+message TConfigureShardsRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // Shard FileSystem identifiers.
+    repeated string ShardFileSystemIds = 2;
+
+    // Override shard list validation.
+    bool Force = 3;
+
+    // Make it possible to create directories in shards.
+    bool DirectoryCreationInShardsEnabled = 4;
+
+    // Allow shards aggregate statistics from all other shards and strictly
+    // enforce filesystem size.
+    bool StrictFileSystemSizeEnforcementEnabled = 5;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 6;
+
+    // Shard FileSystem identifiers for regular files. If empty, then
+    // ShardFileSystemIds will be used for regular files.
+    repeated string FileShardFileSystemIds = 7;
+}
+
+message TConfigureShardsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfigureAsShard request/response.
+
+message TConfigureAsShardRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // ShardNo (will be used for the high bits of NodeId and HandleId)
+    uint32 ShardNo = 2;
+
+    // Shard FileSystem identifiers and main FileSystem identifier (manages
+    // RootNode). Needed for directory creation in shards.
+    repeated string ShardFileSystemIds = 3;
+    string MainFileSystemId = 4;
+
+    // Make it possible to create directories in shards.
+    bool DirectoryCreationInShardsEnabled = 5;
+
+    // Allow shards aggregate statistics from all other shards and strictly
+    // enforce filesystem size.
+    bool StrictFileSystemSizeEnforcementEnabled = 6;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 7;
+
+    // Shard FileSystem identifiers for regular files. If empty, then
+    // ShardFileSystemIds will be used for regular files.
+    repeated string FileShardFileSystemIds = 8;
+
+    // Override shard list validation.
+    bool Force = 9;
+}
+
+message TConfigureAsShardResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

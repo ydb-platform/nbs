@@ -12,6 +12,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
