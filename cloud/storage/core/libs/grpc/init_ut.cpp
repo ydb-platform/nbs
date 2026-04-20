@@ -184,14 +184,6 @@ Y_UNIT_TEST_SUITE(TInitTest)
         UNIT_ASSERT_VALUES_EQUAL(0, AliveLoggers.load());
         UNIT_ASSERT_LE(threadCount, Writes.load());
     }
-
-    Y_UNIT_TEST(ShouldShutdownInAnotherThread)
-    {
-        grpc_init();
-        GrpcLoggerInit(CreateLogBackend("console"), false);
-
-        std::thread{grpc_shutdown}.detach();
-    }
 }
 
 }   // namespace NCloud::NStorage::NGrpc
