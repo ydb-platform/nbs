@@ -3,9 +3,6 @@
 #include <library/cpp/json/json_value.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
-#include <algorithm>
-#include <ranges>
-
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -169,7 +166,6 @@ bool TCheckpointStore::RemoveCommitId(ui64 commitId)
 
 void TCheckpointQueue::Enqueue(const TString& checkpointId, ui64 commitId)
 {
-    Y_ABORT_UNLESS(Queue.empty() || commitId >= Queue.back().first);
     Queue.emplace_back(commitId, checkpointId);
 }
 
@@ -189,21 +185,6 @@ TString TCheckpointQueue::Dequeue(ui64 commitId)
 bool TCheckpointQueue::Empty() const
 {
     return Queue.empty();
-}
-
-void TCheckpointQueue::GetCommitIds(TVector<ui64>& commitIds) const
-{
-    for (const auto& [commitId, _]: Queue) {
-        commitIds.push_back(commitId);
-    }
-}
-
-ui64 TCheckpointQueue::GetMinCommitId() const
-{
-    if (Queue.empty()) {
-        return Max<ui64>();
-    }
-    return Queue.front().first;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -281,12 +262,18 @@ bool TCheckpointsInFlight::HasCheckpoint(const TString& checkpointId) const
 
 void TCheckpointsInFlight::GetCommitIds(TVector<ui64>& commitIds) const
 {
-    CommitIdQueue.GetCommitIds(commitIds);
+    for (const auto& [_, txPair]: PendingTransactions) {
+        const auto& txCommitId = txPair.CommitId;
+        if (!txCommitId) {
+            continue;
+        }
+        commitIds.push_back(txCommitId);
+    }
 }
 
 ui64 TCheckpointsInFlight::GetMinCommitId() const
 {
-    auto minCommitId = CommitIdQueue.GetMinCommitId();
+    auto minCommitId = Max<ui64>();
     for (const auto& [_, txPair]: PendingTransactions) {
         const auto& txCommitId = txPair.CommitId;
         if (!txCommitId) {

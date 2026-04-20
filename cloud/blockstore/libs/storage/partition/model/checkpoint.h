@@ -122,9 +122,6 @@ public:
     TString Dequeue(ui64 commitId);
 
     bool Empty() const;
-    void GetCommitIds(TVector<ui64>& commitIds) const;
-
-    [[nodiscard]] ui64 GetMinCommitId() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
