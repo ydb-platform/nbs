@@ -325,4 +325,22 @@ TServerAppConfig::DeprecatedGetRdmaClientConfig() const
     return ServerConfig->GetRdmaClientConfig();
 }
 
+TVector<TCertificate> TServerAppConfig::GetCertsWithLegacyFallback() const
+{
+    auto certs = GetCerts();
+    if (!certs.empty()) {
+        return certs;
+    }
+
+    // TODO: Remove, when old CertFile/CertPrivateKeyFile options are gone.
+    Y_ENSURE(GetCertFile(), "Empty CertFile");
+    Y_ENSURE(GetCertPrivateKeyFile(), "Empty CertPrivateKeyFile");
+
+    certs.push_back({
+        GetCertFile(),
+        GetCertPrivateKeyFile(),
+    });
+    return certs;
+}
+
 }   // namespace NCloud::NBlockStore::NServer

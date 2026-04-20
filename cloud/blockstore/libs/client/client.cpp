@@ -729,7 +729,6 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
     bool secureEndpoint)
 {
     auto credentials = CreateTcpClientChannelCredentials(
-        Log,
         secureEndpoint,
         *Config);
 

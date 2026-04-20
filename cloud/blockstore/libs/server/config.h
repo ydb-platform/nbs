@@ -72,6 +72,7 @@ public:
     TString GetCertFile() const;
     TString GetCertPrivateKeyFile() const;
     TVector<TCertificate> GetCerts() const;
+    TVector<TCertificate> GetCertsWithLegacyFallback() const;
     bool GetKeepAliveEnabled() const;
     TDuration GetKeepAliveIdleTimeout() const;
     TDuration GetKeepAliveProbeTimeout() const;

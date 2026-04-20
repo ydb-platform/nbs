@@ -20,6 +20,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
 
@@ -86,6 +87,8 @@ protected:
     IStartablePtr RdmaTarget;
     ILocalNVMeDeviceProviderPtr LocalNVMeDeviceProvider;
     ILocalNVMeServicePtr LocalNVMeService;
+    ICertificateProviderPtr CertificateProvider;
+    ICertificateRefresherPtr CertificateRefresher;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;

@@ -28,7 +28,6 @@ inline TString ReadFile(const TString& fileName)
 
 template <typename TConfig>
 std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
-    TLog log,
     bool secureEndpoint,
     const TConfig& config)
 {
@@ -43,14 +42,15 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
         const auto& rootCertsFile = config.GetRootCertsFile();
         const auto& certFile = config.GetCertFile();
         const auto& certPrivateKeyFile = config.GetCertPrivateKeyFile();
-        const ui32 refreshCertsPeriod = config.GetRefreshCertsPeriod();
         const bool hasIdentity = !!certFile || !!certPrivateKeyFile;
 
         if (hasIdentity) {
             Y_ENSURE(certFile, "Empty CertFile");
             Y_ENSURE(certPrivateKeyFile, "Empty CertPrivateKeyFile");
 
-            if (refreshCertsPeriod == 0) {
+            auto provider = GetCertificateRefresher()->GetCertificateProvider();
+
+            if (!provider) {
                 grpc::SslCredentialsOptions sslOptions;
                 if (rootCertsFile) {
                     sslOptions.pem_root_certs = ReadFile(rootCertsFile);
@@ -62,12 +62,6 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
                 TCertificateFiles certPaths;
                 certPaths.PrivateKeyPath = certPrivateKeyFile;
                 certPaths.CertChainPath = certFile;
-
-                auto provider = CreatePeriodicCertificateProvider(
-                    std::move(log),
-                    rootCertsFile,
-                    TVector<TCertificateFiles>{certPaths},
-                    TDuration::Seconds(refreshCertsPeriod));
 
                 grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
                 tlsOptions.set_certificate_provider(std::move(provider));

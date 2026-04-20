@@ -24,6 +24,7 @@
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -106,11 +107,36 @@ void TBootstrapServer::InitComponents()
             break;
     }
 
+    auto serverCounters =
+        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
+
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        TVector<TCertificateFiles> certPathList;
+        for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+            Y_ENSURE(cert.CertFile, "Empty CertFile");
+            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+            certPathList.push_back({
+                cert.CertPrivateKeyFile,
+                cert.CertFile
+            });
+        }
+        Y_ENSURE(!certPathList.empty(), "Empty Certs");
+
+        CertificateRefresher = GetCertificateRefresher();
+        CertificateRefresher->Init(
+            Logging,
+            serverCounters,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
+        CertificateProvider = CertificateRefresher->GetCertificateProvider();
+    }
+
     Server = NServer::CreateServer(
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
-        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent),
+        serverCounters,
         ProfileLog,
         Scheduler,
         Service);

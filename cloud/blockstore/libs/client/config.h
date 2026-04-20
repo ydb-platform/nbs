@@ -70,7 +70,6 @@ public:
     ui32 GetMemoryQuotaBytes() const;
     ui32 GetSecurePort() const;
     bool GetSkipCertVerification() const;
-    ui32 GetRefreshCertsPeriod() const;
     TString GetRootCertsFile() const;
     TString GetCertFile() const;
     TString GetCertPrivateKeyFile() const;
@@ -95,6 +94,8 @@ public:
 
     bool GetLocalNonreplDisableDurableClient() const;
     TRequestThresholds GetRequestThresholds() const;
+
+    TDuration GetRefreshCertsPeriod() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
