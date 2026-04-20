@@ -57,31 +57,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeBrokenNotificationSerializer
-{
-    TDeque<bool> PendingNotifications;
-
-    void Send(
-        const NActors::TActorContext& ctx,
-        const TString& diskId,
-        const TString& logPrefix,
-        bool broken);
-
-public:
-    void Notify(
-        const NActors::TActorContext& ctx,
-        const TString& diskId,
-        const TString& logPrefix,
-        bool broken);
-
-    void OnResponse(
-        const NActors::TActorContext& ctx,
-        const TString& diskId,
-        const TString& logPrefix);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TVolumeActor final
     : public NActors::TActor<TVolumeActor>
     , public TTabletBase<TVolumeActor>
@@ -361,7 +336,7 @@ private:
     bool DiskAllocationScheduled = false;
 
     THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
-    TVolumeBrokenNotificationSerializer VolumeBrokenNotificationSerializer;
+    TDeque<NProto::EVolumeHealth> PendingHealthNotifications;
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
@@ -1308,6 +1283,8 @@ private:
     void HandleUpdateVolumeHealthResponse(
         const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void CleanupStaleBrokenDevices(const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,

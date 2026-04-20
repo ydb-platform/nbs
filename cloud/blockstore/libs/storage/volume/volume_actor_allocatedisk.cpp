@@ -716,34 +716,7 @@ void TVolumeActor::CompleteUpdateDevices(
                 std::move(outdatedDevices)));
     };
 
-    if (!DeviceUUIDToBrokenAt.empty()) {
-        THashSet<TString> currentUUIDs;
-        for (const auto* dev: GetAllDevices(State->GetMeta())) {
-            currentUUIDs.insert(dev->GetDeviceUUID());
-        }
-        for (auto it = DeviceUUIDToBrokenAt.begin();
-             it != DeviceUUIDToBrokenAt.end();)
-        {
-            if (!currentUUIDs.contains(it->first)) {
-                ExecuteTx<TUpdateBrokenDevice>(
-                    ctx,
-                    it->first,
-                    TInstant::Zero(),
-                    /*add=*/false);
-                DeviceUUIDToBrokenAt.erase(it++);
-            } else {
-                ++it;
-            }
-        }
-
-        if (DeviceUUIDToBrokenAt.empty()) {
-            VolumeBrokenNotificationSerializer.Notify(
-                ctx,
-                State->GetDiskId(),
-                LogTitle.GetWithTime(),
-                /*broken=*/false);
-        }
-    }
+    CleanupStaleBrokenDevices(ctx);
 
     StopPartitions(ctx, onPartitionDestroy);
     SendVolumeConfigUpdated(ctx);

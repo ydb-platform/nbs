@@ -30,7 +30,7 @@ TVector<TDeviceStat> CreateDeviceStats(
     IDeviceStatObserver* observer)
 {
     const auto& devices = partConfig.GetDevices();
-    const auto& brokenDevices = partConfig.GetBrokenDevices();
+    const auto& brokenDevices = partConfig.GetBrokenAtByDeviceId();
     TVector<TDeviceStat> stats;
     stats.reserve(devices.size());
     for (const auto& device: devices) {
