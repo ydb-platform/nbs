@@ -40,6 +40,7 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/daemon/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -75,6 +76,7 @@ namespace {
 
 const TString VhostMetricsComponent = "client";
 const TString ServerMetricsComponent = "server";
+const int NodeBrokerLeaseExpiredExitCode = 2;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -527,6 +529,14 @@ void TBootstrapVhost::StopComponents()
 
 void TBootstrapVhost::Drain()
 {
+    auto exitCode = GetShouldContinue().GetReturnCode();
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr &&
+        exitCode == NodeBrokerLeaseExpiredExitCode)
+    {
+        ythrow TAppShouldExitImmediatelyException()
+            << "NodeBroker lease is expired";
+    }
+
     if (EndpointManager) {
         EndpointManager->Drain();
     }
