@@ -13,19 +13,17 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <cmath>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
-
 using namespace NKikimr;
-
 using namespace NCloud::NStorage;
-
 using namespace NLWTrace;
-
 using namespace NPartition;
+using namespace std::chrono_literals;
 
 using namespace std::chrono_literals;
 
@@ -55,223 +53,6 @@ TString GetBlocksContent(
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr ui32 DataChannelOffset = 3;
 const TActorId VolumeActorId(0, "VVV");
-
-NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
-{
-    NProto::TStorageServiceConfig config;
-    config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
-    config.SetFreshByteCountThresholdForBackpressure(400_KB);
-    config.SetFreshByteCountLimitForBackpressure(1200_KB);
-    config.SetFreshByteCountFeatureMaxValue(6);
-    config.SetCollectGarbageThreshold(10);
-    config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
-    config.SetFreshChannelWriteRequestsEnabled(true);
-    config.SetFreshChannelZeroRequestsEnabled(true);
-    config.SetFreshBlocksWriterEnabled(true);
-
-    return config;
-}
-
-TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
-{
-    NProto::TDiagnosticsConfig config;
-    config.SetPassTraceIdToBlobstorage(true);
-    return std::make_shared<TDiagnosticsConfig>(std::move(config));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TTestPartitionInfo
-{
-    TString DiskId = "test";
-    TString BaseDiskId;
-    TString BaseDiskCheckpointId;
-    ui64 TabletId = TestTabletId;
-    ui64 BaseTabletId = 0;
-    NCloud::NProto::EStorageMediaKind MediaKind =
-        NCloud::NProto::STORAGE_MEDIA_SSD;
-    TMaybe<ui32> MaxBlocksInBlob;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-NProto::TPartitionConfig GetPartitionConfig(
-    TTestPartitionInfo partitionInfo,
-    ui32 blockCount,
-    ui32 channelCount)
-{
-    NProto::TPartitionConfig partConfig;
-
-    partConfig.SetDiskId(partitionInfo.DiskId);
-    partConfig.SetBaseDiskId(partitionInfo.BaseDiskId);
-    partConfig.SetBaseDiskCheckpointId(partitionInfo.BaseDiskCheckpointId);
-    partConfig.SetBaseDiskTabletId(partitionInfo.BaseTabletId);
-    partConfig.SetStorageMediaKind(partitionInfo.MediaKind);
-
-    partConfig.SetBlockSize(DefaultBlockSize);
-    partConfig.SetBlocksCount(blockCount);
-
-    if (partitionInfo.MaxBlocksInBlob) {
-        partConfig.SetMaxBlocksInBlob(*partitionInfo.MaxBlocksInBlob);
-    }
-
-    auto* cps = partConfig.MutableExplicitChannelProfiles();
-    cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
-    cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
-    cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
-
-    for (ui32 i = 0; i < channelCount - DataChannelOffset - 1; ++i) {
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-    }
-
-    cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
-    return partConfig;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TConfigs
-{
-    TStorageConfigPtr StorageConfig;
-    TDiagnosticsConfigPtr DiagnosticsConfig;
-};
-
-struct TTestEnv
-{
-    std::shared_ptr<TConfigs> Configs;
-    NProto::TPartitionConfig PartitionConfig;
-    std::unique_ptr<TTestActorRuntime> Runtime;
-
-    TActorId PartitionActorId = {};
-
-    TActorId FreshBlocksWriterActorId = {};
-
-    void SetupRegisterObserver()
-    {
-        Runtime->SetRegistrationObserverFunc(
-            [&](
-                TTestActorRuntimeBase& runtime,
-                const TActorId& parentId,
-                const TActorId& actorId)
-            {
-                Y_UNUSED(parentId);
-                auto actor =
-                    dynamic_cast<TPartitionActor*>(runtime.FindActor(actorId));
-                if (actor) {
-                    PartitionActorId = actorId;
-
-                    FreshBlocksWriterActorId = runtime.Register(
-                        std::make_unique<
-                            NFreshBlocksWriter::TFreshBlocksWriterActor>(
-                            Configs->StorageConfig,
-                            PartitionConfig,
-                            EStorageAccessMode::Default,
-                            TestTabletId,
-                            0,
-                            1,
-                            actorId,
-                            VolumeActorId,
-                            Configs->DiagnosticsConfig,
-                            CreateBlockDigestGeneratorStub(),
-                            CreateProfileLogStub())
-                            .release());
-                }
-            });
-    }
-};
-
-void InitLogSettings(TTestActorRuntime& runtime)
-{
-    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END;
-         ++i)
-    {
-        // runtime.SetLogPriority(i, NLog::PRI_INFO);
-        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
-    }
-    // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
-    runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
-}
-
-TTestEnv PrepareTestActorRuntime(
-    NProto::TStorageServiceConfig config = DefaultConfig(),
-    ui32 blockCount = 1024,
-    TMaybe<ui32> channelsCount = {},
-    const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
-    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
-{
-    auto runtime = std::make_unique<TTestBasicRuntime>(1);
-
-    runtime->AppendToLogSettings(
-        TBlockStoreComponents::START,
-        TBlockStoreComponents::END,
-        GetComponentName);
-
-    InitLogSettings(*runtime);
-
-    SetupTabletServices(*runtime);
-
-    std::unique_ptr<TTabletStorageInfo> tabletInfo(CreateTestTabletInfo(
-        testPartitionInfo.TabletId,
-        TTabletTypes::BlockStorePartition));
-
-    if (channelsCount) {
-        auto& channels = tabletInfo->Channels;
-        channels.resize(*channelsCount);
-
-        for (ui64 i = 0; i < channels.size(); ++i) {
-            auto& channel = channels[i];
-            channel.History.resize(1);
-        }
-    }
-
-    auto storageConfig = std::make_shared<TStorageConfig>(
-        config,
-        std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig()));
-
-    auto partConfig = GetPartitionConfig(
-        std::move(testPartitionInfo),
-        blockCount,
-        tabletInfo->Channels.size());
-
-    auto diagConfig = CreateTestDiagnosticsConfig();
-
-    auto configs = std::make_shared<TConfigs>(
-        std::move(storageConfig),
-        std::move(diagConfig));
-
-    auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
-    {
-        auto tablet = CreatePartitionTablet(
-            owner,
-            info,
-            configs->StorageConfig,
-            configs->DiagnosticsConfig,
-            CreateProfileLogStub(),
-            CreateBlockDigestGeneratorStub(),
-            partConfig,
-            storageAccessMode,
-            0,   // partitionIndex
-            1,   // siblingCount
-            VolumeActorId,
-            0   // volumeTabletId
-        );
-        return tablet.release();
-    };
-
-    auto bootstrapper =
-        CreateTestBootstrapper(*runtime, tabletInfo.release(), createFunc);
-    runtime->EnableScheduleForActor(bootstrapper);
-
-    auto testEnv = TTestEnv{
-        std::move(configs),
-        partConfig,
-        std::move(runtime),
-    };
-
-    testEnv.SetupRegisterObserver();
-    return testEnv;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -329,7 +110,7 @@ public:
 
     std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest(
         const TBlockRange32& writeRange,
-        char fill)
+        char fill = '0')
     {
         auto blockContent = GetBlockContent(fill);
 
@@ -346,7 +127,7 @@ public:
 
     std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest(
         ui32 blockIndex,
-        char fill)
+        char fill = '0')
     {
         return CreateWriteBlocksRequest(
             TBlockRange32::WithLength(blockIndex, 1),
@@ -474,6 +255,256 @@ public:
 #undef BLOCKSTORE_DECLARE_METHOD
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
+{
+    NProto::TStorageServiceConfig config;
+    config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
+    config.SetFreshByteCountThresholdForBackpressure(400_KB);
+    config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountFeatureMaxValue(6);
+    config.SetCollectGarbageThreshold(10);
+    config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+    config.SetFreshChannelWriteRequestsEnabled(true);
+    config.SetFreshChannelZeroRequestsEnabled(true);
+    config.SetFreshBlocksWriterEnabled(true);
+
+    return config;
+}
+
+TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
+{
+    NProto::TDiagnosticsConfig config;
+    config.SetPassTraceIdToBlobstorage(true);
+    return std::make_shared<TDiagnosticsConfig>(std::move(config));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestPartitionInfo
+{
+    TString DiskId = "test";
+    TString BaseDiskId;
+    TString BaseDiskCheckpointId;
+    ui64 TabletId = TestTabletId;
+    ui64 BaseTabletId = 0;
+    NCloud::NProto::EStorageMediaKind MediaKind =
+        NCloud::NProto::STORAGE_MEDIA_SSD;
+    TMaybe<ui32> MaxBlocksInBlob;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TPartitionConfig GetPartitionConfig(
+    TTestPartitionInfo partitionInfo,
+    ui32 blockCount,
+    ui32 channelCount,
+    ui32 freshChannelCount)
+{
+    NProto::TPartitionConfig partConfig;
+
+    partConfig.SetDiskId(partitionInfo.DiskId);
+    partConfig.SetBaseDiskId(partitionInfo.BaseDiskId);
+    partConfig.SetBaseDiskCheckpointId(partitionInfo.BaseDiskCheckpointId);
+    partConfig.SetBaseDiskTabletId(partitionInfo.BaseTabletId);
+    partConfig.SetStorageMediaKind(partitionInfo.MediaKind);
+
+    partConfig.SetBlockSize(DefaultBlockSize);
+    partConfig.SetBlocksCount(blockCount);
+
+    if (partitionInfo.MaxBlocksInBlob) {
+        partConfig.SetMaxBlocksInBlob(*partitionInfo.MaxBlocksInBlob);
+    }
+
+    auto* cps = partConfig.MutableExplicitChannelProfiles();
+    cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
+    cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
+    cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
+
+    for (ui32 i = 0; i < channelCount - DataChannelOffset - freshChannelCount; ++i) {
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+    }
+
+    for (ui32 i = 0; i < freshChannelCount; ++i) {
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
+    }
+
+    return partConfig;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TConfigs
+{
+    TStorageConfigPtr StorageConfig;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
+};
+
+struct TMyTestEnv : public TTestEnv
+{
+    std::shared_ptr<TConfigs> Configs;
+    NProto::TPartitionConfig PartitionConfig;
+
+    TActorId PartitionActorId = {};
+    TActorId FreshBlocksWriterActorId = {};
+
+    ui64 PartitionTabletId = 0;
+
+    TMyTestEnv()
+        : TTestEnv(
+              0,
+              1,
+              6,   // nchannels
+              6    // ngroups
+          )
+    {}
+
+    template <typename... TArgs>
+    TMyTestEnv(TArgs&&... args)
+        : TTestEnv(std::forward<TArgs>(args)...)
+    {}
+
+    TFreshBlocksWriterClient GetFreshBlocksWriterClient() {
+        return {GetRuntime(), FreshBlocksWriterActorId};
+    }
+
+    TPartitionClient GetPartitionClient() {
+        return {GetRuntime(), 0, PartitionTabletId};
+    }
+
+    void SetupRegisterObserver()
+    {
+        GetRuntime().SetRegistrationObserverFunc(
+            [&](TTestActorRuntimeBase& runtime,
+                const TActorId& parentId,
+                const TActorId& actorId)
+            {
+                Y_UNUSED(parentId);
+                auto actor =
+                    dynamic_cast<TPartitionActor*>(runtime.FindActor(actorId));
+                if (actor) {
+                    PartitionActorId = actorId;
+
+                    FreshBlocksWriterActorId = runtime.Register(
+                        std::make_unique<
+                            NFreshBlocksWriter::TFreshBlocksWriterActor>(
+                            Configs->StorageConfig,
+                            PartitionConfig,
+                            EStorageAccessMode::Default,
+                            TestTabletId,
+                            0,
+                            1,
+                            actorId,
+                            VolumeActorId,
+                            Configs->DiagnosticsConfig,
+                            CreateBlockDigestGeneratorStub(),
+                            CreateProfileLogStub())
+                            .release());
+                }
+            });
+    }
+};
+
+void InitLogSettings(TTestActorRuntime& runtime)
+{
+    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END;
+         ++i)
+    {
+        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+    }
+    runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
+}
+
+void InitTestActorRuntime(
+    TMyTestEnv& env,
+    const NProto::TStorageServiceConfig& config = DefaultConfig(),
+    ui64 blocksCount = 1024,
+    ui32 channelCount = 6,
+    ui32 freshChannelCount = 2)
+{
+    TTestActorRuntime& runtime = env.GetRuntime();
+
+    {
+        env.CreateSubDomain("nbs");
+        auto storageConfig = CreateTestStorageConfig(config);
+        env.CreateBlockStoreNode(
+            "nbs",
+            storageConfig,
+            CreateTestDiagnosticsConfig());
+    }
+
+    const auto tabletId = NKikimr::MakeTabletID(1, HiveId, 1);
+    std::unique_ptr<TTabletStorageInfo> tabletInfo(new TTabletStorageInfo());
+
+    tabletInfo->TabletID = tabletId;
+    tabletInfo->TabletType = TTabletTypes::BlockStorePartition;
+    auto& channels = tabletInfo->Channels;
+    channels.resize(channelCount);
+
+    for (ui64 channel = 0; channel < channels.size(); ++channel) {
+        channels[channel].Channel = channel;
+        channels[channel].Type = TBlobStorageGroupType(BootGroupErasure);
+        channels[channel].History.resize(1);
+        channels[channel].History[0].FromGeneration = 0;
+        const auto gidx =
+            channel > DataChannelOffset ? channel - DataChannelOffset : 0;
+        channels[channel].History[0].GroupID = env.GetGroupIds()[gidx];
+    }
+
+    TTestPartitionInfo partitionInfo;
+
+    auto storageConfig = std::make_shared<TStorageConfig>(
+        config,
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig()));
+
+    NProto::TPartitionConfig partConfig = GetPartitionConfig(
+        partitionInfo,
+        blocksCount,
+        channelCount,
+        freshChannelCount);
+
+    auto diagConfig = CreateTestDiagnosticsConfig();
+
+    auto configs = std::make_shared<TConfigs>(
+        std::move(storageConfig),
+        std::move(diagConfig));
+
+    auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
+    {
+        auto tablet = CreatePartitionTablet(
+            owner,
+            info,
+            configs->StorageConfig,
+            configs->DiagnosticsConfig,
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            partConfig,
+            EStorageAccessMode::Default,
+            0,   // partitionIndex
+            1,   // siblingCount
+            VolumeActorId,
+            0   // volumeTabletId
+        );
+        return tablet.release();
+    };
+
+    env.SetupRegisterObserver();
+
+    auto bootstrapper =
+        CreateTestBootstrapper(runtime, tabletInfo.release(), createFunc);
+    runtime.EnableScheduleForActor(bootstrapper);
+
+    env.Configs = configs;
+    env.PartitionConfig = partConfig;
+
+    env.PartitionTabletId = tabletId;
+
+    InitLogSettings(runtime);
+}
+
 TString GetBlockContent(
     const std::unique_ptr<TEvService::TEvReadBlocksResponse>& response)
 {
@@ -515,6 +546,27 @@ TString GetBlocksContent(
     return result;
 }
 
+TTestActorRuntime::TEventObserver StorageStateChanger(
+    ui32  flag,
+    TMaybe<ui32> groupIdFilter = {})
+{
+    return [=] (TAutoPtr<IEventHandle>& event) {
+        switch (event->GetTypeRewrite()) {
+            case TEvBlobStorage::EvPutResult: {
+                auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                if (!groupIdFilter.Defined() || *groupIdFilter == msg->GroupId) {
+                    const_cast<TStorageStatusFlags&>(msg->StatusFlags).Merge(
+                        ui32(NKikimrBlobStorage::StatusIsValid) | ui32(flag)
+                    );
+                    break;
+                }
+            }
+        }
+
+        return TTestActorRuntime::DefaultObserverFunc(event);
+    };
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -523,15 +575,13 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 {
     Y_UNIT_TEST(ShouldWaitReady)
     {
-        auto testEnv = PrepareTestActorRuntime();
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
 
-        TPartitionClient partition(*testEnv.Runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            *testEnv.Runtime,
-            testEnv.FreshBlocksWriterActorId);
-
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         auto req = std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
@@ -545,8 +595,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldAddFreshBlocksBeforeReply)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
         bool addFreshBlocksRequestObserved = false;
 
@@ -578,13 +629,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
-
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         fbwClient.WriteBlocks(0, '0');
@@ -593,8 +641,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldWriteFreshBlocks)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
         // TODO(issue-4875): remove trim events dropping after adding trim
         // synchronization
@@ -611,13 +660,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
-
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         fbwClient.WriteBlocks(0, '0');
@@ -650,8 +696,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThresholdSSD(128_KB);
 
-        auto testEnv = PrepareTestActorRuntime(config);
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
 
         // TODO(issue-4875): remove trim events dropping after adding trim
         // synchronization
@@ -672,13 +719,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
-
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         fbwClient.WriteBlocks(TBlockRange32::WithLength(0, 1024), 'A');
@@ -698,8 +742,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldWriteBlocksWithCorrectCommitId)
     {
-        auto testEnv = PrepareTestActorRuntime(DefaultConfig(), 2048);
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, DefaultConfig(), 2048);
+        auto& runtime = testEnv.GetRuntime();
 
         // TODO(issue-4875): remove trim events dropping after adding trim
         // synchronization
@@ -711,13 +756,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
-
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         // Partition write
@@ -759,8 +801,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldSupportWriteBlocksLocalRequest)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
         std::unique_ptr<IEventHandle> stolenAddFreshBlocksRequest;
 
@@ -781,18 +824,15 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         auto partActor = testEnv.PartitionActorId;
         {
             auto content = GetBlockContent('0');
-
             TSgList sglist;
             sglist.resize(1, {content.data(), content.size()});
             TGuardedSgList guardedSglist(std::move(sglist));
@@ -829,15 +869,14 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         config.SetWriteBlobThresholdSSD(128_KB);
         config.SetWriteRequestBatchingEnabled(true);
 
-        auto testEnv = PrepareTestActorRuntime(config);
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         const ui32 blockCount = 1000;
@@ -865,7 +904,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         }
 
         const ui64 blocksCountInOneBatch =
-            config.GetWriteBlobThresholdSSD() / 4_KB  - 1;
+            config.GetWriteBlobThresholdSSD() / 4_KB - 1;
 
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui64>(
@@ -881,8 +920,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldSupportFreshZeroRequests)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
         // TODO(issue-4875): remove trim events dropping after adding trim
         // synchronization
@@ -902,13 +942,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
-
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         fbwClient.WriteBlocks(0, '0');
@@ -955,8 +992,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         config.SetFreshByteCountHardLimit(8_KB);
         config.SetFlushThreshold(4_MB);
 
-        auto testEnv = PrepareTestActorRuntime(config);
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
 
         ui64 addFreshBlocksCount = 0;
 
@@ -967,19 +1005,19 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             {
                 Y_UNUSED(runtime);
 
-                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvAddFreshBlocksResponse) {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksResponse)
+                {
                     ++addFreshBlocksCount;
                 }
                 return event->GetTypeRewrite() ==
                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
@@ -1008,15 +1046,14 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldNotTrimInProgressWrites)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
 
         fbwClient.WaitReady();
 
@@ -1102,15 +1139,14 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldNotLoseInFlightWritesOnReboot)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
         std::unique_ptr<IEventHandle> stolenPutRequest;
@@ -1157,9 +1193,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         partition.ReconnectPipe();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient newFbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
         newFbwClient.WaitReady();
 
         auto actualContent = GetBlocksContent(
@@ -1172,15 +1206,14 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldWaitForAddFreshBlocksBeforeCompaction)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
 
         fbwClient.WaitReady();
 
@@ -1241,15 +1274,14 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldWaitForAddFreshBlocksBeforeCheckpointCreation)
     {
-        auto testEnv = PrepareTestActorRuntime();
-        auto& runtime = *testEnv.Runtime;
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
 
-        TPartitionClient partition(runtime);
+        auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
 
-        TFreshBlocksWriterClient fbwClient(
-            runtime,
-            testEnv.FreshBlocksWriterActorId);
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
 
         fbwClient.WaitReady();
 
@@ -1324,6 +1356,207 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                         << GetBlockContent('2');
 
         UNIT_ASSERT_VALUES_EQUAL(expectedContent, actualContent);
+    }
+
+    Y_UNIT_TEST(ShouldRejectWriteRequestsIfDataChannelsAreYellow)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        THashMap<ui64, NKikimr::TStorageStatusFlags>
+            channelToStorageStatusFlags;
+
+        ui32 ssflags = ui32(
+            NKikimrBlobStorage::StatusDiskSpaceYellowStop |
+            NKikimrBlobStorage::StatusDiskSpaceLightYellowMove);
+
+        ui32 ssflagsToCheck = ui32(
+            NKikimrBlobStorage::StatusDiskSpaceYellowStop |
+            NKikimrBlobStorage::StatusDiskSpaceLightYellowMove |
+            NKikimrBlobStorage::StatusIsValid);
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvProcessStorageStatusFlags) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        testEnv.PartitionActorId,
+                        event->GetRecipientRewrite());
+
+                    auto* ev = event->Get<TEvPartitionCommonPrivate::
+                                              TEvProcessStorageStatusFlags>();
+                    channelToStorageStatusFlags[ev->Channel] = ev->Flags;
+                }
+
+                return StorageStateChanger(ssflags)(event);
+            });
+
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(0, 1));
+
+        UNIT_ASSERT_VALUES_EQUAL(ssflagsToCheck, channelToStorageStatusFlags[4]);
+
+        // received yellow stop flags only for first fresh channel, we can send
+        // write requests to second fresh channel
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(0, 1));
+
+        UNIT_ASSERT_VALUES_EQUAL(ssflagsToCheck, channelToStorageStatusFlags[5]);
+
+        // received yellow stop flags for all fresh channels
+        {
+            fbwClient.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1));
+            auto response = fbwClient.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyTrackYellowChannelsInBackground)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        // one data channel yellow => ok
+        {
+            auto request =
+                std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
+                    TVector<ui32>({
+                        testEnv.GetGroupIds()[2],
+                    }),
+                    TVector<ui32>({
+                        testEnv.GetGroupIds()[2],
+                    }),
+                    TVector<ui32>()
+                );
+            partition.SendToPipe(std::move(request));
+        }
+
+        runtime.DispatchEvents({}, 10ms);
+
+        {
+            fbwClient.SendWriteBlocksRequest(1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        // all channels yellow => failure
+        {
+            auto request =
+                std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
+                    TVector<ui32>({
+                        testEnv.GetGroupIds()[1],
+                        testEnv.GetGroupIds()[2],
+                    }),
+                    TVector<ui32>({
+                        testEnv.GetGroupIds()[1],
+                        testEnv.GetGroupIds()[2],
+                    }),
+                    TVector<ui32>()
+                );
+            partition.SendToPipe(std::move(request));
+        }
+
+        runtime.DispatchEvents({}, 10ms);
+
+        {
+            fbwClient.SendWriteBlocksRequest(1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        // channels returned to non-yellow state => ok
+        {
+            auto request =
+                std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
+                    TVector<ui32>(),
+                    TVector<ui32>(),
+                    TVector<ui32>()
+                );
+            partition.SendToPipe(std::move(request));
+        }
+
+        runtime.DispatchEvents({}, 10ms);
+
+        {
+            fbwClient.SendWriteBlocksRequest(1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        // TODO: the state may be neither yellow nor green (e.g. orange)
+    }
+
+    Y_UNIT_TEST(ShouldAskPartitionToReassignChannels)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        bool askPartitionToReassignWasObserved = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvReassignChannelsIfNeeded)
+                {
+                    askPartitionToReassignWasObserved = true;
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            auto request =
+                std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
+                    TVector<ui32>({
+                        testEnv.GetGroupIds()[1],
+                        testEnv.GetGroupIds()[2],
+                    }),
+                    TVector<ui32>({
+                        testEnv.GetGroupIds()[1],
+                        testEnv.GetGroupIds()[2],
+                    }),
+                    TVector<ui32>());
+            partition.SendToPipe(std::move(request));
+        }
+
+        runtime.DispatchEvents({}, 10ms);
+
+        {
+            fbwClient.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1));
+            auto response = fbwClient.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(askPartitionToReassignWasObserved);
+        askPartitionToReassignWasObserved = false;
+
+        {
+            fbwClient.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1));
+            auto response = fbwClient.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(askPartitionToReassignWasObserved);
     }
 }
 
