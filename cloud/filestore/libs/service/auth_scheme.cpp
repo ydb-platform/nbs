@@ -87,6 +87,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::StartEndpoint:
         case EFileStoreRequest::StopEndpoint:
         case EFileStoreRequest::KickEndpoint:
+        case EFileStoreRequest::Mmap:
             return CreatePermissionList({
                 EPermission::Read,
                 EPermission::Write});
