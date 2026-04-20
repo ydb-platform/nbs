@@ -201,7 +201,7 @@ void TCheckpointQueue::GetCommitIds(TVector<ui64>& commitIds) const
 ui64 TCheckpointQueue::GetMinCommitId() const
 {
     if (Queue.empty()) {
-        return Max();
+        return Max<ui64>();
     }
     return Queue.front().first;
 }
@@ -288,7 +288,7 @@ ui64 TCheckpointsInFlight::GetMinCommitId() const
 {
     auto minCommitId = CommitIdQueue.GetMinCommitId();
     for (const auto& [_, txPair]: PendingTransactions) {
-        auto& txCommitId = txPair.second;
+        const auto& txCommitId = txPair.CommitId;
         if (!txCommitId) {
             continue;
         }
