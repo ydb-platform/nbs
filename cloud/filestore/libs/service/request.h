@@ -77,11 +77,11 @@ namespace NCloud::NFileStore {
     xxx(FsyncDir,                           __VA_ARGS__)                       \
 // FILESTORE_LOCAL_DATA_METHODS
 
-#define FILESTORE_SHAREDMEM_METHODS(xxx, ...)                                  \
+#define FILESTORE_SHARED_MEMORY_METHODS(xxx, ...)                              \
     xxx(Mmap,                               __VA_ARGS__)                       \
     xxx(Munmap,                             __VA_ARGS__)                       \
     xxx(PingMmapRegion,                     __VA_ARGS__)                       \
-// FILESTORE_SHAREDMEM_METHODS
+// FILESTORE_SHARED_MEMORY_METHODS
 
 #define FILESTORE_DATA_SERVICE(xxx, ...)                                       \
     FILESTORE_DATA_METHODS(xxx,            __VA_ARGS__)                        \

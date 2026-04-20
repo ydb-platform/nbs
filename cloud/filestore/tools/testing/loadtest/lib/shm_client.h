@@ -27,13 +27,20 @@ struct IShmDataClient
     : public IStartable
 {
     // Copies the buffer into a SHM slot and replaces it with an iovec descriptor.
-    // No-op if the SHM region is not yet active.
-    virtual void PrepareWrite(NProto::TWriteDataRequest& request) = 0;
+    // Returns the allocated slot offset, or Max<ui64>() if SHM is not active.
+    // Caller must pass the returned offset to FreeOffset() after the RPC completes.
+    virtual ui64 PrepareWrite(NProto::TWriteDataRequest& request) = 0;
 
     // Allocates a SHM slot for the read response and sets the iovec descriptor.
-    // Returns a pointer to the local buffer to read from once the RPC completes.
+    // Returns a pointer to the local buffer to read from once the RPC completes,
+    // and the slot offset via outOffset. Caller must pass the offset to FreeOffset().
     // Returns nullptr if the SHM region is not yet active.
-    virtual char* PrepareRead(NProto::TReadDataRequest& request) = 0;
+    virtual char* PrepareRead(
+        NProto::TReadDataRequest& request,
+        ui64& outOffset) = 0;
+
+    // Returns a slot offset back to the free pool after the RPC using it completes.
+    virtual void FreeOffset(ui64 offset) = 0;
 };
 
 using IShmDataClientPtr = std::shared_ptr<IShmDataClient>;

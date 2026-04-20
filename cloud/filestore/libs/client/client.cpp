@@ -92,7 +92,7 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
     FILESTORE_DECLARE_METHOD(name##Stream, name, name##Stream, __VA_ARGS__)
 
 FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD_FS)
-FILESTORE_SHAREDMEM_METHODS(FILESTORE_DECLARE_METHOD_FS)
+FILESTORE_SHARED_MEMORY_METHODS(FILESTORE_DECLARE_METHOD_FS)
 FILESTORE_ENDPOINT_SERVICE(FILESTORE_DECLARE_METHOD_VHOST)
 FILESTORE_DECLARE_METHOD_STREAM(GetSessionEvents)
 
@@ -804,7 +804,8 @@ public:
 
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
-        TBase::AppCtx.Service = NProto::TFileStoreService::NewStub(std::move(channel));
+        TBase::AppCtx.Service =
+            NProto::TFileStoreService::NewStub(std::move(channel));
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -869,7 +870,8 @@ public:
 
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
-        TBase::AppCtx.Service = NProto::TFileStoreService::NewStub(std::move(channel));
+        TBase::AppCtx.Service =
+            NProto::TFileStoreService::NewStub(std::move(channel));
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -883,7 +885,7 @@ public:
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD
 
-    FILESTORE_SHAREDMEM_METHODS(FILESTORE_IMPLEMENT_METHOD)
+    FILESTORE_SHARED_MEMORY_METHODS(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 };

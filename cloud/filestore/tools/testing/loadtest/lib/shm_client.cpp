@@ -3,7 +3,6 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
-
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/server.pb.h>
 
@@ -15,8 +14,8 @@
 #include <util/folder/path.h>
 #include <util/generic/string.h>
 #include <util/system/file.h>
+#include <util/thread/lfqueue.h>
 
-#include <atomic>
 #include <sys/mman.h>
 
 namespace NCloud::NFileStore::NLoadTest {
@@ -39,7 +38,6 @@ private:
     const TString FullPath;
     const ui64 ShmSize;
     const ui64 SlotSize;
-    const ui64 NumSlots;
 
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
@@ -52,7 +50,7 @@ private:
     void* LocalAddr = MAP_FAILED;
     ui64 RegionId = 0;
 
-    std::atomic<ui64> SlotCounter{0};
+    TLockFreeQueue<ui64> FreeOffsets;
 
 public:
     TSharedMemoryClient(
@@ -66,7 +64,6 @@ public:
         : FullPath(std::move(fullPath))
         , ShmSize(shmSize)
         , SlotSize(slotSize)
-        , NumSlots(slotSize ? shmSize / slotSize : 1)
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , ShmControl(std::move(shmControl))
@@ -76,6 +73,10 @@ public:
 
     void Start() override
     {
+        for (ui64 offset = 0; offset < ShmSize; offset += SlotSize) {
+            FreeOffsets.Enqueue(offset );
+        }
+
         ShmControl->Start();
         SetupSharedMemory();
         SchedulePing();
@@ -87,11 +88,11 @@ public:
         ShmControl->Stop();
     }
 
-    void PrepareWrite(NProto::TWriteDataRequest& request) override
+    ui64 PrepareWrite(NProto::TWriteDataRequest& request) override
     {
         const auto& buffer = request.GetBuffer();
         if (buffer.empty() || LocalAddr == MAP_FAILED) {
-            return;
+            return Max<ui64>();
         }
 
         const ui64 len = buffer.size();
@@ -100,7 +101,7 @@ public:
             "buffer size %lu exceeds slot size %lu",
             len,
             SlotSize);
-        const ui64 shmOffset = AllocateShmSlot();
+        const ui64 shmOffset = AllocateShmOffset();
 
         memcpy(static_cast<char*>(LocalAddr) + shmOffset, buffer.data(), len);
         request.ClearBuffer();
@@ -109,11 +110,14 @@ public:
         iovec->SetBase(shmOffset);
         iovec->SetLength(len);
         request.SetRegionId(RegionId);
+
+        return shmOffset;
     }
 
-    char* PrepareRead(NProto::TReadDataRequest& request) override
+    char* PrepareRead(NProto::TReadDataRequest& request, ui64& outOffset) override
     {
         if (LocalAddr == MAP_FAILED) {
+            outOffset = Max<ui64>();
             return nullptr;
         }
 
@@ -123,14 +127,21 @@ public:
             "request length %lu exceeds slot size %lu",
             len,
             SlotSize);
-        const ui64 shmOffset = AllocateShmSlot();
+        outOffset = AllocateShmOffset();
 
         auto* iovec = request.AddIovecs();
-        iovec->SetBase(shmOffset);
+        iovec->SetBase(outOffset);
         iovec->SetLength(len);
         request.SetRegionId(RegionId);
 
-        return static_cast<char*>(LocalAddr) + shmOffset;
+        return static_cast<char*>(LocalAddr) + outOffset;
+    }
+
+    void FreeOffset(ui64 offset) override
+    {
+        if (offset != Max<ui64>()) {
+            FreeOffsets.Enqueue(offset);
+        }
     }
 
 private:
@@ -211,14 +222,14 @@ private:
             });
     }
 
-    ui64 AllocateShmSlot()
+    ui64 AllocateShmOffset()
     {
-        if (NumSlots == 0) {
-            return 0;
+        ui64 slot = 0;
+        if (!FreeOffsets.Dequeue(&slot)) {
+            ythrow yexception()
+                << "no free SHM slots available for the loadtest";
         }
-        ui64 slot =
-            SlotCounter.fetch_add(1, std::memory_order_relaxed) % NumSlots;
-        return slot * SlotSize;
+        return slot;
     }
 };
 

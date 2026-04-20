@@ -1,55 +1,28 @@
 import json
 import logging
 import os
-import pathlib
 import requests
 import tempfile
-
-import google.protobuf.text_format as text_format
 
 import yatest.common as common
 
 from cloud.filestore.config.client_pb2 import TClientConfig
-from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph
+from cloud.storage.core.tests.common import expand_placeholders
+
 
 logger = logging.getLogger(__name__)
 
 
-def _patch_shm_paths(config_path):
-    """Redirect SharedMemoryFilePath fields to the test output directory.
-
-    The server's SharedMemoryBasePath is set to output_path()/shm by the
-    service-kikimr recipe; client paths must match. Returns the original path
-    if no SharedMemoryFilePath fields are present.
-    """
+def _expand_placeholders(config_path):
     with open(config_path, "r") as f:
-        graph = text_format.Parse(f.read(), TTestGraph())
+        content = f.read()
 
-    shm_base = None
-    changed = False
-    for entry in graph.Tests:
-        if entry.WhichOneof("Test") != "LoadTest":
-            continue
-        load_test = entry.LoadTest
-        if load_test.WhichOneof("Specs") != "DatashardLikeLoadSpec":
-            continue
-        old_path = load_test.DatashardLikeLoadSpec.SharedMemoryFilePath
-        if not old_path:
-            continue
-        if shm_base is None:
-            shm_base = os.path.join(common.output_path(), "shm")
-            os.makedirs(shm_base, exist_ok=True)
-        new_path = str(pathlib.Path(shm_base) / pathlib.Path(old_path).name)
-        load_test.DatashardLikeLoadSpec.SharedMemoryFilePath = new_path
-        changed = True
-
-    if not changed:
-        return config_path
+    content = expand_placeholders(content)
 
     tmp = tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", delete=False, dir=common.output_path()
     )
-    tmp.write(text_format.MessageToString(graph))
+    tmp.write(content)
     tmp.close()
     return tmp.name
 
@@ -62,7 +35,7 @@ def run_load_test(
     auth_token=None,
     mon_port=None,
 ):
-    config = _patch_shm_paths(config)
+    config = _expand_placeholders(config)
 
     cmd = [
         common.binary_path("cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest"),

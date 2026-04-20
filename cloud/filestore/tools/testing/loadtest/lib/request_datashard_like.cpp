@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/guid.h>
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
@@ -272,9 +273,9 @@ private:
         request->SetOffset(byteOffset);
         request->SetLength(ReadBytes);
 
-        char* shmLocalPtr = DataClient
-            ? DataClient->PrepareRead(*request)
-            : nullptr;
+        ui64 shmOffset = Max<ui64>();
+        char* shmLocalPtr =
+            DataClient ? DataClient->PrepareRead(*request, shmOffset) : nullptr;
 
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request))
@@ -286,7 +287,8 @@ private:
                             future,
                             nodeInfo,
                             started,
-                            shmLocalPtr);
+                            shmLocalPtr,
+                            shmOffset);
                     }
 
                     return TCompletedRequest{
@@ -300,8 +302,15 @@ private:
         const TFuture<NProto::TReadDataResponse>& future,
         TNodeInfo nodeInfo,
         TInstant started,
-        char* shmLocalPtr)
+        char* shmLocalPtr,
+        ui64 shmOffset)
     {
+        Y_DEFER
+        {
+            if (DataClient) {
+                DataClient->FreeOffset(shmOffset);
+            }
+        };
         try {
             auto response = future.GetValue();
             CheckResponse(response);
@@ -348,9 +357,8 @@ private:
         request->SetOffset(byteOffset);
         *request->MutableBuffer() = std::move(buffer);
 
-        if (DataClient) {
-            DataClient->PrepareWrite(*request);
-        }
+        ui64 shmOffset =
+            DataClient ? DataClient->PrepareWrite(*request) : Max<ui64>();
 
         auto self = weak_from_this();
         return Session->WriteData(CreateCallContext(), std::move(request))
@@ -358,7 +366,8 @@ private:
                 [=](const TFuture<NProto::TWriteDataResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
-                        return ptr->HandleWrite(future, nodeInfo, started);
+                        return ptr
+                            ->HandleWrite(future, nodeInfo, started, shmOffset);
                     }
 
                     return TCompletedRequest{
@@ -371,8 +380,15 @@ private:
     TCompletedRequest HandleWrite(
         const TFuture<NProto::TWriteDataResponse>& future,
         TNodeInfo nodeInfo,
-        TInstant started)
+        TInstant started,
+        ui64 shmOffset)
     {
+        Y_DEFER
+        {
+            if (DataClient) {
+                DataClient->FreeOffset(shmOffset);
+            }
+        };
         try {
             const auto& response = future.GetValue();
             CheckResponse(response);
