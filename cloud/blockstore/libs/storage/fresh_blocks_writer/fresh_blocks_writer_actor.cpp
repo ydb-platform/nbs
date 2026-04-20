@@ -127,13 +127,7 @@ void TFreshBlocksWriterActor::ProcessStorageStatusFlags(
 {
     const ui32 groupId = TabletStorageInfo->GroupFor(channel, generation);
 
-    const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
-    const auto yellowMoveFlag =
-        NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceLightYellowMove;
-    const auto yellowStopFlag =
-        NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceYellowStop;
-
-    if (!flags.Check(isValidFlag)) {
+    if (!IsValid(flags)) {
         return;
     }
 
@@ -144,8 +138,8 @@ void TFreshBlocksWriterActor::ProcessStorageStatusFlags(
 
     const bool permissionsUpdated =
         ChannelsState->UpdatePermissions(channel, permissions);
-    const bool isYellowStop = flags.Check(yellowStopFlag);
-    const bool isYellowMove = flags.Check(yellowMoveFlag);
+    const bool isYellowStop = HasYellowStop(flags);
+    const bool isYellowMove = HasYellowMove(flags);
 
     if (isYellowStop) {
         LOG_WARN(

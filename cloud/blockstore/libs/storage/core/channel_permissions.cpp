@@ -2,10 +2,12 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NKikimr;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 EChannelPermissions StorageStatusFlags2ChannelPermissions(
-    NKikimr::TStorageStatusFlags ssf)
+    TStorageStatusFlags ssf)
 {
     /*
     YellowStop: Tablets switch to read-only mode. Only system writes are
@@ -41,5 +43,19 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(
            EChannelPermission::UserWritesAllowed;
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+bool IsValid(TStorageStatusFlags ssf)
+{
+    return ssf.Check(NKikimrBlobStorage::StatusIsValid);
+}
 
+bool HasYellowStop(TStorageStatusFlags ssf)
+{
+    return ssf.Check(NKikimrBlobStorage::StatusDiskSpaceYellowStop);
+}
+
+bool HasYellowMove(TStorageStatusFlags ssf)
+{
+    return ssf.Check(NKikimrBlobStorage::StatusDiskSpaceLightYellowMove);
+}
+
+}   // namespace NCloud::NBlockStore::NStorage

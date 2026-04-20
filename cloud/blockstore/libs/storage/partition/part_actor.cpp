@@ -1421,13 +1421,7 @@ void TPartitionActor::ProcessStorageStatusFlags(
 {
     const ui32 groupId = Info()->GroupFor(channel, generation);
 
-    const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
-    const auto yellowMoveFlag =
-        NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceLightYellowMove;
-    const auto yellowStopFlag =
-        NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceYellowStop;
-
-    if (!flags.Check(isValidFlag)) {
+    if (!IsValid(flags)) {
         return;
     }
 
@@ -1436,8 +1430,8 @@ void TPartitionActor::ProcessStorageStatusFlags(
         UpdateChannelPermissions(ctx, channel, permissions);
     State->UpdateChannelFreeSpaceShare(channel, approximateFreeSpaceShare);
 
-    const bool isYellowStop = flags.Check(yellowStopFlag);
-    const bool isYellowMove = flags.Check(yellowMoveFlag);
+    const bool isYellowStop = HasYellowStop(flags);
+    const bool isYellowMove = HasYellowMove(flags);
 
     if (isYellowStop) {
         LOG_WARN(
