@@ -440,7 +440,16 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
         TVector<IIndexTabletDatabase::TNodeRef> refs;
         // 1 entry is enough to prevent deletion
-        if (!ReadNodeRefs(db, childNodeId, args.CommitId, {}, refs, 1)) {
+        if (!ReadNodeRefs(
+                db,
+                childNodeId,
+                args.CommitId,
+                {},
+                refs,
+                1,
+                Config->GetShardIdCompressionMode(),
+                GetMainFileSystemId()))
+        {
             return false;
         }
 

@@ -5,6 +5,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/pathsplit.h>
+#include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -129,13 +130,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         constexpr ui64 nodeId = 1;
         constexpr ui64 childNodeId1 = 2;
         constexpr ui64 childNodeId2 = 3;
+        constexpr NProto::EShardIdCompressionMode defaultShardMode =
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
             NProto::TNode attrs;
             db.WriteNode(nodeId, commitId, attrs);
             db.WriteNode(childNodeId1, commitId, attrs);
             db.WriteNode(childNodeId2, commitId, attrs);
-            db.WriteNodeRef(nodeId, commitId, "child1", childNodeId1, "", "", false);
+            db.WriteNodeRef(
+                nodeId,
+                commitId,
+                "child1",
+                childNodeId1,
+                "",
+                "",
+                false,
+                defaultShardMode);
             db.WriteNodeRef(
                 nodeId,
                 commitId,
@@ -143,26 +154,47 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 childNodeId2,
                 "shard",
                 "name",
-                false);
+                false,
+                defaultShardMode);
         });
 
-        executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TMaybe<IIndexTabletDatabase::TNodeRef> ref1;
-            UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child1", ref1));
-            UNIT_ASSERT_EQUAL(ref1->ChildNodeId, childNodeId1);
-            UNIT_ASSERT_EQUAL(ref1->ShardId, "");
-            UNIT_ASSERT_EQUAL(ref1->ShardNodeName, "");
+        executor.ReadTx(
+            [&](TIndexTabletDatabase db)
+            {
+                TMaybe<IIndexTabletDatabase::TNodeRef> ref1;
+                UNIT_ASSERT(db.ReadNodeRef(
+                    nodeId,
+                    commitId,
+                    "child1",
+                    ref1,
+                    defaultShardMode,
+                    ""));
+                UNIT_ASSERT_EQUAL(ref1->ChildNodeId, childNodeId1);
+                UNIT_ASSERT_EQUAL(ref1->ShardId, "");
+                UNIT_ASSERT_EQUAL(ref1->ShardNodeName, "");
 
-            TMaybe<IIndexTabletDatabase::TNodeRef> ref2;
-            UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child2", ref2));
-            UNIT_ASSERT_EQUAL(ref2->ChildNodeId, childNodeId2);
-            UNIT_ASSERT_EQUAL(ref2->ShardId, "shard");
-            UNIT_ASSERT_EQUAL(ref2->ShardNodeName, "name");
+                TMaybe<IIndexTabletDatabase::TNodeRef> ref2;
+                UNIT_ASSERT(db.ReadNodeRef(
+                    nodeId,
+                    commitId,
+                    "child2",
+                    ref2,
+                    defaultShardMode,
+                    ""));
+                UNIT_ASSERT_EQUAL(ref2->ChildNodeId, childNodeId2);
+                UNIT_ASSERT_EQUAL(ref2->ShardId, "shard");
+                UNIT_ASSERT_EQUAL(ref2->ShardNodeName, "name");
 
-            TMaybe<IIndexTabletDatabase::TNodeRef> ref3;
-            UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child3", ref3));
-            UNIT_ASSERT(!ref3);
-        });
+                TMaybe<IIndexTabletDatabase::TNodeRef> ref3;
+                UNIT_ASSERT(db.ReadNodeRef(
+                    nodeId,
+                    commitId,
+                    "child3",
+                    ref3,
+                    defaultShardMode,
+                    ""));
+                UNIT_ASSERT(!ref3);
+            });
     }
 
     Y_UNIT_TEST(ShouldStoreCheckpoints)
@@ -562,6 +594,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         constexpr ui64 nodeId = 1;
         constexpr ui64 childNodeId1 = 2;
         constexpr ui64 childNodeId2 = 3;
+        constexpr NProto::EShardIdCompressionMode defaultShardMode =
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
 
         executor.WriteTx(
             [&](TIndexTabletDatabase db)
@@ -577,7 +611,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     childNodeId1,
                     "",
                     "",
-                    false);
+                    false,
+                    defaultShardMode);
                 db.WriteNodeRef(
                     nodeId,
                     commitId,
@@ -585,7 +620,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     childNodeId2,
                     "",
                     "",
-                    false);
+                    false,
+                    defaultShardMode);
             });
 
         executor.ReadTx(
@@ -598,6 +634,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     "",
                     refs,
                     0,
+                    defaultShardMode,
+                    "",
                     nullptr,
                     nullptr,
                     false,
@@ -615,6 +653,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     "",
                     refs,
                     0,
+                    defaultShardMode,
+                    "",
                     nullptr,
                     nullptr,
                     true,
@@ -944,6 +984,115 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     "t2",
                     entries[1].Data.GetUnalignedDataRanges(1).GetContent());
             });
+    }
+
+    Y_UNIT_TEST(ShouldReadAndWriteNodeRefsInDifferentModes)
+    {
+        TTestExecutor executor;
+
+        executor.WriteTx([&](TIndexTabletDatabase db) { db.InitSchema(); });
+
+        constexpr ui64 commitId = 1;
+        constexpr ui64 nodeId = 1;
+
+        ui32 fileNum = 0;
+        const ui32 count = 32;
+        const TString fnamePrefix = "file_";
+        const TString mainFsId = "computefilesystem-e00dabc99a5fjdpt7s";
+        const TVector<TString> shardId = {
+            mainFsId,
+            mainFsId + "_s1",
+            mainFsId + "_s32",
+            mainFsId + "_s475"};
+
+        // ShardId compression modes are ordered so that any ShardId written
+        // using a given mode can be read using the same or further mode.
+        TVector<NProto::EShardIdCompressionMode> compressionModes = {
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION,
+            NProto::EShardIdCompressionMode::SICM_READ,
+            NProto::EShardIdCompressionMode::SICM_READ_WRITE,
+            NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT};
+
+        for (size_t writeModeNum = 0; writeModeNum < compressionModes.size();
+             ++writeModeNum)
+        {
+            const NProto::EShardIdCompressionMode writeMode =
+                compressionModes[writeModeNum];
+            // Create refs that refernce nodes in shards
+            TVector<IIndexTabletDatabase::TNodeRef> nodeRefs;
+            for (ui32 i = 0; i < count; ++i) {
+                IIndexTabletDatabase::TNodeRef nodeRef = {
+                    .NodeId = nodeId,
+                    .Name = TStringBuilder() << "file_" << fileNum,
+                    .ChildNodeId = 0,
+                    .ShardId = shardId[fileNum % shardId.size()],
+                    .ShardNodeName = CreateGuidAsString(),
+                    .MinCommitId = commitId,
+                    .MaxCommitId = commitId};
+                nodeRefs.push_back(nodeRef);
+                fileNum++;
+            }
+            // Create refs that reference "local" nodes
+            for (ui32 i = 0; i < count; ++i) {
+                IIndexTabletDatabase::TNodeRef nodeRef = {
+                    .NodeId = nodeId,
+                    .Name = TStringBuilder() << "file_" << fileNum,
+                    .ChildNodeId = fileNum,
+                    .ShardId = "",
+                    .MinCommitId = commitId,
+                    .MaxCommitId = commitId};
+                nodeRefs.push_back(nodeRef);
+                fileNum++;
+            }
+
+            // Write nodeRefs to DB
+            for (const auto& nodeRef: nodeRefs) {
+                executor.WriteTx(
+                    [&](TIndexTabletDatabase db)
+                    {
+                        NProto::TNode attrs;
+                        db.WriteNodeRef(
+                            nodeRef.NodeId,
+                            nodeRef.MinCommitId,
+                            nodeRef.Name,
+                            nodeRef.ChildNodeId,
+                            nodeRef.ShardId,
+                            nodeRef.ShardNodeName,
+                            false,
+                            writeMode);
+                    });
+            }
+
+            for (size_t readModeNum = writeModeNum;
+                 readModeNum < compressionModes.size();
+                 ++readModeNum)
+            {
+                const NProto::EShardIdCompressionMode readMode =
+                    compressionModes[readModeNum];
+
+                for (const auto& nodeRef: nodeRefs) {
+                    executor.ReadTx(
+                        [&](TIndexTabletDatabase db)
+                        {
+                            TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+                            UNIT_ASSERT(db.ReadNodeRef(
+                                nodeRef.NodeId,
+                                nodeRef.MinCommitId,
+                                nodeRef.Name,
+                                ref,
+                                readMode,
+                                mainFsId));
+                            UNIT_ASSERT_EQUAL(
+                                ref->ChildNodeId,
+                                nodeRef.ChildNodeId);
+                            UNIT_ASSERT_EQUAL(ref->ShardId, nodeRef.ShardId);
+                            UNIT_ASSERT_EQUAL(
+                                ref->ShardNodeName,
+                                nodeRef.ShardNodeName);
+                        });
+                }
+            }
+        }
     }
 }
 

@@ -51,6 +51,19 @@ enum EShardBalancerPolicy
     SBP_WEIGHTED_RANDOM = 2;
 }
 
+enum EShardIdCompressionMode
+{
+    // Only uncompressed ShartdId/ShardNodeName are read and written.
+    SICM_NO_COMPRESSION = 0;
+    // Both uncompressed and compressed forms are read.
+    SICM_READ = 1;
+    // SICM_READ + new ShartdId/ShardNodeName are compressed.
+    SICM_READ_WRITE = 2;
+    // SICM_READ_WRITE_COMPRESSED + conversion from uncompress to compressed
+    // form is started when TIndexTabletActor tablet starts.
+    SICM_READ_WRITE_CONVERT = 3;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
@@ -756,4 +769,8 @@ message TStorageConfig
     // Shard balancer will round free space per shard to a multiple of this
     // number in bytes.
     optional uint64 ShardBalancerPrecisionBytes = 493;
+
+    // The way we read and write compact ShardId and ShardNodeName from/to
+    // NodeRefs table.
+    optional EShardIdCompressionMode ShardIdCompressionMode = 494;
 }

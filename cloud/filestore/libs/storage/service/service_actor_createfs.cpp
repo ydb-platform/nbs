@@ -138,6 +138,21 @@ void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
 void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
 {
     NKikimrFileStore::TConfig config;
+
+    for (const char ch: Request.GetFileSystemId()) {
+        if (!std::isprint(ch)) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] Can't create a filesystem with an ID that contains "
+                "non-printable characters: %s",
+                LogTag.c_str(),
+                Request.GetFileSystemId().Quote().c_str());
+            ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+            return;
+        }
+    }
+
     config.SetFileSystemId(Request.GetFileSystemId());
     config.SetProjectId(Request.GetProjectId());
     config.SetFolderId(Request.GetFolderId());

@@ -337,6 +337,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
                                                                                \
     xxx(HideFileNamesInTabletDirectoryViewer,   bool,   false                 )\
+                                                                               \
+    xxx(ShardIdCompressionMode,                                                \
+        NProto::EShardIdCompressionMode,                                       \
+        NProto::SICM_NO_COMPRESSION                                           )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -417,6 +421,13 @@ IOutputStream& operator <<(
     NProto::EListNodesSizeMode mode)
 {
     return out << EListNodesSizeMode_Name(mode);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EShardIdCompressionMode mode)
+{
+    return out << EShardIdCompressionMode_Name(mode);
 }
 
 template <typename T>

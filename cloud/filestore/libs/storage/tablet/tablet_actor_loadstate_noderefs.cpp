@@ -44,7 +44,9 @@ bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
         args.MaxNodeRefs,
         nodeRefs,
         args.NextNodeId,
-        args.NextCookie);
+        args.NextCookie,
+        Config->GetShardIdCompressionMode(),
+        GetMainFileSystemId());
 
     LOG_DEBUG(
         ctx,
