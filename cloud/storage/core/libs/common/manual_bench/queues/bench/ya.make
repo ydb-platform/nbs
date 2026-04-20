@@ -1,13 +1,11 @@
-Y_BENCHMARK()
+Y_BENCHMARK(common-queues-bench)
 SIZE(MEDIUM)
 TIMEOUT(600)
 
-IF (SANITIZER_TYPE)
-    TAG(ya:manual)
-ENDIF()
+TAG(ya:manual)
 
 SRCS(
-    main.cpp
+    ../main.cpp
 )
 
 PEERDIR(

@@ -69,6 +69,10 @@ PEERDIR(
 
 END()
 
+RECURSE(
+    manual_bench
+)
+
 RECURSE_FOR_TESTS(
     bench
     ut
