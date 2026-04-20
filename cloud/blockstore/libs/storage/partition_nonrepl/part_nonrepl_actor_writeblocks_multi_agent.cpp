@@ -309,7 +309,6 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
         "MultiAgentWriteBlocks",
         true,
-        true,
         *msg,
         ctx,
         *requestInfo,

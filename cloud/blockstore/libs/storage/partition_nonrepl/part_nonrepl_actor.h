@@ -151,7 +151,6 @@ private:
     bool InitRequests(
         const char* methodName,
         const bool isWriteMethod,
-        const bool isReadOrWriteMethod,
         const TRequest& msg,
         const NActors::TActorContext& ctx,
         const TRequestInfo& requestInfo,

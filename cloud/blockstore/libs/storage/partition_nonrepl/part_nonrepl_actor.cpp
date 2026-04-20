@@ -251,7 +251,6 @@ bool TNonreplicatedPartitionActor::InitRequests(
         typename TMethod::TResponse>(
         TMethod::Name,
         IsWriteMethod<TMethod>,
-        IsReadOrWriteMethod<TMethod>,
         msg,
         ctx,
         requestInfo,
@@ -265,7 +264,6 @@ template <typename TRequest, typename TResponse>
 bool TNonreplicatedPartitionActor::InitRequests(
     const char* methodName,
     const bool isWriteMethod,
-    const bool isReadOrWriteMethod,
     const TRequest& msg,
     const NActors::TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -318,7 +316,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
 
     *deviceRequests = PartConfig->ToDeviceRequests(blockRange);
 
-    if (isReadOrWriteMethod && deviceRequests->size() > 1) {
+    if (deviceRequests->size() > 1) {
         if (SplitterPolicy ==
             NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT)
         {
@@ -454,7 +452,6 @@ template bool TNonreplicatedPartitionActor::InitRequests<
     TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
     const char* methodName,
     const bool isWriteRequest,
-    const bool isReadOrWriteRequest,
     const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
