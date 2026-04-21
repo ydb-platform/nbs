@@ -44,6 +44,7 @@ public:
 
     TString GetDirectoryHandlesStoragePath() const;
     ui64 GetDirectoryHandlesInitialDataSize() const;
+    ui64 GetDirectoryHandlesMaxDataAreaStepSize() const;
 
     ui32 GetPermanentActorCount() const;
 

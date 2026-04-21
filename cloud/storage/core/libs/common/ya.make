@@ -27,6 +27,7 @@ SRCS(
     hostname.cpp
     lru_cache.cpp
     media.cpp
+    numeric.cpp
     page_size.cpp
     dynamic_persistent_table.cpp
     persistent_table.cpp

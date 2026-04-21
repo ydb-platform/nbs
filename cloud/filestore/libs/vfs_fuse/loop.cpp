@@ -1091,6 +1091,7 @@ private:
                     path / DirectoryHandleStorageFileName,
                     FileSystemConfig->GetDirectoryHandlesTableSize(),
                     Config->GetDirectoryHandlesInitialDataSize(),
+                    Config->GetDirectoryHandlesMaxDataAreaStepSize(),
                     FileSystemConfig->GetMaxBufferSize());
 
                 DirectoryHandleStorageInitialized = true;
@@ -1223,8 +1224,11 @@ private:
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());
 
-        config.SetDirectoryHandlesTableSize(
-            features.GetDirectoryHandlesTableSize());
+        const ui64 directoryHandlesTableSize =
+            features.GetDirectoryHandlesTableSize();
+        if (directoryHandlesTableSize != 0) {
+            config.SetDirectoryHandlesTableSize(directoryHandlesTableSize);
+        }
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 

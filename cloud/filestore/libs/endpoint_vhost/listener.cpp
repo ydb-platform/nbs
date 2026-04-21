@@ -90,7 +90,8 @@ public:
         , LoopFactory(std::move(loopFactory))
         , HandleOpsQueueConfig(std::move(handleOpsQueueConfig))
         , WriteBackCacheConfig(std::move(writeBackCacheConfig))
-        , DirectoryHandleStorageConfig(std::move(directoryHandleStorageConfig))
+        , DirectoryHandleStorageConfig(
+              std::move(directoryHandleStorageConfig))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -139,8 +140,12 @@ public:
             WriteBackCacheConfig.FlushMaxWriteRequestsCount);
         protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
-        protoConfig.SetDirectoryHandlesStoragePath(DirectoryHandleStorageConfig.PathPrefix);
-        protoConfig.SetDirectoryHandlesInitialDataSize(DirectoryHandleStorageConfig.InitialDataSize);
+        protoConfig.SetDirectoryHandlesStoragePath(
+            DirectoryHandleStorageConfig.PathPrefix);
+        protoConfig.SetDirectoryHandlesInitialDataSize(
+            DirectoryHandleStorageConfig.InitialDataSize);
+        protoConfig.SetDirectoryHandlesMaxDataAreaStepSize(
+            DirectoryHandleStorageConfig.MaxDataAreaStepSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(

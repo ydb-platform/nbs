@@ -433,7 +433,8 @@ void TBootstrapVhost::InitEndpoints()
             ProfileLog),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-            .MaxQueueSize = Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
+            .MaxQueueSize =
+                Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
         },
         TWriteBackCacheConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
@@ -442,9 +443,8 @@ void TBootstrapVhost::InitEndpoints()
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod(),
-            .FlushRetryPeriod =
-                Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushRetryPeriod(),
+            .FlushRetryPeriod = Configs->VhostServiceConfig
+                                    ->GetWriteBackCacheFlushRetryPeriod(),
             .FlushMaxWriteRequestSize =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheFlushMaxWriteRequestSize(),
@@ -453,14 +453,15 @@ void TBootstrapVhost::InitEndpoints()
                     ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
             .FlushMaxSumWriteRequestsSize =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
-        },
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()},
         TDirectoryHandleStorageConfig{
-            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
-            .InitialDataSize =
-                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
-        }
-    );
+            .PathPrefix =
+                Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .InitialDataSize = Configs->VhostServiceConfig
+                                   ->GetDirectoryHandlesInitialDataSize(),
+            .MaxDataAreaStepSize =
+                Configs->VhostServiceConfig
+                    ->GetDirectoryHandlesMaxDataAreaStepSize()});
 
     EndpointManager = CreateEndpointManager(
         Logging,

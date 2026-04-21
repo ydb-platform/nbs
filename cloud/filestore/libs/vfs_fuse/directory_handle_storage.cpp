@@ -13,15 +13,18 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
+    ui64 maxDataAreaStepSize,
     ui64 initialDataCompactionBufferSize)
     : Log(log)
 {
     Table = std::make_unique<TDirectoryHandleTable>(
         filePath,
-        recordsCount,
-        initialDataAreaSize,
-        initialDataCompactionBufferSize,
-        30);
+        TDynamicPersistentTableConfig{
+            .MaxRecords = recordsCount,
+            .InitialDataAreaSize = initialDataAreaSize,
+            .MaxDataAreaStepSize = maxDataAreaStepSize,
+            .InitialDataCompactionBufferSize = initialDataCompactionBufferSize,
+        });
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -272,6 +275,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
+    ui64 maxDataAreaStepSize,
     ui64 initialDataCompactionBufferSize)
 {
     return std::make_unique<TDirectoryHandleStorage>(
@@ -279,6 +283,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
         filePath,
         recordsCount,
         initialDataAreaSize,
+        maxDataAreaStepSize,
         initialDataCompactionBufferSize);
 }
 
