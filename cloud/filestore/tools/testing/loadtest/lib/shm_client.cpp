@@ -90,11 +90,8 @@ public:
 
     ui64 PrepareWrite(NProto::TWriteDataRequest& request) override
     {
+        Y_ABORT_UNLESS(LocalAddr != MAP_FAILED, "PrepareWrite called before Start()");
         const auto& buffer = request.GetBuffer();
-        if (buffer.empty() || LocalAddr == MAP_FAILED) {
-            return Max<ui64>();
-        }
-
         const ui64 len = buffer.size();
         Y_ABORT_UNLESS(
             len <= SlotSize,
@@ -116,10 +113,7 @@ public:
 
     char* PrepareRead(NProto::TReadDataRequest& request, ui64& outOffset) override
     {
-        if (LocalAddr == MAP_FAILED) {
-            outOffset = Max<ui64>();
-            return nullptr;
-        }
+        Y_ABORT_UNLESS(LocalAddr != MAP_FAILED, "PrepareRead called before Start()");
 
         const ui64 len = request.GetLength();
         Y_ABORT_UNLESS(

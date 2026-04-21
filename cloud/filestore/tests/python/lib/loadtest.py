@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import requests
 import tempfile
 
@@ -8,7 +7,6 @@ import yatest.common as common
 
 from cloud.filestore.config.client_pb2 import TClientConfig
 from cloud.storage.core.tests.common import expand_placeholders
-
 
 logger = logging.getLogger(__name__)
 

@@ -342,7 +342,7 @@ private:
             if (NodeInfos.empty()) {
                 return DoCreateNode();
             }
-            nodeInfo = GetNodeInfo();
+            nodeInfo = PopRandomNodeInfo();
         }
 
         const auto started = TInstant::Now();
@@ -427,7 +427,7 @@ private:
         return info;
     }
 
-    TNodeInfo GetNodeInfo()
+    TNodeInfo PopRandomNodeInfo()
     {
         Y_ABORT_UNLESS(!NodeInfos.empty());
         return PopNodeInfo(NodeInfos.begin() + RandomNumber(NodeInfos.size()));

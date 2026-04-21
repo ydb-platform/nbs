@@ -564,9 +564,8 @@ private:
                     ShmClient = CreateSharedMemoryClient(
                         spec.GetSharedMemoryFilePath(),
                         spec.GetSharedMemorySizeBytes(),
-                        std::max(
-                            (ui64)spec.GetReadBytes(),
-                            (ui64)spec.GetWriteBytes()),
+                        Max(static_cast<ui64>(spec.GetReadBytes()),
+                            static_cast<ui64>(spec.GetWriteBytes())),
                         ClientFactory->CreateShmControl(),
                         Scheduler,
                         Timer,
@@ -764,12 +763,6 @@ private:
 
         if (ShmClient) {
             ShmClient->Stop();
-            ShmClient.reset();
-        }
-
-        if (ShmClient) {
-            ShmClient->Stop();
-            ShmClient.reset();
         }
 
         if (Client) {

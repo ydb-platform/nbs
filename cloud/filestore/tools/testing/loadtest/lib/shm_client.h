@@ -23,18 +23,23 @@ namespace NCloud::NFileStore::NLoadTest {
 // and keeps it alive with periodic pings. PrepareWrite/PrepareRead inject an
 // iovec descriptor into the request so the server reads/writes through the
 // shared region instead of copying over gRPC.
+//
+// Shared memory file is split into fixed-size slots, which are expected to
+// be large enough to hold the biggest request buffer. Slots are allocated from
+// a free list, and the offset is returned to the client after the input/output
+// operation is complete.
 struct IShmDataClient
     : public IStartable
 {
-    // Copies the buffer into a SHM slot and replaces it with an iovec descriptor.
-    // Returns the allocated slot offset, or Max<ui64>() if SHM is not active.
-    // Caller must pass the returned offset to FreeOffset() after the RPC completes.
+    // Copies the buffer into a SHM slot and replaces it with an iovec
+    // descriptor. Returns the allocated slot offset. Caller must pass the
+    // returned offset to FreeOffset() after the RPC completes.
     virtual ui64 PrepareWrite(NProto::TWriteDataRequest& request) = 0;
 
     // Allocates a SHM slot for the read response and sets the iovec descriptor.
-    // Returns a pointer to the local buffer to read from once the RPC completes,
-    // and the slot offset via outOffset. Caller must pass the offset to FreeOffset().
-    // Returns nullptr if the SHM region is not yet active.
+    // Returns a pointer to the local buffer to read from once the RPC
+    // completes, and the slot offset via outOffset. Caller must pass the offset
+    // to FreeOffset().
     virtual char* PrepareRead(
         NProto::TReadDataRequest& request,
         ui64& outOffset) = 0;
