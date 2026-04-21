@@ -152,7 +152,7 @@ void TDeviceIntegrityCheckActor::CheckSymlinks()
             current = path.ReadLink().GetPath();
         }
         if (current != expected) {
-            ReportDiskAgentDeviceSymlinkMismatch()(
+            ReportDiskAgentDeviceSymlinkMismatch(
                 "Partlabel may point to a different physical disk",
                 {{"path", configPath},
                  {"expected", expected},
