@@ -93,6 +93,7 @@ void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
         }
     }
     HandleIdToIndices.erase(handleId);
+    Table->TryDeallocateMemory();
 }
 
 void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
