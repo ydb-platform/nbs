@@ -65,7 +65,7 @@ jobs:
     steps:
       - name: Check if running tests is allowed
         id: check-ownership-membership
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           script: |
@@ -141,7 +141,7 @@ jobs:
       - name: comment-if-waiting-on-ok
         if: steps.check-ownership-membership.outputs.result == 'false' &&
             github.event.action == 'opened'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.createComment({
@@ -151,7 +151,7 @@ jobs:
               body: 'Hi! Thank you for contributing!\nThe tests on this PR will run after a maintainer adds an `ok-to-test` label to this PR manually. Thank you for your patience!'
             });
       - name: cleanup-labels
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             let labelsToRemove = ['ok-to-test', 'recheck'];
@@ -322,7 +322,7 @@ jobs:
 
       - name: comment on issue (${{ steps.pytest.outcome }})
         if: ${{ github.event_name == 'pull_request' && always() }}
-        uses: actions/github-script@v7.0.1
+        uses: actions/github-script@v9
         env:
           STEP_OUTCOME: ${{ steps.pytest.outcome }}
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
@@ -405,7 +405,7 @@ jobs:
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
 
       - name: comment on issue
-        uses: actions/github-script@v7.0.1
+        uses: actions/github-script@v9
         if:  ${{ github.event_name == 'pull_request' }}
         env:
           STEP_OUTCOME: ${{ steps.lint.outcome }}
