@@ -41,9 +41,6 @@ void TDeviceStat::MarkBroken(TInstant now)
 
 void TDeviceStat::MarkBrokenAndNotify(TInstant now)
 {
-    if (DeviceStatus == EDeviceStatus::Broken) {
-        return;
-    }
     MarkBroken(now);
     if (Observer) {
         Observer->OnDeviceBroken(DeviceUUID, now);
