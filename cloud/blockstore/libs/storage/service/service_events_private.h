@@ -263,6 +263,18 @@ struct TEvServicePrivate
     };
 
     //
+    // Release volume to hive
+    //
+
+    struct TReleaseVolumeToHiveRequest
+    {
+    };
+
+    struct TReleaseVolumeToHiveResponse
+    {
+    };
+
+    //
     // UpdateManuallyPreemptedVolume notification
     //
 
@@ -328,6 +340,8 @@ struct TEvServicePrivate
         EvCreateEncryptionKeyResponse,
         EvListMountedVolumesRequest,
         EvListMountedVolumesResponse,
+        EvReleaseVolumeToHiveRequest,
+        EvReleaseVolumeToHiveResponse,
 
         EvEnd
     };
@@ -429,6 +443,14 @@ struct TEvServicePrivate
     using TEvListMountedVolumesResponse = TResponseEvent<
         TListMountedVolumesResponse,
         EvListMountedVolumesResponse>;
+
+    using TEvReleaseVolumeToHiveRequest = TRequestEvent<
+        TReleaseVolumeToHiveRequest,
+        EvReleaseVolumeToHiveRequest>;
+
+    using TEvReleaseVolumeToHiveResponse = TResponseEvent<
+        TReleaseVolumeToHiveResponse,
+        EvReleaseVolumeToHiveResponse>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
