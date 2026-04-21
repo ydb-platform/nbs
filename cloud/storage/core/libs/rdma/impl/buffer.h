@@ -4,8 +4,8 @@
 
 #include "verbs.h"
 
-#include <cloud/blockstore/libs/rdma/iface/buffer.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/buffer.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 namespace NCloud::NBlockStore::NRdma {
 

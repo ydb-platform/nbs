@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <memory>
 

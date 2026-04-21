@@ -12,7 +12,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/libs/rdma/impl
+    cloud/storage/core/libs/rdma/impl
     cloud/blockstore/public/api/protos
 )
 

@@ -11,7 +11,7 @@ namespace NCloud::NBlockStore {
 constexpr ui32 MaxBlockSize = 128_KB;
 
 // Keep the value less than MaxBufferSize in
-// cloud/blockstore/libs/rdma/iface/client.h
+// cloud/storage/core/libs/rdma/iface/client.h
 constexpr ui32 MaxSubRequestSize = 4_MB;
 
 // Volume tag that indicates that data integrity violation has been detected at

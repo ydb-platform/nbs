@@ -10,9 +10,9 @@
 #include "work_queue.h"
 #include "adaptive_wait.h"
 
-#include <cloud/blockstore/libs/rdma/iface/log.h>
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/log.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/thread.h>

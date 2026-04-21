@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-import "cloud/blockstore/config/rdma_common.proto";
+import "cloud/storage/config/rdma.proto";
 import "cloud/blockstore/public/api/protos/rdma.proto";
 
 package NCloud.NBlockStore.NProto;

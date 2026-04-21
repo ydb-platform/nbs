@@ -1,9 +1,10 @@
 #include "rdma_protocol.h"
 
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
+
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <util/generic/singleton.h>
 

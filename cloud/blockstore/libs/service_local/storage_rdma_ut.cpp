@@ -1,8 +1,9 @@
 #include "storage_rdma.h"
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>

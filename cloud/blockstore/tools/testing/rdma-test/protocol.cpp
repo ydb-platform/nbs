@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <util/generic/singleton.h>
 
