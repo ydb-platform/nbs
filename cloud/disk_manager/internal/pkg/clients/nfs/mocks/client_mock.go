@@ -98,6 +98,19 @@ func (c *ClientMock) CreateSession(
 	return res, args.Error(1)
 }
 
+func (c *ClientMock) CreateSessionWithClientID(
+	ctx context.Context,
+	fileSystemID string,
+	clientID string,
+	checkpointID string,
+	readonly bool,
+) (nfs.Session, error) {
+
+	args := c.Called(ctx, fileSystemID, clientID, checkpointID, readonly)
+	res, _ := args.Get(0).(nfs.Session)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientMock() *ClientMock {
