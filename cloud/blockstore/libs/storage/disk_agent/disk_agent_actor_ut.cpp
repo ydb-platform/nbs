@@ -7206,9 +7206,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         const bool ok = NFs::SymLink(newDevice, PartLabels[0]);
         UNIT_ASSERT(ok);
 
-        Runtime->AdvanceCurrentTime(
-            DefaultPartlabelCheckInterval + TDuration::Seconds(1));
-        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        Runtime->AdvanceCurrentTime(DefaultSymlinkCheckInterval + 1s);
+        Runtime->DispatchEvents(TDispatchOptions(), 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, mismatch->Val());
     }

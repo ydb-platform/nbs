@@ -10,12 +10,19 @@ namespace NCloud::NBlockStore::NStorage::NDiskAgent {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration DefaultPartlabelCheckInterval = TDuration::Minutes(5);
+struct TDeviceIntegrityCheckParams
+{
+    TDuration HealthCheckInterval;
+    TDuration SymlinkCheckInterval;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TDuration DefaultSymlinkCheckInterval = TDuration::Minutes(5);
 
 std::unique_ptr<NActors::IActor> CreateDeviceIntegrityCheckActor(
     const NActors::TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
-    TDuration healthCheckDelay,
-    TDuration partlabelCheckInterval);
+    TDeviceIntegrityCheckParams params);
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

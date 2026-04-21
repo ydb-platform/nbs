@@ -180,8 +180,9 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
             NDiskAgent::CreateDeviceIntegrityCheckActor(
                 ctx.SelfID,
                 State->GetEnabledDevices(),
-                UpdateCountersInterval,
-                NDiskAgent::DefaultPartlabelCheckInterval)
+                NDiskAgent::TDeviceIntegrityCheckParams{
+                    UpdateCountersInterval,
+                    NDiskAgent::DefaultSymlinkCheckInterval})
                 .release(),
             TMailboxType::HTSwap,
             NKikimr::AppData()->IOPoolId);

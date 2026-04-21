@@ -65,7 +65,7 @@ private:
     const TActorId DiskAgent;
     const TVector<NProto::TDeviceConfig> Devices;
     const TDuration HealthCheckDelay;
-    const TDuration PartlabelCheckInterval;
+    const TDuration SymlinkCheckInterval;
 
     TVector<EDeviceHealthStatus> DevicesHealth;
     THashMap<TString, TString> SymlinkSnapshot;
@@ -78,13 +78,13 @@ public:
         const TActorId& diskAgent,
         TVector<NProto::TDeviceConfig> devices,
         TDuration healthCheckDelay,
-        TDuration partlabelCheckInterval);
+        TDuration symlinkCheckInterval);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void CheckDevicesHealth(const TActorContext& ctx);
-    void CheckPartlabels();
+    void CheckSymlinks();
 
 private:
     STFUNC(StateWork);
@@ -108,11 +108,11 @@ TDeviceIntegrityCheckActor::TDeviceIntegrityCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
     TDuration healthCheckDelay,
-    TDuration partlabelCheckInterval)
+    TDuration symlinkCheckInterval)
     : DiskAgent{diskAgent}
     , Devices(std::move(devices))
     , HealthCheckDelay(healthCheckDelay)
-    , PartlabelCheckInterval(partlabelCheckInterval)
+    , SymlinkCheckInterval(symlinkCheckInterval)
     , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
 {}
 
@@ -134,7 +134,7 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
         HealthCheckDelay,
         new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_HEALTH_CHECK));
     ctx.Schedule(
-        PartlabelCheckInterval,
+        SymlinkCheckInterval,
         new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK));
 
     LOG_INFO_S(
@@ -143,7 +143,7 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
         "Device Integrity Check Actor started. Devices: " << Devices.size());
 }
 
-void TDeviceIntegrityCheckActor::CheckPartlabels()
+void TDeviceIntegrityCheckActor::CheckSymlinks()
 {
     for (const auto& [configPath, expected]: SymlinkSnapshot) {
         TString current;
@@ -152,7 +152,7 @@ void TDeviceIntegrityCheckActor::CheckPartlabels()
             current = path.ReadLink().GetPath();
         }
         if (current != expected) {
-            ReportDiskAgentDevicePartlabelMismatch(
+            ReportDiskAgentDeviceSymlinkMismatch()(
                 "Partlabel may point to a different physical disk",
                 {{"path", configPath},
                  {"expected", expected},
@@ -203,9 +203,9 @@ void TDeviceIntegrityCheckActor::HandleWakeup(
             CheckDevicesHealth(ctx);
             break;
         case EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK:
-            CheckPartlabels();
+            CheckSymlinks();
             ctx.Schedule(
-                PartlabelCheckInterval,
+                SymlinkCheckInterval,
                 new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK));
             break;
         default:
@@ -308,14 +308,13 @@ STFUNC(TDeviceIntegrityCheckActor::StateWork)
 std::unique_ptr<IActor> CreateDeviceIntegrityCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
-    TDuration healthCheckDelay,
-    TDuration partlabelCheckInterval)
+    TDeviceIntegrityCheckParams params)
 {
     return std::make_unique<TDeviceIntegrityCheckActor>(
         diskAgent,
         std::move(devices),
-        healthCheckDelay,
-        partlabelCheckInterval);
+        params.HealthCheckInterval,
+        params.SymlinkCheckInterval);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent
