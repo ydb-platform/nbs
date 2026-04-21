@@ -30,14 +30,22 @@ void TDeviceStat::MarkOk(TInstant requestStartTs, TDuration executionTime)
     }
 }
 
-void TDeviceStat::MarkBroken(TInstant now, bool notifyObserver)
+void TDeviceStat::MarkBroken(TInstant now)
 {
     if (DeviceStatus == EDeviceStatus::Broken) {
         return;
     }
     BrokenTransitionTs = now;
     DeviceStatus = EDeviceStatus::Broken;
-    if (notifyObserver && Observer) {
+}
+
+void TDeviceStat::MarkBrokenAndNotify(TInstant now)
+{
+    if (DeviceStatus == EDeviceStatus::Broken) {
+        return;
+    }
+    MarkBroken(now);
+    if (Observer) {
         Observer->OnDeviceBroken(DeviceUUID, now);
     }
 }

@@ -1286,6 +1286,14 @@ private:
 
     void CleanupStaleBrokenDevices(const NActors::TActorContext& ctx);
 
+    void SendVolumeHealthNotification(
+        const NActors::TActorContext& ctx,
+        NProto::EVolumeHealth health);
+
+    void EnqueueVolumeHealthNotification(
+        const NActors::TActorContext& ctx,
+        NProto::EVolumeHealth health);
+
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId,

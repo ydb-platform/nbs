@@ -26,40 +26,37 @@ bool ShouldSkipVolumeHealthNotification(
            !config.GetVolumeHealthNotificationEnabled();
 }
 
-void SendVolumeHealthNotification(
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::SendVolumeHealthNotification(
     const TActorContext& ctx,
-    const TString& diskId,
-    const TString& logPrefix,
     NProto::EVolumeHealth health)
 {
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Notifying DiskRegistry: volume health = %s",
-        logPrefix.c_str(),
+        LogTitle.GetWithTime().c_str(),
         health == NProto::VOLUME_HEALTH_UNHEALTHY ? "unhealthy" : "healthy");
 
     auto request =
         std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
-    request->Record.SetDiskId(diskId);
+    request->Record.SetDiskId(State->GetDiskId());
     request->Record.SetVolumeHealth(health);
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void EnqueueVolumeHealthNotification(
-    TDeque<NProto::EVolumeHealth>& queue,
+void TVolumeActor::EnqueueVolumeHealthNotification(
     const TActorContext& ctx,
-    const TString& diskId,
-    const TString& logPrefix,
     NProto::EVolumeHealth health)
 {
-    queue.push_back(health);
-    if (queue.size() == 1) {
-        SendVolumeHealthNotification(ctx, diskId, logPrefix, health);
+    PendingHealthNotifications.push_back(health);
+    if (PendingHealthNotifications.size() == 1) {
+        SendVolumeHealthNotification(ctx, health);
     }
 }
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -92,12 +89,7 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, ts, /*add=*/true);
 
     if (wasEmpty) {
-        EnqueueVolumeHealthNotification(
-            PendingHealthNotifications,
-            ctx,
-            State->GetDiskId(),
-            LogTitle.GetWithTime(),
-            NProto::VOLUME_HEALTH_UNHEALTHY);
+        EnqueueVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_UNHEALTHY);
     }
 }
 
@@ -127,12 +119,7 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
     ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, TInstant::Zero(), /*add=*/false);
 
     if (DeviceUUIDToBrokenAt.empty()) {
-        EnqueueVolumeHealthNotification(
-            PendingHealthNotifications,
-            ctx,
-            State->GetDiskId(),
-            LogTitle.GetWithTime(),
-            NProto::VOLUME_HEALTH_HEALTHY);
+        EnqueueVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
     }
 }
 
@@ -196,11 +183,7 @@ void TVolumeActor::HandleUpdateVolumeHealthResponse(
     Y_ABORT_UNLESS(!PendingHealthNotifications.empty());
     PendingHealthNotifications.pop_front();
     if (!PendingHealthNotifications.empty()) {
-        SendVolumeHealthNotification(
-            ctx,
-            State->GetDiskId(),
-            LogTitle.GetWithTime(),
-            PendingHealthNotifications.front());
+        SendVolumeHealthNotification(ctx, PendingHealthNotifications.front());
     }
 }
 
@@ -232,12 +215,7 @@ void TVolumeActor::CleanupStaleBrokenDevices(const TActorContext& ctx)
     }
 
     if (DeviceUUIDToBrokenAt.empty()) {
-        EnqueueVolumeHealthNotification(
-            PendingHealthNotifications,
-            ctx,
-            State->GetDiskId(),
-            LogTitle.GetWithTime(),
-            NProto::VOLUME_HEALTH_HEALTHY);
+        EnqueueVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
     }
 }
 
