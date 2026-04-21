@@ -103,7 +103,9 @@ public:
         , TaskQueue(std::move(taskQueue))
     {}
 
-    void Init(const NCloud::NStorage::NRdma::IServerEndpointPtr& endpoint, TLog log)
+    void Init(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& endpoint,
+        TLog log)
     {
         Endpoint = endpoint;
         Log = std::move(log);
@@ -254,23 +256,26 @@ private:
                         ui32 flags = 0;
                         SetProtoFlag(
                             flags,
-                            NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                            NCloud::NStorage::NRdma::
+                                RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
                         size_t responseBytes =
-                            SUCCEEDED(response.GetError().GetCode()) ?
-                                NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
-                                    out,
-                                    TBlockStoreServerProtocol::
-                                        EvReadBlocksResponse,
-                                    flags,   // flags
-                                    response,
-                                    guard.Get()):
-                                NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                                    out,
-                                    TBlockStoreServerProtocol::
-                                        EvReadBlocksResponse,
-                                    flags,   // flags
-                                    response);
+                            SUCCEEDED(response.GetError().GetCode())
+                                ? NCloud::NStorage::NRdma::
+                                      TProtoMessageSerializer::
+                                          SerializeWithData(
+                                              out,
+                                              TBlockStoreServerProtocol::
+                                                  EvReadBlocksResponse,
+                                              flags,   // flags
+                                              response, guard.Get())
+                                : NCloud::NStorage::NRdma::
+                                      TProtoMessageSerializer::Serialize(
+                                          out,
+                                          TBlockStoreServerProtocol::
+                                              EvReadBlocksResponse,
+                                          flags,   // flags
+                                          response);
 
                         if (auto ep = endpoint.lock()) {
                             ep->SendResponse(context, responseBytes);
@@ -329,12 +334,15 @@ private:
                 }
 
                 ui32 flags = 0;
-                SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-                size_t responseBytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                    out,
-                    TBlockStoreServerProtocol::EvWriteBlocksResponse,
-                    flags,   // flags
-                    response);
+                SetProtoFlag(
+                    flags,
+                    NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                size_t responseBytes =
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreServerProtocol::EvWriteBlocksResponse,
+                        flags,   // flags
+                        response);
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
                 }
@@ -385,7 +393,9 @@ private:
                 }
 
                 ui32 flags = 0;
-                SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                SetProtoFlag(
+                    flags,
+                    NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
                 size_t responseBytes =
                     NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                         out,
@@ -416,7 +426,8 @@ private:
         NProto::TPingResponse response;
 
         ui32 flags = 0;
-        SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        SetProtoFlag(
+            flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         size_t responseBytes =
             NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                 out,

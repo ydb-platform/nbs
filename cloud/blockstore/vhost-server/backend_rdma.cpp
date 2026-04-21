@@ -185,7 +185,8 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig = std::make_shared<NCloud::NStorage::NRdma::TClientConfig>();
+    auto rdmaClientConfig =
+        std::make_shared<NCloud::NStorage::NRdma::TClientConfig>();
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;

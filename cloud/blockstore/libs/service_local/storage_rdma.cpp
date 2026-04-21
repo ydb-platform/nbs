@@ -52,7 +52,8 @@ private:
 
     NProto::TReadDeviceBlocksRequest Proto;
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TReadBlocksHandler(
@@ -90,7 +91,9 @@ public:
     {
         ui32 flags = 0;
         if (isAlignedDataEnabled) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         return NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
@@ -162,7 +165,8 @@ private:
 
     NProto::TWriteDeviceBlocksRequest Proto;
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TWriteBlocksHandler(
@@ -206,15 +210,16 @@ public:
 
         ui32 flags = 0;
         if (isAlignedDataEnabled) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
-            buffer,
-            TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            flags,
-            Proto,
-            sglist);
+        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
+            SerializeWithData(
+                buffer,
+                TBlockStoreProtocol::WriteDeviceBlocksRequest,
+                flags, Proto, sglist);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -256,7 +261,8 @@ private:
 
     NProto::TZeroDeviceBlocksRequest Proto;
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TZeroBlocksHandler(
@@ -399,7 +405,9 @@ public:
     void ReportIOError() override
     {}
 
-    void Init(NCloud::NStorage::NRdma::IClientEndpointPtr endpoint, bool isAlignedDataEnabled)
+    void Init(
+        NCloud::NStorage::NRdma::IClientEndpointPtr endpoint,
+        bool isAlignedDataEnabled)
     {
         Endpoint = std::move(endpoint);
         IsAlignedDataEnabled = isAlignedDataEnabled;

@@ -93,7 +93,8 @@ ui32 TNonreplicatedPartitionRdmaActor::GetFlags() const
 {
     ui32 flags = 0;
     if (RdmaClient->IsAlignedDataEnabled()) {
-        SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        SetProtoFlag(
+            flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
     }
     return flags;
 }
@@ -348,8 +349,8 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
         auto [req, err] = ep->AllocateRequest(
             handler,
             std::move(dr),
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
-            4_KB + sz);
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest, 0), 4_KB + sz);
 
         if (HasError(err)) {
             LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
@@ -363,7 +364,9 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(

@@ -174,8 +174,8 @@ private:
                 Y_ABORT_UNLESS(guard);
 
                 const auto& sglist = guard.Get();
-                size_t responseBytes =
-                    NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
+                size_t responseBytes = NCloud::NStorage::NRdma::
+                    TProtoMessageSerializer::SerializeWithData(
                         out,
                         TBlockStoreProtocol::ReadBlocksResponse,
                         0,   // flags

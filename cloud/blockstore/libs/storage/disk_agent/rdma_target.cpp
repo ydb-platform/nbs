@@ -270,8 +270,9 @@ private:
 
         const auto& request = resultOrError.GetResult();
 
-        const bool isZeroCopyDataSupported =
-            HasProtoFlag(request.Flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        const bool isZeroCopyDataSupported = HasProtoFlag(
+            request.Flags,
+            NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
         switch (request.MsgId) {
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
@@ -623,13 +624,14 @@ private:
         ui32 flags = 0;
 
         if (requestDetails.DataBuffer.size()) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithDataLength(
-                requestDetails.Out,
-                TBlockStoreProtocol::ReadDeviceBlocksResponse,
+            SetProtoFlag(
                 flags,
-                proto,
-                requestDetails.DataBuffer.size());
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::
+                SerializeWithDataLength(
+                    requestDetails.Out,
+                    TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                    flags, proto, requestDetails.DataBuffer.size());
             bytes = requestDetails.Out.size();
         } else {
             TStackVec<TBlockDataRef> parts;
@@ -639,12 +641,11 @@ private:
                 parts.emplace_back(TBlockDataRef(buffer.data(), buffer.size()));
             }
 
-            bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
-                requestDetails.Out,
-                TBlockStoreProtocol::ReadDeviceBlocksResponse,
-                flags,
-                proto,
-                parts);
+            bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::
+                SerializeWithData(
+                    requestDetails.Out,
+                    TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                    flags, proto, parts);
         }
 
         if (auto ep = Endpoint.lock()) {
@@ -785,11 +786,12 @@ private:
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
-        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-            requestDetails.Out,
-            TBlockStoreProtocol::WriteDeviceBlocksResponse,
-            0,   // flags
-            proto);
+        size_t bytes =
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                requestDetails.Out,
+                TBlockStoreProtocol::WriteDeviceBlocksResponse,
+                0,   // flags
+                proto);
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -910,11 +912,12 @@ private:
             response.ReplicationResponses.begin(),
             response.ReplicationResponses.end());
 
-        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-            requestDetails.Out,
-            TBlockStoreProtocol::WriteDeviceBlocksResponse,
-            0,   // flags
-            proto);
+        size_t bytes =
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                requestDetails.Out,
+                TBlockStoreProtocol::WriteDeviceBlocksResponse,
+                0,   // flags
+                proto);
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -1029,11 +1032,12 @@ private:
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
-        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-            requestDetails.Out,
-            TBlockStoreProtocol::ZeroDeviceBlocksResponse,
-            0,   // flags
-            proto);
+        size_t bytes =
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                requestDetails.Out,
+                TBlockStoreProtocol::ZeroDeviceBlocksResponse,
+                0,   // flags
+                proto);
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -1108,11 +1112,12 @@ private:
         }
         proto.SetChecksum(checksum.GetValue());
 
-        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-            requestDetails.Out,
-            TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
-            0,   // flags
-            proto);
+        size_t bytes =
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                requestDetails.Out,
+                TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
+                0,   // flags
+                proto);
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);

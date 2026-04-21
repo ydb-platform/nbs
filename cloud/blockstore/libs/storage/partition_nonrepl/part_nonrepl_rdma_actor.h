@@ -89,9 +89,11 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
-    using TEndpointFuture = NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>;
+    using TEndpointFuture =
+        NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>;
     THashMap<TString, TEndpointFuture> AgentId2EndpointFuture;
-    THashMap<TString, NCloud::NStorage::NRdma::IClientEndpointPtr> AgentId2Endpoint;
+    THashMap<TString, NCloud::NStorage::NRdma::IClientEndpointPtr>
+        AgentId2Endpoint;
 
     TRequestInfoPtr Poisoner;
 

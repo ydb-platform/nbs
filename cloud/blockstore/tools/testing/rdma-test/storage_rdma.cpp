@@ -76,7 +76,9 @@ public:
         auto [req, err] = endpoint.AllocateRequest(
             handler,
             nullptr,
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0),
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                *Request,
+                0),
             MAX_PROTO_SIZE + dataSize);
 
         if (HasError(err)) {
@@ -163,8 +165,8 @@ public:
         auto [req, err] = endpoint.AllocateRequest(
             std::move(handler),
             nullptr,
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(*Request, dataSize),
-            MAX_PROTO_SIZE);
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                *Request, dataSize), MAX_PROTO_SIZE);
 
         if (HasError(err)) {
             return err;

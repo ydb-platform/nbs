@@ -139,8 +139,8 @@ public:
         Impl.reset();
     }
 
-    auto StartEndpoint(TString host, ui32 port)
-        -> NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr> override
+    auto StartEndpoint(TString host, ui32 port) -> NThreading::TFuture<
+        NCloud::NStorage::NRdma::IClientEndpointPtr> override
     {
         return Impl->StartEndpoint(std::move(host), port);
     }
@@ -480,7 +480,8 @@ void TBootstrapYdb::InitRdmaClient()
 
 void TBootstrapYdb::InitRdmaServer()
 {
-    auto rdmaConfig = std::make_shared<NCloud::NStorage::NRdma::TServerConfig>();
+    auto rdmaConfig =
+        std::make_shared<NCloud::NStorage::NRdma::TServerConfig>();
 
     RdmaServer = ServerModuleFactories->RdmaServerFactory(
         Logging,

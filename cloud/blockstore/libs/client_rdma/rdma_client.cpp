@@ -105,7 +105,8 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TReadBlocksHandler(
@@ -122,7 +123,8 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
+        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
+            MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -140,7 +142,9 @@ public:
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         TraceSerializer->BuildTraceRequest(
@@ -237,7 +241,8 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TWriteBlocksHandler(
@@ -253,9 +258,10 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
-            *Request,
-            static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
+        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
+            MessageByteSize(
+                *Request,
+                static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
     }
 
     size_t GetResponseSize() const
@@ -277,7 +283,9 @@ public:
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         if (TraceSerializer) {
@@ -288,12 +296,11 @@ public:
             StartTime = GetCycleCount();
         }
 
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
-            buffer,
-            TBlockStoreProtocol::WriteBlocksRequest,
-            flags,
-            *Request,
-            sglist);
+        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
+            SerializeWithData(
+                buffer,
+                TBlockStoreProtocol::WriteBlocksRequest,
+                flags, *Request, sglist);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -351,7 +358,8 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TZeroBlocksHandler(
@@ -368,7 +376,8 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
+        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
+            MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -385,7 +394,9 @@ public:
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         TraceSerializer->BuildTraceRequest(
@@ -480,7 +491,8 @@ private:
     const ITraceSerializerPtr TraceSerializer;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TProtoMessageHandler(
@@ -497,7 +509,8 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
+        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
+            MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const

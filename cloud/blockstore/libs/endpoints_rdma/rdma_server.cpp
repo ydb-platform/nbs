@@ -51,7 +51,8 @@ private:
     NCloud::NStorage::NRdma::IServerEndpointPtr Endpoint;
     TLog Log;
 
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRdmaEndpoint(
@@ -243,13 +244,12 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
                         Y_ENSURE(guard);
 
                         const auto& sglist = guard.Get();
-                        size_t responseBytes =
-                            NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
+                        size_t responseBytes = NCloud::NStorage::NRdma::
+                            TProtoMessageSerializer::SerializeWithData(
                                 out,
                                 TBlockStoreProtocol::ReadBlocksResponse,
                                 0,   // flags
-                                response,
-                                sglist);
+                                response, sglist);
 
                         p->Endpoint->SendResponse(context, responseBytes);
                     }
@@ -299,8 +299,8 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
                     Y_UNUSED(guardedSgList);
 
                     if (auto p = self.lock()) {
-                        size_t responseBytes =
-                            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        size_t responseBytes = NCloud::NStorage::NRdma::
+                            TProtoMessageSerializer::Serialize(
                                 out,
                                 TBlockStoreProtocol::WriteBlocksResponse,
                                 0,   // flags

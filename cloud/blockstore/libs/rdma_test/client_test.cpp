@@ -165,8 +165,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes =
-                    NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
+                responseBytes = NCloud::NStorage::NRdma::
+                    TProtoMessageSerializer::SerializeWithData(
                         req->ResponseBuffer,
                         TBlockStoreProtocol::ReadDeviceBlocksResponse,
                         0,   // flags
@@ -272,11 +272,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     response.SetChecksum(checksum.GetValue());
                 }
 
-                responseBytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                    req->ResponseBuffer,
-                    TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
-                    0,   // flags
-                    response);
+                responseBytes =
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        req->ResponseBuffer,
+                        TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
+                        0,   // flags
+                        response);
 
                 break;
             }

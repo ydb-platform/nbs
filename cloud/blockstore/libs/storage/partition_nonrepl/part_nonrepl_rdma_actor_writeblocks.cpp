@@ -289,7 +289,9 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
@@ -465,7 +467,9 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
-            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(

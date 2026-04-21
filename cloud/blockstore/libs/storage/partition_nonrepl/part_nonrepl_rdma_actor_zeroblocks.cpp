@@ -136,7 +136,9 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestContext,
             std::move(context),
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest,
+                0),
             4_KB);
 
         if (HasError(err)) {

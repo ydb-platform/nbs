@@ -1226,7 +1226,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         ui64 writeRequestId = 0;
         ui64 zeroRequestId = 0;
         auto observer =
-            [&](NCloud::NStorage::NRdma::TProtoMessageSerializer::TParseResult& parseResut)
+            [&](NCloud::NStorage::NRdma::TProtoMessageSerializer::TParseResult&
+                    parseResut)
         {
             if (parseResut.MsgId ==
                 TBlockStoreProtocol::WriteDeviceBlocksRequest)

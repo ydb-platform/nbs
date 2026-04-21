@@ -29,7 +29,8 @@ struct TDeviceRequestRdmaContext: public NCloud::NStorage::NRdma::TNullContext
     {}
 };
 
-struct IClientHandlerWithTracking: public NCloud::NStorage::NRdma::IClientHandler
+struct IClientHandlerWithTracking
+    : public NCloud::NStorage::NRdma::IClientHandler
 {
     virtual void OnRequestStarted(
         ui32 deviceIdx,

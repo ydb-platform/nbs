@@ -188,7 +188,9 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestContext,
             std::move(dc),
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest,
+                0),
             4_KB);
 
         if (HasError(err)) {
