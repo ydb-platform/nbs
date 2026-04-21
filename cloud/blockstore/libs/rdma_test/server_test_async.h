@@ -13,16 +13,16 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TRdmaAsyncTestEndpoint;
 
-class TRdmaAsyncTestServer: public NRdma::IServer
+class TRdmaAsyncTestServer: public NCloud::NStorage::NRdma::IServer
 {
 private:
     THashMap<TString, std::shared_ptr<TRdmaAsyncTestEndpoint> > Endpoints;
 
 public:
-    NRdma::IServerEndpointPtr StartEndpoint(
+    NCloud::NStorage::NRdma::IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        NRdma::IServerHandlerPtr handler) override;
+        NCloud::NStorage::NRdma::IServerHandlerPtr handler) override;
 
     void Start() override
     {}

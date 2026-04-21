@@ -133,7 +133,8 @@ private:
 
     NClient::IClientPtr CreateAndStartGrpcClient(TString clientId = {});
     NBD::IClientPtr CreateAndStartNbdClient(TString clientId = {});
-    NRdma::IClientPtr CreateAndStartRdmaClient(TString clientId = {});
+    NCloud::NStorage::NRdma::IClientPtr CreateAndStartRdmaClient(
+        TString clientId = {});
 
     IBlockStorePtr CreateDurableDataClient(
         IBlockStorePtr dataClient,

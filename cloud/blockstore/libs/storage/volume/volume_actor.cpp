@@ -93,7 +93,7 @@ TVolumeActor::TVolumeActor(
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode,
@@ -445,11 +445,11 @@ TVolumeActor::EStatus TVolumeActor::GetVolumeStatus() const
     return TVolumeActor::STATUS_OFFLINE;
 }
 
-NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
+NCloud::NStorage::NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
 {
     return (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma())
                ? RdmaClient
-               : NRdma::IClientPtr{};
+               : NCloud::NStorage::NRdma::IClientPtr{};
 }
 
 ui64 TVolumeActor::GetBlocksCount() const

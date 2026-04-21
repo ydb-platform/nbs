@@ -14,7 +14,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,4 +138,4 @@ struct IClient
     virtual bool IsAlignedDataEnabled() const = 0;
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

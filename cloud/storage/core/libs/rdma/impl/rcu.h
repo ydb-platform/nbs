@@ -6,7 +6,7 @@
 #include <util/system/guard.h>
 #include <util/system/spinlock.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Dummy RCU list implementation
@@ -55,4 +55,4 @@ public:
     }
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

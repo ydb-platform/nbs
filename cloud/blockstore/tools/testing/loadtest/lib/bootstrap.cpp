@@ -346,7 +346,8 @@ NBD::IClientPtr TBootstrap::CreateAndStartNbdClient(TString clientId)
     return client;
 }
 
-NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
+NCloud::NStorage::NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(
+    TString clientId)
 {
     auto config = CreateClientConfig(ClientConfig, std::move(clientId));
 
@@ -360,11 +361,12 @@ NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
     // TODO
     Y_UNUSED(clientStats);
 
-    auto rdmaConfig = std::make_shared<NRdma::TClientConfig>();
+    auto rdmaConfig =
+        std::make_shared<NCloud::NStorage::NRdma::TClientConfig>();
     // TODO
 
-    auto client = NRdma::CreateClient(
-        NRdma::NVerbs::CreateVerbs(),
+    auto client = NCloud::NStorage::NRdma::CreateClient(
+        NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
         Logging,
         Monitoring,
         std::move(rdmaConfig));

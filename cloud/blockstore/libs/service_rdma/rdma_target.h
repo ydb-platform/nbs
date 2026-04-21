@@ -45,7 +45,7 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
     TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
     ITraceSerializerPtr traceSerializer,
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     IBlockStorePtr service);
 
 }   // namespace NCloud::NBlockStore::NStorage

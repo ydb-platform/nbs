@@ -5,7 +5,7 @@
 #include <util/generic/ylimits.h>
 #include <util/system/defaults.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -194,4 +194,4 @@ struct Y_PACKED TProtoHeader
 
 static_assert(sizeof(TProtoHeader) == RDMA_PROTO_HEADER_SIZE);
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

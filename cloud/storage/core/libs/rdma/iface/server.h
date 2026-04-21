@@ -11,7 +11,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -82,4 +82,4 @@ struct IServer
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

@@ -10,7 +10,7 @@
 #include <util/stream/printf.h>
 #include <util/string/builder.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -206,4 +206,4 @@ NProto::TError ParseError(TStringBuf buffer)
     return error;
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

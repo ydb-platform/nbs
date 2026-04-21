@@ -131,7 +131,7 @@ THashMap<TString, TDeviceData> MakeDevices(
 // Thread-safe. After Init() public method HandleRequest() can be called
 // from any thread.
 class TRequestHandler final
-    : public NRdma::IServerHandler
+    : public NCloud::NStorage::NRdma::IServerHandler
     , public std::enable_shared_from_this<TRequestHandler>
 {
 private:
@@ -148,8 +148,8 @@ private:
     const TDeviceClientPtr DeviceClient;
     const IMultiAgentWriteHandlerPtr MultiAgentWriteHandler;
 
-    std::weak_ptr<NRdma::IServerEndpoint> Endpoint;
-    const NRdma::TProtoMessageSerializer* Serializer =
+    std::weak_ptr<NCloud::NStorage::NRdma::IServerEndpoint> Endpoint;
+    const NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
     const bool RejectLateRequests;
@@ -170,7 +170,7 @@ public:
         , RejectLateRequests(rejectLateRequests)
     {}
 
-    void Init(NRdma::IServerEndpointPtr endpoint, TLog log)
+    void Init(NCloud::NStorage::NRdma::IServerEndpointPtr endpoint, TLog log)
     {
         Endpoint = std::move(endpoint);
         Log = std::move(log);
@@ -271,7 +271,7 @@ private:
         const auto& request = resultOrError.GetResult();
 
         const bool isZeroCopyDataSupported =
-            HasProtoFlag(request.Flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            HasProtoFlag(request.Flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
         switch (request.MsgId) {
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
@@ -623,8 +623,8 @@ private:
         ui32 flags = 0;
 
         if (requestDetails.DataBuffer.size()) {
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-            NRdma::TProtoMessageSerializer::SerializeWithDataLength(
+            SetProtoFlag(flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithDataLength(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
                 flags,
@@ -639,7 +639,7 @@ private:
                 parts.emplace_back(TBlockDataRef(buffer.data(), buffer.size()));
             }
 
-            bytes = NRdma::TProtoMessageSerializer::SerializeWithData(
+            bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
                 flags,
@@ -785,7 +785,7 @@ private:
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
-        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::WriteDeviceBlocksResponse,
             0,   // flags
@@ -910,7 +910,7 @@ private:
             response.ReplicationResponses.begin(),
             response.ReplicationResponses.end());
 
-        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::WriteDeviceBlocksResponse,
             0,   // flags
@@ -1029,7 +1029,7 @@ private:
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
-        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::ZeroDeviceBlocksResponse,
             0,   // flags
@@ -1108,7 +1108,7 @@ private:
         }
         proto.SetChecksum(checksum.GetValue());
 
-        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+        size_t bytes = NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
             0,   // flags
@@ -1130,7 +1130,7 @@ private:
 
     std::shared_ptr<TRequestHandler> Handler;
     ILoggingServicePtr Logging;
-    NRdma::IServerPtr Server;
+    NCloud::NStorage::NRdma::IServerPtr Server;
     ITaskQueuePtr TaskQueue;
 
     TLog Log;
@@ -1140,7 +1140,7 @@ public:
             TRdmaTargetConfigPtr config,
             TOldRequestCounters oldRequestCounters,
             ILoggingServicePtr logging,
-            NRdma::IServerPtr server,
+            NCloud::NStorage::NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
             IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
             TVector<TString> devices,
@@ -1201,7 +1201,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     TRdmaTargetConfigPtr config,
     TOldRequestCounters oldRequestCounters,
     ILoggingServicePtr logging,
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
     TVector<TString> devices)

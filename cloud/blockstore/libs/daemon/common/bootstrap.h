@@ -76,13 +76,13 @@ protected:
     IStorageProviderPtr LocalStorageProvider;
     IEndpointManagerPtr EndpointManager;
     IEndpointEventProxyPtr EndpointEventHandler;
-    NRdma::IServerPtr RdmaServer;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     ITaskQueuePtr RdmaThreadPool;
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
-    NRdma::IServerPtr RdmaRequestServer;
+    NCloud::NStorage::NRdma::IServerPtr RdmaRequestServer;
     IStartablePtr RdmaTarget;
     ILocalNVMeDeviceProviderPtr LocalNVMeDeviceProvider;
     ILocalNVMeServicePtr LocalNVMeService;

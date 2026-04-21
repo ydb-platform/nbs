@@ -213,7 +213,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
@@ -476,7 +476,7 @@ public:
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode,
@@ -621,7 +621,7 @@ private:
     TString GetVolumeStatusString(EStatus status) const;
     EStatus GetVolumeStatus() const;
 
-    NRdma::IClientPtr GetRdmaClient() const;
+    NCloud::NStorage::NRdma::IClientPtr GetRdmaClient() const;
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);

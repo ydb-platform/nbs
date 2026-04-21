@@ -34,10 +34,10 @@ int main(int argc, char** argv)
     serverModuleFactories->RdmaServerFactory = [] (
         NCloud::ILoggingServicePtr logging,
         NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)
+        NCloud::NStorage::NRdma::TServerConfigPtr config)
     {
-        return NRdma::CreateServer(
-            NRdma::NVerbs::CreateVerbs(),
+        return NCloud::NStorage::NRdma::CreateServer(
+            NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
             std::move(logging),
             std::move(monitoring),
             std::move(config));

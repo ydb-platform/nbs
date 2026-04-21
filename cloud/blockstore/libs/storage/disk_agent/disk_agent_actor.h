@@ -67,7 +67,7 @@ private:
     const ILocalNVMeServicePtr LocalNVMeService;
 
     ILoggingServicePtr Logging;
-    NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
 
     NNvme::INvmeManagerPtr NvmeManager;
 
@@ -117,7 +117,7 @@ public:
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
-        NRdma::IServerPtr rdmaServer,
+        NCloud::NStorage::NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         ITaskQueuePtr backgroundThreadPool,
         ILocalNVMeServicePtr localNVMeService);

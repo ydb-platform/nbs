@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package NCloud.NBlockStore.NProto;
+package NCloud.NProto;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/storage/config";
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 

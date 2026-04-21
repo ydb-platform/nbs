@@ -14,6 +14,6 @@ IRunnablePtr CreateTestTarget(
     TOptionsPtr options,
     ITaskQueuePtr taskQueue,
     IStoragePtr storage,
-    NRdma::IServerPtr server);
+    NCloud::NStorage::NRdma::IServerPtr server);
 
 }   // namespace NCloud::NBlockStore

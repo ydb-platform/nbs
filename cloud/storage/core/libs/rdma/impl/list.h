@@ -4,7 +4,7 @@
 
 #include <library/cpp/deprecated/atomic/atomic.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -211,4 +211,4 @@ public:
     }
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

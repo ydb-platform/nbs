@@ -28,8 +28,8 @@ namespace {
 
 struct TDeviceRequestInfo
 {
-    NRdma::IClientEndpointPtr Endpoint;
-    NRdma::TClientRequestPtr ClientRequest;
+    NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+    NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -273,7 +273,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
     auto [req, err] = ep->AllocateRequest(
         requestResponseHandler,
         std::make_unique<TDeviceRequestRdmaContext>(deviceRequest.DeviceIdx),
-        NRdma::TProtoMessageSerializer::MessageByteSize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
             writeDeviceBlocksRequest,
             blockRange.Size() * msg->Record.BlockSize),
         4_KB);
@@ -298,7 +298,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         return;
     }
 
-    NRdma::TProtoMessageSerializer::SerializeWithData(
+    NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
         req->RequestBuffer,
         TBlockStoreProtocol::WriteDeviceBlocksRequest,
         GetFlags(),

@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/gtest/gtest.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -53,4 +53,4 @@ TEST(TTimerHandleTest, ShouldCancel)
     ASSERT_EQ(signaled, 0u);
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

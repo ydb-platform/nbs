@@ -4,7 +4,7 @@
 #include <util/system/defaults.h>
 #include <util/system/yassert.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 constexpr uintptr_t EVENT_MASK = 3;   // low bits unused because of alignment
 
@@ -28,4 +28,4 @@ inline int EventFromTag(void* tag)
     return reinterpret_cast<uintptr_t>(tag) & EVENT_MASK;
 }
 
-}   // NCloud::NBlockStore::NRdma
+}   // NCloud::NStorage::NRdma

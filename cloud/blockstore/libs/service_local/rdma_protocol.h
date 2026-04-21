@@ -25,7 +25,7 @@ struct TBlockStoreProtocol
         ChecksumDeviceBlocksResponse = 8,
     };
 
-    static NRdma::TProtoMessageSerializer* Serializer();
+    static NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

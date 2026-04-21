@@ -161,7 +161,7 @@ ICellManagerPtr CreateCellManager(
     IMonitoringServicePtr monitoring,
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
-    NRdma::IClientPtr rdmaClient)
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient)
 {
     auto result = NClient::CreateMultiHostClient(
         std::make_shared<NClient::TClientAppConfig>(

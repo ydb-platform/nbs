@@ -53,7 +53,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const std::shared_ptr<NKikimr::TTabletCountersBase> Counters;
     const TSharedServiceCountersPtr SharedCounters;
@@ -94,7 +94,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         std::shared_ptr<NKikimr::TTabletCountersBase> counters,
         TSharedServiceCountersPtr sharedCounters,

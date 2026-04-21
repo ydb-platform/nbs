@@ -67,7 +67,7 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
 
@@ -89,9 +89,9 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
-    using TEndpointFuture = NThreading::TFuture<NRdma::IClientEndpointPtr>;
+    using TEndpointFuture = NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>;
     THashMap<TString, TEndpointFuture> AgentId2EndpointFuture;
-    THashMap<TString, NRdma::IClientEndpointPtr> AgentId2Endpoint;
+    THashMap<TString, NCloud::NStorage::NRdma::IClientEndpointPtr> AgentId2Endpoint;
 
     TRequestInfoPtr Poisoner;
 
@@ -111,7 +111,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId);
 

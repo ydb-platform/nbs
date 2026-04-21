@@ -30,7 +30,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 using namespace NMonitoring;
 
@@ -1633,7 +1633,7 @@ TServer::TServer(
 
 void TServer::Start()
 {
-    Log = Logging->CreateLog("BLOCKSTORE_RDMA");
+    Log = Logging->CreateLog("STORAGE_RDMA");
 
     RDMA_DEBUG("start server");
 
@@ -2044,4 +2044,4 @@ IServerPtr CreateServer(
         std::move(config));
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

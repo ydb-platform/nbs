@@ -52,7 +52,7 @@ private:
     ILoggingServicePtr Logging;
     TLog Log;
     NSpdk::ISpdkTargetPtr SpdkTarget;
-    NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
     IRdmaTargetPtr RdmaTarget;
     NNvme::INvmeManagerPtr NvmeManager;
 
@@ -79,7 +79,7 @@ public:
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
-        NRdma::IServerPtr rdmaServer,
+        NCloud::NStorage::NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,

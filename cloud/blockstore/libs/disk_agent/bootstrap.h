@@ -39,10 +39,10 @@ struct TSpdkParts
 struct TServerModuleFactories
 {
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
-    std::function<NRdma::IServerPtr(
+    std::function<NCloud::NStorage::NRdma::IServerPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)> RdmaServerFactory;
+        NCloud::NStorage::NRdma::TServerConfigPtr config)> RdmaServerFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -76,7 +76,7 @@ private:
     ICachingAllocatorPtr Allocator;
     IStorageProviderPtr LocalStorageProvider;
     NNvme::INvmeManagerPtr NvmeManager;
-    NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
     ILocalNVMeServicePtr LocalNVMeService;
 
     TProgramShouldContinue ShouldContinue;

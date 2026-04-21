@@ -38,7 +38,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 using namespace NMonitoring;
 using namespace NThreading;
@@ -1906,7 +1906,7 @@ TClient::TClient(
 
 void TClient::Start() noexcept
 {
-    Log = Logging->CreateLog("BLOCKSTORE_RDMA");
+    Log = Logging->CreateLog("STORAGE_RDMA");
 
     RDMA_INFO("start client");
 
@@ -2431,4 +2431,4 @@ IClientPtr CreateClient(
         std::move(config));
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

@@ -1,6 +1,6 @@
 #include "buffer.h"
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,4 +17,4 @@ void TBufferPoolConfig::Validate(TLog& log)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

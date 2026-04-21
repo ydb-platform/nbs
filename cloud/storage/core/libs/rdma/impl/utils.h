@@ -8,7 +8,7 @@
 #include <util/system/error.h>
 #include <util/network/address.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,4 +41,4 @@ inline uint32_t GetScopeId(const sockaddr* address)
     return ~0;
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

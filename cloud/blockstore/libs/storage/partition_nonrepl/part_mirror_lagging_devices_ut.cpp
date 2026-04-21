@@ -58,7 +58,7 @@ struct TTestEnv
     TVector<TActorId> ReplicaActors;
     TVector<TActorId> DiskAgentActors;
     TVector<NProto::TLaggingAgent> LaggingAgents;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
 
     static void AddDevice(
         ui32 nodeId,
@@ -170,7 +170,7 @@ struct TTestEnv
         , DiskAgentStates(std::move(diskAgentStates))
         , RdmaClient(
               useRdma ? std::make_shared<TRdmaClientTest>()
-                      : NRdma::IClientPtr())
+                      : NCloud::NStorage::NRdma::IClientPtr())
     {
         SetupLogging();
 

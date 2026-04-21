@@ -8,7 +8,7 @@
 #include <util/stream/output.h>
 #include <util/stream/printf.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -142,4 +142,4 @@ public:
     }
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/rdma/iface/client.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -14,4 +14,4 @@ IClientPtr CreateClient(
     IMonitoringServicePtr monitoring,
     TClientConfigPtr config);
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

@@ -2,7 +2,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,4 +30,4 @@ namespace NCloud::NBlockStore::NRdma {
 #define RDMA_DEBUG(...) RDMA_LOG(TLOG_DEBUG,     __VA_ARGS__)
 #define RDMA_TRACE(...) RDMA_LOG(TLOG_RESOURCES, __VA_ARGS__)
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

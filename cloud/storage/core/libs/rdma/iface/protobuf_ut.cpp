@@ -2,8 +2,6 @@
 
 #include "protocol.h"
 
-#include <cloud/blockstore/public/api/protos/io.pb.h>
-
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <library/cpp/testing/gtest/gtest.h>
@@ -12,18 +10,17 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlockStoreProtocol
+struct TTestProtocol
 {
     enum ERequestType
     {
-        ReadBlocksRequest = 1,
-        ReadBlocksResponse = 2,
+        Error = 1,
     };
 
     static TProtoMessageSerializer* Serializer()
@@ -32,8 +29,7 @@ struct TBlockStoreProtocol
         {
             TSerializer()
             {
-                RegisterProto<NProto::TReadBlocksRequest>(ReadBlocksRequest);
-                RegisterProto<NProto::TReadBlocksResponse>(ReadBlocksResponse);
+                RegisterProto<NProto::TError>(Error);
             }
         };
 
@@ -47,10 +43,11 @@ struct TBlockStoreProtocol
 
 TEST(TProtoMessageSerializerTest, ShouldSerializeMessages)
 {
-    auto* serializer = TBlockStoreProtocol::Serializer();
+    auto* serializer = TTestProtocol::Serializer();
 
-    NProto::TReadBlocksRequest proto;
-    proto.SetDiskId("test");
+    NProto::TError proto;
+    proto.SetCode(E_ARGUMENT);
+    proto.SetMessage("test");
 
     const auto data = TString(1024, 'A');
     const TBlockDataRef part[1] = {TBlockDataRef(data.data(), data.length())};
@@ -76,7 +73,7 @@ TEST(TProtoMessageSerializerTest, ShouldSerializeMessages)
             const size_t serializedBytes =
                 NRdma::TProtoMessageSerializer::SerializeWithData(
                     buffer,
-                    TBlockStoreProtocol::ReadBlocksRequest,
+                    TTestProtocol::Error,
                     flags,
                     proto,
                     part);
@@ -97,14 +94,15 @@ TEST(TProtoMessageSerializerTest, ShouldSerializeMessages)
                 << " flags=" << flags;
 
             const auto& result = resultOrError.GetResult();
-            EXPECT_EQ(TBlockStoreProtocol::ReadBlocksRequest, result.MsgId);
+            EXPECT_EQ(TTestProtocol::Error, result.MsgId);
             EXPECT_EQ(data, result.Data);
 
             const auto& proto2 =
-                static_cast<const NProto::TReadBlocksRequest&>(*result.Proto);
-            EXPECT_EQ("test", proto2.GetDiskId());
+                static_cast<const NProto::TError&>(*result.Proto);
+            EXPECT_EQ(E_ARGUMENT, proto2.GetCode());
+            EXPECT_EQ("test", proto2.GetMessage());
         }
     }
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

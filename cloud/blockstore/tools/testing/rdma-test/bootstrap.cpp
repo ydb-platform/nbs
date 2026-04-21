@@ -60,36 +60,40 @@ void TBootstrap::Init()
     }
 
     if (Options->TestMode == ETestMode::Target) {
-        auto config = std::make_unique<NRdma::TServerConfig>();
+        auto config =
+            std::make_unique<NCloud::NStorage::NRdma::TServerConfig>();
         config->Backlog = Options->Backlog;
         config->QueueSize = Options->QueueSize;
         config->PollerThreads = Options->PollerThreads;
-        config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->WaitMode =
+            NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
+        Verbs = NCloud::NStorage::NRdma::NVerbs::CreateVerbs();
 
-        Server = NRdma::CreateServer(
+        Server = NCloud::NStorage::NRdma::CreateServer(
             Verbs,
             Logging,
             Monitoring,
             std::move(config));
     } else if (Options->StorageKind == EStorageKind::Rdma) {
-        auto config = std::make_unique<NRdma::TClientConfig>();
+        auto config =
+            std::make_unique<NCloud::NStorage::NRdma::TClientConfig>();
         config->QueueSize = Options->QueueSize;
         config->PollerThreads = Options->PollerThreads;
-        config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->WaitMode =
+            NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
+        Verbs = NCloud::NStorage::NRdma::NVerbs::CreateVerbs();
 
-        Client = NRdma::CreateClient(
+        Client = NCloud::NStorage::NRdma::CreateClient(
             Verbs,
             Logging,
             Monitoring,

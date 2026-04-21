@@ -318,7 +318,7 @@ bool TServerAppConfig::DeprecatedGetRdmaClientEnabled() const
     return GetRdmaClientEnabled();
 }
 
-const NProto::TRdmaClient&
+const ::NCloud::NProto::TRdmaClient&
 TServerAppConfig::DeprecatedGetRdmaClientConfig() const
 {
     return ServerConfig->GetRdmaClientConfig();

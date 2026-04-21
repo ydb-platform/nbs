@@ -50,7 +50,7 @@ struct TTestEnv
     TActorId VolumeActorId;
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     TStorageConfigPtr Config;
 
     static void AddDevice(
@@ -1226,7 +1226,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         ui64 writeRequestId = 0;
         ui64 zeroRequestId = 0;
         auto observer =
-            [&](NRdma::TProtoMessageSerializer::TParseResult& parseResut)
+            [&](NCloud::NStorage::NRdma::TProtoMessageSerializer::TParseResult& parseResut)
         {
             if (parseResut.MsgId ==
                 TBlockStoreProtocol::WriteDeviceBlocksRequest)

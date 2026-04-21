@@ -17,7 +17,7 @@
 
 #include <thread>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 using namespace std::chrono_literals;
 
@@ -946,4 +946,4 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
         wait(active, 6);
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

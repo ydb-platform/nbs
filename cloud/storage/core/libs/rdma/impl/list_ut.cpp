@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/gtest/gtest.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 namespace  {
 
@@ -134,4 +134,4 @@ TEST(TLockFreeListTest, ShouldDequeueItemsFIFO)
     ASSERT_FALSE(items.Dequeue());
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

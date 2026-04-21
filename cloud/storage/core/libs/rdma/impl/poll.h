@@ -7,7 +7,7 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -85,4 +85,4 @@ public:
     }
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

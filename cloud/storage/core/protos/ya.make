@@ -15,6 +15,7 @@ SRCS(
     endpoints.proto
     error.proto
     media.proto
+    rdma.proto
     request_source.proto
     tablet.proto
     throttler.proto

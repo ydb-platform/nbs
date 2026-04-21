@@ -25,7 +25,6 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/public/api/protos
-    cloud/storage/config
     cloud/storage/core/config
     cloud/storage/core/protos
 )

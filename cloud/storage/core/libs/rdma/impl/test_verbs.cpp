@@ -12,7 +12,7 @@
 #include <util/string/cast.h>
 #include <util/system/error.h>
 
-namespace NCloud::NBlockStore::NRdma::NVerbs {
+namespace NCloud::NStorage::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -634,4 +634,4 @@ void Disconnect(TTestContextPtr context)
     context->CompletionHandle.Set();
 }
 
-}   // namespace NCloud::NBlockStore::NRdma::NVerbs
+}   // namespace NCloud::NStorage::NRdma::NVerbs

@@ -22,6 +22,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/impl/client.h>
+#include <cloud/storage/core/libs/rdma/impl/server.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -122,7 +123,7 @@ class TRdmaBackend final: public IBackend
 private:
     const ILoggingServicePtr Logging;
     TLog Log;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     IStorageProviderPtr StorageProvider;
     IBlockStorePtr DataClient;
     ISchedulerPtr Scheduler;
@@ -184,13 +185,13 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig = std::make_shared<NRdma::TClientConfig>();
+    auto rdmaClientConfig = std::make_shared<NCloud::NStorage::NRdma::TClientConfig>();
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
-    RdmaClient = NRdma::CreateClient(
-        NRdma::NVerbs::CreateVerbs(),
+    RdmaClient = NCloud::NStorage::NRdma::CreateClient(
+        NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
         Logging,
         NCloud::CreateMonitoringServiceStub(),
         std::move(rdmaClientConfig));
