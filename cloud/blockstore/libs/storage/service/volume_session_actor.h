@@ -19,6 +19,8 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
+#include <cloud/storage/core/libs/api/hive_proxy.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <utility>
@@ -35,7 +37,8 @@ private:
     {
         NONE,
         START_REQUEST,
-        STOP_REQUEST
+        STOP_REQUEST,
+        GENTLY_RELEASE_REQUEST
     };
 
     struct TMountRequestProcResult
@@ -217,6 +220,14 @@ private:
 
     void HandleChangeVolumeBindingRequest(
         const TEvService::TEvChangeVolumeBindingRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGentlyReleaseVolumeRequest(
+        const TEvServicePrivate::TEvGentlyReleaseVolumeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUnlockTabletResponse(
+        const NCloud::NStorage::TEvHiveProxy::TEvUnlockTabletResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

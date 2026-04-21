@@ -66,16 +66,35 @@ void TVolumeSessionActor::HandleStartVolumeActorStopped(
     VolumeInfo->Error.Clear();
 
     if (MountRequestActor) {
-        if (CurrentRequest == START_REQUEST) {
-            auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
-                msg->Error);
-            NCloud::Send(ctx, MountRequestActor, std::move(response));
-        } else {
-            auto response = std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>();
+        IEventBasePtr response;
+        switch (CurrentRequest) {
+            case START_REQUEST:
+                response =
+                    std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
+                        msg->Error);
+                break;
+            case STOP_REQUEST:
+                response = std::make_unique<
+                    TEvServicePrivate::TEvStopVolumeResponse>();
+                break;
+            case GENTLY_RELEASE_REQUEST:
+                response = std::make_unique<
+                    TEvServicePrivate::TEvGentlyReleaseVolumeResponse>();
+                break;
+            default:
+                LOG_ERROR(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "%s StartVolumeActor stopped without explicit request",
+                    LogTitle.GetWithTime().c_str());
+                break;
+        }
+        if (response) {
             NCloud::Send(ctx, MountRequestActor, std::move(response));
         }
     } else if (UnmountRequestActor) {
-        auto response = std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>();
+        auto response =
+            std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>();
         NCloud::Send(ctx, UnmountRequestActor, std::move(response));
     }
 }

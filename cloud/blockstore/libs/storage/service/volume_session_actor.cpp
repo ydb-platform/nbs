@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -258,6 +259,63 @@ void TVolumeSessionActor::FailPendingRequestsAndDie(
     NotifyAndDie(ctx);
 }
 
+void TVolumeSessionActor::HandleGentlyReleaseVolumeRequest(
+    const TEvServicePrivate::TEvGentlyReleaseVolumeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    // Request unlock
+    CurrentRequest = GENTLY_RELEASE_REQUEST;
+    NCloud::Send<NCloud::NStorage::TEvHiveProxy::TEvUnlockTabletRequest>(
+        ctx,
+        NCloud::NStorage::MakeHiveProxyServiceId(),
+        0,   // cookie
+        TabletId);
+}
+
+void TVolumeSessionActor::HandleUnlockTabletResponse(
+    const NCloud::NStorage::TEvHiveProxy::TEvUnlockTabletResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (MountRequestActor && CurrentRequest == GENTLY_RELEASE_REQUEST) {
+        const auto* msg = ev->Get();
+
+        const auto& error = msg->GetError();
+        if (FAILED(error.GetCode())) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "%s UnlockTablet for gentle release failed: %s",
+                LogTitle.GetWithTime().c_str(),
+                FormatError(error).c_str());
+
+            ctx.Schedule(
+                Config->GetVolumeBalancerGentlePreemptionRetryDelay(),
+                new TEvServicePrivate::TEvGentlyReleaseVolumeRequest());
+            return;
+        }
+        if (error.GetCode() == S_ALREADY) {
+            auto response =
+                std::make_unique<TEvServicePrivate::TEvGentlyReleaseVolumeResponse>(
+                    msg->Error);
+            NCloud::Send(ctx, MountRequestActor, std::move(response));
+        }
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Unlock for gentle release successful",
+            LogTitle.GetWithTime().c_str());
+        return;
+    }
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Unexpected UnlockTabletResponse with CurrentRequest = %d",
+        LogTitle.GetWithTime().c_str(),
+        static_cast<int>(CurrentRequest));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TVolumeSessionActor::StateDescribe)
@@ -330,6 +388,14 @@ STFUNC(TVolumeSessionActor::StateWork)
         HFunc(
             TEvService::TEvChangeVolumeBindingRequest,
             HandleChangeVolumeBindingRequest);
+
+        HFunc(
+            TEvServicePrivate::TEvGentlyReleaseVolumeRequest,
+            HandleGentlyReleaseVolumeRequest);
+
+        HFunc(
+            NCloud::NStorage::TEvHiveProxy::TEvUnlockTabletResponse,
+            HandleUnlockTabletResponse);
 
         IgnoreFunc(TEvService::TEvUnmountVolumeResponse);
 
