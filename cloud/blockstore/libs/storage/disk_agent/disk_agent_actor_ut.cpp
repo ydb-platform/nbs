@@ -7190,7 +7190,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(counters);
         auto mismatch = counters->GetCounter(
-            "DiskAgentCriticalEvents/DiskAgentDevicePartlabelMismatch",
+            "DiskAgentCriticalEvents/DiskAgentDeviceSymlinkMismatch",
             true);
 
         auto env =
