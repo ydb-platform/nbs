@@ -97,6 +97,7 @@ SRCS(
     volume_session_actor.cpp
     volume_session_actor_binding.cpp
     volume_session_actor_mount.cpp
+    volume_session_actor_release.cpp
     volume_session_actor_start.cpp
     volume_session_actor_stop.cpp
     volume_session_actor_unmount.cpp
