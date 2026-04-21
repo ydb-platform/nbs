@@ -74,7 +74,7 @@ public:
     void Start() override
     {
         for (ui64 offset = 0; offset < ShmSize; offset += SlotSize) {
-            FreeOffsets.Enqueue(offset );
+            FreeOffsets.Enqueue(offset);
         }
 
         ShmControl->Start();

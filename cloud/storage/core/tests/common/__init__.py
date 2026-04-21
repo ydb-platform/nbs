@@ -65,12 +65,12 @@ def process_recipe_err_files(common_file_name: str) -> list[str]:
 
     return errors
 
-def expand_placeholders(input: str) -> str:
+def expand_placeholders(text: str) -> str:
     """
     Replace placeholders in the input string with actual values.
 
     Currently supports replacing {output_path} with the common output path.
     """
-    if "{output_path}" in input:
-        return input.replace("{output_path}", common.output_path())
-    return input
+    if "{output_path}" in text:
+        return text.replace("{output_path}", common.output_path())
+    return text

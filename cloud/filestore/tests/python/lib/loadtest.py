@@ -15,12 +15,14 @@ def _expand_placeholders(config_path):
     with open(config_path, "r") as f:
         content = f.read()
 
-    content = expand_placeholders(content)
+    expanded = expand_placeholders(content)
+    if expanded == content:
+        return config_path
 
     tmp = tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", delete=False, dir=common.output_path()
     )
-    tmp.write(content)
+    tmp.write(expanded)
     tmp.close()
     return tmp.name
 

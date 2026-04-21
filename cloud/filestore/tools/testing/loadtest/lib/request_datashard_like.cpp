@@ -340,10 +340,12 @@ private:
         TGuard<TMutex> guard(StateLock);
         if (nodeInfo.NodeId == 0) {
             if (NodeInfos.empty()) {
+                guard.Release();
                 return DoCreateNode();
             }
             nodeInfo = PopRandomNodeInfo();
         }
+        guard.Release();
 
         const auto started = TInstant::Now();
         ui64 byteOffset = nodeInfo.Size;
