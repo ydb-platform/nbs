@@ -80,8 +80,8 @@ public:
     std::atomic<ui64> WriteAndZeroRequestsInProgress = 0;
 
 private:
-    const ui64 TabletId = 0;
     const TString DiskId;
+    const ui64 TabletId = 0;
 
     TAdaptiveLock StateLock;
 
@@ -103,11 +103,13 @@ private:
         DiskId};
 
 public:
-    explicit TPartitionThreadSafeState(ui64 tabletId)
-        : TabletId(tabletId)
+    explicit TPartitionThreadSafeState(TString diskId, ui64 tabletId)
+        : DiskId(std::move(diskId))
+        , TabletId(tabletId)
     {}
 
     TPartitionThreadSafeState(
+        TString diskId,
         ui64 tabletId,
         NActors::TActorId partitionActorId,
         ui32 generation,

@@ -16,11 +16,13 @@ using namespace NPartition;
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionThreadSafeState::TPartitionThreadSafeState(
+        TString diskId,
         ui64 tabletId,
         NActors::TActorId partitionActorId,
         ui32 generation,
         ui32 lastCommitId)
-    : TabletId(tabletId)
+    : DiskId(std::move(diskId))
+    , TabletId(tabletId)
     , PartitionActorId(partitionActorId)
 {
     Init(partitionActorId, generation, lastCommitId);
