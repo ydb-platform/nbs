@@ -1,21 +1,26 @@
 name: Build VM Image
-run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }} image_id:${{ inputs.image_id }}
+run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }} image_id:${{ inputs.image_id }} build_image:${{ inputs.build_image }} check_vm_creation:${{ inputs.check_vm_creation }}
 on:
   # schedule:
   #   - cron: "0 5 * * *"
   workflow_call:
     inputs:
       image_id:
-        description: "Image id to use"
+        description: "Image id to use, otherwise latest image will be used (or built if build_image is true)"
         required: false
         type: string
-      update_image_id:
-        description: "Update image id"
+      build_image:
+        description: "Build image instead of getting latest"
         required: false
         default: false
         type: boolean
       check_vm_creation:
         description: "Check VM creation"
+        required: false
+        default: false
+        type: boolean
+      update_image_id:
+        description: "Update non pooled image id"
         required: false
         default: false
         type: boolean
@@ -27,17 +32,22 @@ on:
   workflow_dispatch:
     inputs:
       image_id:
-        description: "Image id to use"
+        description: "Image id to use for runner VM, if not set latest image will be used (or built if build_image is true)"
         required: false
         default: ""
         type: string
-      update_image_id:
-        description: "Update image id"
+      build_image:
+        description: "Build image instead of getting latest"
         required: false
         default: false
         type: boolean
       check_vm_creation:
         description: "Check VM creation"
+        required: false
+        default: false
+        type: boolean
+      update_image_id:
+        description: "Update non pooled image id"
         required: false
         default: false
         type: boolean
@@ -76,11 +86,47 @@ jobs:
       uses: ./.github/actions/nebius_cli
       with:
         sa_json: ${{ secrets.POOLED_LIGHT_SA_JSON }}
+    
+    - name: get nebius iam token
+      if: inputs.image_id == '' && inputs.build_image == true
+      run: |
+        NEBIUS_TOKEN=$(nebius iam get-access-token)
+        echo "::add-mask::${NEBIUS_TOKEN}"
+        echo "NEBIUS_TOKEN=$NEBIUS_TOKEN" >> $GITHUB_ENV
+
+    - name: set up packer
+      if: inputs.image_id == '' && inputs.build_image == true
+      uses: hashicorp/setup-packer@v3.2.0
+      with:
+        version: 1.10.0
+    
+    - name: init packer
+      if: inputs.image_id == '' && inputs.build_image == true
+      run: |
+        cd .github/packer || exit
+        packer init github-runner.pkr.hcl
+
+    - name: build image
+      if: inputs.image_id == '' && inputs.build_image == true
+      id: build-image
+      env:
+        PASSWORD_HASH: ${{ secrets.VM_USER_PASSWD }}
+        NEBIUS_TOKEN: ${{ env.NEBIUS_TOKEN }}
+        RUNNER_VERSION: ${{ vars.RUNNER_VERSION }}
+        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
+        SUBNET_ID: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
+      run: |
+        cd .github/packer || exit
+        packer build github-runner.pkr.hcl
+        cat reports/manifest.json
+        echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' reports/manifest.json)" >> $GITHUB_OUTPUT
 
     - name: Get latest image ID from Nebius
       id: get-image-id
       env: 
         IMAGE_ID: ${{ inputs.image_id }}
+        PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
       run: |
         if [ -n "${IMAGE_ID}" ]; then
           if [[ "${IMAGE_ID}" != computeimage-* ]]; then
@@ -91,7 +137,7 @@ jobs:
           echo "Using image id provided by inputs: ${IMAGE_ID}"
           exit 0
         fi
-        IMAGE_ID=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id ${{ vars.POOLED_HEAVY_PARENT_ID }} --format json | jq -r .metadata.id)
+        IMAGE_ID=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id "${PARENT_ID}" --format json | jq -r .metadata.id)
         echo "IMAGE_ID_2204=$IMAGE_ID" >> $GITHUB_OUTPUT
     
 
@@ -133,7 +179,7 @@ jobs:
         vm_id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
 
     - name: Set new image id
-      if: inputs.update_pooled_image_ids == false
+      if: inputs.update_image_id == true
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_images \
@@ -164,6 +210,6 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
-        UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
+        UPDATE_IMAGE_ID: ${{ inputs.update_pooled_image_ids && '--update-image-id' || '' }}
         HEAVY_PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
         LIGHT_PARENT_ID: ${{ vars.POOLED_LIGHT_PARENT_ID }}
