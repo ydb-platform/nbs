@@ -26,6 +26,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
+    cloud/blockstore/libs/rdma
     cloud/storage/core/libs/rdma/iface
     cloud/storage/core/libs/rdma/impl
     

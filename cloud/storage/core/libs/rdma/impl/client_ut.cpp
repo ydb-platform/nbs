@@ -23,6 +23,31 @@ using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IClientPtr CreateTestClient(
+    NVerbs::IVerbsPtr verbs,
+    const ILoggingServicePtr& logging,
+    const IMonitoringServicePtr& monitoring,
+    TClientConfigPtr config)
+{
+    return CreateClient(
+        std::move(verbs),
+        logging->CreateLog("RDMA_TEST"),
+        monitoring->GetCounters()
+            ->GetSubgroup("counters", "rdma")
+            ->GetSubgroup("component", "client"),
+        std::move(config));
+}
+
+NMonitoring::TDynamicCountersPtr GetClientCounters(
+    const IMonitoringServicePtr& monitoring)
+{
+    return monitoring->GetCounters()
+        ->GetSubgroup("counters", "rdma")
+        ->GetSubgroup("component", "client");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRequestContext: public NRdma::TNullContext
 {
     std::function<void(
@@ -67,7 +92,7 @@ TEST(TRdmaClientTest, ShouldStartEndpoint)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -97,7 +122,7 @@ TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -126,7 +151,7 @@ TEST(TRdmaClientTest, ShouldDetachFromPoller)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -160,7 +185,7 @@ TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -195,7 +220,7 @@ TEST(TRdmaClientTest, ShouldHandleGetAddressInfoError)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -248,7 +273,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -386,10 +411,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                 handleRequest(*testContext);
             }
 
-            auto counters = monitoring
-                ->GetCounters()
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "rdma_client");
+            auto counters = GetClientCounters(monitoring);
             auto aborted = counters->GetCounter("AbortedRequests");
             ASSERT_EQ(aborted->Val(), 1);
         }
@@ -409,7 +431,8 @@ TEST(TRdmaClientTest, ShouldReuseChunks)
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        auto client =
+            CreateTestClient(verbs, logging, monitoring, clientConfig);
         client->Start();
         Y_DEFER {
             client->Stop();
@@ -456,7 +479,8 @@ TEST(TRdmaClientTest, ShouldAdjustMaxChunkAlloc)
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        auto client =
+            CreateTestClient(verbs, logging, monitoring, clientConfig);
         client->Start();
         Y_DEFER {
             client->Stop();
@@ -505,7 +529,8 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        auto client =
+            CreateTestClient(verbs, logging, monitoring, clientConfig);
         client->Start();
         Y_DEFER {
             client->Stop();
@@ -571,7 +596,8 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        auto client =
+            CreateTestClient(verbs, logging, monitoring, clientConfig);
 
         client->Start();
         Y_DEFER
@@ -670,10 +696,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         ASSERT_TRUE(parsed);
         ASSERT_EQ(E_CANCELLED, error.GetCode());
 
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "rdma_client");
+        auto counters = GetClientCounters(monitoring);
         auto aborted = counters->GetCounter("AbortedRequests");
         auto queued = counters->GetCounter("QueuedRequests");
         ASSERT_EQ(queued->Val(), 0);
@@ -695,7 +718,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -819,7 +842,8 @@ TEST(TRdmaClientTest, ShouldForceReconnect)
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        auto client =
+            CreateTestClient(verbs, logging, monitoring, clientConfig);
 
         client->Start();
         Y_DEFER
@@ -862,7 +886,7 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
+        auto client = CreateTestClient(
             verbs,
             logging,
             monitoring,
@@ -876,10 +900,7 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
         auto endpoint = client->StartEndpoint("::", 10020)
             .GetValue(TDuration::Seconds(5));
 
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "rdma_client");
+        auto counters = GetClientCounters(monitoring);
 
         auto active = counters->GetCounter("ActiveRecv");
         auto errors = counters->GetCounter("Errors");

@@ -33,6 +33,7 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/nbd
+    cloud/blockstore/libs/rdma
     cloud/blockstore/libs/rdma_test
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface

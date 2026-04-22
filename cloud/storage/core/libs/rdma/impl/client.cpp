@@ -1838,12 +1838,10 @@ class TClient final
 private:
     NVerbs::IVerbsPtr Verbs;
 
-    ILoggingServicePtr Logging;
-    IMonitoringServicePtr Monitoring;
-
+    TLog Log;
+    NMonitoring::TDynamicCountersPtr CountersGroup;
     TClientConfigPtr Config;
     TEndpointCountersPtr Counters;
-    TLog Log;
 
     TConnectionPollerPtr ConnectionPoller;
     TVector<TCompletionPollerPtr> CompletionPollers;
@@ -1851,8 +1849,8 @@ private:
 public:
     TClient(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
+        TLog log,
+        NMonitoring::TDynamicCountersPtr counters,
         TClientConfigPtr config);
 
     // called from external thread
@@ -1890,12 +1888,12 @@ private:
 
 TClient::TClient(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
+        TLog log,
+        NMonitoring::TDynamicCountersPtr counters,
         TClientConfigPtr config)
     : Verbs(std::move(verbs))
-    , Logging(std::move(logging))
-    , Monitoring(std::move(monitoring))
+    , Log(std::move(log))
+    , CountersGroup(std::move(counters))
     , Config(std::move(config))
     , Counters(new TEndpointCounters())
 {
@@ -1906,13 +1904,9 @@ TClient::TClient(
 
 void TClient::Start() noexcept
 {
-    Log = Logging->CreateLog("BLOCKSTORE_RDMA");
-
     RDMA_INFO("start client");
 
-    auto counters = Monitoring->GetCounters();
-    auto rootGroup = counters->GetSubgroup("counters", "blockstore");
-    Counters->Register(*rootGroup->GetSubgroup("component", "rdma_client"));
+    Counters->Register(*CountersGroup);
 
     CompletionPollers.resize(Config->PollerThreads);
     for (size_t i = 0; i < CompletionPollers.size(); ++i) {
@@ -2420,14 +2414,14 @@ bool TClient::IsAlignedDataEnabled() const
 
 IClientPtr CreateClient(
     NVerbs::IVerbsPtr verbs,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
+    TLog log,
+    NMonitoring::TDynamicCountersPtr counters,
     TClientConfigPtr config)
 {
     return std::make_shared<TClient>(
         std::move(verbs),
-        std::move(logging),
-        std::move(monitoring),
+        std::move(log),
+        std::move(counters),
         std::move(config));
 }
 

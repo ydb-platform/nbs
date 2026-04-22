@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/rdma/helper.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -21,9 +22,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-#include <cloud/storage/core/libs/rdma/impl/client.h>
-#include <cloud/storage/core/libs/rdma/impl/server.h>
-#include <cloud/storage/core/libs/rdma/impl/verbs.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -191,10 +190,10 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
-    RdmaClient = NCloud::NStorage::NRdma::CreateClient(
-        NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
+    auto monitoring = NCloud::CreateMonitoringServiceStub();
+    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
         Logging,
-        NCloud::CreateMonitoringServiceStub(),
+        monitoring,
         std::move(rdmaClientConfig));
 
     StorageProvider = NStorage::CreateRdmaStorageProvider(

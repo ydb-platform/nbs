@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/notify/impl/notify.h>
+#include <cloud/blockstore/libs/rdma/helper.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/impl/client.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -19,9 +20,6 @@
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_service_client.h>
-#include <cloud/storage/core/libs/rdma/impl/client.h>
-#include <cloud/storage/core/libs/rdma/impl/server.h>
-#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
@@ -124,29 +122,11 @@ int main(int argc, char** argv)
         };
     };
 
-    serverModuleFactories->RdmaClientFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NCloud::NStorage::NRdma::TClientConfigPtr config)
-    {
-        return NCloud::NStorage::NRdma::CreateClient(
-            NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
-            std::move(logging),
-            std::move(monitoring),
-            std::move(config));
-    };
+    serverModuleFactories->RdmaClientFactory =
+        NCloud::NBlockStore::NRdma::CreateRdmaClient;
 
-    serverModuleFactories->RdmaServerFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NCloud::NStorage::NRdma::TServerConfigPtr config)
-    {
-        return NCloud::NStorage::NRdma::CreateServer(
-            NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
-            std::move(logging),
-            std::move(monitoring),
-            std::move(config));
-    };
+    serverModuleFactories->RdmaServerFactory =
+        NCloud::NBlockStore::NRdma::CreateRdmaServer;
 
     serverModuleFactories->NotifyServiceFactory =
         [](NNotify::TNotifyConfigPtr config,
