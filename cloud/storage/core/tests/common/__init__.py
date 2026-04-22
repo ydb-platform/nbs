@@ -65,6 +65,7 @@ def process_recipe_err_files(common_file_name: str) -> list[str]:
 
     return errors
 
+
 def expand_placeholders(text: str) -> str:
     """
     Replace placeholders in the input string with actual values.
