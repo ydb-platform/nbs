@@ -1690,6 +1690,89 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(!client2Info);
         }
     }
+
+    Y_UNIT_TEST(ShouldProperlyAccountSeveralVolumesForSingleClient)
+    {
+        // Notes: single clientId allowed to mount volumes only under single
+        // instanceId (may be empty) - see TVolumeStats::ClientToRealInstance
+
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        NProto::TDiagnosticsConfig config;
+        // Proper accounting is under EnableDurableVolumeInfo flag
+        // until considered functional
+        config.SetEnableDurableVolumeInfo(true);
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            std::make_shared<TDiagnosticsConfig>(config),
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        // Initial mount
+        {
+            Mount(volumeStats, "disk-1", "client-1", "instance-1");
+            Mount(volumeStats, "disk-2", "client-1", "instance-1");
+            Mount(volumeStats, "disk-3", "client-1", "instance-1");
+
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+
+        // Remove volumes one by one by timeout, the rest must remain
+
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            // Mount(volumeStats, "disk-1", "client-1", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-1", "instance-1");
+            Mount(volumeStats, "disk-3", "client-1", "instance-1");
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            // Mount(volumeStats, "disk-1", "client-1", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-1", "instance-1");
+            // Mount(volumeStats, "disk-3", "client-1", "instance-1" );
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            // Mount(volumeStats, "disk-1", "client-1", "instance-1" );
+            // Mount(volumeStats, "disk-2", "client-1", "instance-1" );
+            // Mount(volumeStats, "disk-3", "client-1", "instance-1" );
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+    }
+
     /*
     Y_UNIT_TEST(
         ShouldProperlyAccountSeveralMountedVolumesForSameAndDifferentClients)
@@ -1699,7 +1782,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = monitoring
                             ->GetCounters()
-                            //->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("counters", "blockstore")
                             ->GetSubgroup("component", "server_volume");
 
         NProto::TDiagnosticsConfig config;
