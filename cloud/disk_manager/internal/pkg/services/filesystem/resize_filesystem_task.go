@@ -56,7 +56,6 @@ func (t *resizeFilesystemTask) Run(
 		)
 	}
 
-
 	client, err := t.factory.NewClient(ctx, meta.ZoneID)
 	if err != nil {
 		return err
