@@ -86,7 +86,9 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    SharedState = std::make_shared<TPartitionThreadSafeState>(TabletID());
+    SharedState = std::make_shared<TPartitionThreadSafeState>(
+        PartitionConfig.GetDiskId(),
+        TabletID());
 }
 
 TPartitionActor::~TPartitionActor()

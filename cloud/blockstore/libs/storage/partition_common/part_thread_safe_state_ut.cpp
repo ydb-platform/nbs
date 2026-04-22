@@ -14,14 +14,16 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 {
     Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenItOverflows)
     {
-        TPartitionThreadSafeState state(0, {}, 0, Max());
+        TPartitionThreadSafeState state;
+        state.Init({}, 0, Max());
 
         UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);
     }
 
     Y_UNIT_TEST(ShouldInitializeWithGenerationAndValue)
     {
-        TPartitionThreadSafeState generator(0, {}, 5, 10);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, 5, 10);
         ui64 expectedCommitId = MakeCommitId(5, 10);
 
         UNIT_ASSERT_VALUES_EQUAL(expectedCommitId, generator.GetLastCommitId());
@@ -29,7 +31,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 
     Y_UNIT_TEST(ShouldGenerateCommitId)
     {
-        TPartitionThreadSafeState generator(0, {}, 1, 0);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, 1, 0);
 
         ui64 commitId = generator.GenerateCommitId();
         ui64 expectedCommitId = MakeCommitId(1, 1);
@@ -40,7 +43,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 
     Y_UNIT_TEST(ShouldGenerateSequentialCommitIds)
     {
-        TPartitionThreadSafeState generator(0, {}, 2, 100);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, 2, 100);
 
         ui64 commitId1 = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(2, 101), commitId1);
@@ -58,7 +62,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 
     Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenOverflows)
     {
-        TPartitionThreadSafeState generator(0, {}, 3, Max<ui32>());
+        TPartitionThreadSafeState generator;
+        generator.Init({}, 3, Max<ui32>());
 
         ui64 commitId = generator.GenerateCommitId();
 
@@ -70,7 +75,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 
     Y_UNIT_TEST(ShouldHandleGenerationNearMaxValue)
     {
-        TPartitionThreadSafeState generator(0, {}, 10, Max<ui32>() - 1);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, 10, Max<ui32>() - 1);
 
         ui64 commitId1 = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(10, Max<ui32>()), commitId1);
@@ -81,7 +87,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 
     Y_UNIT_TEST(ShouldWorkWithZeroGeneration)
     {
-        TPartitionThreadSafeState generator(0, {}, 0, 0);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, 0, 0);
 
         ui64 commitId = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(0, 1), commitId);
@@ -89,7 +96,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 
     Y_UNIT_TEST(ShouldWorkWithMaxGeneration)
     {
-        TPartitionThreadSafeState generator(0, {}, Max<ui32>(), 0);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, Max<ui32>(), 0);
 
         ui64 commitId = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(Max<ui32>(), 1), commitId);
@@ -98,7 +106,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldPreserveGenerationInCommitId)
     {
         constexpr ui32 Generation = 12345;
-        TPartitionThreadSafeState generator(0, {}, Generation, 0);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, Generation, 0);
 
         ui64 commitId = generator.GenerateCommitId();
         auto [gen, step] = ParseCommitId(commitId);
@@ -109,7 +118,8 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 
     Y_UNIT_TEST(ShouldBeThreadSafe)
     {
-        TPartitionThreadSafeState generator(0, {}, 1, 0);
+        TPartitionThreadSafeState generator;
+        generator.Init({}, 1, 0);
         constexpr size_t NumThreads = 10;
         constexpr size_t GenerationsPerThread = 1000;
 

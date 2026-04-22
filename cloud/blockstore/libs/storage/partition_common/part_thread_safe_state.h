@@ -103,17 +103,12 @@ private:
         DiskId};
 
 public:
-    explicit TPartitionThreadSafeState(TString diskId, ui64 tabletId)
+    TPartitionThreadSafeState() = default;
+
+    TPartitionThreadSafeState(TString diskId, ui64 tabletId)
         : DiskId(std::move(diskId))
         , TabletId(tabletId)
     {}
-
-    TPartitionThreadSafeState(
-        TString diskId,
-        ui64 tabletId,
-        NActors::TActorId partitionActorId,
-        ui32 generation,
-        ui32 lastCommitId);
 
     void Init(
         NActors::TActorId partitionActorId,
