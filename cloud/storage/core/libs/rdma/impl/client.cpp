@@ -1906,7 +1906,7 @@ TClient::TClient(
 
 void TClient::Start() noexcept
 {
-    Log = Logging->CreateLog("STORAGE_RDMA");
+    Log = Logging->CreateLog("BLOCKSTORE_RDMA");
 
     RDMA_INFO("start client");
 

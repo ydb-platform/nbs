@@ -1633,7 +1633,7 @@ TServer::TServer(
 
 void TServer::Start()
 {
-    Log = Logging->CreateLog("STORAGE_RDMA");
+    Log = Logging->CreateLog("BLOCKSTORE_RDMA");
 
     RDMA_DEBUG("start server");
 
