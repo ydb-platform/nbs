@@ -12,6 +12,7 @@
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
+#include <cloud/filestore/public/api/protos/server.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -122,6 +123,24 @@ struct IFileStoreService
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IShmControl
+    : public IStartable
+{
+    virtual ~IShmControl() = default;
+
+#define FILESTORE_DECLARE_SHM_METHOD(name, ...)                                \
+    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) = 0;                \
+// FILESTORE_DECLARE_SHM_METHOD
+
+    FILESTORE_SHARED_MEMORY_METHODS(FILESTORE_DECLARE_SHM_METHOD)
+
+#undef FILESTORE_DECLARE_SHM_METHOD
 };
 
 ////////////////////////////////////////////////////////////////////////////////

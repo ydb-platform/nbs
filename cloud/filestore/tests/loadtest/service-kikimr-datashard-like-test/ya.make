@@ -25,6 +25,11 @@ SET(
     cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test/nfs-storage-config-patch.txt
 )
 
+SET(
+    NFS_SERVER_CONFIG_PATCH
+    cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test/nfs-storage-server-patch.txt
+)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
 END()

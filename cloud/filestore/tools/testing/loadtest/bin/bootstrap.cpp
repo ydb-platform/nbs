@@ -85,6 +85,13 @@ public:
         Clients.push_back(client);
         return client;
     }
+
+    IShmControlPtr CreateShmControl() override
+    {
+        return NClient::CreateShmControlClient(
+            ClientConfig,
+            Logging);
+    }
 };
 
 }   // namespace

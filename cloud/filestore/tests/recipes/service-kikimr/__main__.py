@@ -22,6 +22,7 @@ from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
+    expand_placeholders,
     process_recipe_err_files,
 )
 
@@ -105,7 +106,9 @@ def start(argv):
             server_config.MergeFrom(server_config_patch)
 
     if server_config.ServerConfig.SharedMemoryBasePath != "":
-        shared_memory_base_path = os.path.join(common.output_path(), "shm")
+        shared_memory_base_path = expand_placeholders(
+            server_config.ServerConfig.SharedMemoryBasePath
+        )
         os.makedirs(shared_memory_base_path, exist_ok=True)
         server_config.ServerConfig.SharedMemoryBasePath = shared_memory_base_path
 

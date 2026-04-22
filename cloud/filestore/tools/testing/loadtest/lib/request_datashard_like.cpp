@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/guid.h>
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
@@ -37,7 +38,7 @@ struct TNodeInfo
 // Requires AllowHandlelessIO feature enabled on the target filesystem.
 //
 // Files are created via CreateNode and are accessed by NodeId with invalid
-// handle. This requires ParentlessFilesOnly feature on the target filesystem
+// handle. This requires ParentlessFilesOnly feature on the target filesystem.
 class TDatashardLikeRequestGenerator final
     : public IRequestGenerator
     , public std::enable_shared_from_this<TDatashardLikeRequestGenerator>
@@ -52,6 +53,9 @@ private:
     TLog Log;
 
     ISessionPtr Session;
+    // When set, injects SHM iovec into ReadData/WriteData requests before
+    // forwarding them to Session.
+    IShmDataClientPtr DataClient;
 
     TVector<std::pair<ui64, NProto::EAction>> Actions;
     ui64 TotalRate = 0;
@@ -70,12 +74,14 @@ public:
             NProto::TDatashardLikeLoadSpec spec,
             ILoggingServicePtr logging,
             ISessionPtr session,
+            IShmDataClientPtr dataClient,
             TString filesystemId,
             NProto::THeaders headers)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
         , Session(std::move(session))
+        , DataClient(std::move(dataClient))
     {
         Log = logging->CreateLog(Headers.GetClientId());
 
@@ -105,11 +111,14 @@ public:
             Y_ENSURE(
                 action.GetRate() > 0,
                 "please specify positive action rate");
+
             TotalRate += action.GetRate();
             Actions.emplace_back(std::make_pair(TotalRate, action.GetAction()));
         }
 
-        Y_ENSURE(!Actions.empty(), "please specify at least one action");
+        Y_ENSURE(
+            !Actions.empty(),
+            "please specify at least one action for the test spec");
     }
 
     bool HasNextRequest() override
@@ -117,7 +126,7 @@ public:
         return true;
     }
 
-    TFuture<TCompletedRequest> ExecuteNextRequest() override
+    NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() override
     {
         const auto& action = PeekNextAction();
         switch (action) {
@@ -182,25 +191,25 @@ private:
             info.NodeId = response.GetNode().GetId();
             info.Size = 0;
 
-            NThreading::TFuture<NProto::TSetNodeAttrResponse> resizeFuture;
+            NThreading::TFuture<NProto::TSetNodeAttrResponse> setAttr;
             if (InitialFileSize > 0) {
                 static const int resizeFlags =
                     ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
 
-                auto resizeReq = CreateRequest<NProto::TSetNodeAttrRequest>();
-                resizeReq->SetNodeId(info.NodeId);
-                resizeReq->SetFlags(resizeFlags);
-                resizeReq->MutableUpdate()->SetSize(InitialFileSize);
+                auto request = CreateRequest<NProto::TSetNodeAttrRequest>();
+                request->SetNodeId(info.NodeId);
+                request->SetFlags(resizeFlags);
+                request->MutableUpdate()->SetSize(InitialFileSize);
 
-                resizeFuture = Session->SetNodeAttr(
+                setAttr = Session->SetNodeAttr(
                     CreateCallContext(),
-                    std::move(resizeReq));
+                    std::move(request));
             } else {
-                resizeFuture =
+                setAttr =
                     NThreading::MakeFuture(NProto::TSetNodeAttrResponse());
             }
 
-            return resizeFuture.Apply(
+            return setAttr.Apply(
                 [=, this](const TFuture<NProto::TSetNodeAttrResponse>& f)
                 { return HandleResizeAfterCreate(f, info, started); });
         } catch (const TServiceError& e) {
@@ -225,7 +234,7 @@ private:
             info.Size = InitialFileSize;
 
             with_lock (StateLock) {
-                NodeInfos.push_back(std::move(info));
+                NodeInfos.emplace_back(std::move(info));
             }
 
             return {NProto::ACTION_CREATE_NODE, started, response.GetError()};
@@ -243,20 +252,30 @@ private:
     TFuture<TCompletedRequest> DoRead()
     {
         TGuard<TMutex> guard(StateLock);
-        if (NodeInfos.empty()) {
+        auto it = FindIf(
+            NodeInfos,
+            [this](const TNodeInfo& n) { return n.Size >= ReadBytes; });
+        if (it == NodeInfos.end()) {
+            guard.Release();
             return DoCreateNode();
         }
 
-        auto nodeInfo = GetNodeInfo();
+        auto nodeInfo = PopNodeInfo(it);
+        guard.Release();
 
         const auto started = TInstant::Now();
         const ui64 slotCount = nodeInfo.Size / ReadBytes;
         const ui64 byteOffset = RandomNumber(slotCount) * ReadBytes;
 
         auto request = CreateRequest<NProto::TReadDataRequest>();
+        request->SetHandle(InvalidHandle);
         request->SetNodeId(nodeInfo.NodeId);
         request->SetOffset(byteOffset);
         request->SetLength(ReadBytes);
+
+        ui64 shmOffset = Max<ui64>();
+        char* shmLocalPtr =
+            DataClient ? DataClient->PrepareRead(*request, shmOffset) : nullptr;
 
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request))
@@ -264,7 +283,12 @@ private:
                 [=](const TFuture<NProto::TReadDataResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
-                        return ptr->HandleRead(future, nodeInfo, started);
+                        return ptr->HandleRead(
+                            future,
+                            nodeInfo,
+                            started,
+                            shmLocalPtr,
+                            shmOffset);
                     }
 
                     return TCompletedRequest{
@@ -277,14 +301,26 @@ private:
     TCompletedRequest HandleRead(
         const TFuture<NProto::TReadDataResponse>& future,
         TNodeInfo nodeInfo,
-        TInstant started)
+        TInstant started,
+        char* shmLocalPtr,
+        ui64 shmOffset)
     {
+        Y_DEFER
+        {
+            if (DataClient) {
+                DataClient->FreeOffset(shmOffset);
+            }
+        };
         try {
-            const auto& response = future.GetValue();
+            auto response = future.GetValue();
             CheckResponse(response);
 
+            if (shmLocalPtr && response.GetBuffer().empty() && response.GetLength() > 0) {
+                response.SetBuffer(TString(shmLocalPtr, response.GetLength()));
+            }
+
             with_lock (StateLock) {
-                NodeInfos.push_back(std::move(nodeInfo));
+                NodeInfos.emplace_back(std::move(nodeInfo));
             }
 
             return {NProto::ACTION_READ, started, response.GetError()};
@@ -304,10 +340,12 @@ private:
         TGuard<TMutex> guard(StateLock);
         if (nodeInfo.NodeId == 0) {
             if (NodeInfos.empty()) {
+                guard.Release();
                 return DoCreateNode();
             }
-            nodeInfo = GetNodeInfo();
+            nodeInfo = PopRandomNodeInfo();
         }
+        guard.Release();
 
         const auto started = TInstant::Now();
         ui64 byteOffset = nodeInfo.Size;
@@ -316,11 +354,13 @@ private:
         TString buffer(WriteBytes, '\0');
 
         auto request = CreateRequest<NProto::TWriteDataRequest>();
-
         request->SetHandle(InvalidHandle);
         request->SetNodeId(nodeInfo.NodeId);
         request->SetOffset(byteOffset);
         *request->MutableBuffer() = std::move(buffer);
+
+        ui64 shmOffset =
+            DataClient ? DataClient->PrepareWrite(*request) : Max<ui64>();
 
         auto self = weak_from_this();
         return Session->WriteData(CreateCallContext(), std::move(request))
@@ -328,7 +368,8 @@ private:
                 [=](const TFuture<NProto::TWriteDataResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
-                        return ptr->HandleWrite(future, nodeInfo, started);
+                        return ptr
+                            ->HandleWrite(future, nodeInfo, started, shmOffset);
                     }
 
                     return TCompletedRequest{
@@ -341,14 +382,21 @@ private:
     TCompletedRequest HandleWrite(
         const TFuture<NProto::TWriteDataResponse>& future,
         TNodeInfo nodeInfo,
-        TInstant started)
+        TInstant started,
+        ui64 shmOffset)
     {
+        Y_DEFER
+        {
+            if (DataClient) {
+                DataClient->FreeOffset(shmOffset);
+            }
+        };
         try {
             const auto& response = future.GetValue();
             CheckResponse(response);
 
             with_lock (StateLock) {
-                NodeInfos.push_back(std::move(nodeInfo));
+                NodeInfos.emplace_back(std::move(nodeInfo));
             }
 
             return {NProto::ACTION_WRITE, started, response.GetError()};
@@ -373,14 +421,18 @@ private:
         return request;
     }
 
-    TNodeInfo GetNodeInfo()
+    TNodeInfo PopNodeInfo(TVector<TNodeInfo>::iterator it)
     {
-        Y_ABORT_UNLESS(!NodeInfos.empty());
-        ui64 index = RandomNumber(NodeInfos.size());
-        std::swap(NodeInfos[index], NodeInfos.back());
-        auto info = NodeInfos.back();
+        std::swap(*it, NodeInfos.back());
+        auto info = std::move(NodeInfos.back());
         NodeInfos.pop_back();
         return info;
+    }
+
+    TNodeInfo PopRandomNodeInfo()
+    {
+        Y_ABORT_UNLESS(!NodeInfos.empty());
+        return PopNodeInfo(NodeInfos.begin() + RandomNumber(NodeInfos.size()));
     }
 
     template <typename T>
@@ -407,6 +459,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
+    IShmDataClientPtr dataClient,
     TString filesystemId,
     NProto::THeaders headers)
 {
@@ -414,6 +467,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
         std::move(spec),
         std::move(logging),
         std::move(session),
+        std::move(dataClient),
         std::move(filesystemId),
         std::move(headers));
 }

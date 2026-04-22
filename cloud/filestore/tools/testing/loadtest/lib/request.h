@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+#include "shm_client.h"
 
 #include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
 
@@ -90,6 +91,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
+    IShmDataClientPtr dataClient,
     TString filesystemId,
     NProto::THeaders headers);
 
