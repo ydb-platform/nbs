@@ -17,7 +17,8 @@ SELECT
     rt.Request,
     r.StartBlock,
     r.EndBlock,
-    r.DurationUs,
+    r.PostponedUs,
+    r.ExecutionUs,
     r.StartBlock / 1024 as StartRangeIndex,
     r.EndBlock / 1024 as EndRangeIndex
 from Requests as r
@@ -59,15 +60,15 @@ select
 	A.At as ReadAt,
 	A.StartBlock as ReadStartBlock,
 	A.EndBlock as ReadEndBlock,
-	A.DurationUs as ReadDurationUs,
+	A.ExecutionUs as ReadExecutionUs,
 	B.Id as WriteId,
 	B.At as WriteAt,
 	B.StartBlock as WriteStartBlock,
 	B.EndBlock as WriteEndBlock,
-	B.DurationUs as WriteDurationUs
-from tmp1 as A
-inner join tmp1 as B
+	B.ExecutionUs as WriteExecutionUs
+from tmp2 as A
+inner join tmp2 as B
 	on A.Request == "ReadBlocks"
 	and B.Request == "WriteBlocks"
-	and (A.AtUs + A.DurationUs >= B.AtUs and A.AtUs <= B.AtUs + B.DurationUs)
+	and (A.AtUs + A.PostponedUs + A.ExecutionUs >= B.AtUs and A.AtUs <= B.AtUs + B.PostponedUs + B.ExecutionUs)
 ```
