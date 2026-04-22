@@ -475,12 +475,6 @@ class TVolumeStats final
         TRealInstanceKeyHash,
         TRealInstanceKeyEqual>;
 
-    /*
-    using TVolumeMap = std::unordered_map<
-        TString,   // ClientId
-        TVolumeInfoPtr>;
-    */
-
     struct TVolumeInfoHolder
     {
         TVolumeBasePtr VolumeBase;
@@ -542,7 +536,6 @@ private:
 
     std::unordered_map<TClientVolume, TRealInstanceId>
         ClientVolumeToRealInstance;
-    std::unordered_map<TString, TRealInstanceId> ClientToRealInstance;
     TVolumeHolderMap Volumes;
     TRWMutex Lock;
 
@@ -597,23 +590,7 @@ public:
             volumeInfoIt = infos.emplace(realInstanceId, volumeInfo).first;
             inserted = true;
             volumeInfoIt->second->PinCount = pinCountForNewInstance;
-            Cerr << "add volumeInfo " << volume.GetDiskId()
-                 << " with realInstanceId "
-                 << volumeInfoIt->second->RealInstanceId.GetRealInstanceId()
-                 << Endl;
         }
-
-        /*
-        auto volumeInfoIt = infos.find(realInstanceId.GetClientId());
-        if (volumeInfoIt == infos.end()) {
-            auto volumeInfo =
-                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId);
-            volumeInfoIt =
-                infos.emplace(realInstanceId.GetClientId(), volumeInfo).first;
-            inserted = true;
-            volumeInfoIt->second->PinCount = pinCountForNewInstance;
-        }
-        */
 
         volumeInfoIt->second->LastRemountTime = Timer->Now();
 
@@ -634,39 +611,16 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        auto [itr, result] =
-            ClientToRealInstance.try_emplace(clientId, clientId, instanceId);
-        Y_UNUSED(itr);
-
         const auto& diskId = NStorage::GetLogicalDiskId(volume.GetDiskId());
         auto [it, _] = ClientVolumeToRealInstance.try_emplace(
             {clientId, diskId},
             clientId,
             instanceId);
-        Y_UNUSED(it);
-
-        Cerr << "mount ClientToRealInstance       size "
-             << ClientToRealInstance.size() << Endl;
-        Cerr << "mount ClientVolumeToRealInstance size "
-             << ClientVolumeToRealInstance.size() << Endl;
-
-        if (_) {
-            Cerr << "add   ClientVolumeToRealInstance [" << it->first.first
-                 << ", " << it->first.second << "] "
-                 << it->second.GetRealInstanceId() << Endl;
-        }
 
         return MountVolumeImpl(
             volume,
             it->second,
-            0);   // pinCountForNewInstance
-
-        /*
-        return MountVolumeImpl(
-            volume,
-            TRealInstanceId{clientId, instanceId},
-            0); // pinCountForNewInstance
-        */
+            0 /* pinCountForNewInstance */);
     }
 
     void UnmountVolume(
@@ -743,45 +697,15 @@ public:
         }
 
         const TVolumeMap& infos = volumeIt->second.VolumeInfos;
-        /*
-        if (DiagnosticsConfig->GetEnableDurableVolumeInfo()) {
-            const auto infoIt = std::ranges::find_if(
-                infos,
-                [&](const auto& info)
-                {
-                    return info.second->RealInstanceId.GetClientId() ==
-                           clientId;
-                });
-            if (infoIt == infos.end()) {
-                return nullptr;
-            }
-            return infoIt->second;
-        }
-        */
-
-        /*
-        const auto realInstanceIt = ClientToRealInstance.find(clientId);
-        if (realInstanceIt == ClientToRealInstance.end()) {
-            return nullptr;
-        }
-        const auto infoIt = infos.find(realInstanceIt->second);
-        if (infoIt == infos.end()) {
-            return nullptr;
-        }
-        return infoIt->second;
-        */
 
         const auto realInstanceIt =
             ClientVolumeToRealInstance.find(std::tie(clientId, diskId));
+
         if (realInstanceIt == ClientVolumeToRealInstance.end()) {
-            Cerr << "unknown [" << clientId << ", " << diskId << "]" << Endl;
             return nullptr;
         }
         const auto infoIt = infos.find(realInstanceIt->second);
         if (infoIt == infos.end()) {
-            Cerr << "no volumeInfo for [" << clientId << ", " << diskId
-                 << "] with realInstanceId "
-                 << realInstanceIt->second.GetRealInstanceId() << Endl;
             return nullptr;
         }
         return infoIt->second;
@@ -903,14 +827,6 @@ public:
 
                 if (removeInstance) {
                     UnregisterInstance(info.VolumeBase, info.RealInstanceId);
-                    std::erase_if(
-                        ClientToRealInstance,
-                        [&info](const auto& client)
-                        {
-                            return TRealInstanceKeyEqual()(
-                                client.second,
-                                info.RealInstanceId);
-                        });
 
                     const auto& diskId = info.VolumeBase->Volume.GetDiskId();
                     std::erase_if(
@@ -922,19 +838,8 @@ public:
                                 TRealInstanceKeyEqual()(
                                     clientVolume.second,
                                     info.RealInstanceId);
-                            if (erase) {
-                                Cerr << "rem   ClientVolumeToRealInstance ["
-                                     << clientVolume.first.first << ", "
-                                     << clientVolume.first.second << "] "
-                                     << clientVolume.second.GetRealInstanceId()
-                                     << Endl;
-                            }
                             return erase;
                         });
-                    Cerr << "trim  ClientToRealInstance       size "
-                         << ClientToRealInstance.size() << Endl;
-                    Cerr << "trim  ClientVolumeToRealInstance size "
-                         << ClientVolumeToRealInstance.size() << Endl;
                     return true;
                 }
                 return false;
