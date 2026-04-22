@@ -35,6 +35,7 @@ void TIndexTabletActor::ReplayOpLog(
                 << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
         }
 
+        bool isUnknownOpLogEntry = false;
         if (op.HasCreateNodeRequest()) {
             RegisterCreateNodeInShardActor(
                 ctx,
@@ -152,6 +153,7 @@ void TIndexTabletActor::ReplayOpLog(
                 false // isLocalRename - doesn't matter w/o requestInfo
             );
         } else {
+            isUnknownOpLogEntry = true;
             const TString message = ReportUnknownOpLogEntry(
                 TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());
 
@@ -161,6 +163,10 @@ void TIndexTabletActor::ReplayOpLog(
                 "%s %s",
                 LogTag.c_str(),
                 message.c_str());
+        }
+
+        if (!isUnknownOpLogEntry) {
+            Metrics.ReplayedOpLogEntriesCount++;
         }
     }
 }
