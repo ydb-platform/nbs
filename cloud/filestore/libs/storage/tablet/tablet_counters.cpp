@@ -170,7 +170,7 @@ void TTabletMetrics::Register(
         CreateNodeInShardRetriesCount,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
-        ReplayedOpLogEntriesCount,
+        ReplayedCreateNodeInShardRequestsCount,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);

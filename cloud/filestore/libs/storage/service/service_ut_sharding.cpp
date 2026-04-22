@@ -7990,13 +7990,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         registry->Visit(TInstant::Zero(), visitor);
 
         visitor.ValidateExpectedCounters(
-            {{{{"sensor", "ReplayedOpLogEntriesCount"},
+            {{{{"sensor", "ReplayedCreateNodeInShardRequestsCount"},
                {"filesystem", "test"}},
               1},
-             {{{"sensor", "ReplayedOpLogEntriesCount"},
+             {{{"sensor", "ReplayedCreateNodeInShardRequestsCount"},
                {"filesystem", "test_s1"}},
               0},
-             {{{"sensor", "ReplayedOpLogEntriesCount"},
+             {{{"sensor", "ReplayedCreateNodeInShardRequestsCount"},
                {"filesystem", "test_s2"}},
               0},
              {{{"sensor", "NodeExistsWhileCreatingInShardCount"},
