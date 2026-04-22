@@ -12,6 +12,7 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 using namespace NActors;
 
 using namespace NPartition;
+using namespace NKikimr;
 
 namespace {
 
@@ -116,36 +117,58 @@ void TFreshBlocksWriterActor::Bootstrap(const NActors::TActorContext& ctx)
     NCloud::Send(ctx, PartitionActorId, std::move(request));
 }
 
-void TFreshBlocksWriterActor::ScheduleYellowStateUpdate(
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ctx);
-    Y_ABORT("Unimplemented");
-}
-
-void TFreshBlocksWriterActor::UpdateYellowState(
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ctx);
-    Y_ABORT("Unimplemented");
-}
-
-void TFreshBlocksWriterActor::ReassignChannelsIfNeeded(
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ctx);
-    Y_ABORT("Unimplemented");
-}
-
-void TFreshBlocksWriterActor::UpdateChannelPermissions(
+void TFreshBlocksWriterActor::ProcessStorageStatusFlags(
     const NActors::TActorContext& ctx,
+    NKikimr::TStorageStatusFlags flags,
     ui32 channel,
-    EChannelPermissions permissions)
+    ui32 generation,
+    double approximateFreeSpaceShare,
+    bool notifyPartition)
 {
-    Y_UNUSED(ctx);
+    const ui32 groupId = TabletStorageInfo->GroupFor(channel, generation);
 
-    ChannelsState->UpdatePermissions(channel, permissions);
-    //TODO(issue-4875): add partition notification.
+    if (!IsValid(flags)) {
+        return;
+    }
+
+    const auto permissions = StorageStatusFlags2ChannelPermissions(flags);
+    ChannelsState->UpdateChannelFreeSpaceShare(
+        channel,
+        approximateFreeSpaceShare);
+
+    const bool permissionsUpdated =
+        ChannelsState->UpdatePermissions(channel, permissions);
+    const bool isYellowStop = HasYellowStop(flags);
+    const bool isYellowMove = HasYellowMove(flags);
+
+    if (isYellowStop) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Yellow stop flag received for channel %u and group %u",
+            LogTitle.GetWithTime().c_str(),
+            channel,
+            groupId);
+    } else if (isYellowMove) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Yellow move flag received for channel %u and group %u",
+            LogTitle.GetWithTime().c_str(),
+            channel,
+            groupId);
+    }
+
+    if (notifyPartition && (isYellowStop || isYellowMove || permissionsUpdated))
+    {
+        auto request = std::make_unique<
+            TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags>(
+            flags,
+            channel,
+            generation,
+            approximateFreeSpaceShare);
+        NCloud::Send(ctx, PartitionActorId, std::move(request));
+    }
 }
 
 void TFreshBlocksWriterActor::Poison(const NActors::TActorContext& ctx)
@@ -244,6 +267,15 @@ void TFreshBlocksWriterActor::HandlePoisonPill(
     PoisonPillHelper.HandlePoisonPill(ev, ctx);
 }
 
+void TFreshBlocksWriterActor::ReassignChannelsIfNeeded(
+    const NActors::TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded>();
+
+    NCloud::Send(ctx, PartitionActorId, std::move(request));
+}
+
 void TFreshBlocksWriterActor::HandlePartitionReady(
     const TEvPartition::TEvWaitReadyResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -321,6 +353,48 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
 
     StateLoaded = true;
     SendPendingRequests(ctx, PendingRequests);
+}
+
+void TFreshBlocksWriterActor::HandleProcessStorageStatusFlags(
+    const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ProcessStorageStatusFlags(
+        ctx,
+        ev->Get()->Flags,
+        ev->Get()->Channel,
+        ev->Get()->Generation,
+        ev->Get()->ApproximateFreeSpaceShare,
+        false);   // without notifying PartitionActor
+}
+
+void TFreshBlocksWriterActor::HandleCheckBlobstorageStatusResult(
+    const TEvTablet::TEvCheckBlobstorageStatusResult::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto* msg = ev->Get();
+
+    for (const auto& channel: TabletStorageInfo->Channels) {
+        bool diskSpaceYellowStop = false;
+        bool diskSpaceLightOrange = false;
+        if (auto latestEntry = channel.LatestEntry()) {
+            diskSpaceYellowStop =
+                IsIn(msg->YellowStopGroups, latestEntry->GroupID);
+            diskSpaceLightOrange =
+                IsIn(msg->LightOrangeGroups, latestEntry->GroupID);
+        }
+
+        EChannelPermissions permissions = {};
+        if (!diskSpaceLightOrange) {
+            permissions |= EChannelPermission::SystemWritesAllowed;
+        }
+        if (!diskSpaceYellowStop) {
+            permissions |= EChannelPermission::UserWritesAllowed;
+        }
+        ChannelsState->UpdatePermissions(channel.Channel, permissions);
+    }
 }
 
 void TFreshBlocksWriterActor::HandleWaitReady(
@@ -438,6 +512,11 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags,
+            HandleProcessStorageStatusFlags);
+
+        HFunc(NKikimr::TEvTablet::TEvCheckBlobstorageStatusResult, HandleCheckBlobstorageStatusResult);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,

@@ -414,3 +414,56 @@ func TestCreateNodeIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, createdID, idempotentID)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCreateSessionIdempotent(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	clientID := t.Name()
+	session1, err := client.CreateSessionWithClientID(
+		ctx,
+		filesystemID,
+		clientID,
+		"",
+		false,
+	)
+	require.NoError(t, err)
+	defer session1.Close(ctx)
+
+	session2, err := client.CreateSessionWithClientID(
+		ctx,
+		filesystemID,
+		clientID,
+		"",
+		false,
+	)
+	require.NoError(t, err)
+	defer session2.Close(ctx)
+
+	require.Equal(t, session1.GetID(), session2.GetID())
+
+	session3, err := client.CreateSessionWithClientID(
+		ctx,
+		filesystemID,
+		clientID+"_different",
+		"",
+		false,
+	)
+	require.NoError(t, err)
+	defer session3.Close(ctx)
+
+	require.NotEqual(t, session1.GetID(), session3.GetID())
+}

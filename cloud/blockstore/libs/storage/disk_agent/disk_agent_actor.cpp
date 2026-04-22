@@ -29,7 +29,7 @@ TDiskAgentActor::TDiskAgentActor(
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
-        NRdma::IServerPtr rdmaServer,
+        NCloud::NStorage::NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         ITaskQueuePtr backgroundThreadPool,
         ILocalNVMeServicePtr localNVMeService)

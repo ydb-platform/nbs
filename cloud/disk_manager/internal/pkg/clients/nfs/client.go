@@ -2,7 +2,9 @@ package nfs
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/gofrs/uuid"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -12,6 +14,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getClientID() string {
+	return fmt.Sprintf("disk-manager-%v", uuid.Must(uuid.NewV4()))
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,6 +53,17 @@ func wrapError(err error) error {
 	}
 
 	return err
+}
+
+func isSessionInvalidError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_INVALID_SESSION {
+			return true
+		}
+	}
+
+	return false
 }
 
 func isAbortedError(err error) bool {
@@ -330,24 +349,56 @@ func (c *client) CreateSession(
 	fileSystemID string,
 	checkpointID string,
 	readonly bool,
+) (Session, error) {
+
+	return c.CreateSessionWithClientID(
+		ctx,
+		fileSystemID,
+		getClientID(),
+		checkpointID,
+		readonly,
+	)
+}
+
+func (c *client) CreateSessionWithClientID(
+	ctx context.Context,
+	fileSystemID string,
+	clientID string,
+	checkpointID string,
+	readonly bool,
 ) (_ Session, err error) {
 
 	defer c.metrics.StatRequest("CreateSession")(&err)
 
-	s, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
+	s, err := c.nfs.CreateSession(
+		ctx,
+		fileSystemID,
+		clientID,
+		checkpointID,
+		readonly,
+	)
 	if err != nil {
 		return nil, wrapError(err)
 	}
 
-	return &session{
-		nfs:     c.nfs,
-		session: s,
-		metrics: client_metrics.NewSessionMetrics(
-			c.sessionMetricsRegistry,
-			map[string]string{
-				"filesystem": fileSystemID,
-				"checkpoint": checkpointID,
-			},
-		),
-	}, nil
+	metrics := client_metrics.NewSessionMetrics(
+		c.sessionMetricsRegistry,
+		map[string]string{
+			"filesystem": fileSystemID,
+			"checkpoint": checkpointID,
+		},
+	)
+
+	return NewSessionWithReEstablish(
+		&sessionWithMetrics{
+			nfs:     c.nfs,
+			session: s,
+			metrics: metrics,
+		},
+		c.nfs,
+		fileSystemID,
+		clientID,
+		checkpointID,
+		readonly,
+	), nil
 }

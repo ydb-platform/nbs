@@ -16,7 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob_index.h>
 #include <cloud/blockstore/libs/storage/partition2/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition2/model/checkpoint.h>

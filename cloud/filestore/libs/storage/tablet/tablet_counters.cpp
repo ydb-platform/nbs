@@ -388,6 +388,10 @@ void TTabletMetrics::Register(
 
     REGISTER_LOCAL(ResponseLogEntryCount, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        RenameNotSupportedErrorCount,
+        EMetricType::MT_DERIVATIVE);
+
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER

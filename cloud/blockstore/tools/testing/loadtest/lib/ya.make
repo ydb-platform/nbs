@@ -34,8 +34,6 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/nbd
     cloud/blockstore/libs/rdma_test
-    cloud/blockstore/libs/rdma/iface
-    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/validation
@@ -46,6 +44,8 @@ PEERDIR(
     cloud/storage/core/libs/endpoints/iface
     cloud/storage/core/libs/endpoints/fs
     cloud/storage/core/libs/version
+    cloud/storage/core/libs/rdma/iface
+    cloud/storage/core/libs/rdma/impl
 
     library/cpp/aio
     library/cpp/containers/concurrent_hash

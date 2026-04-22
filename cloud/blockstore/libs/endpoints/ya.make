@@ -17,13 +17,13 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/nbd
-    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service
     cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/validation
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/endpoints/fs
     cloud/storage/core/libs/endpoints/keyring
+    cloud/storage/core/libs/rdma/impl
 
     contrib/ydb/core/protos
 )

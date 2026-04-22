@@ -8,8 +8,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCallContext final
-    : public TCallContextBase
+struct TCallContext final: public TCallContextBase
 {
 private:
     TAtomic SilenceRetriableErrors = false;
@@ -24,5 +23,16 @@ public:
     bool GetHasUncountableRejects() const;
     void SetHasUncountableRejects();
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline TCallContextPtr CreateCallContext(ui64 requestId = 0)
+{
+    return MakeIntrusive<TCallContext>(requestId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TCallContextPtr ToBlockStoreCallContext(TCallContextBasePtr callContext);
 
 }   // namespace NCloud::NBlockStore

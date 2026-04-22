@@ -30,14 +30,8 @@
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/notify/iface/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/rdma/fake/client.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -75,6 +69,10 @@
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/impl/client.h>
+#include <cloud/storage/core/libs/rdma/impl/server.h>
+#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/tablet_flat/probes.h>
@@ -105,20 +103,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::TClientConfigPtr CreateRdmaClientConfig(
+NCloud::NStorage::NRdma::TClientConfigPtr CreateRdmaClientConfig(
     const NRdma::TRdmaConfig& config)
 {
-    return std::make_shared<NRdma::TClientConfig>(config.GetClient());
+    return NCloud::NStorage::NRdma::CreateClientConfigPtr(config.GetClient());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TFakeRdmaClientProxy
-    : public NRdma::IClient
+    : public NCloud::NStorage::NRdma::IClient
 {
 private:
     IActorSystemPtr ActorSystem;
-    NRdma::IClientPtr Impl;
+    NCloud::NStorage::NRdma::IClientPtr Impl;
 
 public:
     void Init(IActorSystemPtr actorSystem)
@@ -141,8 +139,8 @@ public:
         Impl.reset();
     }
 
-    auto StartEndpoint(TString host, ui32 port)
-        -> NThreading::TFuture<NRdma::IClientEndpointPtr> override
+    auto StartEndpoint(TString host, ui32 port) -> NThreading::TFuture<
+        NCloud::NStorage::NRdma::IClientEndpointPtr> override
     {
         return Impl->StartEndpoint(std::move(host), port);
     }
@@ -321,10 +319,10 @@ TServerModuleFactories::TServerModuleFactories()
     RdmaClientFactory = [] (
         NCloud::ILoggingServicePtr logging,
         NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TClientConfigPtr config)
+        NCloud::NStorage::NRdma::TClientConfigPtr config)
     {
-        return NRdma::CreateClient(
-            NRdma::NVerbs::CreateVerbs(),
+        return NCloud::NStorage::NRdma::CreateClient(
+            NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
             std::move(logging),
             std::move(monitoring),
             std::move(config));
@@ -333,10 +331,10 @@ TServerModuleFactories::TServerModuleFactories()
     RdmaServerFactory = [] (
         NCloud::ILoggingServicePtr logging,
         NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)
+        NCloud::NStorage::NRdma::TServerConfigPtr config)
     {
-        return NRdma::CreateServer(
-            NRdma::NVerbs::CreateVerbs(),
+        return NCloud::NStorage::NRdma::CreateServer(
+            NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
             std::move(logging),
             std::move(monitoring),
             std::move(config));
@@ -482,7 +480,8 @@ void TBootstrapYdb::InitRdmaClient()
 
 void TBootstrapYdb::InitRdmaServer()
 {
-    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
+    auto rdmaConfig =
+        std::make_shared<NCloud::NStorage::NRdma::TServerConfig>();
 
     RdmaServer = ServerModuleFactories->RdmaServerFactory(
         Logging,
@@ -935,7 +934,7 @@ void TBootstrapYdb::InitKikimrService()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
-    probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
+    probes.AddProbesList(LWTRACE_GET_PROBES(STORAGE_RDMA_PROVIDER));
     InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
                     .GetServiceName());
 
@@ -985,7 +984,7 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 
 void TBootstrapYdb::InitRdmaRequestServer()
 {
-    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>(
+    auto rdmaConfig = NCloud::NStorage::NRdma::CreateServerConfigPtr(
         Configs->RdmaConfig->GetServer());
 
     RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(

@@ -6,6 +6,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 GO_XTEST_SRCS(
     client_metrics_test.go
     client_test.go
+    session_with_re_establish_test.go
 )
 
 SIZE(MEDIUM)

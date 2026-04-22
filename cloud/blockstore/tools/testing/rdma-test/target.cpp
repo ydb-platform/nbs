@@ -8,12 +8,12 @@
 
 #include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <util/string/builder.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
@@ -35,7 +35,7 @@ namespace {
 // Y_ENSURE_RETURN
 
 template <typename T>
-auto CreateRequest(NRdma::TProtoMessagePtr proto)
+auto CreateRequest(NCloud::NStorage::NRdma::TProtoMessagePtr proto)
 {
     return std::shared_ptr<T>(static_cast<T*>(proto.release()));
 }
@@ -43,15 +43,16 @@ auto CreateRequest(NRdma::TProtoMessagePtr proto)
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestHandler final
-    : public NRdma::IServerHandler
+    : public NCloud::NStorage::NRdma::IServerHandler
 {
 private:
     const TOptionsPtr Options;
     const ITaskQueuePtr TaskQueue;
     const IStoragePtr Storage;
 
-    NRdma::IServerEndpointPtr Endpoint;
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::IServerEndpointPtr Endpoint;
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRequestHandler(
@@ -63,29 +64,45 @@ public:
         , Storage(std::move(storage))
     {}
 
-    void SetEndpoint(NRdma::IServerEndpointPtr endpoint)
+    void SetEndpoint(NCloud::NStorage::NRdma::IServerEndpointPtr endpoint)
     {
         Endpoint = std::move(endpoint);
     }
 
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return NCloud::NBlockStore::CreateCallContext();
+    }
+
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
     {
-        TaskQueue->ExecuteSimple([=, this] {
-            auto error = SafeExecute<NProto::TError>([=, this] {
-                return DoHandleRequest(context, callContext, in, out);
-            });
+        TaskQueue->ExecuteSimple(
+            [=,
+             this,
+             callContext =
+                 ToBlockStoreCallContext(std::move(callContext))]() mutable
+            {
+                auto error = SafeExecute<NProto::TError>(
+                    [=, this]()
+                    {
+                        return DoHandleRequest(
+                            context,
+                            std::move(callContext),
+                            in,
+                            out);
+                    });
 
-            if (HasError(error)) {
-                Endpoint->SendError(
-                    context,
-                    error.GetCode(),
-                    error.GetMessage());
-            }
-        });
+                if (HasError(error)) {
+                    Endpoint->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
+                }
+            });
     }
 
 private:
@@ -157,8 +174,8 @@ private:
                 Y_ABORT_UNLESS(guard);
 
                 const auto& sglist = guard.Get();
-                size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::SerializeWithData(
+                size_t responseBytes = NCloud::NStorage::NRdma::
+                    TProtoMessageSerializer::SerializeWithData(
                         out,
                         TBlockStoreProtocol::ReadBlocksResponse,
                         0,   // flags
@@ -199,7 +216,7 @@ private:
                 Y_UNUSED(guardedSgList);
 
                 size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                         out,
                         TBlockStoreProtocol::WriteBlocksResponse,
                         0,   // flags
@@ -224,7 +241,7 @@ private:
     const TOptionsPtr Options;
     const ITaskQueuePtr TaskQueue;
     const IStoragePtr Storage;
-    const NRdma::IServerPtr Server;
+    const NCloud::NStorage::NRdma::IServerPtr Server;
 
     TRequestHandlerPtr RequestHandler;
 
@@ -239,7 +256,7 @@ public:
             TOptionsPtr options,
             ITaskQueuePtr taskQueue,
             IStoragePtr storage,
-            NRdma::IServerPtr server)
+            NCloud::NStorage::NRdma::IServerPtr server)
         : Options(std::move(options))
         , TaskQueue(std::move(taskQueue))
         , Storage(std::move(storage))
@@ -292,7 +309,7 @@ IRunnablePtr CreateTestTarget(
     TOptionsPtr options,
     ITaskQueuePtr taskQueue,
     IStoragePtr storage,
-    NRdma::IServerPtr server)
+    NCloud::NStorage::NRdma::IServerPtr server)
 {
     return std::make_shared<TTestTarget>(
         std::move(options),

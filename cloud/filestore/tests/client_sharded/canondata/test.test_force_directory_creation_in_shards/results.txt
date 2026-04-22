@@ -123,3 +123,5 @@ locks():
 {
     "locks": []
 }
+counters():
+[{"kind": "RATE", "labels": {"component": "storage_fs", "host": "cluster", "filesystem": "fs0", "cloud": "test_cloud", "folder": "test_folder", "sensor": "RenameNotSupportedErrorCount"}, "value": 1}]

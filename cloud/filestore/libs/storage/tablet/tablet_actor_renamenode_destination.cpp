@@ -543,6 +543,10 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 
         if (!args.NewChildRef->IsExternal()) {
             if (GetFileSystem().GetForceDirectoryCreationInShards()) {
+                Metrics.RenameNotSupportedErrorCount.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+
                 args.Error = ErrorRenameNotSupported(
                     args.Request.GetOriginalRequest().GetNodeId(),
                     args.Request.GetNewParentId());

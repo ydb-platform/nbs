@@ -7,10 +7,11 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/testlib
+
+    cloud/storage/core/libs/rdma/iface
 
     contrib/ydb/core/testlib
     contrib/ydb/core/testlib/basics

@@ -1,5 +1,6 @@
 import logging
 import os
+import requests
 import signal
 import time
 import yatest.common as common
@@ -127,3 +128,26 @@ def flush_logs():
     #
 
     time.sleep(2)
+
+
+def fetch_counters():
+    #
+    # TODO(#568) - same as for flush_logs()
+    #
+
+    time.sleep(2)
+
+    mon_port = os.getenv("NFS_MON_PORT")
+    url = f"http://localhost:{mon_port}/counters/counters=filestore/json"
+    r = requests.get(url, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+def filter_counters(counters, fs_id, names):
+    result = []
+    for sensor in counters["sensors"]:
+        labels = sensor["labels"]
+        if labels.get("sensor") in names and labels.get("filesystem") == fs_id:
+            result.append(sensor)
+    return result

@@ -75,6 +75,7 @@ type ClientInterface interface {
 	CreateSession(
 		ctx context.Context,
 		fileSystemID string,
+		clientID string,
 		checkpointId string,
 		readonly bool,
 	) (Session, error)

@@ -2,9 +2,6 @@
 
 #include "part_nonrepl_events_private.h"
 
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -12,13 +9,17 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
+
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceRequestRdmaContext: public NRdma::TNullContext
+struct TDeviceRequestRdmaContext: public NCloud::NStorage::NRdma::TNullContext
 {
     // Index of the device in the partition config.
     const ui32 DeviceIdx;
@@ -28,7 +29,8 @@ struct TDeviceRequestRdmaContext: public NRdma::TNullContext
     {}
 };
 
-struct IClientHandlerWithTracking: public NRdma::IClientHandler
+struct IClientHandlerWithTracking
+    : public NCloud::NStorage::NRdma::IClientHandler
 {
     virtual void OnRequestStarted(
         ui32 deviceIdx,
@@ -87,7 +89,7 @@ public:
         TStringBuf buffer);
 
     void HandleResponse(
-        NRdma::TClientRequestPtr req,
+        NCloud::NStorage::NRdma::TClientRequestPtr req,
         ui32 status,
         size_t responseBytes) override;
 
@@ -236,14 +238,14 @@ bool TRdmaDeviceRequestHandlerBase<TDerived>::HandleSubResponse(
     OnRequestFinished(reqCtx.DeviceIdx);
     RequestResults.emplace_back(reqCtx.DeviceIdx);
 
-    if (status == NRdma::RDMA_PROTO_OK) {
+    if (status == NCloud::NStorage::NRdma::RDMA_PROTO_OK) {
         auto err = ProcessSubResponse(reqCtx, buffer);
         if (HasError(err)) {
             RequestResults.back().Error = err;
             Error = std::move(err);
         }
     } else {
-        Error = NRdma::ParseError(buffer);
+        Error = NCloud::NStorage::NRdma::ParseError(buffer);
         ConvertRdmaErrorIfNeeded(status, Error);
         RequestResults.back().Error = Error;
     }
@@ -254,7 +256,7 @@ bool TRdmaDeviceRequestHandlerBase<TDerived>::HandleSubResponse(
 
 template <typename TDerived>
 void TRdmaDeviceRequestHandlerBase<TDerived>::HandleResponse(
-    NRdma::TClientRequestPtr req,
+    NCloud::NStorage::NRdma::TClientRequestPtr req,
     ui32 status,
     size_t responseBytes)
 {

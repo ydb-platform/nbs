@@ -39,6 +39,7 @@ struct TDirectoryHandleStorageConfig
 {
     TString PathPrefix;
     ui64 InitialDataSize = 0;
+    ui64 MaxDataAreaStepSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

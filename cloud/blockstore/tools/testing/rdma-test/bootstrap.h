@@ -2,10 +2,10 @@
 
 #include "private.h"
 
-#include <cloud/blockstore/libs/rdma/impl/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/rdma/impl/public.h>
 
 namespace NCloud::NBlockStore {
 
@@ -24,9 +24,9 @@ private:
 
     ITraceProcessorPtr TraceProcessor;
 
-    NRdma::NVerbs::IVerbsPtr Verbs;
-    NRdma::IClientPtr Client;
-    NRdma::IServerPtr Server;
+    NCloud::NStorage::NRdma::NVerbs::IVerbsPtr Verbs;
+    NCloud::NStorage::NRdma::IClientPtr Client;
+    NCloud::NStorage::NRdma::IServerPtr Server;
 
     IStoragePtr Storage;
 

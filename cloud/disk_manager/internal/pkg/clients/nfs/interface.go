@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,6 +79,10 @@ type Session interface {
 		unlinkDirectory bool,
 	) error
 
+	SetSession(nfsSession nfs_client.Session)
+
+	GetID() string
+
 	Close(ctx context.Context) error
 }
 
@@ -120,6 +125,14 @@ type Client interface {
 	CreateSession(
 		ctx context.Context,
 		fileSystemID string,
+		checkpointID string,
+		readonly bool,
+	) (Session, error)
+
+	CreateSessionWithClientID(
+		ctx context.Context,
+		fileSystemID string,
+		clientID string,
 		checkpointID string,
 		readonly bool,
 	) (Session, error)

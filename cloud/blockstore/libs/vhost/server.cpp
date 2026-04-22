@@ -309,6 +309,8 @@ private:
         bool unaligned =
             startIndex * Options.BlockSize != vhostRequest->From ||
             endIndex * Options.BlockSize != vhostRequest->From + vhostRequest->Length;
+        bool shouldDrop =
+            Options.DropDiscardRequests && vhostRequest->IsDiscardRequest;
 
         auto request = MakeIntrusive<TRequest>(
             CreateRequestId(),
@@ -328,6 +330,11 @@ private:
             AppCtx.Log,
             request->MetricRequest,
             *request->CallContext);
+
+        if (shouldDrop) {
+            CompleteRequest(*request, NProto::TError{});
+            return nullptr;
+        }
 
         with_lock (RequestsLock) {
             if (!Stopped.test()) {

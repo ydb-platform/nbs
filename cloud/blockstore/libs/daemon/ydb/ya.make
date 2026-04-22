@@ -21,7 +21,6 @@ PEERDIR(
     cloud/blockstore/libs/notify/impl
     cloud/blockstore/libs/nvme
     cloud/blockstore/libs/rdma/fake
-    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/root_kms/iface
     cloud/blockstore/libs/server
     cloud/blockstore/libs/service
@@ -45,6 +44,7 @@ PEERDIR(
     cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/version
+    cloud/storage/core/libs/rdma/impl
 
     library/cpp/json
     library/cpp/lwtrace/mon

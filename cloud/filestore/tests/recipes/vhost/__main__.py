@@ -95,7 +95,7 @@ def start(argv):
     directory_handles_storage_path = common.work_path() + "/directoryhandlesstorage-" + uid
     pathlib.Path(directory_handles_storage_path).mkdir(parents=True, exist_ok=True)
     config.VhostServiceConfig.DirectoryHandlesStoragePath = directory_handles_storage_path
-    config.VhostServiceConfig.DirectoryHandlesInitialDataSize = 1000100
+    config.VhostServiceConfig.DirectoryHandlesInitialDataSize = 1048576
 
     service_type = args.service or "local"
     kikimr_port = 0

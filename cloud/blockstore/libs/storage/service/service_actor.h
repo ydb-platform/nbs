@@ -13,7 +13,6 @@
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
@@ -22,6 +21,8 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/service/model/ping_metrics.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
+
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -46,7 +47,7 @@ private:
     const NDiscovery::IDiscoveryServicePtr DiscoveryService;
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const IVolumeStatsPtr VolumeStats;
     const IRootKmsKeyProviderPtr RootKmsKeyProvider;
@@ -75,7 +76,7 @@ public:
         NDiscovery::IDiscoveryServicePtr discoveryService,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
@@ -486,7 +487,7 @@ NActors::IActorPtr CreateVolumeSessionActor(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
     TSharedServiceCountersPtr sharedCounters,

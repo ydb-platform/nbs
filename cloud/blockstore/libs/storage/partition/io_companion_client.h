@@ -14,16 +14,12 @@ struct TIOCompanionClient: public IIOCompanionClient
         : Owner(owner)
     {}
 
-    void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx) override;
-
-    void UpdateYellowState(const NActors::TActorContext& ctx) override;
-
-    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx) override;
-
-    void UpdateChannelPermissions(
+    void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
         ui32 channel,
-        EChannelPermissions permissions) override;
+        ui32 generation,
+        double approximateFreeSpaceShare) override;
 
     // IMortalActor implements
 

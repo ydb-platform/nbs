@@ -31,13 +31,13 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/encryption/model
-    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service_local
 
     cloud/contrib/vhost
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/rdma/impl
 
     contrib/ydb/library/actors/util
     library/cpp/getopt

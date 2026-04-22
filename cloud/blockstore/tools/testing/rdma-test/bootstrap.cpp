@@ -6,11 +6,6 @@
 #include "storage.h"
 #include "target.h"
 
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
-
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -20,6 +15,10 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/impl/client.h>
+#include <cloud/storage/core/libs/rdma/impl/server.h>
+#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
@@ -61,36 +60,40 @@ void TBootstrap::Init()
     }
 
     if (Options->TestMode == ETestMode::Target) {
-        auto config = std::make_unique<NRdma::TServerConfig>();
+        auto config =
+            std::make_unique<NCloud::NStorage::NRdma::TServerConfig>();
         config->Backlog = Options->Backlog;
         config->QueueSize = Options->QueueSize;
         config->PollerThreads = Options->PollerThreads;
-        config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->WaitMode =
+            NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
+        Verbs = NCloud::NStorage::NRdma::NVerbs::CreateVerbs();
 
-        Server = NRdma::CreateServer(
+        Server = NCloud::NStorage::NRdma::CreateServer(
             Verbs,
             Logging,
             Monitoring,
             std::move(config));
     } else if (Options->StorageKind == EStorageKind::Rdma) {
-        auto config = std::make_unique<NRdma::TClientConfig>();
+        auto config =
+            std::make_unique<NCloud::NStorage::NRdma::TClientConfig>();
         config->QueueSize = Options->QueueSize;
         config->PollerThreads = Options->PollerThreads;
-        config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->WaitMode =
+            NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
+        Verbs = NCloud::NStorage::NRdma::NVerbs::CreateVerbs();
 
-        Client = NRdma::CreateClient(
+        Client = NCloud::NStorage::NRdma::CreateClient(
             Verbs,
             Logging,
             Monitoring,
@@ -114,7 +117,7 @@ void TBootstrap::InitLogging()
 void TBootstrap::InitTracing()
 {
     auto& probes = NLwTraceMonPage::ProbeRegistry();
-    probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
+    probes.AddProbesList(LWTRACE_GET_PROBES(STORAGE_RDMA_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_TEST_PROVIDER));
 
     auto& traceManager = NLwTraceMonPage::TraceManager(false);

@@ -8,13 +8,14 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/discovery/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 
 #include <cloud/storage/core/libs/daemon/config_initializer.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/logger/log.h>
