@@ -275,6 +275,14 @@ struct TEvServicePrivate
     };
 
     //
+    // GentlePreemptionRequestProcessed notification
+    //
+
+    struct TGentlePreemptionRequestProcessed
+    {
+    };
+
+    //
     // UpdateManuallyPreemptedVolume notification
     //
 
@@ -342,6 +350,7 @@ struct TEvServicePrivate
         EvListMountedVolumesResponse,
         EvReleaseVolumeToHiveRequest,
         EvReleaseVolumeToHiveResponse,
+        EvGentlePreemptionRequestProcessed,
 
         EvEnd
     };
@@ -451,6 +460,10 @@ struct TEvServicePrivate
     using TEvReleaseVolumeToHiveResponse = TResponseEvent<
         TReleaseVolumeToHiveResponse,
         EvReleaseVolumeToHiveResponse>;
+
+    using TEvGentlePreemptionRequestProcessed = TResponseEvent<
+        TGentlePreemptionRequestProcessed,
+        EvGentlePreemptionRequestProcessed>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

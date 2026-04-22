@@ -79,8 +79,7 @@ void TVolumeSessionActor::HandleStartVolumeActorStopped(
                 ctx,
                 *VolumeRequestInfo,
                 std::make_unique<
-                    TEvServicePrivate::TEvReleaseVolumeToHiveResponse>(
-                    msg->Error));
+                    TEvServicePrivate::TEvReleaseVolumeToHiveResponse>());
         } else {
             NCloud::Reply(
                 ctx,

@@ -48,10 +48,15 @@ void TVolumeSessionActor::HandleReleaseVolumeToHiveRequest(
         return;
     }
 
-    VolumeInfo->State = TVolumeInfo::STOPPING;
     CurrentRequest = RELEASE_TO_HIVE_REQUEST;
     VolumeRequestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
+    NCloud::Send<NCloud::NStorage::TEvHiveProxy::TEvUnlockTabletRequest>(
+        ctx,
+        NCloud::NStorage::MakeHiveProxyServiceId(),
+        0,   // cookie
+        TabletId);
 }
 
 void TVolumeSessionActor::HandleUnlockTabletResponse(
