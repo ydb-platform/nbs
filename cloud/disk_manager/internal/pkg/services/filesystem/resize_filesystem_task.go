@@ -15,7 +15,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type resizeFilesystemTask struct {
-	storage      resources.Storage
+	storage resources.Storage
 	factory nfs.Factory
 	request *protos.ResizeFilesystemRequest
 	state   *protos.ResizeFilesystemTaskState
