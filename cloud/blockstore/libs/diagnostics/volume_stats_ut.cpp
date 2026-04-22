@@ -1666,9 +1666,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
             auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
-            // Information about all clients is kept until volume is unmounted
-            // (trimmed) even if threre are no mount requests form some clients
-            // during inactivityTimeout
+            // Note: information about all volume clients is kept until volume
+            // is unmounted (trimmed) even if threre are no mount requests form
+            // some clients during inactivityTimeout, and VolumeInfo can be
+            // obtained for such inactive client while exists
             UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
             UNIT_ASSERT(client1Info);
         }
@@ -1691,11 +1692,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldProperlyAccountSeveralVolumesForSingleClient)
+    Y_UNIT_TEST(ShouldProperlyAccountSeveralVolumesForSameClient)
     {
-        // Notes: single clientId allowed to mount volumes only under single
-        // instanceId (may be empty) - see TVolumeStats::ClientToRealInstance
-
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
         auto monitoring = CreateMonitoringServiceStub();
@@ -1704,9 +1702,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->GetSubgroup("component", "server_volume");
 
         NProto::TDiagnosticsConfig config;
-        // Proper accounting is under EnableDurableVolumeInfo flag
-        // until considered functional
-        config.SetEnableDurableVolumeInfo(true);
 
         std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
@@ -1717,11 +1712,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             Timer);
 
+        // clang-format off
+
         // Initial mount
         {
             Mount(volumeStats, "disk-1", "client-1", "instance-1");
-            Mount(volumeStats, "disk-2", "client-1", "instance-1");
-            Mount(volumeStats, "disk-3", "client-1", "instance-1");
+            Mount(volumeStats, "disk-2", "client-1", "instance-2");
+            Mount(volumeStats, "disk-3", "client-1", "instance-3");
 
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
@@ -1740,8 +1737,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volumeStats->TrimVolumes();
 
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
-            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
-            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
         }
 
         {
@@ -1754,7 +1751,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volumeStats->TrimVolumes();
 
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
-            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-1"));
         }
 
@@ -1771,11 +1768,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-1"));
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-1"));
         }
+        // clang-format on
     }
 
-    /*
-    Y_UNIT_TEST(
-        ShouldProperlyAccountSeveralMountedVolumesForSameAndDifferentClients)
+    Y_UNIT_TEST(ShouldProperlyAccountSeveralVolumesForSameAndDifferentClients)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
@@ -1786,9 +1782,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->GetSubgroup("component", "server_volume");
 
         NProto::TDiagnosticsConfig config;
-        // Proper accounting is under EnableDurableVolumeInfo flag
-        // until considered functional
-        config.SetEnableDurableVolumeInfo(true);
 
         std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
@@ -1803,12 +1796,17 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         // Initial mount
         {
-            Mount(volumeStats, "disk-1", "client-1", ""           );
+            Mount(volumeStats, "disk-1", "client-1", "" );
             Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
-            Mount(volumeStats, "disk-1", "client-2", ""           );
+
+            Mount(volumeStats, "disk-1", "client-2", "" );
             Mount(volumeStats, "disk-2", "client-2", "instance-1" );
             Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-3", "instance-1" );
 
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
@@ -1816,81 +1814,156 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-2"));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-3"));
         }
 
-        // Remove some volumes by timeout, the rest must remain
+        // Remove some volumes by timeout,
+        // every still existing [diskId, instanceId] combination must remain
+
+        // Note: information about all volume clients is kept until volume
+        // is unmounted (trimmed) even if threre are no mount requests form
+        // some clients during inactivityTimeout, and VolumeInfo can be obtained
+        // for such inactive client while exists
 
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
-            Mount(volumeStats, "disk-1", "client-1", ""           );
+            Mount(volumeStats, "disk-1", "client-1", "" );
             //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
             Mount(volumeStats, "disk-1", "client-2", ""           );
             Mount(volumeStats, "disk-2", "client-2", "instance-1" );
             Mount(volumeStats, "disk-3", "client-2", "instance-2" );
 
+            Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-3", "instance-1" );
+
             volumeStats->TrimVolumes();
 
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-1"));
-            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-2"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-3"));
         }
 
+        // Keep:
+        //  - [disk-3, instance-2]
+        //  - [disk-2, instance-1]
+        //  - [disk-1, instance-1]
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
             //Mount(volumeStats, "disk-1", "client-1", ""           );
             //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
             //Mount(volumeStats, "disk-1", "client-2", ""           );
             Mount(volumeStats, "disk-2", "client-2", "instance-1" );
             Mount(volumeStats, "disk-3", "client-2", "instance-2" );
 
+            Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
+
             volumeStats->TrimVolumes();
 
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
-            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
         }
 
+        // Keep:
+        //  - [disk-3, instance-2]
+        //  - [disk-2, instance-1]
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
             //Mount(volumeStats, "disk-1", "client-1", ""           );
             //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
             //Mount(volumeStats, "disk-1", "client-2", ""           );
             Mount(volumeStats, "disk-2", "client-2", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+            Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            //Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
 
             volumeStats->TrimVolumes();
 
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
-            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
             UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
-            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
         }
 
-        // Remove rest volumes by timeout, none must remain
+        // Keep:
+        //  - [disk-3, instance-2]
+        //  - [disk-2, instance-1]
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
 
+            //Mount(volumeStats, "disk-1", "client-1", ""           );
+            //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
+            //Mount(volumeStats, "disk-1", "client-2", ""           );
+            Mount(volumeStats, "disk-2", "client-2", "instance-1" );
+            //Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            //Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            //Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
+        }
+
+        // Keep none
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
             //Mount(volumeStats, "disk-1", "client-1", ""           );
             //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             //Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
             //Mount(volumeStats, "disk-1", "client-2", ""           );
             //Mount(volumeStats, "disk-2", "client-2", "instance-1" );
             //Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            //Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            //Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
 
             volumeStats->TrimVolumes();
 
@@ -1900,11 +1973,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-2"));
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
         }
 
         // clang-format on
     }
-    */
+
     Y_UNIT_TEST(ShouldSkipReportingZeroBlocksMetricsForYDBBasedDisks)
     {
         auto monitoring = CreateMonitoringServiceStub();

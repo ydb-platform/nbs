@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
 
+#include <contrib/ydb/core/util/tuples.h>
+
 #include <library/cpp/containers/sorted_vector/sorted_vector.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -464,6 +466,7 @@ class TVolumeStats final
     : public IVolumeStats
     , public std::enable_shared_from_this<TVolumeStats>
 {
+    using TClientVolume = std::pair<TString, TString>;   // [clientId, diskId]
     using TVolumeBasePtr = std::shared_ptr<TVolumeInfoBase>;
     using TVolumeInfoPtr = std::shared_ptr<TVolumeInfo>;
     using TVolumeMap = std::unordered_map<
@@ -537,6 +540,8 @@ private:
     std::unique_ptr<TSufferCounters> StrictSLASufferCounters;
     std::unique_ptr<TSufferCounters> CriticalSufferCounters;
 
+    std::unordered_map<TClientVolume, TRealInstanceId>
+        ClientVolumeToRealInstance;
     std::unordered_map<TString, TRealInstanceId> ClientToRealInstance;
     TVolumeHolderMap Volumes;
     TRWMutex Lock;
@@ -592,6 +597,10 @@ public:
             volumeInfoIt = infos.emplace(realInstanceId, volumeInfo).first;
             inserted = true;
             volumeInfoIt->second->PinCount = pinCountForNewInstance;
+            Cerr << "add volumeInfo " << volume.GetDiskId()
+                 << " with realInstanceId "
+                 << volumeInfoIt->second->RealInstanceId.GetRealInstanceId()
+                 << Endl;
         }
 
         /*
@@ -627,11 +636,30 @@ public:
 
         auto [itr, result] =
             ClientToRealInstance.try_emplace(clientId, clientId, instanceId);
+        Y_UNUSED(itr);
+
+        const auto& diskId = NStorage::GetLogicalDiskId(volume.GetDiskId());
+        auto [it, _] = ClientVolumeToRealInstance.try_emplace(
+            {clientId, diskId},
+            clientId,
+            instanceId);
+        Y_UNUSED(it);
+
+        Cerr << "mount ClientToRealInstance       size "
+             << ClientToRealInstance.size() << Endl;
+        Cerr << "mount ClientVolumeToRealInstance size "
+             << ClientVolumeToRealInstance.size() << Endl;
+
+        if (_) {
+            Cerr << "add   ClientVolumeToRealInstance [" << it->first.first
+                 << ", " << it->first.second << "] "
+                 << it->second.GetRealInstanceId() << Endl;
+        }
 
         return MountVolumeImpl(
             volume,
-            itr->second,
-            0 /* pinCountForNewInstance */);
+            it->second,
+            0);   // pinCountForNewInstance
 
         /*
         return MountVolumeImpl(
@@ -730,12 +758,30 @@ public:
             return infoIt->second;
         }
         */
+
+        /*
         const auto realInstanceIt = ClientToRealInstance.find(clientId);
         if (realInstanceIt == ClientToRealInstance.end()) {
             return nullptr;
         }
         const auto infoIt = infos.find(realInstanceIt->second);
         if (infoIt == infos.end()) {
+            return nullptr;
+        }
+        return infoIt->second;
+        */
+
+        const auto realInstanceIt =
+            ClientVolumeToRealInstance.find(std::tie(clientId, diskId));
+        if (realInstanceIt == ClientVolumeToRealInstance.end()) {
+            Cerr << "unknown [" << clientId << ", " << diskId << "]" << Endl;
+            return nullptr;
+        }
+        const auto infoIt = infos.find(realInstanceIt->second);
+        if (infoIt == infos.end()) {
+            Cerr << "no volumeInfo for [" << clientId << ", " << diskId
+                 << "] with realInstanceId "
+                 << realInstanceIt->second.GetRealInstanceId() << Endl;
             return nullptr;
         }
         return infoIt->second;
@@ -865,6 +911,30 @@ public:
                                 client.second,
                                 info.RealInstanceId);
                         });
+
+                    const auto& diskId = info.VolumeBase->Volume.GetDiskId();
+                    std::erase_if(
+                        ClientVolumeToRealInstance,
+                        [&info, &diskId](const auto& clientVolume)
+                        {
+                            const bool erase =
+                                clientVolume.first.second == diskId &&
+                                TRealInstanceKeyEqual()(
+                                    clientVolume.second,
+                                    info.RealInstanceId);
+                            if (erase) {
+                                Cerr << "rem   ClientVolumeToRealInstance ["
+                                     << clientVolume.first.first << ", "
+                                     << clientVolume.first.second << "] "
+                                     << clientVolume.second.GetRealInstanceId()
+                                     << Endl;
+                            }
+                            return erase;
+                        });
+                    Cerr << "trim  ClientToRealInstance       size "
+                         << ClientToRealInstance.size() << Endl;
+                    Cerr << "trim  ClientVolumeToRealInstance size "
+                         << ClientVolumeToRealInstance.size() << Endl;
                     return true;
                 }
                 return false;
