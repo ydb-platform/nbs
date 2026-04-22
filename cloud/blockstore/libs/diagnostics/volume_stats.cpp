@@ -472,6 +472,12 @@ class TVolumeStats final
         TRealInstanceKeyHash,
         TRealInstanceKeyEqual>;
 
+    /*
+    using TVolumeMap = std::unordered_map<
+        TString,   // ClientId
+        TVolumeInfoPtr>;
+    */
+
     struct TVolumeInfoHolder
     {
         TVolumeBasePtr VolumeBase;
@@ -579,18 +585,28 @@ public:
 
         TVolumeMap& infos = volumeIt->second.VolumeInfos;
 
-        auto instanceIt = infos.find(realInstanceId);
-        if (instanceIt == infos.end()) {
-            instanceIt = infos.emplace(
-                realInstanceId,
-                RegisterInstance(
-                    volumeIt->second.VolumeBase,
-                    realInstanceId)).first;
+        auto volumeInfoIt = infos.find(realInstanceId);
+        if (volumeInfoIt == infos.end()) {
+            auto volumeInfo =
+                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId);
+            volumeInfoIt = infos.emplace(realInstanceId, volumeInfo).first;
             inserted = true;
-            instanceIt->second->PinCount = pinCountForNewInstance;
+            volumeInfoIt->second->PinCount = pinCountForNewInstance;
         }
 
-        instanceIt->second->LastRemountTime = Timer->Now();
+        /*
+        auto volumeInfoIt = infos.find(realInstanceId.GetClientId());
+        if (volumeInfoIt == infos.end()) {
+            auto volumeInfo =
+                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId);
+            volumeInfoIt =
+                infos.emplace(realInstanceId.GetClientId(), volumeInfo).first;
+            inserted = true;
+            volumeInfoIt->second->PinCount = pinCountForNewInstance;
+        }
+        */
+
+        volumeInfoIt->second->LastRemountTime = Timer->Now();
 
         if (!inserted) {
             AlterVolumeImpl(
@@ -609,15 +625,20 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        auto [itr, result] = ClientToRealInstance.try_emplace(
-            clientId,
-            clientId,
-            instanceId);
+        auto [itr, result] =
+            ClientToRealInstance.try_emplace(clientId, clientId, instanceId);
 
         return MountVolumeImpl(
             volume,
             itr->second,
             0 /* pinCountForNewInstance */);
+
+        /*
+        return MountVolumeImpl(
+            volume,
+            TRealInstanceId{clientId, instanceId},
+            0); // pinCountForNewInstance
+        */
     }
 
     void UnmountVolume(
@@ -694,6 +715,21 @@ public:
         }
 
         const TVolumeMap& infos = volumeIt->second.VolumeInfos;
+        /*
+        if (DiagnosticsConfig->GetEnableDurableVolumeInfo()) {
+            const auto infoIt = std::ranges::find_if(
+                infos,
+                [&](const auto& info)
+                {
+                    return info.second->RealInstanceId.GetClientId() ==
+                           clientId;
+                });
+            if (infoIt == infos.end()) {
+                return nullptr;
+            }
+            return infoIt->second;
+        }
+        */
         const auto realInstanceIt = ClientToRealInstance.find(clientId);
         if (realInstanceIt == ClientToRealInstance.end()) {
             return nullptr;
