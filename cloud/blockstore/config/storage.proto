@@ -1554,4 +1554,14 @@ message TStorageServiceConfig
 
     // Max skipped blobs during range compaction for HDD disks.
     optional uint32 MaxSkippedBlobsDuringCompactionHDD = 493;
+
+    // If true, preemption with source == balancer will
+    // use gentle remount mechanism, avoiding direct tablet killing.
+    optional bool VolumeBalancerGentlePreemptionEnabled = 494;
+
+    // Timeout for gentle preemption (ms).
+    optional uint32 VolumeBalancerGentlePreemptionTimeout = 495;
+
+    // Retry delay for gentle preemption (ms).
+    optional uint32 VolumeBalancerGentlePreemptionRetryDelay = 496;
 }
