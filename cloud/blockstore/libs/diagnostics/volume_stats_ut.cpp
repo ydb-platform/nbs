@@ -1638,7 +1638,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->FindSubgroup("folder", DefaultFolderId));
 
         {
-            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
+            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
             auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
             UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
             UNIT_ASSERT(client1Info);
@@ -1663,6 +1663,16 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
+        {
+            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
+            auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
+            // Information about all clients is kept until volume is unmounted
+            // (trimmed) even if threre are no mount requests form some clients
+            // during inactivityTimeout
+            UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
+            UNIT_ASSERT(client1Info);
+        }
+
         Timer->AdvanceTime(inactivityTimeout * 1.1);
         volumeStats->TrimVolumes();
 
@@ -1674,10 +1684,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->FindSubgroup("folder", DefaultFolderId));
 
         {
-            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
+            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
             auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
-            UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
             UNIT_ASSERT(!client1Info);
+            UNIT_ASSERT(!client2Info);
         }
     }
     /*
