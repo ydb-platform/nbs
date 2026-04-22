@@ -829,7 +829,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto sufferArray = volumeStats->GatherVolumePerfStatuses();
         UNIT_ASSERT_VALUES_EQUAL(1, sufferArray.size());
         UNIT_ASSERT_VALUES_EQUAL("test1", sufferArray[0].first);
-        UNIT_ASSERT_VALUES_EQUAL(1, sufferArray[0].second);
+        UNIT_ASSERT_VALUES_EQUAL(1, sufferArray[0].second.SufferCount);
 
         auto disksSufferCounter = counters->GetCounter("DisksSuffer", false);
         auto ssdDisksSufferCounter = counters->GetSubgroup("type", "ssd")

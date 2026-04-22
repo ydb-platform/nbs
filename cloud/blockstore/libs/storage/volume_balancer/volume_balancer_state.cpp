@@ -74,7 +74,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
         }
 
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
-            info.SufferCount = perfIt->second;
+            info.PerfStatus = perfIt->second;
         }
         knownDisks.erase(v.GetDiskId());
     }
@@ -113,6 +113,7 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                     TABLEH() { out << "Volume"; }
                     TABLEH() { out << "Preemption allowed"; }
                     TABLEH() { out << "Suffer Count"; }
+                    TABLEH() { out << "Read/Write IOPS"; }
                 }
             }
             for (const auto& v: Volumes) {
@@ -125,7 +126,10 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                             out << (enabled ? "Yes" : "No");
                         }
                         TABLED() {
-                            out << v.second.SufferCount;
+                            out << v.second.PerfStatus.SufferCount;
+                        }
+                        TABLED() {
+                            out << v.second.PerfStatus.ReadWriteIops;
                         }
                     }
                 }
@@ -241,13 +245,13 @@ void TVolumeBalancerState::UpdateVolumeToPush()
         }
 
         if (moveMostHeavy) {
-            if (value < v->second.SufferCount) {
-                value = v->second.SufferCount;
+            if (value < v->second.PerfStatus.ReadWriteIops) {
+                value = v->second.PerfStatus.ReadWriteIops;
                 VolumeToPush = v->first;
             }
         } else {
-            if (value > v->second.SufferCount) {
-                value = v->second.SufferCount;
+            if (value > v->second.PerfStatus.ReadWriteIops) {
+                value = v->second.PerfStatus.ReadWriteIops;
                 VolumeToPush = v->first;
             }
         }

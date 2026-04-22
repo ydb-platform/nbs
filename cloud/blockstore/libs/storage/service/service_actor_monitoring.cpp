@@ -236,7 +236,9 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
 void TServiceActor::RenderVolumeList(IOutputStream& out) const
 {
     auto status = VolumeStats->GatherVolumePerfStatuses();
-    THashMap<TString, ui32> statusMap(status.begin(), status.end());
+    THashMap<TString, TVolumePerfStatus> statusMap(
+        status.begin(),
+        status.end());
 
     HTML(out) {
         TABLE_SORTABLE_CLASS("table table-bordered") {
@@ -340,13 +342,13 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
 
                         auto it = statusMap.find(volume.VolumeInfo->GetDiskId());
                         if (it != statusMap.end()) {
-                            if (!it->second) {
+                            if (!it->second.SufferCount) {
                                 statusText = "Yes";
                                 cssClass = "label-success";
                             } else {
                                 statusText = TStringBuilder() <<
                                     "No(" <<
-                                    it->second
+                                    it->second.SufferCount
                                     << " s)";
                                 cssClass = "label-warning";
                             }
