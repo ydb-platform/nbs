@@ -193,7 +193,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     auto monitoring = NCloud::CreateMonitoringServiceStub();
     RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
         Logging,
-        monitoring,
+        std::move(monitoring),
         std::move(rdmaClientConfig));
 
     StorageProvider = NStorage::CreateRdmaStorageProvider(
