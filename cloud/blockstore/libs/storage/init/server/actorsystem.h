@@ -60,8 +60,8 @@ struct TServerActorSystemArgs
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
     IVolumeStatsPtr VolumeStats;
-    NRdma::IServerPtr RdmaServer;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     TManuallyPreemptedVolumesPtr PreemptedVolumes;
     NNvme::INvmeManagerPtr NvmeManager;

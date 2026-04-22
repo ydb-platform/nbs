@@ -387,7 +387,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const NLogbroker::IServicePtr LogbrokerService;
     const NNotify::IServicePtr NotifyService;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const bool IsDiskRegistrySpareNode;
@@ -404,7 +404,7 @@ public:
             ITraceSerializerPtr traceSerializer,
             NLogbroker::IServicePtr logbrokerService,
             NNotify::IServicePtr notifyService,
-            NRdma::IClientPtr rdmaClient,
+            NCloud::NStorage::NRdma::IClientPtr rdmaClient,
             NServer::IEndpointEventHandlerPtr endpointEventHandler,
             TPartitionBudgetManagerPtr partitionBudgetManager,
             bool isDiskRegistrySpareNode,

@@ -3,13 +3,13 @@
 #include "client.h"
 #include "server.h"
 
-#include <cloud/storage/config/rdma.pb.h>
+#include <cloud/storage/core/protos/rdma.pb.h>
 
 #include <util/system/yassert.h>
 
 #include <memory>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,4 +138,4 @@ inline TServerConfigPtr CreateServerConfigPtr(const NProto::TRdmaServer& config)
     return std::make_shared<TServerConfig>(CreateServerConfig(config));
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

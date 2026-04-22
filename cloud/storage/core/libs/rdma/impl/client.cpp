@@ -38,7 +38,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 using namespace NMonitoring;
 using namespace NThreading;
@@ -2431,4 +2431,4 @@ IClientPtr CreateClient(
         std::move(config));
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

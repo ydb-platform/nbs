@@ -4,7 +4,7 @@
 
 #include <util/generic/size_literals.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,4 +17,4 @@ struct TBufferPoolConfig
     void Validate(TLog& log);
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

@@ -9,7 +9,7 @@
 #include <util/generic/strbuf.h>
 #include <util/network/iovec.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -104,4 +104,4 @@ size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer);
 
 NProto::TError ParseError(TStringBuf buffer);
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

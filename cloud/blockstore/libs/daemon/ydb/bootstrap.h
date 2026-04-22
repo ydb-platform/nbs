@@ -69,15 +69,15 @@ struct TServerModuleFactories
 
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 
-    std::function<NRdma::IServerPtr(
+    std::function<NCloud::NStorage::NRdma::IServerPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)> RdmaServerFactory;
+        NCloud::NStorage::NRdma::TServerConfigPtr config)> RdmaServerFactory;
 
-    std::function<NRdma::IClientPtr(
+    std::function<NCloud::NStorage::NRdma::IClientPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TClientConfigPtr config)> RdmaClientFactory;
+        NCloud::NStorage::NRdma::TClientConfigPtr config)> RdmaClientFactory;
 
     std::function<NNotify::IServicePtr(
         NNotify::TNotifyConfigPtr config,

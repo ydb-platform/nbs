@@ -24,7 +24,7 @@ struct TBootstrap
     ITraceSerializerPtr TraceSerializer;
 
     NClient::IMultiHostClientPtr GrpcClient;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
 
     ITaskQueuePtr RdmaTaskQueue;
 

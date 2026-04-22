@@ -16,7 +16,7 @@ private:
     const NActors::TActorId VolumeActorId;
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     NActors::TActorId MigrationSrcActorId;
 
     bool UpdatingMigrationState = false;
@@ -32,7 +32,7 @@ public:
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         NActors::TActorId migrationSrcActorId);

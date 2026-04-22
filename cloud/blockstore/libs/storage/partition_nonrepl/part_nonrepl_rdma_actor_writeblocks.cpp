@@ -27,8 +27,8 @@ namespace {
 
 struct TDeviceRequestInfo
 {
-    NRdma::IClientEndpointPtr Endpoint;
-    NRdma::TClientRequestPtr ClientRequest;
+    NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+    NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -258,7 +258,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
             std::move(context),
-            NRdma::TProtoMessageSerializer::MessageByteSize(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
                 request,
                 deviceRequest.DeviceBlockRange.Size() *
                     PartConfig->GetBlockSize()),
@@ -289,10 +289,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::SerializeWithData(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
@@ -436,7 +438,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
             std::move(context),
-            NRdma::TProtoMessageSerializer::MessageByteSize(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
                 request,
                 deviceRequest.DeviceBlockRange.Size() *
                     PartConfig->GetBlockSize()),
@@ -465,10 +467,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::SerializeWithData(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,

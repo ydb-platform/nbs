@@ -30,7 +30,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
+constexpr size_t MaxRealProtoSize =
+    4_KB - NCloud::NStorage::NRdma::RDMA_PROTO_HEADER_SIZE;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -79,7 +80,7 @@ void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 // Thread-safe. After Init() public method HandleRequest() can be called
 // from any thread.
 class TRequestHandler final
-    : public NRdma::IServerHandler
+    : public NCloud::NStorage::NRdma::IServerHandler
     , public std::enable_shared_from_this<TRequestHandler>
 {
     IBlockStorePtr Service;
@@ -87,9 +88,9 @@ class TRequestHandler final
     ITaskQueuePtr TaskQueue;
 
     TLog Log;
-    std::weak_ptr<NRdma::IServerEndpoint> Endpoint;
+    std::weak_ptr<NCloud::NStorage::NRdma::IServerEndpoint> Endpoint;
 
-    const NRdma::TProtoMessageSerializer* Serializer =
+    const NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreServerProtocol::Serializer();
 
 public:
@@ -102,7 +103,9 @@ public:
         , TaskQueue(std::move(taskQueue))
     {}
 
-    void Init(const NRdma::IServerEndpointPtr& endpoint, TLog log)
+    void Init(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& endpoint,
+        TLog log)
     {
         Endpoint = endpoint;
         Log = std::move(log);
@@ -253,23 +256,26 @@ private:
                         ui32 flags = 0;
                         SetProtoFlag(
                             flags,
-                            NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                            NCloud::NStorage::NRdma::
+                                RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
                         size_t responseBytes =
-                            SUCCEEDED(response.GetError().GetCode()) ?
-                                NRdma::TProtoMessageSerializer::SerializeWithData(
-                                    out,
-                                    TBlockStoreServerProtocol::
-                                        EvReadBlocksResponse,
-                                    flags,   // flags
-                                    response,
-                                    guard.Get()):
-                                NRdma::TProtoMessageSerializer::Serialize(
-                                    out,
-                                    TBlockStoreServerProtocol::
-                                        EvReadBlocksResponse,
-                                    flags,   // flags
-                                    response);
+                            SUCCEEDED(response.GetError().GetCode())
+                                ? NCloud::NStorage::NRdma::
+                                      TProtoMessageSerializer::
+                                          SerializeWithData(
+                                              out,
+                                              TBlockStoreServerProtocol::
+                                                  EvReadBlocksResponse,
+                                              flags,   // flags
+                                              response, guard.Get())
+                                : NCloud::NStorage::NRdma::
+                                      TProtoMessageSerializer::Serialize(
+                                          out,
+                                          TBlockStoreServerProtocol::
+                                              EvReadBlocksResponse,
+                                          flags,   // flags
+                                          response);
 
                         if (auto ep = endpoint.lock()) {
                             ep->SendResponse(context, responseBytes);
@@ -328,12 +334,15 @@ private:
                 }
 
                 ui32 flags = 0;
-                SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-                size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    out,
-                    TBlockStoreServerProtocol::EvWriteBlocksResponse,
-                    flags,   // flags
-                    response);
+                SetProtoFlag(
+                    flags,
+                    NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                size_t responseBytes =
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreServerProtocol::EvWriteBlocksResponse,
+                        flags,   // flags
+                        response);
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
                 }
@@ -384,9 +393,11 @@ private:
                 }
 
                 ui32 flags = 0;
-                SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                SetProtoFlag(
+                    flags,
+                    NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
                 size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                         out,
                         TBlockStoreServerProtocol::EvZeroBlocksResponse,
                         flags,   // flags
@@ -415,9 +426,10 @@ private:
         NProto::TPingResponse response;
 
         ui32 flags = 0;
-        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        SetProtoFlag(
+            flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         size_t responseBytes =
-            NRdma::TProtoMessageSerializer::Serialize(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                 out,
                 TBlockStoreServerProtocol::EvPingResponse,
                 flags,   // flags
@@ -464,7 +476,7 @@ private:
 
                 ui32 flags = 0;
                 size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                         out,
                         TBlockStoreServerProtocol::EvMountVolumeResponse,
                         flags,   // flags
@@ -512,7 +524,7 @@ private:
 
                 ui32 flags = 0;
                 size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                         out,
                         TBlockStoreServerProtocol::EvUnmountVolumeResponse,
                         flags,   // flags
@@ -535,7 +547,7 @@ class TRdmaTarget final: public IStartable
 
     ILoggingServicePtr Logging;
     ITraceSerializerPtr TraceSerializer;
-    NRdma::IServerPtr Server;
+    NCloud::NStorage::NRdma::IServerPtr Server;
     ITaskQueuePtr TaskQueue;
 
     std::shared_ptr<TRequestHandler> Handler;
@@ -547,7 +559,7 @@ public:
             TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
             ILoggingServicePtr logging,
             ITraceSerializerPtr traceSerializer,
-            NRdma::IServerPtr server,
+            NCloud::NStorage::NRdma::IServerPtr server,
             ITaskQueuePtr taskQueue,
             IBlockStorePtr service)
         : Config(std::move(rdmaTargetConfig))
@@ -592,7 +604,7 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
     TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
     ITraceSerializerPtr traceSerializer,
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     IBlockStorePtr service)
 {
     auto threadPool = CreateThreadPool("RDMA", rdmaTargetConfig->WorkerThreads);

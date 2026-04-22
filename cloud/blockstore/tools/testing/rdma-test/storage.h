@@ -63,7 +63,7 @@ IStoragePtr CreateLocalURingStorage(
     ui32 blocksCount);
 
 IStoragePtr CreateRdmaStorage(
-    NRdma::IClientPtr client,
+    NCloud::NStorage::NRdma::IClientPtr client,
     ITaskQueuePtr taskQueue,
     const TString& address,
     ui32 port,

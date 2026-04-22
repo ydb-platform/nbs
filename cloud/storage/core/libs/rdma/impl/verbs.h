@@ -8,7 +8,7 @@
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 
-namespace NCloud::NBlockStore::NRdma::NVerbs {
+namespace NCloud::NStorage::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -147,4 +147,4 @@ TString PrintAddressAndPort(const sockaddr* addr);
 TString PrintConnectionParams(const rdma_conn_param* param);
 TString PrintCompletion(ibv_wc* wc);
 
-}   // namespace NCloud::NBlockStore::NRdma::NVerbs
+}   // namespace NCloud::NStorage::NRdma::NVerbs

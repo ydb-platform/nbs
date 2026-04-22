@@ -210,9 +210,10 @@ public:
     }
 };
 
-NRdma::TServerConfigPtr CreateRdmaServerConfig(NRdma::TRdmaConfig& config)
+NCloud::NStorage::NRdma::TServerConfigPtr CreateRdmaServerConfig(
+    NRdma::TRdmaConfig& config)
 {
-    return NRdma::CreateServerConfigPtr(config.GetServer());
+    return NCloud::NStorage::NRdma::CreateServerConfigPtr(config.GetServer());
 }
 
 }   // namespace

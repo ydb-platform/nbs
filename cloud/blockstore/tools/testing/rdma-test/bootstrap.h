@@ -24,9 +24,9 @@ private:
 
     ITraceProcessorPtr TraceProcessor;
 
-    NRdma::NVerbs::IVerbsPtr Verbs;
-    NRdma::IClientPtr Client;
-    NRdma::IServerPtr Server;
+    NCloud::NStorage::NRdma::NVerbs::IVerbsPtr Verbs;
+    NCloud::NStorage::NRdma::IClientPtr Client;
+    NCloud::NStorage::NRdma::IServerPtr Server;
 
     IStoragePtr Storage;
 

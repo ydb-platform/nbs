@@ -9,7 +9,7 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -182,4 +182,4 @@ size_t TPollHandle::Wait(TDuration timeout)
     return res;
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

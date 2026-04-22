@@ -12,26 +12,26 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaClientTest: NRdma::IClient
+struct TRdmaClientTest: NCloud::NStorage::NRdma::IClient
 {
     struct TRdmaEndpointImpl;
 
-    using TMessageObserver =
-        std::function<void(NRdma::TProtoMessageSerializer::TParseResult&)>;
+    using TMessageObserver = std::function<void(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::TParseResult&)>;
     using TForceReconnectObserver = std::function<void()>;
     using TStopObserver = std::function<void()>;
 
     struct TEndpointInfo
     {
         std::shared_ptr<TRdmaEndpointImpl> Endpoint;
-        NThreading::TPromise<NRdma::IClientEndpointPtr> Promise;
+        NThreading::TPromise<NCloud::NStorage::NRdma::IClientEndpointPtr>
+            Promise;
     };
 
     THashMap<TString, TEndpointInfo> Endpoints;
 
-    NThreading::TFuture<NRdma::IClientEndpointPtr> StartEndpoint(
-        TString host,
-        ui32 port) override;
+    NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
+    StartEndpoint(TString host, ui32 port) override;
 
     void Start() override
     {

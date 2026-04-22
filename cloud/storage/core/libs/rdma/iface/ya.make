@@ -12,9 +12,9 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/storage/config
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/protos
 
     library/cpp/threading/future
 

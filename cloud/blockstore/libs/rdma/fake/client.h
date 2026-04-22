@@ -8,6 +8,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::IClientPtr CreateFakeRdmaClient(IActorSystemPtr actorSystem);
+NCloud::NStorage::NRdma::IClientPtr CreateFakeRdmaClient(
+    IActorSystemPtr actorSystem);
 
 }   // namespace NCloud::NBlockStore

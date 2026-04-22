@@ -86,16 +86,16 @@ public:
 
 }   // namespace
 
-class TRdmaAsyncTestEndpoint: public NRdma::IServerEndpoint
+class TRdmaAsyncTestEndpoint: public NCloud::NStorage::NRdma::IServerEndpoint
 {
 private:
-    NRdma::IServerHandlerPtr Handler;
+    NCloud::NStorage::NRdma::IServerHandlerPtr Handler;
 
-    const NRdma::TProtoMessageSerializer* Serializer =
+    const NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
-    TRdmaAsyncTestEndpoint(NRdma::IServerHandlerPtr handler)
+    TRdmaAsyncTestEndpoint(NCloud::NStorage::NRdma::IServerHandlerPtr handler)
         : Handler(std::move(handler))
     {}
 
@@ -134,12 +134,12 @@ public:
         }
 
         const size_t expectedSerializedSize =
-            NRdma::TProtoMessageSerializer::MessageByteSize(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
                 request,
                 SgListGetSize(sglist));
         wrapper->Serialized = TString(expectedSerializedSize, 0);
         const size_t serializedSize =
-            NRdma::TProtoMessageSerializer::SerializeWithData(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
                 wrapper->Serialized,
                 messageType,
                 0,   // flags
@@ -178,10 +178,10 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::IServerEndpointPtr TRdmaAsyncTestServer::StartEndpoint(
+NCloud::NStorage::NRdma::IServerEndpointPtr TRdmaAsyncTestServer::StartEndpoint(
     TString host,
     ui32 port,
-    NRdma::IServerHandlerPtr handler)
+    NCloud::NStorage::NRdma::IServerHandlerPtr handler)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     if (!ep) {

@@ -6,7 +6,7 @@ namespace google::protobuf {
     class Message;
 }
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -53,4 +53,4 @@ using TProtoMessagePtr = std::unique_ptr<TProtoMessage>;
 
 class TProtoMessageSerializer;
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

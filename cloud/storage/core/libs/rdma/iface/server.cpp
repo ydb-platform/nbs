@@ -2,7 +2,7 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -57,25 +57,25 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
 #undef ENTRY
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-inline void Out<NCloud::NBlockStore::NRdma::EWaitMode>(
+inline void Out<NCloud::NStorage::NRdma::EWaitMode>(
     IOutputStream& o,
-    const NCloud::NBlockStore::NRdma::EWaitMode mode)
+    const NCloud::NStorage::NRdma::EWaitMode mode)
 {
     switch (mode) {
-    case NCloud::NBlockStore::NRdma::EWaitMode::Poll:
+    case NCloud::NStorage::NRdma::EWaitMode::Poll:
         o << "POLL";
         break;
 
-    case NCloud::NBlockStore::NRdma::EWaitMode::BusyWait:
+    case NCloud::NStorage::NRdma::EWaitMode::BusyWait:
         o << "BUSY_WAIT";
         break;
 
-    case NCloud::NBlockStore::NRdma::EWaitMode::AdaptiveWait:
+    case NCloud::NStorage::NRdma::EWaitMode::AdaptiveWait:
         o << "ADAPTIVE_WAIT";
         break;
     }

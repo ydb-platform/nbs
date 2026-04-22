@@ -35,7 +35,7 @@ namespace {
 // Y_ENSURE_RETURN
 
 template <typename T>
-auto CreateRequest(NRdma::TProtoMessagePtr proto)
+auto CreateRequest(NCloud::NStorage::NRdma::TProtoMessagePtr proto)
 {
     return std::shared_ptr<T>(static_cast<T*>(proto.release()));
 }
@@ -43,15 +43,16 @@ auto CreateRequest(NRdma::TProtoMessagePtr proto)
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestHandler final
-    : public NRdma::IServerHandler
+    : public NCloud::NStorage::NRdma::IServerHandler
 {
 private:
     const TOptionsPtr Options;
     const ITaskQueuePtr TaskQueue;
     const IStoragePtr Storage;
 
-    NRdma::IServerEndpointPtr Endpoint;
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NCloud::NStorage::NRdma::IServerEndpointPtr Endpoint;
+    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRequestHandler(
@@ -63,7 +64,7 @@ public:
         , Storage(std::move(storage))
     {}
 
-    void SetEndpoint(NRdma::IServerEndpointPtr endpoint)
+    void SetEndpoint(NCloud::NStorage::NRdma::IServerEndpointPtr endpoint)
     {
         Endpoint = std::move(endpoint);
     }
@@ -173,8 +174,8 @@ private:
                 Y_ABORT_UNLESS(guard);
 
                 const auto& sglist = guard.Get();
-                size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::SerializeWithData(
+                size_t responseBytes = NCloud::NStorage::NRdma::
+                    TProtoMessageSerializer::SerializeWithData(
                         out,
                         TBlockStoreProtocol::ReadBlocksResponse,
                         0,   // flags
@@ -215,7 +216,7 @@ private:
                 Y_UNUSED(guardedSgList);
 
                 size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                         out,
                         TBlockStoreProtocol::WriteBlocksResponse,
                         0,   // flags
@@ -240,7 +241,7 @@ private:
     const TOptionsPtr Options;
     const ITaskQueuePtr TaskQueue;
     const IStoragePtr Storage;
-    const NRdma::IServerPtr Server;
+    const NCloud::NStorage::NRdma::IServerPtr Server;
 
     TRequestHandlerPtr RequestHandler;
 
@@ -255,7 +256,7 @@ public:
             TOptionsPtr options,
             ITaskQueuePtr taskQueue,
             IStoragePtr storage,
-            NRdma::IServerPtr server)
+            NCloud::NStorage::NRdma::IServerPtr server)
         : Options(std::move(options))
         , TaskQueue(std::move(taskQueue))
         , Storage(std::move(storage))
@@ -308,7 +309,7 @@ IRunnablePtr CreateTestTarget(
     TOptionsPtr options,
     ITaskQueuePtr taskQueue,
     IStoragePtr storage,
-    NRdma::IServerPtr server)
+    NCloud::NStorage::NRdma::IServerPtr server)
 {
     return std::make_shared<TTestTarget>(
         std::move(options),

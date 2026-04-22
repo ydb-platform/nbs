@@ -5,7 +5,7 @@
 #include <util/generic/intrlist.h>
 #include <util/system/align.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -286,4 +286,4 @@ bool TBufferPool::Initialized() const
     return Impl != nullptr;
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

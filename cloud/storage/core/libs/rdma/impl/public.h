@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -15,4 +15,4 @@ using IVerbsPtr = std::shared_ptr<IVerbs>;
 
 }   // namespace NVerbs
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

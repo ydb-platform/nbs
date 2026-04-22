@@ -7,7 +7,7 @@
 #include <cloud/storage/core/libs/rdma/iface/buffer.h>
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,4 +52,4 @@ public:
 
 using TPooledBuffer = TBufferPool::TBuffer;
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

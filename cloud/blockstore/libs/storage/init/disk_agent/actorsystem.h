@@ -45,7 +45,7 @@ struct TDiskAgentActorSystemArgs
     IStorageProviderPtr LocalStorageProvider;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
-    NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
     NNvme::INvmeManagerPtr NvmeManager;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     ITaskQueuePtr BackgroundThreadPool;

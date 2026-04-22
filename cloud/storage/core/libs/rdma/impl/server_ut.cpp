@@ -18,7 +18,7 @@
 #include <atomic>
 #include <cstring>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -417,4 +417,4 @@ int NVerbs::DestroyId(rdma_cm_id* id)
     return 0;
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

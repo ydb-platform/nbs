@@ -124,7 +124,7 @@ struct TFixture
 {
     std::optional<TTestBasicRuntime> Runtime;
     IActorSystemPtr ActorSystem;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     THashMap<TString, ui32> NodeMap;
 
     std::function<bool(const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr&)>
@@ -240,9 +240,11 @@ struct TFixture
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestClientHandler
-    : public NRdma::IClientHandler
+    : public NCloud::NStorage::NRdma::IClientHandler
 {
-    std::function<void(NRdma::TClientRequestPtr, ui32, size_t)> Impl;
+    std::function<
+        void(NCloud::NStorage::NRdma::TClientRequestPtr, ui32, size_t)>
+        Impl;
 
 public:
     template <typename TFn>
@@ -251,7 +253,7 @@ public:
     {}
 
     void HandleResponse(
-        NRdma::TClientRequestPtr req,
+        NCloud::NStorage::NRdma::TClientRequestPtr req,
         ui32 status,
         size_t responseBytes) override
     {
@@ -260,7 +262,7 @@ public:
 };
 
 template <typename TFn>
-NRdma::IClientHandlerPtr Handler(TFn&& fn)
+NCloud::NStorage::NRdma::IClientHandlerPtr Handler(TFn&& fn)
 {
     return std::make_shared<TTestClientHandler>(std::forward<TFn>(fn));
 }
@@ -324,7 +326,7 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         Runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT(future.Wait(15s));
-        NRdma::IClientEndpointPtr ep = future.GetValueSync();
+        NCloud::NStorage::NRdma::IClientEndpointPtr ep = future.GetValueSync();
         UNIT_ASSERT(ep);
 
         std::optional<NProto::TError> responseError;
@@ -332,7 +334,7 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         auto handler = Handler([&] (auto request, ui32 status, size_t len) {
             auto buffer = request->ResponseBuffer.Head(len);
 
-            UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_OK, status);
+            UNIT_ASSERT_EQUAL(NCloud::NStorage::NRdma::RDMA_PROTO_OK, status);
 
             auto* serializer = TBlockStoreProtocol::Serializer();
             auto [result, error] = serializer->Parse(buffer);
@@ -348,14 +350,14 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         auto [request, error] = ep->AllocateRequest(
             handler,
             nullptr,   // context
-            NRdma::TProtoMessageSerializer::MessageByteSize(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
                 deviceRequest,
                 DefaultBlockSize),
             4_KB);
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
-        NRdma::TProtoMessageSerializer::SerializeWithData(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
             request->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             0,   // flags
@@ -434,7 +436,7 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         Runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT(future.Wait(15s));
-        NRdma::IClientEndpointPtr ep = future.GetValueSync();
+        NCloud::NStorage::NRdma::IClientEndpointPtr ep = future.GetValueSync();
         UNIT_ASSERT(ep);
 
         std::optional<NProto::TReadDeviceBlocksResponse> deviceResponse;
@@ -442,7 +444,7 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         auto handler = Handler([&] (auto request, ui32 status, size_t len) {
             auto buffer = request->ResponseBuffer.Head(len);
 
-            UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_OK, status);
+            UNIT_ASSERT_EQUAL(NCloud::NStorage::NRdma::RDMA_PROTO_OK, status);
 
             auto* serializer = TBlockStoreProtocol::Serializer();
             auto [result, error] = serializer->Parse(buffer);
@@ -468,14 +470,14 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         auto [request, error] = ep->AllocateRequest(
             handler,
             nullptr,   // context
-            NRdma::TProtoMessageSerializer::MessageByteSize(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
                 deviceRequest,
                 DefaultBlockSize),
             4_KB + requestByteCount);
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             request->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             0,   // flags
@@ -530,15 +532,19 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         Runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT(future.Wait(15s));
-        NRdma::IClientEndpointPtr ep = future.GetValueSync();
+        NCloud::NStorage::NRdma::IClientEndpointPtr ep = future.GetValueSync();
         UNIT_ASSERT(ep);
 
         NProto::TError responseError;
 
         auto handler = Handler(
-            [&](NRdma::TClientRequestPtr request, ui32 status, size_t len)
+            [&](NCloud::NStorage::NRdma::TClientRequestPtr request,
+                ui32 status,
+                size_t len)
             {
-                UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_FAIL, status);
+                UNIT_ASSERT_EQUAL(
+                    NCloud::NStorage::NRdma::RDMA_PROTO_FAIL,
+                    status);
 
                 const bool parsed = responseError.ParseFromArray(
                     request->ResponseBuffer.Data(),
@@ -550,14 +556,14 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         auto [request, error] = ep->AllocateRequest(
             handler,
             nullptr,   // context
-            NRdma::TProtoMessageSerializer::MessageByteSize(
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
                 deviceRequest,
                 DefaultBlockSize),
             4_KB);
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
-        NRdma::TProtoMessageSerializer::SerializeWithData(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
             request->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             0,   // flags

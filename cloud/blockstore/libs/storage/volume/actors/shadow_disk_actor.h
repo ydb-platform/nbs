@@ -87,7 +87,7 @@ private:
     };
 
     const TChildLogTitle LogTitle;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TNonreplicatedPartitionConfigPtr SrcConfig;
     const TString CheckpointId;
     const TString ShadowDiskId;
@@ -117,7 +117,7 @@ public:
         TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticConfig,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString sourceDiskClientId,

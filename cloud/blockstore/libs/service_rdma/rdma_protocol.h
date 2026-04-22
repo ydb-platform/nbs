@@ -31,7 +31,7 @@ struct TBlockStoreServerProtocol
         EvUnmountVolumeResponse = 12,
     };
 
-    static NRdma::TProtoMessageSerializer* Serializer();
+    static NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

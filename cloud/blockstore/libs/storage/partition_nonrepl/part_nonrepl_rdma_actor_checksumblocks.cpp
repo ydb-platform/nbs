@@ -161,8 +161,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     struct TDeviceRequestInfo
     {
-        NRdma::IClientEndpointPtr Endpoint;
-        NRdma::TClientRequestPtr ClientRequest;
+        NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+        NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -188,7 +188,9 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestContext,
             std::move(dc),
-            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest,
+                0),
             4_KB);
 
         if (HasError(err)) {
@@ -207,7 +209,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             return;
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ChecksumDeviceBlocksRequest,
             0,   // flags

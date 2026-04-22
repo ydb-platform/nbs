@@ -121,7 +121,7 @@ public:
     ui32 GetMaxWriteIops() const;
     TDuration GetMaxBurstTime() const;
     bool DeprecatedGetRdmaClientEnabled() const;
-    const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
+    const ::NCloud::NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
     bool GetUseFakeRdmaClient() const;
     bool GetDisableClientThrottlers() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;

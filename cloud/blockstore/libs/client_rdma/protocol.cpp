@@ -12,9 +12,10 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
+NCloud::NStorage::NRdma::TProtoMessageSerializer*
+TBlockStoreProtocol::Serializer()
 {
-    struct TSerializer : NRdma::TProtoMessageSerializer
+    struct TSerializer : NCloud::NStorage::NRdma::TProtoMessageSerializer
     {
         TSerializer()
         {

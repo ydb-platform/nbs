@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/gtest/gtest.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -65,4 +65,4 @@ TEST(TRcuListTest, ShouldNotModifyAccessedList)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

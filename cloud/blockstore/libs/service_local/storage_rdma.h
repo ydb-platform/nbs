@@ -19,7 +19,7 @@ enum class ERdmaTaskQueueOpt: bool
 
 IStorageProviderPtr CreateRdmaStorageProvider(
     IServerStatsPtr serverStats,
-    NRdma::IClientPtr client,
+    NCloud::NStorage::NRdma::IClientPtr client,
     ERdmaTaskQueueOpt taskQueueOpt);
 
 }   // namespace NCloud::NBlockStore::NStorage

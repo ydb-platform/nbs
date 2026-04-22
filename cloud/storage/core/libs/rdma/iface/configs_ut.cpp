@@ -8,7 +8,7 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 namespace {
 
@@ -135,4 +135,4 @@ TYPED_TEST(
     EXPECT_EQ(TTraits::DefaultQueueSize, config.RecvQueueSize);
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma

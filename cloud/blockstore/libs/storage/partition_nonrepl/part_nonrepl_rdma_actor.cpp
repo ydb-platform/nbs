@@ -45,7 +45,7 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TActorId volumeActorId,
         TActorId statActorId)
     : Config(std::move(config))
@@ -93,7 +93,8 @@ ui32 TNonreplicatedPartitionRdmaActor::GetFlags() const
 {
     ui32 flags = 0;
     if (RdmaClient->IsAlignedDataEnabled()) {
-        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        SetProtoFlag(
+            flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
     }
     return flags;
 }
@@ -314,8 +315,8 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
 {
     struct TDeviceRequestInfo
     {
-        NRdma::IClientEndpointPtr Endpoint;
-        NRdma::TClientRequestPtr ClientRequest;
+        NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+        NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -348,8 +349,8 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
         auto [req, err] = ep->AllocateRequest(
             handler,
             std::move(dr),
-            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
-            4_KB + sz);
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest, 0), 4_KB + sz);
 
         if (HasError(err)) {
             LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
@@ -363,10 +364,12 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             flags,

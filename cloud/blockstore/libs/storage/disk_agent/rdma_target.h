@@ -67,7 +67,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     TRdmaTargetConfigPtr rdmaTargetConfig,
     TOldRequestCounters oldRequestCounters,
     ILoggingServicePtr logging,
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
     TVector<TString> devices);

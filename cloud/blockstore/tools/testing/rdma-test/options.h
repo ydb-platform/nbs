@@ -76,7 +76,7 @@ struct TOptions
     TString TracePath;
     ui32 TraceRate = 1;
 
-    NRdma::TBufferPoolConfig BufferPool;
+    NCloud::NStorage::NRdma::TBufferPoolConfig BufferPool;
 
     void Parse(int argc, char** argv);
 };

@@ -107,8 +107,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     struct TDeviceRequestInfo
     {
-        NRdma::IClientEndpointPtr Endpoint;
-        NRdma::TClientRequestPtr ClientRequest;
+        NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+        NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -136,7 +136,9 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestContext,
             std::move(context),
-            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest,
+                0),
             4_KB);
 
         if (HasError(err)) {
@@ -155,7 +157,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             return;
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
             0,   // flags

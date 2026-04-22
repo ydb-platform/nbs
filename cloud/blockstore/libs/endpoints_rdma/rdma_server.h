@@ -24,7 +24,7 @@ struct TRdmaEndpointConfig
 ////////////////////////////////////////////////////////////////////////////////
 
 IEndpointListenerPtr CreateRdmaEndpointListener(
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,

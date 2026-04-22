@@ -9,7 +9,7 @@
 #include <util/generic/vector.h>
 #include <util/system/spinlock.h>
 
-namespace NCloud::NBlockStore::NRdma::NVerbs {
+namespace NCloud::NStorage::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -60,4 +60,4 @@ void CreateConnection(
     ui32 maxBufferSize);
 void Disconnect(TTestContextPtr context);
 
-}   // namespace NCloud::NBlockStore::NRdma::NVerbs
+}   // namespace NCloud::NStorage::NRdma::NVerbs

@@ -23,7 +23,7 @@ NActors::IActorPtr CreateMirrorPartition(
     TNonreplicatedPartitionConfigPtr partConfig,
     TMigrations migrations,
     TVector<TDevices> replicas,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
     NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,

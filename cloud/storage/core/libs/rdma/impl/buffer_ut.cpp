@@ -6,7 +6,7 @@
 #include <util/generic/vector.h>
 #include <util/system/info.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NStorage::NRdma {
 
 using testing::_;
 using testing::Invoke;
@@ -289,4 +289,4 @@ TEST_F(TBufferPoolTest, ShouldSetLkeyAndRkeyToBuffers)
     Pool.Init(Verbs, nullptr, 0);
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NStorage::NRdma
