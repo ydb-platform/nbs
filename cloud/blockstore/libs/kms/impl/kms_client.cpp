@@ -148,8 +148,26 @@ public:
             : grpc::SslCredentials(grpc::SslCredentialsOptions());
 
         grpc::ChannelArguments args;
-        if (Config.GetSslTargetNameOverride()) {
+        if (Config.HasSslTargetNameOverride()) {
             args.SetSslTargetNameOverride(Config.GetSslTargetNameOverride());
+        }
+
+        if (Config.HasGrpcKeepAliveTime()) {
+            args.SetInt(
+                GRPC_ARG_KEEPALIVE_TIME_MS,
+                Config.GetGrpcKeepAliveTime());
+        }
+
+        if (Config.HasGrpcKeepAliveTimeout()) {
+            args.SetInt(
+                GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+                Config.GetGrpcKeepAliveTimeout());
+        }
+
+        if (Config.HasGrpcKeepAlivePermitWithoutCalls()) {
+            args.SetInt(
+                GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS,
+                Config.GetGrpcKeepAlivePermitWithoutCalls() ? 1 : 0);
         }
 
         auto channel = grpc::CreateCustomChannel(
