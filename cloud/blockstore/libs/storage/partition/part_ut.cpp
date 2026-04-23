@@ -13456,6 +13456,60 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
     }
+
+    Y_UNIT_TEST(
+        ShouldNotLoseAnyMixedMergedBlocksWhileWaitingForCheckpointCreation)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(0, '1');
+        partition.Flush();
+
+        bool interceptTransactions = true;
+
+        std::unique_ptr<IEventHandle> executeTransactionsEvent;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvExecuteTransactions &&
+                    interceptTransactions)
+                {
+                    executeTransactionsEvent.reset(event.Release());
+                    interceptTransactions = false;
+
+                    return true;
+                }
+                return false;
+            });
+
+        partition.SendCreateCheckpointRequest("c1");
+        partition.Compaction();
+        partition.Cleanup();
+
+        UNIT_ASSERT(executeTransactionsEvent);
+
+        partition.SendReadBlocksRequest(0, "c1");
+        auto readBlocksResponse = partition.RecvReadBlocksResponse();
+
+        // Check that create checkpoint transaction is not executed
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, readBlocksResponse->GetStatus());
+
+        runtime->SendAsync(executeTransactionsEvent.release());
+
+        partition.RecvCreateCheckpointResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('1'),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
