@@ -48,14 +48,15 @@ inline IOutputStream& operator<<(IOutputStream& out, const TWorkRequestId& id)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSendWr
+template <typename M>
+struct TSendWrBase
 {
     ibv_send_wr wr;
     ibv_sge sg_list[RDMA_MAX_SEND_SGE];
 
     void* context;
 
-    TSendWr()
+    TSendWrBase()
     {
         Zero(*this);
     }
@@ -75,14 +76,15 @@ struct TSendWr
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRecvWr
+template <typename M>
+struct TRecvWrBase
 {
     ibv_recv_wr wr;
     ibv_sge sg_list[RDMA_MAX_RECV_SGE];
 
     void* context;
 
-    TRecvWr()
+    TRecvWrBase()
     {
         Zero(*this);
     }
@@ -91,12 +93,6 @@ struct TRecvWr
     T* Message()
     {
         return reinterpret_cast<T*>(wr.sg_list[0].addr);
-    }
-
-    template <typename T>
-    const T* Message() const
-    {
-        return const_cast<const T*>(const_cast<TRecvWr*>(this)->Message<T>());
     }
 };
 
