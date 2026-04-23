@@ -209,6 +209,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
+    xxx(MaxSkippedBlobsDuringCompactionHDD,     ui32,   3                     )\
     xxx(IncrementalCompactionEnabled,           bool,   false                 )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
