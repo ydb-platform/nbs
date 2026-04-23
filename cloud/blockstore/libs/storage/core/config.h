@@ -816,8 +816,6 @@ public:
     [[nodiscard]] bool GetVolumeBalancerGentlePreemptionEnabled() const;
 
     [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
-
-    [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionRetryDelay() const;
 };
 
 ui64 GetAllocationUnit(

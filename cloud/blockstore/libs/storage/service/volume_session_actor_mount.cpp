@@ -170,6 +170,10 @@ private:
         const TActorContext& ctx,
         TDuration delay = TDuration::Seconds(0));
 
+    void HandleIntermediateOperationResponse(
+        const TActorContext& ctx,
+        const NProto::TError& error);
+
     void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
 private:
@@ -205,6 +209,25 @@ TGentlePreemptionRequestActor::TGentlePreemptionRequestActor(
     , Timeout(timeout)
     , RetryBackoff(TDuration::Seconds(1), TDuration::Hours(1))
 {}
+
+void TGentlePreemptionRequestActor::Bootstrap(const TActorContext& ctx)
+{
+    Become(&TThis::StateWork);
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        LogTitle.GetWithTime()
+            << " Start gentle preemption with binding: "
+            << NProto::EVolumeBinding_Name(TargetBindingType)
+            << " source: " << NProto::EPreemptionSource_Name(PreemptionSource));
+
+    SendRequest(ctx);
+
+    ctx.Schedule(
+        Timeout,
+        new TEvents::TEvWakeup());
+}
 
 void TGentlePreemptionRequestActor::SendRequest(
     const TActorContext& ctx,
@@ -246,23 +269,15 @@ void TGentlePreemptionRequestActor::SendRequest(
     }
 }
 
-void TGentlePreemptionRequestActor::Bootstrap(const TActorContext& ctx)
+void TGentlePreemptionRequestActor::HandleIntermediateOperationResponse(
+    const TActorContext& ctx,
+    const NProto::TError& error)
 {
-    Become(&TThis::StateWork);
-
-    LOG_INFO_S(
-        ctx,
-        TBlockStoreComponents::SERVICE,
-        LogTitle.GetWithTime()
-            << " Start gentle preemption with binding: "
-            << NProto::EVolumeBinding_Name(TargetBindingType)
-            << " source: " << NProto::EPreemptionSource_Name(PreemptionSource));
-
-    SendRequest(ctx);
-
-    ctx.Schedule(
-        Timeout,
-        new TEvents::TEvWakeup());
+    if (HasError(error)) {
+        SendRequest(ctx, RetryBackoff.GetDelayAndIncrease());
+        return;
+    }
+    ReplyAndDie(ctx, error);
 }
 
 void TGentlePreemptionRequestActor::ReplyAndDie(
@@ -301,24 +316,14 @@ void TGentlePreemptionRequestActor::HandleStartVolumeResponse(
     const TEvServicePrivate::TEvStartVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        SendRequest(ctx, RetryBackoff.GetDelayAndIncrease());
-        return;
-    }
-    ReplyAndDie(ctx, msg->GetError());
+    HandleIntermediateOperationResponse(ctx, ev->Get()->GetError());
 }
 
 void TGentlePreemptionRequestActor::HandleReleaseVolumeToHiveResponse(
     const TEvServicePrivate::TEvReleaseVolumeToHiveResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        SendRequest(ctx, RetryBackoff.GetDelayAndIncrease());
-        return;
-    }
-    ReplyAndDie(ctx, msg->GetError());
+    HandleIntermediateOperationResponse(ctx, ev->Get()->GetError());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -838,7 +843,7 @@ void TMountRequestActor::GentlyReleaseVolume(const TActorContext& ctx)
 {
     GentlePreemptionActor = NCloud::Register<TGentlePreemptionRequestActor>(
         ctx,
-        LogTitle,   // TODO
+        LogTitle,
         CreateRequestInfo(
             SelfId(),
             RequestInfo->Cookie,
@@ -848,6 +853,7 @@ void TMountRequestActor::GentlyReleaseVolume(const TActorContext& ctx)
         VolumeTabletId,
         Params.SessionActorId,
         Config->GetVolumeBalancerGentlePreemptionTimeout());
+
     ShouldWaitVolumeAfterGentlePreemption = true;
 }
 
@@ -855,7 +861,7 @@ void TMountRequestActor::GentlyPullVolume(const TActorContext& ctx)
 {
     GentlePreemptionActor = NCloud::Register<TGentlePreemptionRequestActor>(
         ctx,
-        LogTitle,   // TODO
+        LogTitle,
         CreateRequestInfo(
             SelfId(),
             RequestInfo->Cookie,

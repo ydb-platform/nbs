@@ -1564,7 +1564,4 @@ message TStorageServiceConfig
 
     // Timeout for gentle preemption (ms).
     optional uint32 VolumeBalancerGentlePreemptionTimeout = 496;
-
-    // Retry delay for gentle preemption (ms).
-    optional uint32 VolumeBalancerGentlePreemptionRetryDelay = 497;
 }
