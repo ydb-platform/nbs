@@ -17,7 +17,6 @@
 
 #include <sys/stat.h>
 
-#include <chrono>
 #include <thread>
 
 namespace NCloud {
@@ -103,12 +102,12 @@ struct TCertificateProviderTestContext
         , ServerPem(ReadTextFile(TestDataPath("server1.crt")))
         , ClientPem(ReadTextFile(TestDataPath("server2.crt")))
     {
-        WriteTextFile(RootPath, RootPem);
+        RestoreFiles();
 
         RootCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         ServerGroup = RootCounters->GetSubgroup("component", "server");
 
-        Refresher = GetCertificateRefresher();
+        Refresher = CreateCertificateRefresher();
         Refresher->Init(
             CreateLoggingService("console"),
             ServerGroup,
@@ -145,12 +144,6 @@ struct TCertificateProviderTestContext
     }
 };
 
-TCertificateProviderTestContext& GetTestContext()
-{
-    static TCertificateProviderTestContext context;
-    return context;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,8 +152,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 {
     Y_UNIT_TEST(ShouldUpdateCertificates)
     {
-        auto& context = GetTestContext();
-        context.RestoreFiles();
+        TCertificateProviderTestContext context;
 
         context.Provider->UpdateCertificates().GetValueSync();
 
@@ -172,8 +164,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
     Y_UNIT_TEST(ShouldSkipUpdateIfRootCaIsInvalid)
     {
-        auto& context = GetTestContext();
-        context.RestoreFiles();
+        TCertificateProviderTestContext context;
         context.Provider->UpdateCertificates().GetValueSync();
 
         UNIT_ASSERT(
@@ -192,8 +183,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
     Y_UNIT_TEST(ShouldSkipUpdateIfAnyIdentityPairBecomesInvalid)
     {
-        auto& context = GetTestContext();
-        context.RestoreFiles();
+        TCertificateProviderTestContext context;
 
         context.Provider->UpdateCertificates().GetValueSync();
         UNIT_ASSERT(
@@ -214,8 +204,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
     Y_UNIT_TEST(ShouldFailOnRepeatedInit)
     {
-        auto& context = GetTestContext();
-        context.RestoreFiles();
+        TCertificateProviderTestContext context;
 
         UNIT_ASSERT_EXCEPTION(
             context.Refresher->Init(
@@ -231,21 +220,23 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
     Y_UNIT_TEST(ShouldReturnImmediatelyOnUpdateTrigger)
     {
-        auto& context = GetTestContext();
-        context.RestoreFiles();
+        TCertificateProviderTestContext context;
 
         const auto& fifoPath = context.ClientPair.CertChainPath;
         NFs::Remove(fifoPath);
 
         UNIT_ASSERT_VALUES_EQUAL(0, ::mkfifo(fifoPath.c_str(), 0600));
 
-        std::thread writer([fifoPath, pem = context.ClientPem] {
+        auto allowWritePromise = NThreading::NewPromise<void>();
+        auto allowWrite = allowWritePromise.GetFuture();
+        std::thread writer([fifoPath, pem = context.ClientPem] (
+            NThreading::TFuture<void> allowWrite)
+        {
             TFileOutput out(fifoPath);
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            allowWrite.GetValueSync();
             out.Write(pem.data(), pem.size());
-        });
+        }, std::move(allowWrite));
 
-        const auto start = TInstant::Now();
         auto future1 = context.Provider->UpdateCertificates();
         const auto stateId1 = future1.StateId();
         UNIT_ASSERT(stateId1.Defined());
@@ -254,16 +245,13 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         const auto stateId2 = future2.StateId();
         UNIT_ASSERT(stateId2.Defined());
         UNIT_ASSERT(*stateId1 == *stateId2);
-        const auto elapsed = TInstant::Now() - start;
 
-        UNIT_ASSERT(elapsed < TDuration::MilliSeconds(200));
+        UNIT_ASSERT(!future1.IsReady());
 
+        allowWritePromise.SetValue();
         future1.GetValueSync();
         future2.GetValueSync();
         writer.join();
-
-        NFs::Remove(fifoPath);
-        WriteTextFile(fifoPath, context.ClientPem);
     }
 }
 

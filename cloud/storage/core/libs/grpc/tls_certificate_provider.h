@@ -50,6 +50,7 @@ struct ICertificateRefresher
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ICertificateRefresherPtr CreateCertificateRefresher();
 ICertificateRefresherPtr GetCertificateRefresher();
 
 }   // namespace NCloud
