@@ -82,6 +82,7 @@ var (
 		{name: "FilesystemService.Resize", permission: "disk-manager.filesystems.update"},
 		{name: "FilesystemSnapshotService.Create", permission: "disk-manager.filesystem_snapshots.create"},
 		{name: "FilesystemSnapshotService.Delete", permission: "disk-manager.filesystem_snapshots.delete"},
+		{name: "FilesystemService.DescribeModel", permission: "disk-manager.filesystem_snapshots.get"},
 	}
 )
 

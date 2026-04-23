@@ -414,7 +414,7 @@ func TestResizeFilesystemInCellsByZoneID(t *testing.T) {
 	assertFilesystemModel(
 		t,
 		model,
-		4096, // blockSize
+		4096,    // blockSize
 		8192000, // size
 		disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
 	)
