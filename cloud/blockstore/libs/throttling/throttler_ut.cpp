@@ -1677,8 +1677,7 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         env.Policy->SetPostponeDelay(TDuration::Zero());
         env.Timer->AdvanceTime(TDuration::Seconds(1));
 
-        NWait::WaitAll(
-            TVector<TFuture<NProto::TWriteBlocksResponse>>{future}).Wait();
+        future.Wait();
 
         auto response = future.GetValue();
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
