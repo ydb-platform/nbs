@@ -565,10 +565,15 @@ struct TCertificateRefresher
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ICertificateRefresherPtr CreateCertificateRefresher()
+{
+    return std::make_shared<TCertificateRefresher>();
+}
+
 ICertificateRefresherPtr GetCertificateRefresher()
 {
-    static std::shared_ptr<TCertificateRefresher> refresher =
-        std::make_shared<TCertificateRefresher>();
+    static ICertificateRefresherPtr refresher =
+        CreateCertificateRefresher();
     return refresher;
 }
 
