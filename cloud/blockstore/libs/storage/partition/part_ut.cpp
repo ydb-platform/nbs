@@ -13471,9 +13471,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(0, '1');
         partition.Flush();
 
-        partition.SendCreateCheckpointRequest("c1");
-        partition.SendCompactionRequest();
-
         bool interceptTransactions = true;
 
         std::unique_ptr<IEventHandle> executeTransactionsEvent;
@@ -13493,9 +13490,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return false;
             });
 
-        auto response = partition.RecvCompactionResponse();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-
+        partition.SendCreateCheckpointRequest("c1");
+        partition.Compaction();
         partition.Cleanup();
 
         UNIT_ASSERT(executeTransactionsEvent);
