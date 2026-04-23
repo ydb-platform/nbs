@@ -30,6 +30,8 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 using namespace NCloud::NBlockStore;
 using namespace NThreading;
+using NCloud::NStorage::NRdma::IClientPtr;
+using NCloud::NStorage::NRdma::TClientConfig;
 
 namespace {
 
@@ -122,7 +124,7 @@ class TRdmaBackend final: public IBackend
 private:
     const ILoggingServicePtr Logging;
     TLog Log;
-    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    IClientPtr RdmaClient;
     IStorageProviderPtr StorageProvider;
     IBlockStorePtr DataClient;
     ISchedulerPtr Scheduler;
@@ -184,8 +186,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig =
-        std::make_shared<NCloud::NStorage::NRdma::TClientConfig>();
+    auto rdmaClientConfig = std::make_shared<TClientConfig>();
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;

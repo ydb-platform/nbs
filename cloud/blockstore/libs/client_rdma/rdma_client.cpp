@@ -24,6 +24,7 @@
 namespace NCloud::NBlockStore::NClient {
 
 using namespace NThreading;
+using namespace NCloud::NStorage;
 
 namespace {
 
@@ -57,7 +58,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IRequestHandler: public NCloud::NStorage::NRdma::TNullContext
+struct IRequestHandler: public NRdma::TNullContext
 {
     virtual void HandleResponse(TStringBuf buffer) = 0;
     virtual void HandleError(ui32 error, TStringBuf message) = 0;
@@ -105,7 +106,7 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+    NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
@@ -123,8 +124,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
-            MessageByteSize(*Request, 0);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -142,9 +142,7 @@ public:
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
-            SetProtoFlag(
-                flags,
-                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         TraceSerializer->BuildTraceRequest(
@@ -152,7 +150,7 @@ public:
             CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
             flags,   // flags
@@ -241,7 +239,7 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+    NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
@@ -258,10 +256,9 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
-            MessageByteSize(
-                *Request,
-                static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(
+            *Request,
+            static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
     }
 
     size_t GetResponseSize() const
@@ -283,9 +280,7 @@ public:
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
-            SetProtoFlag(
-                flags,
-                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         if (TraceSerializer) {
@@ -296,11 +291,12 @@ public:
             StartTime = GetCycleCount();
         }
 
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
-            SerializeWithData(
-                buffer,
-                TBlockStoreProtocol::WriteBlocksRequest,
-                flags, *Request, sglist);
+        return NRdma::TProtoMessageSerializer::SerializeWithData(
+            buffer,
+            TBlockStoreProtocol::WriteBlocksRequest,
+            flags,
+            *Request,
+            sglist);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -358,7 +354,7 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+    NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
@@ -376,8 +372,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
-            MessageByteSize(*Request, 0);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -394,9 +389,7 @@ public:
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
-            SetProtoFlag(
-                flags,
-                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
         TraceSerializer->BuildTraceRequest(
@@ -404,7 +397,7 @@ public:
             CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ZeroBlocksRequest,
             flags,   // flags
@@ -491,7 +484,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+    NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
@@ -509,8 +502,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::
-            MessageByteSize(*Request, 0);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -527,7 +519,7 @@ public:
     {
         ui32 flags = 0;
 
-        return NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::PingRequest,
             flags,   // flags
@@ -562,14 +554,14 @@ public:
 
 class TRdmaDataEndpoint
     : public TEndpointBase
-    , public NCloud::NStorage::NRdma::IClientHandler
+    , public NRdma::IClientHandler
     , public std::enable_shared_from_this<TRdmaDataEndpoint>
 {
     const ITraceSerializerPtr TraceSerializer;
     const ITaskQueuePtr TaskQueue;
     const bool IsAlignedDataEnabled;
 
-    NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+    NRdma::IClientEndpointPtr Endpoint;
     TLog Log;
 
 public:
@@ -590,7 +582,7 @@ public:
         DoStopEndpoint();
     }
 
-    void Init(NCloud::NStorage::NRdma::IClientEndpointPtr endpoint)
+    void Init(NRdma::IClientEndpointPtr endpoint)
     {
         Endpoint = std::move(endpoint);
     }
@@ -665,7 +657,7 @@ private:
         std::shared_ptr<typename T::TRequest> request);
 
     void HandleResponse(
-        NCloud::NStorage::NRdma::TClientRequestPtr req,
+        NRdma::TClientRequestPtr req,
         ui32 status,
         size_t responseBytes) override;
 
@@ -770,7 +762,7 @@ TFuture<typename T::TResponse> TRdmaDataEndpoint::HandleRequest(
 }
 
 void TRdmaDataEndpoint::HandleResponse(
-    NCloud::NStorage::NRdma::TClientRequestPtr req,
+    NRdma::TClientRequestPtr req,
     ui32 status,
     size_t responseBytes)
 {
@@ -780,7 +772,7 @@ void TRdmaDataEndpoint::HandleResponse(
         if (status == 0) {
             handler->HandleResponse(buffer);
         } else {
-            auto error = NCloud::NStorage::NRdma::ParseError(buffer);
+            auto error = NRdma::ParseError(buffer);
             handler->HandleError(error.GetCode(), error.GetMessage());
         }
     } catch (...) {
@@ -823,19 +815,18 @@ TFuture<NProto::TUnmountVolumeResponse> TRdmaEndpoint::UnmountVolume(
 
 IBlockStorePtr CreateRdmaEndpointClient(
     ILoggingServicePtr logging,
-    NCloud::NStorage::NRdma::IClientPtr client,
+    NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
-    auto endpoint =
-        TRdmaEndpoint::Create(
-            std::move(logging),
-            std::move(volumeClient),
-            std::move(traceSerializer),
-            std::move(taskQueue),
-            client->IsAlignedDataEnabled());
+    auto endpoint = TRdmaEndpoint::Create(
+        std::move(logging),
+        std::move(volumeClient),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
 
     auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
 
@@ -843,21 +834,21 @@ IBlockStorePtr CreateRdmaEndpointClient(
     return endpoint;
 }
 
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
+NThreading::TFuture<TResultOrError<IBlockStorePtr>>
+CreateRdmaEndpointClientAsync(
     ILoggingServicePtr logging,
-    NCloud::NStorage::NRdma::IClientPtr client,
+    NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
-    auto endpoint =
-        TRdmaEndpoint::Create(
-            std::move(logging),
-            std::move(volumeClient),
-            std::move(traceSerializer),
-            std::move(taskQueue),
-            client->IsAlignedDataEnabled());
+    auto endpoint = TRdmaEndpoint::Create(
+        std::move(logging),
+        std::move(volumeClient),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
 
     auto future = client->StartEndpoint(config.Address, config.Port);
     return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {
@@ -872,7 +863,7 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
 
 IBlockStorePtr CreateRdmaDataEndpoint(
     ILoggingServicePtr logging,
-    NCloud::NStorage::NRdma::IClientPtr client,
+    NRdma::IClientPtr client,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
@@ -891,7 +882,7 @@ IBlockStorePtr CreateRdmaDataEndpoint(
 
 NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
     ILoggingServicePtr logging,
-    NCloud::NStorage::NRdma::IClientPtr client,
+    NRdma::IClientPtr client,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)

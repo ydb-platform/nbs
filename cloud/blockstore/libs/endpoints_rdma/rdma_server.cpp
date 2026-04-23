@@ -25,6 +25,7 @@ using namespace NMonitoring;
 using namespace NThreading;
 
 using namespace NCloud::NBlockStore::NClient;
+using namespace NCloud::NStorage;
 
 namespace {
 
@@ -39,7 +40,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRdmaEndpoint final
-    : public NCloud::NStorage::NRdma::IServerHandler
+    : public NRdma::IServerHandler
     , public std::enable_shared_from_this<TRdmaEndpoint>
 {
 private:
@@ -48,10 +49,10 @@ private:
     const ISessionPtr Session;
     const size_t BlockSize;
 
-    NCloud::NStorage::NRdma::IServerEndpointPtr Endpoint;
+    NRdma::IServerEndpointPtr Endpoint;
     TLog Log;
 
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+    NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
@@ -69,7 +70,7 @@ public:
         Log = logging->CreateLog("BLOCKSTORE_RDMA");
     }
 
-    void Init(NCloud::NStorage::NRdma::IServerEndpointPtr endpoint)
+    void Init(NRdma::IServerEndpointPtr endpoint)
     {
         Endpoint = std::move(endpoint);
     }
