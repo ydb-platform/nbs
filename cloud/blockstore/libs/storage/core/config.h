@@ -102,7 +102,8 @@ public:
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
     ui64 GetTargetCompactionBytesPerOp() const;
-    ui32 GetMaxSkippedBlobsDuringCompaction() const;
+    [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
+    [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompactionHDD() const;
     bool GetIncrementalCompactionEnabled() const;
     ui32 GetCompactionCountPerRunIncreasingThreshold() const;
     ui32 GetCompactionCountPerRunDecreasingThreshold() const;

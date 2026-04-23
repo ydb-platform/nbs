@@ -1572,9 +1572,8 @@ namespace {
 
 void PrepareRangeCompaction(
     const TStorageConfig& config,
-    const bool incrementalCompactionEnabled,
+    const ui32 maxSkippedBlobs,
     const ui64 commitId,
-    const bool fullCompaction,
     const TActorContext& ctx,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
@@ -1597,7 +1596,7 @@ void PrepareRangeCompaction(
         state.GetMaxBlocksInBlob(),
         commitId);
 
-    if (ready && incrementalCompactionEnabled && !fullCompaction) {
+    if (ready && maxSkippedBlobs > 0) {
         THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> liveBlocks;
         for (const auto& m: args.BlockMarks) {
             if (m.CommitId && m.BlobId) {
@@ -1622,9 +1621,7 @@ void PrepareRangeCompaction(
 
         while (it != blobIds.end()) {
             const auto bytes = blocks * state.GetBlockSize();
-            const auto blobCountOk =
-                args.BlobsSkipped <=
-                config.GetMaxSkippedBlobsDuringCompaction();
+            const auto blobCountOk = args.BlobsSkipped <= maxSkippedBlobs;
             const auto byteCountOk =
                 bytes >= config.GetTargetCompactionBytesPerOp();
 
@@ -2005,15 +2002,20 @@ bool TPartitionActor::PrepareCompaction(
             PartitionConfig.GetDiskId());
     const bool fullCompaction =
         args.CompactionOptions.test(ToBit(ECompactionOption::Full));
+    const ui32 maxSkippedBlobs =
+        (!incrementalCompactionEnabled || fullCompaction) ? 0
+        : PartitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::STORAGE_MEDIA_SSD
+            ? Config->GetMaxSkippedBlobsDuringCompaction()
+            : Config->GetMaxSkippedBlobsDuringCompactionHDD();
 
     bool ready = true;
 
     for (auto& rangeCompaction: args.RangeCompactions) {
         PrepareRangeCompaction(
             *Config,
-            incrementalCompactionEnabled,
+            maxSkippedBlobs,
             args.CommitId,
-            fullCompaction,
             ctx,
             TabletID(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),

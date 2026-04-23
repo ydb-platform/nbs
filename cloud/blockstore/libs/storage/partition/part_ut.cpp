@@ -4851,16 +4851,27 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     void DoTestIncrementalCompaction(
         NProto::TStorageServiceConfig config,
+        NProto::EStorageMediaKind mediaKind,
         bool incrementalCompactionExpected)
     {
-        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+            config.SetWriteBlobThresholdSSD(1);   // disable FreshBlocks
+            config.SetSSDMaxBlobsPerRange(4);
+            config.SetMaxSkippedBlobsDuringCompaction(1);
+        }
+        else {
+            config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+            config.SetHDDMaxBlobsPerRange(4);
+            config.SetMaxSkippedBlobsDuringCompactionHDD(1);
+        }
         config.SetIncrementalCompactionEnabled(true);
-        config.SetHDDMaxBlobsPerRange(4);
-        config.SetSSDMaxBlobsPerRange(4);
-        config.SetMaxSkippedBlobsDuringCompaction(1);
         config.SetTargetCompactionBytesPerOp(64_KB);
 
-        auto runtime = PrepareTestActorRuntime(config);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = mediaKind});
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -4970,18 +4981,32 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCompactIncrementally)
+    Y_UNIT_TEST(ShouldCompactIncrementallySsd)
     {
         auto config = DefaultConfig();
         config.SetCompactionGarbageThreshold(20);
-        DoTestIncrementalCompaction(std::move(config), true);
+        DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_SSD, true);
     }
 
-    Y_UNIT_TEST(ShouldNotCompactIncrementallyIfDiskGarbageLevelIsTooHigh)
+    Y_UNIT_TEST(ShouldCompactIncrementallyHybrid)
+    {
+        auto config = DefaultConfig();
+        config.SetCompactionGarbageThreshold(20);
+        DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_HYBRID, true);
+    }
+
+    Y_UNIT_TEST(ShouldNotCompactIncrementallyIfSsdDiskGarbageLevelIsTooHigh)
     {
         auto config = DefaultConfig();
         config.SetCompactionGarbageThreshold(1);
-        DoTestIncrementalCompaction(std::move(config), false);
+        DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_SSD, false);
+    }
+
+    Y_UNIT_TEST(ShouldNotCompactIncrementallyIfHybridDiskGarbageLevelIsTooHigh)
+    {
+        auto config = DefaultConfig();
+        config.SetCompactionGarbageThreshold(1);
+        DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_HYBRID, false);
     }
 
     Y_UNIT_TEST(ShouldNotEraseBlocksForSkippedBlobsFromIndexDuringIncrementalCompaction)
@@ -4994,7 +5019,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetMaxSkippedBlobsDuringCompaction(1);
         config.SetTargetCompactionBytesPerOp(1);
 
-        auto runtime = PrepareTestActorRuntime(config);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -8787,7 +8816,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetBlobPatchingEnabled(true);
-        DoTestIncrementalCompaction(std::move(config), true);
+        DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_SSD, true);
+        DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_HYBRID, true);
     }
 
     Y_UNIT_TEST(ShouldProperlyPatchBlobWithDifferentLayout)
@@ -9947,16 +9977,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TStatsChecker statsChecker;
         auto config = DefaultConfig();
         config.SetBlobPatchingEnabled(true);
-        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        config.SetWriteBlobThresholdSSD(1);   // disable FreshBlocks
         config.SetIncrementalCompactionEnabled(true);
-        config.SetHDDMaxBlobsPerRange(4);
         config.SetSSDMaxBlobsPerRange(4);
         config.SetMaxSkippedBlobsDuringCompaction(1);
         config.SetTargetCompactionBytesPerOp(64_KB);
+
         auto runtime = PrepareTestActorRuntime(
             config,
-            MaxPartitionBlocksCount
-        );
+            MaxPartitionBlocksCount,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -11848,7 +11879,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(1_MB);
         config.SetCompactionMergedBlobThresholdHDD(1_MB);
         config.SetIncrementalCompactionEnabled(true);
-        config.SetMaxSkippedBlobsDuringCompaction(1);
+        config.SetMaxSkippedBlobsDuringCompactionHDD(1);
         config.SetTargetCompactionBytesPerOp(1);
 
         auto runtime = PrepareTestActorRuntime(
