@@ -216,8 +216,7 @@ public:
 
     std::unique_ptr<TEvPartition::TEvDrainRequest> CreateDrainRequest()
     {
-        auto request = std::make_unique<TEvPartition::TEvDrainRequest>();
-        return request;
+        return std::make_unique<TEvPartition::TEvDrainRequest>();
     }
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \

@@ -439,36 +439,6 @@ void TFreshBlocksWriterActor::HandleDrain(
     SharedState->AccessDrainActorCompanion()->HandleDrain(ev, ctx);
 }
 
-void TFreshBlocksWriterActor::HandleWaitReady(
-    const TEvPartition::TEvWaitReadyRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    Y_DEBUG_ABORT_UNLESS(false, "Unexpected event");
-}
-
-void TFreshBlocksWriterActor::HandleLockAndDrainRange(
-    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    Y_DEBUG_ABORT_UNLESS(false, "Unexpected event");
-}
-
-void TFreshBlocksWriterActor::HandleWaitForInFlightWrites(
-    const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    Y_DEBUG_ABORT_UNLESS(false, "Unexpected event");
-}
-
 bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {

@@ -222,9 +222,8 @@ private:
 
     BLOCKSTORE_IMPLEMENT_REQUEST(GetPartCounters, TEvPartitionCommonPrivate)
 
-    BLOCKSTORE_PARTITION_REQUESTS(
-        BLOCKSTORE_IMPLEMENT_REQUEST,
-        NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(Drain,         NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(StatPartition, NPartition::TEvPartition);
 
     BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(
         BLOCKSTORE_IMPLEMENT_REQUEST,
