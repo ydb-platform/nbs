@@ -457,6 +457,10 @@ bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             HandleGetPartCounters);
 
+        HFunc(TEvPartition::TEvDrainRequest, HandleDrain);
+
+        HFunc(TEvPartition::TEvStatPartitionRequest, HandleStatPartition);
+
         default:
             return false;
     }
@@ -483,6 +487,8 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
             RejectGetPartCounters);
 
         HFunc(TEvPartition::TEvDrainRequest, RejectDrain);
+
+        HFunc(TEvPartition::TEvStatPartitionRequest, RejectStatPartition);
 
         default:
             return false;
@@ -538,8 +544,6 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
             HandleZeroBlocksCompleted);
-
-        HFunc(TEvPartition::TEvDrainRequest, HandleDrain);
 
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
