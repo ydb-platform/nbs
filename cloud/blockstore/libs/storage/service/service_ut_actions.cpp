@@ -2136,6 +2136,48 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 .ok());
         UNIT_ASSERT_VALUES_UNEQUAL(0, output.GetCapacity().size());
     }
+
+    Y_UNIT_TEST(ShouldDescribeDisk)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            100_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "",
+            "",
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+        auto* disk = drState->Disks.FindPtr(DefaultDiskId);
+        UNIT_ASSERT(disk);
+
+        TString buf;
+
+        {
+            NProto::TDescribeDiskRequest proto;
+            proto.SetDiskId(DefaultDiskId);
+            google::protobuf::util::MessageToJsonString(proto, &buf);
+        }
+
+        const auto response =
+            service.ExecuteAction("diskregistrydescribedisk", buf);
+
+        NProto::TDescribeDiskResponse proto;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &proto)
+                .ok());
+        UNIT_ASSERT_VALUES_EQUAL(disk->Devices.size(), proto.DevicesSize());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

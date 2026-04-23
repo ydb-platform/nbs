@@ -48,6 +48,7 @@ void TServiceActor::HandleExecuteAction(
         {"describeblocks",                    &TServiceActor::CreateDescribeBlocksActionActor              },
         {"describevolume",                    &TServiceActor::CreateDescribeVolumeActionActor              },
         {"diskregistrychangestate",           &TServiceActor::CreateDiskRegistryChangeStateActor           },
+        {"diskregistrydescribedisk",          &TServiceActor::CreateDiskRegistryDescribeDiskActionActor    },
         {"drainnode",                         &TServiceActor::CreateDrainNodeActionActor                   },
         {"ensurediskregistrystateintegrity",  &TServiceActor::CreateDiskRegistryEnsureStateIntegrityActor  },
         {"finishfilldisk",                    &TServiceActor::CreateFinishFillDiskActionActor              },
