@@ -2,7 +2,7 @@ import "google/protobuf/descriptor.proto";
 
 package NYT;
 
-option go_package = "a.yandex-team.ru/yt/yt_proto/yt/formats";
+option go_package = "github.com/ydb-platform/nbs/yt/yt_proto/yt/formats";
 
 message EWrapperFieldFlag
 {
@@ -91,6 +91,8 @@ extend google.protobuf.FieldOptions
     repeated EWrapperFieldFlag.Enum flags = 56788;
     optional string column_name = 56789;
     optional string key_column_name = 56790;
+    // TODO(ignat): use consistent tag number.
+    optional uint64 max_inline_hunk_size = 60130;
 }
 
 extend google.protobuf.MessageOptions

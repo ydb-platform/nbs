@@ -27,6 +27,7 @@ class TTransactionContext;
 class TExecutor;
 struct TPageCollectionTxEnv;
 struct TSeat;
+class TExecutorCounters;
 
 class TTableSnapshotContext : public TThrRefBase, TNonCopyable {
     friend class TExecutor;
@@ -354,7 +355,6 @@ public:
 
 struct TExecutorStats {
     bool IsActive = false;
-    bool IsFollower = false;
     bool IsAnyChannelYellowMove = false;
     bool IsAnyChannelYellowStop = false;
     ui64 TxInFly = 0;
@@ -366,6 +366,11 @@ struct TExecutorStats {
     TVector<ui32> YellowStopChannels;
 
     ui32 FollowersCount = 0;
+
+    ui32 FollowerId = 0;
+    bool IsFollower() const {
+        return FollowerId != 0;
+    }
 
     bool IsYellowMoveChannel(ui32 channel) const {
         auto it = std::lower_bound(YellowMoveChannels.begin(), YellowMoveChannels.end(), channel);
@@ -494,6 +499,7 @@ namespace NFlatExecutorSetup {
         virtual void SnapshotComplete(TIntrusivePtr<TTableSnapshotContext> snapContext, const TActorContext &ctx); // would be FAIL in default implementation
         virtual void CompletedLoansChanged(const TActorContext &ctx); // would be no-op in default implementation
         virtual void CompactionComplete(ui32 tableId, const TActorContext &ctx); // would be no-op in default implementation
+        virtual void DataCleanupComplete(ui64 dataCleanupGeneration, const TActorContext& ctx);
 
         virtual void ScanComplete(NTable::EAbort status, TAutoPtr<IDestructable> prod, ui64 cookie, const TActorContext &ctx);
 
@@ -617,6 +623,7 @@ namespace NFlatExecutorSetup {
 
         virtual const TExecutorStats& GetStats() const = 0;
         virtual NMetrics::TResourceMetrics* GetResourceMetrics() const = 0;
+        virtual TExecutorCounters* GetCounters() = 0;
 
         /* This stange looking functionallity probably should be dropped */
 
@@ -626,6 +633,8 @@ namespace NFlatExecutorSetup {
         virtual const NTable::TScheme& Scheme() const noexcept = 0;
 
         virtual void SetPreloadTablesData(THashSet<ui32> tables) = 0;
+
+        virtual void CleanupData(ui64 dataCleanupGeneration) = 0;
 
         ui32 Generation() const { return Generation0; }
         ui32 Step() const { return Step0; }

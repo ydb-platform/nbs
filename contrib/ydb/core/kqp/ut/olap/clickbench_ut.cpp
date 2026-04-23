@@ -20,9 +20,7 @@ Y_UNIT_TEST_SUITE(KqpOlapClickbench) {
         {}
 
         void CreateClickBenchTable(TString tableName = "benchTable", ui32 shardsCount = 4) {
-            TActorId sender = Server.GetRuntime()->AllocateEdgeActor();
-
-            TBase::CreateTestOlapTable(sender, "", Sprintf(R"(
+            TBase::CreateTestOlapTable( "", Sprintf(R"(
                 Name: "%s"
                 ColumnShardCount: %d
                 Schema {
@@ -155,6 +153,7 @@ Y_UNIT_TEST_SUITE(KqpOlapClickbench) {
             //.SetExpectedReply("[[[\"40999\"];[4];1u];[[\"40998\"];[3];1u];[[\"40997\"];[2];1u]]")
             // Should be fixed in https://st.yandex-team.ru/KIKIMR-17009
             // .SetExpectedReadNodeType("TableFullScan");
+            // .SetExpectedReadNodeType("TableFullScan");
         q7.FillExpectedAggregationGroupByPlanOptions();
 
         TAggregationTestCase q9;
@@ -167,7 +166,8 @@ Y_UNIT_TEST_SUITE(KqpOlapClickbench) {
                 LIMIT 10
             )");
             //.SetExpectedReply("[[[\"40999\"];[4];1u];[[\"40998\"];[3];1u];[[\"40997\"];[2];1u]]")
-            //.SetExpectedReadNodeType("Filter-TableFullScan");
+            // .SetExpectedReadNodeType("TableFullScan");
+            // .SetExpectedReadNodeType("Aggregate-TableFullScan");
         q9.FillExpectedAggregationGroupByPlanOptions();
 
         TAggregationTestCase q12;
@@ -182,6 +182,7 @@ Y_UNIT_TEST_SUITE(KqpOlapClickbench) {
             )");
             //.SetExpectedReply("[[[\"40999\"];[4];1u];[[\"40998\"];[3];1u];[[\"40997\"];[2];1u]]")
             // Should be fixed in https://st.yandex-team.ru/KIKIMR-17009
+            // .SetExpectedReadNodeType("TableFullScan");
             // .SetExpectedReadNodeType("TableFullScan");
         q12.FillExpectedAggregationGroupByPlanOptions();
 
@@ -198,6 +199,7 @@ Y_UNIT_TEST_SUITE(KqpOlapClickbench) {
             //.SetExpectedReply("[[[\"40999\"];[4];1u];[[\"40998\"];[3];1u];[[\"40997\"];[2];1u]]")
             // Should be fixed in https://st.yandex-team.ru/KIKIMR-17009
             // .SetExpectedReadNodeType("TableFullScan");
+            // .SetExpectedReadNodeType("TableFullScan");
         q14.FillExpectedAggregationGroupByPlanOptions();
 
         TAggregationTestCase q22;
@@ -211,6 +213,7 @@ Y_UNIT_TEST_SUITE(KqpOlapClickbench) {
                 LIMIT 10;
             )")
             .AddExpectedPlanOptions("KqpOlapFilter");
+            // .SetExpectedReadNodeType("TableFullScan");
         q22.FillExpectedAggregationGroupByPlanOptions();
 
         TAggregationTestCase q39;

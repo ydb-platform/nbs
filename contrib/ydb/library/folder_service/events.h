@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/base/events.h>
 
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 
 namespace NKikimr::NFolderService {
 

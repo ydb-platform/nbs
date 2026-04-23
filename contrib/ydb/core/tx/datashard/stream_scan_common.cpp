@@ -6,6 +6,13 @@ namespace NKikimr::NDataShard::NStreamScan {
 
 using namespace NTable;
 
+TLimits::TLimits(const NKikimrTxDataShard::TEvCdcStreamScanRequest_TLimits& proto)
+    : BatchMaxBytes(proto.GetBatchMaxBytes())
+    , BatchMinRows(proto.GetBatchMinRows())
+    , BatchMaxRows(proto.GetBatchMaxRows())
+{
+}
+
 TVector<TRawTypeValue> MakeKey(TArrayRef<const TCell> cells, const TVector<NScheme::TTypeInfo>& keyColumnTypes) {
     TVector<TRawTypeValue> key(Reserve(cells.size()));
 

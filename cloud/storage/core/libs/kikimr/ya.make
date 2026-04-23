@@ -31,9 +31,6 @@ PEERDIR(
     contrib/ydb/library/actors/util
     contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/wilson
-    contrib/ydb/library/yql/public/udf
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
 
     contrib/ydb/core/base
     contrib/ydb/core/config/init
@@ -42,6 +39,12 @@ PEERDIR(
     contrib/ydb/core/tx/coordinator
     contrib/ydb/core/tx/mediator
     contrib/ydb/core/tx/schemeshard
+
+    contrib/ydb/public/sdk/cpp/client/ydb_driver
+    contrib/ydb/public/sdk/cpp/client/ydb_discovery
+
+    yql/essentials/sql/pg_dummy
+    yql/essentials/public/udf/service/exception_policy
 )
 
 YQL_LAST_ABI_VERSION()

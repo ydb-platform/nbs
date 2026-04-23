@@ -64,6 +64,11 @@ public:
     {
     }
 
+    void ResetControl(const TControlWrapper &control) {
+        Control = control;
+        CurrentValue = control;
+    }
+
     i64 Update(TInstant now) {
         CheckingCounter--;
         if (now > CheckingRelevantDeadline || CheckingCounter <= 0) {

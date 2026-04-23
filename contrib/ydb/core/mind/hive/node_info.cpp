@@ -24,6 +24,14 @@ TNodeInfo::TNodeInfo(TNodeId nodeId, THive& hive)
 void TNodeInfo::ChangeVolatileState(EVolatileState state) {
     BLOG_W("Node(" << Id << ", " << ResourceValues << ") VolatileState: " << EVolatileStateName(VolatileState) << " -> " << EVolatileStateName(state));
 
+    if (VolatileState != state) {
+        if (VolatileState == EVolatileState::Connected) {
+            --Hive.AliveNodes;
+        } else if (state == EVolatileState::Connected) {
+            ++Hive.AliveNodes;
+        }
+    }
+
     if (state == EVolatileState::Connected) {
         switch (VolatileState) {
         case EVolatileState::Unknown:
@@ -60,7 +68,7 @@ bool TNodeInfo::OnTabletChangeVolatileState(TTabletInfo* tablet, TTabletInfo::EV
     TTabletInfo::EVolatileState oldState = tablet->GetVolatileState();
     if (IsResourceDrainingState(oldState)) {
         if (Tablets[oldState].erase(tablet) != 0) {
-            UpdateResourceValues(tablet, tablet->GetResourceValues(), NKikimrTabletBase::TMetrics());
+            UpdateResourceValues(tablet, tablet->GetResourceValues(), {});
         } else {
             if (oldState != newState) {
                 BLOG_W("Node(" << Id << ") could not delete tablet " << tablet->ToString() << " from state " << TTabletInfo::EVolatileStateName(oldState));
@@ -78,7 +86,7 @@ bool TNodeInfo::OnTabletChangeVolatileState(TTabletInfo* tablet, TTabletInfo::EV
     }
     if (IsResourceDrainingState(newState)) {
         if (Tablets[newState].insert(tablet).second) {
-            UpdateResourceValues(tablet, NKikimrTabletBase::TMetrics(), tablet->GetResourceValues());
+            UpdateResourceValues(tablet, {}, tablet->GetResourceValues());
         } else {
             BLOG_W("Node(" << Id << ") could not insert tablet " << tablet->ToString() << " to state " << TTabletInfo::EVolatileStateName(newState));
         }
@@ -95,7 +103,7 @@ bool TNodeInfo::OnTabletChangeVolatileState(TTabletInfo* tablet, TTabletInfo::EV
     return true;
 }
 
-void TNodeInfo::UpdateResourceValues(const TTabletInfo* tablet, const NKikimrTabletBase::TMetrics& before, const NKikimrTabletBase::TMetrics& after) {
+void TNodeInfo::UpdateResourceValues(const TTabletInfo* tablet, const TMetrics& before, const TMetrics& after) {
     TResourceRawValues delta = ResourceRawValuesFromMetrics(after) - ResourceRawValuesFromMetrics(before);
     auto oldResourceValues = ResourceValues;
     auto oldNormalizedValues = NormalizeRawValues(ResourceValues, ResourceMaximumValues);
@@ -201,7 +209,7 @@ bool TNodeInfo::IsAllowedToRunTablet(const TTabletInfo& tablet, TTabletDebugStat
     return true;
 }
 
-i32 TNodeInfo::GetPriorityForTablet(const TTabletInfo& tablet) const {
+i32 TNodeInfo::GetPriorityForTablet(const TTabletInfo& tablet, TDataCenterPriority& dcPriority) const {
     i32 priority = 0;
 
     auto it = TabletAvailability.find(tablet.GetTabletType());
@@ -212,6 +220,9 @@ i32 TNodeInfo::GetPriorityForTablet(const TTabletInfo& tablet) const {
     if (tablet.FailedNodeId == Id) {
         --priority;
     }
+
+    priority += dcPriority[GetDataCenter()];
+    priority -= GetRestartsPerPeriod() / Hive.GetNodeRestartsForPenalty();
 
     return priority;
 }
@@ -268,16 +279,18 @@ bool TNodeInfo::IsAbleToRunTablet(const TTabletInfo& tablet, TTabletDebugState* 
         return false;
     }
 
-    auto maximumResources = GetResourceMaximumValues() * Hive.GetResourceOvercommitment();
-    auto allocatedResources = GetResourceCurrentValues() + tablet.GetResourceCurrentValues();
-
-    bool result = min(maximumResources - allocatedResources) > 0;
-    if (!result) {
+    TResourceRawValues maximumResources = GetResourceMaximumValues() * Hive.GetResourceOvercommitment();
+    TResourceRawValues allocatedResources = GetResourceCurrentValues() + tablet.GetResourceCurrentValues();
+    auto cmp = piecewise_compare(allocatedResources, maximumResources);
+    // only check memory because it's the only resource we can actually run out of
+    if (std::get<NMetrics::EResource::Memory>(cmp) != std::partial_ordering::less) {
         if (debugState) {
             debugState->NodesWithoutResources++;
         }
+        return false;
     }
-    return result;
+
+    return true;
 }
 
 ui64 TNodeInfo::GetMaxTabletsScheduled() const {
@@ -347,6 +360,7 @@ void TNodeInfo::SendReconnect(const TActorId& local) {
 }
 
 void TNodeInfo::SetDown(bool down) {
+    Hive.UpdateCounterNodesDown(static_cast<i64>(down) - static_cast<i64>(Down));
     Down = down;
     if (Down) {
         Hive.ObjectDistributions.RemoveNode(*this);
@@ -357,6 +371,7 @@ void TNodeInfo::SetDown(bool down) {
 }
 
 void TNodeInfo::SetFreeze(bool freeze) {
+    Hive.UpdateCounterNodesFrozen(static_cast<i64>(freeze) - static_cast<i64>(Freeze));
     Freeze = freeze;
     if (Freeze) {
         for (const auto& [state, tablets] : Tablets) {
@@ -390,7 +405,7 @@ void TNodeInfo::UpdateResourceMaximum(const NKikimrTabletBase::TMetrics& metrics
         std::get<NMetrics::EResource::Network>(ResourceMaximumValues) = metrics.GetNetwork();
     }
     auto normalizedValues = NormalizeRawValues(ResourceValues, ResourceMaximumValues);
-    Hive.UpdateTotalResourceValues(nullptr, nullptr, NKikimrTabletBase::TMetrics(), NKikimrTabletBase::TMetrics(), {}, normalizedValues - oldNormalizedValues);
+    Hive.UpdateTotalResourceValues(nullptr, nullptr, {}, {}, {}, normalizedValues - oldNormalizedValues);
 }
 
 double TNodeInfo::GetNodeUsageForTablet(const TTabletInfo& tablet) const {

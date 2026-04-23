@@ -1,5 +1,6 @@
 #include "syncer_job_task.h"
 #include "syncer_context.h"
+#include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/blobstorage/vdisk/synclog/blobstorage_synclogmsgreader.h>
 
 using namespace NKikimrServices;

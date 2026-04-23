@@ -13,6 +13,7 @@ namespace NKikimr {
 namespace NDataShard {
 
 using namespace NResourceBroker;
+using namespace NSharedCache;
 using namespace NTable;
 
 struct TTableStatsCoroBuilderArgs {
@@ -122,6 +123,7 @@ public:
 
         for (auto& loaded : msg->Loaded) {
             partPages.emplace(pageId, TPinnedPageRef(loaded.Page).GetData());
+            PageRefs.emplace_back(std::move(loaded.Page));
         }
 
         page = partPages.FindPtr(pageId);
@@ -136,7 +138,6 @@ private:
 
         auto ev = MakeHolder<TDataShard::TEvPrivate::TEvAsyncTableStats>();
         ev->TableId = TableId;
-        ev->IndexSize = IndexSize;
         ev->StatsUpdateTime = StatsUpdateTime;
         ev->PartCount = Subset->Flatten.size() + Subset->ColdParts.size();
         ev->MemRowCount = MemRowCount;
@@ -233,6 +234,7 @@ private:
     }
 
     THashMap<const TPart*, THashMap<TPageId, TSharedData>> Pages;
+    TVector<TSharedPageRef> PageRefs;
     ui64 PagesSize = 0;
     ui64 CoroutineDeadline;
     TAutoPtr<TSpent> Spent;
@@ -267,17 +269,14 @@ public:
 
         const TUserTable& tableInfo = *Self->TableInfos[tableId];
 
-        auto indexSize = txc.DB.GetTableIndexSize(tableInfo.LocalTid);
+        // Fill stats with current mem table size:
         auto memSize = txc.DB.GetTableMemSize(tableInfo.LocalTid);
         auto memRowCount = txc.DB.GetTableMemRowCount(tableInfo.LocalTid);
-
         if (tableInfo.ShadowTid) {
-            indexSize += txc.DB.GetTableIndexSize(tableInfo.ShadowTid);
             memSize += txc.DB.GetTableMemSize(tableInfo.ShadowTid);
             memRowCount += txc.DB.GetTableMemRowCount(tableInfo.ShadowTid);
         }
 
-        Result->Record.MutableTableStats()->SetIndexSize(indexSize);
         Result->Record.MutableTableStats()->SetInMemSize(memSize);
         Result->Record.MutableTableStats()->SetLastAccessTime(tableInfo.Stats.AccessTime.MilliSeconds());
         Result->Record.MutableTableStats()->SetLastUpdateTime(tableInfo.Stats.UpdateTime.MilliSeconds());
@@ -286,18 +285,21 @@ public:
         tableInfo.Stats.RowCountResolution = Ev->Get()->Record.GetRowCountResolution();
         tableInfo.Stats.HistogramBucketsCount = Ev->Get()->Record.GetHistogramBucketsCount();
 
-        // Check if first stats update has been completed
+        // Check if first stats update has been completed:
         bool ready = (tableInfo.Stats.StatsUpdateTime != TInstant());
         Result->Record.SetFullStatsReady(ready);
-        if (!ready)
+        if (!ready) {
             return true;
+        }
 
         const TStats& stats = tableInfo.Stats.DataStats;
+        Result->Record.MutableTableStats()->SetIndexSize(stats.IndexSize.Size);
+        Result->Record.MutableTableStats()->SetByKeyFilterSize(stats.ByKeyFilterSize);
         Result->Record.MutableTableStats()->SetDataSize(stats.DataSize.Size + memSize);
         Result->Record.MutableTableStats()->SetRowCount(stats.RowCount + memRowCount);
         FillHistogram(stats.DataSizeHistogram, *Result->Record.MutableTableStats()->MutableDataSizeHistogram());
         FillHistogram(stats.RowCountHistogram, *Result->Record.MutableTableStats()->MutableRowCountHistogram());
-        // Fill key access sample if it was collected not too long ago
+        // Fill key access sample if it was collected not too long ago:
         if (Self->StopKeyAccessSamplingAt + TDuration::Seconds(30) >= AppData(ctx)->TimeProvider->Now()) {
             FillKeyAccessSample(tableInfo.Stats.AccessStats, *Result->Record.MutableTableStats()->MutableKeyAccessSample());
         }
@@ -313,7 +315,7 @@ public:
             Result->Record.AddUserTablePartOwners(pi);
         }
 
-        for (const auto& pi : Self->SysTablesPartOnwers) {
+        for (const auto& pi : Self->SysTablesPartOwners) {
             Result->Record.AddSysTablesPartOwners(pi);
         }
 
@@ -349,7 +351,7 @@ void TDataShard::Handle(TEvDataShard::TEvGetTableStats::TPtr& ev, const TActorCo
 template <class TTables>
 void ListTableNames(const TTables& tables, TStringBuilder& names) {
     for (auto& t : tables) {
-        if (!names.Empty()) {
+        if (!names.empty()) {
             names << ", ";
         }
         names << "[" << t.second->Path << "]";
@@ -360,37 +362,36 @@ void TDataShard::Handle(TEvPrivate::TEvAsyncTableStats::TPtr& ev, const TActorCo
     Actors.erase(ev->Sender);
 
     ui64 tableId = ev->Get()->TableId;
+
+    if (!TableInfos.contains(tableId)) {
+        LOG_INFO_S(ctx, NKikimrServices::TABLET_STATS_BUILDER, "Result dropped at datashard " << TabletID() << ", for tableId " << tableId
+            << ", but table is gone (moved ot dropped)");
+        return;
+    }
+
     LOG_INFO_S(ctx, NKikimrServices::TABLET_STATS_BUILDER, "Result received at datashard " << TabletID() << ", for tableId " << tableId
         << ": " << ev->Get()->Stats.ToString());
 
-    i64 dataSize = 0;
-    if (TableInfos.contains(tableId)) {
-        const TUserTable& tableInfo = *TableInfos[tableId];
+    const TUserTable& tableInfo = *TableInfos[tableId];
 
-        if (!tableInfo.StatsUpdateInProgress) { // How can this happen?
-            LOG_ERROR_S(ctx, NKikimrServices::TABLET_STATS_BUILDER, "Unexpected async stats update at datashard " << TabletID() << ", for tableId " << tableId);
-        }
-        tableInfo.Stats.Update(std::move(ev->Get()->Stats), ev->Get()->IndexSize,
-            std::move(ev->Get()->PartOwners), ev->Get()->PartCount,
-            ev->Get()->StatsUpdateTime);
-        tableInfo.Stats.MemRowCount = ev->Get()->MemRowCount;
-        tableInfo.Stats.MemDataSize = ev->Get()->MemDataSize;
-
-        dataSize += tableInfo.Stats.DataStats.DataSize.Size;
-
-        tableInfo.Stats.SearchHeight = ev->Get()->SearchHeight;
-        tableInfo.Stats.HasSchemaChanges = ev->Get()->HasSchemaChanges;
-
-        tableInfo.StatsUpdateInProgress = false;
-
-        SendPeriodicTableStats(ctx);
-
-    } else {
-        LOG_INFO_S(ctx, NKikimrServices::TABLET_STATS_BUILDER, "Result dropped at datashard " << TabletID() << ", for tableId " << tableId
-            << ", but table is gone (moved ot dropped)");
+    if (!tableInfo.StatsUpdateInProgress) { // how can this happen?
+        LOG_ERROR_S(ctx, NKikimrServices::TABLET_STATS_BUILDER, "Unexpected async stats update at datashard " << TabletID() << ", for tableId " << tableId);
     }
 
-    if (dataSize > HighDataSizeReportThresholdBytes) {
+    tableInfo.Stats.DataStats = std::move(ev->Get()->Stats);
+    tableInfo.Stats.PartOwners = std::move(ev->Get()->PartOwners);
+    tableInfo.Stats.PartCount = ev->Get()->PartCount;
+    tableInfo.Stats.StatsUpdateTime = ev->Get()->StatsUpdateTime;
+    tableInfo.Stats.MemRowCount = ev->Get()->MemRowCount;
+    tableInfo.Stats.MemDataSize = ev->Get()->MemDataSize;
+    tableInfo.Stats.SearchHeight = ev->Get()->SearchHeight;
+    tableInfo.Stats.HasSchemaChanges = ev->Get()->HasSchemaChanges;
+
+    tableInfo.StatsUpdateInProgress = false;
+
+    SendPeriodicTableStats(ctx);
+
+    if (static_cast<i64>(tableInfo.Stats.DataStats.DataSize.Size) > HighDataSizeReportThresholdBytes) {
         TInstant now = AppData(ctx)->TimeProvider->Now();
 
         if (LastDataSizeWarnTime + TDuration::Seconds(HighDataSizeReportIntervalSeconds) > now)
@@ -401,11 +402,10 @@ void TDataShard::Handle(TEvPrivate::TEvAsyncTableStats::TPtr& ev, const TActorCo
         TStringBuilder names;
         ListTableNames(GetUserTables(), names);
 
-        LOG_ERROR_S(ctx, NKikimrServices::TX_DATASHARD, "Data size " << dataSize
-                    << " is higher than threshold of " << (i64)HighDataSizeReportThresholdBytes
-                    << " at datashard: " << TabletID()
-                    << " table: " << names
-                    << " consider reconfiguring table partitioning settings");
+        LOG_ERROR_S(ctx, NKikimrServices::TX_DATASHARD, "Data size " << tableInfo.Stats.DataStats.DataSize.Size
+            << " is higher than threshold of " << (i64)HighDataSizeReportThresholdBytes
+            << " at datashard " << TabletID() << ", for tables " << names
+            << " consider reconfiguring table partitioning settings");
     }
 }
 
@@ -574,12 +574,12 @@ public:
             Self->Actors.insert(actorId);
         }
 
-        Self->SysTablesPartOnwers.clear();
+        Self->SysTablesPartOwners.clear();
         for (ui32 sysTableId : Self->SysTablesToTransferAtSplit) {
             THashSet<ui64> sysPartOwners;
             auto subset = txc.DB.Subset(sysTableId, TEpoch::Max(), { }, { });
             GetPartOwners(*subset, sysPartOwners);
-            Self->SysTablesPartOnwers.insert(sysPartOwners.begin(), sysPartOwners.end());
+            Self->SysTablesPartOwners.insert(sysPartOwners.begin(), sysPartOwners.end());
         }
         return true;
     }
@@ -589,16 +589,34 @@ public:
     }
 };
 
+TDuration TDataShard::GetStatsReportInterval(const TAppData& appData) const {
+    const auto& userTables = GetUserTables();
+    const bool isBackup = !userTables.empty() && std::all_of(userTables.begin(), userTables.end(),
+        [](const auto& kv) { return kv.second->IsBackup; });
+
+    if (isBackup) {
+        // Clamp the interval for backup tables to the value for ordinary tables, as it
+        // makes no sense for the latter to be longer than the former.
+        auto interval = std::max(
+            appData.DataShardConfig.GetBackupTableStatsReportIntervalSeconds(),
+            appData.DataShardConfig.GetStatsReportIntervalSeconds());
+        return TDuration::Seconds(interval);
+    } else {
+        return TDuration::Seconds(appData.DataShardConfig.GetStatsReportIntervalSeconds());
+    }
+}
+
 void TDataShard::UpdateTableStats(const TActorContext &ctx) {
     if (StatisticsDisabled)
         return;
 
-    TInstant now = AppData(ctx)->TimeProvider->Now();
+    auto* appData = AppData(ctx);
+    TInstant now = appData->TimeProvider->Now();
 
-    if (LastDbStatsUpdateTime + gDbStatsReportInterval > now)
+    if (LastDbStatsUpdateTime + GetStatsReportInterval(*appData) > now)
         return;
 
-    if (State != TShardState::Ready)
+    if (State != TShardState::Ready && State != TShardState::Readonly)
         return;
 
     LastDbStatsUpdateTime = now;

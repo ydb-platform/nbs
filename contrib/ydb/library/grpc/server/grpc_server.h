@@ -3,7 +3,7 @@
 #include "grpc_request_base.h"
 #include "logger.h"
 
-#include <contrib/ydb/library/grpc/common/constants.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/common/constants.h>
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/ptr.h>
@@ -18,7 +18,13 @@
 
 #include <grpcpp/grpcpp.h>
 
+namespace NMonitoring {
+    struct TDynamicCounters;
+} // NMonitoring
+
 namespace NYdbGrpc {
+
+static std::atomic<int> GrpcDead = 0;
 
 struct TSslData {
     TString Cert;
@@ -100,6 +106,8 @@ struct TServerOptions {
     //  Mapping to particular compression algorithm depends on client.
     DECLARE_FIELD(DefaultCompressionLevel, grpc_compression_level, GRPC_COMPRESS_LEVEL_NONE);
 
+    DECLARE_FIELD(DefaultCompressionAlgorithm, grpc_compression_algorithm, GRPC_COMPRESS_NONE);
+
     //! Custom configurator for ServerBuilder.
     DECLARE_FIELD(ServerBuilderMutator, std::function<void(grpc::ServerBuilder&)>, [](grpc::ServerBuilder&){});
 
@@ -135,8 +143,7 @@ public:
     virtual ~ICancelableContext() = default;
 
 private:
-    template<class T>
-    friend class TGrpcServiceBase;
+    friend class TGrpcServiceProtectiable;
 
     // Shard assigned by RegisterRequestCtx. This field is not thread-safe
     // because RegisterRequestCtx may only be called once for a single service,
@@ -210,13 +217,11 @@ public:
     virtual TString GetEndpointId() const = 0;
 };
 
-template<typename T>
-class TGrpcServiceBase: public IGRpcService {
+class TGrpcServiceProtectiable: public IGRpcService {
 public:
     class TShutdownGuard {
-        using TOwner = TGrpcServiceBase<T>;
-        friend class TGrpcServiceBase<T>;
-
+        using TOwner = TGrpcServiceProtectiable;
+        friend class TGrpcServiceProtectiable;
     public:
         TShutdownGuard()
             : Owner(nullptr)
@@ -265,21 +270,18 @@ public:
     };
 
 public:
-    using TCurrentGRpcService = T;
-
-    void StopService() noexcept override {
-        AtomicSet(ShuttingDown_, 1);
-
-        for (auto& shard : Shards_) {
-            with_lock(shard.Lock_) {
-                // Send TryCansel to event (can be send after finishing).
-                // Actual dtors will be called from grpc thread, so deadlock impossible
-                for (auto* request : shard.Requests_) {
-                    request->Shutdown();
-                }
-            }
-        }
+    void SetGlobalLimiterHandle(TGlobalLimiter* limiter) override {
+        Limiter_ = limiter;
     }
+
+    void StopService() noexcept override;
+    size_t RequestsInProgress() const override;
+
+    bool RegisterRequestCtx(ICancelableContext* req);
+    void DeregisterRequestCtx(ICancelableContext* req);
+
+    virtual bool IncRequest();
+    virtual void DecRequest();
 
     TShutdownGuard ProtectShutdown() noexcept {
         AtomicIncrement(GuardCount_);
@@ -295,16 +297,6 @@ public:
         return AtomicGet(GuardCount_) > 0;
     }
 
-    size_t RequestsInProgress() const override {
-        size_t c = 0;
-        for (auto& shard : Shards_) {
-            with_lock(shard.Lock_) {
-                c += shard.Requests_.size();
-            }
-        }
-        return c;
-    }
-
     void SetServerOptions(const TServerOptions& options) override {
         SslServer_ = bool(options.SslData);
         NeedAuth_ = options.UseAuth;
@@ -314,8 +306,6 @@ public:
     TString GetEndpointId() const override {
         return EndpointId_;
     }
-
-    void SetGlobalLimiterHandle(TGlobalLimiter* /*limiter*/) override {}
 
     //! Check if the server is going to shut down.
     bool IsShuttingDown() const {
@@ -328,41 +318,6 @@ public:
 
     bool NeedAuth() const {
         return NeedAuth_;
-    }
-
-    bool RegisterRequestCtx(ICancelableContext* req) {
-        if (Y_LIKELY(req->ShardIndex == size_t(-1))) {
-            req->ShardIndex = NextShard_.fetch_add(1, std::memory_order_relaxed) % Shards_.size();
-        }
-
-        auto& shard = Shards_[req->ShardIndex];
-        with_lock(shard.Lock_) {
-            if (IsShuttingDown()) {
-                return false;
-            }
-
-            auto r = shard.Requests_.emplace(req);
-            Y_ABORT_UNLESS(r.second, "Ctx already registered");
-        }
-
-        return true;
-    }
-
-    void DeregisterRequestCtx(ICancelableContext* req) {
-        Y_ABORT_UNLESS(req->ShardIndex != size_t(-1), "Ctx does not have an assigned shard index");
-
-        auto& shard = Shards_[req->ShardIndex];
-        with_lock(shard.Lock_) {
-            Y_ABORT_UNLESS(shard.Requests_.erase(req), "Ctx is not registered");
-        }
-    }
-
-protected:
-    using TGrpcAsyncService = typename TCurrentGRpcService::AsyncService;
-    TGrpcAsyncService Service_;
-
-    TGrpcAsyncService* GetService() override {
-        return &Service_;
     }
 
 private:
@@ -381,13 +336,32 @@ private:
     // Note: benchmarks showed 4 shards is enough to scale to ~30 threads
     TVector<TShard> Shards_{ size_t(4) };
     std::atomic<size_t> NextShard_{ 0 };
+
+    NYdbGrpc::TGlobalLimiter* Limiter_ = nullptr;
+};
+
+template<typename T>
+class TGrpcServiceBase: public TGrpcServiceProtectiable {
+public:
+    using TCurrentGRpcService = T;
+protected:
+    using TGrpcAsyncService = typename TCurrentGRpcService::AsyncService;
+
+    TGrpcAsyncService Service_;
+
+    TGrpcAsyncService* GetService() override {
+        return &Service_;
+    }
 };
 
 class TGRpcServer {
 public:
     using IGRpcServicePtr = TIntrusivePtr<IGRpcService>;
-    TGRpcServer(const TServerOptions& opts);
+
+    // TODO: remove default nullptr after migration
+    TGRpcServer(const TServerOptions& opts, TIntrusivePtr<::NMonitoring::TDynamicCounters> counters = nullptr);
     ~TGRpcServer();
+
     void AddService(IGRpcServicePtr service);
     void Start();
     // Send stop to registred services and call Shutdown on grpc server
@@ -402,6 +376,7 @@ private:
     using IThreadRef = TAutoPtr<IThreadFactory::IThread>;
 
     const TServerOptions Options_;
+    TIntrusivePtr<::NMonitoring::TDynamicCounters> Counters_;
     std::unique_ptr<grpc::Server> Server_;
     std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> CQS_;
     TVector<IThreadRef> Ts;

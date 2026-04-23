@@ -5,7 +5,7 @@
 #include <util/generic/size_literals.h>
 #include <util/string/split.h>
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
-#include <contrib/ydb/library/yql/core/cbo/cbo_optimizer_new.h>
+#include <yql/essentials/core/cbo/cbo_optimizer_new.h>
 
 namespace NYql {
 
@@ -35,7 +35,6 @@ ui64 ParseEnableSpillingNodes(const TString &v) {
         if (s.empty()) {
             throw yexception() << "Empty value item";
         }
-
         auto value = FromString<NDq::EEnabledSpillingNodes>(s);
         res |= ui64(value);
     }
@@ -60,6 +59,7 @@ TKikimrConfiguration::TKikimrConfiguration() {
     REGISTER_SETTING(*this, _KqpSlowLogNoticeThresholdMs);
     REGISTER_SETTING(*this, _KqpSlowLogTraceThresholdMs);
     REGISTER_SETTING(*this, _KqpYqlSyntaxVersion);
+    REGISTER_SETTING(*this, _KqpYqlAntlr4Parser);
     REGISTER_SETTING(*this, _KqpAllowUnsafeCommit);
     REGISTER_SETTING(*this, _KqpMaxComputeActors);
     REGISTER_SETTING(*this, _KqpEnableSpilling);
@@ -67,6 +67,7 @@ TKikimrConfiguration::TKikimrConfiguration() {
     REGISTER_SETTING(*this, _KqpYqlCombinerMemoryLimit).Lower(0ULL).Upper(1_GB);
 
     REGISTER_SETTING(*this, KqpPushOlapProcess);
+    REGISTER_SETTING(*this, KqpForceImmediateEffectsExecution);
 
     /* Compile time */
     REGISTER_SETTING(*this, _CommitPerShardKeysSizeLimitBytes);
@@ -85,6 +86,8 @@ TKikimrConfiguration::TKikimrConfiguration() {
     REGISTER_SETTING(*this, OptEnableOlapProvideComputeSharding);
     REGISTER_SETTING(*this, OptOverrideStatistics);
     REGISTER_SETTING(*this, OptimizerHints).Parser([](const TString& v) { return NYql::TOptimizerHints::Parse(v); });
+    REGISTER_SETTING(*this, OptShuffleElimination);
+    REGISTER_SETTING(*this, OptShuffleEliminationWithMap);
     REGISTER_SETTING(*this, OverridePlanner);
     REGISTER_SETTING(*this, UseGraceJoinCoreForMap);
     REGISTER_SETTING(*this, EnableOrderPreservingLookupJoin);
@@ -93,11 +96,32 @@ TKikimrConfiguration::TKikimrConfiguration() {
     REGISTER_SETTING(*this, CostBasedOptimizationLevel);
     REGISTER_SETTING(*this, EnableSpillingNodes)
         .Parser([](const TString& v) { return ParseEnableSpillingNodes(v); });
+    REGISTER_SETTING(*this, CostBasedOptimization)
+        .Parser(
+            [&](TString val) {
+                for (char& c: val) { c = ToLower(c); }
 
-    REGISTER_SETTING(*this, MaxDPccpDPTableSize);
+                if (val == "on") {
+                    CostBasedOptimizationLevel = Max<ui32>();
+                } else if (val == "off") {
+                    CostBasedOptimizationLevel = 0;
+                } else if (val == "auto") {
+                    CostBasedOptimizationLevel = DefaultCostBasedOptimizationLevel;
+                } else {
+                    Y_ENSURE(false, "undefined cbo setting, available: [on, off, auto]");
+                }
+
+                return val;
+            }
+    );
+    REGISTER_SETTING(*this, UseBlockReader);
+
+    REGISTER_SETTING(*this, MaxDPHypDPTableSize);
 
     REGISTER_SETTING(*this, MaxTasksPerStage);
     REGISTER_SETTING(*this, MaxSequentialReadsInFlight);
+
+    REGISTER_SETTING(*this, KMeansTreeSearchTopSize);
 
     /* Runtime */
     REGISTER_SETTING(*this, ScanQuery);

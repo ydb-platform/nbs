@@ -144,7 +144,7 @@ class SqsGenericMessagingTest(KikimrSqsTestBase):
         attributes = {
             SqsMessageAttribute('a', 'String', 'xyz'),
             SqsMessageAttribute('b', 'Number', 42),
-            SqsMessageAttribute('c', 'Binary', base64.b64encode(b'binary_data')),
+            SqsMessageAttribute('c', 'Binary', base64.b64encode(to_bytes('binary_data'))),
         }
         if is_fifo:
             self.seq_no += 1

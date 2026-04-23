@@ -2,6 +2,7 @@
 
 #include <openssl/sha.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/kqp/common/events/events.h>
 #include <library/cpp/string_utils/base64/base64.h>
 
 #include <contrib/ydb/core/data_integrity_trails/data_integrity_trails.h>
@@ -18,7 +19,7 @@ inline bool ShouldBeLogged(NKikimrKqp::EQueryAction action, NKikimrKqp::EQueryTy
         case NKikimrKqp::QUERY_TYPE_AST_SCAN:
             return false;
         default:
-            break;    
+            break;
     }
 
     switch (action) {
@@ -38,7 +39,7 @@ inline void LogIntegrityTrails(const NKqp::TEvKqp::TEvQueryRequest::TPtr& reques
     if (!ShouldBeLogged(request->Get()->GetAction(), request->Get()->GetType())) {
         return;
     }
-    
+
     auto log = [](const auto& request) {
         TStringStream ss;
         LogKeyValue("Component", "SessionActor", ss);
@@ -80,7 +81,7 @@ inline void LogIntegrityTrails(const TString& traceId, NKikimrKqp::EQueryAction 
     }
 
     auto log = [](const auto& traceId, const auto& response) {
-        auto& record = response->Record.GetRef();
+        auto& record = response->Record;
 
         TStringStream ss;
         LogKeyValue("Component", "SessionActor", ss);
@@ -202,6 +203,25 @@ inline void LogIntegrityTrails(const TString& type, const TString& traceId, ui64
     };
 
     LOG_INFO_S(ctx, NKikimrServices::DATA_INTEGRITY, log(type, traceId, txId, info));
+}
+
+// WriteActor,BufferActor
+inline void LogIntegrityTrails(const TString& txType, ui64 txId, TMaybe<ui64> shardId, const TActorContext& ctx, const TStringBuf component) {
+    auto log = [](const auto& type, const auto& txId, const auto& shardId, const auto component) {
+        TStringStream ss;
+        LogKeyValue("Component", component, ss);
+        LogKeyValue("PhyTxId", ToString(txId), ss);
+
+        if (shardId) {
+            LogKeyValue("ShardId", ToString(*shardId), ss);
+        }
+
+        LogKeyValue("Type", type, ss, /*last*/ true);
+
+        return ss.Str();
+    };
+
+    LOG_INFO_S(ctx, NKikimrServices::DATA_INTEGRITY, log(txType, txId, shardId, component));
 }
 
 }

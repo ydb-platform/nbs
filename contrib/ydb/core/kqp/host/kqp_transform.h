@@ -5,8 +5,8 @@
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_expr_nodes.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider.h>
 
-#include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <yql/essentials/core/yql_graph_transformer.h>
+#include <yql/essentials/utils/log/log.h>
 
 namespace NKikimr {
 namespace NKqp {

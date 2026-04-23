@@ -1,24 +1,63 @@
 #include "mkql_proto.h"
 
-#include <contrib/ydb/library/yql/minikql/defs.h>
-#include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
-#include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>
-#include <contrib/ydb/library/yql/parser/pg_catalog/catalog.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/codec.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
-#include <contrib/ydb/library/yql/public/decimal/yql_decimal.h>
-#include <contrib/ydb/library/yql/minikql/dom/json.h>
-#include <contrib/ydb/library/yql/utils/utf8.h>
-#include <contrib/ydb/library/binary_json/write.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
-#include <contrib/ydb/library/yql/minikql/dom/yson.h>
+#include <yql/essentials/minikql/defs.h>
+#include <yql/essentials/minikql/mkql_string_util.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node_holders.h>
+#include <yql/essentials/minikql/mkql_type_ops.h>
+#include <yql/essentials/parser/pg_catalog/catalog.h>
+#include <yql/essentials/parser/pg_wrapper/interface/codec.h>
+#include <yql/essentials/parser/pg_wrapper/interface/type_desc.h>
+#include <yql/essentials/public/decimal/yql_decimal.h>
+#include <yql/essentials/minikql/dom/json.h>
+#include <yql/essentials/utils/utf8.h>
+#include <yql/essentials/types/binary_json/write.h>
+#include <yql/essentials/types/dynumber/dynumber.h>
+#include <yql/essentials/minikql/dom/yson.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 
 namespace NKikimr::NMiniKQL {
 
 namespace {
+
+static constexpr std::array<std::pair<NYql::NDecimal::TInt128, NYql::NDecimal::TInt128>, NYql::NDecimal::MaxPrecision + 1> DecimalBounds = {
+    NYql::NDecimal::GetBounds<0>(),
+    NYql::NDecimal::GetBounds<1>(),
+    NYql::NDecimal::GetBounds<2>(),
+    NYql::NDecimal::GetBounds<3>(),
+    NYql::NDecimal::GetBounds<4>(),
+    NYql::NDecimal::GetBounds<5>(),
+    NYql::NDecimal::GetBounds<6>(),
+    NYql::NDecimal::GetBounds<7>(),
+    NYql::NDecimal::GetBounds<8>(),
+    NYql::NDecimal::GetBounds<9>(),
+    NYql::NDecimal::GetBounds<10>(),
+    NYql::NDecimal::GetBounds<11>(),
+    NYql::NDecimal::GetBounds<12>(),
+    NYql::NDecimal::GetBounds<13>(),
+    NYql::NDecimal::GetBounds<14>(),
+    NYql::NDecimal::GetBounds<15>(),
+    NYql::NDecimal::GetBounds<16>(),
+    NYql::NDecimal::GetBounds<17>(),
+    NYql::NDecimal::GetBounds<18>(),
+    NYql::NDecimal::GetBounds<19>(),
+    NYql::NDecimal::GetBounds<20>(),
+    NYql::NDecimal::GetBounds<21>(),
+    NYql::NDecimal::GetBounds<22>(),
+    NYql::NDecimal::GetBounds<23>(),
+    NYql::NDecimal::GetBounds<24>(),
+    NYql::NDecimal::GetBounds<25>(),
+    NYql::NDecimal::GetBounds<26>(),
+    NYql::NDecimal::GetBounds<27>(),
+    NYql::NDecimal::GetBounds<28>(),
+    NYql::NDecimal::GetBounds<29>(),
+    NYql::NDecimal::GetBounds<30>(),
+    NYql::NDecimal::GetBounds<31>(),
+    NYql::NDecimal::GetBounds<32>(),
+    NYql::NDecimal::GetBounds<33>(),
+    NYql::NDecimal::GetBounds<34>(),
+    NYql::NDecimal::GetBounds<35>(),
+};
 
 void ExportTypeToProtoImpl(TType* type, NKikimrMiniKQL::TType& res, const TVector<ui32>* columnOrder = nullptr);
 
@@ -70,7 +109,7 @@ Y_FORCE_INLINE void HandleKindDataExport(const TType* type, const NUdf::TUnboxed
             }
         case NUdf::TDataType<NUdf::TTzDate>::Id:
         case NUdf::TDataType<NUdf::TTzDatetime>::Id:
-        case NUdf::TDataType<NUdf::TTzTimestamp>::Id: 
+        case NUdf::TDataType<NUdf::TTzTimestamp>::Id:
         case NUdf::TDataType<NUdf::TTzDate32>::Id:
         case NUdf::TDataType<NUdf::TTzDatetime64>::Id:
         case NUdf::TDataType<NUdf::TTzTimestamp64>::Id: {
@@ -1515,7 +1554,7 @@ Y_FORCE_INLINE NUdf::TUnboxedValue KindDataImport(const TType* type, const Ydb::
         case NUdf::TDataType<NUdf::TTzTimestamp64>::Id: {
             CheckTypeId(value.value_case(), Ydb::Value::kTextValue, "TzTimestamp64");
             return NUdf::TUnboxedValuePod(ValueFromString(NUdf::GetDataSlot(dataType->GetSchemeType()), value.text_value()));
-        }        
+        }
         case NUdf::TDataType<NUdf::TJson>::Id: {
             CheckTypeId(value.value_case(), Ydb::Value::kTextValue, "Json");
             const auto& stringRef = value.text_value();
@@ -1561,7 +1600,7 @@ Y_FORCE_INLINE NUdf::TUnboxedValue KindDataImport(const TType* type, const Ydb::
             return NUdf::TUnboxedValuePod(value.int64_value());
         }
         case NUdf::TDataType<NUdf::TDate32>::Id: {
-            CheckTypeId(value.value_case(), Ydb::Value::kUint32Value, "Date32");
+            CheckTypeId(value.value_case(), Ydb::Value::kInt32Value, "Date32");
             if (value.int32_value() < NUdf::MIN_DATE32 || value.int32_value() > NUdf::MAX_DATE32) {
                 throw yexception() << "Invalid Date value";
             }
@@ -1601,10 +1640,11 @@ Y_FORCE_INLINE NUdf::TUnboxedValue KindDataImport(const TType* type, const Ydb::
         case NUdf::TDataType<NUdf::TJsonDocument>::Id: {
             CheckTypeId(value.value_case(), Ydb::Value::kTextValue, "JsonDocument");
             const auto binaryJson = NBinaryJson::SerializeToBinaryJson(value.text_value());
-            if (!binaryJson.Defined()) {
+            if (std::holds_alternative<TString>(binaryJson)) {
                 throw yexception() << "Invalid JsonDocument value";
             }
-            return MakeString(TStringBuf(binaryJson->Data(), binaryJson->Size()));
+            const auto& value = std::get<NBinaryJson::TBinaryJson>(binaryJson);
+            return MakeString(TStringBuf(value.Data(), value.Size()));
         }
         case NUdf::TDataType<NUdf::TDyNumber>::Id: {
             CheckTypeId(value.value_case(), Ydb::Value::kTextValue, "DyNumber");
@@ -1627,7 +1667,17 @@ Y_FORCE_INLINE NUdf::TUnboxedValue KindDataImport(const TType* type, const Ydb::
             return MakeString(value.bytes_value());
         }
         case NUdf::TDataType<NUdf::TDecimal>::Id: {
-            return NUdf::TUnboxedValuePod(NYql::NDecimal::FromHalfs(value.low_128(), value.high_128()));
+            auto data = NYql::NDecimal::FromHalfs(value.low_128(), value.high_128());
+            auto dataType = static_cast<const TDataType*>(type);
+            auto schemeType = dataType->GetSchemeType();
+            Y_ENSURE(schemeType == NYql::NProto::TypeIds::Decimal, "Expected decimal type, but found " << schemeType);
+            auto decimalType = static_cast<const TDataDecimalType *>(dataType);
+            auto params = decimalType->GetParams();
+            ui8 precision = params.first;
+            if (!IsValidDecimal(precision, data)) {
+                throw yexception() << "Invalid Decimal value for precision: " << precision;
+            }
+            return NUdf::TUnboxedValuePod(data);
         }
         default: {
             throw yexception() << "Unsupported data type: " << dataType->GetSchemeType();
@@ -1793,6 +1843,23 @@ NUdf::TUnboxedValue TProtoImporter::ImportValueFromProto(const TType* type, cons
     }
 }
 
+bool IsValidDecimal(ui8 precision, NYql::NDecimal::TInt128 v) {
+    if (NYql::NDecimal::IsError(v))
+        return false;
+
+    if (NYql::NDecimal::IsNan(v))
+        return true;
+
+    if (NYql::NDecimal::IsInf(v))
+        return true;
+
+    if (precision >= DecimalBounds.size())
+        return false;
+
+    const auto& db = DecimalBounds[precision];
+    return v > db.first && v < db.second;
+}
+
 NUdf::TUnboxedValue TProtoImporter::ImportValueFromProto(const TType* type, const NKikimrMiniKQL::TValue& value, const THolderFactory& factory) {
     switch (type->GetKind()) {
         case TType::EKind::Void:
@@ -1813,7 +1880,7 @@ NUdf::TUnboxedValue TProtoImporter::ImportValueFromProto(const TType* type, cons
                 return NYql::NCommon::PgValueFromNativeBinary(value.GetBytes(), pgType->GetTypeId());
             }
             if (value.HasText()) {
-                return NYql::NCommon::PgValueFromNativeText(value.GetBytes(), pgType->GetTypeId());
+                return NYql::NCommon::PgValueFromNativeText(value.GetText(), pgType->GetTypeId());
             }
             MKQL_ENSURE(false, "malformed pg value");
         }

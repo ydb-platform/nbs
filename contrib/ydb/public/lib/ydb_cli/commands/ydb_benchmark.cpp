@@ -1,16 +1,18 @@
 #include "ydb_benchmark.h"
 #include "benchmark_utils.h"
-#include <contrib/ydb/public/lib/ydb_cli/common/pretty_table.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/format.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/plan2svg.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/pretty_table.h>
 #include <library/cpp/json/json_writer.h>
 #include <util/string/printf.h>
 #include <util/folder/path.h>
+#include <optional>
 
 namespace NYdb::NConsoleClient {
     TWorkloadCommandBenchmark::TWorkloadCommandBenchmark(NYdbWorkload::TWorkloadParams& params, const NYdbWorkload::IWorkloadQueryGenerator::TWorkloadType& workload)
         : TWorkloadCommandBase(workload.CommandName, params, NYdbWorkload::TWorkloadParams::ECommandType::Run, workload.Description, workload.Type)
     {
-        
+        RetrySettings.MaxRetries(0);
     }
 
 
@@ -36,9 +38,12 @@ void TWorkloadCommandBenchmark::Config(TConfig& config) {
     config.Opts->AddLongOption("plan", "Query plans report file name")
         .DefaultValue("")
         .StoreResult(&PlanFileName);
-    config.Opts->AddLongOption("query-settings", "Query settings.\nEvery setting is a line that will be added to the beginning of each query. For multiple settings lines use this option several times.")
-        .DefaultValue("")
+    config.Opts->AddLongOption("query-settings")
+        .AppendTo(&QuerySettings).Hidden();
+    config.Opts->AddLongOption("query-prefix", "Query prefix.\nEvery prefix is a line that will be added to the beginning of each query. For multiple prefixes lines use this option several times.")
         .AppendTo(&QuerySettings);
+    config.Opts->MutuallyExclusive("query-prefix", "query-settings");
+    config.Opts->AddLongOption("retries", "Max retry count for every request.").StoreResult(&RetrySettings.MaxRetries_).DefaultValue(RetrySettings.MaxRetries_);
     auto fillTestCases = [](TStringBuf line, std::function<void(ui32)>&& op) {
         for (const auto& token : StringSplitter(line).Split(',').SkipEmpty()) {
             TStringBuf part = token.Token();
@@ -80,8 +85,21 @@ void TWorkloadCommandBenchmark::Config(TConfig& config) {
             " Options: scan, generic\n"
             "scan - use scan queries;\n"
             "generic - use generic queries.")
-        .DefaultValue("generic").StoreResult(&QueryExecuterType);
+        .DefaultValue(QueryExecuterType)
+        .Handler1T<TStringBuf>([this](TStringBuf arg) {
+                const auto l = to_lower(TString(arg));
+                if (!TryFromString(arg, QueryExecuterType)) {
+                    throw yexception() << "Ivalid query executer type: " << arg;
+                }
+            });
     config.Opts->AddLongOption('v', "verbose", "Verbose output").NoArgument().StoreValue(&VerboseLevel, 1);
+
+    config.Opts->AddLongOption("global-timeout", "Global timeout for all requests")
+        .StoreResult(&GlobalTimeout);
+
+    config.Opts->AddLongOption("request-timeout", "Timeout for each iteration of each request")
+        .StoreResult(&RequestTimeout);
+
 }
 
 TString TWorkloadCommandBenchmark::PatchQuery(const TStringBuf& original) const {
@@ -93,7 +111,7 @@ TString TWorkloadCommandBenchmark::PatchQuery(const TStringBuf& original) const 
 
     std::vector<TStringBuf> lines;
     for (auto& line : StringSplitter(result).Split('\n').SkipEmpty()) {
-        if (line.StartsWith("--")) {
+        if (line.StartsWith("--") && !line.StartsWith("--!")) {
             continue;
         }
 
@@ -276,7 +294,7 @@ void CollectStats(TPrettyTable& table, IOutputStream* csv, NJson::TJsonValue* js
 }
 
 template <typename TClient>
-bool TWorkloadCommandBenchmark::RunBench(TClient& client, NYdbWorkload::IWorkloadQueryGenerator& workloadGen) {
+int TWorkloadCommandBenchmark::RunBench(TClient* client, NYdbWorkload::IWorkloadQueryGenerator& workloadGen) {
     using namespace BenchmarkUtils;
     TOFStream outFStream{OutFilePath};
     TPrettyTable statTable(ColumnNames);
@@ -288,9 +306,9 @@ bool TWorkloadCommandBenchmark::RunBench(TClient& client, NYdbWorkload::IWorkloa
         jsonReport = MakeHolder<NJson::TJsonValue>(NJson::JSON_ARRAY);
     }
     const auto qtokens = workloadGen.GetWorkload(Type);
-    ui32 allSuccessQueries = 0;
-    ui32 someFailQueries = 0;
-    ui32 withDiffCount = 0;
+    ui32 queriesWithAllSuccess = 0;
+    ui32 queriesWithSomeFails = 0;
+    ui32 queriesWithDiff = 0;
     THolder<TOFStream> plansReport;
     THolder<TOFStream> csvReport;
     if (CsvReportFileName) {
@@ -303,7 +321,8 @@ bool TWorkloadCommandBenchmark::RunBench(TClient& client, NYdbWorkload::IWorkloa
 
     std::map<ui32, TTestInfo> queryRuns;
     auto qIter = qtokens.cbegin();
-    for (ui32 queryN = 0; queryN < qtokens.size(); ++queryN, ++qIter) {
+    GlobalDeadline = (GlobalTimeout != TDuration::Zero()) ? Now() + GlobalTimeout : TInstant::Max();
+    for (ui32 queryN = 0; queryN < qtokens.size() && Now() < GlobalDeadline; ++queryN, ++qIter) {
         const auto& qInfo = *qIter;
         if (!NeedRun(queryN)) {
             continue;
@@ -330,14 +349,41 @@ bool TWorkloadCommandBenchmark::RunBench(TClient& client, NYdbWorkload::IWorkloa
         ui32 failsCount = 0;
         ui32 diffsCount = 0;
         std::optional<TString> prevResult;
-        bool planSaved = false;
+        if (PlanFileName) {
+            TQueryBenchmarkResult res = TQueryBenchmarkResult::Error("undefined", "undefined", "undefined");
+            try {
+                if (client) {
+                    res = Explain(query, *client, GetBenchmarkSettings(false));
+                } else {
+                    res = TQueryBenchmarkResult::Result(TQueryBenchmarkResult::TRawResults(), TDuration::Zero(), "", "");
+                }
+            } catch (...) {
+                res = TQueryBenchmarkResult::Error(CurrentExceptionMessage(), "", "");
+            }
+            SavePlans(res, queryN, "explain");
+        }
+
         for (ui32 i = 0; i < IterationsCount; ++i) {
             auto t1 = TInstant::Now();
-            TQueryBenchmarkResult res = TQueryBenchmarkResult::Error("undefined");
+            if (t1 >= GlobalDeadline) {
+                Cerr << "Global timeout (" << GlobalTimeout << ") expiried, global deadline was " << GlobalDeadline << Endl;
+                break;
+            }
+            TQueryBenchmarkResult res = TQueryBenchmarkResult::Error("undefined", "undefined", "undefined");
             try {
-                res = Execute(query, client);
+                if (client) {
+                    auto settings = GetBenchmarkSettings(true);
+                    if (PlanFileName) {
+                        settings.PlanFileName = TStringBuilder() << PlanFileName << "." << queryN << "." << ToString(i) << ".in_progress";
+                    }
+                            res = Execute(query, *client, settings);
+                } else {
+                    res = TQueryBenchmarkResult::Result(TQueryBenchmarkResult::TRawResults(), TDuration::Zero(), "", "");
+                }
             } catch (...) {
-                res = TQueryBenchmarkResult::Error(CurrentExceptionMessage());
+                const auto msg = CurrentExceptionMessage();
+                Cerr << "Exception while execute query: " << msg << Endl;
+                res = TQueryBenchmarkResult::Error(CurrentExceptionMessage(), "", "");
             }
             auto duration = TInstant::Now() - t1;
 
@@ -348,46 +394,33 @@ bool TWorkloadCommandBenchmark::RunBench(TClient& client, NYdbWorkload::IWorkloa
                 serverTimings.emplace_back(res.GetServerTiming());
                 ++successIteration;
                 if (successIteration == 1) {
-                    outFStream << queryN << ": " << Endl
-                        << res.GetYSONResult() << Endl << Endl;
+                    outFStream << queryN << ": " << Endl;
+                    PrintResult(res, outFStream, qInfo.ExpectedResult);
                 }
-                if ((!prevResult || *prevResult != res.GetYSONResult()) && !res.GetQueryResult().IsExpected(qInfo.ExpectedResult)) {
+                const auto resHash = res.CalcHash();
+                if ((!prevResult || *prevResult != resHash) && !res.IsExpected(qInfo.ExpectedResult)) {
                     outFStream << queryN << ":" << Endl <<
                         "Query text:" << Endl <<
                         query << Endl << Endl <<
                         "UNEXPECTED DIFF: " << Endl
-                            << "RESULT: " << Endl << res.GetYSONResult() << Endl
+                          << "RESULT: " << Endl;
+                    PrintResult(res, outFStream, qInfo.ExpectedResult);
+                    outFStream << Endl
                             << "EXPECTATION: " << Endl << qInfo.ExpectedResult << Endl;
-                    prevResult = res.GetYSONResult();
+                    prevResult = resHash;
                     ++diffsCount;
                 }
             } else {
                 ++failsCount;
                 Cout << "failed\t" << duration << " seconds" << Endl;
-                Cerr << queryN << ": " << query << Endl
+                Cerr << queryN << ":" << Endl
+                    << "iteration " << i << Endl
                     << res.GetErrorInfo() << Endl;
                 Cerr << "Query text:" << Endl;
                 Cerr << query << Endl << Endl;
                 Sleep(TDuration::Seconds(1));
             }
-            if (!planSaved && PlanFileName) {
-                TFsPath(PlanFileName).Parent().MkDirs();
-                {
-                    TFileOutput out(PlanFileName + ".table");
-                    TQueryPlanPrinter queryPlanPrinter(EOutputFormat::PrettyTable, true, out, 120);
-                    queryPlanPrinter.Print(res.GetQueryPlan());
-                }
-                {
-                    TFileOutput out(PlanFileName + ".json");
-                    TQueryPlanPrinter queryPlanPrinter(EOutputFormat::JsonBase64, true, out, 120);
-                    queryPlanPrinter.Print(res.GetQueryPlan());
-                }
-                {
-                    TFileOutput out(PlanFileName + ".ast");
-                    out << res.GetPlanAst();
-                }
-                planSaved = true;
-            }
+            SavePlans(res, queryN, ToString(i));
         }
 
         auto [inserted, success] = queryRuns.emplace(queryN, TTestInfo(std::move(clientTimings), std::move(serverTimings)));
@@ -395,23 +428,23 @@ bool TWorkloadCommandBenchmark::RunBench(TClient& client, NYdbWorkload::IWorkloa
         auto& testInfo = inserted->second;
         CollectStats(statTable, csvReport.Get(), jsonReport.Get(), Sprintf("Query%02u", queryN), successIteration, failsCount, diffsCount, testInfo);
         if (successIteration != IterationsCount) {
-            ++someFailQueries;
+            ++queriesWithSomeFails;
         } else {
-            ++allSuccessQueries;
+            ++queriesWithAllSuccess;
             sumInfo += testInfo;
             productInfo *= testInfo;
         }
         if (diffsCount) {
-            ++withDiffCount;
+            ++queriesWithDiff;
         }
     }
 
-    if (allSuccessQueries) {
-        CollectStats(statTable, csvReport.Get(), jsonReport.Get(), "Sum", allSuccessQueries, someFailQueries, withDiffCount, sumInfo);
-        sumInfo /= allSuccessQueries;
-        CollectStats(statTable, csvReport.Get(), jsonReport.Get(), "Avg", allSuccessQueries, someFailQueries, withDiffCount, sumInfo);
-        productInfo ^= allSuccessQueries;
-        CollectStats(statTable, csvReport.Get(), jsonReport.Get(), "GAvg", allSuccessQueries, someFailQueries, withDiffCount, productInfo);
+    if (queriesWithAllSuccess) {
+        CollectStats(statTable, csvReport.Get(), jsonReport.Get(), "Sum", queriesWithAllSuccess, queriesWithSomeFails, queriesWithDiff, sumInfo);
+        sumInfo /= queriesWithAllSuccess;
+        CollectStats(statTable, csvReport.Get(), jsonReport.Get(), "Avg", queriesWithAllSuccess, queriesWithSomeFails, queriesWithDiff, sumInfo);
+        productInfo ^= queriesWithAllSuccess;
+        CollectStats(statTable, csvReport.Get(), jsonReport.Get(), "GAvg", queriesWithAllSuccess, queriesWithSomeFails, queriesWithDiff, productInfo);
     }
 
     statTable.Print(report);
@@ -451,17 +484,81 @@ bool TWorkloadCommandBenchmark::RunBench(TClient& client, NYdbWorkload::IWorkloa
         Cout << "Summary table saved in CSV format to " << CsvReportFileName << Endl;
     }
 
-    return !someFailQueries;
+    return (queriesWithSomeFails || queriesWithDiff) ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+void TWorkloadCommandBenchmark::PrintResult(const BenchmarkUtils::TQueryBenchmarkResult& res, IOutputStream& out, const std::string& expected) const {
+    TResultSetPrinter printer(TResultSetPrinter::TSettings()
+        .SetOutput(&out)
+        .SetMaxRowsCount(std::max(StringSplitter(expected.c_str()).Split('\n').Count(), (size_t)100))
+        .SetFormat(EDataFormat::Pretty).SetMaxWidth(120)
+    );
+    for (const auto& [i, rr]: res.GetRawResults()) {
+        for(const auto& r: rr) {
+            printer.Print(r);
+            printer.Reset();
+        }
+    }
+    out << Endl << Endl;
+}
+
+void TWorkloadCommandBenchmark::SavePlans(const BenchmarkUtils::TQueryBenchmarkResult& res, ui32 queryNum, const TStringBuf name) const {
+    if (!PlanFileName) {
+        return;
+    }
+    TFsPath(PlanFileName).Parent().MkDirs();
+    const TString planFName =  TStringBuilder() << PlanFileName << "." << queryNum << "." << name << ".";
+    if (res.GetQueryPlan()) {
+        {
+            TFileOutput out(planFName + "table");
+            TQueryPlanPrinter queryPlanPrinter(EDataFormat::PrettyTable, true, out, 120);
+            queryPlanPrinter.Print(res.GetQueryPlan());
+        }
+        {
+            TFileOutput out(planFName + "json");
+            TQueryPlanPrinter queryPlanPrinter(EDataFormat::JsonBase64, true, out, 120);
+            queryPlanPrinter.Print(res.GetQueryPlan());
+        }
+        {
+            TPlanVisualizer pv;
+            TFileOutput out(planFName + "svg");
+            try {
+                pv.LoadPlans(res.GetQueryPlan());
+                out << pv.PrintSvg();
+            } catch (std::exception& e) {
+                out << "<svg width='1024' height='256' xmlns='http://www.w3.org/2000/svg'><text>" << e.what() << "<text></svg>";
+            }
+        }
+    }
+    if (res.GetPlanAst()) {
+        TFileOutput out(planFName + "ast");
+        out << res.GetPlanAst();
+    }
+}
+
+BenchmarkUtils::TQueryBenchmarkSettings TWorkloadCommandBenchmark::GetBenchmarkSettings(bool withProgress) const {
+    BenchmarkUtils::TQueryBenchmarkSettings result;
+    result.WithProgress = withProgress;
+    result.RetrySettings = RetrySettings;
+    if (GlobalDeadline != TInstant::Max()) {
+        result.Deadline.Deadline = GlobalDeadline;
+        result.Deadline.Name = "Global ";
+    }
+    TInstant requestDeadline = (RequestTimeout == TDuration::Zero()) ? TInstant::Max() : (Now() + RequestTimeout);
+    if (requestDeadline < result.Deadline.Deadline) {
+        result.Deadline.Deadline = requestDeadline;
+        result.Deadline.Name = "Request";
+    }
+    return result;
 }
 
 int TWorkloadCommandBenchmark::DoRun(NYdbWorkload::IWorkloadQueryGenerator& workloadGen, TConfig& /*config*/) {
-    if (QueryExecuterType == "scan") {
-        return !RunBench(*TableClient, workloadGen);
+    switch (QueryExecuterType) {
+    case EQueryExecutor::Scan:
+        return RunBench(TableClient.Get(), workloadGen);
+    case EQueryExecutor::Generic:
+        return RunBench(QueryClient.Get(), workloadGen);
     }
-    if (QueryExecuterType == "generic") {
-        return !RunBench(*QueryClient, workloadGen);
-    }
-    ythrow yexception() << "Incorrect executer type. Available options: \"scan\", \"generic\"." << Endl;
 }
 
 }

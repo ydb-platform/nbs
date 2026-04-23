@@ -20,7 +20,7 @@
 #define INV_ARG "Invalid argument for " PROV_ERR
 #define EXCH_ERR "Exchange token error in " PROV_ERR
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 namespace {
 
@@ -239,7 +239,9 @@ private:
             }
         };
 
-        addIfNotEmpty("resource", Params.Resource_);
+        for (const TString& res : Params.Resource_) {
+            params.emplace("resource", res);
+        }
         for (const TString& aud : Params.Audience_) {
             params.emplace("audience", aud);
         }

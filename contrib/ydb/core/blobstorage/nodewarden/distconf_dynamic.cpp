@@ -72,15 +72,15 @@ namespace NKikimr::NStorage {
         if (drop) {
             Y_ABORT_UNLESS(!PartOfNodeQuorum());
             DynamicConfigSubscribers.clear();
-            for (ui32 nodeId : std::exchange(ConnectedDynamicNodes, {})) {
-                UnsubscribeInterconnect(nodeId);
-            }
+            UnsubscribeQueue.insert(ConnectedDynamicNodes.begin(), ConnectedDynamicNodes.end());
+            ConnectedDynamicNodes.clear();
         }
     }
 
     void TDistributedConfigKeeper::OnDynamicNodeDisconnected(ui32 nodeId, TActorId sessionId) {
         ConnectedDynamicNodes.erase(nodeId);
         DynamicConfigSubscribers.erase(sessionId);
+        UnsubscribeQueue.insert(nodeId);
     }
 
     void TDistributedConfigKeeper::HandleDynamicConfigSubscribe(STATEFN_SIG) {
@@ -96,10 +96,7 @@ namespace NKikimr::NStorage {
         }
 
         const ui32 peerNodeId = ev->Sender.NodeId();
-        if (const auto [it, inserted] = SubscribedSessions.try_emplace(peerNodeId); inserted) {
-            TActivationContext::Send(new IEventHandle(TEvents::TSystem::Subscribe, IEventHandle::FlagTrackDelivery,
-                sessionId, SelfId(), nullptr, 0));
-        }
+        SubscribeToPeerNode(peerNodeId, sessionId);
         ConnectedDynamicNodes.insert(peerNodeId);
         const auto [_, inserted] = DynamicConfigSubscribers.try_emplace(sessionId, ev->Sender);
         Y_ABORT_UNLESS(inserted);
@@ -108,11 +105,14 @@ namespace NKikimr::NStorage {
     void TDistributedConfigKeeper::PushConfigToDynamicNode(TActorId actorId, TActorId sessionId) {
         auto ev = std::make_unique<TEvNodeWardenDynamicConfigPush>();
         auto& record = ev->Record;
-        if (StorageConfig) {
-            record.MutableConfig()->CopyFrom(*StorageConfig);
-        }
-        if (!PartOfNodeQuorum()) {
+        if (!PartOfNodeQuorum()) { // this configuration is not reliable, don't push anything
             ev->Record.SetNoQuorum(true);
+        } else if (!StorageConfig) {
+            // no storage configuration -- no nothing
+        } else if (auto *target = record.MutableConfig(); SelfManagementEnabled) {
+            target->CopyFrom(*StorageConfig);
+        } else {
+            target->CopyFrom(BaseConfig);
         }
         auto handle = std::make_unique<IEventHandle>(actorId, SelfId(), ev.release());
         handle->Rewrite(TEvInterconnect::EvForward, sessionId);

@@ -3,11 +3,9 @@ UNITTEST_FOR(contrib/ydb/core/tablet_flat)
 FORK_SUBTESTS()
 
 IF (WITH_VALGRIND)
-    TIMEOUT(2400)
     TAG(ya:fat)
     SIZE(LARGE)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -39,6 +37,7 @@ SRCS(
     ut_comp_gen.cpp
     ut_compaction.cpp
     ut_compaction_multi.cpp
+    ut_data_cleanup.cpp
     ut_datetime.cpp
     ut_decimal.cpp    
     ut_charge.cpp
@@ -53,7 +52,6 @@ SRCS(
     ut_screen.cpp
     ut_bloom.cpp
     ut_shared_sausagecache.cpp
-    ut_shared_sausagecache_memtable.cpp
     ut_slice.cpp
     ut_slice_loader.cpp
     ut_versions.cpp
@@ -70,7 +68,7 @@ PEERDIR(
     contrib/ydb/core/tablet_flat/test/libs/exec
     contrib/ydb/core/tablet_flat/test/libs/table
     contrib/ydb/core/testlib/default
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    yql/essentials/public/udf/service/exception_policy
 )
 
 END()

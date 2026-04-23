@@ -1,9 +1,9 @@
 #include <util/system/env.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
+#include <ydb-cpp-sdk/client/table/table.h>
+#include <ydb-cpp-sdk/client/draft/ydb_scripting.h>
 
 #include <library/cpp/threading/local_executor/local_executor.h>
 

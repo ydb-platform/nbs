@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/dq/scheduler)
 
-TAG(ya:manual)
-
 SIZE(SMALL)
 
 SRCS(
@@ -9,8 +7,8 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/public/udf/service/stub
+    yql/essentials/utils/log
 )
 
 YQL_LAST_ABI_VERSION()

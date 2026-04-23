@@ -6,13 +6,13 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/minikql
-    contrib/ydb/library/yql/minikql/computation
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/providers/yt/proto
-    contrib/ydb/library/yql/providers/yt/gateway/file
+    yql/essentials/minikql
+    yql/essentials/minikql/computation
+    yql/essentials/providers/common/provider
+    yt/yql/providers/yt/proto
+    yt/yql/providers/yt/gateway/file
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/types
 )
 
 YQL_LAST_ABI_VERSION()

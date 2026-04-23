@@ -99,18 +99,6 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
             LOG_ERROR_S(ctx, NKikimrServices::TX_DATASHARD, err);
 
             return EExecutionStatus::Executed;
-        } else if (!DataShard.IsMvccEnabled()) {
-            TString err = TStringBuilder()
-                << "Operation " << *op << " reads from snapshot " << snapshot
-                << " with MVCC feature disabled at " << DataShard.TabletID();
-
-            BuildResult(op, NKikimrTxDataShard::TEvProposeTransactionResult::BAD_REQUEST)
-                ->AddError(NKikimrTxDataShard::TError::BAD_ARGUMENT, err);
-            op->Abort(EExecutionUnitKind::FinishPropose);
-
-            LOG_ERROR_S(ctx, NKikimrServices::TX_DATASHARD, err);
-
-            return EExecutionStatus::Executed;
         } else if (snapshot < DataShard.GetSnapshotManager().GetLowWatermark()) {
             TString err = TStringBuilder()
                 << "Operation " << *op << " reads from stale snapshot " << snapshot
@@ -213,9 +201,9 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
                             // Updates are not allowed when database is out of space
                             TString err = "Cannot perform writes: database is out of disk space";
 
-                            DataShard.IncCounter(COUNTER_PREPARE_OUT_OF_SPACE);
+                            DataShard.IncCounter(COUNTER_PREPARE_DISK_SPACE_EXHAUSTED);
 
-                            BuildResult(op)->AddError(NKikimrTxDataShard::TError::OUT_OF_SPACE, err);
+                            BuildResult(op)->AddError(NKikimrTxDataShard::TError::DISK_SPACE_EXHAUSTED, err);
                             op->Abort(EExecutionUnitKind::FinishPropose);
 
                             LOG_LOG_S_THROTTLE(DataShard.GetLogThrottler(TDataShard::ELogThrottlerType::CheckDataTxUnit_Execute), ctx, NActors::NLog::PRI_ERROR, NKikimrServices::TX_DATASHARD, err);

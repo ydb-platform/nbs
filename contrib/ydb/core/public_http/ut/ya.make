@@ -7,11 +7,11 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
     contrib/ydb/services/kesus
     contrib/ydb/services/persqueue_cluster_discovery
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    yql/essentials/minikql/comp_nodes/llvm16
 )
 
 YQL_LAST_ABI_VERSION()

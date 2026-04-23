@@ -18,7 +18,10 @@ class TMultiplexingBandConfig
 {
 public:
     int TosLevel;
-    THashMap<TString, int> NetworkToTosLevel;
+    THashMap<std::string, int> NetworkToTosLevel;
+
+    int MinMultiplexingParallelism;
+    int MaxMultiplexingParallelism;
 
     REGISTER_YSON_STRUCT(TMultiplexingBandConfig);
 
@@ -40,14 +43,16 @@ public:
     //! Used for profiling export and alerts.
     std::optional<i64> NetworkBandwidth;
 
-    THashMap<TString, std::vector<NNet::TIP6Network>> Networks;
+    THashMap<std::string, std::vector<NNet::TIP6Network>> Networks;
 
     TEnumIndexedArray<EMultiplexingBand, TMultiplexingBandConfigPtr> MultiplexingBands;
 
-    TTcpDispatcherConfigPtr ApplyDynamic(const TTcpDispatcherDynamicConfigPtr& dynamicConfig) const;
-
     //! Used to store TLS/SSL certificate files.
     std::optional<TString> BusCertsDirectoryPath;
+
+    bool EnableLocalBypass;
+
+    TTcpDispatcherConfigPtr ApplyDynamic(const TTcpDispatcherDynamicConfigPtr& dynamicConfig) const;
 
     REGISTER_YSON_STRUCT(TTcpDispatcherConfig);
 
@@ -68,12 +73,14 @@ public:
 
     std::optional<i64> NetworkBandwidth;
 
-    std::optional<THashMap<TString, std::vector<NNet::TIP6Network>>> Networks;
+    std::optional<THashMap<std::string, std::vector<NNet::TIP6Network>>> Networks;
 
     std::optional<TEnumIndexedArray<EMultiplexingBand, TMultiplexingBandConfigPtr>> MultiplexingBands;
 
     //! Used to store TLS/SSL certificate files.
     std::optional<TString> BusCertsDirectoryPath;
+
+    std::optional<bool> EnableLocalBypass;
 
     REGISTER_YSON_STRUCT(TTcpDispatcherDynamicConfig);
 
@@ -102,6 +109,8 @@ public:
     bool VerifyChecksums;
     bool GenerateChecksums;
 
+    bool EnableLocalBypass;
+
     // Ssl options.
     EEncryptionMode EncryptionMode;
     EVerificationMode VerificationMode;
@@ -121,17 +130,32 @@ DEFINE_REFCOUNTED_TYPE(TBusConfig)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TBusDynamicConfig
+    : public NYTree::TYsonStruct
+{
+public:
+    bool NeedRejectConnectionDueMemoryOvercommit;
+
+    REGISTER_YSON_STRUCT(TBusDynamicConfig);
+
+    static void Register(TRegistrar registrar);
+};
+
+DEFINE_REFCOUNTED_TYPE(TBusDynamicConfig)
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TBusServerConfig
     : public TBusConfig
 {
 public:
     std::optional<int> Port;
-    std::optional<TString> UnixDomainSocketPath;
+    std::optional<std::string> UnixDomainSocketPath;
     int MaxBacklogSize;
     int MaxSimultaneousConnections;
 
     static TBusServerConfigPtr CreateTcp(int port);
-    static TBusServerConfigPtr CreateUds(const TString& socketPath);
+    static TBusServerConfigPtr CreateUds(const std::string& socketPath);
 
     REGISTER_YSON_STRUCT(TBusServerConfig);
 
@@ -142,15 +166,28 @@ DEFINE_REFCOUNTED_TYPE(TBusServerConfig)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TBusServerDynamicConfig
+    : public TBusDynamicConfig
+{
+public:
+    REGISTER_YSON_STRUCT(TBusServerDynamicConfig);
+
+    static void Register(TRegistrar registrar);
+};
+
+DEFINE_REFCOUNTED_TYPE(TBusServerDynamicConfig)
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TBusClientConfig
     : public TBusConfig
 {
 public:
-    std::optional<TString> Address;
-    std::optional<TString> UnixDomainSocketPath;
+    std::optional<std::string> Address;
+    std::optional<std::string> UnixDomainSocketPath;
 
-    static TBusClientConfigPtr CreateTcp(const TString& address);
-    static TBusClientConfigPtr CreateUds(const TString& socketPath);
+    static TBusClientConfigPtr CreateTcp(const std::string& address);
+    static TBusClientConfigPtr CreateUds(const std::string& socketPath);
 
     REGISTER_YSON_STRUCT(TBusClientConfig);
 
@@ -158,6 +195,19 @@ public:
 };
 
 DEFINE_REFCOUNTED_TYPE(TBusClientConfig)
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TBusClientDynamicConfig
+    : public TBusDynamicConfig
+{
+public:
+    REGISTER_YSON_STRUCT(TBusClientDynamicConfig);
+
+    static void Register(TRegistrar registrar);
+};
+
+DEFINE_REFCOUNTED_TYPE(TBusClientDynamicConfig)
 
 ////////////////////////////////////////////////////////////////////////////////
 

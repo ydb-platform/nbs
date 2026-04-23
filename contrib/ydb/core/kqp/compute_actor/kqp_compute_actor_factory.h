@@ -1,7 +1,7 @@
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/accessor/accessor.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <yql/essentials/utils/yql_panic.h>
 #include <contrib/ydb/library/yql/dq/proto/dq_tasks.pb.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
 #include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
@@ -44,9 +44,9 @@ public:
         return true;
     }
 
-    TMetaScan& MergeMetaReads(const NYql::NDqProto::TDqTask& task, const NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta& meta, const bool forceOneToMany) {
+    TMetaScan& MergeMetaReads(const NYql::NDqProto::TDqTask& task, const NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta& meta) {
         YQL_ENSURE(meta.ReadsSize(), "unexpected merge with no reads");
-        if (forceOneToMany || !task.HasMetaId()) {
+        if (!task.HasMetaId()) {
             MetaInfo.emplace_back(TMetaScan(meta));
             return MetaInfo.back();
         } else {
@@ -85,12 +85,12 @@ public:
         }
     }
 
-    TMetaScan& UpsertTaskWithScan(const NYql::NDqProto::TDqTask& dqTask, const NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta& meta, const bool forceOneToMany) {
+    TMetaScan& UpsertTaskWithScan(const NYql::NDqProto::TDqTask& dqTask, const NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta& meta) {
         auto it = Stages.find(dqTask.GetStageId());
         if (it == Stages.end()) {
             it = Stages.emplace(dqTask.GetStageId(), TComputeStageInfo()).first;
         }
-        return it->second.MergeMetaReads(dqTask, meta, forceOneToMany);
+        return it->second.MergeMetaReads(dqTask, meta);
     }
 };
 
@@ -110,6 +110,7 @@ public:
         const ui64 TxId;
         const TMaybe<ui64> LockTxId;
         const ui32 LockNodeId;
+        const TMaybe<NKikimrDataEvents::ELockMode> LockMode;
         NYql::NDqProto::TDqTask* Task;
         TIntrusivePtr<NRm::TTxState> TxInfo;
         const NYql::NDq::TComputeRuntimeSettings& RuntimeSettings;
@@ -121,13 +122,17 @@ public:
         const NKikimr::NKqp::NRm::EKqpMemoryPool MemoryPool;
         const bool WithSpilling;
         const NYql::NDqProto::EDqStatsMode StatsMode;
+        const bool WithProgressStats;
         const TInstant& Deadline;
         const bool ShareMailbox;
         const TMaybe<NYql::NDqProto::TRlPath>& RlPath;
+        const NKikimrConfig::TTableServiceConfig::EBlockTrackingMode BlockTrackingMode;
 
         TComputeStagesWithScan* ComputesByStages = nullptr;
         std::shared_ptr<IKqpNodeState> State = nullptr;
         TComputeActorSchedulingOptions SchedulingOptions = {};
+        TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
+        TString Database;
     };
 
     typedef std::variant<TActorId, NKikimr::NKqp::NRm::TKqpRMAllocateResult> TActorStartResult;

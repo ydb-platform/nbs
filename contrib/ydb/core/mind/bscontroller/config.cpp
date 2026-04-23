@@ -93,7 +93,8 @@ namespace NKikimr::NBsController {
                 const ui32 nodeId = fullPDiskId.NodeId;
                 const ui32 pdiskId = fullPDiskId.PDiskId;
 
-                NKikimrBlobStorage::TNodeWardenServiceSet &service = *Services[nodeId].MutableServiceSet();
+                auto& query = Services[nodeId];
+                NKikimrBlobStorage::TNodeWardenServiceSet &service = *query.MutableServiceSet();
                 NKikimrBlobStorage::TNodeWardenServiceSet::TPDisk *pdisk = service.AddPDisks();
                 pdisk->SetNodeID(nodeId);
                 pdisk->SetPDiskID(pdiskId);
@@ -123,6 +124,14 @@ namespace NKikimr::NBsController {
                     case NBsController::TPDiskMood::EValue::Stop:
                         pdisk->SetStop(true);
                         break;
+                }
+
+                if (auto& shred = Self->ShredState; shred.ShouldShred(fullPDiskId, pdiskInfo)) {
+                    const auto& generation = shred.GetCurrentGeneration();
+                    Y_ABORT_UNLESS(generation);
+                    auto *m = query.MutableShredRequest();
+                    m->SetShredGeneration(*generation);
+                    m->AddPDiskIds(fullPDiskId.PDiskId);
                 }
 
                 return pdisk;
@@ -512,6 +521,7 @@ namespace NKikimr::NBsController {
             CommitStoragePoolStatUpdates(state);
             CommitSysViewUpdates(state);
             CommitVirtualGroupUpdates(state);
+            CommitShredUpdates(state);
 
             // add updated and remove deleted vslots from VSlotReadyTimestampQ
             const TMonotonic now = TActivationContext::Monotonic();
@@ -525,6 +535,19 @@ namespace NKikimr::NBsController {
                     overlay->second->PutInVSlotReadyTimestampQ(now);
                 } else {
                     Y_DEBUG_ABORT_UNLESS(overlay->second->IsReady || overlay->second->IsInVSlotReadyTimestampQ());
+                }
+
+                // Keep node->group subscription in commit path: dynamic groups may appear
+                // after initial RegisterNode, and cleanup for the same index is done below.
+                if (overlay->second && !overlay->second->IsBeingDeleted()) {
+                    const TGroupId groupId = overlay->second->GroupId;
+                    if (NKikimr::IsDynamicGroup(groupId)) {
+                        const TNodeId nodeId = overlay->second->VSlotId.NodeId;
+                        auto& node = GetNode(nodeId);
+                        if (node.GroupsRequested.insert(groupId).second) {
+                            GroupToNode.emplace(groupId, nodeId);
+                        }
+                    }
                 }
             }
 
@@ -1201,6 +1224,11 @@ namespace NKikimr::NBsController {
             settings->AddAllowMultipleRealmsOccupation(AllowMultipleRealmsOccupation);
             settings->AddUseSelfHealLocalPolicy(UseSelfHealLocalPolicy);
             settings->AddTryToRelocateBrokenDisksLocallyFirst(TryToRelocateBrokenDisksLocallyFirst);
+        }
+
+        void TBlobStorageController::TConfigState::ExecuteStep(const NKikimrBlobStorage::TGetInterfaceVersion& /*cmd*/,
+                TStatus& status) {
+            status.SetInterfaceVersion(BSC_INTERFACE_VERSION);
         }
 
 } // NKikimr::NBsController

@@ -6,15 +6,16 @@ SRCS(
 
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/yql/minikql
-    contrib/ydb/library/yql/utils
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/types/binary_json
+    yql/essentials/minikql
+    yql/essentials/utils
+    yql/essentials/utils/log
     library/cpp/digest/crc32c
 )
 
 CFLAGS(
     -mprfchw
+    -mavx2
     -DMKQL_DISABLE_CODEGEN
 )
 

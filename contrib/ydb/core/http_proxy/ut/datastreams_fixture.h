@@ -17,17 +17,17 @@
 #include <contrib/ydb/core/http_proxy/http_req.h>
 #include <contrib/ydb/core/http_proxy/http_service.h>
 #include <contrib/ydb/core/http_proxy/metrics_actor.h>
-#include <contrib/ydb/core/mon/sync_http_mon.h>
+#include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/ymq/actor/auth_multi_factory.h>
 
 #include <contrib/ydb/library/aclib/aclib.h>
 #include <contrib/ydb/library/persqueue/tests/counters.h>
 #include <contrib/ydb/library/testlib/service_mocks/access_service_mock.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_common_client/settings.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_datastreams/datastreams.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <ydb-cpp-sdk/client/common_client/settings.h>
+#include <ydb-cpp-sdk/client/datastreams/datastreams.h>
+#include <ydb-cpp-sdk/client/discovery/discovery.h>
+#include <ydb-cpp-sdk/client/scheme/scheme.h>
 
 #include <contrib/ydb/services/ydb/ydb_common_ut.h>
 
@@ -39,7 +39,6 @@
 #include <contrib/ydb/core/ymq/actor/serviceid.h>
 
 #include <thread>
-
 
 using TJMap = NJson::TJsonValue::TMapType;
 using TJVector = NJson::TJsonValue::TArray;
@@ -71,12 +70,12 @@ T GetByPath(const NJson::TJsonValue& msg, TStringBuf path) {
 }
 
 class THttpProxyTestMock : public NUnitTest::TBaseFixture {
-    friend class THttpProxyTestMockForSQS;
 public:
     THttpProxyTestMock() = default;
     ~THttpProxyTestMock() = default;
 
     void TearDown(NUnitTest::TTestContext&) override {
+        Monitoring->Stop();
         GRpcServer->Stop();
     }
 
@@ -462,7 +461,7 @@ private:
         TString endpoint = TStringBuilder() << "localhost:" << KikimrGrpcPort;
         auto driverConfig = NYdb::TDriverConfig()
             .SetEndpoint(endpoint)
-            .SetLog(CreateLogBackend("cerr", ELogPriority::TLOG_DEBUG));
+            .SetLog(std::unique_ptr<TLogBackend>(CreateLogBackend("cerr", ELogPriority::TLOG_DEBUG).Release()));
         NYdb::TDriver driver(driverConfig);
         auto tableClient = NYdb::NTable::TTableClient(driver);
 
@@ -790,6 +789,7 @@ private:
            << sentTimestampIdxCommonColumns
            << sendTimestampIdsKeys
         );
+
         client.CreateTable("/Root/SQS/.FIFO",
            "Name: \"SentTimestampIdx\""
            "Columns { Name: \"QueueIdNumberHash\"      Type: \"Uint64\"}"
@@ -837,7 +837,7 @@ private:
         AccessServiceServer = builder.BuildAndStart();
     }
 
-    void InitHttpServer(bool yandexCloudMode) {
+    void InitHttpServer(bool yandexCloudMode = true) {
         NKikimrConfig::TServerlessProxyConfig config;
         config.MutableHttpConfig()->AddYandexCloudServiceRegion("ru-central1");
         config.MutableHttpConfig()->AddYandexCloudServiceRegion("ru-central-1");
@@ -857,7 +857,7 @@ private:
         MonPort = TPortManager().GetPort();
         Counters = new NMonitoring::TDynamicCounters();
 
-        Monitoring.Reset(new NActors::TSyncHttpMon({
+        Monitoring.Reset(new NActors::TMon({
             .Port = MonPort,
             .Address = "127.0.0.1",
             .Threads = 3,
@@ -865,7 +865,7 @@ private:
             .Host = "127.0.0.1",
         }));
         Monitoring->RegisterCountersPage("counters", "Counters", Counters);
-        Monitoring->Start();
+        Monitoring->Start(ActorRuntime->GetAnyNodeActorSystem());
 
         Sleep(TDuration::Seconds(1));
 

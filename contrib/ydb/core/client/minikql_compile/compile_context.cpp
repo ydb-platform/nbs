@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/engine/kikimr_program_builder.h>
-#include <contrib/ydb/library/yql/minikql/mkql_type_builder.h>
+#include <yql/essentials/minikql/mkql_type_builder.h>
 
 namespace NYql {
 

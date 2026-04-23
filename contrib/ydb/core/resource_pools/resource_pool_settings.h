@@ -37,7 +37,7 @@ struct TPoolSettings : public TSettingsBase {
     bool operator==(const TPoolSettings& other) const = default;
 
     std::unordered_map<TString, TProperty> GetPropertiesMap(bool restricted = false);
-    void Validate() const;
+    [[nodiscard]] std::optional<TString> Validate() const;
 
     i32 ConcurrentQueryLimit = -1;  // -1 = disabled
     i32 QueueSize = -1;  // -1 = disabled
@@ -45,6 +45,8 @@ struct TPoolSettings : public TSettingsBase {
     TPercent QueryMemoryLimitPercentPerNode = -1;  // Percent from node memory capacity, -1 = disabled
     TPercent DatabaseLoadCpuThreshold = -1;  // -1 = disabled
     TPercent TotalCpuLimitPercentPerNode = -1;  // -1 = disabled
+    TPercent QueryCpuLimitPercentPerNode = -1; // -1 = disabled;
+    double ResourceWeight = -1;
 };
 
 }  // namespace NKikimr::NResourcePool

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_datastreams/datastreams.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <ydb-cpp-sdk/client/datastreams/datastreams.h>
+#include <ydb-cpp-sdk/client/topic/client.h>
 
-#include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
+#include <yql/essentials/providers/common/proto/gateways_config.pb.h>
 #include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
 #include <contrib/ydb/library/yql/providers/pq/cm_client/client.h>
 #include <contrib/ydb/library/yql/providers/pq/provider/yql_pq_gateway.h>

@@ -17,13 +17,14 @@ namespace {
 NKikimrConfig::TAppConfig AppCfg() {
     NKikimrConfig::TAppConfig appCfg;
 
-    auto* rm = appCfg.MutableTableServiceConfig()->MutableResourceManager();
-    rm->SetChannelBufferSize(100);
-    rm->SetMinChannelBufferSize(100);
+    auto* ts = appCfg.MutableTableServiceConfig();
+    ts->SetEnableQueryServiceSpilling(true);
+
+    auto* rm = ts->MutableResourceManager();
+    rm->SetChannelBufferSize(50);
+    rm->SetMinChannelBufferSize(50);
     rm->SetMkqlLightProgramMemoryLimit(100 << 20);
     rm->SetMkqlHeavyProgramMemoryLimit(100 << 20);
-
-    appCfg.MutableTableServiceConfig()->SetEnableQueryServiceSpilling(true);
 
     auto* spilling = appCfg.MutableTableServiceConfig()->MutableSpillingServiceConfig()->MutableLocalFileConfig();
     spilling->SetEnable(true);
@@ -32,19 +33,26 @@ NKikimrConfig::TAppConfig AppCfg() {
     return appCfg;
 }
 
-NKikimrConfig::TAppConfig AppCfgLowComputeLimits(double reasonableTreshold, bool enableSpilling=true) {
+NKikimrConfig::TAppConfig AppCfgLowComputeLimits(double reasonableTreshold, bool enableSpilling=true, bool limitFileSize=false) {
     NKikimrConfig::TAppConfig appCfg;
 
-    auto* rm = appCfg.MutableTableServiceConfig()->MutableResourceManager();
+    auto* ts = appCfg.MutableTableServiceConfig();
+
+    ts->SetEnableQueryServiceSpilling(enableSpilling);
+    ts->SetEnableSpillingInHashJoinShuffleConnections(false);
+
+    auto* rm = ts->MutableResourceManager();
     rm->SetMkqlLightProgramMemoryLimit(100);
     rm->SetMkqlHeavyProgramMemoryLimit(300);
     rm->SetSpillingPercent(reasonableTreshold);
-    appCfg.MutableTableServiceConfig()->SetEnableQueryServiceSpilling(true);
 
-    auto* spilling = appCfg.MutableTableServiceConfig()->MutableSpillingServiceConfig()->MutableLocalFileConfig();
+    auto* spilling = ts->MutableSpillingServiceConfig()->MutableLocalFileConfig();
 
     spilling->SetEnable(enableSpilling);
     spilling->SetRoot("./spilling/");
+    if (limitFileSize) {
+        spilling->SetMaxFileSize(1);
+    }
 
     return appCfg;
 }
@@ -93,8 +101,6 @@ Y_UNIT_TEST(SpillingPragmaParseError) {
 }
 
 Y_UNIT_TEST_TWIN(SpillingInRuntimeNodes, EnabledSpilling) {
-    // tmp fix while runtime version is lower 50
-    if (EnabledSpilling) return;
     double reasonableTreshold = EnabledSpilling ? 0.01 : 100;
     Cerr << "cwd: " << NFs::CurrentWorkingDirectory() << Endl;
     TKikimrRunner kikimr(AppCfgLowComputeLimits(reasonableTreshold));
@@ -124,7 +130,7 @@ Y_UNIT_TEST_TWIN(SpillingInRuntimeNodes, EnabledSpilling) {
 
 Y_UNIT_TEST(HandleErrorsCorrectly) {
     Cerr << "cwd: " << NFs::CurrentWorkingDirectory() << Endl;
-    TKikimrRunner kikimr(AppCfgLowComputeLimits(0.01, false));
+    TKikimrRunner kikimr(AppCfgLowComputeLimits(0.01, true, true));
 
     auto db = kikimr.GetQueryClient();
 
@@ -169,7 +175,6 @@ Y_UNIT_TEST(SelfJoinQueryService) {
 
     auto query = R"(
         --!syntax_v1
-        PRAGMA ydb.UseGraceJoinCoreForMap="false";
         PRAGMA ydb.CostBasedOptimizationLevel='0';
         select t1.Key, t1.Value, t2.Key, t2.Value
         from `/Root/KeyValue` as t1 join `/Root/KeyValue` as t2 on t1.Value = t2.Value

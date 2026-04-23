@@ -9,6 +9,10 @@
 #include <contrib/ydb/library/grpc/server/grpc_request.h>
 #include <contrib/ydb/library/grpc/server/grpc_counters.h>
 #include <contrib/ydb/library/grpc/server/grpc_async_ctx_base.h>
+#include <contrib/ydb/core/protos/node_broker.pb.h>
+
+#include <contrib/ydb/core/protos/cms.pb.h>
+#include <contrib/ydb/core/protos/console_base.pb.h>
 
 #include <library/cpp/json/json_writer.h>
 
@@ -120,6 +124,7 @@ void TGRpcService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
             ActorSystem->Send(GRpcRequestProxyId, new TGrpcRequestNoOperationCall<                           \
                 NKikimrClient::In,                                                                           \
                 NKikimrClient::Out,                                                                          \
+                NRuntimeEvents::EType::COMMON,                                                               \
                 NLegacyGrpcService::TLegacyGrpcMethodAccessorTraits<NKikimrClient::In, NKikimrClient::Out>>( \
                     reqCtx, createActorCb,                                                                   \
                     TRequestAuxSettings {                                                                    \
@@ -129,7 +134,7 @@ void TGRpcService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
                     }));                                                                                     \
         },                                                                                                   \
         &NKikimrClient::TGRpcServer::AsyncService::Y_CAT(Request, methodName),                               \
-        "Legacy/" Y_STRINGIZE(methodName),                                                                   \
+        Y_STRINGIZE(methodName),                                                                             \
         logger,                                                                                              \
         getCounterBlock(Y_STRINGIZE(counterName), Y_STRINGIZE(methodName))                                   \
     )->Run()                                                                                                 \
@@ -152,10 +157,6 @@ void TGRpcService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
     SETUP_SERVER_METHOD(ConsoleRequest, TConsoleRequest, TConsoleResponse, DoConsoleRequest, Off, UNSPECIFIED, legacy, TAuditMode::Modifying(TAuditMode::TLogClassConfig::ClusterAdmin));
     SETUP_SERVER_METHOD(InterconnectDebug, TInterconnectDebug, TResponse, DoInterconnectDebug, Off, UNSPECIFIED, legacy, TAuditMode::Modifying(TAuditMode::TLogClassConfig::ClusterAdmin));
     SETUP_SERVER_METHOD(TabletStateRequest, TTabletStateRequest, TResponse, DoTabletStateRequest, Off, UNSPECIFIED, legacy, TAuditMode::NonModifying());
-    SETUP_SERVER_METHOD(LocalSchemeTx, TLocalSchemeTx, TResponse, DoLocalSchemeTx, Off, UNSPECIFIED, legacy, TAuditMode::Modifying(TAuditMode::TLogClassConfig::ClusterAdmin));
-    SETUP_SERVER_METHOD(LocalEnumerateTablets, TLocalEnumerateTablets, TResponse, DoLocalEnumerateTablets, Off, UNSPECIFIED, legacy, TAuditMode::NonModifying());
-    SETUP_SERVER_METHOD(TabletKillRequest, TTabletKillRequest, TResponse, DoTabletKillRequest, Off, UNSPECIFIED, legacy, TAuditMode::Modifying(TAuditMode::TLogClassConfig::ClusterAdmin));
-    SETUP_SERVER_METHOD(LocalMKQL, TLocalMKQL, TResponse, DoLocalMKQL, Off, UNSPECIFIED, legacy, TAuditMode::Modifying(TAuditMode::TLogClassConfig::ClusterAdmin));
 }
 
 }

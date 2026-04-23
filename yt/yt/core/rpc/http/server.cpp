@@ -54,7 +54,7 @@ public:
         , Logger(logger)
     { }
 
-    const TString& GetEndpointDescription() const override
+    const std::string& GetEndpointDescription() const override
     {
         return EndpointAddress_;
     }
@@ -64,7 +64,7 @@ public:
         return *EndpointAttributes_;
     }
 
-    const TString& GetEndpointAddress() const override
+    const std::string& GetEndpointAddress() const override
     {
         return EndpointAddress_;
     }
@@ -116,7 +116,7 @@ public:
 
         YT_VERIFY(message.Size() >= 2);
         if (responseHeader.has_format()) {
-            auto format = CheckedEnumCast<EMessageFormat>(responseHeader.format());
+            auto format = FromProto<EMessageFormat>(responseHeader.format());
             Rsp_->GetHeaders()->Add("Content-Type", ToHttpContentType(format));
         }
 
@@ -228,7 +228,6 @@ private:
     const TString BaseUrl_;
     const NLogging::TLogger Logger;
 
-
     TError TranslateRequest(const IRequestPtr& req, NRpc::NProto::TRequestHeader* rpcHeader, TRequestId* requestId)
     {
         using namespace NYT::NHttp::NHeaders;
@@ -238,12 +237,12 @@ private:
         }
 
         const auto& url = req->GetUrl();
-        if (url.Path.Size() <= BaseUrl_.Size()) {
+        if (url.Path.size() <= BaseUrl_.size()) {
             return TError("Invalid URL");
         }
 
         ToProto(rpcHeader->mutable_service(), Underlying_->GetServiceId().ServiceName);
-        ToProto(rpcHeader->mutable_method(), url.Path.substr(BaseUrl_.Size()));
+        ToProto(rpcHeader->mutable_method(), url.Path.substr(BaseUrl_.size()));
 
         const auto& httpHeaders = req->GetHeaders();
 
@@ -254,7 +253,7 @@ private:
                 return TError("Invalid \"Content-Type\" header value")
                     << TErrorAttribute("value", *contentTypeString);
             }
-            rpcHeader->set_request_format(static_cast<i32>(*decodedType));
+            rpcHeader->set_request_format(ToProto(*decodedType));
         }
 
         auto requestFormatOptionsYson = httpHeaders->Find(RequestFormatOptionsHeaderName);
@@ -269,7 +268,7 @@ private:
                 return TError("Invalid \"Accept\" header value")
                     << TErrorAttribute("value", *acceptString);
             }
-            rpcHeader->set_response_format(static_cast<i32>(*decodedType));
+            rpcHeader->set_response_format(ToProto(*decodedType));
         }
 
         auto responseFormatOptionsYson = httpHeaders->Find(ResponseFormatOptionsHeaderName);
@@ -306,6 +305,11 @@ private:
             getCredentialsExt()->set_user_ticket(TrimLeadingWhitespaces(*userTicketString));
         }
 
+        auto serviceTicketString = httpHeaders->Find(ServiceTicketHeaderName);
+        if (serviceTicketString) {
+            getCredentialsExt()->set_service_ticket(TrimLeadingWhitespaces(*serviceTicketString));
+        }
+
         auto cookieString = httpHeaders->Find(CookieHeaderName);
         if (cookieString) {
             auto cookieMap = ParseCookies(*cookieString);
@@ -339,9 +343,9 @@ private:
         }
 
         if (auto requestTimeout = httpHeaders->Find(RequestTimeoutHeaderName)) {
-            rpcHeader->set_timeout(ToProto<i64>(TDuration::Seconds(FromString<i64>(*requestTimeout))));
+            rpcHeader->set_timeout(ToProto(TDuration::Seconds(FromString<i64>(*requestTimeout))));
         } else if (auto xRequestTimeout = httpHeaders->Find(XRequestTimeoutHeaderName)) {
-            rpcHeader->set_timeout(ToProto<i64>(TDuration::MilliSeconds(FromString<i64>(*xRequestTimeout))));
+            rpcHeader->set_timeout(ToProto(TDuration::MilliSeconds(FromString<i64>(*xRequestTimeout))));
         }
 
         auto protocolMajor = httpHeaders->Find(ProtocolVersionMajor);
@@ -368,8 +372,13 @@ private:
             *rpcHeader->MutableExtension(NRpc::NProto::TCustomMetadataExt::custom_metadata_ext) = std::move(customMetadataExt);
         }
 
-        rpcHeader->set_request_codec(ToProto<int>(NCompression::ECodec::None));
-        rpcHeader->set_response_codec(ToProto<int>(NCompression::ECodec::None));
+        rpcHeader->set_request_codec(ToProto(NCompression::ECodec::None));
+        rpcHeader->set_response_codec(ToProto(NCompression::ECodec::None));
+
+        ToProto(
+            rpcHeader->MutableExtension(NRpc::NProto::TRequestHeader::tracing_ext),
+            NTracing::TryGetCurrentTraceContext(),
+            /*sendBaggage*/ false);
 
         return {};
     }

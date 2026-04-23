@@ -4,7 +4,9 @@
 #include "vdisk_context.h"
 #include "vdisk_pdiskctx.h"
 #include "vdisk_lsnmngr.h"
+#include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/blobstorage/base/utility.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

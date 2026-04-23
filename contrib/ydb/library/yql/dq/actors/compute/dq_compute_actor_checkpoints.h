@@ -2,8 +2,8 @@
 
 #include "dq_compute_actor.h"
 #include "dq_compute_actor_async_io.h"
-#include "retry_queue.h"
 
+#include <contrib/ydb/library/yql/dq/actors/common/retry_queue.h>
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
 
 #include <contrib/ydb/library/actors/core/log.h>

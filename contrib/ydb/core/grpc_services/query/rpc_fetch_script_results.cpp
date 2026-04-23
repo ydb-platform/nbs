@@ -57,7 +57,7 @@ public:
         }
 
         RowsOffset = 0;
-        if (!req->fetch_token().Empty()) {
+        if (!req->fetch_token().empty()) {
             auto fetch_token = TryFromString<ui64>(req->fetch_token());
             if (fetch_token) {
                 RowsOffset = *fetch_token;
@@ -71,7 +71,7 @@ public:
             return;
         }
 
-        Register(NKqp::CreateGetScriptExecutionResultActor(SelfId(), DatabaseName, ExecutionId, req->result_set_index(), RowsOffset, req->rows_limit(), req->rows_limit() ? 0 : MAX_SIZE_LIMIT, Request->GetDeadline()));
+        Register(NKqp::CreateGetScriptExecutionResultActor(SelfId(), GetDatabaseName(), ExecutionId, req->result_set_index(), RowsOffset, req->rows_limit(), req->rows_limit() ? 0 : MAX_SIZE_LIMIT, Request->GetDeadline()));
 
         Become(&TFetchScriptResultsRPC::StateFunc);
     }
@@ -125,9 +125,10 @@ private:
     }
 
     bool GetExecutionIdFromRequest() {
-        TMaybe<TString> executionId = NKqp::ScriptExecutionIdFromOperation(GetProtoRequest()->operation_id());
+        TString error;
+        TMaybe<TString> executionId = NKqp::ScriptExecutionIdFromOperation(GetProtoRequest()->operation_id(), error);
         if (!executionId) {
-            Reply(Ydb::StatusIds::BAD_REQUEST, "Invalid operation id");
+            Reply(Ydb::StatusIds::BAD_REQUEST, error);
             return false;
         }
         ExecutionId = *executionId;

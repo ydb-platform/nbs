@@ -25,6 +25,7 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/public/lib/base/msgbus_status.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/include/aliases.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
 
 #include <contrib/ydb/core/base/ticket_parser.h>
@@ -803,7 +804,7 @@ private:
     THashMap<std::pair<TString, ui32>, TPartitionActorInfo> Partitions; //topic[ClientSideName!]:partition -> info
 
     THashMap<TString, NPersQueue::TTopicConverterPtr> FullPathToConverter; // PrimaryFullPath -> Converter, for balancer replies matching
-    THashMap<TString, TTopicHolder> Topics; // PrimaryName ->topic info
+    THashMap<TString, TTopicHolder::TPtr> Topics; // PrimaryName ->topic info
 
     TVector<ui32> Groups;
     bool ReadOnlyLocal;
@@ -942,6 +943,8 @@ private:
 
     NPersQueue::TTopicsListController TopicsHandler;
     NPersQueue::TTopicsToConverter TopicsList;
+
+    std::deque<THolder<TEvPersQueue::TEvLockPartition>> Locks;
 };
 
 }

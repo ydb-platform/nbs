@@ -11,9 +11,11 @@ LICENSE(
     NCSA
 )
 
-LICENSE_TEXTS(../../LICENSE.TXT)
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-OWNER(g:cpp-contrib)
+SUBSCRIBER(g:cpp-contrib)
+
+VERSION(16.0.6)
 
 ADDINCL(
     contrib/libs/clang16-rt/include
@@ -91,6 +93,7 @@ SRCS(
     sanitizer_common/sanitizer_platform_limits_linux.cpp
     sanitizer_common/sanitizer_platform_limits_netbsd.cpp
     sanitizer_common/sanitizer_platform_limits_posix.cpp
+    sanitizer_common/sanitizer_platform_limits_solaris.cpp
     sanitizer_common/sanitizer_posix.cpp
     sanitizer_common/sanitizer_posix_libcdep.cpp
     sanitizer_common/sanitizer_printf.cpp
@@ -99,6 +102,8 @@ SRCS(
     sanitizer_common/sanitizer_procmaps_fuchsia.cpp
     sanitizer_common/sanitizer_procmaps_linux.cpp
     sanitizer_common/sanitizer_procmaps_mac.cpp
+    sanitizer_common/sanitizer_procmaps_solaris.cpp
+    sanitizer_common/sanitizer_solaris.cpp
     sanitizer_common/sanitizer_stack_store.cpp
     sanitizer_common/sanitizer_stackdepot.cpp
     sanitizer_common/sanitizer_stacktrace.cpp

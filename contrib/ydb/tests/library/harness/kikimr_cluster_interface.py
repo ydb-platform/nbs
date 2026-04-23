@@ -5,7 +5,9 @@ import logging
 import time
 
 from contrib.ydb.tests.library.common.wait_for import wait_for
-from .kikimr_client import kikimr_client_factory
+from contrib.ydb.tests.library.clients.kikimr_client import kikimr_client_factory
+from contrib.ydb.tests.library.clients.kikimr_keyvalue_client import keyvalue_client_factory
+from contrib.ydb.tests.library.clients.kikimr_scheme_client import scheme_client_factory
 from contrib.ydb.tests.library.common.protobuf_console import (
     CreateTenantRequest, AlterTenantRequest, GetTenantStatusRequest,
     RemoveTenantRequest, GetOperationRequest)
@@ -22,6 +24,9 @@ class KiKiMRClusterInterface(object):
 
     def __init__(self):
         self.__client = None
+        self.__kv_client = None
+        self.__scheme_client = None
+        self.__config_client = None
         self.__clients = None
         self.__monitors = None
         self.__ready_timeout_seconds = 60
@@ -84,6 +89,41 @@ class KiKiMRClusterInterface(object):
             )
         return self.__client
 
+    @property
+    def kv_client(self):
+        if self.__kv_client is None:
+            self.__kv_client = keyvalue_client_factory(
+                server=self.nodes[1].host,
+                port=self.nodes[1].grpc_port,
+                cluster=self,
+                retry_count=10,
+            )
+        return self.__kv_client
+
+    @property
+    def scheme_client(self):
+        if self.__scheme_client is None:
+            self.__scheme_client = scheme_client_factory(
+                server=self.nodes[1].host,
+                port=self.nodes[1].grpc_port,
+                cluster=self,
+                retry_count=10,
+            )
+        return self.__scheme_client
+
+    @property
+    def config_client(self):
+        if self.__config_client is None:
+            self.__config_client = self._create_config_client()
+        return self.__config_client
+
+    @abc.abstractmethod
+    def _create_config_client(self):
+        """
+        Factory method for ConfigClient, must be implemented by subclasses.
+        """
+        pass
+
     def _send_get_tenant_status_request(self, database_name, token=None):
         req = GetTenantStatusRequest(database_name)
 
@@ -98,7 +138,6 @@ class KiKiMRClusterInterface(object):
         if response.Response.operation.status != StatusIds.SUCCESS:
             logger.critical("Console response status: %s", str(response.Response.operation.status))
             assert False
-            return False
 
         result = cms_tenants_pb.GetDatabaseStatusResult()
         response.Response.operation.result.Unpack(result)
@@ -164,6 +203,7 @@ class KiKiMRClusterInterface(object):
             disable_external_subdomain=False,
             timeout_seconds=120,
             token=None,
+            options=None,
     ):
         req = CreateTenantRequest(database_name)
         for storage_pool_type_name, units_count in storage_pool_units_count.items():
@@ -177,6 +217,9 @@ class KiKiMRClusterInterface(object):
 
         if token is not None:
             req.set_user_token(token)
+
+        if options is not None:
+            req.set_options(**options)
 
         response = self.client.send_request(req.protobuf, method='ConsoleRequest')
         operation = response.CreateTenantResponse.Response.operation
@@ -199,7 +242,8 @@ class KiKiMRClusterInterface(object):
             self,
             database_name,
             storage_pool_units_count,
-            timeout_seconds=120
+            timeout_seconds=120,
+            token=None,
     ):
         req = CreateTenantRequest(database_name)
         for storage_pool_type_name, units_count in storage_pool_units_count.items():
@@ -208,19 +252,23 @@ class KiKiMRClusterInterface(object):
                 units_count,
             )
 
+        if token is not None:
+            req.set_user_token(token)
+
         response = self.client.send_request(req.protobuf, method='ConsoleRequest')
         operation = response.CreateTenantResponse.Response.operation
         if not operation.ready and response.Status.Code != StatusIds.STATUS_CODE_UNSPECIFIED:
             raise RuntimeError('create_hostel_database failed: %s: %s' % (response.Status.Code, response.Status.Reason))
         if not operation.ready:
-            operation = self.__wait_console_op(operation.id, timeout_seconds=timeout_seconds)
+            operation = self.__wait_console_op(operation.id, timeout_seconds=timeout_seconds, token=token)
         if operation.status != StatusIds.SUCCESS:
             raise RuntimeError('create_hostel_database failed: %s' % (operation.status,))
 
         self.__wait_tenant_up(
             database_name,
             expected_computational_units=0,
-            timeout_seconds=timeout_seconds
+            timeout_seconds=timeout_seconds,
+            token=token,
         )
         return database_name
 
@@ -231,9 +279,13 @@ class KiKiMRClusterInterface(object):
             timeout_seconds=120,
             schema_quotas=None,
             disk_quotas=None,
-            attributes=None
+            attributes=None,
+            token=None,
     ):
         req = CreateTenantRequest(database_name)
+
+        if token is not None:
+            req.set_user_token(token)
 
         req.share_resources_with(hostel_db)
 
@@ -252,13 +304,14 @@ class KiKiMRClusterInterface(object):
         if not operation.ready and response.Status.Code != StatusIds.STATUS_CODE_UNSPECIFIED:
             raise RuntimeError('create_serverless_database failed: %s: %s' % (response.Status.Code, response.Status.Reason))
         if not operation.ready:
-            operation = self.__wait_console_op(operation.id, timeout_seconds=timeout_seconds)
+            operation = self.__wait_console_op(operation.id, timeout_seconds=timeout_seconds, token=token)
         if operation.status != StatusIds.SUCCESS:
             raise RuntimeError('create_serverless_database failed: %s' % (operation.status,))
 
         self.__wait_tenant_up(
             database_name,
-            timeout_seconds=timeout_seconds
+            timeout_seconds=timeout_seconds,
+            token=token,
         )
         return database_name
 
@@ -268,8 +321,12 @@ class KiKiMRClusterInterface(object):
             schema_quotas=None,
             disk_quotas=None,
             timeout_seconds=120,
+            token=None,
     ):
         req = AlterTenantRequest(database_name)
+
+        if token is not None:
+            req.set_user_token(token)
 
         assert schema_quotas is not None or disk_quotas is not None
 
@@ -284,13 +341,14 @@ class KiKiMRClusterInterface(object):
         if not operation.ready and response.Status.Code != StatusIds.STATUS_CODE_UNSPECIFIED:
             raise RuntimeError('alter_serverless_database failed: %s: %s' % (response.Status.Code, response.Status.Reason))
         if not operation.ready:
-            operation = self.__wait_console_op(operation.id, timeout_seconds=timeout_seconds)
+            operation = self.__wait_console_op(operation.id, timeout_seconds=timeout_seconds, token=token)
         if operation.status != StatusIds.SUCCESS:
             raise RuntimeError('alter_serverless_database failed: %s' % (operation.status,))
 
         self.__wait_tenant_up(
             database_name,
-            timeout_seconds=timeout_seconds
+            timeout_seconds=timeout_seconds,
+            token=token,
         )
         return database_name
 

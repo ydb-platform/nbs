@@ -24,9 +24,9 @@
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/base/row_version.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_manager.h>
+#include <yql/essentials/minikql/mkql_type_ops.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_manager.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -288,7 +288,7 @@ private:
 
         static_assert(EvEnd < EventSpaceEnd(TEvents::ES_PRIVATE), "expect EvEnd < EventSpaceEnd(TEvents::ES_PRIVATE)");
 
-        struct TEvProxyDataReqOngoingTransactionWatchdog : public TEventSimple<TEvProxyDataReqOngoingTransactionWatchdog, EvProxyDataReqOngoingTransactionsWatchdog> {};
+        struct TEvProxyDataReqOngoingTransactionsWatchdog : public TEventLocal<TEvProxyDataReqOngoingTransactionsWatchdog, EvProxyDataReqOngoingTransactionsWatchdog> {};
 
         struct TEvReattachToShard : public TEventLocal<TEvReattachToShard, EvReattachToShard> {
             const ui64 TabletId;
@@ -1306,7 +1306,7 @@ void TDataReq::Handle(TEvTxProxyReq::TEvMakeRequest::TPtr &ev, const TActorConte
     }
 
     WallClockAccepted = Now();
-    ctx.Schedule(TDuration::MilliSeconds(KIKIMR_DATAREQ_WATCHDOG_PERIOD), new TEvPrivate::TEvProxyDataReqOngoingTransactionWatchdog());
+    ctx.Schedule(TDuration::MilliSeconds(KIKIMR_DATAREQ_WATCHDOG_PERIOD), new TEvPrivate::TEvProxyDataReqOngoingTransactionsWatchdog());
 
     // Schedule execution timeout
     {
@@ -1382,7 +1382,7 @@ void TDataReq::Handle(TEvTxProxyReq::TEvMakeRequest::TPtr &ev, const TActorConte
                 settings.LlvmRuntime = true;
             }
             if (ctx.LoggerSettings()->Satisfies(NLog::PRI_DEBUG, NKikimrServices::MINIKQL_ENGINE, TxId)) {
-                auto actorSystem = ctx.ExecutorThread.ActorSystem;
+                auto actorSystem = ctx.ActorSystem();
                 auto txId = TxId;
                 settings.BacktraceWriter = [txId, actorSystem](const char* operation, ui32 line, const TBackTrace* backtrace) {
                     LOG_DEBUG_SAMPLED_BY(*actorSystem, NKikimrServices::MINIKQL_ENGINE, txId,
@@ -1695,7 +1695,7 @@ void TDataReq::Handle(TEvTxProxySchemeCache::TEvResolveKeySetResult::TPtr &ev, c
             return Die(ctx);
         }
 
-        if (FlatMKQLRequest && entry.Kind == NSchemeCache::TSchemeCacheRequest::KindAsyncIndexTable) {
+        if (FlatMKQLRequest && entry.Kind == NSchemeCache::ETableKind::KindAsyncIndexTable) {
             TMaybe<TString> error;
 
             if (entry.KeyDescription->RowOperation != TKeyDesc::ERowOperation::Read) {
@@ -2942,7 +2942,7 @@ void TDataReq::HandleWatchdog(const TActorContext &ctx) {
     LOG_LOG_S_SAMPLED_BY(ctx, NActors::NLog::PRI_INFO, NKikimrServices::TX_PROXY, TxId,
               "Actor# " << ctx.SelfID.ToString() << " txid# " << TxId
               << " Transactions still running for " << fromStart);
-    ctx.Schedule(TDuration::MilliSeconds(KIKIMR_DATAREQ_WATCHDOG_PERIOD), new TEvPrivate::TEvProxyDataReqOngoingTransactionWatchdog());
+    ctx.Schedule(TDuration::MilliSeconds(KIKIMR_DATAREQ_WATCHDOG_PERIOD), new TEvPrivate::TEvProxyDataReqOngoingTransactionsWatchdog());
 }
 
 void TDataReq::SendStreamClearanceResponse(ui64 shard, bool cleared, const TActorContext &ctx)

@@ -84,14 +84,14 @@ void TPDisk::RenderState(IOutputStream &str, THttpInfo &httpInfo) {
                     TABLED() {str << "PlainDataChunks";}
                     TABLED() {
                         if (Format.IsPlainDataChunks()) {
-                            RED_TEXT(str, "Plain data chunks are not supported in this version");
+                            GREEN_TEXT(str, "Plain data chunks are in use");
                             if (!Cfg->PlainDataChunks) {
                                 YELLOW_TEXT(str, "notice: config is set for encrypted chunks");
                             }
                         } else {
                             GREEN_TEXT(str, "Encrypted data chunks are in use");
                             if (Cfg->PlainDataChunks) {
-                                YELLOW_TEXT(str, "notice: config is set for plain chunks<br>(not supported in this version, nothing is gonna happen)");
+                                YELLOW_TEXT(str, "notice: config is set for plain chunks");
                             }
                         }
                     }
@@ -208,6 +208,48 @@ void TPDisk::RenderState(IOutputStream &str, THttpInfo &httpInfo) {
         if (Cfg->SectorMap) {
             TAG(TH4) {str << "SectorMap"; }
             PRE() {str << Cfg->SectorMap->ToString();}
+        }
+        TAG(TH4) { str << "Metadata"; }
+        TABLE_CLASS ("table") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() {str << "Parameter";}
+                    TABLEH() {str << "Value";}
+                }
+            }
+            auto kv = [&](const auto& key, const auto& value) {
+                TABLER() {
+                    TABLED() { str << key; }
+                    TABLED() { str << value; }
+                }
+            };
+            TABLEBODY() {
+                std::visit(TOverloaded{
+                    [&](const std::monostate&) {
+                        kv("State", "monostate");
+                    },
+                    [&](const NMeta::TFormatted& x) {
+                        kv("State", "Formatted");
+                        kv("Slots.size", x.Slots.size());
+                        kv("ReadPending.size", x.ReadPending.size());
+                        kv("NumReadsInFlight", x.NumReadsInFlight);
+                        kv("Parts.size", x.Parts.size());
+                    },
+                    [&](const NMeta::TUnformatted& x) {
+                        kv("State", "Unformatted");
+                        kv("Format.has_value", x.Format.has_value());
+                    },
+                }, Meta.State);
+                kv("StoredMetadata", std::visit<TString>(TOverloaded{
+                    [](const NMeta::TScanInProgress&) { return "ScanInProgress"; },
+                    [](const NMeta::TNoMetadata&) { return "NoMetadata"; },
+                    [](const NMeta::TError& e) { return TStringBuilder() << "Error# " << e.Description; },
+                    [](const TRcBuf& meta) { return TStringBuilder() << "Metadata Size# " << meta.size(); },
+                }, Meta.StoredMetadata));
+                kv("Requests.size", Meta.Requests.size());
+                kv("WriteInFlight", Meta.WriteInFlight);
+                kv("NextSequenceNumber", Meta.NextSequenceNumber);
+            }
         }
         TAG(TH4) {str << "Config"; }
         PRE() {str << Cfg->ToString(true);}
@@ -395,7 +437,7 @@ void TPDisk::OutputHtmlLogChunksDetails(TStringStream &str) {
 
 void TPDisk::OutputHtmlChunkLockUnlockInfo(TStringStream &str) {
     using TColor = NKikimrBlobStorage::TPDiskSpaceColor;
-    bool chunkLockingEnabled = NKikimr::AppData(ActorSystem)->FeatureFlags.GetEnableChunkLocking();
+    bool chunkLockingEnabled = NKikimr::AppData(PCtx->ActorSystem)->FeatureFlags.GetEnableChunkLocking();
 
     auto commonParams = [&] (TStringStream &str, TString requestName) {
         for (TEvChunkLock::ELockFrom from : { TEvChunkLock::ELockFrom::LOG, TEvChunkLock::ELockFrom::PERSONAL_QUOTA } ) {
@@ -515,6 +557,8 @@ void TPDisk::OutputHtmlChunkLockUnlockInfo(TStringStream &str) {
                                             str << ",";
                                         } else if (chunk.OwnerId == OwnerLocked) {
                                             str << "X";
+                                        } else if (chunk.OwnerId == OwnerMetadata) {
+                                            str << 'M';
                                         } else {
                                             str << (ui32)chunk.OwnerId;
                                             if (chunk.CommitState != TChunkState::DATA_COMMITTED && chunk.CommitState != TChunkState::LOCKED) {
@@ -546,7 +590,7 @@ void TPDisk::HttpInfo(THttpInfo &httpInfo) {
         TGuard<TMutex> guard(StateMutex);
         ForsetiScheduler.OutputLog(out);
         reportResult->HttpInfoRes = new NMon::TEvHttpInfoRes(out.Str(), 0, NMon::IEvHttpInfoRes::EContentType::Custom);
-        ActorSystem->Send(httpInfo.Sender, reportResult);
+        PCtx->ActorSystem->Send(httpInfo.Sender, reportResult);
     } else {
         TStringStream str = httpInfo.OutputString;
         TGuard<TMutex> guard(StateMutex);
@@ -601,7 +645,7 @@ void TPDisk::HttpInfo(THttpInfo &httpInfo) {
 
         }
         reportResult->HttpInfoRes = new NMon::TEvHttpInfoRes(str.Str());
-        ActorSystem->Send(httpInfo.Sender, reportResult);
+        PCtx->ActorSystem->Send(httpInfo.Sender, reportResult);
     }
 }
 

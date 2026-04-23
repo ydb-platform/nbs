@@ -1,5 +1,5 @@
 #include <contrib/ydb/services/ydb/ydb_common_ut.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
 
 #include <contrib/ydb/public/lib/fq/fq.h>
 #include <contrib/ydb/public/lib/fq/helpers.h>
@@ -8,9 +8,9 @@
 #include <contrib/ydb/core/fq/libs/private_client/private_client.h>
 
 #include <contrib/ydb/core/fq/libs/control_plane_storage/message_builders.h>
-#include <contrib/ydb/core/fq/libs/actors/database_resolver.h>
+#include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/database_resolver.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/retry/retry.h>

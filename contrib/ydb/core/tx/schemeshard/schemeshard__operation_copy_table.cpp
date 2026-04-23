@@ -1,8 +1,13 @@
 #include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__data_erasure_manager.h"
 #include "schemeshard_impl.h"
 #include "schemeshard_tx_infly.h"
+#include "schemeshard_cdc_stream_common.h"
 
+#include "schemeshard_utils.h"  // for TransactionTemplate
+
+#include <contrib/ydb/core/mind/hive/hive.h>
 #include <contrib/ydb/core/base/subdomain.h>
 
 namespace {
@@ -14,12 +19,20 @@ void PrepareScheme(NKikimrSchemeOp::TTableDescription* schema, const TString& na
     const NScheme::TTypeRegistry* typeRegistry = AppData(context.Ctx)->TypeRegistry;
 
     NKikimrSchemeOp::TTableDescription completedSchema;
-    context.SS->DescribeTable(srcTableInfo, typeRegistry, true, &completedSchema);
+    context.SS->DescribeTable(*srcTableInfo, typeRegistry, true, &completedSchema);
     completedSchema.SetName(name);
 
     //inherit all from Src except PartitionConfig, PartitionConfig could be altered
     completedSchema.MutablePartitionConfig()->CopyFrom(schema->GetPartitionConfig());
     schema->Swap(&completedSchema);
+    schema->SetSystemColumnNamesAllowed(true);
+}
+
+void FillSrcSnapshot(const TTxState* const txState, ui64 dstDatashardId, NKikimrTxDataShard::TSendSnapshot& snapshot) {
+    snapshot.SetTableId_Deprecated(txState->SourcePathId.LocalPathId);
+    snapshot.MutableTableId()->SetOwnerId(txState->SourcePathId.OwnerId);
+    snapshot.MutableTableId()->SetTableId(txState->SourcePathId.LocalPathId);
+    snapshot.AddSendTo()->SetShard(dstDatashardId);
 }
 
 class TConfigureParts: public TSubOperationState {
@@ -29,7 +42,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCopyTable TConfigureParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -44,7 +57,7 @@ public:
 
         LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                  DebugHint() << " HandleReply TEvProposeTransactionResult"
-                 << " at tabletId# " << ssId
+                 << " at tablet# " << ssId
                  << " message# " << ev->Get()->Record.ShortDebugString());
 
         return NTableState::CollectProposeTransactionResults(OperationId, ev, context);
@@ -55,7 +68,7 @@ public:
 
         LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                      DebugHint() << " ProgressState"
-                     << " at tablet" << ssId);
+                     << " at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -107,11 +120,14 @@ public:
             // Send "SendParts" transaction to source datashard
             NKikimrTxDataShard::TFlatSchemeTransaction oldShardTx;
             context.SS->FillSeqNo(oldShardTx, seqNo);
-            oldShardTx.MutableSendSnapshot()->SetTableId_Deprecated(txState->SourcePathId.LocalPathId);
-            oldShardTx.MutableSendSnapshot()->MutableTableId()->SetOwnerId(txState->SourcePathId.OwnerId);
-            oldShardTx.MutableSendSnapshot()->MutableTableId()->SetTableId(txState->SourcePathId.LocalPathId);
-            oldShardTx.MutableSendSnapshot()->AddSendTo()->SetShard(ui64(dstDatashardId));
-            oldShardTx.SetReadOnly(true);
+            if (txState->CdcPathId != InvalidPathId) {
+                auto& combined = *oldShardTx.MutableCreateIncrementalBackupSrc();
+                FillSrcSnapshot(txState, ui64(dstDatashardId), *combined.MutableSendSnapshot());
+                NCdcStreamAtTable::FillNotice(txState->CdcPathId, context, *combined.MutableCreateCdcStreamNotice());
+            } else {
+                FillSrcSnapshot(txState, ui64(dstDatashardId), *oldShardTx.MutableSendSnapshot());
+                oldShardTx.SetReadOnly(true);
+            }
             auto srcEvent = context.SS->MakeDataShardProposal(txState->TargetPathId, OperationId, oldShardTx.SerializeAsString(), context.Ctx);
             context.OnComplete.BindMsgToPipe(OperationId, srcDatashardId, srcShardIdx, srcEvent.Release());
         }
@@ -128,7 +144,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCopyTable TPropose"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -197,6 +213,23 @@ public:
         context.SS->ClearDescribePathCaches(parentDir);
         context.OnComplete.PublishToSchemeBoard(OperationId, parentDir->PathId);
 
+        if (txState->CdcPathId != InvalidPathId) {
+            TPathId srcPathId = txState->SourcePathId;
+
+            Y_ABORT_UNLESS(context.SS->PathsById.contains(srcPathId));
+            auto srcPath = context.SS->PathsById.at(srcPathId);
+
+            Y_ABORT_UNLESS(context.SS->Tables.contains(srcPathId));
+            auto srcTable = context.SS->Tables.at(srcPathId);
+
+            srcTable->AlterVersion += 1;
+
+            context.SS->PersistTableAlterVersion(db, srcPathId, table);
+
+            context.SS->ClearDescribePathCaches(srcPath);
+            context.OnComplete.PublishToSchemeBoard(OperationId, srcPathId);
+        }
+
         context.SS->ClearDescribePathCaches(path);
         context.OnComplete.PublishToSchemeBoard(OperationId, pathId);
 
@@ -254,7 +287,7 @@ public:
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvPrivate::TEvCompleteBarrier"
                                << ", msg: " << ev->Get()->ToString()
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         NIceDb::TNiceDb db(context.GetDB());
 
@@ -372,10 +405,19 @@ public:
                         .IsUnderTheSameOperation(OperationId.GetTxId()); //allow only as part of copying base table
                 } else {
                     checks
-                        .NotUnderOperation()
                         .IsCommonSensePath()
                         .IsLikeDirectory();
+
+                    if (!Transaction.GetCreateTable().GetAllowUnderSameOperation()) {
+                        checks.NotUnderOperation();
+                    }
                 }
+            }
+
+            if (checks && Transaction.HasCreateCdcStream()) {
+                NCdcStreamAtTable::CheckWorkingDirOnPropose(
+                    checks,
+                    parent.IsTableIndex(Nothing(), false));
             }
 
             if (!checks) {
@@ -404,6 +446,12 @@ public:
                 } else {
                     checks.IsCommonSensePath();
                 }
+            }
+
+            if (checks && Transaction.HasCreateCdcStream()) {
+                NCdcStreamAtTable::CheckSrcDirOnPropose(
+                    checks,
+                    srcPath.IsInsideTableIndexPath(false));
             }
 
             if (!checks) {
@@ -456,6 +504,8 @@ public:
                 return result;
             }
         }
+
+        // TODO: cdc checks
 
         auto domainInfo = parent.DomainInfo();
         bool transactionSupport = domainInfo->IsSupportTransactions();
@@ -515,6 +565,9 @@ public:
 
         // replication config is not copied
         schema.ClearReplicationConfig();
+
+        // incr backup config is not copied
+        schema.ClearIncrementalBackupConfig();
 
         NKikimrSchemeOp::TPartitionConfig compilationPartitionConfig;
         if (!TPartitionConfigMerger::ApplyChanges(compilationPartitionConfig, srcTableInfo->PartitionConfig(), schema.GetPartitionConfig(), AppData(), errStr)
@@ -611,15 +664,24 @@ public:
 
         TTxState& txState = context.SS->CreateTx(OperationId, TTxState::TxCopyTable, newTable->PathId, srcPath.Base()->PathId);
         txState.State = TTxState::CreateParts;
+        if (Transaction.HasCreateCdcStream()) {
+            txState.CdcPathId = srcPath.Base()->PathId;
+        }
 
         TShardInfo datashardInfo = TShardInfo::DataShardInfo(OperationId.GetTxId(), newTable->PathId);
         datashardInfo.BindedChannels = channelsBinding;
         auto newPartition = NTableState::ApplyPartitioningCopyTable(datashardInfo, srcTableInfo, txState, context.SS);
+        TVector<TShardIdx> newShardsIdx;
+        newShardsIdx.reserve(newPartition.size());
         for (const auto& part: newPartition) {
             context.MemChanges.GrabNewShard(context.SS, part.ShardIdx);
             context.DbChanges.PersistShard(part.ShardIdx);
+            newShardsIdx.push_back(part.ShardIdx);
         }
         context.SS->SetPartitioning(newTable->PathId, tableInfo, std::move(newPartition));
+        if (context.SS->EnableDataErasure && context.SS->DataErasureManager->GetStatus() == EDataErasureStatus::IN_PROGRESS) {
+            context.OnComplete.Send(context.SS->SelfId(), new TEvPrivate::TEvAddNewShardToDataErasure(std::move(newShardsIdx)));
+        }
         for (const auto& shard : tableInfo->GetPartitions()) {
             Y_ABORT_UNLESS(context.SS->ShardInfos.contains(shard.ShardIdx), "shard info is set before");
             if (storePerShardConfig) {
@@ -662,7 +724,19 @@ public:
         dstPath.DomainInfo()->IncPathsInside(context.SS, 1, isBackup);
         dstPath.DomainInfo()->AddInternalShards(txState, context.SS, isBackup);
         dstPath.Base()->IncShardsInside(shardsToCreate);
-        parent.Base()->IncAliveChildren(1, isBackup);
+        IncAliveChildrenSafeWithUndo(OperationId, parent, context, isBackup);
+
+        LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                "TCopyTable Propose creating new table"
+                << " opId# " << OperationId
+                << " srcPath# " << srcPath.PathString()
+                << " srcPathId# " << srcPath.Base()->PathId
+                << " path# " << dstPath.PathString()
+                << " pathId# " << newTable->PathId
+                << " withNewCdc# " << (Transaction.HasCreateCdcStream() ? "true" : "false")
+                << " schemeshard# " << ssId
+                << " tx# " << Transaction.DebugString()
+                );
 
         SetState(NextState());
         return result;
@@ -716,6 +790,7 @@ TVector<ISubOperation::TPtr> CreateCopyTable(TOperationId nextId, const TTxTrans
 
     auto copying = tx.GetCreateTable();
     Y_ABORT_UNLESS(copying.HasCopyFromTable());
+    auto cdcPeerOp = tx.HasCreateCdcStream() ? &tx.GetCreateCdcStream() : nullptr;
 
     TPath srcPath = TPath::Resolve(copying.GetCopyFromTable(), context.SS);
     {
@@ -727,8 +802,11 @@ TVector<ISubOperation::TPtr> CreateCopyTable(TOperationId nextId, const TTxTrans
             .NotDeleted()
             .NotUnderDeleting()
             .IsTable()
-            .NotUnderOperation()
             .IsCommonSensePath(); //forbid copy impl index tables directly
+
+        if (!copying.GetAllowUnderSameOperation()) {
+            checks.NotUnderOperation();
+        }
 
         if (!checks) {
             return {CreateReject(nextId, checks.GetStatus(), checks.GetError())};
@@ -768,6 +846,9 @@ TVector<ISubOperation::TPtr> CreateCopyTable(TOperationId nextId, const TTxTrans
         operation->SetOmitFollowers(copying.GetOmitFollowers());
         operation->SetIsBackup(copying.GetIsBackup());
         operation->MutablePartitionConfig()->CopyFrom(copying.GetPartitionConfig());
+        if (cdcPeerOp) {
+            schema.MutableCreateCdcStream()->CopyFrom(*cdcPeerOp);
+        }
 
         result.push_back(CreateCopyTable(NextPartId(nextId, result), schema, sequences));
     }
@@ -794,7 +875,6 @@ TVector<ISubOperation::TPtr> CreateCopyTable(TOperationId nextId, const TTxTrans
         }
 
         Y_ABORT_UNLESS(childPath.Base()->PathId == pathId);
-        Y_VERIFY_S(childPath.Base()->GetChildren().size() == 1, childPath.PathString() << " has children " << childPath.Base()->GetChildren().size());
 
         TTableIndexInfo::TPtr indexInfo = context.SS->Indexes.at(pathId);
         {
@@ -810,15 +890,21 @@ TVector<ISubOperation::TPtr> CreateCopyTable(TOperationId nextId, const TTxTrans
             for (const auto& dataColumn: indexInfo->IndexDataColumns) {
                 *operation->MutableDataColumnNames()->Add() = dataColumn;
             }
+            if (indexInfo->Type == NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorKmeansTree) {
+                *operation->MutableVectorIndexKmeansTreeDescription() =
+                    std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(indexInfo->SpecializedIndexDescription);
+            } else if (!std::holds_alternative<std::monostate>(indexInfo->SpecializedIndexDescription)) {
+                return {CreateReject(nextId, NKikimrScheme::EStatus::StatusInvalidParameter,
+                                     TStringBuilder{} << "Copy table doesn't support table with index type " << indexInfo->Type)};
+            }
 
             result.push_back(CreateNewTableIndex(NextPartId(nextId, result), schema));
         }
 
-        TString implTableName = childPath.Base()->GetChildren().begin()->first;
-        TPath implTable = childPath.Child(implTableName);
-        Y_ABORT_UNLESS(implTable.Base()->PathId == childPath.Base()->GetChildren().begin()->second);
+        for (const auto& [implTableName, implTablePathId] : childPath.Base()->GetChildren()) {
+            TPath implTable = childPath.Child(implTableName);
+            Y_ABORT_UNLESS(implTable.Base()->PathId == implTablePathId);
 
-        {
             NKikimrSchemeOp::TModifyScheme schema;
             schema.SetFailOnExist(tx.GetFailOnExist());
             schema.SetWorkingDir(JoinPath({dstPath.PathString(), name}));

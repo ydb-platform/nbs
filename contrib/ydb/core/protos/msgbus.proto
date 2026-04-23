@@ -3,7 +3,6 @@ import "contrib/ydb/library/actors/protos/interconnect.proto";
 import "contrib/ydb/core/protos/console_base.proto";
 import "contrib/ydb/core/protos/console_config.proto";
 import "contrib/ydb/core/protos/console_tenant.proto";
-import "contrib/ydb/core/protos/datashard_load.proto";
 import "contrib/ydb/core/protos/tablet_counters.proto";
 import "contrib/ydb/core/protos/flat_scheme_op.proto";
 import "contrib/ydb/core/protos/tx_proxy.proto";
@@ -13,7 +12,6 @@ import "contrib/ydb/core/protos/bind_channel_storage_pool.proto";
 import "contrib/ydb/core/protos/msgbus_kv.proto";
 import "contrib/ydb/core/protos/msgbus_pq.proto";
 import "contrib/ydb/core/protos/scheme_log.proto";
-import "contrib/ydb/core/protos/base.proto";
 import "contrib/ydb/core/protos/tablet.proto";
 import "contrib/ydb/core/protos/blobstorage_config.proto";
 import "contrib/ydb/core/protos/node_broker.proto";
@@ -21,7 +19,6 @@ import "contrib/ydb/core/protos/cms.proto";
 import "contrib/ydb/core/protos/sqs.proto";
 import "contrib/ydb/core/protos/query_stats.proto";
 import "contrib/ydb/core/protos/subdomains.proto";
-import "contrib/ydb/core/protos/load_test.proto";
 import "contrib/ydb/public/api/protos/annotations/sensitive.proto";
 import "contrib/ydb/public/api/protos/ydb_operation.proto";
 import "contrib/ydb/public/api/protos/draft/persqueue_error_codes.proto";
@@ -245,9 +242,6 @@ message TResponse {
     // TChooseProxyRequest
     optional string ProxyName = 1050;
     optional uint64 ProxyCookie = 1051;
-
-    // Login
-    optional string UserToken = 1102;
 }
 
 message TFakeConfigDummy {
@@ -358,7 +352,6 @@ message TLocalEnumerateTablets {
     optional uint64 DomainUid = 1; // mandatory
     optional uint32 NodeId = 2; // optional, msgbus proxy will contact it's own node if not set
     optional NKikimrTabletBase.TTabletTypes.EType TabletType = 3; // optional, local will enumerate all tablets if not set
-    optional string SecurityToken = 4 [(Ydb.sensitive) = true];
 }
 
 message TLocalEnumerateTabletsResult {
@@ -404,7 +397,6 @@ message TMessageBusTraceStatus {
 
 message TTabletKillRequest {
     optional uint64 TabletID = 1;
-    optional string SecurityToken = 2 [(Ydb.sensitive) = true];
 };
 
 message TTabletStateRequest {
@@ -656,6 +648,7 @@ message TInterconnectDebug {
     optional uint64 RescheduleMax = 205;
 
     optional string SecurityToken = 13 [(Ydb.sensitive) = true];
+    optional uint32 RdmaMode = 14;
 }
 
 message TConsoleRequest {
@@ -679,6 +672,7 @@ message TConsoleRequest {
     }
     optional string DomainName = 100;
     optional string SecurityToken = 101 [(Ydb.sensitive) = true];
+    optional uint64 TimeoutMs = 102;
 }
 
 message TConsoleResponse {
@@ -729,6 +723,7 @@ message TTestShardControlRequest {
         optional uint32 PatchRequestsFractionPPM = 12;
         optional uint32 PutTraceFractionPPM = 13;
         optional uint32 PutTraceVerbosity = 14 [default = 15];
+        optional uint32 SecondsBeforeLoadStart = 15; // number of seconds to wait before starting load
     }
 
     optional uint64 TabletId = 1;
@@ -740,9 +735,3 @@ message TTestShardControlRequest {
 
 message TTestShardControlResponse {
 }
-
-message TLoginRequest {
-    optional string Database = 1;
-    optional string User = 2;
-    optional string Password = 3;
-};

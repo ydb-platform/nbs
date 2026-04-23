@@ -1,14 +1,20 @@
 #pragma once
+#include "stage_features.h"
+
 #include <contrib/ydb/core/tx/limiter/grouped_memory/service/counters.h>
 
 #include <contrib/ydb/library/accessor/accessor.h>
+#include <contrib/ydb/library/accessor/positive_integer.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/conclusion/status.h>
 
 namespace NKikimr::NOlap::NGroupedMemoryManager {
 
-class TStageFeatures;
+class TGroupGuard;
+class TScopeGuard;
+class TProcessGuard;
 
 class TGroupGuard {
 private:
@@ -31,6 +37,10 @@ private:
 public:
     TProcessGuard(const NActors::TActorId& actorId, const ui64 processId, const std::vector<std::shared_ptr<TStageFeatures>>& stages);
 
+    std::shared_ptr<TScopeGuard> BuildScopeGuard(const ui32 scopeId) const {
+        return std::make_shared<TScopeGuard>(ActorId, ProcessId, scopeId);
+    }
+
     ~TProcessGuard();
 };
 
@@ -43,6 +53,15 @@ private:
 public:
     TScopeGuard(const NActors::TActorId& actorId, const ui64 processId, const ui64 scopeId);
 
+    std::shared_ptr<TGroupGuard> BuildGroupGuard(const std::optional<ui64> extGroupId = std::nullopt) const {
+        if (extGroupId) {
+            return std::make_shared<TGroupGuard>(ActorId, ProcessId, ScopeId, *extGroupId);
+        } else {
+            static TAtomicCounter counter = 0;
+            return std::make_shared<TGroupGuard>(ActorId, ProcessId, ScopeId, counter.Inc());
+        }
+    }
+
     ~TScopeGuard();
 };
 
@@ -53,15 +72,18 @@ private:
     YDB_READONLY(ui64, ScopeId, 0)
     YDB_READONLY(ui64, AllocationId, 0)
     YDB_READONLY(ui64, Memory, 0)
+    std::shared_ptr<TStageFeatures> Stage;
     bool Released = false;
 
 public:
-    TAllocationGuard(const ui64 processId, const ui64 scopeId, const ui64 allocationId, const NActors::TActorId actorId, const ui64 memory)
+    TAllocationGuard(const ui64 processId, const ui64 scopeId, const ui64 allocationId, const NActors::TActorId actorId, const ui64 memory,
+        const std::shared_ptr<TStageFeatures>& stage)
         : ActorId(actorId)
         , ProcessId(processId)
         , ScopeId(scopeId)
         , AllocationId(allocationId)
-        , Memory(memory) {
+        , Memory(memory)
+        , Stage(stage) {
     }
 
     void Release() {
@@ -69,128 +91,9 @@ public:
         Released = true;
     }
 
-    void Update(const ui64 newVolume);
+    void Update(const ui64 newVolume, const bool notify = true);
 
     ~TAllocationGuard();
-};
-
-class TPositiveControlInteger {
-private:
-    ui64 Value = 0;
-
-public:
-    void Add(const ui64 value) {
-        Value += value;
-    }
-    void Sub(const ui64 value) {
-        AFL_VERIFY(value <= Value);
-        Value -= value;
-    }
-    ui64 Val() const {
-        return Value;
-    }
-};
-
-class TStageFeatures {
-private:
-    YDB_READONLY_DEF(TString, Name);
-    YDB_READONLY(ui64, Limit, 0);
-    YDB_ACCESSOR_DEF(TPositiveControlInteger, Usage);
-    YDB_ACCESSOR_DEF(TPositiveControlInteger, Waiting);
-    std::shared_ptr<TStageFeatures> Owner;
-    std::shared_ptr<TStageCounters> Counters;
-
-public:
-    TString DebugString() const {
-        TStringBuilder result;
-        result << "name=" << Name << ";limit=" << Limit << ";";
-        if (Owner) {
-            result << "owner=" << Owner->DebugString() << ";";
-        }
-        return result;
-    }
-
-    ui64 GetFullMemory() const {
-        return Usage.Val() + Waiting.Val();
-    }
-
-    TStageFeatures(
-        const TString& name, const ui64 limit, const std::shared_ptr<TStageFeatures>& owner, const std::shared_ptr<TStageCounters>& counters)
-        : Name(name)
-        , Limit(limit)
-        , Owner(owner)
-        , Counters(counters) {
-    }
-
-    void Allocate(const ui64 volume) {
-        Waiting.Sub(volume);
-        Usage.Add(volume);
-        if (Counters) {
-            Counters->Add(volume, true);
-            Counters->Sub(volume, false);
-        }
-        if (Owner) {
-            Owner->Allocate(volume);
-        }
-    }
-
-    void Free(const ui64 volume, const bool allocated) {
-        if (Counters) {
-            Counters->Sub(volume, allocated);
-        }
-        if (allocated) {
-            Usage.Sub(volume);
-        } else {
-            Waiting.Sub(volume);
-        }
-
-        if (Owner) {
-            Owner->Free(volume, allocated);
-        }
-    }
-
-    void UpdateVolume(const ui64 from, const ui64 to, const bool allocated) {
-        if (Counters) {
-            Counters->Sub(from, allocated);
-            Counters->Add(to, allocated);
-        }
-        if (allocated) {
-            Usage.Sub(from);
-            Usage.Add(to);
-        } else {
-            Waiting.Sub(from);
-            Waiting.Add(to);
-        }
-
-        if (Owner) {
-            Owner->UpdateVolume(from, to, allocated);
-        }
-    }
-
-    bool IsAllocatable(const ui64 volume, const ui64 additional) const {
-        if (Limit < additional + Usage.Val() + volume) {
-            return false;
-        }
-        if (Owner) {
-            return Owner->IsAllocatable(volume, additional);
-        }
-        return true;
-    }
-
-    void Add(const ui64 volume, const bool allocated) {
-        if (Counters) {
-            Counters->Add(volume, allocated);
-        }
-        if (allocated) {
-            Usage.Add(volume);
-        } else {
-            Waiting.Add(volume);
-        }
-
-        if (Owner) {
-            Owner->Add(volume, allocated);
-        }
-    }
 };
 
 class IAllocation {
@@ -199,6 +102,7 @@ private:
     YDB_READONLY(ui64, Identifier, Counter.Inc());
     YDB_READONLY(ui64, Memory, 0);
     bool Allocated = false;
+    virtual void DoOnAllocationImpossible(const TString& errorMessage) = 0;
     virtual bool DoOnAllocated(
         std::shared_ptr<TAllocationGuard>&& guard, const std::shared_ptr<NGroupedMemoryManager::IAllocation>& allocation) = 0;
 
@@ -214,6 +118,10 @@ public:
 
     bool IsAllocated() const {
         return Allocated;
+    }
+
+    void OnAllocationImpossible(const TString& errorMessage) {
+        DoOnAllocationImpossible(errorMessage);
     }
 
     [[nodiscard]] bool OnAllocated(

@@ -9,8 +9,7 @@ namespace NKikimr {
 // MULTI COLLECT request
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class TBlobStorageGroupMultiCollectRequest
-        : public TBlobStorageGroupRequestActor<TBlobStorageGroupMultiCollectRequest> {
+class TBlobStorageGroupMultiCollectRequest : public TBlobStorageGroupRequestActor {
     struct TRequestInfo {
         bool IsReplied;
     };
@@ -39,7 +38,7 @@ class TBlobStorageGroupMultiCollectRequest
 
     void Handle(TEvBlobStorage::TEvCollectGarbageResult::TPtr &ev) {
         const TEvBlobStorage::TEvCollectGarbageResult &res = *ev->Get();
-        A_LOG_LOG_S(true, PriorityForStatusResult(res.Status), "BPMC1", "Handle TEvCollectGarbageResult"
+        DSP_LOG_LOG_S(PriorityForStatusResult(res.Status), "BPMC1", "Handle TEvCollectGarbageResult"
             << " status# " << NKikimrProto::EReplyStatus_Name(res.Status)
             << " FlagRequestsInFlight# " << FlagRequestsInFlight
             << " CollectRequestsInFlight " << CollectRequestsInFlight);
@@ -70,25 +69,24 @@ class TBlobStorageGroupMultiCollectRequest
         }
     }
 
-    friend class TBlobStorageGroupRequestActor<TBlobStorageGroupMultiCollectRequest>;
-    void ReplyAndDie(NKikimrProto::EReplyStatus status) {
+    void ReplyAndDie(NKikimrProto::EReplyStatus status) override {
         std::unique_ptr<TEvBlobStorage::TEvCollectGarbageResult> ev(new TEvBlobStorage::TEvCollectGarbageResult(
             status, TabletId, RecordGeneration, PerGenerationCounter, Channel));
         ev->ErrorReason = ErrorReason;
         SendResponseAndDie(std::move(ev));
     }
 
-    std::unique_ptr<IEventBase> RestartQuery(ui32) {
+    std::unique_ptr<IEventBase> RestartQuery(ui32) override {
         Y_ABORT();
     }
 
 public:
-    static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
-        return NKikimrServices::TActivity::BS_PROXY_MULTICOLLECT_ACTOR;
+    ::NMonitoring::TDynamicCounters::TCounterPtr& GetActiveCounter() const override {
+        return Mon->ActiveMultiCollect;
     }
 
-    static const auto& ActiveCounter(const TIntrusivePtr<TBlobStorageGroupProxyMon>& mon) {
-        return mon->ActiveMultiCollect;
+    ERequestType GetRequestType() const override {
+        return ERequestType::CollectGarbage;
     }
 
     TBlobStorageGroupMultiCollectRequest(TBlobStorageGroupMultiCollectParameters& params)
@@ -152,7 +150,7 @@ public:
             isCollect, CollectGeneration, CollectStep, keepPart.release(), doNotKeepPart.release(), Deadline, false,
             Hard));
         ev->Decommission = Decommission; // retain decommission flag
-        R_LOG_DEBUG_S("BPMC3", "SendRequest idx# " << idx
+        DSP_LOG_DEBUG_S("BPMC3", "SendRequest idx# " << idx
             << " withCollect# " << withCollect
             << " isCollect# " << isCollect
             << " ev# " << ev->ToString());
@@ -168,8 +166,8 @@ public:
         }
     }
 
-    void Bootstrap() {
-        A_LOG_INFO_S("BPMC4", "bootstrap"
+    void Bootstrap() override {
+        DSP_LOG_INFO_S("BPMC4", "bootstrap"
             << " ActorId# " << SelfId()
             << " Group# " << Info->GroupID
             << " TabletId# " << TabletId
@@ -183,17 +181,17 @@ public:
             << " Hard# " << (Hard ? "true" : "false"));
 
         for (const auto& item : Keep ? *Keep : TVector<TLogoBlobID>()) {
-            A_LOG_INFO_S("BPMC5", "Keep# " << item);
+            DSP_LOG_INFO_S("BPMC5", "Keep# " << item);
         }
 
         for (const auto& item : DoNotKeep ? *DoNotKeep : TVector<TLogoBlobID>()) {
-            A_LOG_INFO_S("BPMC6", "DoNotKeep# " << item);
+            DSP_LOG_INFO_S("BPMC6", "DoNotKeep# " << item);
         }
 
         for (ui64 idx = 0; idx < Iterations - (Collect ? 1 : 0); ++idx) {
             SendRequest(idx, false);
         }
-        Become(&TThis::StateWait);
+        Become(&TBlobStorageGroupMultiCollectRequest::StateWait);
     }
 
     STATEFN(StateWait) {
@@ -206,8 +204,7 @@ public:
     }
 };
 
-IActor* CreateBlobStorageGroupMultiCollectRequest(TBlobStorageGroupMultiCollectParameters params, NWilson::TTraceId traceId) {
-    params.Common.Span = NWilson::TSpan(TWilson::BlobStorage, std::move(traceId), "DSProxy.MultiCollect");
+IActor* CreateBlobStorageGroupMultiCollectRequest(TBlobStorageGroupMultiCollectParameters params) {
     return new TBlobStorageGroupMultiCollectRequest(params);
 }
 

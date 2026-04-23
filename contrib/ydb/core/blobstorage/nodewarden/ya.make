@@ -1,16 +1,20 @@
 LIBRARY()
 
 SRCS(
-    defs.h
     group_stat_aggregator.cpp
     group_stat_aggregator.h
     distconf.cpp
     distconf.h
     distconf_binding.cpp
+    distconf_console.cpp
     distconf_dynamic.cpp
     distconf_generate.cpp
     distconf_fsm.cpp
-    distconf_invoke.cpp
+    distconf_invoke.h
+    distconf_invoke_common.cpp
+    distconf_invoke_state_storage.cpp
+    distconf_invoke_static_group.cpp
+    distconf_invoke_storage_config.cpp
     distconf_mon.cpp
     distconf_persistent_storage.cpp
     distconf_scatter_gather.cpp
@@ -41,8 +45,10 @@ PEERDIR(
     contrib/ydb/core/blobstorage/crypto
     contrib/ydb/core/blobstorage/groupinfo
     contrib/ydb/core/blobstorage/pdisk
+    contrib/ydb/core/config/validation
     contrib/ydb/core/control
     contrib/ydb/library/pdisk_io
+    contrib/ydb/library/yaml_config
 )
 
 END()

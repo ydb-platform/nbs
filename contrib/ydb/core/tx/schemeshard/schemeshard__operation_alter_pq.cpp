@@ -2,6 +2,8 @@
 #include "schemeshard__operation_common.h"
 #include "schemeshard_impl.h"
 
+#include "schemeshard_utils.h"  // for PQGroupReserve
+
 #include <contrib/ydb/core/base/subdomain.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
 #include <contrib/ydb/core/persqueue/config/config.h>
@@ -16,6 +18,9 @@ using namespace NKikimr;
 using namespace NSchemeShard;
 
 class TAlterPQ: public TSubOperation {
+    // Make sure we make decisions using a consistent runtime value
+    const bool EnableTopicSplitMerge = AppData()->FeatureFlags.GetEnableTopicSplitMerge();
+
     static TTxState::ETxState NextState() {
         return TTxState::CreateParts;
     }
@@ -59,7 +64,7 @@ public:
             const NKikimrSchemeOp::TPersQueueGroupDescription& alter,
             TString& errStr)
     {
-        bool splitMergeEnabled = AppData()->FeatureFlags.GetEnableTopicSplitMerge()
+        bool splitMergeEnabled = EnableTopicSplitMerge
             && NPQ::SplitMergeEnabled(*tabletConfig)
             && (!alter.HasPQTabletConfig() || !alter.GetPQTabletConfig().HasPartitionStrategy() || NPQ::SplitMergeEnabled(alter.GetPQTabletConfig()));
 
@@ -209,7 +214,7 @@ public:
             if (alterConfig.HasOffloadConfig()) {
                 // TODO: check validity
                 auto* pathId = alterConfig.MutableOffloadConfig()->MutableIncrementalBackup()->MutableDstPathId();
-                PathIdFromPathId(TPath::Resolve(alterConfig.GetOffloadConfig().GetIncrementalBackup().GetDstPath(), context.SS).Base()->PathId, pathId);
+                TPath::Resolve(alterConfig.GetOffloadConfig().GetIncrementalBackup().GetDstPath(), context.SS).Base()->PathId.ToProto(pathId);
             }
 
             alterConfig.MutablePartitionKeySchema()->Swap(tabletConfig->MutablePartitionKeySchema());
@@ -529,7 +534,7 @@ public:
                 .IsPQGroup()
                 .NotUnderOperation();
 
-            if (!Transaction.GetAllowAccessToPrivatePaths()) {
+            if (!Transaction.GetAllowAccessToPrivatePaths() && !Transaction.GetInternal()) {
                 checks.IsCommonSensePath();
             }
 
@@ -579,7 +584,7 @@ public:
 
         alterData->ActivePartitionCount = topic->ActivePartitionCount;
 
-        bool splitMergeEnabled = AppData()->FeatureFlags.GetEnableTopicSplitMerge()
+        bool splitMergeEnabled = EnableTopicSplitMerge
                 && NKikimr::NPQ::SplitMergeEnabled(tabletConfig)
                 && NKikimr::NPQ::SplitMergeEnabled(newTabletConfig);
 

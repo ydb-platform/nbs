@@ -6,8 +6,6 @@ IF (WITH_VALGRIND)
     SPLIT_FACTOR(40)
 ENDIF()
 
-TIMEOUT(600)
-
 SIZE(MEDIUM)
 
 PEERDIR(
@@ -18,7 +16,7 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    yql/essentials/public/udf/service/exception_policy
 )
 
 YQL_LAST_ABI_VERSION()

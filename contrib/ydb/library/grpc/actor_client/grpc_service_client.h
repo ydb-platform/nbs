@@ -3,7 +3,7 @@
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/digest/crc32c/crc32c.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <util/string/ascii.h>
 #include "grpc_service_settings.h"
@@ -22,6 +22,7 @@ class TGrpcServiceClient  {
     using TServiceConnection = NYdbGrpc::TServiceConnection<TGrpcService>;
 
     NYdbGrpc::TGRpcClientConfig Config;
+    std::unordered_map<TString, TString> Headers;
     NYdbGrpc::TGRpcClientLow Client;
     std::unique_ptr<TServiceConnection> Connection;
 
@@ -63,8 +64,6 @@ public:
         return mask;
     }
 
-    static constexpr TDuration DEFAULT_TIMEOUT = TDuration::Seconds(10);
-
     struct TGrpcRequest {
         static const google::protobuf::Message& Obfuscate(const google::protobuf::Message& p) {
             return p;
@@ -98,6 +97,9 @@ public:
         for (const auto& [k, v] : ev->Get()->Headers) {
             meta.Aux.push_back({k, v});
         }
+        for (auto [k ,v]: Headers) {
+            meta.Aux.push_back({k, v});
+        }
 
         NYdbGrpc::TResponseCallback<TResponseType> callback =
             [actorSystem = NActors::TActivationContext::ActorSystem(), prefix = Prefix(requestId), request = ev](NYdbGrpc::TGrpcStatus&& status, TResponseType&& response) -> void {
@@ -120,7 +122,8 @@ public:
     }
 
     static NYdbGrpc::TGRpcClientConfig InitGrpcConfig(const NGrpcActorClient::TGrpcClientSettings& settings) {
-        NYdbGrpc::TGRpcClientConfig config(settings.Endpoint, DEFAULT_TIMEOUT, NYdbGrpc::DEFAULT_GRPC_MESSAGE_SIZE_LIMIT, 0, settings.CertificateRootCA);
+        const TDuration requestTimeout = TDuration::MilliSeconds(settings.RequestTimeoutMs);
+        NYdbGrpc::TGRpcClientConfig config(settings.Endpoint, requestTimeout, NYdbGrpc::DEFAULT_GRPC_MESSAGE_SIZE_LIMIT, 0, settings.CertificateRootCA);
         config.EnableSsl = settings.EnableSsl;
         config.IntChannelParams[GRPC_ARG_KEEPALIVE_TIME_MS] = settings.GrpcKeepAliveTimeMs;
         config.IntChannelParams[GRPC_ARG_KEEPALIVE_TIMEOUT_MS] = settings.GrpcKeepAliveTimeoutMs;
@@ -133,6 +136,7 @@ public:
 
     TGrpcServiceClient(const NGrpcActorClient::TGrpcClientSettings& settings)
         : Config(InitGrpcConfig(settings))
+        , Headers(settings.Headers)
     {}
 };
 

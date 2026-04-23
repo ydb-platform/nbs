@@ -7,17 +7,18 @@
 #include <contrib/ydb/core/tx/tx_proxy/upload_rows_common_impl.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
 
-#include <contrib/ydb/library/yql/public/udf/udf_types.h>
-#include <contrib/ydb/library/yql/minikql/dom/yson.h>
-#include <contrib/ydb/library/yql/minikql/dom/json.h>
-#include <contrib/ydb/library/yql/utils/utf8.h>
-#include <contrib/ydb/library/yql/public/decimal/yql_decimal.h>
+#include <yql/essentials/public/udf/udf_types.h>
+#include <yql/essentials/minikql/dom/yson.h>
+#include <yql/essentials/minikql/dom/json.h>
+#include <yql/essentials/utils/utf8.h>
+#include <yql/essentials/public/decimal/yql_decimal.h>
 
-#include <contrib/ydb/library/binary_json/write.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
+#include <yql/essentials/types/binary_json/write.h>
+#include <yql/essentials/types/dynumber/dynumber.h>
 
 #include <util/string/vector.h>
 #include <util/generic/size_literals.h>
+#include <algorithm>
 
 namespace NKikimr {
 namespace NGRpcService {
@@ -28,7 +29,7 @@ using namespace Ydb;
 namespace {
 
 // TODO: no mapping for DATE, DATETIME, TZ_*, YSON, JSON, UUID, JSON_DOCUMENT, DYNUMBER
-bool ConvertArrowToYdbPrimitive(const arrow::DataType& type, Ydb::Type& toType) {
+bool ConvertArrowToYdbPrimitive(const arrow::DataType& type, Ydb::Type& toType, const NScheme::TTypeInfo* tableColumnType = nullptr) {
     switch (type.id()) {
         case arrow::Type::BOOL:
             toType.set_type_id(Ydb::Type::BOOL);
@@ -75,16 +76,18 @@ bool ConvertArrowToYdbPrimitive(const arrow::DataType& type, Ydb::Type& toType) 
         case arrow::Type::DURATION:
             toType.set_type_id(Ydb::Type::INTERVAL);
             return true;
-        case arrow::Type::DECIMAL: {
-            auto arrowDecimal = static_cast<const arrow::DecimalType *>(&type);
-            Ydb::DecimalType* decimalType = toType.mutable_decimal_type();
-            decimalType->set_precision(arrowDecimal->precision());
-            decimalType->set_scale(arrowDecimal->scale());
-            return true;
+        case arrow::Type::FIXED_SIZE_BINARY: {
+            if (tableColumnType && tableColumnType->GetTypeId() == NScheme::NTypeIds::Decimal) {
+                Ydb::DecimalType* decimalType = toType.mutable_decimal_type();
+                decimalType->set_precision(tableColumnType->GetDecimalType().GetPrecision());
+                decimalType->set_scale(tableColumnType->GetDecimalType().GetScale());
+                return true;
+            }
+
+            break;
         }
         case arrow::Type::NA:
         case arrow::Type::HALF_FLOAT:
-        case arrow::Type::FIXED_SIZE_BINARY:
         case arrow::Type::DATE32:
         case arrow::Type::DATE64:
         case arrow::Type::TIME32:
@@ -92,6 +95,7 @@ bool ConvertArrowToYdbPrimitive(const arrow::DataType& type, Ydb::Type& toType) 
         case arrow::Type::INTERVAL_MONTHS:
         case arrow::Type::LARGE_STRING:
         case arrow::Type::LARGE_BINARY:
+        case arrow::Type::DECIMAL:
         case arrow::Type::DECIMAL256:
         case arrow::Type::DENSE_UNION:
         case arrow::Type::DICTIONARY:
@@ -129,7 +133,7 @@ public:
 
 private:
     void OnBeforeStart(const TActorContext& ctx) override {
-        Request->SetFinishAction([selfId = ctx.SelfID, as = ctx.ExecutorThread.ActorSystem]() {
+        Request->SetFinishAction([selfId = ctx.SelfID, as = ctx.ActorSystem()]() {
             as->Send(selfId, new TEvents::TEvPoison);
         });
     }
@@ -208,9 +212,7 @@ private:
         return true;
     }
 
-    TVector<std::pair<TString, Ydb::Type>> GetRequestColumns(TString& errorMessage) const override {
-        Y_UNUSED(errorMessage);
-
+    TConclusion<TVector<std::pair<TString, Ydb::Type>>> GetRequestColumns() const override {
         const auto& type = GetProtoRequest(Request.get())->Getrows().Gettype();
         const auto& rowType = type.Getlist_type();
         const auto& rowFields = rowType.Getitem().Getstruct_type().Getmembers();
@@ -252,7 +254,7 @@ private:
             }
 
             // Fill rest of cells with non-key column members
-            if (!FillCellsFromProto(valueCells, ValueColumnPositions, r, errorMessage, valueDataPool)) {
+            if (!FillCellsFromProto(valueCells, ValueColumnPositions, r, errorMessage, valueDataPool, IsInfinityInJsonAllowed())) {
                 return false;
             }
 
@@ -296,7 +298,7 @@ public:
 
 private:
     void OnBeforeStart(const TActorContext& ctx) override {
-        Request->SetFinishAction([selfId = ctx.SelfID, as = ctx.ExecutorThread.ActorSystem]() {
+        Request->SetFinishAction([selfId = ctx.SelfID, as = ctx.ActorSystem()]() {
             as->Send(selfId, new TEvents::TEvPoison);
         });
     }
@@ -398,30 +400,48 @@ private:
         return true;
     }
 
-    TVector<std::pair<TString, Ydb::Type>> GetRequestColumns(TString& errorMessage) const override {
+    TConclusion<TVector<std::pair<TString, Ydb::Type>>> GetRequestColumns() const override {
+        TVector<std::pair<TString, Ydb::Type>> out;
         if (GetSourceType() == EUploadSource::CSV) {
             // TODO: for CSV with header we have to extract columns from data (from first batch in file stream)
-            return {};
+            return out;
         }
 
         auto schema = NArrow::DeserializeSchema(GetSourceSchema());
         if (!schema) {
-            errorMessage = TString("Wrong schema in bulk upsert data");
-            return {};
+            return TConclusionStatus::Fail("Wrong schema in bulk upsert data");
         }
 
-        TVector<std::pair<TString, Ydb::Type>> out;
         out.reserve(schema->num_fields());
+
+        const NSchemeCache::TSchemeCacheNavigate* resolveResult = GetResolveNameResult();
+        THashMap<TString, NScheme::TTypeInfo> tableColumnTypes;
+        if (!resolveResult || resolveResult->ResultSet.size() != 1) {
+            return TConclusionStatus::Fail(TStringBuilder() <<
+                "Wrong table resolve result: expected exactly one entry, got " <<
+                (resolveResult ? std::to_string(resolveResult->ResultSet.size()) : "none"));
+        }
+
+        const auto& entry = resolveResult->ResultSet.front();
+        for (auto&& [_, colInfo] : entry.Columns) {
+            tableColumnTypes[colInfo.Name] = colInfo.PType;
+        }
 
         for (auto& field : schema->fields()) {
             auto& name = field->name();
             auto& type = field->type();
 
             Ydb::Type ydbType;
-            if (!ConvertArrowToYdbPrimitive(*type, ydbType)) {
-                errorMessage = TString("Cannot convert arrow type to ydb one: " + type->ToString());
-                return {};
+            const NScheme::TTypeInfo* tableColumnType = nullptr;
+            auto tableTypeIt = tableColumnTypes.find(name);
+            if (tableTypeIt != tableColumnTypes.end()) {
+                tableColumnType = &tableTypeIt->second;
             }
+
+            if (!ConvertArrowToYdbPrimitive(*type, ydbType, tableColumnType)) {
+                return TConclusionStatus::Fail("Cannot convert arrow type to ydb one: " + type->ToString());
+            }
+
             out.emplace_back(name, std::move(ydbType));
         }
 
@@ -455,51 +475,19 @@ private:
                     errorMessage = "Cannot deserialize arrow batch with specified schema";
                     return false;
                 }
+
                 break;
             }
             case EUploadSource::CSV:
             {
                 auto& data = GetSourceData();
-                auto& cvsSettings = GetCsvSettings();
-                ui32 skipRows = cvsSettings.skip_rows();
-                auto& delimiter = cvsSettings.delimiter();
-                auto& nullValue = cvsSettings.null_value();
-                bool withHeader = cvsSettings.header();
-
-                auto reader = NFormats::TArrowCSV::Create(SrcColumns, withHeader, NotNullColumns);
+                auto& csvSettings = GetCsvSettings();
+                auto reader = NFormats::TArrowCSVScheme::Create(SrcColumns, csvSettings.header(), NotNullColumns);
                 if (!reader.ok()) {
                     errorMessage = reader.status().ToString();
                     return false;
                 }
-                const auto& quoting = cvsSettings.quoting();
-                if (quoting.quote_char().length() > 1) {
-                    errorMessage = TStringBuilder() << "Wrong quote char '" << quoting.quote_char() << "'";
-                    return false;
-                }
-                const char qchar = quoting.quote_char().empty() ? '"' : quoting.quote_char().front();
-                reader->SetQuoting(!quoting.disabled(), qchar, !quoting.double_quote_disabled());
-                reader->SetSkipRows(skipRows);
-
-                if (!delimiter.empty()) {
-                    if (delimiter.size() != 1) {
-                        errorMessage = TStringBuilder() << "Wrong delimiter '" << delimiter << "'";
-                        return false;
-                    }
-
-                    reader->SetDelimiter(delimiter[0]);
-                }
-
-                if (!nullValue.empty()) {
-                    reader->SetNullValue(nullValue);
-                }
-
-                if (data.size() > NFormats::TArrowCSV::DEFAULT_BLOCK_SIZE) {
-                    ui32 blockSize = NFormats::TArrowCSV::DEFAULT_BLOCK_SIZE;
-                    blockSize *= data.size() / blockSize + 1;
-                    reader->SetBlockSize(blockSize);
-                }
-
-                Batch = reader->ReadSingleBatch(data, errorMessage);
+                Batch = reader->ReadSingleBatch(data, csvSettings, errorMessage);
                 if (!Batch) {
                     return false;
                 }
@@ -510,6 +498,65 @@ private:
                 }
 
                 break;
+            }
+        }
+
+        return ValidateInputBatch(errorMessage);
+    }
+
+    bool ValidateInputBatch(TString& errorMessage) {
+        return ValidateNotNullColumns(errorMessage) &&
+            ValidateUtf8(errorMessage);
+    }
+
+    bool ValidateNotNullColumns(TString& errorMessage) {
+        if (!Batch || NotNullColumns.empty()) {
+            return true;
+        }
+
+        for (const std::string& columnName : NotNullColumns) {
+            auto column = Batch->GetColumnByName(columnName);
+            if (!column) {
+                errorMessage = "Missing not null column: " + TString(columnName);
+                return false;
+            }
+
+            if (column->null_count() > 0) {
+                errorMessage = "Received NULL value for not null column: " + TString(columnName);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool ValidateUtf8(TString& errorMessage) {
+        if (!Batch) {
+            return true;
+        }
+
+        for (const auto& [columnName, columnType] : YdbSchema) {
+            if (columnType.GetTypeId() != NScheme::NTypeIds::Utf8) {
+                continue;
+            }
+
+            auto column = Batch->GetColumnByName(columnName);
+            if (!column) {
+                errorMessage = "Missing Utf8 column: " + columnName;
+                return false;
+            }
+
+            if (column->type_id() != arrow::Type::STRING) {
+                errorMessage = Sprintf("Unexpected Arrow type %s for Utf8 column '%s'",
+                    column->type()->ToString().c_str(), columnName.c_str());
+                return false;
+            }
+
+            const auto& typedColumn = static_cast<const arrow::StringArray&>(*column);
+            arrow::Status validationStatus = typedColumn.ValidateUTF8();
+            if (!validationStatus.ok()) {
+                errorMessage = TStringBuilder() << "Invalid UTF-8 data in column " << columnName << ": " << validationStatus.message();
+                return false;
             }
         }
 

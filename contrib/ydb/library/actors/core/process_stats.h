@@ -42,7 +42,7 @@ namespace NActors {
         unsigned long RssLim;
         ui64 FileRss;
         ui64 AnonRss;
-        ui64 CGroupMemLim = 0;
+        ui64 CGroupMemLim;
         ui64 MemTotal;
         ui64 MemAvailable;
 

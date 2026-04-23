@@ -7,9 +7,9 @@
 #include <contrib/ydb/core/protos/ydb_result_set_old.pb.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 
-#include <contrib/ydb/library/binary_json/read.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
+#include <yql/essentials/types/binary_json/read.h>
+#include <yql/essentials/types/dynumber/dynumber.h>
+#include <yql/essentials/parser/pg_wrapper/interface/type_desc.h>
 //#include <ydb/library/actors/interconnect/interconnect.h>
 
 //#include <util/generic/cast.h>
@@ -117,6 +117,7 @@ Y_FORCE_INLINE bool AddCell(TOutValue& row, NScheme::TTypeInfo type, const TCell
         val.set_bytes_value(cell.Data(), cell.Size());
         break;
     }
+    case NUdf::TDataType<NUdf::TUuid>::Id:
     case NUdf::TDataType<NUdf::TDecimal>::Id: {
         struct TCellData {
             ui64 Low;
