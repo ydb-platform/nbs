@@ -85,7 +85,7 @@ jobs:
       id: cli
       uses: ./.github/actions/nebius_cli
       with:
-        sa_json: ${{ secrets.POOLED_LIGHT_SA_JSON }}
+        config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
     
     - name: get nebius iam token
       if: inputs.image_id == '' && inputs.build_image == true
@@ -151,7 +151,7 @@ jobs:
         team: nbs
         repo_owner: ${{ github.repository_owner }}
         repo: ${{ github.event.repository.name }}
-        service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+        nebius_config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
         token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
         vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
@@ -171,10 +171,10 @@ jobs:
       if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204) && steps.start-runner.outputs.INSTANCE_ID != ''
       timeout-minutes: 60
       with:
-        service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
         token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         repo_owner: ${{ github.repository_owner }}
         repo: ${{ github.event.repository.name }}
+        nebius_config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
         vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
         vm_id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
 
@@ -183,7 +183,6 @@ jobs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_images \
-          --service-account-key sa.json \
           --new-image-id ${NEW_IMAGE_ID} \
           --image-variable-name NEBIUS_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
       env:
@@ -197,13 +196,11 @@ jobs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_images \
-          --service-account-key sa.json \
           --parent-id ${LIGHT_PARENT_ID} \
           --new-image-id ${NEW_IMAGE_ID} \
           --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
 
         python3 -m scripts.nebius_manage_images \
-          --service-account-key sa.json \
           --parent-id ${HEAVY_PARENT_ID} \
           --new-image-id ${NEW_IMAGE_ID} \
           --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}

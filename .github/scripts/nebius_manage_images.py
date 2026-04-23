@@ -4,6 +4,7 @@ import argparse
 from .helpers import setup_logger, convert_size
 from github import Github
 from nebius.sdk import SDK
+from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
 from nebius.api.nebius.compute.v1 import (
     ListImagesRequest,
@@ -118,11 +119,6 @@ if __name__ == "__main__":
         help="Parent ID where the VM will be created",
     )
     parser.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account key file",
-    )
-    parser.add_argument(
         "--new-image-id",
         default=os.getenv("NEW_IMAGE_ID"),
         help="Name of the artifact to download and extract",
@@ -142,7 +138,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logger.info(args)
 
-    sdk = SDK(credentials_file_name=args.service_account_key)
+    sdk = SDK(config_reader=Config())
     asyncio.run(
         main(
             sdk=sdk,

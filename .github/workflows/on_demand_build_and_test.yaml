@@ -185,7 +185,7 @@ jobs:
           team: nbs
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+          nebius_config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
@@ -362,9 +362,9 @@ jobs:
         if: ${{ steps.decider.outputs.result == 'true' }}
         timeout-minutes: 60
         with:
-          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
+          nebius_config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}

@@ -151,7 +151,7 @@ jobs:
       id: cli
       uses: ./.github/actions/nebius_cli
       with:
-        sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+        config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
     - name: set up gh cli
       id: gh
       uses: ./.github/actions/gh_cli
@@ -366,7 +366,7 @@ jobs:
         id: cli
         uses: ./.github/actions/nebius_cli
         with:
-          sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+          config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
       - name: set up gh cli
         id: gh
         uses: ./.github/actions/gh_cli

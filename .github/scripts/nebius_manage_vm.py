@@ -15,6 +15,7 @@ from github import Auth as GithubAuth
 from github import Github
 
 from nebius.sdk import SDK
+from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
 from nebius.api.nebius.common.v1 import ResourceMetadata, GetByNameRequest
 from nebius.api.nebius.compute.v1 import (
@@ -277,18 +278,32 @@ def find_runner_by_name(
     return runner_id
 
 
-async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
-    service = DiskServiceClient(sdk)
-    disk_request = CreateDiskRequest(
+def build_disk_request(
+    parent_id: str,
+    name: str,
+    disk_size: int,
+    image_id: str,
+) -> CreateDiskRequest:
+    return CreateDiskRequest(
         metadata=ResourceMetadata(
-            parent_id=args.parent_id,
-            name=DISK_NAME_PREFIX + args.name,
+            parent_id=parent_id,
+            name=DISK_NAME_PREFIX + name,
         ),
         spec=DiskSpec(
             type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
-            size_gibibytes=args.disk_size,
-            source_image_id=args.image_id,
+            size_gibibytes=disk_size,
+            source_image_id=image_id,
         ),
+    )
+
+
+async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
+    service = DiskServiceClient(sdk)
+    disk_request = build_disk_request(
+        parent_id=args.parent_id,
+        name=args.name,
+        disk_size=args.disk_size,
+        image_id=args.image_id,
     )
     if not args.apply:
         logger.info("Would create disk with request %s", disk_request)
@@ -307,8 +322,8 @@ async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
         logger.error("Failed to create disk with request: %s", disk_request)
         logger.error("Response: %s", str(e.status), exc_info=True)
         if request is not None:
-            logger.error("Removing created instance with ID %s", request.resource_id)
-            remove_vm_by_id(sdk, request.resource_id)
+            logger.error("Removing created disk with ID %s", request.resource_id)
+            await remove_disk_by_id(sdk, args, request.resource_id)
         raise
 
     logger.info(
@@ -366,13 +381,14 @@ def retry_create_vm(func: callable) -> callable:
     return wrapper
 
 
-@retry_create_vm
-async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
-    # validate preset
-    if args.preset not in PRESETS.get(args.platform_id, []):
-        raise Exception(
-            f"Preset {args.preset} is not available for platform {args.platform_id}"
-        )
+def validate_create_args(
+    platform_id: str,
+    preset: str,
+    disk_type: str,
+    disk_size: int,
+) -> None:
+    if preset not in PRESETS.get(platform_id, []):
+        raise Exception(f"Preset {preset} is not available for platform {platform_id}")
 
     if os.environ.get("VM_USER_PASSWD") is None:
         raise Exception("VM_USER_PASSWD environment variable is not set")
@@ -381,16 +397,106 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         raise Exception("GITHUB_TOKEN environment variable is not set")
 
     if (
-        args.disk_type in ["network-ssd-nonreplicated", "network-ssd-io-m3"]
-        and args.disk_size % 93 != 0  # noqa: W503
+        disk_type in ["network-ssd-nonreplicated", "network-ssd-io-m3"]
+        and disk_size % 93 != 0  # noqa: W503
     ):
         raise ValueError(
             "Disk size must be a multiple of 93GB for the selected disk type"
         )
 
+
+def maybe_downgrade_preset(
+    platform_id: str,
+    preset: str,
+    allow_downgrade: bool,
+    downgrade_after: int,
+    attempt: int,
+) -> str:
+    # We will downgrade every N failed attempts:
+    # if our preset is 80cpu and downgrade_after is 2, on the third
+    # attempt it will be downgraded to 64cpu, then to 48cpu.
+    logger.info("Attempt %d", attempt)
+    logger.info("Current preset %s", preset)
+    logger.info("Downgrade after %d", downgrade_after)
+    logger.info("Allow downgrade %s", allow_downgrade)
+    logger.info("attempt mod downgrade_after = %d", attempt % downgrade_after)
+    logger.info("attempt > 0 = %s", attempt > 0)
+    if allow_downgrade and attempt % downgrade_after == 0 and attempt > 0:
+        current_preset_index = PRESETS[platform_id].index(preset)
+        if current_preset_index > 0:
+            preset = PRESETS[platform_id][current_preset_index - 1]
+            logger.info("Downgrading to %s preset", preset)
+    return preset
+
+
+def build_vm_labels(labels: dict, runner_github_label: str, runner_flavor: str) -> dict:
+    labels = dict(labels)
+    labels["runner-label"] = runner_github_label
+    labels["runner-flavor"] = runner_flavor
+    return labels
+
+
+def build_instance_request(
+    parent_id: str,
+    name: str,
+    platform_id: str,
+    preset: str,
+    subnet_id: str,
+    no_public_ip: bool,
+    disk_id: str,
+    user_data: str,
+    labels: dict,
+) -> CreateInstanceRequest:
+    return CreateInstanceRequest(
+        metadata=ResourceMetadata(
+            parent_id=parent_id,
+            name=name,
+            labels=labels,
+        ),
+        spec=InstanceSpec(
+            stopped=False,
+            cloud_init_user_data=user_data,
+            resources=ResourcesSpec(platform=platform_id, preset=preset),
+            boot_disk=AttachedDiskSpec(
+                attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
+                existing_disk=ExistingDisk(id=disk_id),
+                device_id="boot",
+            ),
+            network_interfaces=[
+                NetworkInterfaceSpec(
+                    name="eth0",
+                    subnet_id=subnet_id,
+                    ip_address=IPAddress(),
+                    public_ip_address=None if no_public_ip else PublicIPAddress(),
+                ),
+            ],
+        ),
+    )
+
+
+def extract_instance_ips(instance, no_public_ip: bool) -> tuple[str, Optional[str]]:
+    network_interface = instance.status.network_interfaces[0]
+    external_ipv4 = (
+        network_interface.public_ip_address.address.replace("/32", "")
+        if no_public_ip is False
+        else None
+    )
+    local_ipv4 = network_interface.ip_address.address.replace("/32", "")
+    return local_ipv4, external_ipv4
+
+
+@retry_create_vm
+async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
+    validate_create_args(
+        platform_id=args.platform_id,
+        preset=args.preset,
+        disk_type=args.disk_type,
+        disk_size=args.disk_size,
+    )
+
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
-    gh = Github(GITHUB_TOKEN)
+    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
 
     runner_registration_token = get_runner_token(
         args.github_repo_owner, args.github_repo, GITHUB_TOKEN
@@ -406,21 +512,13 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
             "No GitHub organization or team specified, skipping SSH key fetching"
         )
 
-    # We will downgrade every N failed attempts
-    # if our preset is 80cpu and downgrade_after is 2 on third
-    # attempt it will be downgraded to 64cpu
-    # And on 4th attempt it will be downgraded to 48cpu
-    logger.info("Attempt %d", attempt)
-    logger.info("Current preset %s", args.preset)
-    logger.info("Downgrade after %d", args.downgrade_after)
-    logger.info("Allow downgrade %s", args.allow_downgrade)
-    logger.info("attempt mod args.downgrade_after = %d", attempt % args.downgrade_after)
-    logger.info("attempt > 0 = %s", attempt > 0)
-    if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
-        current_preset_index = PRESETS[args.platform_id].index(args.preset)
-        if current_preset_index > 0:
-            args.preset = PRESETS[args.platform_id][current_preset_index - 1]
-            logger.info("Downgrading to %s preset", args.preset)
+    args.preset = maybe_downgrade_preset(
+        platform_id=args.platform_id,
+        preset=args.preset,
+        allow_downgrade=args.allow_downgrade,
+        downgrade_after=args.downgrade_after,
+        attempt=attempt,
+    )
 
     runner_github_label = generate_github_label()
 
@@ -435,36 +533,20 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         runner_github_label + ",runner_" + args.runner_flavor,
     )
 
-    labels = args.labels
-    labels["runner-label"] = runner_github_label
-    labels["runner-flavor"] = args.runner_flavor
+    labels = build_vm_labels(args.labels, runner_github_label, args.runner_flavor)
 
     disk_id = await create_disk(sdk, args)
     service = InstanceServiceClient(sdk)
-    instance_request = CreateInstanceRequest(
-        metadata=ResourceMetadata(
-            parent_id=args.parent_id,
-            name=args.name,
-            labels=labels,
-        ),
-        spec=InstanceSpec(
-            stopped=False,
-            cloud_init_user_data=user_data,
-            resources=ResourcesSpec(platform=args.platform_id, preset=args.preset),
-            boot_disk=AttachedDiskSpec(
-                attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
-                existing_disk=ExistingDisk(id=disk_id),
-                device_id="boot",
-            ),
-            network_interfaces=[
-                NetworkInterfaceSpec(
-                    name="eth0",
-                    subnet_id=args.subnet_id,
-                    ip_address=IPAddress(),
-                    public_ip_address=None if args.no_public_ip else PublicIPAddress(),
-                ),
-            ],
-        ),
+    instance_request = build_instance_request(
+        parent_id=args.parent_id,
+        name=args.name,
+        platform_id=args.platform_id,
+        preset=args.preset,
+        subnet_id=args.subnet_id,
+        no_public_ip=args.no_public_ip,
+        disk_id=disk_id,
+        user_data=user_data,
+        labels=labels,
     )
     # Create the VM
     if not args.apply:
@@ -505,13 +587,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     name = instance.metadata.name
     logger.info("Created VM %s", instance)
 
-    network_interface = instance.status.network_interfaces[0]
-    external_ipv4 = (
-        network_interface.public_ip_address.address.replace("/32", "")
-        if args.no_public_ip is False
-        else None
-    )
-    local_ipv4 = network_interface.ip_address.address.replace("/32", "")
+    local_ipv4, external_ipv4 = extract_instance_ips(instance, args.no_public_ip)
     if instance_id:
         logger.info(
             "Created VM %s with ID %s and label %s",
@@ -658,7 +734,7 @@ async def remove_vm_by_id(sdk: SDK, instance_id: int = None) -> str:
 async def remove_vm(sdk: SDK, args: argparse.Namespace):
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
-    gh = Github(GITHUB_TOKEN)
+    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
 
     result = remove_runner_from_github(
         gh, args.github_repo_owner, args.github_repo, args.id, args.apply
@@ -732,11 +808,6 @@ async def main() -> None:
         help="Whether to update GitHub Runner if it's already installed",
     )
 
-    create.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account key file",
-    )
     create.add_argument(
         "--parent-id",
         required=True,
@@ -812,11 +883,6 @@ async def main() -> None:
 
     remove = subparsers.add_parser("remove", help="Remove an existing VM")
     remove.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account key file",
-    )
-    remove.add_argument(
         "--parent-id",
         required=True,
         default="project-e00gg2f58gw75edn7x",
@@ -848,7 +914,7 @@ async def main() -> None:
 
     args = parser.parse_args()
 
-    sdk = SDK(credentials_file_name=args.service_account_key)
+    sdk = SDK(config_reader=Config())
 
     if hasattr(args, "func"):
         await args.func(sdk, args)

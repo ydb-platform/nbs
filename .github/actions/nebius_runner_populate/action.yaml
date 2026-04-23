@@ -26,9 +26,12 @@ inputs:
   token:
     required: true
     description: "github token"
-  service_account_key:
-    required: true
-    description: "service account key"
+  nebius_iam_token:
+    required: false
+    description: "Nebius IAM token for SDK authentication"
+  nebius_config_yaml:
+    required: false
+    description: "Nebius CLI config.yaml content for SDK authentication"
 
 outputs:
   VMS_TO_CREATE:
@@ -44,17 +47,18 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: set up home
-      shell: bash
-      run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-    - name: write service account key to file
+    - name: set nebius iam token from input
+      if: ${{ inputs.nebius_iam_token != '' }}
       shell: bash
       run: |
-        export SERVICE_ACCOUNT_KEY=$(mktemp sa.XXXX)
-        echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
-        echo "${KEY_CONTENTS}" > $SERVICE_ACCOUNT_KEY
+        echo "::add-mask::${NEBIUS_IAM_TOKEN_INPUT}"
+        echo "NEBIUS_IAM_TOKEN=${NEBIUS_IAM_TOKEN_INPUT}" >> "$GITHUB_ENV"
       env:
-        KEY_CONTENTS: ${{ inputs.service_account_key }}
+        NEBIUS_IAM_TOKEN_INPUT: ${{ inputs.nebius_iam_token }}
+    - name: set up nebius cli
+      uses: ./.github/actions/nebius_cli
+      with:
+        config_yaml: ${{ inputs.nebius_config_yaml }}
     - name: install dependencies
       shell: bash
       run: |
@@ -65,7 +69,6 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_populate_vms \
-          --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           ${LOOP_ARG} \
           --github-repo-owner "${OWNER}" \
           --github-repo "${REPO}" \
@@ -86,7 +89,3 @@ runs:
         VMS_OLDER_THAN: ${{ inputs.vms_ttl }}
         GITHUB_TOKEN: ${{ inputs.token }}
         LOOP_ARG: ${{ inputs.loop == 'yes' && '--loop' || '' }}
-    - name: cleanup
-      if: always()
-      shell: bash
-      run: rm -f "${SERVICE_ACCOUNT_KEY}"

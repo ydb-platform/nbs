@@ -1,9 +1,9 @@
 name: Prepare nebius cli tool
 description: Install nebius cli
 inputs:
-  sa_json:
-    required: true
-    description: ""
+  config_yaml:
+    required: false
+    description: "Nebius CLI config.yaml content"
 runs:
   using: composite
   steps:
@@ -13,39 +13,57 @@ runs:
 
     - name: set up path
       shell: bash
-      run: echo "PATH=$PATH:$HOME/.nebius/bin" >> $GITHUB_ENV
+      run: echo "PATH=$PATH:$HOME/.local/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Set up Nebius CLI
       shell: bash
-      env:
-        SA_JSON: ${{ inputs.sa_json }}
       run: |
         set -x
         if [ ! -f "$HOME/.nebius/bin/nebius" ];
         then 
           curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
-          cat <<EOF > sa.json
-        ${SA_JSON}
-        EOF
         else
           echo "Nebius CLI already installed"
         fi
-        if [ ! -f "$HOME/.nebius/config.yaml" ];
-        then
-          jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
-          echo "::add-mask::$(jq -r '."subject-credentials"."kid"' sa.json)"
-          public_key_id=$(jq -r '."subject-credentials"."kid"' sa.json)
-          echo "::add-mask::$(jq -r '."subject-credentials"."iss"' sa.json)"
-          service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
-          echo "::add-mask::tenant-e00en3r863f7me6wtd"
-          
-          nebius profile create --endpoint api.nebius.cloud \
-                                --profile nbs-github-user-sa \
-                                --parent-id tenant-e00en3r863f7me6wtd \
-                                --public-key-id "${public_key_id}" \
-                                --private-key-file private.pem \
-                                --service-account-id "${service_account_id}" 
-          else
-            echo "Nebius profile already created"
-          fi
 
+    - name: Set up yq
+      shell: bash
+      run: |
+        set -x
+        if command -v yq > /dev/null 2>&1; then
+          echo "yq already installed"
+          exit 0
+        fi
+
+        yq_version=$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name')
+        if [ -z "$yq_version" ] || [ "$yq_version" = "null" ]; then
+          echo "Failed to resolve latest yq release"
+          exit 1
+        fi
+
+        mkdir -p "$HOME/.local/bin"
+        curl -sSL -o "$HOME/.local/bin/yq" \
+          "https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_amd64"
+        chmod 0755 "$HOME/.local/bin/yq"
+
+    - name: Set up Nebius CLI config
+      if: ${{ inputs.config_yaml != '' }}
+      shell: bash
+      env:
+        NEBIUS_CONFIG_YAML: ${{ inputs.config_yaml }}
+      run: |
+        mkdir -p "$HOME/.nebius"
+        if [ -f "$HOME/.nebius/config.yaml" ]; then
+          echo "Nebius config already exists"
+          exit 0
+        fi
+
+        cat > "$HOME/.nebius/config.yaml" <<EOF
+        $NEBIUS_CONFIG_YAML
+        EOF
+        chmod 600 "$HOME/.nebius/config.yaml"
+
+        while IFS= read -r private_key; do
+          [ -n "$private_key" ] || continue
+          echo "::add-mask::$private_key"
+        done < <(yq -r '.profiles[]?."private-key" // empty | split("\n")[]' "$HOME/.nebius/config.yaml")
