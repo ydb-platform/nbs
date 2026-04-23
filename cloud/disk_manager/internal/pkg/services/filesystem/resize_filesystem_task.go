@@ -6,16 +6,13 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type resizeFilesystemTask struct {
-	storage resources.Storage
 	factory nfs.Factory
 	request *protos.ResizeFilesystemRequest
 	state   *protos.ResizeFilesystemTaskState
@@ -41,28 +38,17 @@ func (t *resizeFilesystemTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	meta, err := t.storage.GetFilesystemMeta(
-		ctx,
-		t.request.Filesystem.FilesystemId,
-	)
-	if err != nil {
-		return err
-	}
-
-	if meta == nil {
-		return errors.NewNonRetriableErrorf(
-			"filesystem %v not found",
-			t.request.Filesystem,
-		)
-	}
-
-	client, err := t.factory.NewClient(ctx, meta.ZoneID)
+	client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
-	return client.Resize(ctx, meta.ID, t.request.Size)
+	return client.Resize(
+		ctx,
+		t.request.Filesystem.FilesystemId,
+		t.request.Size,
+	)
 }
 
 func (t *resizeFilesystemTask) Cancel(

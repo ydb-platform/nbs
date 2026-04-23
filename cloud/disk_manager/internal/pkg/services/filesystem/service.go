@@ -5,8 +5,10 @@ import (
 	"math"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -63,9 +65,48 @@ func prepareFilesystemKind(kind disk_manager.FilesystemKind) (types.FilesystemKi
 ////////////////////////////////////////////////////////////////////////////////
 
 type service struct {
-	scheduler tasks.Scheduler
-	config    *config.FilesystemConfig
-	factory   nfs.Factory
+	scheduler       tasks.Scheduler
+	config          *config.FilesystemConfig
+	factory         nfs.Factory
+	resourceStorage resources.Storage
+	cellSelector    cells.CellSelector
+}
+
+func (s *service) getZoneIDForExistingFilesystem(
+	ctx context.Context,
+	filesystemID *disk_manager.FilesystemId,
+) (string, error) {
+
+	filesystemMeta, err := s.resourceStorage.GetFilesystemMeta(
+		ctx,
+		filesystemID.FilesystemId,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if filesystemMeta == nil {
+		return "", common.NewInvalidArgumentError(
+			"no such filesystem: %v",
+			filesystemID,
+		)
+	}
+
+	if filesystemMeta.ZoneID != filesystemID.ZoneId &&
+		(s.cellSelector == nil ||
+			!s.cellSelector.ZoneContainsCell(
+				filesystemID.ZoneId,
+				filesystemMeta.ZoneID,
+			)) {
+
+		return "", common.NewInvalidArgumentError(
+			"provided zone ID %v does not match with an actual zone ID %v",
+			filesystemID.ZoneId,
+			filesystemMeta.ZoneID,
+		)
+	}
+
+	return filesystemMeta.ZoneID, nil
 }
 
 func (s *service) CreateFilesystem(
@@ -170,13 +211,18 @@ func (s *service) ResizeFilesystem(
 		)
 	}
 
+	zoneID, err := s.getZoneIDForExistingFilesystem(ctx, req.FilesystemId)
+	if err != nil {
+		return "", err
+	}
+
 	return s.scheduler.ScheduleTask(
 		ctx,
 		"filesystem.ResizeFilesystem",
 		"",
 		&protos.ResizeFilesystemRequest{
 			Filesystem: &protos.FilesystemId{
-				ZoneId:       req.FilesystemId.ZoneId,
+				ZoneId:       zoneID,
 				FilesystemId: req.FilesystemId.FilesystemId,
 			},
 			Size: uint64(req.Size),
@@ -194,12 +240,19 @@ func (s *service) DescribeFilesystemModel(
 
 	if len(req.ZoneId) == 0 {
 		client, err = s.factory.NewClientFromDefaultZone(ctx)
-	} else {
+	} else if s.cellSelector == nil {
 		client, err = s.factory.NewClient(ctx, req.ZoneId)
+	} else {
+		client, err = s.cellSelector.SelectCellForFilesystem(
+			ctx,
+			req.ZoneId,
+			"", // describe model request does not contain folder id
+		)
 	}
 	if err != nil {
 		return nil, err
 	}
+	defer client.Close()
 
 	if req.Size < 0 {
 		return nil, common.NewInvalidArgumentError(
@@ -233,7 +286,7 @@ func (s *service) DescribeFilesystemModel(
 	model, err := client.DescribeModel(
 		ctx,
 		blocksCount,
-		uint32(req.BlockSize),
+		blockSize,
 		kind,
 	)
 	if err != nil {
@@ -260,11 +313,15 @@ func NewService(
 	taskScheduler tasks.Scheduler,
 	config *config.FilesystemConfig,
 	factory nfs.Factory,
+	resourceStorage resources.Storage,
+	cellSelector cells.CellSelector,
 ) Service {
 
 	return &service{
-		scheduler: taskScheduler,
-		config:    config,
-		factory:   factory,
+		scheduler:       taskScheduler,
+		config:          config,
+		factory:         factory,
+		resourceStorage: resourceStorage,
+		cellSelector:    cellSelector,
 	}
 }

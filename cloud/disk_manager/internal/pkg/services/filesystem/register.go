@@ -80,7 +80,6 @@ func RegisterForExecution(
 
 	err = registry.RegisterForExecution("filesystem.ResizeFilesystem", func() tasks.Task {
 		return &resizeFilesystemTask{
-			storage: storage,
 			factory: factory,
 		}
 	})
