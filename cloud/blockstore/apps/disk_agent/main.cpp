@@ -1,9 +1,8 @@
 #include <cloud/blockstore/libs/disk_agent/bootstrap.h>
+#include <cloud/blockstore/libs/rdma/helper.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
 #include <cloud/storage/core/libs/daemon/app.h>
-#include <cloud/storage/core/libs/rdma/impl/server.h>
-#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
@@ -31,17 +30,8 @@ int main(int argc, char** argv)
         };
     };
 
-    serverModuleFactories->RdmaServerFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NCloud::NStorage::NRdma::TServerConfigPtr config)
-    {
-        return NCloud::NStorage::NRdma::CreateServer(
-            NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
-            std::move(logging),
-            std::move(monitoring),
-            std::move(config));
-    };
+    serverModuleFactories->RdmaServerFactory =
+        NCloud::NBlockStore::NRdma::CreateRdmaServer;
 
     NServer::TBootstrap bootstrap(
         std::move(moduleFactories),

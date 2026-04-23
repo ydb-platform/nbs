@@ -31,6 +31,7 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/encryption/model
+    cloud/blockstore/libs/rdma
     cloud/blockstore/libs/service_local
 
     cloud/contrib/vhost

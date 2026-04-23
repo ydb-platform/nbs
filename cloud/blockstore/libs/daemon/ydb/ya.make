@@ -20,6 +20,7 @@ PEERDIR(
     cloud/blockstore/libs/logbroker/iface
     cloud/blockstore/libs/notify/impl
     cloud/blockstore/libs/nvme
+    cloud/blockstore/libs/rdma
     cloud/blockstore/libs/rdma/fake
     cloud/blockstore/libs/root_kms/iface
     cloud/blockstore/libs/server

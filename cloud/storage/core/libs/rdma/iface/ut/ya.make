@@ -9,7 +9,6 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/rdma/iface
-    cloud/blockstore/public/api/protos
 )
 
 END()

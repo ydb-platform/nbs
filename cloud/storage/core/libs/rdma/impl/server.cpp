@@ -1569,12 +1569,10 @@ class TServer final
 private:
     NVerbs::IVerbsPtr Verbs;
 
-    const ILoggingServicePtr Logging;
-    const IMonitoringServicePtr Monitoring;
-
+    TLog Log;
+    const NMonitoring::TDynamicCountersPtr CountersGroup;
     TServerConfigPtr Config;
     TEndpointCountersPtr Counters;
-    TLog Log;
 
     TVector<TServerEndpointPtr> Endpoints;
     TMutex EndpointsLock;
@@ -1585,8 +1583,8 @@ private:
 public:
     TServer(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
+        TLog log,
+        NMonitoring::TDynamicCountersPtr counters,
         TServerConfigPtr config);
 
     // called from external thread
@@ -1617,12 +1615,12 @@ private:
 
 TServer::TServer(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
+        TLog log,
+        NMonitoring::TDynamicCountersPtr counters,
         TServerConfigPtr config)
     : Verbs(std::move(verbs))
-    , Logging(std::move(logging))
-    , Monitoring(std::move(monitoring))
+    , Log(std::move(log))
+    , CountersGroup(std::move(counters))
     , Config(std::move(config))
     , Counters(new TEndpointCounters())
 {
@@ -1633,13 +1631,9 @@ TServer::TServer(
 
 void TServer::Start()
 {
-    Log = Logging->CreateLog("BLOCKSTORE_RDMA");
-
     RDMA_DEBUG("start server");
 
-    auto counters = Monitoring->GetCounters();
-    auto rootGroup = counters->GetSubgroup("counters", "blockstore");
-    Counters->Register(*rootGroup->GetSubgroup("component", "rdma_server"));
+    Counters->Register(*CountersGroup);
 
     CompletionPollers.resize(Config->PollerThreads);
     for (size_t i = 0; i < CompletionPollers.size(); ++i) {
@@ -2033,14 +2027,14 @@ TCompletionPoller* TServer::PickPoller() noexcept
 
 IServerPtr CreateServer(
     NVerbs::IVerbsPtr verbs,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
+    TLog log,
+    NMonitoring::TDynamicCountersPtr counters,
     TServerConfigPtr config)
 {
     return std::make_shared<TServer>(
         std::move(verbs),
-        std::move(logging),
-        std::move(monitoring),
+        std::move(log),
+        std::move(counters),
         std::move(config));
 }
 

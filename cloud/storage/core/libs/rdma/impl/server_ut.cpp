@@ -22,6 +22,31 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IServerPtr CreateTestServer(
+    NVerbs::IVerbsPtr verbs,
+    const ILoggingServicePtr& logging,
+    const IMonitoringServicePtr& monitoring,
+    TServerConfigPtr config)
+{
+    return CreateServer(
+        std::move(verbs),
+        logging->CreateLog("RDMA_TEST"),
+        monitoring->GetCounters()
+            ->GetSubgroup("counters", "rdma")
+            ->GetSubgroup("component", "server"),
+        std::move(config));
+}
+
+NMonitoring::TDynamicCountersPtr GetServerCounters(
+    const IMonitoringServicePtr& monitoring)
+{
+    return monitoring->GetCounters()
+        ->GetSubgroup("counters", "rdma")
+        ->GetSubgroup("component", "server");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TClientHandler
     : IClientHandler
 {
@@ -71,7 +96,7 @@ TEST(TRdmaServerTest, ShouldStartEndpoint)
         "console",
         TLogSettings{TLOG_RESOURCES});
 
-    auto server = CreateServer(
+    auto server = CreateTestServer(
         verbs,
         logging,
         monitoring,
@@ -102,7 +127,7 @@ TEST(TRdmaServerTest, ShouldStartEndpointWithToS)
         "console",
         TLogSettings{TLOG_RESOURCES});
 
-    auto server = CreateServer(
+    auto server = CreateTestServer(
         verbs,
         logging,
         monitoring,
@@ -140,7 +165,7 @@ TEST(TRdmaServerTest, StartEndpointShouldNotThrow)
         "console",
         TLogSettings{TLOG_RESOURCES});
 
-    auto server = CreateServer(
+    auto server = CreateTestServer(
         verbs,
         logging,
         monitoring,
@@ -206,7 +231,7 @@ TEST(TRdmaServerTest, ShouldHandleSessionError)
         "console",
         TLogSettings{TLOG_RESOURCES});
 
-    auto server = CreateServer(
+    auto server = CreateTestServer(
         verbs,
         logging,
         monitoring,
@@ -237,7 +262,7 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
         "console",
         TLogSettings{TLOG_RESOURCES});
 
-    auto server = CreateServer(
+    auto server = CreateTestServer(
         verbs,
         logging,
         monitoring,
@@ -271,10 +296,7 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
         }
     };
 
-    auto counters = monitoring
-        ->GetCounters()
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "rdma_server");
+    auto counters = GetServerCounters(monitoring);
 
     auto activeRecv = counters->GetCounter("ActiveRecv");
     auto abortedRequests = counters->GetCounter("AbortedRequests");
@@ -376,7 +398,7 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-    auto server = CreateServer(verbs, logging, monitoring, serverConfig);
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
 
     server->Start();
     Y_DEFER

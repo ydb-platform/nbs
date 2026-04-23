@@ -21,6 +21,7 @@ namespace NCloud::NStorage::NRdma {
 struct TClientConfig
 {
     ui32 QueueSize = 10;
+    // Blockstore considerations:
     // Keep the value greater then MaxSubRequestSize, MigrationRangeSize,
     // ResyncRangeSize in cloud/blockstore/libs/service/device_handler.cpp
     // cloud/blockstore/libs/storage/model/common_constants.h

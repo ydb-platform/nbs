@@ -6,6 +6,8 @@
 #include "storage.h"
 #include "target.h"
 
+#include <cloud/blockstore/libs/rdma/helper.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -15,10 +17,9 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 #include <cloud/storage/core/libs/rdma/iface/probes.h>
-#include <cloud/storage/core/libs/rdma/impl/client.h>
-#include <cloud/storage/core/libs/rdma/impl/server.h>
-#include <cloud/storage/core/libs/rdma/impl/verbs.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
@@ -72,10 +73,7 @@ void TBootstrap::Init()
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
 
-        Verbs = NCloud::NStorage::NRdma::NVerbs::CreateVerbs();
-
-        Server = NCloud::NStorage::NRdma::CreateServer(
-            Verbs,
+        Server = NCloud::NBlockStore::NRdma::CreateRdmaServer(
             Logging,
             Monitoring,
             std::move(config));
@@ -91,10 +89,7 @@ void TBootstrap::Init()
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
 
-        Verbs = NCloud::NStorage::NRdma::NVerbs::CreateVerbs();
-
-        Client = NCloud::NStorage::NRdma::CreateClient(
-            Verbs,
+        Client = NCloud::NBlockStore::NRdma::CreateRdmaClient(
             Logging,
             Monitoring,
             std::move(config));
