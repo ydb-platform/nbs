@@ -871,7 +871,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             ReadRequestData(std::move(req), send);
         } else {
             // no more WRs available
-            RDMA_TRACE(recv << "no more send WRs available");
+            RDMA_TRACE("no more send WRs available");
             Counters->RequestEnqueued();
             QueuedRequests.Enqueue(std::move(req));
         }
