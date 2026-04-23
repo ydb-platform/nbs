@@ -738,7 +738,7 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
 
 void TServerSession::RecvRequest(TRecvWr* recv) noexcept
 {
-    auto* requestMsg = recv->Message<TRequestMessage>();
+    auto* requestMsg = recv->Message();
     Zero(*requestMsg);
 
     try {
@@ -785,7 +785,7 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 
 void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
 {
-    const auto* msg = recv->Message<TRequestMessage>();
+    const auto* msg = recv->Message();
     const int version = ParseMessageHeader(msg);
 
     if (version != RDMA_PROTO_VERSION) {
@@ -1057,7 +1057,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
 {
     req->State = ERequestState::SendResponse;
 
-    auto* responseMsg = send->Message<TResponseMessage>();
+    auto* responseMsg = send->Message();
     Zero(*responseMsg);
 
     InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
@@ -1968,7 +1968,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
 inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 {
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
-    if (auto msg = recv->Message<TRequestMessage>()) {
+    if (auto msg = recv->Message()) {
         if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
             out << " [request=" << msg->ReqId << "]";
         }

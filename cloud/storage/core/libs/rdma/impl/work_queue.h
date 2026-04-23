@@ -61,16 +61,15 @@ struct TSendWrBase
         Zero(*this);
     }
 
-    template <typename T>
-    T* Message()
+    M* Message()
     {
-        return reinterpret_cast<T*>(wr.sg_list[0].addr);
+        return reinterpret_cast<M*>(wr.sg_list[0].addr);
     }
 
-    template <typename T>
-    T Context()
+    template <typename C>
+    C Context()
     {
-        return reinterpret_cast<T>(context);
+        return reinterpret_cast<C>(context);
     }
 };
 
@@ -89,10 +88,9 @@ struct TRecvWrBase
         Zero(*this);
     }
 
-    template <typename T>
-    T* Message()
+    M* Message()
     {
-        return reinterpret_cast<T*>(wr.sg_list[0].addr);
+        return reinterpret_cast<M*>(wr.sg_list[0].addr);
     }
 };
 

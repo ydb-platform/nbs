@@ -1154,7 +1154,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 {
     req->ReqId = ActiveRequests.CreateId();
 
-    auto* requestMsg = send->Message<TRequestMessage>();
+    auto* requestMsg = send->Message();
     Zero(*requestMsg);
 
     InitMessageHeader(requestMsg, RDMA_PROTO_VERSION);
@@ -1207,7 +1207,7 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
 {
-    auto* responseMsg = recv->Message<TResponseMessage>();
+    auto* responseMsg = recv->Message();
     Zero(*responseMsg);
 
     try {
@@ -1227,7 +1227,7 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
 
 void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
 {
-    auto* msg = recv->Message<TResponseMessage>();
+    auto* msg = recv->Message();
 
     int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
@@ -2397,7 +2397,7 @@ bool TClient::IsAlignedDataEnabled() const
 inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
 {
     out << "SEND " << TWorkRequestId(send->wr.wr_id);
-    if (auto msg = send->Message<TRequestMessage>()) {
+    if (auto msg = send->Message()) {
         if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
             out << " [request=" << msg->ReqId << "]";
         }
@@ -2408,7 +2408,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
 inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 {
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
-    if (auto msg = recv->Message<TResponseMessage>()) {
+    if (auto msg = recv->Message()) {
         if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
             out << " [request=" << msg->ReqId << "]";
         }
