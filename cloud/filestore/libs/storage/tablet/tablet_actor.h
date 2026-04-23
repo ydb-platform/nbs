@@ -557,6 +557,14 @@ private:
         ui64 value) const;
     TBackgroundOpsBackpressureStatus GetBackgroundOpsBackpressureStatus() const;
 
+    void ReplyListNodes(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TListNodes& args);
+
+    void ReplyListNodesInternal(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TListNodes& args);
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);

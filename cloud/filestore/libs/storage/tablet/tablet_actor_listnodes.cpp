@@ -44,6 +44,12 @@ NProto::TError ValidateRequest(const NProto::TListNodesRequest& request)
     return {};
 }
 
+NProto::TError ValidateInternalRequest(
+    const NProtoPrivate::TListNodesInternalRequest& request)
+{
+    return ValidateRequest(request.GetOriginalRequest());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +98,53 @@ void TIndexTabletActor::HandleListNodes(
         std::move(requestInfo),
         msg->Record,
         maxBytes,
-        Config->GetMaxBytesMultiplier());
+        Config->GetMaxBytesMultiplier(),
+        false /* replyInternal */);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleListNodesInternal(
+    const TEvIndexTablet::TEvListNodesInternalRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    using TMethod = TEvIndexTablet::TListNodesInternalMethod;
+    auto* msg = ev->Get();
+
+    if (!AcceptRequestNoSession<TMethod>(ev, ctx, ValidateInternalRequest)) {
+        return;
+    }
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddInFlightRequest<TEvService::TListNodesMethod>(*requestInfo);
+
+    auto maxBytes = Min(
+        Config->GetMaxResponseEntries() * MaxName,
+        Config->GetMaxResponseBytes());
+    auto& originalRequest = *msg->Record.MutableOriginalRequest();
+    if (auto bytes = originalRequest.GetMaxBytes()) {
+        maxBytes = Min(bytes, maxBytes);
+    }
+
+    // Set size calculation mode from config if not explicitly set in request.
+    // TODO(#5148): explicitly pass the mode from client side.
+    if (originalRequest.GetListNodesSizeMode() == NProto::LNSM_UNSPECIFIED)
+    {
+        originalRequest.SetListNodesSizeMode(Config->GetListNodesSizeMode());
+    }
+
+    ExecuteTx<TListNodes>(
+        ctx,
+        std::move(requestInfo),
+        std::move(originalRequest),
+        maxBytes,
+        Config->GetMaxBytesMultiplier(),
+        true /* replyInternal */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,7 +185,9 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     if (!args.Node) {
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
-    } else if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
+    }
+
+    if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
         args.Error = ErrorIsNotDirectory(args.NodeId);
         return true;
     }
@@ -189,12 +243,10 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     return ready;
 }
 
-void TIndexTabletActor::CompleteTx_ListNodes(
+void TIndexTabletActor::ReplyListNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodes& args)
 {
-    RemoveInFlightRequest(*args.RequestInfo);
-
     auto response =
         std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
@@ -253,6 +305,135 @@ void TIndexTabletActor::CompleteTx_ListNodes(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+void TIndexTabletActor::ReplyListNodesInternal(
+    const TActorContext& ctx,
+    TTxIndexTablet::TListNodes& args)
+{
+    using TResponse = TEvIndexTablet::TEvListNodesInternalResponse;
+    auto response = std::make_unique<TResponse>(args.Error);
+    if (SUCCEEDED(args.Error.GetCode())) {
+        ui64 nameBufferSize = 0;
+        ui64 extRefBufferSize = 0;
+        int extRefCount = 0;
+        int skippedRefCount = 0;
+        for (const auto& ref: args.ChildRefs) {
+            nameBufferSize += ref.Name.size();
+            if (!ref.ShardId) {
+                continue;
+            }
+
+            if (HasPendingNodeCreateInShard(ref.ShardNodeName)) {
+                ++skippedRefCount;
+                continue;
+            }
+
+            extRefBufferSize += ref.ShardId.size();
+            extRefBufferSize += ref.ShardNodeName.size();
+            ++extRefCount;
+        }
+
+        auto& record = response->Record;
+        auto& nameSizes = *record.MutableNameSizes();
+        nameSizes.Reserve(args.ChildRefs.size());
+
+        auto& extRefIndices = *record.MutableExternalRefIndices();
+        extRefIndices.Reserve(extRefCount);
+        auto& shardIdSizes = *record.MutableShardIdSizes();
+        shardIdSizes.Reserve(extRefCount);
+        auto& shardNodeNameSizes = *record.MutableShardNodeNameSizes();
+        shardNodeNameSizes.Reserve(extRefCount);
+        for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
+            auto& ref = args.ChildRefs[i];
+            if (ref.ShardId
+                    && !HasPendingNodeCreateInShard(ref.ShardNodeName))
+            {
+                extRefIndices.Add(i);
+            }
+        }
+
+        record.MutableNameBuffer()->ReserveAndResize(nameBufferSize);
+        record.MutableExternalRefBuffer()->ReserveAndResize(extRefBufferSize);
+        char* nameBuffer = record.MutableNameBuffer()->begin();
+        char* extRefBuffer = record.MutableExternalRefBuffer()->begin();
+
+        record.MutableNodes()->Reserve(
+            args.ChildRefs.size() - extRefCount - skippedRefCount);
+
+        size_t j = 0;
+        for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
+            auto& ref = args.ChildRefs[i];
+            memcpy(nameBuffer, ref.Name.data(), ref.Name.size());
+            nameBuffer += ref.Name.size();
+            nameSizes.Add(ref.Name.size());
+
+            if (ref.ShardId) {
+                if (HasPendingNodeCreateInShard(ref.ShardNodeName)) {
+                    continue;
+                }
+
+                memcpy(extRefBuffer, ref.ShardId.data(), ref.ShardId.size());
+                extRefBuffer += ref.ShardId.size();
+                shardIdSizes.Add(ref.ShardId.size());
+
+                memcpy(
+                    extRefBuffer,
+                    ref.ShardNodeName.data(),
+                    ref.ShardNodeName.size());
+                extRefBuffer += ref.ShardNodeName.size();
+                shardNodeNameSizes.Add(ref.ShardNodeName.size());
+
+                continue;
+            }
+
+            ConvertNodeFromAttrs(
+                *record.AddNodes(),
+                ref.ChildNodeId,
+                args.ChildNodes[j].Attrs);
+
+            ++j;
+        }
+
+        if (args.Next) {
+            record.SetCookie(args.Next);
+        }
+
+        Metrics.ListNodes.Update(
+            1,
+            nameBufferSize,
+            ctx.Now() - args.RequestInfo->StartedTs);
+        Metrics.ListNodesExtra.RequestedBytesPrecharge.fetch_add(
+            args.BytesToPrecharge,
+            std::memory_order_relaxed);
+        Metrics.ListNodesExtra.PrepareAttempts.fetch_add(
+            args.PrepareAttempts,
+            std::memory_order_relaxed);
+        Metrics.ListNodesExtra.ResponseNodeRefs.fetch_add(
+            args.ChildRefs.size(),
+            std::memory_order_relaxed);
+    }
+
+    CompleteResponse<TEvIndexTablet::TListNodesInternalMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+void TIndexTabletActor::CompleteTx_ListNodes(
+    const TActorContext& ctx,
+    TTxIndexTablet::TListNodes& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    if (args.ReplyInternal) {
+        ReplyListNodesInternal(ctx, args);
+        return;
+    }
+
+    ReplyListNodes(ctx, args);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

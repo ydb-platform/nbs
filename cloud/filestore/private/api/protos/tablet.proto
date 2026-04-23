@@ -1284,3 +1284,37 @@ message TMarkNodeRefsExhaustiveResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ListNodesInternal request/response
+
+message TListNodesInternalRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Original request.
+    NProto.TListNodesRequest OriginalRequest = 3;
+}
+
+message TListNodesInternalResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    bytes NameBuffer = 2;
+    repeated uint32 NameSizes = 3;
+    bytes ExternalRefBuffer = 4;
+    repeated uint32 ShardIdSizes = 5;
+    repeated uint32 ShardNodeNameSizes = 6;
+    repeated NProto.TNodeAttr Nodes = 7;
+    repeated uint32 ExternalRefIndices = 8;
+
+    bytes Cookie = 9;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
