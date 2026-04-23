@@ -15,6 +15,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
+#include <util/datetime/cputimer.h>
 #include <util/generic/queue.h>
 #include <util/generic/scope.h>
 #include <util/generic/xrange.h>
@@ -477,8 +478,6 @@ struct TTestEnvironment final
 #define SET_HANDLER(name, ...)                                                 \
     Logger->name##LogPostponedRequestHandler =                                 \
         [&PostponedCount = this->LoggerPostponed] (                            \
-            ui64,                                                              \
-            TCallContext&,                                                     \
             IVolumeInfo*,                                                      \
             const NProto::T##name##Request&,                                   \
             TDuration)                                                         \
@@ -489,8 +488,6 @@ struct TTestEnvironment final
                                                                                \
     Logger->name##LogAdvancedRequestHandler =                                  \
         [&AdvancedCount = this->LoggerAdvanced] (                              \
-            ui64,                                                              \
-            TCallContext&,                                                     \
             IVolumeInfo*,                                                      \
             const NProto::T##name##Request&)                                   \
     {                                                                          \
@@ -1293,12 +1290,12 @@ struct TTestEnvironment final
 #undef SETUP_VECTORS
 
 #define PERFORM_TEST(name, clientId, diskId, ...)                              \
-    auto futures##name##clientId##diskId =                                     \
-        Perform##name##Requests(__VA_ARGS__);                                  \
-    futures##name.insert(                                                      \
-        futures##name.end(),                                                   \
-        futures##name##clientId##diskId.begin(),                               \
-        futures##name##clientId##diskId.end());                                \
+    for (ui32 i = 0; i < Requests; ++i) {                                      \
+        futures##name.push_back(                                               \
+            ThrottlingClient->name(                                            \
+                MakeIntrusive<TCallContext>(),                                 \
+                Create##name##Request(__VA_ARGS__)));                          \
+    }                                                                          \
 // PERFORM_TEST
 
         Policy->SetPostponeDelay(TDuration::Seconds(1));
@@ -1312,27 +1309,18 @@ struct TTestEnvironment final
                     PERFORM_TEST,
                     Client,
                     Disk,
-                    ThrottlingClient,
-                    CallContext,
-                    Requests,
                     client);
 
                 BLOCKSTORE_NOBLOCKS_SERVICE(
                     PERFORM_TEST,
                     Client,
                     Disk,
-                    ThrottlingClient,
-                    CallContext,
-                    Requests,
                     client,
                     disk);
                 BLOCKSTORE_READ_SERVICE(
                     PERFORM_TEST,
                     Client,
                     Disk,
-                    ThrottlingClient,
-                    CallContext,
-                    Requests,
                     client,
                     disk,
                     BlockCount);
@@ -1340,9 +1328,6 @@ struct TTestEnvironment final
                     PERFORM_TEST,
                     Client,
                     Disk,
-                    ThrottlingClient,
-                    CallContext,
-                    Requests,
                     client,
                     disk,
                     BlockCount);
@@ -1420,7 +1405,7 @@ struct TTestEnvironment final
             for (ui32 i = 0; i < Requests; ++i) {                              \
                 futures##name##clientId##diskId.push_back(                     \
                     ThrottlingClient->name(                                    \
-                        CallContext,                                           \
+                        MakeIntrusive<TCallContext>(),                         \
                         Create##name##Request(__VA_ARGS__)));                  \
             }                                                                  \
             with_lock (requestsLock) {                                         \
@@ -1666,6 +1651,40 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         env.Requests = 1'000;
         env.BlockCount = 10;
         env.ShootAsyncWithPostpone();
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCallContextWithThrottlerDelay)
+    {
+        TTestEnvironment env;
+
+        const TString diskId = "test_disk";
+        const TString clientId = "test_client";
+        env.MountVolume(diskId, clientId);
+
+        TCallContextPtr callContext = MakeIntrusive<TCallContext>();
+
+        env.Policy->SetPostponeDelay(TDuration::Seconds(1));
+
+        auto future = env.ThrottlingClient->WriteBlocks(
+            callContext,
+            env.CreateWriteBlocksRequest(clientId, diskId, 1));
+
+        UNIT_ASSERT(!future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            callContext->Time(EProcessingStage::Postponed));
+
+        env.Policy->SetPostponeDelay(TDuration::Zero());
+        env.Timer->AdvanceTime(TDuration::Seconds(1));
+
+        future.Wait();
+
+        auto response = future.GetValue();
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+
+        UNIT_ASSERT_C(
+            callContext->Time(EProcessingStage::Postponed) > TDuration::Zero(),
+            "TCallContext::Postpone/Advance were not called by the throttler");
     }
 
     Y_UNIT_TEST(ShouldCorrectlyUpdateMaxQuotaWithScheduler)

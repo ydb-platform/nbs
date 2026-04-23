@@ -244,8 +244,6 @@ public:
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     void LogPostponedRequest(                                                  \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
         IVolumeInfo* volumeInfo,                                               \
         const NProto::T##name##Request& request,                               \
         TDuration postponeDelay) override                                      \
@@ -265,13 +263,9 @@ public:
             << GetRequestDetails(request)                                      \
             << " request postponed"                                            \
             << " (delay: " << FormatDuration(postponeDelay) << ")");           \
-                                                                               \
-        callContext.Postpone(nowCycles);                                       \
     }                                                                          \
                                                                                \
     void LogAdvancedRequest(                                                   \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
         IVolumeInfo* volumeInfo,                                               \
         const NProto::T##name##Request& request) override                      \
     {                                                                          \
@@ -289,8 +283,6 @@ public:
                 GetClientId(request))                                          \
             << GetRequestDetails(request)                                      \
             << " request advanced");                                           \
-                                                                               \
-        callContext.Advance(nowCycles);                                        \
     }                                                                          \
                                                                                \
     void LogError(                                                             \
