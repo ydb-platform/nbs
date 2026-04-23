@@ -1667,7 +1667,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
             auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
             // Note: information about all volume clients is kept until volume
-            // is unmounted (trimmed) even if threre are no mount requests form
+            // is unmounted (trimmed) even if there are no mount requests form
             // some clients during inactivityTimeout, and VolumeInfo can be
             // obtained for such inactive client while exists
             UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
@@ -1823,7 +1823,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // every still existing [diskId, instanceId] combination must remain
 
         // Note: information about all volume clients is kept until volume
-        // is unmounted (trimmed) even if threre are no mount requests form
+        // is unmounted (trimmed) even if there are no mount requests form
         // some clients during inactivityTimeout, and VolumeInfo can be obtained
         // for such inactive client while exists
 
