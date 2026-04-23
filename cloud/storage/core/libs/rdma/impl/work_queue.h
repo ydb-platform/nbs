@@ -48,55 +48,49 @@ inline IOutputStream& operator<<(IOutputStream& out, const TWorkRequestId& id)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSendWr
+template <typename M>
+struct TSendWrBase
 {
     ibv_send_wr wr;
     ibv_sge sg_list[RDMA_MAX_SEND_SGE];
 
     void* context;
 
-    TSendWr()
+    TSendWrBase()
     {
         Zero(*this);
     }
 
-    template <typename T>
-    T* Message()
+    M* Message()
     {
-        return reinterpret_cast<T*>(wr.sg_list[0].addr);
+        return reinterpret_cast<M*>(wr.sg_list[0].addr);
     }
 
-    template <typename T>
-    const T* Message() const
+    template <typename C>
+    C Context()
     {
-        return const_cast<const T*>(const_cast<TSendWr*>(this)->Message<T>());
+        return reinterpret_cast<C>(context);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRecvWr
+template <typename M>
+struct TRecvWrBase
 {
     ibv_recv_wr wr;
     ibv_sge sg_list[RDMA_MAX_RECV_SGE];
 
     void* context;
 
-    TRecvWr()
+    TRecvWrBase()
     {
         Zero(*this);
     }
 
-    template <typename T>
-    T* Message()
+    M* Message()
     {
-        return reinterpret_cast<T*>(wr.sg_list[0].addr);
-    }
-
-    template <typename T>
-    const T* Message() const
-    {
-        return const_cast<const T*>(const_cast<TRecvWr*>(this)->Message<T>());
+        return reinterpret_cast<M*>(wr.sg_list[0].addr);
     }
 };
 
