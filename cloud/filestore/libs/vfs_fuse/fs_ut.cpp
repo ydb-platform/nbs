@@ -43,6 +43,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
+#include <util/system/file.h>
 
 #include <atomic>
 #include <fstream>
@@ -134,7 +135,9 @@ struct TBootstrap
             const NProto::TFileStoreFeatures& featuresConfig = {},
             ui32 handleOpsQueueSize = 1000,
             ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheCapacity = WriteBackCacheCapacity)
+            ui64 writeBackCacheCapacity = WriteBackCacheCapacity,
+            ui64 directoryHandlesInitialDataSize = 0,
+            ui64 directoryHandlesMaxDataAreaStepSize = 0)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -212,6 +215,14 @@ struct TBootstrap
         if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
             proto.SetDirectoryHandlesStoragePath(TempDir.Path() / "DirectoryHandles");
             DirectoryHandleStoragePath = proto.GetDirectoryHandlesStoragePath();
+            if (directoryHandlesInitialDataSize) {
+                proto.SetDirectoryHandlesInitialDataSize(
+                    directoryHandlesInitialDataSize);
+            }
+            if (directoryHandlesMaxDataAreaStepSize) {
+                proto.SetDirectoryHandlesMaxDataAreaStepSize(
+                    directoryHandlesMaxDataAreaStepSize);
+            }
         }
 
         // WriteBackCache should be configured even if it is disabled
@@ -1253,6 +1264,84 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(0, maxChunkCount->Val());
+    }
+
+    Y_UNIT_TEST(ShouldDeallocateDirectoryHandleStorageAfterReleaseDir)
+    {
+        const TString sessionId = CreateGuidAsString();
+        const ui64 initialDataAreaSize = 4_KB;
+
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        TBootstrap bootstrap{
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,   // handleOpsQueueSize
+            1000,   // writeBackCacheAutomaticFlushPeriodMs
+            WriteBackCacheCapacity,
+            initialDataAreaSize,
+            initialDataAreaSize};
+
+        bootstrap.Service->CreateSessionHandler = [&](auto, auto)
+        {
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->ListNodesHandler = [&](auto callContext, auto)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            NProto::TListNodesResponse result;
+            for (ui32 i = 0; i < 1024; ++i) {
+                result.AddNames()->assign(
+                    "dir_entry_" + ToString(i) + "_" + TString(64, 'x'));
+                auto* node = result.AddNodes();
+                node->SetId(1000 + i);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        const TString pathToCache =
+            (TFsPath(bootstrap.DirectoryHandleStoragePath) / FileSystemId /
+             sessionId / "directory_handles_storage")
+                .GetPath();
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const ui64 handleId = handle.GetValue();
+
+        const ui64 sizeBeforeRead = TFile(pathToCache, RdOnly).GetLength();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(4096, read.GetValue());
+
+        const ui64 sizeAfterRead = TFile(pathToCache, RdOnly).GetLength();
+        UNIT_ASSERT_GT(sizeAfterRead, sizeBeforeRead);
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+
+        const ui64 sizeAfterRelease = TFile(pathToCache, RdOnly).GetLength();
+        UNIT_ASSERT_VALUES_EQUAL(sizeBeforeRead, sizeAfterRelease);
     }
 
     Y_UNIT_TEST(ShouldLoadDirectoryHandlesStorageWithoutErrors)
