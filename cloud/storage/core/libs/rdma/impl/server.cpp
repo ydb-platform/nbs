@@ -832,7 +832,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
 
     if (req->Out.Length > Config->MaxBufferSize) {
         RDMA_ERROR(
-            recv << "response exceeds maximum supported size "
+            recv << " response exceeds maximum supported size "
                  << req->Out.Length << " > " << Config->MaxBufferSize);
 
         Counters->Error();
@@ -848,7 +848,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
         RDMA_INFO(
             LogThrottler.Inflight,
             Log,
-            recv << "reached inflight limit, " << MaxInflightBytes << "/"
+            recv << " reached inflight limit, " << MaxInflightBytes << "/"
                  << Config->MaxInflightBytes << " bytes available");
 
         Counters->RequestThrottled();
@@ -1017,7 +1017,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
 
         StoreRequest(send, std::move(req));
         Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE(send << "posted");
+        RDMA_TRACE(send << " posted");
 
         LWTRACK(WriteResponseDataStarted, cc->LWOrbit, cc->RequestId);
         Counters->WriteResponseStarted();
@@ -1071,7 +1071,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
 
         StoreRequest(send, std::move(req));
         Verbs->PostSend(Connection->qp, &send->wr);
-        RDMA_TRACE(send << "posted");
+        RDMA_TRACE(send << " posted");
 
         LWTRACK(SendResponseStarted, cc->LWOrbit, cc->RequestId);
         Counters->SendResponseStarted();

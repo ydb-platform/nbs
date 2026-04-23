@@ -1250,7 +1250,7 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
         RDMA_WARN(
-            recv << " request not found, last active request "
+            recv << " request not found, last active request id "
                  << ActiveRequests.GetCurrentId());
         Counters->Error();
         RecvResponse(recv);
