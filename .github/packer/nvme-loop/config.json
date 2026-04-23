@@ -1,0 +1,7 @@
+{
+    "target_name": "nvme-loop",
+    "num_namespaces": 16,
+    "disk_size": "100M",
+    "port_id": 1,
+    "auto_connect": true
+}
