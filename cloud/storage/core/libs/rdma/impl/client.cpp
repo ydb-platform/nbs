@@ -1256,10 +1256,10 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
         RecvResponse(recv);
         return;
     }
-    RDMA_TRACE("request " << reqId << " completed");
-
-    RecvResponse(recv);
     Counters->RequestCompleted();
+    RecvResponse(recv);
+
+    RDMA_TRACE("request " << reqId << " completed");
 
     LWTRACK(
         RecvResponseCompleted,
