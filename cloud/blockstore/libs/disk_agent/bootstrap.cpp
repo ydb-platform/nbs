@@ -126,7 +126,12 @@ bool AgentHasDevices(
         agentConfig->GetStorageDiscoveryConfig(),
         {},   // allowedPaths
         std::ref(gen));
+
     if (HasError(error)) {
+        const auto& Log = log;
+        STORAGE_ERROR(
+            "Failed to find devices: " << error.GetCode() << ", "
+                                       << error.GetMessage());
         return false;
     }
 
