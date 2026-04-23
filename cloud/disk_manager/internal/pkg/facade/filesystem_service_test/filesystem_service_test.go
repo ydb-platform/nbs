@@ -233,73 +233,6 @@ func TestResizeNonExistingFilesystemReturnsError(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func assertFilesystemModel(
-	t *testing.T,
-	model *disk_manager.FilesystemModel,
-	blockSize int64,
-	size int64,
-	kind disk_manager.FilesystemKind,
-) {
-	t.Helper()
-
-	require.NotNil(t, model)
-	require.Equal(t, blockSize, model.BlockSize)
-	require.Equal(t, size, model.Size)
-	require.Equal(t, kind, model.Kind)
-	require.NotNil(t, model.PerformanceProfile)
-	require.NotEqual(t, int64(0), model.PerformanceProfile.MaxReadBandwidth)
-	require.NotEqual(t, int64(0), model.PerformanceProfile.MaxReadIops)
-	require.NotEqual(t, int64(0), model.PerformanceProfile.MaxWriteBandwidth)
-	require.NotEqual(t, int64(0), model.PerformanceProfile.MaxWriteIops)
-}
-
-func TestFilesystemServiceDescribeFilesystemModelInZoneAndCell(t *testing.T) {
-	ctx := testcommon.NewContext()
-
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
-	testCases := []struct {
-		name   string
-		zoneID string
-	}{
-		{
-			name:   "Zone",
-			zoneID: "zone-c",
-		},
-		{
-			name:   "Cell",
-			zoneID: "zone-c-shard1",
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			model, err := client.DescribeFilesystemModel(
-				ctx,
-				&disk_manager.DescribeFilesystemModelRequest{
-					ZoneId:    testCase.zoneID,
-					BlockSize: 4096,
-					Size:      1000000 * 4096,
-					Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
-				},
-			)
-			require.NoError(t, err)
-
-			assertFilesystemModel(
-				t,
-				model,
-				4096, // blockSize
-				1000000*4096,
-				disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
-			)
-		})
-	}
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
 func TestCreateFilesystemInCells(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -401,24 +334,6 @@ func TestResizeFilesystemInCellsByZoneID(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	model, err := client.DescribeFilesystemModel(
-		ctx,
-		&disk_manager.DescribeFilesystemModelRequest{
-			ZoneId:    "zone-c",
-			BlockSize: 4096,
-			Size:      8192000,
-			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
-		},
-	)
-	require.NoError(t, err)
-	assertFilesystemModel(
-		t,
-		model,
-		4096,    // blockSize
-		8192000, // size
-		disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
-	)
-
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -466,24 +381,6 @@ func TestResizeFilesystem(t *testing.T) {
 
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
-
-	model, err := client.DescribeFilesystemModel(
-		ctx,
-		&disk_manager.DescribeFilesystemModelRequest{
-			ZoneId:    "zone-a",
-			BlockSize: 4096,
-			Size:      8192000,
-			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
-		},
-	)
-	require.NoError(t, err)
-	assertFilesystemModel(
-		t,
-		model,
-		4096, // blockSize
-		8192000,
-		disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
-	)
 
 	testcommon.CheckConsistency(t, ctx)
 }

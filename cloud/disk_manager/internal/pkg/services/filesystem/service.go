@@ -240,14 +240,8 @@ func (s *service) DescribeFilesystemModel(
 
 	if len(req.ZoneId) == 0 {
 		client, err = s.factory.NewClientFromDefaultZone(ctx)
-	} else if s.cellSelector == nil {
-		client, err = s.factory.NewClient(ctx, req.ZoneId)
 	} else {
-		client, err = s.cellSelector.SelectCellForFilesystem(
-			ctx,
-			req.ZoneId,
-			"", // describe model request does not contain folder id
-		)
+		client, err = s.factory.NewClient(ctx, req.ZoneId)
 	}
 	if err != nil {
 		return nil, err

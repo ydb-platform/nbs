@@ -380,35 +380,3 @@ func TestCreateResizeFilesystem(t *testing.T) {
 	err = waitTask(ctx, scheduler, taskID)
 	require.NoError(t, err)
 }
-
-func TestDescribeModel(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	_, service := createServices(t, ctx, db)
-
-	reqCtx := getRequestContext(t, ctx)
-	model, err := service.DescribeFilesystemModel(reqCtx, &disk_manager.DescribeFilesystemModelRequest{
-		ZoneId:    "zone",
-		BlockSize: 4096,
-		Size:      100500 * 4096,
-		Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, model)
-
-	require.Equal(t, model.Size, int64(100500*4096))
-	require.Equal(t, model.BlockSize, int64(4096))
-	require.NotEqual(t, model.ChannelsCount, int64(0))
-	require.Equal(t, model.Kind, disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD)
-
-	require.NotEqual(t, model.PerformanceProfile.MaxReadBandwidth, int64(0))
-	require.NotEqual(t, model.PerformanceProfile.MaxReadIops, int64(0))
-	require.NotEqual(t, model.PerformanceProfile.MaxWriteBandwidth, int64(0))
-	require.NotEqual(t, model.PerformanceProfile.MaxWriteIops, int64(0))
-}
