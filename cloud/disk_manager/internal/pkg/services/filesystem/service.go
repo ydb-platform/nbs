@@ -246,7 +246,6 @@ func (s *service) DescribeFilesystemModel(
 	if err != nil {
 		return nil, err
 	}
-	defer client.Close()
 
 	if req.Size < 0 {
 		return nil, common.NewInvalidArgumentError(
@@ -280,7 +279,7 @@ func (s *service) DescribeFilesystemModel(
 	model, err := client.DescribeModel(
 		ctx,
 		blocksCount,
-		blockSize,
+		uint32(req.BlockSize),
 		kind,
 	)
 	if err != nil {
