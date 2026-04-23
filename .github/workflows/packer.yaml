@@ -143,7 +143,7 @@ jobs:
 
     - name: Start runner
       id: start-runner
-      if: (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
+      if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
       uses: ./.github/actions/nebius_runner_create
       timeout-minutes: 60
       with:
