@@ -13457,7 +13457,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotLoseAnyMixedMergedBlocksWhileWaitingForCheckpointCreation)
+    Y_UNIT_TEST(
+        ShouldNotLoseAnyMixedMergedBlocksWhileWaitingForCheckpointCreation)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
@@ -13476,15 +13477,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool interceptTransactions = true;
 
         std::unique_ptr<IEventHandle> executeTransactionsEvent;
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
-                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvExecuteTransactions && interceptTransactions) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvExecuteTransactions &&
+                    interceptTransactions)
+                {
                     executeTransactionsEvent.reset(event.Release());
                     interceptTransactions = false;
-                    return TTestActorRuntime::EEventAction::DROP;
+
+                    return true;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         auto response = partition.RecvCompactionResponse();
@@ -13493,6 +13499,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.Cleanup();
 
         UNIT_ASSERT(executeTransactionsEvent);
+
+        partition.SendReadBlocksRequest(0, "c1");
+        auto readBlocksResponse = partition.RecvReadBlocksResponse();
+
+        // Check that create checkpoint transaction is not executed
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, readBlocksResponse->GetStatus());
 
         runtime->SendAsync(executeTransactionsEvent.release());
 
