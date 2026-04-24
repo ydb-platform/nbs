@@ -1134,6 +1134,11 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         TAG(TH3) { out << "Stats"; }
         PRE() { DumpStats(out); }
 
+        TAG(TH3) { out << "FileSystem info"; }
+        COLLAPSED_BUTTON_CONTENT("filesystem-info", "Show") {
+            PRE() { out << GetFileSystem().DebugString(); }
+        }
+
         const ui32 topSize = FromStringWithDefault(params.Get("top-size"), 1);
         TAG(TH3) { out << "CompactionMap"; }
         DumpCompactionMap(out, TabletID(), GetCompactionMapStats(topSize));
