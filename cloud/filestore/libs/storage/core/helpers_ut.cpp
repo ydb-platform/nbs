@@ -1,6 +1,9 @@
 #include "helpers.h"
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/fs.pb.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <google/protobuf/util/message_differencer.h>
 
@@ -157,6 +160,155 @@ Y_UNIT_TEST_SUITE(THelpers)
 
         Comparator.Compare(TargetConfig, config);
         UNIT_ASSERT_VALUES_EQUAL("", ReportDiff);
+    }
+
+    auto MakeListNodesInternalResponse()
+    {
+        NProtoPrivate::TListNodesInternalResponse internalResponse;
+        Store("name1", "shard1", "nodename1", 0, internalResponse);
+        Store("name2", "", "", 1, internalResponse);
+        internalResponse.AddNodes()->SetId(111);
+        Store("name3", "", "", 2, internalResponse);
+        internalResponse.AddNodes()->SetId(222);
+        Store("name4", "shard2", "nodename2", 3, internalResponse);
+        Store("name5", "", "", 4, internalResponse);
+        internalResponse.AddNodes()->SetId(333);
+        internalResponse.SetCookie("cookie");
+        return internalResponse;
+    }
+
+    Y_UNIT_TEST(ShouldConvertListNodesInternalResponse)
+    {
+        auto internalResponse = MakeListNodesInternalResponse();
+
+        NProto::TListNodesResponse response;
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_C(
+            !HasError(response.GetError()),
+            FormatError(response.GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(5, response.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("name1", response.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("name2", response.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL("name3", response.GetNames(2));
+        UNIT_ASSERT_VALUES_EQUAL("name4", response.GetNames(3));
+        UNIT_ASSERT_VALUES_EQUAL("name5", response.GetNames(4));
+
+        UNIT_ASSERT_VALUES_EQUAL(5, response.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "shard1",
+            response.GetNodes(0).GetShardFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "nodename1",
+            response.GetNodes(0).GetShardNodeName());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            response.GetNodes(1).GetShardFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("", response.GetNodes(1).GetShardNodeName());
+        UNIT_ASSERT_VALUES_EQUAL(111, response.GetNodes(1).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            response.GetNodes(2).GetShardFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("", response.GetNodes(2).GetShardNodeName());
+        UNIT_ASSERT_VALUES_EQUAL(222, response.GetNodes(2).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "shard2",
+            response.GetNodes(3).GetShardFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "nodename2",
+            response.GetNodes(3).GetShardNodeName());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            response.GetNodes(4).GetShardFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("", response.GetNodes(4).GetShardNodeName());
+        UNIT_ASSERT_VALUES_EQUAL(333, response.GetNodes(4).GetId());
+
+        UNIT_ASSERT_VALUES_EQUAL("cookie", response.GetCookie());
+    }
+
+    Y_UNIT_TEST(ShouldConvertListNodesInternalResponseError)
+    {
+        NProtoPrivate::TListNodesInternalResponse internalResponse;
+        internalResponse.MutableError()->SetCode(E_REJECTED);
+        NProto::TListNodesResponse response;
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldConvertListNodesInternalResponseBroken)
+    {
+        auto internalResponse = MakeListNodesInternalResponse();
+        internalResponse.MutableNameBuffer()->resize(
+            internalResponse.GetNameBuffer().size() / 2);
+
+        NProto::TListNodesResponse response;
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        internalResponse = MakeListNodesInternalResponse();
+        internalResponse.MutableExternalRefBuffer()->resize(
+            internalResponse.GetExternalRefBuffer().size() / 2);
+
+        response.Clear();
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        internalResponse = MakeListNodesInternalResponse();
+        internalResponse.ClearExternalRefIndices();
+
+        response.Clear();
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        internalResponse = MakeListNodesInternalResponse();
+        internalResponse.ClearShardIdSizes();
+
+        response.Clear();
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        internalResponse = MakeListNodesInternalResponse();
+        internalResponse.ClearShardNodeNameSizes();
+
+        response.Clear();
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        internalResponse = MakeListNodesInternalResponse();
+        internalResponse.ClearNodes();
+
+        response.Clear();
+        Convert(internalResponse, response);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
     }
 }
 

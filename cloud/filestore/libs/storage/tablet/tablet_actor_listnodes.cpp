@@ -2,6 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/helpers.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -314,18 +316,22 @@ void TIndexTabletActor::ReplyListNodesInternal(
     using TResponse = TEvIndexTablet::TEvListNodesInternalResponse;
     auto response = std::make_unique<TResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
+        //
+        // Allocate memory.
+        //
+
         ui64 nameBufferSize = 0;
         ui64 extRefBufferSize = 0;
         int extRefCount = 0;
         int skippedRefCount = 0;
         for (const auto& ref: args.ChildRefs) {
-            nameBufferSize += ref.Name.size();
-            if (!ref.ShardId) {
+            if (ref.ShardId && HasPendingNodeCreateInShard(ref.ShardNodeName)) {
+                ++skippedRefCount;
                 continue;
             }
 
-            if (HasPendingNodeCreateInShard(ref.ShardNodeName)) {
-                ++skippedRefCount;
+            nameBufferSize += ref.Name.size();
+            if (!ref.ShardId) {
                 continue;
             }
 
@@ -335,55 +341,28 @@ void TIndexTabletActor::ReplyListNodesInternal(
         }
 
         auto& record = response->Record;
-        auto& nameSizes = *record.MutableNameSizes();
-        nameSizes.Reserve(args.ChildRefs.size());
-
-        auto& extRefIndices = *record.MutableExternalRefIndices();
-        extRefIndices.Reserve(extRefCount);
-        auto& shardIdSizes = *record.MutableShardIdSizes();
-        shardIdSizes.Reserve(extRefCount);
-        auto& shardNodeNameSizes = *record.MutableShardNodeNameSizes();
-        shardNodeNameSizes.Reserve(extRefCount);
-        for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
-            auto& ref = args.ChildRefs[i];
-            if (ref.ShardId
-                    && !HasPendingNodeCreateInShard(ref.ShardNodeName))
-            {
-                extRefIndices.Add(i);
-            }
-        }
-
-        record.MutableNameBuffer()->ReserveAndResize(nameBufferSize);
-        record.MutableExternalRefBuffer()->ReserveAndResize(extRefBufferSize);
-        char* nameBuffer = record.MutableNameBuffer()->begin();
-        char* extRefBuffer = record.MutableExternalRefBuffer()->begin();
-
+        record.MutableNameSizes()->Reserve(args.ChildRefs.size());
+        record.MutableExternalRefIndices()->Reserve(extRefCount);
+        record.MutableShardIdSizes()->Reserve(extRefCount);
+        record.MutableShardNodeNameSizes()->Reserve(extRefCount);
+        record.MutableNameBuffer()->reserve(nameBufferSize);
+        record.MutableExternalRefBuffer()->reserve(extRefBufferSize);
         record.MutableNodes()->Reserve(
             args.ChildRefs.size() - extRefCount - skippedRefCount);
 
-        size_t j = 0;
-        for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
+        //
+        // Build response.
+        //
+
+        ui32 j = 0;
+        for (ui32 i = 0; i < args.ChildRefs.size(); ++i) {
             auto& ref = args.ChildRefs[i];
-            memcpy(nameBuffer, ref.Name.data(), ref.Name.size());
-            nameBuffer += ref.Name.size();
-            nameSizes.Add(ref.Name.size());
+            if (ref.ShardId && HasPendingNodeCreateInShard(ref.ShardNodeName)) {
+                continue;
+            }
 
+            Store(ref.Name, ref.ShardId, ref.ShardNodeName, i, record);
             if (ref.ShardId) {
-                if (HasPendingNodeCreateInShard(ref.ShardNodeName)) {
-                    continue;
-                }
-
-                memcpy(extRefBuffer, ref.ShardId.data(), ref.ShardId.size());
-                extRefBuffer += ref.ShardId.size();
-                shardIdSizes.Add(ref.ShardId.size());
-
-                memcpy(
-                    extRefBuffer,
-                    ref.ShardNodeName.data(),
-                    ref.ShardNodeName.size());
-                extRefBuffer += ref.ShardNodeName.size();
-                shardNodeNameSizes.Add(ref.ShardNodeName.size());
-
                 continue;
             }
 

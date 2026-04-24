@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -273,11 +274,6 @@ void TListNodesActor::HandleListNodesInternalResponse(
 {
     auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        HandleError(ctx, *msg->Record.MutableError());
-        return;
-    }
-
     Response.SetCookie(msg->Record.GetCookie());
     *Response.MutableHeaders() = std::move(*msg->Record.MutableHeaders());
 
@@ -287,35 +283,10 @@ void TListNodesActor::HandleListNodesInternalResponse(
         "ListNodesInternalResponse %s",
         msg->Record.ShortUtf8DebugString().Quote().c_str());
 
-    ui32 j = 0;
-    Response.MutableNames()->Reserve(msg->Record.NameSizesSize());
-    Response.MutableNodes()->Reserve(msg->Record.NameSizesSize());
-    const char* nameBuffer = msg->Record.GetNameBuffer().data();
-    const char* extRefBuffer = msg->Record.GetExternalRefBuffer().data();
-    for (ui32 i = 0; i < msg->Record.NameSizesSize(); ++i) {
-        const ui32 nextExternalNodeRefIdx =
-            j < msg->Record.ExternalRefIndicesSize()
-            ? msg->Record.GetExternalRefIndices(j) : Max<ui32>();
-
-        auto* name = Response.AddNames();
-        name->assign(nameBuffer, msg->Record.GetNameSizes(i));
-        nameBuffer += msg->Record.GetNameSizes(i);
-
-        auto* node = Response.AddNodes();
-        if (i == nextExternalNodeRefIdx) {
-            auto* shardId = node->MutableShardFileSystemId();
-            shardId->assign(extRefBuffer, msg->Record.GetShardIdSizes(j));
-            extRefBuffer += msg->Record.GetShardIdSizes(j);
-
-            auto* shardNodeName = node->MutableShardNodeName();
-            shardNodeName->assign(
-                extRefBuffer,
-                msg->Record.GetShardNodeNameSizes(j));
-            extRefBuffer += msg->Record.GetShardNodeNameSizes(j);
-            ++j;
-        } else {
-            *node = std::move(*msg->Record.MutableNodes(i - j));
-        }
+    Convert(msg->Record, Response);
+    if (HasError(msg->GetError())) {
+        HandleError(ctx, *msg->Record.MutableError());
+        return;
     }
 
     GetNodeAttrsBatch(ctx);
