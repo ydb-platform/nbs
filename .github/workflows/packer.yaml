@@ -29,6 +29,11 @@ on:
         required: false
         default: false
         type: boolean
+      images_to_keep:
+        description: "Number of latest images to keep during cleanup"
+        required: false
+        default: 14
+        type: number
   workflow_dispatch:
     inputs:
       image_id:
@@ -56,6 +61,11 @@ on:
         required: false
         default: false
         type: boolean
+      images_to_keep:
+        description: "Number of latest images to keep during cleanup"
+        required: false
+        default: 14
+        type: number
 
 
 defaults:
@@ -184,11 +194,14 @@ jobs:
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_images \
           --new-image-id ${NEW_IMAGE_ID} \
+          --remove-old-images \
+          --images-to-keep ${IMAGES_TO_KEEP} \
           --image-variable-name NEBIUS_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
       env:
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
+        IMAGES_TO_KEEP: ${{ inputs.images_to_keep }}
         PARENT_ID: $${{ vars.PARENT_ID }}
 
     - name: Set new pooled image id
@@ -198,15 +211,20 @@ jobs:
         python3 -m scripts.nebius_manage_images \
           --parent-id ${LIGHT_PARENT_ID} \
           --new-image-id ${NEW_IMAGE_ID} \
+          --remove-old-images \
+          --images-to-keep ${IMAGES_TO_KEEP} \
           --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
 
         python3 -m scripts.nebius_manage_images \
           --parent-id ${HEAVY_PARENT_ID} \
           --new-image-id ${NEW_IMAGE_ID} \
+          --remove-old-images \
+          --images-to-keep ${IMAGES_TO_KEEP} \
           --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
       env:
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         UPDATE_IMAGE_ID: ${{ inputs.update_pooled_image_ids && '--update-image-id' || '' }}
+        IMAGES_TO_KEEP: ${{ inputs.images_to_keep }}
         HEAVY_PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
         LIGHT_PARENT_ID: ${{ vars.POOLED_LIGHT_PARENT_ID }}
