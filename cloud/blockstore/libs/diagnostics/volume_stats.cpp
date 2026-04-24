@@ -831,13 +831,16 @@ public:
                     const auto& diskId = info.VolumeBase->Volume.GetDiskId();
                     std::erase_if(
                         ClientVolumeToRealInstance,
-                        [&info, &diskId](const auto& clientVolume)
+                        [&info, &diskId](const auto& mapElement)
                         {
-                            const bool erase =
-                                clientVolume.first.second == diskId &&
-                                TRealInstanceKeyEqual()(
-                                    clientVolume.second,
-                                    info.RealInstanceId);
+                            const TClientVolume& clientVolume =
+                                mapElement.first;
+                            const TRealInstanceId& realInstanceId =
+                                mapElement.second;
+                            const bool erase = clientVolume.second == diskId &&
+                                               TRealInstanceKeyEqual()(
+                                                   realInstanceId,
+                                                   info.RealInstanceId);
                             return erase;
                         });
                     return true;
