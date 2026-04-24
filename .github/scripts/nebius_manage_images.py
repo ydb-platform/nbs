@@ -65,7 +65,8 @@ def log_image_inventory(
             postfix = " (NEW)"
 
         if (
-            image.metadata.id not in PROTECTED_IMAGE_IDS
+            image.status.state.name == "READY"
+            and image.metadata.id not in PROTECTED_IMAGE_IDS  # noqa: W503
             and image.spec.image_family == image_family_name  # noqa: W503
             and image.metadata.id != new_image_id  # noqa: W503
         ):
@@ -95,10 +96,7 @@ def select_images_to_remove(
 async def list_ready_images(
     service: ImageServiceClient, parent_id: str, image_family_name: str
 ) -> list[Image]:
-    request = ListImagesRequest(
-        parent_id=parent_id,
-        filter=f"family IN ('{image_family_name}') AND status = 'READY'",
-    )
+    request = ListImagesRequest(parent_id=parent_id)
     images: list[Image] = []
     try:
         while True:
@@ -112,6 +110,10 @@ async def list_ready_images(
         logger.error("Failed to list images", exc_info=True)
         raise e
 
+    logger.info(
+        "Client-side filtering images by family=%s and status=READY",
+        image_family_name,
+    )
     return images
 
 

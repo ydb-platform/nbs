@@ -7,7 +7,8 @@ from . import nebius_manage_images as m
 def make_image(
     image_id: str,
     *,
-    family: str = "github-runner-ydb-platform-nbs",
+    family: str = m.IMAGE_FAMILY_NAME,
+    status: str = "READY",
     created_at: str = "2026-04-24T10:00:00Z",
     labels: dict | None = None,
 ):
@@ -20,7 +21,7 @@ def make_image(
         ),
         spec=SimpleNamespace(image_family=family),
         status=SimpleNamespace(
-            state=SimpleNamespace(name="READY"),
+            state=SimpleNamespace(name=status),
             storage_size_bytes=1024,
             min_disk_size_bytes=2048,
         ),
@@ -35,11 +36,18 @@ def test_log_image_inventory_returns_only_removable_images():
     protected_image = make_image(m.PROTECTED_IMAGE_IDS[0])
     current_image = make_image("current-image")
     other_family_image = make_image("other-family", family="different-family")
+    non_ready_image = make_image("building-image", status="CREATING")
     candidate_image = make_image("candidate-image")
 
     candidate_images = m.log_image_inventory(
-        [protected_image, current_image, other_family_image, candidate_image],
-        "github-runner-ydb-platform-nbs",
+        [
+            protected_image,
+            current_image,
+            other_family_image,
+            non_ready_image,
+            candidate_image,
+        ],
+        m.IMAGE_FAMILY_NAME,
         "current-image",
     )
 
@@ -71,7 +79,6 @@ def test_list_ready_images_collects_all_pages():
             self.requests.append(
                 SimpleNamespace(
                     parent_id=request.parent_id,
-                    filter=request.filter,
                     page_token=request.page_token,
                 )
             )
@@ -87,13 +94,12 @@ def test_list_ready_images_collects_all_pages():
         m.list_ready_images(
             service=service,
             parent_id="project-id",
-            image_family_name="github-runner-ydb-platform-nbs",
+            image_family_name=m.IMAGE_FAMILY_NAME,
         )
     )
 
     assert [image.metadata.id for image in images] == ["page-1", "page-2"]
     assert service.requests[0].parent_id == "project-id"
-    assert "github-runner-ydb-platform-nbs" in service.requests[0].filter
     assert service.requests[0].page_token == ""
     assert service.requests[1].page_token == "page-2"
 
