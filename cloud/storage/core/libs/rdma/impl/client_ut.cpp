@@ -31,10 +31,11 @@ IClientPtr CreateTestClient(
 {
     return CreateClient(
         std::move(verbs),
-        logging->CreateLog("RDMA_TEST"),
-        monitoring->GetCounters()
-            ->GetSubgroup("counters", "rdma")
-            ->GetSubgroup("component", "client"),
+        logging,
+        monitoring,
+        "RDMA_TEST",
+        "rdma",
+        "client",
         std::move(config));
 }
 
