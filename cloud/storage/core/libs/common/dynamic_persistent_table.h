@@ -426,6 +426,7 @@ public:
     }
 
 private:
+    // TODO remove after migration is done
     void MigrateDataOffsetsToAbsolute()
     {
         if (HeaderPtr->Version != 1) {
