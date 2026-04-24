@@ -15,17 +15,6 @@ using namespace NPartition;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPartitionThreadSafeState::TPartitionThreadSafeState(
-        ui64 tabletId,
-        NActors::TActorId partitionActorId,
-        ui32 generation,
-        ui32 lastCommitId)
-    : TabletId(tabletId)
-    , PartitionActorId(partitionActorId)
-{
-    Init(partitionActorId, generation, lastCommitId);
-}
-
 void TPartitionThreadSafeState::Init(
     NActors::TActorId partitionActorId,
     ui32 generation,
@@ -267,6 +256,29 @@ bool TPartitionThreadSafeState::CollectNextCheckpointTx(
     }
 
     return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TPartitionThreadSafeState::WriteRequestInProgress() const
+{
+    return WriteAndZeroRequestsInProgress.load() > 0;
+}
+
+bool TPartitionThreadSafeState::OverlapsWithWrites(TBlockRange64 range) const
+{
+    Y_UNUSED(range);
+    Y_ABORT("Unimplemented");
+}
+
+void TPartitionThreadSafeState::WaitForInFlightWrites()
+{
+    Y_ABORT("Unimplemented");
+}
+
+bool TPartitionThreadSafeState::IsWaitingForInFlightWrites() const
+{
+    Y_ABORT("Unimplemented");
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

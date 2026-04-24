@@ -432,6 +432,13 @@ void TFreshBlocksWriterActor::HandleWaitReady(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TFreshBlocksWriterActor::HandleDrain(
+    const TEvPartition::TEvDrainRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    SharedState->AccessDrainActorCompanion()->HandleDrain(ev, ctx);
+}
+
 bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -449,6 +456,10 @@ bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             HandleGetPartCounters);
+
+        HFunc(TEvPartition::TEvDrainRequest, HandleDrain);
+
+        HFunc(TEvPartition::TEvStatPartitionRequest, HandleStatPartition);
 
         default:
             return false;
@@ -474,6 +485,10 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             RejectGetPartCounters);
+
+        HFunc(TEvPartition::TEvDrainRequest, RejectDrain);
+
+        HFunc(TEvPartition::TEvStatPartitionRequest, RejectStatPartition);
 
         default:
             return false;
