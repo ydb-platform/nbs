@@ -18,7 +18,7 @@ auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
     auto endpoint = CreateMultiClientEndpoint(
         bootstrap.GrpcClient,
         config.GetFqdn(),
-        config.GetGrpcPort(),
+        config.GetSecureGrpcPort() ? config.GetSecureGrpcPort() : config.GetGrpcPort(),
         false);
 
     return MakeFuture(endpoint);
