@@ -60,6 +60,7 @@ def start(argv):
             "test_cloud",
             "test_folder",
             blk_count=args.blocks_count)
+    set_env("NFS_FILESYSTEM", args.filesystem)
 
     if args.shard_count > 0:
         shards = []
