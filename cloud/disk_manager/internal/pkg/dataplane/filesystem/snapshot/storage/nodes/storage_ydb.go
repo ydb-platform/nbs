@@ -46,8 +46,7 @@ func nodeRefStructTypeString() string {
 		filesystem_snapshot_id: Utf8,
 		parent_node_id: Uint64,
 		name: Utf8,
-		child_node_id: Uint64,
-		node_type: Uint32>`
+		child_node_id: Uint64>`
 }
 
 func nodeRefStructValue(
@@ -60,7 +59,6 @@ func nodeRefStructValue(
 		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentID)),
 		persistence.StructFieldValue("name", persistence.UTF8Value(node.Name)),
 		persistence.StructFieldValue("child_node_id", persistence.Uint64Value(node.NodeID)),
-		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 	)
 }
 
@@ -76,6 +74,7 @@ func nodeStructTypeString() string {
 		ctime: Uint64,
 		size: Uint64,
 		links: Uint32,
+		node_type: Uint32,
 		symlink_target: Utf8>`
 }
 
@@ -95,6 +94,7 @@ func nodeStructValue(
 		persistence.StructFieldValue("ctime", persistence.Uint64Value(node.Ctime)),
 		persistence.StructFieldValue("size", persistence.Uint64Value(node.Size)),
 		persistence.StructFieldValue("links", persistence.Uint32Value(node.Links)),
+		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 		persistence.StructFieldValue("symlink_target", persistence.UTF8Value(node.LinkTarget)),
 	)
 }
@@ -148,13 +148,11 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 		parentID    uint64
 		name        string
 		childNodeID uint64
-		nodeType    uint32
 	)
 	err := result.ScanNamed(
 		persistence.OptionalWithDefault("parent_node_id", &parentID),
 		persistence.OptionalWithDefault("name", &name),
 		persistence.OptionalWithDefault("child_node_id", &childNodeID),
-		persistence.OptionalWithDefault("node_type", &nodeType),
 	)
 	if err != nil {
 		return nfs.Node{}, err
@@ -164,7 +162,6 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 		ParentID: parentID,
 		NodeID:   childNodeID,
 		Name:     name,
-		Type:     nfs_client.NodeType(nodeType),
 	}, nil
 }
 
@@ -184,11 +181,18 @@ func scanNodeRefs(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	return nodes, nil
 }
 
 func scanNode(result persistence.Result) (nfs.Node, error) {
-	var node nfs.Node
+	var (
+		node     nfs.Node
+		nodeType uint32
+	)
 	err := result.ScanNamed(
 		persistence.OptionalWithDefault("node_id", &node.NodeID),
 		persistence.OptionalWithDefault("mode", &node.Mode),
@@ -199,12 +203,14 @@ func scanNode(result persistence.Result) (nfs.Node, error) {
 		persistence.OptionalWithDefault("ctime", &node.Ctime),
 		persistence.OptionalWithDefault("size", &node.Size),
 		persistence.OptionalWithDefault("links", &node.Links),
+		persistence.OptionalWithDefault("node_type", &nodeType),
 		persistence.OptionalWithDefault("symlink_target", &node.LinkTarget),
 	)
 	if err != nil {
 		return nfs.Node{}, err
 	}
 
+	node.Type = nfs_client.NodeType(nodeType)
 	return node, nil
 }
 
@@ -223,6 +229,10 @@ func scanNodes(
 
 			attrs[node.NodeID] = node
 		}
+	}
+
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
 	}
 
 	return attrs, nil
@@ -475,6 +485,7 @@ func (s *storageYDB) listNodes(
 			node.Ctime = a.Ctime
 			node.Size = a.Size
 			node.Links = a.Links
+			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
 			nodes[i] = node
 		}
@@ -483,38 +494,41 @@ func (s *storageYDB) listNodes(
 	return nodes, nextCookie, nil
 }
 
-func (s *storageYDB) deleteSnapshotData(
+func (s *storageYDB) deleteFromTables(
 	ctx context.Context,
-	session *persistence.Session,
 	snapshotID string,
-) (bool, error) {
+	tables []string,
+) error {
 
-	tables := []string{
-		"node_refs",
-		"nodes",
-		"restoration_node_ids_mapping",
-		"hardlinks",
-	}
+	for {
+		var done bool
 
-	deletedCount := uint64(0)
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				deletedCount := uint64(0)
 
-	for _, table := range tables {
-		deleted, err := s.deleteFromTable(ctx, session, snapshotID, table)
+				for _, table := range tables {
+					deleted, err := s.deleteFromTable(ctx, session, snapshotID, table)
+					if err != nil {
+						return err
+					}
+
+					deletedCount += deleted
+				}
+
+				done = deletedCount == 0
+				return nil
+			},
+		)
 		if err != nil {
-			return false, err
+			return err
 		}
 
-		deletedCount += deleted
+		if done {
+			return nil
+		}
 	}
-
-	logging.Debug(
-		ctx,
-		"Deleted %v rows for snapshot %v",
-		deletedCount,
-		snapshotID,
-	)
-
-	return deletedCount == 0, nil
 }
 
 func (s *storageYDB) deleteFromTable(
@@ -570,6 +584,14 @@ func (s *storageYDB) deleteFromTable(
 			err,
 		)
 	}
+
+	logging.Debug(
+		ctx,
+		"Deleted %v rows from %v for snapshot %v",
+		count,
+		table,
+		snapshotID,
+	)
 
 	return count, nil
 }
@@ -670,6 +692,10 @@ func (s *storageYDB) getDestinationNodeIDs(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	return result, nil
 }
 
@@ -728,22 +754,27 @@ func (s *storageYDB) ListNodes(
 	return result, nextCookie, err
 }
 
+func (s *storageYDB) CleanupRestorationNodeIDsMapping(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	return s.deleteFromTables(ctx, snapshotID, []string{
+		"restoration_node_ids_mapping",
+	})
+}
+
 func (s *storageYDB) DeleteSnapshotData(
 	ctx context.Context,
 	snapshotID string,
-) (bool, error) {
+) error {
 
-	var done bool
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			done, err = s.deleteSnapshotData(ctx, session, snapshotID)
-			return err
-		},
-	)
-	return done, err
+	return s.deleteFromTables(ctx, snapshotID, []string{
+		"node_refs",
+		"nodes",
+		"restoration_node_ids_mapping",
+		"hardlinks",
+	})
 }
 
 func (s *storageYDB) UpdateRestorationNodeIDMapping(
@@ -844,6 +875,10 @@ func (s *storageYDB) listHardLinks(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	nodeIDs := make([]uint64, 0, len(nodes))
 	for _, node := range nodes {
 		nodeIDs = append(nodeIDs, node.NodeID)
@@ -864,6 +899,7 @@ func (s *storageYDB) listHardLinks(
 			node.Ctime = a.Ctime
 			node.Size = a.Size
 			node.Links = a.Links
+			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
 			nodes[i] = nfs.Node(node)
 		}

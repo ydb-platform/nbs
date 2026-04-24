@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package filesystem_snapshot;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TransferFromFilesystemToSnapshotTaskState {
+    bool RootNodeScheduled = 1;
+}
