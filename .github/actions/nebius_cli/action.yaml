@@ -4,6 +4,9 @@ inputs:
     config_yaml:
         required: false
         description: "Nebius CLI config.yaml content"
+    service_account_key:
+        required: false
+        description: "Deprecated legacy Nebius service-account JSON credentials"
 outputs:
     NEBIUS_IAM_TOKEN:
         description: "Nebius IAM token for downstream steps"
@@ -50,7 +53,7 @@ runs:
                 "https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_amd64"
               chmod 0755 "$HOME/.local/bin/yq"
 
-        - name: Set up Nebius CLI config
+        - name: Set up Nebius CLI config from config.yaml
           if: ${{ inputs.config_yaml != '' }}
           shell: bash
           env:
@@ -71,6 +74,40 @@ runs:
                 [ -n "$private_key" ] || continue
                 echo "::add-mask::$private_key"
               done < <(yq -r '.profiles[]?."private-key" // empty | split("\n")[]' "$HOME/.nebius/config.yaml")
+
+        - name: Set up Nebius CLI config from legacy sa.json
+          if: ${{ inputs.config_yaml == '' && inputs.service_account_key != '' }}
+          shell: bash
+          env:
+              NEBIUS_SERVICE_ACCOUNT_KEY: ${{ inputs.service_account_key }}
+          run: |
+              mkdir -p "$HOME/.nebius"
+              if [ -f "$HOME/.nebius/config.yaml" ]; then
+                echo "Nebius config already exists"
+                exit 0
+              fi
+
+              echo "::warning::service_account_key is deprecated, prefer config_yaml"
+
+              cat > "$HOME/.nebius/service-account-key.json" <<EOF
+              $NEBIUS_SERVICE_ACCOUNT_KEY
+              EOF
+              chmod 600 "$HOME/.nebius/service-account-key.json"
+
+              while IFS= read -r value; do
+                [ -n "$value" ] || continue
+                echo "::add-mask::$value"
+              done < <(jq -r '.["subject-credentials"] | .iss, .kid, ."private-key"' "$HOME/.nebius/service-account-key.json")
+
+              cat > "$HOME/.nebius/config.yaml" <<EOF
+              default: legacy-service-account
+              profiles:
+                legacy-service-account:
+                  endpoint: api.nebius.cloud
+                  auth-type: service account
+                  service-account-credentials-file-path: $HOME/.nebius/service-account-key.json
+              EOF
+              chmod 600 "$HOME/.nebius/config.yaml"
 
         - name: Set Nebius IAM token
           id: set-iam-token

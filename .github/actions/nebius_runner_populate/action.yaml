@@ -26,6 +26,9 @@ inputs:
   token:
     required: true
     description: "github token"
+  service_account_key:
+    required: false
+    description: "Deprecated legacy Nebius service-account JSON credentials"
   nebius_config_yaml:
     required: false
     description: "Nebius CLI config.yaml content for SDK authentication"
@@ -49,6 +52,7 @@ runs:
       uses: ./.github/actions/nebius_cli
       with:
         config_yaml: ${{ inputs.nebius_config_yaml }}
+        service_account_key: ${{ inputs.service_account_key }}
     - name: install dependencies
       shell: bash
       run: |
