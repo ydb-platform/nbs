@@ -12,10 +12,11 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NStorage::NRdma::TProtoMessageSerializer*
-TBlockStoreProtocol::Serializer()
+using NCloud::NStorage::NRdma::TProtoMessageSerializer;
+
+TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
 {
-    struct TSerializer : NCloud::NStorage::NRdma::TProtoMessageSerializer
+    struct TSerializer: TProtoMessageSerializer
     {
         TSerializer()
         {
@@ -35,7 +36,8 @@ TBlockStoreProtocol::Serializer()
             RegisterProto<NProto::TMountVolumeResponse>(MountVolumeResponse);
 
             RegisterProto<NProto::TUnmountVolumeRequest>(UnmountVolumeRequest);
-            RegisterProto<NProto::TUnmountVolumeResponse>(UnmountVolumeResponse);
+            RegisterProto<NProto::TUnmountVolumeResponse>(
+                UnmountVolumeResponse);
         }
     };
 
