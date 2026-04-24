@@ -153,12 +153,13 @@ private:
 
     THeader* HeaderPtr = nullptr;
     TRecordDescriptor* DescriptorsPtr = nullptr;
+    char* FilePtr = nullptr;
     char* DataPtr = nullptr;
     char* DataCompactionBufferPtr = nullptr;
 
 public:
     static constexpr ui64 InvalidIndex = -1;
-    static constexpr ui32 Version = 1;
+    static constexpr ui32 Version = 2;
 
     class TIterator
     {
@@ -313,7 +314,7 @@ public:
             }
         }
 
-        DescriptorsPtr[index].DataOffset = NextDataOffset;
+        DescriptorsPtr[index].DataOffset = DataAreaOffset + NextDataOffset;
         DescriptorsPtr[index].DataSize = dataSize;
 
         PrepareAddRecord(index);
@@ -398,7 +399,7 @@ public:
         }
 
         return TMemoryOutput(
-            DataPtr + DescriptorsPtr[index].DataOffset,
+            FilePtr + DescriptorsPtr[index].DataOffset,
             DescriptorsPtr[index].DataSize);
     }
 
@@ -411,7 +412,7 @@ public:
             return false;
         }
 
-        char* recordData = DataPtr + DescriptorsPtr[index].DataOffset;
+        char* recordData = FilePtr + DescriptorsPtr[index].DataOffset;
         std::memcpy(recordData, data, size);
         if (size < DescriptorsPtr[index].DataSize) {
             GapSpaceSize += DescriptorsPtr[index].DataSize - size;
@@ -425,6 +426,23 @@ public:
     }
 
 private:
+    // TODO remove after migration is done
+    void MigrateDataOffsetsToAbsolute()
+    {
+        if (HeaderPtr->Version != 1) {
+            return;
+        }
+
+        for (ui64 index = 0; index < NextFreeRecordIndex; ++index) {
+            if (DescriptorsPtr[index].State == ERecordState::Free) {
+                continue;
+            }
+            DescriptorsPtr[index].DataOffset += DataAreaOffset;
+        }
+
+        HeaderPtr->Version = Version;
+    }
+
     void PrepareAddRecord(ui64 index)
     {
         HeaderPtr->ListOperationState = EListOperationState::Add;
@@ -554,8 +572,9 @@ private:
             HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
         }
 
+        // TODO remove Version==1 after migration is done
         Y_ABORT_UNLESS(
-            HeaderPtr->Version == Version,
+            HeaderPtr->Version == Version || HeaderPtr->Version == 1,
             "Invalid header version %d",
             HeaderPtr->Version);
         Y_ABORT_UNLESS(
@@ -575,6 +594,8 @@ private:
         DataAreaSize = HeaderPtr->DataAreaSize;
 
         ResizeAndRemap();
+
+        MigrateDataOffsetsToAbsolute();
 
         ResetShrinkState();
 
@@ -614,7 +635,7 @@ private:
             }
 
             ui64 calculatedCrc = Crc32c(
-                DataPtr + DescriptorsPtr[readRecordIndex].DataOffset,
+                FilePtr + DescriptorsPtr[readRecordIndex].DataOffset,
                 DescriptorsPtr[readRecordIndex].DataSize);
             if (calculatedCrc != DescriptorsPtr[readRecordIndex].Crc32) {
                 PrepareRemoveRecord(readRecordIndex);
@@ -802,7 +823,8 @@ private:
                 "Non-stored record %lu found in data linked list",
                 currentIndex);
 
-            ui64 oldOffset = DescriptorsPtr[currentIndex].DataOffset;
+            ui64 oldOffset =
+                DescriptorsPtr[currentIndex].DataOffset - DataAreaOffset;
             ui64 dataSize = DescriptorsPtr[currentIndex].DataSize;
             ui64 nextIndex = DescriptorsPtr[currentIndex].NextDataIndex;
 
@@ -814,7 +836,7 @@ private:
 
                 std::memcpy(
                     DataCompactionBufferPtr,
-                    DataPtr + oldOffset,
+                    FilePtr + DescriptorsPtr[currentIndex].DataOffset,
                     dataSize);
 
                 // We can omit handling the case where a crash occurs after
@@ -823,7 +845,8 @@ private:
                 // location.
                 HeaderPtr->DataCompactionRecordIndex = currentIndex;
 
-                DescriptorsPtr[currentIndex].DataOffset = newOffset;
+                DescriptorsPtr[currentIndex].DataOffset =
+                    DataAreaOffset + newOffset;
 
                 std::memcpy(
                     DataPtr + newOffset,
@@ -849,7 +872,7 @@ private:
         const ui64 currentIndex = HeaderPtr->DataCompactionRecordIndex;
 
         std::memcpy(
-            DataPtr + DescriptorsPtr[currentIndex].DataOffset,
+            FilePtr + DescriptorsPtr[currentIndex].DataOffset,
             DataCompactionBufferPtr,
             DescriptorsPtr[currentIndex].DataSize);
 
@@ -902,9 +925,10 @@ private:
     {
         FileMap->ResizeAndRemap(0, CalcFileSize(DataAreaSize));
         HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
-        DescriptorsPtr = reinterpret_cast<TRecordDescriptor*>(
-            reinterpret_cast<char*>(HeaderPtr) + sizeof(THeader));
-        DataPtr = reinterpret_cast<char*>(HeaderPtr) + DataAreaOffset;
+        FilePtr = reinterpret_cast<char*>(FileMap->Ptr());
+        DescriptorsPtr =
+            reinterpret_cast<TRecordDescriptor*>(FilePtr + sizeof(THeader));
+        DataPtr = FilePtr + DataAreaOffset;
         DataCompactionBufferPtr = DataPtr + DataAreaSize;
     }
 
@@ -917,7 +941,7 @@ private:
         }
 
         TStringBuf buf(
-            DataPtr + DescriptorsPtr[index].DataOffset,
+            FilePtr + DescriptorsPtr[index].DataOffset,
             DescriptorsPtr[index].DataSize);
 
         if (mode == EDataRetrievalMode::WithValidation) {
