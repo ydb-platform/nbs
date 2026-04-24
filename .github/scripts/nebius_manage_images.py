@@ -6,7 +6,9 @@ from github import Github
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
+from nebius.api.nebius.compute.v1 import Image
 from nebius.api.nebius.compute.v1 import (
+    DeleteImageRequest,
     ListImagesRequest,
     ImageServiceClient,
 )
@@ -28,6 +30,8 @@ async def main(
     image_variable_name: str,
     update_image_id: bool,
     parent_id: str,
+    images_to_keep: int,
+    remove_old_images: bool,
 ) -> None:
     github = Github(github_token)
     repo = github.get_repo(github_repository)
@@ -54,7 +58,7 @@ async def main(
         parent_id=parent_id,
         filter=f"family IN ('{image_family_name}') AND status = 'READY'",
     )
-    result = []
+    result: list[Image] = []
     try:
         while True:
             response = await service.list(request)
@@ -67,7 +71,7 @@ async def main(
         logger.error("Failed to list images", exc_info=True)
         raise e
 
-    candidate_images = []
+    candidate_images: list[Image] = []
     for image in result:
         status = image.status.state.name
         created_at = image.metadata.created_at
@@ -96,7 +100,26 @@ async def main(
             ', '.join(f"{k}={v}" for k, v in image.metadata.labels.items())
             # fmt: on
         )
-    logger.info("Total images: %d", len(response.items))
+    logger.info("Total images before cleanup: %d", len(response.items))
+    if not remove_old_images:
+        logger.info("Old images will not be removed")
+        return
+
+    images_to_remove = candidate_images[images_to_keep:]
+    images_to_remove_ids = [image.metadata.id for image in images_to_remove]
+    logger.info("Images selected for removal: %s", images_to_remove_ids)
+
+    for image in images_to_remove:
+        logger.info("Removing image %s", image.id)
+        request = DeleteImageRequest(image_id=image.metadata.id)
+        response = await service.remove(request)
+        if response.error:
+            logger.error("Failed to remove image %s: %s", image.id, response.error)
+        else:
+            logger.info("Image %s removed", image.id)
+            candidate_images.remove(image)
+
+    logger.info("Total images after cleanup: %d", len(candidate_images))
 
 
 if __name__ == "__main__":
@@ -121,7 +144,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--new-image-id",
         default=os.getenv("NEW_IMAGE_ID"),
-        help="Name of the artifact to download and extract",
+        help="ID of the new image to use",
     )
     parser.add_argument(
         "--image-variable-name",
@@ -133,6 +156,15 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
         help="Update the image id in Github Actions variables",
+    )
+    parser.add_argument(
+        "--images-to-keep", default=7, type=int, help="Number of images to keep"
+    )
+    parser.add_argument(
+        "--remove-old-images",
+        default=False,
+        action="store_true",
+        help="Remove old images",
     )
 
     args = parser.parse_args()
@@ -148,5 +180,7 @@ if __name__ == "__main__":
             image_variable_name=args.image_variable_name,
             update_image_id=args.update_image_id,
             parent_id=args.parent_id,
+            images_to_keep=args.images_to_keep,
+            remove_old_images=args.remove_old_images,
         )
     )
