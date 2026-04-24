@@ -284,8 +284,8 @@ void TListNodesActor::HandleListNodesInternalResponse(
         msg->Record.ShortUtf8DebugString().Quote().c_str());
 
     Convert(msg->Record, Response);
-    if (HasError(msg->GetError())) {
-        HandleError(ctx, *msg->Record.MutableError());
+    if (HasError(Response.GetError())) {
+        HandleError(ctx, *Response.MutableError());
         return;
     }
 
