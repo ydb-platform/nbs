@@ -140,15 +140,13 @@ std::tuple<TTable::THeader*, TTable::TRecordDescriptor*, char*>
 GetTableInternals(TTable& table)
 {
     auto* tableHeader = GetTableHeader(table);
+    char* filePtr = reinterpret_cast<char*>(tableHeader);
 
     TTable::TRecordDescriptor* descriptorsPtr =
         reinterpret_cast<TTable::TRecordDescriptor*>(
-            reinterpret_cast<char*>(tableHeader) + tableHeader->HeaderSize);
+            filePtr + tableHeader->HeaderSize);
 
-    char* dataPtr =
-        reinterpret_cast<char*>(tableHeader) + tableHeader->DataAreaOffset;
-
-    return std::make_tuple(tableHeader, descriptorsPtr, dataPtr);
+    return std::make_tuple(tableHeader, descriptorsPtr, filePtr);
 }
 
 ui64 AllocAndCommitRecord(TTable& table, const TString& data)
@@ -521,6 +519,55 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL(testData.size(), foundIds.size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldMigrateLegacyRelativeDataOffsetsOnStartup)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        TVector<TString> payloads = {
+            TString("first_payload"),
+            TString("second_payload"),
+            TString("third_payload")};
+        TVector<ui64> indices;
+
+        {
+            auto table = CreateTable(tablePath, 32, 1024);
+
+            for (const auto& payload: payloads) {
+                indices.push_back(AllocAndCommitRecord(table, payload));
+            }
+
+            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
+
+            for (ui64 index: indices) {
+                UNIT_ASSERT_C(
+                    descriptorsPtr[index].DataOffset >=
+                        tableHeader->DataAreaOffset,
+                    "Expected absolute data offset");
+                descriptorsPtr[index].DataOffset -= tableHeader->DataAreaOffset;
+            }
+
+            tableHeader->Version = 1;
+        }
+
+        {
+            auto table = CreateTable(tablePath, 32, 1024);
+            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
+            UNIT_ASSERT_VALUES_EQUAL(payloads.size(), table.CountRecords());
+
+            for (size_t i = 0; i < indices.size(); ++i) {
+                TStringBuf record = table.GetRecordWithValidation(indices[i]);
+                UNIT_ASSERT_VALUES_EQUAL(payloads[i], TString(record));
+                UNIT_ASSERT_C(
+                    descriptorsPtr[indices[i]].DataOffset >=
+                        tableHeader->DataAreaOffset,
+                    "Expected migrated absolute data offset");
+            }
         }
     }
 
@@ -1562,8 +1609,11 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 serialized.size());
 
             // Get table internals to simulate partial compaction
-            auto [tableHeader, descriptorsPtr, dataPtr] =
+            auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
+            char* dataCompactionBufferPtr = filePtr +
+                                            tableHeader->DataAreaOffset +
+                                            tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
@@ -1573,8 +1623,8 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do), but only half of the record to simulate crash/abort
             std::memcpy(
-                dataPtr + tableHeader->DataAreaSize,
-                dataPtr + descriptorsPtr[recordToMoveIndex].DataOffset,
+                dataCompactionBufferPtr,
+                filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize / 2);
         }
 
@@ -1642,8 +1692,11 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 serialized.size());
 
             // Get table internals to simulate partial compaction
-            auto [tableHeader, descriptorsPtr, dataPtr] =
+            auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
+            char* dataCompactionBufferPtr = filePtr +
+                                            tableHeader->DataAreaOffset +
+                                            tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
@@ -1653,8 +1706,8 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do)
             std::memcpy(
-                dataPtr + tableHeader->DataAreaSize,
-                dataPtr + descriptorsPtr[recordToMoveIndex].DataOffset,
+                dataCompactionBufferPtr,
+                filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize);
 
             tableHeader->DataCompactionRecordIndex = recordToMoveIndex;
@@ -1729,8 +1782,11 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 serialized.size());
 
             // Get table internals to simulate partial compaction
-            auto [tableHeader, descriptorsPtr, dataPtr] =
+            auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
+            char* dataCompactionBufferPtr = filePtr +
+                                            tableHeader->DataAreaOffset +
+                                            tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
@@ -1740,8 +1796,8 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do)
             std::memcpy(
-                dataPtr + tableHeader->DataAreaSize,
-                dataPtr + descriptorsPtr[recordToMoveIndex].DataOffset,
+                dataCompactionBufferPtr,
+                filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize);
 
             tableHeader->DataCompactionRecordIndex = recordToMoveIndex;
@@ -1823,12 +1879,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 serialized.size());
 
             // Get table internals to simulate partial compaction
-            auto [tableHeader, descriptorsPtr, dataPtr] =
+            auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
+            char* dataCompactionBufferPtr = filePtr +
+                                            tableHeader->DataAreaOffset +
+                                            tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
-            ui64 originalOffset = descriptorsPtr[recordToMoveIndex].DataOffset;
             ui64 recordSize = descriptorsPtr[recordToMoveIndex].DataSize;
 
             // Calculate where this record should be moved to fill the gap
@@ -1838,8 +1896,8 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // SIMULATE ABORTED COMPACTION:
             // Copy the data to tmp buffer using memcpy (as compaction would do)
             std::memcpy(
-                dataPtr + tableHeader->DataAreaSize,
-                dataPtr + originalOffset,
+                dataCompactionBufferPtr,
+                filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize);
 
             tableHeader->DataCompactionRecordIndex = recordToMoveIndex;
@@ -1849,8 +1907,8 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Copy the data to the new offset, but only half of the record to
             // simulate crash/abort
             std::memcpy(
-                dataPtr + newOffset,
-                dataPtr + tableHeader->DataAreaSize,
+                filePtr + newOffset,
+                dataCompactionBufferPtr,
                 recordSize / 2);
         }
 
@@ -1906,8 +1964,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // after index list was set
             ui64 index2 = table.AllocRecord(serialized2.size());
 
-            auto [tableHeader, descriptorsPtr, dataPtr] =
-                GetTableInternals(table);
+            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
 
             tableHeader->ListOperationState = TTable::EListOperationState::Add;
             tableHeader->ListOperationIndex = index2;
@@ -1964,8 +2021,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 indices.push_back(index);
             }
 
-            auto [tableHeader, descriptorsPtr, dataPtr] =
-                GetTableInternals(table);
+            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
 
             // Simulate aborted remove operation for middle record
             ui64 prevIndex = indices[1];
