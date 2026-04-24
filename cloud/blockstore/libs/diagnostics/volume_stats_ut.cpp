@@ -1730,7 +1730,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
-            // Mount(volumeStats, "disk-1", "client-1", "instance-1" );
             Mount(volumeStats, "disk-2", "client-1", "instance-1");
             Mount(volumeStats, "disk-3", "client-1", "instance-1");
 
@@ -1744,9 +1743,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
-            // Mount(volumeStats, "disk-1", "client-1", "instance-1" );
             Mount(volumeStats, "disk-2", "client-1", "instance-1");
-            // Mount(volumeStats, "disk-3", "client-1", "instance-1" );
 
             volumeStats->TrimVolumes();
 
@@ -1757,10 +1754,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
-
-            // Mount(volumeStats, "disk-1", "client-1", "instance-1" );
-            // Mount(volumeStats, "disk-2", "client-1", "instance-1" );
-            // Mount(volumeStats, "disk-3", "client-1", "instance-1" );
 
             volumeStats->TrimVolumes();
 
@@ -1827,11 +1820,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // some clients during inactivityTimeout, and VolumeInfo can be obtained
         // for such inactive client while exists
 
+        // Keep:
+        //  - all
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
             Mount(volumeStats, "disk-1", "client-1", "" );
-            //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
 
             Mount(volumeStats, "disk-1", "client-2", ""           );
@@ -1862,17 +1856,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
-            //Mount(volumeStats, "disk-1", "client-1", ""           );
-            //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
 
-            //Mount(volumeStats, "disk-1", "client-2", ""           );
             Mount(volumeStats, "disk-2", "client-2", "instance-1" );
             Mount(volumeStats, "disk-3", "client-2", "instance-2" );
 
             Mount(volumeStats, "disk-1", "client-3", "instance-1" );
             Mount(volumeStats, "disk-2", "client-3", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
 
             volumeStats->TrimVolumes();
 
@@ -1893,17 +1883,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
-            //Mount(volumeStats, "disk-1", "client-1", ""           );
-            //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
 
-            //Mount(volumeStats, "disk-1", "client-2", ""           );
             Mount(volumeStats, "disk-2", "client-2", "instance-1" );
             Mount(volumeStats, "disk-3", "client-2", "instance-2" );
 
-            //Mount(volumeStats, "disk-1", "client-3", "instance-1" );
             Mount(volumeStats, "disk-2", "client-3", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
 
             volumeStats->TrimVolumes();
 
@@ -1924,17 +1909,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
 
-            //Mount(volumeStats, "disk-1", "client-1", ""           );
-            //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
             Mount(volumeStats, "disk-3", "client-1", "instance-2" );
 
-            //Mount(volumeStats, "disk-1", "client-2", ""           );
             Mount(volumeStats, "disk-2", "client-2", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-2", "instance-2" );
-
-            //Mount(volumeStats, "disk-1", "client-3", "instance-1" );
-            //Mount(volumeStats, "disk-2", "client-3", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
 
             volumeStats->TrimVolumes();
 
@@ -1952,18 +1929,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // Keep none
         {
             Timer->AdvanceTime(inactivityTimeout * 1.1);
-
-            //Mount(volumeStats, "disk-1", "client-1", ""           );
-            //Mount(volumeStats, "disk-2", "client-1", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-1", "instance-2" );
-
-            //Mount(volumeStats, "disk-1", "client-2", ""           );
-            //Mount(volumeStats, "disk-2", "client-2", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-2", "instance-2" );
-
-            //Mount(volumeStats, "disk-1", "client-3", "instance-1" );
-            //Mount(volumeStats, "disk-2", "client-3", "instance-1" );
-            //Mount(volumeStats, "disk-3", "client-3", "instance-1" );
 
             volumeStats->TrimVolumes();
 
