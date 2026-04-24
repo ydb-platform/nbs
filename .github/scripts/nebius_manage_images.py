@@ -19,8 +19,10 @@ logger = setup_logger()
 # they won't appear in the list of images
 # but they will be protected from deletion anyway
 PROTECTED_IMAGE_IDS = [
-    "computeimage-e00f4cy4p43wx8gm4v",
+    "computeimage-e02z08pb34vxn8epq0",
 ]
+
+IMAGE_FAMILY_NAME = "ubuntu22.04-nbs-github-ci"
 
 
 @dataclass(frozen=True)
@@ -35,16 +37,13 @@ class ManageImagesOptions:
     remove_old_images: bool
 
 
-def build_image_family_name(github_repository: str) -> str:
-    github_repository_owner, github_repository_name = github_repository.split("/")
-    return f"github-runner-{github_repository_owner}-{github_repository_name}"
-
-
 def resolve_new_image_id(current_image_id: str, new_image_id: str | None) -> str:
     return new_image_id or current_image_id
 
 
-def fetch_repo_variable(github_client, github_repository: str, image_variable_name: str):
+def fetch_repo_variable(
+    github_client, github_repository: str, image_variable_name: str
+):
     repo = github_client.get_repo(github_repository)
     return repo, repo.get_variable(image_variable_name)
 
@@ -116,7 +115,9 @@ async def list_ready_images(
     return images
 
 
-async def remove_images(service: ImageServiceClient, images_to_remove: list[Image]) -> None:
+async def remove_images(
+    service: ImageServiceClient, images_to_remove: list[Image]
+) -> None:
     for image in images_to_remove:
         logger.info("Removing image %s", image.metadata.id)
         request = DeleteImageRequest(id=image.metadata.id)
@@ -139,7 +140,6 @@ async def main(
     _, variable = fetch_repo_variable(
         github, options.github_repository, options.image_variable_name
     )
-    image_family_name = build_image_family_name(options.github_repository)
 
     logger.info("%s (old) = %s", options.image_variable_name, variable.value)
 
@@ -149,11 +149,13 @@ async def main(
         variable.edit(value=new_image_id)
         logger.info("%s (new) = %s", options.image_variable_name, new_image_id)
     else:
-        logger.info("Would set %s (new) = %s", options.image_variable_name, new_image_id)
+        logger.info(
+            "Would set %s (new) = %s", options.image_variable_name, new_image_id
+        )
 
     service = image_service_factory(sdk)
-    images = await list_ready_images(service, options.parent_id, image_family_name)
-    candidate_images = log_image_inventory(images, image_family_name, new_image_id)
+    images = await list_ready_images(service, options.parent_id, IMAGE_FAMILY_NAME)
+    candidate_images = log_image_inventory(images, IMAGE_FAMILY_NAME, new_image_id)
 
     logger.info("Total images before cleanup: %d", len(images))
     if not options.remove_old_images:
@@ -164,7 +166,9 @@ async def main(
     images_to_remove_ids = [image.metadata.id for image in images_to_remove]
     logger.info("Images selected for removal: %s", images_to_remove_ids)
     await remove_images(service, images_to_remove)
-    logger.info("Total images after cleanup: %d", len(candidate_images) - len(images_to_remove))
+    logger.info(
+        "Total images after cleanup: %d", len(candidate_images) - len(images_to_remove)
+    )
 
 
 if __name__ == "__main__":

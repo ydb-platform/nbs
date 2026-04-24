@@ -27,13 +27,6 @@ def make_image(
     )
 
 
-def test_build_image_family_name():
-    assert (
-        m.build_image_family_name("ydb-platform/nbs")
-        == "github-runner-ydb-platform-nbs"
-    )
-
-
 def test_resolve_new_image_id_falls_back_to_current_value():
     assert m.resolve_new_image_id("current-image-id", None) == "current-image-id"
 
