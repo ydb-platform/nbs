@@ -5560,6 +5560,67 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TCreateNodeArgs::Link(dirId, "link1", file1Id));
     }
 
+    // See #5826 for more details
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldRejectHardLinkFromShardDirToMainTabletNode)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+
+        const TString fsId = "test";
+        const ui64 blockCount = 1'000;
+
+        TTestEnv env({}, config);
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        // Create a single-tablet filesystem (no shards yet; default
+        // AutomaticallyCreatedShardSize is 5TB, so none are created).
+        service.CreateFileStore(fsId, blockCount);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // File created before shards exist — lives in the main tablet,
+        // shardNo == 0 even after shards are added later.
+        const auto fileId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(fileId));
+
+        // Add two shards and enable DirectoryCreationInShards.
+        service.ResizeFileStore(
+            fsId,
+            blockCount,
+            false /* force */,
+            2 /* shardCount */,
+            false /* enableStrictSizeMode */,
+            true /* directoryCreationInShards */);
+        WaitForTabletStart(service);
+
+        headers = service.InitSession(fsId, "client");
+
+        const auto dirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dirId));
+
+        // Linking a main-tablet node into a shard directory is not yet
+        // supported and must return E_FS_NOTSUPP.
+        auto response = service.SendAndRecvCreateNode(
+            headers,
+            TCreateNodeArgs::Link(dirId, "link", fileId));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOTSUPP,
+            response->GetError().GetCode(),
+            response->GetError().GetMessage());
+    }
+
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldListNodesAndGetNodeAttrInDirectoryInShard)
     {
