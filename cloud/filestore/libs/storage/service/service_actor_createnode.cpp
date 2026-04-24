@@ -373,6 +373,7 @@ void TStorageServiceActor::HandleCreateNode(
         {
             // TODO(#5826): remove this check and support hard links from shards
             // directories to main filesystem
+            ReportHardLinkFromShardDirToMainTabletNode();
             auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
                 ErrorNotSupported(
                     "hard links from shard directories to main filesystem nodes"

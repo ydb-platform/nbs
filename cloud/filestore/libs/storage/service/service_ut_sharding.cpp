@@ -5610,6 +5610,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 .GetId();
         UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dirId));
 
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/HardLinkFromShardDirToMainTabletNode");
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
         // Linking a main-tablet node into a shard directory is not yet
         // supported and must return E_FS_NOTSUPP.
         auto response = service.SendAndRecvCreateNode(
@@ -5619,6 +5626,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             E_FS_NOTSUPP,
             response->GetError().GetCode(),
             response->GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
