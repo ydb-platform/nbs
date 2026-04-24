@@ -572,6 +572,7 @@ private:
             HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
         }
 
+        // TODO remove Version==1 after migration is done
         Y_ABORT_UNLESS(
             HeaderPtr->Version == Version || HeaderPtr->Version == 1,
             "Invalid header version %d",
