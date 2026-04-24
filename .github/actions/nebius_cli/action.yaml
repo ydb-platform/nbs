@@ -1,69 +1,88 @@
 name: Prepare nebius cli tool
 description: Install nebius cli
 inputs:
-  config_yaml:
-    required: false
-    description: "Nebius CLI config.yaml content"
+    config_yaml:
+        required: false
+        description: "Nebius CLI config.yaml content"
+outputs:
+    NEBIUS_IAM_TOKEN:
+        description: "Nebius IAM token for downstream steps"
+        value: ${{ steps.set-iam-token.outputs.NEBIUS_IAM_TOKEN }}
 runs:
-  using: composite
-  steps:
-    - name: set up home
-      shell: bash
-      run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+    using: composite
+    steps:
+        - name: set up home
+          shell: bash
+          run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
-    - name: set up path
-      shell: bash
-      run: echo "PATH=$PATH:$HOME/.local/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
+        - name: set up path
+          shell: bash
+          run: echo "PATH=$PATH:$HOME/.local/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
-    - name: Set up Nebius CLI
-      shell: bash
-      run: |
-        set -x
-        if [ ! -f "$HOME/.nebius/bin/nebius" ];
-        then 
-          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
-        else
-          echo "Nebius CLI already installed"
-        fi
+        - name: Set up Nebius CLI
+          shell: bash
+          run: |
+              set -x
+              if [ ! -f "$HOME/.nebius/bin/nebius" ];
+              then 
+                curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
+              else
+                echo "Nebius CLI already installed"
+              fi
 
-    - name: Set up yq
-      shell: bash
-      run: |
-        set -x
-        if command -v yq > /dev/null 2>&1; then
-          echo "yq already installed"
-          exit 0
-        fi
+        - name: Set up yq
+          shell: bash
+          run: |
+              set -x
+              if command -v yq > /dev/null 2>&1; then
+                echo "yq already installed"
+                exit 0
+              fi
 
-        yq_version=$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name')
-        if [ -z "$yq_version" ] || [ "$yq_version" = "null" ]; then
-          echo "Failed to resolve latest yq release"
-          exit 1
-        fi
+              yq_version=$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name')
+              if [ -z "$yq_version" ] || [ "$yq_version" = "null" ]; then
+                echo "Failed to resolve latest yq release"
+                exit 1
+              fi
 
-        mkdir -p "$HOME/.local/bin"
-        curl -sSL -o "$HOME/.local/bin/yq" \
-          "https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_amd64"
-        chmod 0755 "$HOME/.local/bin/yq"
+              mkdir -p "$HOME/.local/bin"
+              curl -sSL -o "$HOME/.local/bin/yq" \
+                "https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_amd64"
+              chmod 0755 "$HOME/.local/bin/yq"
 
-    - name: Set up Nebius CLI config
-      if: ${{ inputs.config_yaml != '' }}
-      shell: bash
-      env:
-        NEBIUS_CONFIG_YAML: ${{ inputs.config_yaml }}
-      run: |
-        mkdir -p "$HOME/.nebius"
-        if [ -f "$HOME/.nebius/config.yaml" ]; then
-          echo "Nebius config already exists"
-          exit 0
-        fi
+        - name: Set up Nebius CLI config
+          if: ${{ inputs.config_yaml != '' }}
+          shell: bash
+          env:
+              NEBIUS_CONFIG_YAML: ${{ inputs.config_yaml }}
+          run: |
+              mkdir -p "$HOME/.nebius"
+              if [ -f "$HOME/.nebius/config.yaml" ]; then
+                echo "Nebius config already exists"
+                exit 0
+              fi
 
-        cat > "$HOME/.nebius/config.yaml" <<EOF
-        $NEBIUS_CONFIG_YAML
-        EOF
-        chmod 600 "$HOME/.nebius/config.yaml"
+              cat > "$HOME/.nebius/config.yaml" <<EOF
+              $NEBIUS_CONFIG_YAML
+              EOF
+              chmod 600 "$HOME/.nebius/config.yaml"
 
-        while IFS= read -r private_key; do
-          [ -n "$private_key" ] || continue
-          echo "::add-mask::$private_key"
-        done < <(yq -r '.profiles[]?."private-key" // empty | split("\n")[]' "$HOME/.nebius/config.yaml")
+              while IFS= read -r private_key; do
+                [ -n "$private_key" ] || continue
+                echo "::add-mask::$private_key"
+              done < <(yq -r '.profiles[]?."private-key" // empty | split("\n")[]' "$HOME/.nebius/config.yaml")
+
+        - name: Set Nebius IAM token
+          id: set-iam-token
+          shell: bash
+          run: |
+              nebius_iam_token=$(nebius iam get-access-token)
+
+              if [ -z "$nebius_iam_token" ]; then
+                echo "Failed to resolve Nebius IAM token"
+                exit 1
+              fi
+
+              echo "::add-mask::$nebius_iam_token"
+              echo "NEBIUS_IAM_TOKEN=$nebius_iam_token" >> "$GITHUB_ENV"
+              echo "NEBIUS_IAM_TOKEN=$nebius_iam_token" >> "$GITHUB_OUTPUT"

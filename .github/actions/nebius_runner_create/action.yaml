@@ -13,9 +13,6 @@ inputs:
   repo:
     required: true
     description: "repo name"
-  nebius_iam_token:
-    required: false
-    description: "Nebius IAM token for SDK authentication"
   nebius_config_yaml:
     required: false
     description: "Nebius CLI config.yaml content for SDK authentication"
@@ -95,15 +92,8 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: set nebius iam token from input
-      if: ${{ inputs.nebius_iam_token != '' }}
-      shell: bash
-      run: |
-        echo "::add-mask::${NEBIUS_IAM_TOKEN_INPUT}"
-        echo "NEBIUS_IAM_TOKEN=${NEBIUS_IAM_TOKEN_INPUT}" >> "$GITHUB_ENV"
-      env:
-        NEBIUS_IAM_TOKEN_INPUT: ${{ inputs.nebius_iam_token }}
     - name: set up nebius cli
+      id: nebius-cli
       uses: ./.github/actions/nebius_cli
       with:
         config_yaml: ${{ inputs.nebius_config_yaml }}
@@ -131,6 +121,7 @@ runs:
           --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
+        NEBIUS_IAM_TOKEN: ${{ steps.nebius-cli.outputs.NEBIUS_IAM_TOKEN }}
         ORG: ${{ inputs.org && format('--github-org {0}', inputs.org) || ''}}
         TEAM: ${{ inputs.team && format('--github-team-slug {0}', inputs.team) || ''}}
         REPO_OWNER: ${{ inputs.repo_owner }}
