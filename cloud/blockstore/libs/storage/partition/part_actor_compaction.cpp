@@ -1087,7 +1087,7 @@ private:
     TRangeStat TopGarbageRangeStat;
 
 public:
-    enum ECompactionTriggerKind
+    enum class ECompactionTriggerKind
     {
         ByBlobCountPerDisk,
         ByBlobCountPerRange,
@@ -1210,9 +1210,10 @@ private:
         bool throttlingAllowed = TopRangeStat.CompactionScore.Score <
                                  Config->GetCompactionScoreLimitForThrottling();
 
-        // Fallback to full compaction if there is too much garbage on the disk.
-        // Needed because compaction by blob count has priority over compaction
-        // by garbage.
+        // Compaction by blob count takes priority over compaction by garbage.
+        // As a result, it may happen that we constantly compact by blob count
+        // while garbage accumulates on disk. To avoid that, we fall back to
+        // full compaction when the garbage level is also high.
         bool fullCompaction =
             GetGarbagePercentage() >= Config->GetCompactionGarbageThreshold();
 
