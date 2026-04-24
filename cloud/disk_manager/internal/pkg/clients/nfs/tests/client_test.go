@@ -684,8 +684,8 @@ func TestUnsafeCreateNodeRestoreShardAfterDeletion(t *testing.T) {
 		shardIDs = append(shardIDs, fmt.Sprintf("%s_s%d", filesystemID, i))
 	}
 
-	// Filesystem deletion invokes deletion of all of it's shards.
-	// to avoid that, configure empty shards list.
+	// Filesystem deletion invokes deletion of all of its shards.
+	// To avoid that, configure empty shards list.
 	err = client.ConfigureShards(ctx, shard2FsID, nfs.ConfigureShardsParams{
 		ShardFileSystemIDs: []string{},
 		Force:              true,
