@@ -1494,10 +1494,15 @@ class TServer final
 private:
     NVerbs::IVerbsPtr Verbs;
 
-    TLog Log;
-    const NMonitoring::TDynamicCountersPtr CountersGroup;
+    ILoggingServicePtr Logging;
+    IMonitoringServicePtr Monitoring;
+    TString LogComponent;
+    TString CountersGroupName;
+    TString CountersComponentName;
+
     TServerConfigPtr Config;
     TEndpointCountersPtr Counters;
+    TLog Log;
 
     TVector<TServerEndpointPtr> Endpoints;
     TMutex EndpointsLock;
@@ -1508,8 +1513,11 @@ private:
 public:
     TServer(
         NVerbs::IVerbsPtr verbs,
-        TLog log,
-        NMonitoring::TDynamicCountersPtr counters,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        TString logComponent,
+        TString countersGroupName,
+        TString countersComponentName,
         TServerConfigPtr config);
 
     // called from external thread
@@ -1540,12 +1548,18 @@ private:
 
 TServer::TServer(
         NVerbs::IVerbsPtr verbs,
-        TLog log,
-        NMonitoring::TDynamicCountersPtr counters,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        TString logComponent,
+        TString countersGroupName,
+        TString countersComponentName,
         TServerConfigPtr config)
     : Verbs(std::move(verbs))
-    , Log(std::move(log))
-    , CountersGroup(std::move(counters))
+    , Logging(std::move(logging))
+    , Monitoring(std::move(monitoring))
+    , LogComponent(std::move(logComponent))
+    , CountersGroupName(std::move(countersGroupName))
+    , CountersComponentName(std::move(countersComponentName))
     , Config(std::move(config))
     , Counters(new TEndpointCounters())
 {
@@ -1556,9 +1570,14 @@ TServer::TServer(
 
 void TServer::Start()
 {
+    Log = Logging->CreateLog(LogComponent);
+
     RDMA_DEBUG("start server");
 
-    Counters->Register(*CountersGroup);
+    auto countersGroup = Monitoring->GetCounters()
+        ->GetSubgroup("counters", CountersGroupName)
+        ->GetSubgroup("component", CountersComponentName);
+    Counters->Register(*countersGroup);
 
     CompletionPollers.resize(Config->PollerThreads);
     for (size_t i = 0; i < CompletionPollers.size(); ++i) {
@@ -1974,14 +1993,20 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 
 IServerPtr CreateServer(
     NVerbs::IVerbsPtr verbs,
-    TLog log,
-    NMonitoring::TDynamicCountersPtr counters,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    TString logComponent,
+    TString countersGroupName,
+    TString countersComponentName,
     TServerConfigPtr config)
 {
     return std::make_shared<TServer>(
         std::move(verbs),
-        std::move(log),
-        std::move(counters),
+        std::move(logging),
+        std::move(monitoring),
+        std::move(logComponent),
+        std::move(countersGroupName),
+        std::move(countersComponentName),
         std::move(config));
 }
 

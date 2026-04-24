@@ -30,10 +30,11 @@ IServerPtr CreateTestServer(
 {
     return CreateServer(
         std::move(verbs),
-        logging->CreateLog("RDMA_TEST"),
-        monitoring->GetCounters()
-            ->GetSubgroup("counters", "rdma")
-            ->GetSubgroup("component", "server"),
+        logging,
+        monitoring,
+        "RDMA_TEST",
+        "rdma",
+        "server",
         std::move(config));
 }
 
