@@ -341,12 +341,12 @@ void TIndexTabletActor::ReplyListNodesInternal(
         }
 
         auto& record = response->Record;
-        record.MutableNameSizes()->Reserve(args.ChildRefs.size());
-        record.MutableExternalRefIndices()->Reserve(extRefCount);
-        record.MutableShardIdSizes()->Reserve(extRefCount);
-        record.MutableShardNodeNameSizes()->Reserve(extRefCount);
-        record.MutableNameBuffer()->reserve(nameBufferSize);
-        record.MutableExternalRefBuffer()->reserve(extRefBufferSize);
+        TListNodesInternalResponseBuilder builder(
+            record,
+            nameBufferSize,
+            extRefBufferSize,
+            args.ChildRefs.size() - skippedRefCount,
+            extRefCount);
         record.MutableNodes()->Reserve(
             args.ChildRefs.size() - extRefCount - skippedRefCount);
 
@@ -355,13 +355,12 @@ void TIndexTabletActor::ReplyListNodesInternal(
         //
 
         ui32 j = 0;
-        for (ui32 i = 0; i < args.ChildRefs.size(); ++i) {
-            auto& ref = args.ChildRefs[i];
+        for (auto& ref: args.ChildRefs) {
             if (ref.ShardId && HasPendingNodeCreateInShard(ref.ShardNodeName)) {
                 continue;
             }
 
-            Store(ref.Name, ref.ShardId, ref.ShardNodeName, i, record);
+            builder.AddNodeRef(ref.Name, ref.ShardId, ref.ShardNodeName);
             if (ref.ShardId) {
                 continue;
             }

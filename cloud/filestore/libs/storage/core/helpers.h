@@ -29,16 +29,36 @@ void Convert(
     const NProto::TFileStorePerformanceProfile& performanceProfile,
     NKikimrFileStore::TConfig& config);
 
+////////////////////////////////////////////////////////////////////////////////
+
 void Convert(
     NProtoPrivate::TListNodesInternalResponse& internalResponse,
     NProto::TListNodesResponse& response);
 
-void Store(
-    TStringBuf name,
-    TStringBuf shardId,
-    TStringBuf shardNodeName,
-    ui32 i,
-    NProtoPrivate::TListNodesInternalResponse& internalResponse);
+////////////////////////////////////////////////////////////////////////////////
+
+class TListNodesInternalResponseBuilder
+{
+private:
+    struct TImpl;
+    THolder<TImpl> Impl;
+
+public:
+    TListNodesInternalResponseBuilder(
+        NProtoPrivate::TListNodesInternalResponse& response,
+        ui64 nameBufferSize,
+        ui64 externalRefBufferSize,
+        ui64 nameCount,
+        ui64 externalRefCount);
+
+    ~TListNodesInternalResponseBuilder();
+
+public:
+    void AddNodeRef(
+        TStringBuf name,
+        TStringBuf shardId,
+        TStringBuf shardNodeName);
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

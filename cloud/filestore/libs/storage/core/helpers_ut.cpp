@@ -138,6 +138,26 @@ struct TConfigs
     {}
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+auto MakeListNodesInternalResponse()
+{
+    NProtoPrivate::TListNodesInternalResponse internalResponse;
+    TListNodesInternalResponseBuilder builder(internalResponse, 25, 30, 5, 2);
+    internalResponse.MutableNameBuffer()->ReserveAndResize(25);
+    internalResponse.MutableExternalRefBuffer()->ReserveAndResize(30);
+    builder.AddNodeRef("name1", "shard1", "nodename1");
+    builder.AddNodeRef("name2", "", "");
+    internalResponse.AddNodes()->SetId(111);
+    builder.AddNodeRef("name3", "", "");
+    internalResponse.AddNodes()->SetId(222);
+    builder.AddNodeRef("name4", "shard2", "nodename2");
+    builder.AddNodeRef("name5", "", "");
+    internalResponse.AddNodes()->SetId(333);
+    internalResponse.SetCookie("cookie");
+    return internalResponse;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -160,21 +180,6 @@ Y_UNIT_TEST_SUITE(THelpers)
 
         Comparator.Compare(TargetConfig, config);
         UNIT_ASSERT_VALUES_EQUAL("", ReportDiff);
-    }
-
-    auto MakeListNodesInternalResponse()
-    {
-        NProtoPrivate::TListNodesInternalResponse internalResponse;
-        Store("name1", "shard1", "nodename1", 0, internalResponse);
-        Store("name2", "", "", 1, internalResponse);
-        internalResponse.AddNodes()->SetId(111);
-        Store("name3", "", "", 2, internalResponse);
-        internalResponse.AddNodes()->SetId(222);
-        Store("name4", "shard2", "nodename2", 3, internalResponse);
-        Store("name5", "", "", 4, internalResponse);
-        internalResponse.AddNodes()->SetId(333);
-        internalResponse.SetCookie("cookie");
-        return internalResponse;
     }
 
     Y_UNIT_TEST(ShouldConvertListNodesInternalResponse)

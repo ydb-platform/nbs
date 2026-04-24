@@ -99,6 +99,8 @@ void Convert(
         performanceProfile.GetMaxPostponedCount());
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void Convert(
     NProtoPrivate::TListNodesInternalResponse& internalResponse,
     NProto::TListNodesResponse& response)
@@ -166,30 +168,95 @@ void Convert(
     }
 }
 
-void Store(
+////////////////////////////////////////////////////////////////////////////////
+
+struct TListNodesInternalResponseBuilder::TImpl
+{
+    google::protobuf::RepeatedField<ui32>& NameSizes;
+    google::protobuf::RepeatedField<ui32>& ExternalRefIndices;
+    google::protobuf::RepeatedField<ui32>& ShardIdSizes;
+    google::protobuf::RepeatedField<ui32>& ShardNodeNameSizes;
+    char* NameBuffer;
+    char* ExternalRefBuffer;
+    ui32 Index = 0;
+
+    TImpl(
+            NProtoPrivate::TListNodesInternalResponse& response,
+            ui64 nameBufferSize,
+            ui64 externalRefBufferSize,
+            ui64 nameCount,
+            ui64 externalRefCount)
+        : NameSizes(*response.MutableNameSizes())
+        , ExternalRefIndices(*response.MutableExternalRefIndices())
+        , ShardIdSizes(*response.MutableShardIdSizes())
+        , ShardNodeNameSizes(*response.MutableShardNodeNameSizes())
+    {
+        auto& nameBuffer = *response.MutableNameBuffer();
+        nameBuffer.ReserveAndResize(nameBufferSize);
+        NameBuffer = nameBuffer.begin();
+        auto& externalRefBuffer = *response.MutableExternalRefBuffer();
+        externalRefBuffer.ReserveAndResize(externalRefBufferSize);
+        ExternalRefBuffer = externalRefBuffer.begin();
+
+        NameSizes.Reserve(nameCount);
+        ExternalRefIndices.Reserve(externalRefCount);
+        ShardIdSizes.Reserve(externalRefCount);
+        ShardNodeNameSizes.Reserve(externalRefCount);
+    }
+
+    void AddNodeRef(
+        TStringBuf name,
+        TStringBuf shardId,
+        TStringBuf shardNodeName)
+    {
+        memcpy(NameBuffer, name.data(), name.size());
+        NameBuffer += name.size();
+        NameSizes.Add(name.size());
+
+        if (shardId) {
+            ExternalRefIndices.Add(Index);
+
+            memcpy(
+                ExternalRefBuffer,
+                shardId.data(),
+                shardId.size());
+            ExternalRefBuffer += shardId.size();
+            ShardIdSizes.Add(shardId.size());
+            memcpy(
+                ExternalRefBuffer,
+                shardNodeName.data(),
+                shardNodeName.size());
+            ExternalRefBuffer += shardNodeName.size();
+            ShardNodeNameSizes.Add(shardNodeName.size());
+        }
+
+        ++Index;
+    }
+};
+
+TListNodesInternalResponseBuilder::TListNodesInternalResponseBuilder(
+        NProtoPrivate::TListNodesInternalResponse& response,
+        ui64 nameBufferSize,
+        ui64 externalRefBufferSize,
+        ui64 nameCount,
+        ui64 externalRefCount)
+    : Impl(new TImpl(
+        response,
+        nameBufferSize,
+        externalRefBufferSize,
+        nameCount,
+        externalRefCount))
+{}
+
+TListNodesInternalResponseBuilder::~TListNodesInternalResponseBuilder()
+{}
+
+void TListNodesInternalResponseBuilder::AddNodeRef(
     TStringBuf name,
     TStringBuf shardId,
-    TStringBuf shardNodeName,
-    ui32 i,
-    NProtoPrivate::TListNodesInternalResponse& internalResponse)
+    TStringBuf shardNodeName)
 {
-    auto& nameBuffer = *internalResponse.MutableNameBuffer();
-    auto& nameSizes = *internalResponse.MutableNameSizes();
-    nameBuffer.append(name);
-    nameSizes.Add(name.size());
-
-    if (shardId) {
-        internalResponse.AddExternalRefIndices(i);
-
-        auto& extRefBuffer = *internalResponse.MutableExternalRefBuffer();
-        auto& idSizes = *internalResponse.MutableShardIdSizes();
-        auto& nodeNameSizes = *internalResponse.MutableShardNodeNameSizes();
-
-        extRefBuffer.append(shardId);
-        idSizes.Add(shardId.size());
-        extRefBuffer.append(shardNodeName);
-        nodeNameSizes.Add(shardNodeName.size());
-    }
+    Impl->AddNodeRef(name, shardId, shardNodeName);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
