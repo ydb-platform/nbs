@@ -39,39 +39,12 @@ TOptionsYdbBasePtr CreateOptions()
 struct TConfigInitializerYdb
     : public TConfigInitializerYdbBase
 {
-    using TBase = TConfigInitializerYdbBase;
-
     explicit TConfigInitializerYdb(TOptionsYdbBasePtr options)
         : TConfigInitializerYdbBase(std::move(options))
     {}
 
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig&) override
     {}
-
-    void ApplyActorSystemConfig(const TString& text)
-    {
-        TBase::ApplyActorSystemConfig(text);
-    }
-
-    void ApplyInterconnectConfig(const TString& text)
-    {
-        TBase::ApplyInterconnectConfig(text);
-    }
-
-    void ApplyAuthConfig(const TString& text)
-    {
-        TBase::ApplyAuthConfig(text);
-    }
-
-    void ApplyLogConfig(const TString& text)
-    {
-        TBase::ApplyLogConfig(text);
-    }
-
-    void ApplyMonitoringConfig(const TString& text)
-    {
-        TBase::ApplyMonitoringConfig(text);
-    }
 };
 
 }   // namespace
