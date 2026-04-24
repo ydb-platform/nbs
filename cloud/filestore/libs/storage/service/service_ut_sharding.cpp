@@ -3715,7 +3715,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto registry = env.GetRegistry();
         registry->Visit(TInstant::Zero(), visitor);
 
-        // We should not create new handles that use seventh byte
         visitor.ValidateExpectedCounters(
             {{{{"sensor", "CreateNodeInShardRetriesCount"},
                {"filesystem", "test"}},

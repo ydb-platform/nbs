@@ -271,7 +271,7 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (HasError(msg->GetError())) {
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
-            CreateNodeRetriesCount++;
+            ++CreateNodeRetriesCount;
 
             LOG_WARN(
                 ctx,
