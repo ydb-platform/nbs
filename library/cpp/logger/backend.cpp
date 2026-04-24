@@ -1,22 +1,32 @@
 #include "backend.h"
-#include <util/generic/vector.h>
-#include <util/system/mutex.h>
+
 #include <util/generic/singleton.h>
+#include <util/generic/vector.h>
 #include <util/generic/yexception.h>
+#include <util/system/mutex.h>
 
 namespace {
-    class TGlobalLogsStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TGlobalLogsStorage
+{
+private:
+    class TImpl: public IGlobalLogsStorage
+    {
     private:
         TVector<TLogBackend*> Backends;
         TMutex Mutex;
 
     public:
-        void Register(TLogBackend* backend) {
+        void Register(TLogBackend* backend) override
+        {
             TGuard<TMutex> g(Mutex);
             Backends.push_back(backend);
         }
 
-        void UnRegister(TLogBackend* backend) {
+        void UnRegister(TLogBackend* backend) override
+        {
             TGuard<TMutex> g(Mutex);
             for (ui32 i = 0; i < Backends.size(); ++i) {
                 if (Backends[i] == backend) {
@@ -27,9 +37,10 @@ namespace {
             Y_ABORT("Incorrect pointer for log backend");
         }
 
-        void Reopen(bool flush) {
+        void Reopen(bool flush) override
+        {
             TGuard<TMutex> g(Mutex);
-            for (auto& b : Backends) {
+            for (auto& b: Backends) {
                 if (typeid(*b) == typeid(TLogBackend)) {
                     continue;
                 }
@@ -41,34 +52,47 @@ namespace {
             }
         }
     };
-}
 
-template <>
-class TSingletonTraits<TGlobalLogsStorage> {
+    std::shared_ptr<TImpl> Storage = std::make_shared<TImpl>();
+
 public:
-    static const size_t Priority = 50;
+    std::shared_ptr<IGlobalLogsStorage> Get() const
+    {
+        return Storage;
+    }
 };
 
-ELogPriority TLogBackend::FiltrationLevel() const {
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+ELogPriority TLogBackend::FiltrationLevel() const
+{
     return LOG_MAX_PRIORITY;
 }
 
-TLogBackend::TLogBackend() noexcept {
-    Singleton<TGlobalLogsStorage>()->Register(this);
+TLogBackend::TLogBackend() noexcept
+    : GlobalLogsStorage(Singleton<TGlobalLogsStorage>()->Get())
+{
+    GlobalLogsStorage->Register(this);
 }
 
-TLogBackend::~TLogBackend() {
-    Singleton<TGlobalLogsStorage>()->UnRegister(this);
+TLogBackend::~TLogBackend()
+{
+    GlobalLogsStorage->UnRegister(this);
 }
 
-void TLogBackend::ReopenLogNoFlush() {
+void TLogBackend::ReopenLogNoFlush()
+{
     ReopenLog();
 }
 
-void TLogBackend::ReopenAllBackends(bool flush) {
-    Singleton<TGlobalLogsStorage>()->Reopen(flush);
+void TLogBackend::ReopenAllBackends(bool flush)
+{
+    Singleton<TGlobalLogsStorage>()->Get()->Reopen(flush);
 }
 
-size_t TLogBackend::QueueSize() const {
+size_t TLogBackend::QueueSize() const
+{
     ythrow yexception() << "Not implemented.";
 }
