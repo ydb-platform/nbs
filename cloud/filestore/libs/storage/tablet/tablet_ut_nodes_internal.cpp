@@ -466,6 +466,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 FormatError(response->GetError()));
         }
 
+        //
+        // AbortUnlink OpLogEntry should be cleaned up.
+        //
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "OpLogEntryCount"},
+                {"filesystem", "test"}
+            }, 0},
+        });
+        // clang-format on
+
         DeleteRef(tablet, dir2, name3);
 
         if (useRenameInDestination) {

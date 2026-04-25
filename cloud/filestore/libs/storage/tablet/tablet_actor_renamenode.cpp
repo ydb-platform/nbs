@@ -263,6 +263,22 @@ void TIndexTabletActor::HandleDoRenameNode(
         auto response =
             std::make_unique<TMethod::TResponse>(std::move(msg->Error));
         NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+
+        //
+        // Cleaning up AbortUnlink OpLogEntry after the response is fine. We
+        // only need to make sure that this transaction completes before any
+        // other transactions. If it doesn't complete then it means that the
+        // tablet rebooted => the transactions that were issued after this one
+        // also haven't completed.
+        //
+
+        if (msg->OpLogEntryId) {
+            ExecuteTx<TDeleteOpLogEntry>(
+                ctx,
+                nullptr /* requestInfo */,
+                msg->OpLogEntryId);
+        }
+
         return;
     }
 
