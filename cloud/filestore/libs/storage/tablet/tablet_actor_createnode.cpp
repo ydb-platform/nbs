@@ -539,18 +539,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     const bool isParentNodeLinkRequest =
         args.Request.HasLink() && args.Request.GetLink().GetShardNodeName();
 
-    //
-    // If directory creation in shards is enabled we cannot allow the service
-    // layer to decide where to create the node because we need to perform some
-    // extra checks which the service layer is unable to do.
-    //
-
-    const bool shardIdSelectionEnabled =
-        Config->GetShardIdSelectionInLeaderEnabled()
-        || GetFileSystem().GetDirectoryCreationInShardsEnabled();
-
     if (!BehaveAsShard(args.Request.GetHeaders())
-            && shardIdSelectionEnabled
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || GetFileSystem().GetDirectoryCreationInShardsEnabled()

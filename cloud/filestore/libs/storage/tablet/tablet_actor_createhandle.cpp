@@ -244,8 +244,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             auto shardId = args.RequestShardId;
             if (!behaveAsShard
-                    && !GetFileSystem().GetShardFileSystemIds().empty()
-                    && Config->GetShardIdSelectionInLeaderEnabled())
+                    && !GetFileSystem().GetShardFileSystemIds().empty())
             {
                 args.Error = SelectShard(0 /*fileSize*/, &shardId);
                 if (HasError(args.Error)) {

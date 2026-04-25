@@ -514,6 +514,9 @@ message TStorageConfig
     // Enables ShardId selection in Leader for CreateNode and CreateHandle
     // requests. ShardIds selected in Leader have priority over ShardIds
     // selected at the StorageServiceActor level.
+    //
+    // Obsolete.
+    // TODO(#5431): remove
     optional bool ShardIdSelectionInLeaderEnabled = 411;
 
     // Shard balancer will prefer shards which have at least this amount of
