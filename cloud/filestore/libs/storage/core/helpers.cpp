@@ -205,9 +205,9 @@ struct TListNodesInternalResponseBuilder::TImpl
     }
 
     void AddNodeRef(
-        TStringBuf name,
-        TStringBuf shardId,
-        TStringBuf shardNodeName)
+        const TString& name,
+        const TString& shardId,
+        const TString& shardNodeName)
     {
         memcpy(NameBuffer, name.data(), name.size());
         NameBuffer += name.size();
@@ -252,9 +252,9 @@ TListNodesInternalResponseBuilder::~TListNodesInternalResponseBuilder()
 {}
 
 void TListNodesInternalResponseBuilder::AddNodeRef(
-    TStringBuf name,
-    TStringBuf shardId,
-    TStringBuf shardNodeName)
+    const TString& name,
+    const TString& shardId,
+    const TString& shardNodeName)
 {
     Impl->AddNodeRef(name, shardId, shardNodeName);
 }

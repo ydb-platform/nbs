@@ -55,9 +55,9 @@ public:
 
 public:
     void AddNodeRef(
-        TStringBuf name,
-        TStringBuf shardId,
-        TStringBuf shardNodeName);
+        const TString& name,
+        const TString& shardId,
+        const TString& shardNodeName);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
