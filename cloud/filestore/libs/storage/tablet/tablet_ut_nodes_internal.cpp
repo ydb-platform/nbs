@@ -859,6 +859,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             UNIT_ASSERT_VALUES_EQUAL(shardId2, abortRequest.GetFileSystemId());
         }
 
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "OpLogEntryCount"},
+                {"filesystem", "test"}
+            }, 1},
+        });
+        // clang-format on
+
         //
         // Rebooting - Abort request should be re-sent upon tablet start.
         //
@@ -1070,6 +1085,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             "Expected at least 2 different generations due to tablet reboot, "
             "got "
                 << rebootTracker.GetGenerationCount());
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "ResponseLogEntryCount"},
+                {"filesystem", "test"}
+            }, static_cast<i64>(requestIds.size())},
+        });
+        // clang-format on
 
         UNIT_ASSERT_GT(failures, 0);
     }

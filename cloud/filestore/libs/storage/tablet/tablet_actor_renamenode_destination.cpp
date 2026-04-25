@@ -651,7 +651,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             return;
         } else {
             if (args.AbortUnlinkOpLogEntryId) {
-                db.DeleteOpLogEntry(args.AbortUnlinkOpLogEntryId);
+                DeleteOpLogEntry(db, args.AbortUnlinkOpLogEntryId);
             }
 
             // remove target ref
@@ -685,7 +685,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
                     << args.OpLogEntry.ShortUtf8DebugString().Quote());
             }
 
-            db.WriteOpLogEntry(args.OpLogEntry);
+            WriteOpLogEntry(db, args.OpLogEntry);
         }
     }
 

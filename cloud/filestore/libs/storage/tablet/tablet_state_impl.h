@@ -73,6 +73,7 @@ struct TIndexTabletState::TImpl
     TSet<ui64> OrphanNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
     THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
+    THashSet<ui64> OpLogEntryIds;
     THashMap<
         TInternalRequestId,
         NProtoPrivate::TResponseLogEntry,

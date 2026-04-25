@@ -598,7 +598,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             }
         } else {
             if (args.AbortUnlinkOpLogEntryId) {
-                db.DeleteOpLogEntry(args.AbortUnlinkOpLogEntryId);
+                DeleteOpLogEntry(db, args.AbortUnlinkOpLogEntryId);
             }
 
             // remove target ref
@@ -625,7 +625,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             shardRequest->SetUnlinkDirectory(
                 args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE);
 
-            db.WriteOpLogEntry(args.OpLogEntry);
+            WriteOpLogEntry(db, args.OpLogEntry);
         }
     }
 
