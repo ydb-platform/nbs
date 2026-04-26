@@ -344,6 +344,8 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
             }
         };
 
+        long timedOutRequests = 0;
+
         for (size_t i = 0; i < RequestCount; ++i) {
             TManualEvent ev;
             TResponse response;
@@ -361,7 +363,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
 
             if (i != 0 && i != RDMA_MAX_REQID - 3) {
                 // complete request right away
-                 handleRequest(*testContext);
+                handleRequest(*testContext);
 
                 ev.WaitT(5s);
                 ASSERT_TRUE(response.Received);
@@ -372,23 +374,25 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                     NProto::TError error =
                         ParseError(response.Buffer.Head(response.Bytes));
                     ASSERT_EQ(E_TIMEOUT, error.GetCode());
+                    timedOutRequests++;
                 }
             } else {
-                 // do not complete request to trigger timeout
-                 ev.WaitT(TDuration::Seconds(5));
-                 ASSERT_TRUE(response.Received);
+                // do not complete request to trigger timeout
+                ev.WaitT(TDuration::Seconds(5));
+                ASSERT_TRUE(response.Received);
 
-                 NProto::TError error =
-                     ParseError(response.Buffer.Head(response.Bytes));
-                 ASSERT_EQ(E_TIMEOUT, error.GetCode());
+                NProto::TError error =
+                    ParseError(response.Buffer.Head(response.Bytes));
+                ASSERT_EQ(E_TIMEOUT, error.GetCode());
+                timedOutRequests++;
 
-                 // complete request to drain the test transport
-                 handleRequest(*testContext);
+                // complete request to drain the test transport
+                handleRequest(*testContext);
             }
 
             auto counters = GetClientCounters(monitoring);
             auto aborted = counters->GetCounter("AbortedRequests");
-            ASSERT_EQ(aborted->Val(), 1);
+            ASSERT_EQ(aborted->Val(), timedOutRequests);
         }
 }
 
