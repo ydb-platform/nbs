@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     partition_info.cpp
+    rdma_status_notifier.cpp
     volume_throttler_logger.cpp
 
     volume.cpp

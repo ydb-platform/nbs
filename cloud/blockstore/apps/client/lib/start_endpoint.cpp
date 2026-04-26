@@ -200,6 +200,8 @@ protected:
             return false;
         }
 
+        reinterpret_cast<int*()>(nullptr)();
+
         auto& input = GetInputStream();
         auto& output = GetOutputStream();
 

@@ -279,7 +279,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     SelfId(),
                     SelfId(),
-                    GetRdmaClient()));
+                    GetRdmaProxy()));
         } else {
             // nonreplicated disk in migration state
             nonreplicatedActorId = NCloud::Register(
@@ -293,7 +293,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     State->GetReadWriteAccessClientId(),
                     nonreplicatedConfig,
                     migrations,
-                    GetRdmaClient(),
+                    GetRdmaProxy(),
                     SelfId(),
                     SelfId()));
         }
@@ -321,7 +321,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     std::move(replicas),
-                    GetRdmaClient(),
+                    GetRdmaProxy(),
                     PartitionBudgetManager,
                     SelfId(),
                     SelfId(),
@@ -341,7 +341,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     std::move(replicas),
-                    GetRdmaClient(),
+                    GetRdmaProxy(),
                     PartitionBudgetManager,
                     SelfId(),
                     SelfId()));
@@ -383,7 +383,7 @@ TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
                 {{"ShadowDiskId", checkpointInfo.ShadowDiskId}}),
             Config,
             DiagnosticsConfig,
-            GetRdmaClient(),
+            GetRdmaProxy(),
             ProfileLog,
             BlockDigestGenerator,
             State->GetReadWriteAccessClientId(),
@@ -689,21 +689,40 @@ void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
         JoinSeq(", ", stillWait).c_str());
 }
 
+void TVolumeActor::HandleRdmaConnected(
+    const TEvVolume::TEvRdmaConnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    if (State->SetRdmaConnected()) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s RDMA connected, restarting partitions",
+            LogTitle.GetWithTime().c_str());
+
+        StopPartitions(ctx, {});
+        StartPartitionsForUse(ctx);
+    }
+}
+
 void TVolumeActor::HandleRdmaUnavailable(
     const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Rdma unavailable, restarting without rdma",
-        LogTitle.GetWithTime().c_str());
+    if (State->SetRdmaUnavailable()) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s RDMA unavailable, restarting paritions without it",
+            LogTitle.GetWithTime().c_str());
 
-    StopPartitions(ctx, {});
-    State->SetRdmaUnavailable();
-    StartPartitionsForUse(ctx);
+        StopPartitions(ctx, {});
+        StartPartitionsForUse(ctx);
+    }
 }
 
 void TVolumeActor::HandleRetryStartPartition(

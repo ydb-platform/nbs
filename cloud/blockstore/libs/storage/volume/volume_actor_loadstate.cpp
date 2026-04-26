@@ -181,6 +181,7 @@ void TVolumeActor::CompleteLoadState(
 
         RegisterCounters(ctx);
         RegisterVolume(ctx);
+        SetupRdmaProxy(ctx);
 
         if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);

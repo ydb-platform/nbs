@@ -148,6 +148,7 @@ private:
                 HandleVolumePartCounters);
             HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
 
+            HFunc(TEvVolume::TEvRdmaConnected, HandleRdmaConnected);
             HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
 
             HFunc(TEvVolume::TEvUpdateResyncState, HandleUpdateResyncState);
@@ -216,6 +217,13 @@ private:
         Y_UNUSED(ctx);
     }
 
+    void HandleRdmaConnected(
+        const TEvVolume::TEvRdmaConnected::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        Y_UNUSED(ctx);
+    }
 
     void HandleRdmaUnavailable(
         const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
@@ -590,6 +598,84 @@ inline TDevices ToLogicalBlocks(TDevices devices, ui32 blockSize)
     }
 
     return devices;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TRdmaEndpointHandler
+    : NCloud::NStorage::NRdma::IClientEndpointHandler
+{
+    TTestActorRuntime& runtime,
+    const NActors::TActorId& Recipient;
+    const NActors::TActorId& Sender;
+
+    TRdmaEndpointHandler(
+        TTestActorRuntime& runtime,
+        const NActors::TActorId& recipient,
+        const NActors::TActorId& sender)
+        : Runtime(runtime)
+        : Recipient(recipient)
+        , Sender(sender)
+    {}
+
+    void HandleConnected() override
+    {
+        Runtime.Send(new IEventHandle(
+            Sender,
+            Recipient,
+            new TEvService::TEvVolume::TEvRdmaConnected(),
+            0));
+    }
+
+    void HandleUnavailable() override
+    {
+        Runtime.Send(new IEventHandle(
+            Sender,
+            Recipient,
+            new TEvService::TEvVolume::TEvRdmaUnavailable(),
+            0));
+    }
+
+    void HandleDisconnected() override
+    {
+        HandleUnavailable();
+    }
+};
+
+IRdmaProxyPtr CreateTestRdmaProxy(
+    TTestActorRuntime& runtime,
+    const NActors::TActorId& recipient,
+    const NActors::TActorId& sender,
+    NCloud::NStorage::NRdma::IClientPtr client,
+    TDevices devices,
+    TVector<TDevices> replicas,
+    TMigrations migrations)
+{
+    TVector<std::pair<TString, ui32>> endpoints;
+
+    // FIXME: issue-5803
+    for (const auto& device: State->GetMeta().GetDevices()) {
+        endpoints.push_back(
+            {device.GetAgentId(), device.GetRdmaEndpoint().GetPort()});
+    }
+
+    for (const auto& replica: State->GetMeta().GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            endpoints.push_back(
+                {device.GetAgentId(), device.GetRdmaEndpoint().GetPort()});
+        }
+    }
+
+    for (const auto& migration: State->GetMeta().GetMigrations()) {
+        const auto& device = migration.GetTargetDevice();
+        endpoints.push_back(
+            {device.GetAgentId(), device.GetRdmaEndpoint().GetPort()});
+    }
+
+    return NRdma::CreateProxy(
+        Client,
+        std::make_shared<TRdmaEndpointHandler>(runtime, recipient, sender),
+        std::move(endpoints));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

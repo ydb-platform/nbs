@@ -288,7 +288,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         builder.BuildNextRequest(&sglist);
 
         ui32 flags = 0;
-        if (RdmaClient->IsAlignedDataEnabled()) {
+        if (RdmaProxy->IsAlignedDataEnabled()) {
             SetProtoFlag(
                 flags,
                 NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
@@ -466,7 +466,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         }
 
         ui32 flags = 0;
-        if (RdmaClient->IsAlignedDataEnabled()) {
+        if (RdmaProxy->IsAlignedDataEnabled()) {
             SetProtoFlag(
                 flags,
                 NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);

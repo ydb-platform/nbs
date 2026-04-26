@@ -87,7 +87,7 @@ private:
     };
 
     const TChildLogTitle LogTitle;
-    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
     const TNonreplicatedPartitionConfigPtr SrcConfig;
     const TString CheckpointId;
     const TString ShadowDiskId;
@@ -117,7 +117,7 @@ public:
         TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticConfig,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString sourceDiskClientId,
@@ -208,6 +208,10 @@ private:
 
     bool HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRdmaConnected(
+        const TEvVolume::TEvRdmaConnected::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRdmaUnavailable(

@@ -399,6 +399,7 @@ void TVolumeActor::CompleteUpdateConfig(
         "%s State initialization finished",
         LogTitle.GetWithTime().c_str());
 
+    SetupRdmaProxy(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
     ScheduleProcessUpdateVolumeConfig(ctx);

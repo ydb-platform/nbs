@@ -45,13 +45,13 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         TActorId volumeActorId,
         TActorId statActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
-    , RdmaClient(std::move(rdmaClient))
+    , RdmaProxy(std::move(rdmaProxy))
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , PartCounters(CreatePartitionDiskCounters(
@@ -63,17 +63,6 @@ TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor() = default;
 
 void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
 {
-    for (const auto& d: PartConfig->GetDevices()) {
-        auto& ep = AgentId2EndpointFuture[d.GetAgentId()];
-        if (ep.Initialized()) {
-            continue;
-        }
-
-        ep = RdmaClient->StartEndpoint(
-            d.GetAgentId(),
-            d.GetRdmaEndpoint().GetPort());
-    }
-
     Become(&TThis::StateWork);
     if (!Config->GetUsePullSchemeForVolumeStatistics()) {
         ScheduleCountersUpdate(ctx);
@@ -92,7 +81,7 @@ bool TNonreplicatedPartitionRdmaActor::CheckReadWriteBlockRange(
 ui32 TNonreplicatedPartitionRdmaActor::GetFlags() const
 {
     ui32 flags = 0;
-    if (RdmaClient->IsAlignedDataEnabled()) {
+    if (RdmaProxy->IsAlignedDataEnabled()) {
         SetProtoFlag(
             flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
     }
@@ -206,44 +195,19 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
             return false;
         }
 
-        auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
-        if (!ep) {
-            auto* f = AgentId2EndpointFuture.FindPtr(r.Device.GetAgentId());
-            if (!f) {
-                Y_DEBUG_ABORT_UNLESS(0);
+        auto endpoint = RdmaProxy->GetEndpoint(
+            r.Device.GetAgentId(),
+            r.Device.GetRdmaEndpoint().GetPort());
 
-                reply(ctx, requestInfo, PartConfig->MakeError(
-                    E_INVALID_STATE,
-                    TStringBuilder() << "endpoint not found for agent: "
-                    << r.Device.GetAgentId()));
-                return false;
-            }
-
-            if (f->HasException()) {
-                SendRdmaUnavailableIfNeeded(ctx);
-
-                auto [_, error] = ResultOrError(*f);
-
-                reply(
-                    ctx,
-                    requestInfo,
-                    PartConfig->MakeError(
-                        E_REJECTED,
-                        TStringBuilder() << "endpoint init failed for agent "
-                                         << r.Device.GetAgentId().Quote()
-                                         << ": " << FormatError(error)));
-                return false;
-            }
-
-            if (!f->HasValue()) {
-                reply(ctx, requestInfo, PartConfig->MakeError(
+        if (!endpoint) {
+            reply(
+                ctx,
+                requestInfo,
+                PartConfig->MakeError(
                     E_REJECTED,
                     TStringBuilder() << "endpoint not initialized for agent: "
-                    << r.Device.GetAgentId()));
-                return false;
-            }
-
-            ep = f->GetValue();
+                                     << r.Device.GetAgentId()));
+            return false;
         }
     }
 
@@ -363,7 +327,7 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
         }
 
         ui32 flags = 0;
-        if (RdmaClient->IsAlignedDataEnabled()) {
+        if (RdmaProxy->IsAlignedDataEnabled()) {
             SetProtoFlag(
                 flags,
                 NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
@@ -447,23 +411,6 @@ void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
 
         NotifyDeviceTimedOutIfNeeded(ctx, deviceUUID);
     }
-}
-
-void TNonreplicatedPartitionRdmaActor::SendRdmaUnavailableIfNeeded(
-    const TActorContext& ctx)
-{
-    if (SentRdmaUnavailableNotification) {
-        return;
-    }
-
-    NCloud::Send(
-        ctx,
-        PartConfig->GetParentActorId(),
-        std::make_unique<TEvVolume::TEvRdmaUnavailable>());
-
-    ReportRdmaError("RDMA Unavailable");
-
-    SentRdmaUnavailableNotification = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

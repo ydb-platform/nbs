@@ -240,7 +240,7 @@ struct TFixture
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestClientHandler
-    : public NCloud::NStorage::NRdma::IClientHandler
+    : public NCloud::NStorage::NRdma::IClientRequestHandler
 {
     std::function<
         void(NCloud::NStorage::NRdma::TClientRequestPtr, ui32, size_t)>
@@ -262,7 +262,7 @@ public:
 };
 
 template <typename TFn>
-NCloud::NStorage::NRdma::IClientHandlerPtr Handler(TFn&& fn)
+NCloud::NStorage::NRdma::IClientRequestHandlerPtr Handler(TFn&& fn)
 {
     return std::make_shared<TTestClientHandler>(std::forward<TFn>(fn));
 }

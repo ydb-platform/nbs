@@ -1986,6 +1986,13 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                 }
 
                 TABLER() {
+                    TABLED() { out << "RdmaUnavailable"; }
+                    TABLED() {
+                        out << State->GetRdmaUnavailable();
+                    }
+                }
+
+                TABLER() {
                     TABLED() { out << "UseFastPath"; }
                     TABLED() {
                         out << State->GetUseFastPath();

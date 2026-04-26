@@ -32,7 +32,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
@@ -43,7 +43,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
-    , RdmaClient(std::move(rdmaClient))
+    , RdmaProxy(std::move(rdmaProxy))
     , PartitionBudgetManager(std::move(partitionBudgetManager))
     , ResyncPolicy(resyncPolicy)
     , CritOnChecksumMismatch(critOnChecksumMismatch)
@@ -126,7 +126,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             PartConfig,
             Migrations,
             ReplicaDevices,
-            RdmaClient,
+            RdmaProxy,
             PartitionBudgetManager,
             VolumeActorId,
             SelfId(),
@@ -142,7 +142,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             replicaInfos[i].Config,
             VolumeActorId,
             SelfId(),
-            RdmaClient);
+            RdmaProxy);
 
         TActorId actorId = NCloud::Register(ctx, std::move(actor));
         Replicas.push_back({.ReplicaIndex = i, .ActorId = actorId});
