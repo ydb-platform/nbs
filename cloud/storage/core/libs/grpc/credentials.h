@@ -42,43 +42,31 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
         const auto& rootCertsFile = config.GetRootCertsFile();
         const auto& certFile = config.GetCertFile();
         const auto& certPrivateKeyFile = config.GetCertPrivateKeyFile();
-        const bool hasIdentity = !!certFile || !!certPrivateKeyFile;
 
-        if (hasIdentity) {
-            Y_ENSURE(certFile, "Empty CertFile");
-            Y_ENSURE(certPrivateKeyFile, "Empty CertPrivateKeyFile");
+        auto provider = GetCertificateRefresher()->GetCertificateProvider();
 
-            auto provider = GetCertificateRefresher()->GetCertificateProvider();
-
-            if (!provider) {
-                grpc::SslCredentialsOptions sslOptions;
-                if (rootCertsFile) {
-                    sslOptions.pem_root_certs = ReadFile(rootCertsFile);
-                }
-                sslOptions.pem_private_key = ReadFile(certPrivateKeyFile);
-                sslOptions.pem_cert_chain = ReadFile(certFile);
-                credentials = grpc::SslCredentials(sslOptions);
-            } else {
-                TCertificateFiles certPaths;
-                certPaths.PrivateKeyPath = certPrivateKeyFile;
-                certPaths.CertChainPath = certFile;
-
-                grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
-                tlsOptions.set_certificate_provider(std::move(provider));
-
-                tlsOptions.watch_identity_key_cert_pairs();
-                if (rootCertsFile) {
-                    tlsOptions.watch_root_certs();
-                }
-
-                credentials = grpc::experimental::TlsCredentials(tlsOptions);
-            }
-        } else {
+        if (!provider) {
             grpc::SslCredentialsOptions sslOptions;
             if (rootCertsFile) {
                 sslOptions.pem_root_certs = ReadFile(rootCertsFile);
             }
+            sslOptions.pem_private_key = ReadFile(certPrivateKeyFile);
+            sslOptions.pem_cert_chain = ReadFile(certFile);
             credentials = grpc::SslCredentials(sslOptions);
+        } else {
+            TCertificateFiles certPaths;
+            certPaths.PrivateKeyPath = certPrivateKeyFile;
+            certPaths.CertChainPath = certFile;
+
+            grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
+            tlsOptions.set_certificate_provider(std::move(provider));
+
+            tlsOptions.watch_identity_key_cert_pairs();
+            if (rootCertsFile) {
+                tlsOptions.watch_root_certs();
+            }
+
+            credentials = grpc::experimental::TlsCredentials(tlsOptions);
         }
     }
     return credentials;

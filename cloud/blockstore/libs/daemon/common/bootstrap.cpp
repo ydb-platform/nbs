@@ -316,14 +316,16 @@ void TBootstrapBase::Init()
             });
         }
 
-        CertificateRefresher = GetCertificateRefresher();
-        CertificateRefresher->Init(
-            Logging,
-            serverGroup,
-            Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
-        CertificateProvider = CertificateRefresher->GetCertificateProvider();
+        if (!certPathList.empty()) {
+            CertificateRefresher = GetCertificateRefresher();
+            CertificateRefresher->Init(
+                Logging,
+                serverGroup,
+                Configs->ServerConfig->GetRootCertsFile(),
+                std::move(certPathList),
+                Configs->ServerConfig->GetRefreshCertsPeriod());
+            CertificateProvider = CertificateRefresher->GetCertificateProvider();
+        }
     }
 
     for (auto& event: PostponedCriticalEvents) {

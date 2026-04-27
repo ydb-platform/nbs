@@ -341,16 +341,17 @@ void TBootstrapVhost::InitComponents()
                 cert.CertFile
             });
         }
-        Y_ENSURE(!certPathList.empty(), "Empty Certs");
 
-        CertificateRefresher = GetCertificateRefresher();
-        CertificateRefresher->Init(
-            Logging,
-            serverCounters,
-            Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
-        CertificateProvider = CertificateRefresher->GetCertificateProvider();
+        if (!certPathList.empty()) {
+            CertificateRefresher = GetCertificateRefresher();
+            CertificateRefresher->Init(
+                Logging,
+                serverCounters,
+                Configs->ServerConfig->GetRootCertsFile(),
+                std::move(certPathList),
+                Configs->ServerConfig->GetRefreshCertsPeriod());
+            CertificateProvider = CertificateRefresher->GetCertificateProvider();
+        }
     }
 
     Server = CreateServer(

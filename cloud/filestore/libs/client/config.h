@@ -36,7 +36,6 @@ public:
     TDuration GetConnectionErrorMaxRetryTimeout() const;
 
     ui32 GetSecurePort() const;
-    ui32 GetRefreshCertsPeriod() const;
     TString GetRootCertsFile() const;
     TString GetCertFile() const;
     TString GetCertPrivateKeyFile() const;
