@@ -27,10 +27,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum EWakeupTag : ui64
+enum EWakeupTag
 {
-    WAKEUP_TAG_HEALTH_CHECK = 1,
-    WAKEUP_TAG_PARTLABEL_CHECK = 2,
+    HealthCheck = 1,
+    SymlinkCheck,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,8 +77,7 @@ public:
     TDeviceIntegrityCheckActor(
         const TActorId& diskAgent,
         TVector<NProto::TDeviceConfig> devices,
-        TDuration healthCheckDelay,
-        TDuration symlinkCheckInterval);
+        TDeviceIntegrityCheckParams params);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -107,12 +106,11 @@ private:
 TDeviceIntegrityCheckActor::TDeviceIntegrityCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
-    TDuration healthCheckDelay,
-    TDuration symlinkCheckInterval)
+    TDeviceIntegrityCheckParams params)
     : DiskAgent{diskAgent}
     , Devices(std::move(devices))
-    , HealthCheckDelay(healthCheckDelay)
-    , SymlinkCheckInterval(symlinkCheckInterval)
+    , HealthCheckDelay(params.HealthCheckInterval)
+    , SymlinkCheckInterval(params.SymlinkCheckInterval)
     , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
 {}
 
@@ -132,10 +130,10 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
     ctx.Schedule(
         HealthCheckDelay,
-        new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_HEALTH_CHECK));
+        new TEvents::TEvWakeup(EWakeupTag::HealthCheck));
     ctx.Schedule(
         SymlinkCheckInterval,
-        new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK));
+        new TEvents::TEvWakeup(EWakeupTag::SymlinkCheck));
 
     LOG_INFO_S(
         ctx,
@@ -199,14 +197,14 @@ void TDeviceIntegrityCheckActor::HandleWakeup(
     const TActorContext& ctx)
 {
     switch (ev->Get()->Tag) {
-        case EWakeupTag::WAKEUP_TAG_HEALTH_CHECK:
+        case EWakeupTag::HealthCheck:
             CheckDevicesHealth(ctx);
             break;
-        case EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK:
+        case EWakeupTag::SymlinkCheck:
             CheckSymlinks();
             ctx.Schedule(
                 SymlinkCheckInterval,
-                new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK));
+                new TEvents::TEvWakeup(EWakeupTag::SymlinkCheck));
             break;
         default:
             break;
@@ -280,7 +278,7 @@ void TDeviceIntegrityCheckActor::HandleReadDeviceBlocksResponse(
     if (--PendingRequests == 0) {
         ctx.Schedule(
             HealthCheckDelay,
-            new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_HEALTH_CHECK));
+            new TEvents::TEvWakeup(EWakeupTag::HealthCheck));
     }
 }
 
@@ -313,8 +311,7 @@ std::unique_ptr<IActor> CreateDeviceIntegrityCheckActor(
     return std::make_unique<TDeviceIntegrityCheckActor>(
         diskAgent,
         std::move(devices),
-        params.HealthCheckInterval,
-        params.SymlinkCheckInterval);
+        params);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent
