@@ -188,6 +188,18 @@ void TIndexTabletState::LoadState(
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
         TVector<TString>(shardIds.begin(), shardIds.end()));
+
+    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    if (fileShardIds.size()) {
+        Impl->FileShardBalancer = CreateShardBalancer(
+            config.GetShardBalancerPolicy(),
+            GetBlockSize(),
+            config.GetShardBalancerPrecisionBytes(),
+            config.GetMaxFileBlocks(),
+            config.GetShardBalancerDesiredFreeSpaceReserve(),
+            config.GetShardBalancerMinFreeSpaceReserve(),
+            TVector<TString>(fileShardIds.begin(), fileShardIds.end()));
+    }
 }
 
 void TIndexTabletState::UpdateConfig(

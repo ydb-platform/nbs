@@ -414,7 +414,10 @@ public:
 
     ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
 
-    NProto::TError SelectShard(ui64 fileSize, TString* shardId);
+    NProto::TError SelectShard(
+        NProto::ENodeType nodeType,
+        ui64 fileSize,
+        TString* shardId);
 
     void UpdateShardBalancer(const TVector<TShardStats>& stats);
 

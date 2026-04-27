@@ -551,7 +551,10 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
                 && (!isMainWithLocalNodes
                     || GetFileSystem().GetForceDirectoryCreationInShards())))
     {
-        args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
+        args.Error = SelectShard(
+            static_cast<NProto::ENodeType>(args.Attrs.GetType()),
+            args.Attrs.GetSize(),
+            &args.ShardId);
         if (HasError(args.Error)) {
             return true;
         }
