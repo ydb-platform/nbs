@@ -9,6 +9,7 @@ RECURSE(
     service_kikimr
     service_local
     service_null
+    spdk
     storage
     vfs
     vfs_fuse
