@@ -4859,7 +4859,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     Y_UNIT_TEST(ShouldBalanceShardsByFreeSpace)
     {
         NProto::TStorageConfig config;
-        config.SetShardIdSelectionInLeaderEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(4_MB);
         config.SetAutomaticallyCreatedShardSize(4_MB);
@@ -5556,7 +5555,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false /* force */,
             2 /* shardCount */,
             false /* enableStrictSizeMode */,
-            true /* directoryCreationInShards */);
+            true /* directoryCreationInShards */,
+            true /* forceDirectoryCreationInShards */);
         WaitForTabletStart(service);
 
         headers = service.InitSession(fsId, "client");

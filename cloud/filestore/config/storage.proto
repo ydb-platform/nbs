@@ -517,7 +517,7 @@ message TStorageConfig
     //
     // Obsolete.
     // TODO(#5431): remove
-    optional bool ShardIdSelectionInLeaderEnabled = 411;
+    optional bool ShardIdSelectionInLeaderEnabled = 411 [deprecated = true];
 
     // Shard balancer will prefer shards which have at least this amount of
     // free space in bytes.

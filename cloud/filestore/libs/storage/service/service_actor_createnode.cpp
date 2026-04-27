@@ -410,18 +410,6 @@ void TStorageServiceActor::HandleCreateNode(
 
             return;
         }
-    } else {
-        const bool multiTabletForwardingEnabled =
-            StorageConfig->GetMultiTabletForwardingEnabled() &&
-            !headers.GetDisableMultiTabletForwarding() &&
-            (msg->Record.HasFile() ||
-             filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-
-        if (multiTabletForwardingEnabled) {
-            if (const auto& shardId = session->SelectShard()) {
-                msg->Record.SetShardFileSystemId(shardId);
-            }
-        }
     }
 
     ForwardRequest<TEvService::TCreateNodeMethod>(ctx, ev);
