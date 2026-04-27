@@ -2,7 +2,10 @@ PY3TEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
-TEST_SRCS(test.py)
+TEST_SRCS(
+    test.py
+    test_bad_disk_size.py
+)
 
 DEPENDS(
     cloud/blockstore/apps/client

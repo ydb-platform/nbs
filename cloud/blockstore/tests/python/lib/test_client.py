@@ -36,6 +36,11 @@ class TestClient:
         return json.loads(response)["LocalDBBackup"]
 
     @_handle_errors
+    def backup_disk_registry_state_in_memory(self):
+        response = self.execute_BackupDiskRegistryState(Source=protos.BDRSS_MEMORY)
+        return json.loads(response)["MemoryBackup"]
+
+    @_handle_errors
     def add_host(self, agent_id):
         request = protos.TCmsActionRequest()
         action = request.Actions.add()
