@@ -1494,7 +1494,7 @@ class TServer final
 private:
     NVerbs::IVerbsPtr Verbs;
 
-    TRdmaObservabilityProvider ObservabilityProvider;
+    TObservabilityProvider ObservabilityProvider;
 
     TServerConfigPtr Config;
     TEndpointCountersPtr Counters;
@@ -1509,7 +1509,7 @@ private:
 public:
     TServer(
         NVerbs::IVerbsPtr verbs,
-        TRdmaObservabilityProvider observabilityProvider,
+        TObservabilityProvider observabilityProvider,
         TServerConfigPtr config);
 
     // called from external thread
@@ -1540,7 +1540,7 @@ private:
 
 TServer::TServer(
         NVerbs::IVerbsPtr verbs,
-        TRdmaObservabilityProvider observabilityProvider,
+        TObservabilityProvider observabilityProvider,
         TServerConfigPtr config)
     : Verbs(std::move(verbs))
     , ObservabilityProvider(std::move(observabilityProvider))
@@ -1975,7 +1975,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 
 IServerPtr CreateServer(
     NVerbs::IVerbsPtr verbs,
-    TRdmaObservabilityProvider observabilityProvider,
+    TObservabilityProvider observabilityProvider,
     TServerConfigPtr config)
 {
     return std::make_shared<TServer>(

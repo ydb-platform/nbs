@@ -4,7 +4,7 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRdmaObservabilityProvider::TRdmaObservabilityProvider(
+TObservabilityProvider::TObservabilityProvider(
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     TString logComponent,
@@ -17,13 +17,12 @@ TRdmaObservabilityProvider::TRdmaObservabilityProvider(
     , CountersComponentName(std::move(countersComponentName))
 {}
 
-TLog TRdmaObservabilityProvider::CreateLog() const
+TLog TObservabilityProvider::CreateLog() const
 {
     return Logging->CreateLog(LogComponent);
 }
 
-NMonitoring::TDynamicCountersPtr
-TRdmaObservabilityProvider::CreateCounters() const
+NMonitoring::TDynamicCountersPtr TObservabilityProvider::CreateCounters() const
 {
     return Monitoring->GetCounters()
         ->GetSubgroup("counters", CountersGroupName)

@@ -31,7 +31,7 @@ IClientPtr CreateTestClient(
 {
     return CreateClient(
         std::move(verbs),
-        TRdmaObservabilityProvider(
+        TObservabilityProvider(
             logging,
             monitoring,
             "RDMA_TEST",

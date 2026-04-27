@@ -1814,7 +1814,7 @@ class TClient final
 private:
     NVerbs::IVerbsPtr Verbs;
 
-    TRdmaObservabilityProvider ObservabilityProvider;
+    TObservabilityProvider ObservabilityProvider;
 
     TClientConfigPtr Config;
     TEndpointCountersPtr Counters;
@@ -1826,7 +1826,7 @@ private:
 public:
     TClient(
         NVerbs::IVerbsPtr verbs,
-        TRdmaObservabilityProvider observabilityProvider,
+        TObservabilityProvider observabilityProvider,
         TClientConfigPtr config);
 
     // called from external thread
@@ -1864,7 +1864,7 @@ private:
 
 TClient::TClient(
         NVerbs::IVerbsPtr verbs,
-        TRdmaObservabilityProvider observabilityProvider,
+        TObservabilityProvider observabilityProvider,
         TClientConfigPtr config)
     : Verbs(std::move(verbs))
     , ObservabilityProvider(std::move(observabilityProvider))
@@ -2415,7 +2415,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 
 IClientPtr CreateClient(
     NVerbs::IVerbsPtr verbs,
-    TRdmaObservabilityProvider observabilityProvider,
+    TObservabilityProvider observabilityProvider,
     TClientConfigPtr config)
 {
     return std::make_shared<TClient>(

@@ -11,7 +11,7 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaObservabilityProvider
+class TObservabilityProvider
 {
 private:
     ILoggingServicePtr Logging;
@@ -21,7 +21,7 @@ private:
     TString CountersComponentName;
 
 public:
-    TRdmaObservabilityProvider(
+    TObservabilityProvider(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         TString logComponent,

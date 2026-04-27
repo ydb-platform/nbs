@@ -30,7 +30,7 @@ IServerPtr CreateTestServer(
 {
     return CreateServer(
         std::move(verbs),
-        TRdmaObservabilityProvider(
+        TObservabilityProvider(
             logging,
             monitoring,
             "RDMA_TEST",

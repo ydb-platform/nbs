@@ -12,7 +12,7 @@ namespace NCloud::NStorage::NRdma {
 
 IClientPtr CreateClient(
     NVerbs::IVerbsPtr verbs,
-    TRdmaObservabilityProvider observabilityProvider,
+    TObservabilityProvider observabilityProvider,
     TClientConfigPtr config);
 
 }   // namespace NCloud::NStorage::NRdma

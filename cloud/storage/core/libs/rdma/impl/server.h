@@ -11,7 +11,7 @@ namespace NCloud::NStorage::NRdma {
 
 IServerPtr CreateServer(
     NVerbs::IVerbsPtr verbs,
-    TRdmaObservabilityProvider observabilityProvider,
+    TObservabilityProvider observabilityProvider,
     TServerConfigPtr config);
 
 }   // namespace NCloud::NStorage::NRdma
