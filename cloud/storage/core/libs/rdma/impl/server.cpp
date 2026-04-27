@@ -1494,11 +1494,7 @@ class TServer final
 private:
     NVerbs::IVerbsPtr Verbs;
 
-    ILoggingServicePtr Logging;
-    IMonitoringServicePtr Monitoring;
-    TString LogComponent;
-    TString CountersGroupName;
-    TString CountersComponentName;
+    TRdmaObservabilityProvider ObservabilityProvider;
 
     TServerConfigPtr Config;
     TEndpointCountersPtr Counters;
@@ -1513,11 +1509,7 @@ private:
 public:
     TServer(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        TString logComponent,
-        TString countersGroupName,
-        TString countersComponentName,
+        TRdmaObservabilityProvider observabilityProvider,
         TServerConfigPtr config);
 
     // called from external thread
@@ -1548,18 +1540,10 @@ private:
 
 TServer::TServer(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        TString logComponent,
-        TString countersGroupName,
-        TString countersComponentName,
+        TRdmaObservabilityProvider observabilityProvider,
         TServerConfigPtr config)
     : Verbs(std::move(verbs))
-    , Logging(std::move(logging))
-    , Monitoring(std::move(monitoring))
-    , LogComponent(std::move(logComponent))
-    , CountersGroupName(std::move(countersGroupName))
-    , CountersComponentName(std::move(countersComponentName))
+    , ObservabilityProvider(std::move(observabilityProvider))
     , Config(std::move(config))
     , Counters(new TEndpointCounters())
 {
@@ -1570,13 +1554,11 @@ TServer::TServer(
 
 void TServer::Start()
 {
-    Log = Logging->CreateLog(LogComponent);
+    Log = ObservabilityProvider.CreateLog();
 
     RDMA_DEBUG("start server");
 
-    auto countersGroup = Monitoring->GetCounters()
-        ->GetSubgroup("counters", CountersGroupName)
-        ->GetSubgroup("component", CountersComponentName);
+    auto countersGroup = ObservabilityProvider.CreateCounters();
     Counters->Register(*countersGroup);
 
     CompletionPollers.resize(Config->PollerThreads);
@@ -1993,20 +1975,12 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 
 IServerPtr CreateServer(
     NVerbs::IVerbsPtr verbs,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    TString logComponent,
-    TString countersGroupName,
-    TString countersComponentName,
+    TRdmaObservabilityProvider observabilityProvider,
     TServerConfigPtr config)
 {
     return std::make_shared<TServer>(
         std::move(verbs),
-        std::move(logging),
-        std::move(monitoring),
-        std::move(logComponent),
-        std::move(countersGroupName),
-        std::move(countersComponentName),
+        std::move(observabilityProvider),
         std::move(config));
 }
 

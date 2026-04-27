@@ -31,11 +31,12 @@ IClientPtr CreateTestClient(
 {
     return CreateClient(
         std::move(verbs),
-        logging,
-        monitoring,
-        "RDMA_TEST",
-        "rdma",
-        "client",
+        TRdmaObservabilityProvider(
+            logging,
+            monitoring,
+            "RDMA_TEST",
+            "rdma",
+            "client"),
         std::move(config));
 }
 
