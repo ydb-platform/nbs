@@ -218,10 +218,6 @@ message TClientConfig
     //   dataplane requests aren't blocked during remount
     //   if current mount state is OK
     optional bool EnableNonBlockingRemount = 48;
-
-    // Certificate refresh period in seconds for automatic TLS certificate
-    // reloading. Zero disables periodic certificate reloading.
-    optional uint32 RefreshCertsPeriod = 49;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

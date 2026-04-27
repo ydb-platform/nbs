@@ -95,8 +95,6 @@ public:
     bool GetLocalNonreplDisableDurableClient() const;
     TRequestThresholds GetRequestThresholds() const;
 
-    TDuration GetRefreshCertsPeriod() const;
-
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
 };

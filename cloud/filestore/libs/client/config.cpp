@@ -42,7 +42,6 @@ TDuration MSeconds(ui64 x)
     xxx(ConnectionErrorMaxRetryTimeout, TDuration,      MSeconds(100)         )\
     xxx(GrpcReconnectBackoff,           TDuration,      MSeconds(100)         )\
     xxx(SecurePort,             ui32,             0                           )\
-    xxx(RefreshCertsPeriod,     ui32,             0                           )\
     xxx(RootCertsFile,          TString,          {}                          )\
     xxx(CertFile,               TString,          {}                          )\
     xxx(CertPrivateKeyFile,     TString,          {}                          )\

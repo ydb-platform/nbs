@@ -25,8 +25,6 @@
 
 namespace NCloud {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +33,8 @@ using grpc_core::PemKeyCertPairList;
 using grpc_core::RefCountedPtr;
 
 using TCertificateFiles = NCloud::TCertificateFiles;
+
+////////////////////////////////////////////////////////////////////////////////
 
 template <typename TDerived>
 class TPeriodicCertificateProviderBase
@@ -53,6 +53,8 @@ private:
         NThreading::TPromise<void> Promise;
     };
 
+    const ILoggingServicePtr Logging;
+    const NMonitoring::TDynamicCountersPtr ServerGroup;
     const TString RootCertPath;
     const TDuration RefreshIntervalSec;
     mutable std::mutex WakeupMutex;
@@ -71,37 +73,28 @@ public:
 
 public:
     TPeriodicCertificateProviderBase(
-        ILoggingServicePtr logging,
-        NMonitoring::TDynamicCountersPtr serverGroup,
-        TString rootCertPath,
-        TVector<TCertificateFiles> certificates,
-        TDuration refreshIntervalSec)
-        : RootCertPath(std::move(rootCertPath))
+            ILoggingServicePtr logging,
+            NMonitoring::TDynamicCountersPtr serverGroup,
+            TString rootCertPath,
+            TVector<TCertificateFiles> certificates,
+            TDuration refreshIntervalSec)
+        : Logging(std::move(logging))
+        , ServerGroup(std::move(serverGroup))
+        , RootCertPath(std::move(rootCertPath))
         , RefreshIntervalSec(refreshIntervalSec)
     {
-        Log = logging->CreateLog("BLOCKSTORE_TLS_CERTIFICATE_PROVIDER");
-
         Y_ENSURE(
             !certificates.empty(),
             "Certificates list should not be empty");
 
-        NMonitoring::TDynamicCountersPtr tlsMetricsGroup;
-        if (serverGroup) {
-            tlsMetricsGroup =
-                serverGroup->GetSubgroup("subsystem", "certificates");
-        }
-
         for (const auto& certificate: certificates) {
             Y_ENSURE(certificate.PrivateKeyPath, "Empty PrivateKeyPath");
             Y_ENSURE(certificate.CertChainPath, "Empty CertChainPath");
-            NMonitoring::TDynamicCountersPtr certMetrics;
-            if (tlsMetricsGroup) {
-                certMetrics = tlsMetricsGroup->GetSubgroup(
-                    "cert",
-                    GetBaseName(certificate.CertChainPath));
-            }
-            Certificates.push_back(
-                {certificate, y_absl::nullopt, certMetrics});
+            Certificates.push_back({
+                .Files = certificate,
+                .IdentityKeyCertPairs = y_absl::nullopt,
+                .Metrics = {}
+            });
         }
     }
 
@@ -133,6 +126,24 @@ protected:
         }
         Started = true;
         Stopping.store(false);
+
+        Log = Logging->CreateLog("BLOCKSTORE_TLS_CERTIFICATE_PROVIDER");
+
+        NMonitoring::TDynamicCountersPtr tlsMetricsGroup;
+        if (ServerGroup) {
+            tlsMetricsGroup =
+                ServerGroup->GetSubgroup("subsystem", "certificates");
+        }
+
+        for (auto& certificate: Certificates) {
+            NMonitoring::TDynamicCountersPtr certMetrics;
+            if (tlsMetricsGroup) {
+                certMetrics = tlsMetricsGroup->GetSubgroup(
+                    "cert",
+                    GetBaseName(certificate.Files.CertChainPath));
+            }
+            certificate.Metrics = std::move(certMetrics);
+        }
 
         ForceUpdate();
         RefreshThread = std::thread([this] {
@@ -330,6 +341,8 @@ private:
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TPeriodicCertificateProvider final
     : public grpc_tls_certificate_provider
