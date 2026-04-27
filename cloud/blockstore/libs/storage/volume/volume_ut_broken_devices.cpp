@@ -6,6 +6,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NTestVolume;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -76,7 +77,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SetupNrdVolume(volume);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
@@ -95,10 +96,10 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SetupNrdVolume(volume);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         SendBrokenDeviceNotification(volume, "uuid-2");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
@@ -118,15 +119,15 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         SendBrokenDeviceNotification(volume, "uuid-1");
         SendBrokenDeviceNotification(volume, "uuid-2");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         SendRecoveredDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
 
         SendRecoveredDeviceNotification(volume, "uuid-2");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
@@ -145,18 +146,18 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SetupNrdVolume(volume);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
 
         volume.RebootTablet();
         volume.WaitReady();
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
 
         SendRecoveredDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
@@ -175,13 +176,13 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SetupNrdVolume(volume);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
 
         volume.RebootTablet();
         volume.WaitReady();
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
     }
@@ -200,13 +201,13 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
             DefaultBlockCount);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
 
         volume.RebootTablet();
         volume.WaitReady();
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
     }
@@ -225,7 +226,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SendRecoveredDeviceNotification(volume, "uuid-1");   // → HEALTHY
         SendBrokenDeviceNotification(volume, "uuid-1");      // → UNHEALTHY
 
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(3, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
@@ -244,7 +245,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SetupNrdVolume(volume);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
@@ -254,11 +255,57 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         volume.ReallocateDisk();
         volume.ReconnectPipe();
         volume.WaitReady();
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
             NProto::VOLUME_HEALTH_HEALTHY,
+            state->LastVolumeHealth);
+    }
+
+    Y_UNIT_TEST(ShouldSendIncreasingSeqNos)
+    {
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(
+            MakeConfig(/*enableVolumeHealth=*/true),
+            state);
+
+        TVolumeClient volume(*runtime);
+        SetupNrdVolume(volume);
+
+        SendBrokenDeviceNotification(volume, "uuid-1");
+        runtime->DispatchEvents({}, 1s);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
+        const ui64 firstSeqNo = state->LastVolumeHealthSeqNo;
+        UNIT_ASSERT(firstSeqNo > 0);
+
+        SendRecoveredDeviceNotification(volume, "uuid-1");
+        runtime->DispatchEvents({}, 1s);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
+        UNIT_ASSERT(state->LastVolumeHealthSeqNo > firstSeqNo);
+    }
+
+    Y_UNIT_TEST(ShouldRetryOnError)
+    {
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(
+            MakeConfig(/*enableVolumeHealth=*/true),
+            state);
+
+        TVolumeClient volume(*runtime);
+        SetupNrdVolume(volume);
+
+        state->VolumeHealthErrorsToReturn = 2;
+
+        SendBrokenDeviceNotification(volume, "uuid-1");
+        runtime->DispatchEvents({}, 1s);
+
+        // 2 errors + 1 success = 3 attempts
+        UNIT_ASSERT_VALUES_EQUAL(3, state->UpdateVolumeHealthRequests);
+        UNIT_ASSERT_EQUAL(
+            NProto::VOLUME_HEALTH_UNHEALTHY,
             state->LastVolumeHealth);
     }
 }

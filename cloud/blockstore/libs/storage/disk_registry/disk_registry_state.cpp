@@ -491,6 +491,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
         disk.VolumeHealth = config.GetVolumeHealth();
+        disk.VolumeHealthSeqNo = config.GetVolumeHealthSeqNo();
 
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
@@ -5266,6 +5267,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetStorageMediaKind(diskState.MediaKind);
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
     config.SetVolumeHealth(diskState.VolumeHealth);
+    config.SetVolumeHealthSeqNo(diskState.VolumeHealthSeqNo);
 
     for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
@@ -8679,7 +8681,8 @@ NProto::TError TDiskRegistryState::UpdateVolumeHealth(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TInstant now,
-    NProto::EVolumeHealth volumeHealth)
+    NProto::EVolumeHealth volumeHealth,
+    ui64 seqNo)
 {
     auto* disk = Disks.FindPtr(diskId);
     if (!disk) {
@@ -8687,7 +8690,16 @@ NProto::TError TDiskRegistryState::UpdateVolumeHealth(
             E_NOT_FOUND,
             TStringBuilder() << "disk " << diskId.Quote() << " not found");
     }
+    if (seqNo > 0) {
+        if (seqNo <= disk->VolumeHealthSeqNo) {
+            return MakeError(S_ALREADY);
+        }
+        disk->VolumeHealthSeqNo = seqNo;
+    }
     if (disk->VolumeHealth == volumeHealth) {
+        if (seqNo > 0) {
+            db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+        }
         return MakeError(S_ALREADY);
     }
     disk->VolumeHealth = volumeHealth;

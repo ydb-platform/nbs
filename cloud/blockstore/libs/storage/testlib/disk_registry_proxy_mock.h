@@ -415,11 +415,19 @@ private:
     {
         ++State->UpdateVolumeHealthRequests;
         State->LastVolumeHealth = ev->Get()->Record.GetVolumeHealth();
+        State->LastVolumeHealthSeqNo = ev->Get()->Record.GetSeqNo();
+
+        NProto::TError error;
+        if (State->VolumeHealthErrorsToReturn > 0) {
+            --State->VolumeHealthErrorsToReturn;
+            error = MakeError(E_REJECTED, "test error");
+        }
 
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthResponse>());
+            std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthResponse>(
+                std::move(error)));
     }
 
     void HandleAcquireDisk(

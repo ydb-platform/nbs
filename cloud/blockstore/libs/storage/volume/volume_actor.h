@@ -336,7 +336,13 @@ private:
     bool DiskAllocationScheduled = false;
 
     THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
-    TDeque<NProto::EVolumeHealth> PendingHealthNotifications;
+
+    struct THealthNotification {
+        NProto::EVolumeHealth Health = NProto::VOLUME_HEALTH_HEALTHY;
+        ui64 SeqNo = 0;
+    };
+    TDeque<THealthNotification> PendingHealthNotifications;
+    ui32 VolumeHealthLocalSeqNo = 0;
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
@@ -1288,7 +1294,7 @@ private:
 
     void SendVolumeHealthNotification(
         const NActors::TActorContext& ctx,
-        NProto::EVolumeHealth health);
+        const THealthNotification& notification);
 
     void EnqueueVolumeHealthNotification(
         const NActors::TActorContext& ctx,

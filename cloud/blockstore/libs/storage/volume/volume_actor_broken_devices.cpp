@@ -32,19 +32,22 @@ bool ShouldSkipVolumeHealthNotification(
 
 void TVolumeActor::SendVolumeHealthNotification(
     const TActorContext& ctx,
-    NProto::EVolumeHealth health)
+    const THealthNotification& notification)
 {
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Notifying DiskRegistry: volume health = %s",
+        "%s Notifying DiskRegistry: volume health = %s (seqNo=%" PRIu64 ")",
         LogTitle.GetWithTime().c_str(),
-        health == NProto::VOLUME_HEALTH_UNHEALTHY ? "unhealthy" : "healthy");
+        notification.Health == NProto::VOLUME_HEALTH_HEALTHY ? "healthy"
+                                                             : "unhealthy",
+        notification.SeqNo);
 
     auto request =
         std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
     request->Record.SetDiskId(State->GetDiskId());
-    request->Record.SetVolumeHealth(health);
+    request->Record.SetVolumeHealth(notification.Health);
+    request->Record.SetSeqNo(notification.SeqNo);
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
@@ -52,9 +55,12 @@ void TVolumeActor::EnqueueVolumeHealthNotification(
     const TActorContext& ctx,
     NProto::EVolumeHealth health)
 {
-    PendingHealthNotifications.push_back(health);
+    const ui64 seqNo = (static_cast<ui64>(Executor()->Generation()) << 32) |
+                       (++VolumeHealthLocalSeqNo);
+    THealthNotification notification{health, seqNo};
+    PendingHealthNotifications.push_back(notification);
     if (PendingHealthNotifications.size() == 1) {
-        SendVolumeHealthNotification(ctx, health);
+        SendVolumeHealthNotification(ctx, notification);
     }
 }
 
@@ -170,8 +176,22 @@ void TVolumeActor::HandleUpdateVolumeHealthResponse(
     const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_ABORT_UNLESS(!PendingHealthNotifications.empty());
+
     const auto& error = ev->Get()->Record.GetError();
     if (HasError(error)) {
+        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s UpdateVolumeHealth response error: %s, will retry",
+                LogTitle.GetWithTime().c_str(),
+                FormatError(error).c_str());
+            SendVolumeHealthNotification(
+                ctx,
+                PendingHealthNotifications.front());
+            return;
+        }
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -180,7 +200,6 @@ void TVolumeActor::HandleUpdateVolumeHealthResponse(
             FormatError(error).c_str());
     }
 
-    Y_ABORT_UNLESS(!PendingHealthNotifications.empty());
     PendingHealthNotifications.pop_front();
     if (!PendingHealthNotifications.empty()) {
         SendVolumeHealthNotification(ctx, PendingHealthNotifications.front());
