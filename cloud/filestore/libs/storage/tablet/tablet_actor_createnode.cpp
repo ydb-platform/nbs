@@ -775,7 +775,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                     << args.OpLogEntry.ShortUtf8DebugString().Quote());
             }
 
-            db.WriteOpLogEntry(args.OpLogEntry);
+            WriteOpLogEntry(db, args.OpLogEntry);
         }
     } else {
         // hard link
@@ -1059,7 +1059,7 @@ void TIndexTabletActor::ExecuteTx_CommitNodeCreationInShard(
         args.SessionId,
         args.RequestId,
         std::move(args.Response));
-    db.DeleteOpLogEntry(args.EntryId);
+    DeleteOpLogEntry(db, args.EntryId);
 }
 
 void TIndexTabletActor::CompleteTx_CommitNodeCreationInShard(

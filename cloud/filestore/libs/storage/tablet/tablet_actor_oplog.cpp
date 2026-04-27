@@ -31,8 +31,9 @@ void TIndexTabletActor::ReplayOpLog(
         if (serializedRequest
                 && !profileLogRequest.ParseFromString(serializedRequest))
         {
-            ReportBrokenProfileLogRequest(TStringBuilder() << "Replayed"
-                << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
+            ReportBrokenProfileLogRequest(TStringBuilder()
+                << "Replayed OpLogEntry: "
+                << op.ShortUtf8DebugString().Quote());
         }
 
         if (op.HasCreateNodeRequest()) {
@@ -76,14 +77,14 @@ void TIndexTabletActor::ReplayOpLog(
             if (shouldUnlockUponCompletion) {
                 // There is a need to unlock the node ref after the operation is
                 // completed, because the node ref should have been locked
-                const auto& originalRequest =
-                    op.GetUnlinkNodeInShardRequest().GetOriginalRequest();
+                const auto& request = op.GetUnlinkNodeInShardRequest();
+                const auto& originalRequest = request.GetOriginalRequest();
                 const bool locked = TryLockNodeRef(
                     {originalRequest.GetNodeId(), originalRequest.GetName()});
                 if (!locked) {
-                    ReportFailedToLockNodeRef(
-                        TStringBuilder()
-                        << "Request: " << op.ShortUtf8DebugString());
+                    ReportFailedToLockNodeRef(TStringBuilder()
+                        << "UnlinkNodeInShardRequest: "
+                        << request.ShortUtf8DebugString().Quote());
                 }
             }
 
@@ -102,8 +103,9 @@ void TIndexTabletActor::ReplayOpLog(
                 request.GetOriginalRequest().GetNodeId(),
                 request.GetOriginalRequest().GetName()});
             if (!locked) {
-                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
-                    << request.GetOriginalRequest().ShortUtf8DebugString());
+                ReportFailedToLockNodeRef(TStringBuilder()
+                    << "RenameNodeInDestinationRequest: "
+                    << request.ShortUtf8DebugString().Quote());
             }
 
             NProto::TProfileLogRequestInfo profileLogRequest;
@@ -129,8 +131,9 @@ void TIndexTabletActor::ReplayOpLog(
                 request.GetOriginalRequest().GetNewParentId(),
                 request.GetOriginalRequest().GetNewName()});
             if (!locked) {
-                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
-                    << request.GetOriginalRequest().ShortUtf8DebugString());
+                ReportFailedToLockNodeRef(TStringBuilder()
+                    << "AbortUnlinkDirectoryNodeInShardRequest: "
+                    << request.ShortUtf8DebugString().Quote());
             }
 
             NProto::TProfileLogRequestInfo profileLogRequest;
@@ -152,8 +155,8 @@ void TIndexTabletActor::ReplayOpLog(
                 false // isLocalRename - doesn't matter w/o requestInfo
             );
         } else {
-            const TString message = ReportUnknownOpLogEntry(
-                TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());
+            const TString message = ReportUnknownOpLogEntry(TStringBuilder()
+                << "OpLogEntry: " << op.DebugString().Quote());
 
             LOG_ERROR(
                 ctx,
@@ -209,7 +212,7 @@ void TIndexTabletActor::ExecuteTx_DeleteOpLogEntry(
     Y_UNUSED(ctx);
 
     TIndexTabletDatabase db(tx.DB);
-    db.DeleteOpLogEntry(args.EntryId);
+    DeleteOpLogEntry(db, args.EntryId);
 }
 
 void TIndexTabletActor::CompleteTx_DeleteOpLogEntry(
@@ -345,7 +348,7 @@ void TIndexTabletActor::ExecuteTx_WriteOpLogEntry(
 
     TIndexTabletDatabase db(tx.DB);
     args.Entry.SetEntryId(commitId);
-    db.WriteOpLogEntry(args.Entry);
+    WriteOpLogEntry(db, args.Entry);
 }
 
 void TIndexTabletActor::CompleteTx_WriteOpLogEntry(

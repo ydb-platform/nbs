@@ -517,7 +517,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
                 << args.OpLogEntry.ShortUtf8DebugString().Quote());
         }
 
-        db.WriteOpLogEntry(args.OpLogEntry);
+        WriteOpLogEntry(db, args.OpLogEntry);
     } else {
         auto e = UnlinkNode(
             db,
@@ -717,7 +717,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
 {
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
-    db.DeleteOpLogEntry(args.OpLogEntryId);
+    DeleteOpLogEntry(db, args.OpLogEntryId);
 
     // If the original response was an error or prepare stage failed, we don't
     // need to do anything

@@ -474,7 +474,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 << args.OpLogEntry.ShortUtf8DebugString().Quote());
         }
 
-        db.WriteOpLogEntry(args.OpLogEntry);
+        WriteOpLogEntry(db, args.OpLogEntry);
     }
 
     AddDupCacheEntry(

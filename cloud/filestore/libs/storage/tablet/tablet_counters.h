@@ -286,6 +286,7 @@ struct TTabletMetrics
     std::atomic<i64> CPUUsageMicros{0};
     i64 CPUUsageRate = 0;
 
+    std::atomic<i64> OpLogEntryCount{0};
     std::atomic<i64> ResponseLogEntryCount{0};
 
     std::atomic<i64> RenameNotSupportedErrorCount{0};
