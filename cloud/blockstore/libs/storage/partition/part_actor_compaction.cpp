@@ -184,6 +184,17 @@ private:
     ui64 MaxExecCyclesFromRead = 0;
     ui64 MaxExecCyclesFromWrite = 0;
 
+    TInstant ReadBlobsStarted;
+    TDuration ReadBlobsTime;
+
+    TInstant WriteBlobsStarted;
+    TDuration WriteBlobsTime;
+
+    TInstant AddBlobsStarted;
+    TDuration AddBlobsTime;
+
+    TDuration CompactionTxTime;
+
     TVector<TCallContextPtr> ForkedReadCallContexts;
     TVector<TCallContextPtr> ForkedWriteAndPatchCallContexts;
     bool SafeToUseOrbit = true;
@@ -204,6 +215,7 @@ public:
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
         TVector<TRequest> requests,
+        TDuration compactionTxTime,
         TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
@@ -269,6 +281,7 @@ TCompactionActor::TCompactionActor(
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
         TVector<TRequest> requests,
+        TDuration compactionTxTime,
         TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -285,6 +298,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
+    , CompactionTxTime(compactionTxTime)
 {}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
@@ -369,6 +383,8 @@ void TCompactionActor::InitBlockDigests()
 
 void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 {
+    ReadBlobsStarted = ctx.Now();
+
     TVector<TRequest*> requests(Reserve(Requests.size()));
     for (auto& r: Requests) {
         requests.push_back(&r);
@@ -534,6 +550,8 @@ void TCompactionActor::MakeDiffs(TRangeCompactionInfo& rc)
 
 void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 {
+    WriteBlobsStarted = ctx.Now();
+
     InitBlockDigests();
 
     const auto deadline = BlobStorageAsyncRequestTimeout
@@ -605,6 +623,8 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
 void TCompactionActor::AddBlobs(const TActorContext& ctx)
 {
+    AddBlobsStarted = ctx.Now();
+
     TVector<TAddMixedBlob> mixedBlobs;
     TVector<TAddMergedBlob> mergedBlobs;
     TVector<TBlobCompactionInfo> mixedBlobCompactionInfos;
@@ -838,6 +858,11 @@ void TCompactionActor::NotifyCompleted(
     request->AffectedBlockInfos = std::move(AffectedBlockInfos);
     request->CompactionType = CompactionType;
 
+    request->ReadBlobsTime = ReadBlobsTime;
+    request->WriteBlobsTime = WriteBlobsTime;
+    request->AddBlobsTime = AddBlobsTime;
+    request->CompactionTxTime = CompactionTxTime;
+
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
@@ -924,6 +949,10 @@ void TCompactionActor::HandleReadBlobResponse(
 
     RequestInfo->AddExecCycles(MaxExecCyclesFromRead);
 
+    if (ReadBlobsStarted) {
+        ReadBlobsTime = ctx.Now() - ReadBlobsStarted;
+    }
+
     ReadExecCycles = RequestInfo->GetExecCycles();
     ReadWaitCycles = RequestInfo->GetWaitCycles();
 
@@ -955,6 +984,10 @@ void TCompactionActor::HandleWriteOrPatchBlobResponse(
 
     RequestInfo->AddExecCycles(MaxExecCyclesFromWrite);
 
+    if (WriteBlobsStarted) {
+        WriteBlobsTime = ctx.Now() - WriteBlobsStarted;
+    }
+
     SafeToUseOrbit = true;
 
     for (auto context: ForkedWriteAndPatchCallContexts) {
@@ -983,6 +1016,10 @@ void TCompactionActor::HandleAddBlobsResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    if (AddBlobsStarted) {
+        AddBlobsTime = ctx.Now() - AddBlobsStarted;
+    }
 
     SafeToUseOrbit = true;
 
@@ -1478,7 +1515,8 @@ void TPartitionActor::HandleCompaction(
         requestInfo,
         commitId,
         msg->CompactionOptions,
-        std::move(ranges));
+        std::move(ranges),
+        ctx.Now());
 
     SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
 }
@@ -1518,6 +1556,8 @@ void TPartitionActor::HandleCompactionCompleted(
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
+    const auto compactionStartedTs =
+        State->GetCompactionState(msg->CompactionType).Timestamp;
     State->GetCompactionState(msg->CompactionType).SetStatus(
         EOperationStatus::Idle);
 
@@ -1529,6 +1569,24 @@ void TPartitionActor::HandleCompactionCompleted(
     PartCounters->RequestCounters.Compaction.AddRequest(
         d.MicroSeconds(),
         blocks * State->GetBlockSize());
+
+    PartCounters->Cumulative.CompactionReadBlobsExecTime.Increment(
+        msg->ReadBlobsTime.MicroSeconds());
+    PartCounters->Cumulative.CompactionWriteBlobExecTime.Increment(
+        msg->WriteBlobsTime.MicroSeconds());
+    PartCounters->Cumulative.CompactionAddBlobsTxExecTime.Increment(
+        msg->AddBlobsTime.MicroSeconds());
+    PartCounters->Cumulative.CompactionTxExecTime.Increment(
+        msg->CompactionTxTime.MicroSeconds());
+
+    PartCounters->Cumulative.CompactionOnCpuExecTime.Increment(
+        CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
+
+    if (compactionStartedTs.MicroSeconds()) {
+        const auto totalTime = ctx.Now() - compactionStartedTs;
+        PartCounters->Cumulative.CompactionTotalExecTime.Increment(
+            totalTime.MicroSeconds());
+    }
     State->SetLastCompactionExecTime(d, ctx.Now());
 
     const auto ts = ctx.Now() - d;
@@ -2045,6 +2103,8 @@ void TPartitionActor::CompleteCompaction(
 {
     TRequestScope timer(*args.RequestInfo);
 
+    const auto compactionTxTime = ctx.Now() - args.TxStarted;
+
     RemoveTransaction(*args.RequestInfo);
 
     for (auto& rangeCompaction: args.RangeCompactions) {
@@ -2111,6 +2171,7 @@ void TPartitionActor::CompleteCompaction(
         args.CommitId,
         std::move(rangeCompactionInfos),
         std::move(requests),
+        compactionTxTime,
         LogTitle.GetChild(GetCycleCount()));
     LOG_DEBUG(
         ctx,

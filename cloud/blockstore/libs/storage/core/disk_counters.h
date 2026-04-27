@@ -340,6 +340,30 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionTxExecTime{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionReadBlobsExecTime{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionWriteBlobExecTime{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionAddBlobsTxExecTime{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionOnCpuExecTime{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionTotalExecTime{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -362,6 +386,12 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionTxExecTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsExecTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionWriteBlobExecTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionAddBlobsTxExecTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionOnCpuExecTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionTotalExecTime>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };

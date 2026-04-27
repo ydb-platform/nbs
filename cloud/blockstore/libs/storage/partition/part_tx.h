@@ -318,6 +318,7 @@ struct TTxPartition
         const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
 
         ui64 DeletionCommitId = 0;
+        TInstant TxStartedTs;
 
         TAddBlobs(
                 TRequestInfoPtr requestInfo,
@@ -440,15 +441,18 @@ struct TTxPartition
         const TCompactionOptions CompactionOptions;
 
         TVector<TRangeCompaction> RangeCompactions;
+        TInstant TxStarted;
 
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
                 TCompactionOptions compactionOptions,
-                const TVector<std::pair<ui32, TBlockRange32>>& ranges)
+                const TVector<std::pair<ui32, TBlockRange32>>& ranges,
+                TInstant txStarted)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , CompactionOptions(compactionOptions)
+            , TxStarted(txStarted)
         {
             RangeCompactions.reserve(ranges.size());
             for (const auto& range: ranges) {
