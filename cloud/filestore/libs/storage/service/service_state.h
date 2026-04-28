@@ -398,6 +398,11 @@ struct TSessionInfo
         return MainTabletState;
     }
 
+    bool HasShards() const
+    {
+        return FileStore.ShardFileSystemIdsSize() > 0;
+    }
+
     const TString& SelectShard()
     {
         const auto& shards = FileStore.GetShardFileSystemIds();
