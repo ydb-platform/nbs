@@ -26,6 +26,7 @@ SRCS(
     proto_helpers.cpp
     request_buffer.cpp
     request_info.cpp
+    rdma_endpoint_proxy.cpp
     storage_request_counters.cpp
     tablet.cpp
     tablet_counters.cpp
