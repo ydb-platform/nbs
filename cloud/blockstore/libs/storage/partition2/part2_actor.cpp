@@ -766,7 +766,7 @@ void TPartitionActor::HandlePatchBlob(
     Y_UNUSED(ctx);
 
     HandleUnexpectedEvent(
-        ev.Get(),
+        ev.Release(),
         TBlockStoreComponents::PARTITION,
         __PRETTY_FUNCTION__);
 }
@@ -775,11 +775,10 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
     Y_UNUSED(ctx);
 
     HandleUnexpectedEvent(
-        ev.Get(),
+        ev.Release(),
         TBlockStoreComponents::PARTITION,
         __PRETTY_FUNCTION__);
 }
@@ -788,11 +787,10 @@ void TPartitionActor::HandleAddFreshBlocks(
     const TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
     Y_UNUSED(ctx);
 
     HandleUnexpectedEvent(
-        ev.Get(),
+        ev.Release(),
         TBlockStoreComponents::PARTITION,
         __PRETTY_FUNCTION__);
 }
