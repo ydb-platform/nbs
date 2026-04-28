@@ -40,6 +40,7 @@ struct ICertificateRefresher
 {
     virtual void Init(
         ILoggingServicePtr logging,
+        TString logComponent,
         NMonitoring::TDynamicCountersPtr serverGroup,
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,

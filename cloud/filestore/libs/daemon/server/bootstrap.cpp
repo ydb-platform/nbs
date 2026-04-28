@@ -125,6 +125,7 @@ void TBootstrapServer::InitComponents()
             CertificateRefresher = GetCertificateRefresher();
             CertificateRefresher->Init(
                 Logging,
+                "FILESTORE_TLS_CERTIFICATE_PROVIDER",
                 serverCounters,
                 Configs->ServerConfig->GetRootCertsFile(),
                 std::move(certPathList),
