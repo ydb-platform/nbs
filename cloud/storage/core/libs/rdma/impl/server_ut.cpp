@@ -22,6 +22,9 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NMonitoring::TDynamicCountersPtr GetServerCounters(
+    const IMonitoringServicePtr& monitoring);
+
 IServerPtr CreateTestServer(
     NVerbs::IVerbsPtr verbs,
     const ILoggingServicePtr& logging,
@@ -32,10 +35,8 @@ IServerPtr CreateTestServer(
         std::move(verbs),
         TObservabilityProvider(
             logging,
-            monitoring,
             "RDMA_TEST",
-            "rdma",
-            "server"),
+            GetServerCounters(monitoring)),
         std::move(config));
 }
 
