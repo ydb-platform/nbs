@@ -1814,11 +1814,7 @@ class TClient final
 private:
     NVerbs::IVerbsPtr Verbs;
 
-    ILoggingServicePtr Logging;
-    IMonitoringServicePtr Monitoring;
-    TString LogComponent;
-    TString CountersGroupName;
-    TString CountersComponentName;
+    TObservabilityProvider ObservabilityProvider;
 
     TClientConfigPtr Config;
     TEndpointCountersPtr Counters;
@@ -1830,11 +1826,7 @@ private:
 public:
     TClient(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        TString logComponent,
-        TString countersGroupName,
-        TString countersComponentName,
+        TObservabilityProvider observabilityProvider,
         TClientConfigPtr config);
 
     // called from external thread
@@ -1872,18 +1864,10 @@ private:
 
 TClient::TClient(
         NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        TString logComponent,
-        TString countersGroupName,
-        TString countersComponentName,
+        TObservabilityProvider observabilityProvider,
         TClientConfigPtr config)
     : Verbs(std::move(verbs))
-    , Logging(std::move(logging))
-    , Monitoring(std::move(monitoring))
-    , LogComponent(std::move(logComponent))
-    , CountersGroupName(std::move(countersGroupName))
-    , CountersComponentName(std::move(countersComponentName))
+    , ObservabilityProvider(std::move(observabilityProvider))
     , Config(std::move(config))
     , Counters(new TEndpointCounters())
 {
@@ -1894,13 +1878,11 @@ TClient::TClient(
 
 void TClient::Start() noexcept
 {
-    Log = Logging->CreateLog(LogComponent);
+    Log = ObservabilityProvider.CreateLog();
 
     RDMA_INFO("start client");
 
-    auto countersGroup = Monitoring->GetCounters()
-        ->GetSubgroup("counters", CountersGroupName)
-        ->GetSubgroup("component", CountersComponentName);
+    auto countersGroup = ObservabilityProvider.CreateCounters();
     Counters->Register(*countersGroup);
 
     CompletionPollers.resize(Config->PollerThreads);
@@ -2433,20 +2415,12 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 
 IClientPtr CreateClient(
     NVerbs::IVerbsPtr verbs,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    TString logComponent,
-    TString countersGroupName,
-    TString countersComponentName,
+    TObservabilityProvider observabilityProvider,
     TClientConfigPtr config)
 {
     return std::make_shared<TClient>(
         std::move(verbs),
-        std::move(logging),
-        std::move(monitoring),
-        std::move(logComponent),
-        std::move(countersGroupName),
-        std::move(countersComponentName),
+        std::move(observabilityProvider),
         std::move(config));
 }
 
