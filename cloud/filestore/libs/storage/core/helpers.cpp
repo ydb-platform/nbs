@@ -15,15 +15,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool Consume(TStringBuf& buffer, ui64 len, TString* chunk)
+bool Consume(TStringBuf& input, ui64 len, TString* chunk)
 {
-    if (buffer.Size() < len) {
-        buffer.Clear();
+    if (input.Size() < len) {
+        input.Clear();
         return false;
     }
 
-    chunk->assign(buffer.Data(), len);
-    buffer.Skip(len);
+    chunk->assign(input.Data(), len);
+    input.Skip(len);
     return true;
 }
 
@@ -177,7 +177,9 @@ struct TListNodesInternalResponseBuilder::TImpl
     google::protobuf::RepeatedField<ui32>& ShardIdSizes;
     google::protobuf::RepeatedField<ui32>& ShardNodeNameSizes;
     char* NameBuffer;
+    ui64 NameBufferSize;
     char* ExternalRefBuffer;
+    ui64 ExternalRefBufferSize;
     ui32 Index = 0;
 
     TImpl(
@@ -190,6 +192,8 @@ struct TListNodesInternalResponseBuilder::TImpl
         , ExternalRefIndices(*response.MutableExternalRefIndices())
         , ShardIdSizes(*response.MutableShardIdSizes())
         , ShardNodeNameSizes(*response.MutableShardNodeNameSizes())
+        , NameBufferSize(nameBufferSize)
+        , ExternalRefBufferSize(externalRefBufferSize)
     {
         auto& nameBuffer = *response.MutableNameBuffer();
         nameBuffer.ReserveAndResize(nameBufferSize);
@@ -204,13 +208,23 @@ struct TListNodesInternalResponseBuilder::TImpl
         ShardNodeNameSizes.Reserve(externalRefCount);
     }
 
-    void AddNodeRef(
+    bool AddNodeRef(
         const TString& name,
         const TString& shardId,
         const TString& shardNodeName)
     {
+        if (name.size() > NameBufferSize) {
+            return false;
+        }
+
+        const ui64 externalRefSize = shardId.size() + shardNodeName.size();
+        if (shardId && externalRefSize > ExternalRefBufferSize) {
+            return false;
+        }
+
         memcpy(NameBuffer, name.data(), name.size());
         NameBuffer += name.size();
+        NameBufferSize -= name.size();
         NameSizes.Add(name.size());
 
         if (shardId) {
@@ -221,16 +235,24 @@ struct TListNodesInternalResponseBuilder::TImpl
                 shardId.data(),
                 shardId.size());
             ExternalRefBuffer += shardId.size();
+            ExternalRefBufferSize -= shardId.size();
             ShardIdSizes.Add(shardId.size());
             memcpy(
                 ExternalRefBuffer,
                 shardNodeName.data(),
                 shardNodeName.size());
             ExternalRefBuffer += shardNodeName.size();
+            ExternalRefBufferSize -= shardNodeName.size();
             ShardNodeNameSizes.Add(shardNodeName.size());
         }
 
         ++Index;
+        return true;
+    }
+
+    ui32 GetIndex() const
+    {
+        return Index;
     }
 };
 
@@ -251,12 +273,17 @@ TListNodesInternalResponseBuilder::TListNodesInternalResponseBuilder(
 TListNodesInternalResponseBuilder::~TListNodesInternalResponseBuilder()
 {}
 
-void TListNodesInternalResponseBuilder::AddNodeRef(
+bool TListNodesInternalResponseBuilder::AddNodeRef(
     const TString& name,
     const TString& shardId,
     const TString& shardNodeName)
 {
-    Impl->AddNodeRef(name, shardId, shardNodeName);
+    return Impl->AddNodeRef(name, shardId, shardNodeName);
+}
+
+ui32 TListNodesInternalResponseBuilder::GetIndex() const
+{
+    return Impl->GetIndex();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

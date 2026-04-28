@@ -123,7 +123,7 @@ void TIndexTabletActor::HandleListNodesInternal(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvService::TListNodesMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TListNodesInternalMethod>(*requestInfo);
 
     auto maxBytes = Min(
         Config->GetMaxResponseEntries() * MaxName,
@@ -226,7 +226,7 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     // get actual nodes
     args.ChildNodes.reserve(args.ChildRefs.size());
     for (const auto& ref: args.ChildRefs) {
-        if (ref.ShardId) {
+        if (ref.IsExternal()) {
             continue;
         }
 
@@ -262,7 +262,7 @@ void TIndexTabletActor::ReplyListNodes(
         for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
             auto& ref = args.ChildRefs[i];
             requestBytes += ref.Name.size();
-            if (ref.ShardId) {
+            if (ref.IsExternal()) {
                 if (!HasPendingNodeCreateInShard(ref.ShardNodeName)) {
                     AddExternalNode(
                         record,
@@ -325,13 +325,15 @@ void TIndexTabletActor::ReplyListNodesInternal(
         int extRefCount = 0;
         int skippedRefCount = 0;
         for (const auto& ref: args.ChildRefs) {
-            if (ref.ShardId && HasPendingNodeCreateInShard(ref.ShardNodeName)) {
+            if (ref.IsExternal()
+                    && HasPendingNodeCreateInShard(ref.ShardNodeName))
+            {
                 ++skippedRefCount;
                 continue;
             }
 
             nameBufferSize += ref.Name.size();
-            if (!ref.ShardId) {
+            if (!ref.IsExternal()) {
                 continue;
             }
 
@@ -356,12 +358,25 @@ void TIndexTabletActor::ReplyListNodesInternal(
 
         ui32 j = 0;
         for (auto& ref: args.ChildRefs) {
-            if (ref.ShardId && HasPendingNodeCreateInShard(ref.ShardNodeName)) {
+            if (ref.IsExternal()
+                    && HasPendingNodeCreateInShard(ref.ShardNodeName))
+            {
                 continue;
             }
 
-            builder.AddNodeRef(ref.Name, ref.ShardId, ref.ShardNodeName);
-            if (ref.ShardId) {
+            const bool added = builder.AddNodeRef(
+                ref.Name,
+                ref.ShardId,
+                ref.ShardNodeName);
+            if (!added) {
+                auto message = ReportListNodesInternalFailedToAddNodeRef(
+                    TStringBuilder() << "builder index: " << builder.GetIndex());
+                *response->Record.MutableError() =
+                    MakeError(E_INVALID_STATE, std::move(message));
+                break;
+            }
+
+            if (ref.IsExternal()) {
                 continue;
             }
 

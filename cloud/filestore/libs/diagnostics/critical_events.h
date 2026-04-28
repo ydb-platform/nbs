@@ -88,6 +88,7 @@ namespace NCloud::NFileStore{
     xxx(BrokenProfileLogRequest)                                               \
     xxx(UnconfirmedDataNotInProgress)                                          \
     xxx(InvalidCommitIdInUnconfirmedAddBlobSafePoint)                          \
+    xxx(ListNodesInternalFailedToAddNodeRef)                                   \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -274,9 +274,6 @@ void TListNodesActor::HandleListNodesInternalResponse(
 {
     auto* msg = ev->Get();
 
-    Response.SetCookie(msg->Record.GetCookie());
-    *Response.MutableHeaders() = std::move(*msg->Record.MutableHeaders());
-
     LOG_TRACE(
         ctx,
         TFileStoreComponents::SERVICE,

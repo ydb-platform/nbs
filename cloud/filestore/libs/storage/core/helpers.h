@@ -54,10 +54,12 @@ public:
     ~TListNodesInternalResponseBuilder();
 
 public:
-    void AddNodeRef(
+    [[nodiscard]] bool AddNodeRef(
         const TString& name,
         const TString& shardId,
         const TString& shardNodeName);
+
+    [[nodiscard]] ui32 GetIndex() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -146,15 +146,19 @@ auto MakeListNodesInternalResponse()
     TListNodesInternalResponseBuilder builder(internalResponse, 25, 30, 5, 2);
     internalResponse.MutableNameBuffer()->ReserveAndResize(25);
     internalResponse.MutableExternalRefBuffer()->ReserveAndResize(30);
-    builder.AddNodeRef("name1", "shard1", "nodename1");
-    builder.AddNodeRef("name2", "", "");
+    UNIT_ASSERT(builder.AddNodeRef("name1", "shard1", "nodename1"));
+    UNIT_ASSERT(builder.AddNodeRef("name2", "", ""));
     internalResponse.AddNodes()->SetId(111);
-    builder.AddNodeRef("name3", "", "");
+    UNIT_ASSERT(builder.AddNodeRef("name3", "", ""));
     internalResponse.AddNodes()->SetId(222);
-    builder.AddNodeRef("name4", "shard2", "nodename2");
-    builder.AddNodeRef("name5", "", "");
+    UNIT_ASSERT(builder.AddNodeRef("name4", "shard2", "nodename2"));
+    UNIT_ASSERT(builder.AddNodeRef("name5", "", ""));
     internalResponse.AddNodes()->SetId(333);
     internalResponse.SetCookie("cookie");
+    internalResponse.MutableHeaders()->MutableBackendInfo()
+        ->SetIsOverloaded(true);
+    UNIT_ASSERT(!builder.AddNodeRef("name6", "", ""));
+    UNIT_ASSERT(!builder.AddNodeRef("", "shard3", "nodename3"));
     return internalResponse;
 }
 
@@ -230,6 +234,7 @@ Y_UNIT_TEST_SUITE(THelpers)
         UNIT_ASSERT_VALUES_EQUAL(333, response.GetNodes(4).GetId());
 
         UNIT_ASSERT_VALUES_EQUAL("cookie", response.GetCookie());
+        UNIT_ASSERT(response.GetHeaders().GetBackendInfo().GetIsOverloaded());
     }
 
     Y_UNIT_TEST(ShouldConvertListNodesInternalResponseError)
