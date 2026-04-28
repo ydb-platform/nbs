@@ -1417,7 +1417,7 @@ void TPartitionActor::HandleCompaction(
 
     if (!State->IsCompactionAllowed()) {
         State->GetCompactionState(compactionType).SetStatus(
-            EOperationStatus::Idle);
+            EOperationStatus::Idle, ctx.Now());
 
         replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
         return;
@@ -1461,8 +1461,8 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (tops.empty() || !tops.front().Stat.BlobCount) {
-        State->GetCompactionState(compactionType).SetStatus(
-            EOperationStatus::Idle);
+        State->GetCompactionState(compactionType)
+            .SetStatus(EOperationStatus::Idle, ctx.Now());
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to compact");
         return;
@@ -1503,7 +1503,8 @@ void TPartitionActor::HandleCompaction(
         ranges.emplace_back(rangeIdx, blockRange);
     }
 
-    State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);
+    State->GetCompactionState(compactionType)
+        .SetStatus(EOperationStatus::Started, ctx.Now());
 
     State->AccessCommitQueue()->AcquireBarrier(commitId);
     State->GetCleanupQueue().AcquireBarrier(commitId);

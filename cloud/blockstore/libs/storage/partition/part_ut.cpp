@@ -2460,6 +2460,92 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(stats.GetUserReadCounters().GetExecTime() != 0);
     }
 
+    Y_UNIT_TEST(ShouldFillCompactionTimeCounters)
+    {
+        auto runtime = PrepareTestActorRuntime();
+
+        ui64 compactionTxTime = 0;
+        ui64 compactionReadBlobsTime = 0;
+        ui64 compactionWriteBlobsTime = 0;
+        ui64 compactionAddBlobsTime = 0;
+        ui64 compactionTotalTime = 0;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest:
+                    case TEvPartitionPrivate::EvCompactionCompleted:
+                    case TEvPartitionPrivate::EvAddBlobsRequest:
+                    case TEvPartitionPrivate::EvAddBlobsResponse:
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest:
+                    case TEvPartitionCommonPrivate::EvReadBlobResponse:
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest:
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse:
+                    case TEvPartitionCommonPrivate::EvPatchBlobRequest:
+                    case TEvBlobStorage::EvPut:
+                    case TEvPartitionCommonPrivate::EvExecuteTransactions:
+                    case TEvPartitionCommonPrivate::EvPatchBlobResponse: {
+                        runtime->AdvanceCurrentTime(TDuration::MilliSeconds(1));
+                        break;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event->Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& cc = msg->DiskCounters->Cumulative;
+                        compactionTxTime = cc.CompactionTxTime.Value;
+                        compactionReadBlobsTime =
+                            cc.CompactionReadBlobsTime.Value;
+                        compactionWriteBlobsTime =
+                            cc.CompactionWriteBlobsTime.Value;
+                        compactionAddBlobsTime =
+                            cc.CompactionAddBlobsTime.Value;
+                        compactionTotalTime = cc.CompactionTotalTime.Value;
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        partition.Flush();
+
+        partition.WriteBlocks(1, 11);
+        partition.Flush();
+
+        partition.WriteBlocks(2, 22);
+        partition.Flush();
+
+        partition.WriteBlocks(3, 33);
+        partition.Flush();
+
+        partition.Compaction();
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT(compactionTxTime > 0);
+        UNIT_ASSERT(compactionReadBlobsTime > 0);
+        UNIT_ASSERT(compactionWriteBlobsTime > 0);
+        UNIT_ASSERT(compactionAddBlobsTime > 0);
+        UNIT_ASSERT(compactionTotalTime > 0);
+
+        UNIT_ASSERT(
+            compactionTotalTime >= compactionTxTime + compactionReadBlobsTime +
+                                      compactionWriteBlobsTime +
+                                      compactionAddBlobsTime);
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyRunCompaction)
     {
         static constexpr ui32 compactionThreshold = 4;
