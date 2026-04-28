@@ -320,6 +320,7 @@ void TBootstrapBase::Init()
             CertificateRefresher = GetCertificateRefresher();
             CertificateRefresher->Init(
                 Logging,
+                "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
                 serverGroup,
                 Configs->ServerConfig->GetRootCertsFile(),
                 std::move(certPathList),

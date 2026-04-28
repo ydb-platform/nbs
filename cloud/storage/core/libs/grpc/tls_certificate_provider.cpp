@@ -54,6 +54,7 @@ private:
     };
 
     const ILoggingServicePtr Logging;
+    const TString LogComponent;
     const NMonitoring::TDynamicCountersPtr ServerGroup;
     const TString RootCertPath;
     const TDuration RefreshIntervalSec;
@@ -74,11 +75,13 @@ public:
 public:
     TPeriodicCertificateProviderBase(
             ILoggingServicePtr logging,
+            TString logComponent,
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
             TDuration refreshIntervalSec)
         : Logging(std::move(logging))
+        , LogComponent(std::move(logComponent))
         , ServerGroup(std::move(serverGroup))
         , RootCertPath(std::move(rootCertPath))
         , RefreshIntervalSec(refreshIntervalSec)
@@ -127,7 +130,7 @@ protected:
         Started = true;
         Stopping.store(false);
 
-        Log = Logging->CreateLog("BLOCKSTORE_TLS_CERTIFICATE_PROVIDER");
+        Log = Logging->CreateLog(LogComponent);
 
         NMonitoring::TDynamicCountersPtr tlsMetricsGroup;
         if (ServerGroup) {
@@ -356,6 +359,7 @@ public:
 
     TPeriodicCertificateProvider(
             ILoggingServicePtr logging,
+            TString logComponent,
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
@@ -363,6 +367,7 @@ public:
         : TPeriodicCertificateProviderBase<
             TPeriodicCertificateProvider>(
               std::move(logging),
+              std::move(logComponent),
               std::move(serverGroup),
               std::move(rootCertPath),
               std::move(certificates),
@@ -495,6 +500,7 @@ private:
 public:
     TPeriodicCertificateProviderImpl(
         ILoggingServicePtr logging,
+        TString logComponent,
         NMonitoring::TDynamicCountersPtr serverGroup,
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
@@ -504,6 +510,7 @@ public:
             TPeriodicCertificateProvider>(
                 new TPeriodicCertificateProvider(
                     std::move(logging),
+                    std::move(logComponent),
                     std::move(serverGroup),
                     std::move(rootCertPath),
                     std::move(certificates),
@@ -541,6 +548,7 @@ struct TCertificateRefresher
 
     void Init(
         ILoggingServicePtr logging,
+        TString logComponent,
         NMonitoring::TDynamicCountersPtr serverGroup,
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
@@ -551,6 +559,7 @@ struct TCertificateRefresher
             ICertificateProviderPtr provider =
                 std::make_shared<TPeriodicCertificateProviderImpl>(
                     std::move(logging),
+                    std::move(logComponent),
                     std::move(serverGroup),
                     std::move(rootCertPath),
                     std::move(certificates),

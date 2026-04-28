@@ -110,6 +110,7 @@ struct TCertificateProviderTestContext
         Refresher = CreateCertificateRefresher();
         Refresher->Init(
             CreateLoggingService("console"),
+            "TEST_TLS_CERTIFICATE_PROVIDER",
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},
@@ -209,6 +210,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT_EXCEPTION(
             context.Refresher->Init(
                 CreateLoggingService("console"),
+                "TEST_TLS_CERTIFICATE_PROVIDER",
                 context.ServerGroup,
                 context.RootPath,
                 TVector<TCertificateFiles>{
