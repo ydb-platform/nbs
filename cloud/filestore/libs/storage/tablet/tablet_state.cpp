@@ -95,6 +95,7 @@ void TIndexTabletState::LoadState(
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
     const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TVector<ui64>& orphanNodeIds,
+    const TVector<NProto::TOpLogEntry>& opLog,
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
@@ -169,6 +170,10 @@ void TIndexTabletState::LoadState(
     }
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
+
+    for (const auto& entry: opLog) {
+        Impl->OpLogEntryIds.insert(entry.GetEntryId());
+    }
 
     for (const auto& entry: responseLog) {
         CommitResponseLogEntry(entry);
@@ -273,6 +278,27 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
     }
 
     return Max(currentShardCount, autoShardCount);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletState::WriteOpLogEntry(
+    TIndexTabletDatabase& db,
+    const NProto::TOpLogEntry& e)
+{
+    db.WriteOpLogEntry(e);
+    Impl->OpLogEntryIds.insert(e.GetEntryId());
+}
+
+void TIndexTabletState::DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId)
+{
+    db.DeleteOpLogEntry(entryId);
+    Impl->OpLogEntryIds.erase(entryId);
+}
+
+ui64 TIndexTabletState::GetOpLogEntryCount() const
+{
+    return Impl->OpLogEntryIds.size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

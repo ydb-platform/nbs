@@ -10,8 +10,11 @@ namespace NCloud::NStorage::NRdma {
 
 IClientPtr CreateClient(
     NVerbs::IVerbsPtr verbs,
-    TLog log,
-    NMonitoring::TDynamicCountersPtr counters,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    TString logComponent,
+    TString countersGroupName,
+    TString countersComponentName,
     TClientConfigPtr config);
 
 }   // namespace NCloud::NStorage::NRdma

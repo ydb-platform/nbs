@@ -44,7 +44,7 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDuration, AdaptiveWaitSleepDuration.ToString());
                 ENTRY(AlignedDataEnabled, AlignedDataEnabled);
-                ENTRY(IpTypeOfService, IpTypeOfService);
+                ENTRY(IpTypeOfService, static_cast<ui32>(IpTypeOfService));
                 ENTRY(SourceInterface, SourceInterface);
                 ENTRY(VerbsQP, VerbsQP);
                 ENTRY(SendQueueSize, SendQueueSize);

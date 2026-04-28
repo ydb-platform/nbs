@@ -112,23 +112,25 @@ void TConfigInitializer::InitKikimrConfig()
 
     auto& sysConfig = *KikimrConfig->MutableActorSystemConfig();
     if (Options->SysConfig) {
-        ParseProtoTextFromFile(Options->SysConfig, sysConfig);
+        ParseProtoTextFromFileRobust(Options->SysConfig, sysConfig);
     }
 
     auto& interconnectConfig = *KikimrConfig->MutableInterconnectConfig();
     if (Options->InterconnectConfig) {
-        ParseProtoTextFromFile(Options->InterconnectConfig, interconnectConfig);
+        ParseProtoTextFromFileRobust(
+            Options->InterconnectConfig,
+            interconnectConfig);
     }
     interconnectConfig.SetStartTcp(true);
 
     auto& domainsConfig = *KikimrConfig->MutableDomainsConfig();
     if (Options->DomainsConfig) {
-        ParseProtoTextFromFile(Options->DomainsConfig, domainsConfig);
+        ParseProtoTextFromFileRobust(Options->DomainsConfig, domainsConfig);
     }
 
     auto& monConfig = *KikimrConfig->MutableMonitoringConfig();
     if (Options->MonitoringConfig) {
-        ParseProtoTextFromFile(Options->MonitoringConfig, monConfig);
+        ParseProtoTextFromFileRobust(Options->MonitoringConfig, monConfig);
     }
     SetupMonitoringConfig(monConfig);
 
@@ -139,10 +141,9 @@ void TConfigInitializer::InitKikimrConfig()
 
     auto& nameServiceConfig = *KikimrConfig->MutableNameserviceConfig();
     if (Options->NameServiceConfig) {
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->NameServiceConfig,
-            nameServiceConfig
-        );
+            nameServiceConfig);
     }
 
     if (Options->SuppressVersionCheck) {
@@ -152,15 +153,14 @@ void TConfigInitializer::InitKikimrConfig()
     auto& dynamicNameServiceConfig =
         *KikimrConfig->MutableDynamicNameserviceConfig();
     if (Options->DynamicNameServiceConfig) {
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->DynamicNameServiceConfig,
-            dynamicNameServiceConfig
-        );
+            dynamicNameServiceConfig);
     }
 
     if (Options->AuthConfig) {
         auto& authConfig = *KikimrConfig->MutableAuthConfig();
-        ParseProtoTextFromFile(Options->AuthConfig, authConfig);
+        ParseProtoTextFromFileRobust(Options->AuthConfig, authConfig);
     }
 
     auto& bsConfig = *KikimrConfig->MutableBlobStorageConfig();
@@ -309,7 +309,7 @@ NKikimrConfig::TMonitoringConfig TConfigInitializer::GetMonitoringConfig() const
     // TODO: move to custom config
     NKikimrConfig::TMonitoringConfig monConfig;
     if (Options->MonitoringConfig) {
-        ParseProtoTextFromFile(Options->MonitoringConfig, monConfig);
+        ParseProtoTextFromFileRobust(Options->MonitoringConfig, monConfig);
     }
 
     SetupMonitoringConfig(monConfig);
@@ -389,7 +389,7 @@ void TConfigInitializer::ApplyLogConfig(const TString& text)
 
 void TConfigInitializer::ApplyAuthConfig(const TString& text)
 {
-    ParseProtoTextFromString(text, *KikimrConfig->MutableAuthConfig());
+    ParseProtoTextFromStringRobust(text, *KikimrConfig->MutableAuthConfig());
 }
 
 void TConfigInitializer::ApplyFeaturesConfig(const TString& text)
@@ -401,6 +401,11 @@ void TConfigInitializer::ApplyFeaturesConfig(const TString& text)
         std::make_shared<NFeatures::TFeaturesConfig>(config);
 
     // features config has changed, update storage config
+    if (!StorageConfig) {
+        StorageConfig = std::make_shared<NStorage::TStorageConfig>(
+            NProto::TStorageServiceConfig(),
+            nullptr);
+    }
     StorageConfig->SetFeaturesConfig(FeaturesConfig);
 }
 
@@ -417,19 +422,27 @@ void TConfigInitializer::ApplyServerAppConfig(const TString& text)
     ParseProtoTextFromStringRobust(text, appConfig);
 
     ServerConfig = std::make_shared<TServerAppConfig>(appConfig);
+
+    // Update dependent configs
+    if (StorageConfig) {
+        ApplyStorageServiceConfig(
+            ProtoToText(StorageConfig->GetStorageConfigProto()));
+    }
 }
 
 void TConfigInitializer::ApplyMonitoringConfig(const TString& text)
 {
     auto& monConfig = *KikimrConfig->MutableMonitoringConfig();
-    ParseProtoTextFromString(text, monConfig);
+    ParseProtoTextFromStringRobust(text, monConfig);
 
     SetupMonitoringConfig(monConfig);
 }
 
 void TConfigInitializer::ApplyActorSystemConfig(const TString& text)
 {
-    ParseProtoTextFromString(text, *KikimrConfig->MutableActorSystemConfig());
+    ParseProtoTextFromStringRobust(
+        text,
+        *KikimrConfig->MutableActorSystemConfig());
 }
 
 void TConfigInitializer::ApplyDiagnosticsConfig(const TString& text)
@@ -447,7 +460,7 @@ void TConfigInitializer::ApplyDiagnosticsConfig(const TString& text)
 void TConfigInitializer::ApplyInterconnectConfig(const TString& text)
 {
     auto& interconnectConfig = *KikimrConfig->MutableInterconnectConfig();
-    ParseProtoTextFromString(text, interconnectConfig);
+    ParseProtoTextFromStringRobust(text, interconnectConfig);
 
     interconnectConfig.SetStartTcp(true);
 }
@@ -481,7 +494,9 @@ void TConfigInitializer::ApplyDiskAgentConfig(const TString& text)
     SetupDiskAgentConfig(config);
     ApplySpdkEnvConfig(config.GetSpdkEnvConfig());
 
-    if (!config.GetStorageDiscoveryConfig().PathConfigsSize()) {
+    if (DiskAgentConfig &&
+        !config.GetStorageDiscoveryConfig().PathConfigsSize())
+    {
         config.MutableStorageDiscoveryConfig()->CopyFrom(
             DiskAgentConfig->GetStorageDiscoveryConfig());
     }
@@ -527,19 +542,21 @@ void TConfigInitializer::ApplyNamedConfigs(
     using TSelf = TConfigInitializer;
     using TApplyFn = void (TSelf::*)(const TString&);
 
+    // clang-format off
     const TVector<std::pair<TString, TApplyFn>> configHandlers {
         { "ActorSystemConfig",       &TSelf::ApplyActorSystemConfig       },
         { "AuthConfig",              &TSelf::ApplyAuthConfig              },
         { "DiagnosticsConfig",       &TSelf::ApplyDiagnosticsConfig       },
         { "DiskAgentConfig",         &TSelf::ApplyDiskAgentConfig         },
         { "DiskRegistryProxyConfig", &TSelf::ApplyDiskRegistryProxyConfig },
+        { "FeaturesConfig",          &TSelf::ApplyFeaturesConfig          },
         { "InterconnectConfig",      &TSelf::ApplyInterconnectConfig      },
         { "LogConfig",               &TSelf::ApplyLogConfig               },
         { "MonitoringConfig",        &TSelf::ApplyMonitoringConfig        },
         { "ServerAppConfig",         &TSelf::ApplyServerAppConfig         },
-        { "FeaturesConfig",          &TSelf::ApplyFeaturesConfig          },
         { "StorageServiceConfig",    &TSelf::ApplyStorageServiceConfig    },
     };
+    // clang-format on
 
     for (const auto& handler: configHandlers) {
         auto it = configs.find(handler.first);

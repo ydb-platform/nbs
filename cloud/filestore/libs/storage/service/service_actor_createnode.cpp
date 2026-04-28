@@ -368,6 +368,18 @@ void TStorageServiceActor::HandleCreateNode(
                 std::move(error));
             return NCloud::Reply(ctx, *ev, std::move(response));
         }
+        if (!shardId &&
+            ExtractShardNoSafe(filestore, msg->Record.GetNodeId()) != 0)
+        {
+            // TODO(#5826): remove this check and support hard links from shards
+            // directories to main filesystem
+            ReportHardLinkFromShardDirToMainTabletNode();
+            auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
+                ErrorNotSupported(
+                    "hard links from shard directories to main filesystem nodes"
+                    " are not supported"));
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
         if (shardId) {
             // If the target node is located on a shard, start a worker actor
             // to separately increment the link count in the shard and insert
@@ -397,17 +409,6 @@ void TStorageServiceActor::HandleCreateNode(
             NCloud::Register(ctx, std::move(actor));
 
             return;
-        }
-    } else {
-        const bool multiTabletForwardingEnabled =
-            !headers.GetDisableMultiTabletForwarding() &&
-            (msg->Record.HasFile() ||
-             filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-
-        if (multiTabletForwardingEnabled) {
-            if (const auto& shardId = session->SelectShard()) {
-                msg->Record.SetShardFileSystemId(shardId);
-            }
         }
     }
 

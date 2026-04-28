@@ -3,5 +3,4 @@ MaxFileBlocks: 536870912
 AutomaticShardCreationEnabled: true
 ShardAllocationUnit: 1073741824
 AutomaticallyCreatedShardSize: 1073741824
-ShardIdSelectionInLeaderEnabled: true
 DirectoryCreationInShardsEnabled: true

@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
 
+#include <contrib/ydb/core/util/tuples.h>
+
 #include <library/cpp/containers/sorted_vector/sorted_vector.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -464,6 +466,7 @@ class TVolumeStats final
     : public IVolumeStats
     , public std::enable_shared_from_this<TVolumeStats>
 {
+    using TClientVolume = std::pair<TString, TString>;   // [clientId, diskId]
     using TVolumeBasePtr = std::shared_ptr<TVolumeInfoBase>;
     using TVolumeInfoPtr = std::shared_ptr<TVolumeInfo>;
     using TVolumeMap = std::unordered_map<
@@ -531,7 +534,8 @@ private:
     std::unique_ptr<TSufferCounters> StrictSLASufferCounters;
     std::unique_ptr<TSufferCounters> CriticalSufferCounters;
 
-    std::unordered_map<TString, TRealInstanceId> ClientToRealInstance;
+    std::unordered_map<TClientVolume, TRealInstanceId>
+        ClientVolumeToRealInstance;
     TVolumeHolderMap Volumes;
     TRWMutex Lock;
 
@@ -579,18 +583,16 @@ public:
 
         TVolumeMap& infos = volumeIt->second.VolumeInfos;
 
-        auto instanceIt = infos.find(realInstanceId);
-        if (instanceIt == infos.end()) {
-            instanceIt = infos.emplace(
-                realInstanceId,
-                RegisterInstance(
-                    volumeIt->second.VolumeBase,
-                    realInstanceId)).first;
+        auto volumeInfoIt = infos.find(realInstanceId);
+        if (volumeInfoIt == infos.end()) {
+            auto volumeInfo =
+                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId);
+            volumeInfoIt = infos.emplace(realInstanceId, volumeInfo).first;
             inserted = true;
-            instanceIt->second->PinCount = pinCountForNewInstance;
+            volumeInfoIt->second->PinCount = pinCountForNewInstance;
         }
 
-        instanceIt->second->LastRemountTime = Timer->Now();
+        volumeInfoIt->second->LastRemountTime = Timer->Now();
 
         if (!inserted) {
             AlterVolumeImpl(
@@ -609,14 +611,15 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        auto [itr, result] = ClientToRealInstance.try_emplace(
-            clientId,
+        const auto& diskId = NStorage::GetLogicalDiskId(volume.GetDiskId());
+        auto [it, _] = ClientVolumeToRealInstance.try_emplace(
+            {clientId, diskId},
             clientId,
             instanceId);
 
         return MountVolumeImpl(
             volume,
-            itr->second,
+            it->second,
             0 /* pinCountForNewInstance */);
     }
 
@@ -694,8 +697,11 @@ public:
         }
 
         const TVolumeMap& infos = volumeIt->second.VolumeInfos;
-        const auto realInstanceIt = ClientToRealInstance.find(clientId);
-        if (realInstanceIt == ClientToRealInstance.end()) {
+
+        const auto realInstanceIt =
+            ClientVolumeToRealInstance.find(std::tie(clientId, diskId));
+
+        if (realInstanceIt == ClientVolumeToRealInstance.end()) {
             return nullptr;
         }
         const auto infoIt = infos.find(realInstanceIt->second);
@@ -821,13 +827,21 @@ public:
 
                 if (removeInstance) {
                     UnregisterInstance(info.VolumeBase, info.RealInstanceId);
+
+                    const auto& diskId = info.VolumeBase->Volume.GetDiskId();
                     std::erase_if(
-                        ClientToRealInstance,
-                        [&info](const auto& client)
+                        ClientVolumeToRealInstance,
+                        [&info, &diskId](const auto& mapElement)
                         {
-                            return TRealInstanceKeyEqual()(
-                                client.second,
-                                info.RealInstanceId);
+                            const TClientVolume& clientVolume =
+                                mapElement.first;
+                            const TRealInstanceId& realInstanceId =
+                                mapElement.second;
+                            const bool erase = clientVolume.second == diskId &&
+                                               TRealInstanceKeyEqual()(
+                                                   realInstanceId,
+                                                   info.RealInstanceId);
+                            return erase;
                         });
                     return true;
                 }

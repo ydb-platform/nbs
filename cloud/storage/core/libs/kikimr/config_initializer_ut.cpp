@@ -53,6 +53,55 @@ struct TConfigInitializerYdb
 
 Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 {
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInStaticConfigs)
+    {
+        auto configStr = R"(
+            NoSuchField: "x"
+        )";
+
+        TTempDir dir;
+        auto configPath = dir.Path() / "component.txt";
+
+        TOFStream(configPath.GetPath()).Write(configStr);
+
+        auto options = CreateOptions();
+
+        // clang-format off
+        options->LogConfig                =
+        options->SysConfig                =
+        options->DomainsConfig            =
+        options->NameServiceConfig        =
+        options->DynamicNameServiceConfig =
+        options->AuthConfig               =
+        options->KikimrFeaturesConfig     =
+        options->SharedCacheConfig        =
+        options->ImmediateControlsConfig  =
+        options->InterconnectConfig       =
+        options->MonitoringConfig         = configPath.GetPath();
+        // clang-format on
+
+        auto ci = TConfigInitializerYdb(std::move(options));
+
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitKikimrConfig());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInCmsConfigs)
+    {
+        auto configStr = R"(
+            NoSuchField: "x"
+        )";
+
+        auto options = CreateOptions();
+        auto ci = TConfigInitializerYdb(std::move(options));
+        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyActorSystemConfig(configStr));
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyInterconnectConfig(configStr));
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyAuthConfig(configStr));
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyLogConfig(configStr));
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyMonitoringConfig(configStr));
+    }
+
     Y_UNIT_TEST(ShouldLoadSysConfig)
     {
         auto sysConfigStr = R"(

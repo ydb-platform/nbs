@@ -511,7 +511,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
             args.ChildRef->ShardNodeName,
             args.NewParentShardId);
 
-    db.WriteOpLogEntry(args.OpLogEntry);
+    WriteOpLogEntry(db, args.OpLogEntry);
 
     // update old parent timestamps
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
@@ -785,7 +785,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
         }
     }
 
-    db.DeleteOpLogEntry(args.OpLogEntryId);
+    DeleteOpLogEntry(db, args.OpLogEntryId);
 }
 
 void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(

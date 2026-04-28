@@ -377,6 +377,7 @@ void TTabletMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(CPUUsageMicros, EMetricType::MT_DERIVATIVE);
 
+    REGISTER_LOCAL(OpLogEntryCount, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(ResponseLogEntryCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(

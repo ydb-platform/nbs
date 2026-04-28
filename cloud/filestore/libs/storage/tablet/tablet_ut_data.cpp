@@ -2209,7 +2209,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TTestEnv env({}, std::move(storageConfig));
         auto registry = env.GetRegistry();
 
-
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 

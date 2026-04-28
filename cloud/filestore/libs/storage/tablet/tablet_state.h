@@ -279,6 +279,7 @@ public:
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
         const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TVector<ui64>& orphanNodeIds,
+        const TVector<NProto::TOpLogEntry>& opLog,
         const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
         const TThrottlerConfig& throttlerConfig);
 
@@ -898,6 +899,19 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
     void CommitDupCacheEntry(
         const TString& sessionId,
         ui64 requestId);
+
+    //
+    // OpLog
+    //
+
+public:
+    void WriteOpLogEntry(
+        TIndexTabletDatabase& db,
+        const NProto::TOpLogEntry& e);
+
+    void DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId);
+
+    ui64 GetOpLogEntryCount() const;
 
     //
     // ResponseLog

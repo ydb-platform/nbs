@@ -267,10 +267,12 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.OpLog,
         args.ResponseLog,
         config);
     UpdateLogTag();
 
+    NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,

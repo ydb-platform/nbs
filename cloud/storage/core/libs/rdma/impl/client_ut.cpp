@@ -31,10 +31,11 @@ IClientPtr CreateTestClient(
 {
     return CreateClient(
         std::move(verbs),
-        logging->CreateLog("RDMA_TEST"),
-        monitoring->GetCounters()
-            ->GetSubgroup("counters", "rdma")
-            ->GetSubgroup("component", "client"),
+        logging,
+        monitoring,
+        "RDMA_TEST",
+        "rdma",
+        "client",
         std::move(config));
 }
 
@@ -344,76 +345,55 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
             }
         };
 
+        long timedOutRequests = 0;
+
         for (size_t i = 0; i < RequestCount; ++i) {
-            {
-                TManualEvent ev;
-                TResponse response;
+            TManualEvent ev;
+            TResponse response;
 
-                auto r = ep->AllocateRequest(
-                    std::make_shared<TClientHandler>(),
-                    makeContext(&ev, &response),
-                    RequestBytes,
-                    ResponseBytes);
-                ASSERT_FALSE(HasError(r.GetError()));
+            auto request = ep->AllocateRequest(
+                std::make_shared<TClientHandler>(),
+                makeContext(&ev, &response),
+                RequestBytes,
+                ResponseBytes);
+            ASSERT_FALSE(HasError(request.GetError()));
 
-                auto request = r.ExtractResult();
-                auto callContext = MakeIntrusive<TCallContextBase>(ui64{0});
+            ep->SendRequest(
+                request.ExtractResult(),
+                MakeIntrusive<TCallContextBase>(0u));
 
-                // Make sure that time spent before SendRequest doesn't count
-                // towards the RDMA response timeout.
-                auto retryDelay =
-                    DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
-
-                callContext->SetRequestStartedCycles(
-                    GetCycleCount() - retryDelay);
-                ep->SendRequest(std::move(request), callContext);
-
+            if (i != 0 && i != RDMA_MAX_REQID - 3) {
+                // complete request right away
                 handleRequest(*testContext);
 
                 ev.WaitT(5s);
                 ASSERT_TRUE(response.Received);
-                ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_OK), response.Status);
-            }
 
-            if (i == 0 || i == RDMA_MAX_REQID - 3) {
-                TManualEvent ev;
-                TResponse response;
-
-                auto timedOutRequest = ep->AllocateRequest(
-                    std::make_shared<TClientHandler>(),
-                    makeContext(&ev, &response),
-                    RequestBytes,
-                    ResponseBytes);
-                ASSERT_FALSE(HasError(timedOutRequest.GetError()));
-
-                auto request = timedOutRequest.ExtractResult();
-                auto callContext = MakeIntrusive<TCallContextBase>(ui64{0});
-
-                // Make sure that time spent before SendRequest doesn't count
-                // towards the RDMA response timeout.
-                auto retryDelay =
-                    DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
-                callContext->SetRequestStartedCycles(
-                    GetCycleCount() - retryDelay);
-                ep->SendRequest(std::move(request), callContext);
-
+                // request duration is measured against the wall clock, so it
+                // can time out if the process stalls for some reason
+                if (response.Status != RDMA_PROTO_OK) {
+                    NProto::TError error =
+                        ParseError(response.Buffer.Head(response.Bytes));
+                    ASSERT_EQ(E_TIMEOUT, error.GetCode());
+                    timedOutRequests++;
+                }
+            } else {
+                // do not complete request to trigger timeout
                 ev.WaitT(TDuration::Seconds(5));
                 ASSERT_TRUE(response.Received);
-                ASSERT_EQ(
-                    static_cast<ui32>(RDMA_PROTO_FAIL),
-                    response.Status);
 
                 NProto::TError error =
                     ParseError(response.Buffer.Head(response.Bytes));
                 ASSERT_EQ(E_TIMEOUT, error.GetCode());
+                timedOutRequests++;
 
-                // Handle the request after timeout to drain the test transport.
+                // complete request to drain the test transport
                 handleRequest(*testContext);
             }
 
             auto counters = GetClientCounters(monitoring);
             auto aborted = counters->GetCounter("AbortedRequests");
-            ASSERT_EQ(aborted->Val(), 1);
+            ASSERT_EQ(aborted->Val(), timedOutRequests);
         }
 }
 
@@ -444,7 +424,7 @@ TEST(TRdmaClientTest, ShouldReuseChunks)
             registered++;
         };
 
-        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
 
         TVector<TClientRequestPtr> requests;
         int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
@@ -492,7 +472,7 @@ TEST(TRdmaClientTest, ShouldAdjustMaxChunkAlloc)
             registered++;
         };
 
-        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
 
         TVector<TClientRequestPtr> requests;
         int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
@@ -546,7 +526,7 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
             sent.Signal();
         };
 
-        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
 
         struct TClientHandler: IClientHandler
         {
@@ -572,10 +552,12 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
             std::make_unique<TNullContext>(),
             4096,   // requestBytes
             4096);  // responseBytes
+        ASSERT_FALSE(HasError(request.GetError()));
 
         endpoint->SendRequest(
             request.ExtractResult(),
-            MakeIntrusive<TCallContextBase>(ui64{0}));
+            MakeIntrusive<TCallContextBase>(0u));
+
         ASSERT_TRUE(sent.WaitT(5s));
 
         Disconnect(testContext);
@@ -639,33 +621,31 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
 
         const size_t requestBytes = 1024;
         const size_t responseBytes = 1024;
-        auto r1 = ep->AllocateRequest(
+
+        auto request1 = ep->AllocateRequest(
             std::make_shared<TClientHandler>(),
             makeContext(response1, ev1),
             requestBytes,
             responseBytes);
-        auto request1 = r1.ExtractResult();
-        auto callContext = MakeIntrusive<TCallContextBase>(ui64{0});
+        ASSERT_FALSE(HasError(request1.GetError()));
 
-        // make sure that time spent on request processing before SendRequest
-        // won't be counted towards rdma timeout
-        auto retryDelay =
-            DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
-
-        callContext->SetRequestStartedCycles(GetCycleCount() - retryDelay);
-        auto reqId1 = ep->SendRequest(std::move(request1), callContext);
+        auto reqId1 = ep->SendRequest(
+            request1.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
 
         TManualEvent ev2;
         TResponse response2;
 
-        auto r2 = ep->AllocateRequest(
+        auto request2 = ep->AllocateRequest(
             std::make_shared<TClientHandler>(),
             makeContext(response2, ev2),
             requestBytes,
             responseBytes);
-        auto request2 = r2.ExtractResult();
+        ASSERT_FALSE(HasError(request2.GetError()));
 
-        auto reqId2 = ep->SendRequest(std::move(request2), callContext);
+        auto reqId2 = ep->SendRequest(
+            request2.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
 
         ep->CancelRequest(reqId2);
 
@@ -673,28 +653,20 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         ASSERT_TRUE(response2.Received);
         ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2.Status);
 
-        NProto::TError error;
-        bool parsed = error.ParseFromArray(
-            response2.Buffer.Head(response2.Bytes).data(),
-            response2.Bytes);
-
-        ASSERT_TRUE(parsed);
-        ASSERT_EQ(E_CANCELLED, error.GetCode());
+        NProto::TError error2 =
+            ParseError(response2.Buffer.Head(response2.Bytes));
+        ASSERT_EQ(E_CANCELLED, error2.GetCode());
 
         ASSERT_FALSE(response1.Received);
-
         ep->CancelRequest(reqId1);
 
         ev1.WaitT(5s);
         ASSERT_TRUE(response1.Received);
         ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response1.Status);
 
-        parsed = error.ParseFromArray(
-            response1.Buffer.Head(response1.Bytes).data(),
-            response1.Bytes);
-
-        ASSERT_TRUE(parsed);
-        ASSERT_EQ(E_CANCELLED, error.GetCode());
+        NProto::TError error1 =
+            ParseError(response1.Buffer.Head(response1.Bytes));
+        ASSERT_EQ(E_CANCELLED, error1.GetCode());
 
         auto counters = GetClientCounters(monitoring);
         auto aborted = counters->GetCounter("AbortedRequests");
@@ -792,17 +764,17 @@ TEST(TRdmaClientTest, ShouldReconnect)
 
         size_t requestBytes = 1024;
         size_t responseBytes = 1024;
-        auto r = ep->AllocateRequest(
+
+        auto request = ep->AllocateRequest(
             std::make_shared<TClientHandler>(),
             makeContext(),
             requestBytes,
             responseBytes);
-        auto request = r.ExtractResult();
-        auto callContext = MakeIntrusive<TCallContextBase>(ui64{0});
-        auto retryDelay =
-            DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
-        callContext->SetRequestStartedCycles(GetCycleCount() - retryDelay);
-        ep->SendRequest(std::move(request), callContext);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        ep->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
 
         while (true) {
             with_lock (testContext->CompletionLock) {
