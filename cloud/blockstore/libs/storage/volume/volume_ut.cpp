@@ -7776,7 +7776,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             TVolumeClient volume(*runtime);
 
             ui32 freshBlocksWriterWaitReadyRequests = 0;
-            ui32 partitionWaitReadyRequests = 0;
 
             runtime->SetObserverFunc(
                 [&](TAutoPtr<IEventHandle>& event)
@@ -7795,13 +7794,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                             ++freshBlocksWriterWaitReadyRequests;
                             break;
                         }
-                        case TEvPartition::EvWaitReadyRequest: {
-                            Cerr << "EvWaitReadyRequest Sender: "
-                                 << runtime->FindActorName(event->Sender)
-                                 << Endl;
-                            ++partitionWaitReadyRequests;
-                            break;
-                        }
                     }
 
                     return TTestActorRuntime::DefaultObserverFunc(event);
@@ -7810,23 +7802,21 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.UpdateVolumeConfig();
             volume.WaitReady();
 
-            return std::make_pair(
-                freshBlocksWriterWaitReadyRequests,
-                partitionWaitReadyRequests);
+            return freshBlocksWriterWaitReadyRequests;
         };
 
         {
-            const auto [freshRequests, partitionRequests] =
+            const auto freshWaitReadyRequests =
                 runTest(TTabletTypes::BlockStorePartition);
 
-            UNIT_ASSERT_VALUES_UNEQUAL(0, freshRequests);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, freshWaitReadyRequests);
         }
 
         {
-            const auto [freshRequests, partitionRequests] =
+            const auto freshWaitReadyRequests =
                 runTest(TTabletTypes::BlockStorePartition2);
 
-            UNIT_ASSERT_VALUES_EQUAL(0, freshRequests);
+            UNIT_ASSERT_VALUES_EQUAL(0, freshWaitReadyRequests);
         }
     }
 
