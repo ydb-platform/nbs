@@ -72,7 +72,7 @@ public:
     void WriteMixedBlocks(
         const TPartialBlobId& blobId,
         const TVector<ui32>& blocks,
-        ui32 blobAlignment);
+        ui32 enclosingCompactionRangeSize);
 
     void DeleteMixedBlock(ui32 blockIndex, ui64 commitId);
 

@@ -18,27 +18,27 @@ struct TMixedBlock
     ui64 CommitId;
     ui32 BlockIndex;
     ui16 BlobOffset;
-    ui32 BlobAlignment;
+    ui32 EnclosingCompactionRangeSize;
 
     TMixedBlock(
             TPartialBlobId blobId,
             ui64 commitId,
             ui32 blockIndex,
             ui16 blobOffset,
-            ui32 blobAlignment)
+            ui32 enclosingCompactionRangeSize)
         : BlobId(blobId)
         , CommitId(commitId)
         , BlockIndex(blockIndex)
         , BlobOffset(blobOffset)
-        , BlobAlignment(blobAlignment)
+        , EnclosingCompactionRangeSize(enclosingCompactionRangeSize)
     {}
 
     bool operator==(const TMixedBlock& other) const
     {
-        return BlockIndex == other.BlockIndex
-            && CommitId == other.CommitId
-            && BlobId == other.BlobId
-            && BlobOffset == other.BlobOffset;
+        return BlockIndex == other.BlockIndex && CommitId == other.CommitId &&
+               BlobId == other.BlobId && BlobOffset == other.BlobOffset &&
+               EnclosingCompactionRangeSize ==
+                   other.EnclosingCompactionRangeSize;
     }
 };
 

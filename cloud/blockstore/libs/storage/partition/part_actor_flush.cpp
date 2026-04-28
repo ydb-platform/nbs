@@ -37,18 +37,19 @@ public:
         TGuardedBuffer<TBlockBuffer> BlobContent;
         TVector<TBlock> Blocks;
         TVector<ui32> Checksums;
-        ui32 BlobAlignment = 0;
+        ui32 EnclosingCompactionRangeSize = 0;
 
-        TRequest(const TPartialBlobId& blobId,
-                 TBlockBuffer blobContent,
-                 TVector<TBlock> blocks,
-                 TVector<ui32> checksums,
-                 ui32 blobAlignment)
+        TRequest(
+                const TPartialBlobId& blobId,
+                TBlockBuffer blobContent,
+                TVector<TBlock> blocks,
+                TVector<ui32> checksums,
+                ui32 enclosingCompactionRangeSize)
             : BlobId(blobId)
             , BlobContent(std::move(blobContent))
             , Blocks(std::move(blocks))
             , Checksums(std::move(checksums))
-            , BlobAlignment(blobAlignment)
+            , EnclosingCompactionRangeSize(enclosingCompactionRangeSize)
         {}
     };
 
@@ -237,7 +238,7 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(req.Blocks),
             std::move(req.Checksums),
-            req.BlobAlignment);
+            req.EnclosingCompactionRangeSize);
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -403,19 +404,18 @@ struct TBlob
     TBlockBuffer BlobContent;
     TVector<TBlock> Blocks;
     TVector<ui32> Checksums;
-    ui32 BlobAlignment;
+    ui32 EnclosingCompactionRangeSize;
 
     TBlob(
             TBlockBuffer blobContent,
             TVector<TBlock> blocks,
             TVector<ui32> checksums,
-            ui32 blobAlignment)
+            ui32 enclosingCompactionRangeSize)
         : BlobContent(std::move(blobContent))
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
-        , BlobAlignment(blobAlignment)
-    {
-    }
+        , EnclosingCompactionRangeSize(enclosingCompactionRangeSize)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -765,7 +765,7 @@ void TPartitionActor::HandleFlush(
             std::move(blob.BlobContent),
             std::move(blob.Blocks),
             std::move(blob.Checksums),
-            blob.BlobAlignment);
+            blob.EnclosingCompactionRangeSize);
     }
 
     Y_ABORT_UNLESS(requests);

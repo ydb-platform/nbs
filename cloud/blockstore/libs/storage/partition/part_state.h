@@ -561,7 +561,7 @@ public:
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
         const TVector<ui32>& blockIndices,
-        ui32 blobAlignment);
+        ui32 enclosingCompactionRangeSize);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,

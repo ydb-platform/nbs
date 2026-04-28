@@ -111,11 +111,10 @@ struct TPartitionSchema
         {
         };
 
-        struct BlobAlignment
+        struct EnclosingCompactionRangeSize
             : public Column<6, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
-
 
         using TKey = TableKey<BlockIndex, CommitId>;
         using TColumns = TableColumns<
@@ -124,7 +123,7 @@ struct TPartitionSchema
             BlobCommitId,
             BlobId,
             BlobOffset,
-            BlobAlignment>;
+            EnclosingCompactionRangeSize>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;

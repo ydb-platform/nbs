@@ -818,9 +818,9 @@ public:
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui32 blobAlignment) override
+        ui32 enclosingCompactionRangeSize) override
     {
-        Y_UNUSED(blobAlignment);
+        Y_UNUSED(enclosingCompactionRangeSize);
 
         return Visit(blockIndex, commitId, blobId, blobOffset);
     }
