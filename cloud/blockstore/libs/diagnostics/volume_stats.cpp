@@ -691,7 +691,9 @@ public:
         const TString& diskId,
         const TString& clientId) const
     {
-        const auto volumeIt = Volumes.find(NStorage::GetLogicalDiskId(diskId));
+        const auto& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
+
+        const auto volumeIt = Volumes.find(logicalDiskId);
         if (volumeIt == Volumes.end()) {
             return nullptr;
         }
@@ -699,7 +701,7 @@ public:
         const TVolumeMap& infos = volumeIt->second.VolumeInfos;
 
         const auto realInstanceIt =
-            ClientVolumeToRealInstance.find(std::tie(clientId, diskId));
+            ClientVolumeToRealInstance.find(std::tie(clientId, logicalDiskId));
 
         if (realInstanceIt == ClientVolumeToRealInstance.end()) {
             return nullptr;
