@@ -120,7 +120,12 @@ NProto::TError ValidateShardList(
             << newShardIds.size() << " < " << shardIds.size());
     }
 
+<<<<<<< HEAD
     if (static_cast<ui32>(newShardIds.size()) > config.GetMaxShardCount()) {
+=======
+    if (static_cast<ui32>(newShardIds.size()) > config.GetMaxShardCount())
+    {
+>>>>>>> 1853f4f330 (issue-5644: dedicated file-only shards - shard list validation, ut and fixes)
         return MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
             " is bigger than limit: "
             << newShardIds.size() << " > " << config.GetMaxShardCount());
@@ -128,9 +133,16 @@ NProto::TError ValidateShardList(
 
     for (int i = 0; i < shardIds.size(); ++i) {
         if (shardIds[i] != newShardIds[i]) {
+<<<<<<< HEAD
             return MakeError(E_ARGUMENT, TStringBuilder()
                 << "shard change not allowed, pos=" << i
                 << ", prev=" << shardIds[i] << ", new=" << newShardIds[i]);
+=======
+            return MakeError(E_ARGUMENT, TStringBuilder() << "shard"
+                " change not allowed, pos=" << i << ", prev="
+                << shardIds[i] << ", new="
+                << newShardIds[i]);
+>>>>>>> 1853f4f330 (issue-5644: dedicated file-only shards - shard list validation, ut and fixes)
         }
     }
 
@@ -150,7 +162,11 @@ NProto::TError ValidateFileShardList(
         }
     }
 
+<<<<<<< HEAD
     if (shardIdSet.empty() && !shardIds.empty()) {
+=======
+    if (shardIdSet.empty()) {
+>>>>>>> 1853f4f330 (issue-5644: dedicated file-only shards - shard list validation, ut and fixes)
         return MakeError(E_ARGUMENT, "non-file shard set is empty");
     }
 
@@ -487,6 +503,22 @@ void TIndexTabletActor::HandleConfigureAsShard(
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
+    }
+
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    const auto& newShardIds = msg->Record.GetShardFileSystemIds();
+
+    NProto::TError error;
+    if (!HasError(error) && !msg->Record.GetForce()) {
+        error = ValidateShardList(*Config, shardIds, newShardIds);
+    }
+
+    const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
+    if (!HasError(error)
+            && !msg->Record.GetForce()
+            && !newFileShardIds.empty())
+    {
+        error = ValidateFileShardList(newShardIds, newFileShardIds);
     }
 
     ExecuteTx<TConfigureAsShard>(
