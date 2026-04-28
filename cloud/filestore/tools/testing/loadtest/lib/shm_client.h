@@ -57,6 +57,7 @@ IShmDataClientPtr CreateSharedMemoryClient(
     TString filePath,
     ui64 shmSize,
     ui64 slotSize,
+    ui32 pageSize,
     IShmControlPtr shmControl,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
