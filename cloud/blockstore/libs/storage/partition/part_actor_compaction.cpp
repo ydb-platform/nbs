@@ -1570,21 +1570,21 @@ void TPartitionActor::HandleCompactionCompleted(
         d.MicroSeconds(),
         blocks * State->GetBlockSize());
 
-    PartCounters->Cumulative.CompactionReadBlobsExecTime.Increment(
+    PartCounters->Cumulative.CompactionReadBlobsTime.Increment(
         msg->ReadBlobsTime.MicroSeconds());
-    PartCounters->Cumulative.CompactionWriteBlobExecTime.Increment(
+    PartCounters->Cumulative.CompactionWriteBlobsTime.Increment(
         msg->WriteBlobsTime.MicroSeconds());
-    PartCounters->Cumulative.CompactionAddBlobsTxExecTime.Increment(
+    PartCounters->Cumulative.CompactionAddBlobsTime.Increment(
         msg->AddBlobsTime.MicroSeconds());
-    PartCounters->Cumulative.CompactionTxExecTime.Increment(
+    PartCounters->Cumulative.CompactionTxTime.Increment(
         msg->CompactionTxTime.MicroSeconds());
 
-    PartCounters->Cumulative.CompactionOnCpuExecTime.Increment(
+    PartCounters->Cumulative.CompactionExecutionTime.Increment(
         CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
 
     if (compactionStartedTs.MicroSeconds()) {
         const auto totalTime = ctx.Now() - compactionStartedTs;
-        PartCounters->Cumulative.CompactionTotalExecTime.Increment(
+        PartCounters->Cumulative.CompactionTotalTime.Increment(
             totalTime.MicroSeconds());
     }
     State->SetLastCompactionExecTime(d, ctx.Now());

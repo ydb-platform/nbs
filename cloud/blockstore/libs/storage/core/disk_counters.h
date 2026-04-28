@@ -340,27 +340,27 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionTxExecTime{
+    TCounter CompactionTxTime{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionReadBlobsExecTime{
+    TCounter CompactionReadBlobsTime{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionWriteBlobExecTime{
+    TCounter CompactionWriteBlobsTime{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionAddBlobsTxExecTime{
+    TCounter CompactionAddBlobsTime{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionOnCpuExecTime{
+    TCounter CompactionExecutionTime{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionTotalExecTime{
+    TCounter CompactionTotalTime{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -386,12 +386,12 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionTxExecTime>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsExecTime>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionWriteBlobExecTime>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionAddBlobsTxExecTime>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionOnCpuExecTime>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionTotalExecTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionTxTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionWriteBlobsTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionAddBlobsTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionExecutionTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionTotalTime>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };
