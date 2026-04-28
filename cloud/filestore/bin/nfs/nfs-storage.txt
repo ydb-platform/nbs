@@ -1,5 +1,4 @@
 SchemeShardDir: "/Root/NFS"
-MultiTabletForwardingEnabled: true
 AllowFileStoreForceDestroy: true
 AutomaticShardCreationEnabled: true
 StrictFileSystemSizeEnforcementEnabled: true

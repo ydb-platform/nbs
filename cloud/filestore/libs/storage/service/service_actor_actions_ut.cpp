@@ -232,22 +232,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetMultiTabletForwardingEnabled(true);
+            newConfig.SetThrottlingEnabled(true);
             const auto response = ExecuteChangeStorageConfig(
                 "fs0",
                 std::move(newConfig),
                 service);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetMultiTabletForwardingEnabled(),
+                response.GetStorageConfig().GetThrottlingEnabled(),
                 true);
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetMultiTabletForwardingEnabled(),
-                true);
+            UNIT_ASSERT_VALUES_EQUAL(response.GetThrottlingEnabled(), true);
         }
     }
 
@@ -271,24 +269,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetMultiTabletForwardingEnabled(true);
+            newConfig.SetThrottlingEnabled(true);
             ExecuteChangeStorageConfig("fs0", std::move(newConfig), service);
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service, false);
             UNIT_ASSERT_VALUES_EQUAL(42, response.GetReadAheadCacheMaxNodes());
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetMultiTabletForwardingEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(true, response.GetThrottlingEnabled());
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service, true);
             UNIT_ASSERT(!response.HasReadAheadCacheMaxNodes());
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetMultiTabletForwardingEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(true, response.GetThrottlingEnabled());
         }
     }
 
@@ -462,7 +456,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     {
         NProto::TStorageConfig config;
         // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
+        config.SetThrottlingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -664,7 +658,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     {
         NProto::TStorageConfig config;
         // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
+        config.SetThrottlingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -764,7 +758,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         NProto::TStorageConfig config;
         // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
+        config.SetThrottlingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -1005,7 +999,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(1_GB);
         storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
-        storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
 
@@ -1197,7 +1191,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(2_GB);
         storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
-        storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
 

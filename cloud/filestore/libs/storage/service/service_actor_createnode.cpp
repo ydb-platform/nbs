@@ -400,7 +400,6 @@ void TStorageServiceActor::HandleCreateNode(
         }
     } else {
         const bool multiTabletForwardingEnabled =
-            StorageConfig->GetMultiTabletForwardingEnabled() &&
             !headers.GetDisableMultiTabletForwarding() &&
             (msg->Record.HasFile() ||
              filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
