@@ -641,10 +641,12 @@ void TStorageServiceActor::HandleListNodes(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
+    const bool disableMultiTabletForwarding =
+        msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     auto actor = std::make_unique<TListNodesActor>(
         std::move(requestInfo),
         std::move(msg->Record),
-        msg->Record.GetHeaders().GetDisableMultiTabletForwarding(),
+        disableMultiTabletForwarding,
         session->RequestStats,
         ProfileLog);
 

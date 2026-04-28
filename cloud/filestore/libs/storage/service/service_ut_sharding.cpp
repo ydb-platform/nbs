@@ -5480,7 +5480,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     // See #5826 for more details
     SERVICE_TEST(ShouldRejectHardLinkFromShardDirToMainTabletNode)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
 
         const TString fsId = "test";
