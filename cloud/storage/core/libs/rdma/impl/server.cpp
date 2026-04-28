@@ -1944,8 +1944,7 @@ void TServer::Reject(rdma_cm_id* id, int status) noexcept
 
     TRejectMessage rejectMsg = {
         .Status = SafeCast<ui16>(status),
-        .QueueSize =
-            SafeCast<ui16>(Config->SendQueueSize + Config->RecvQueueSize),
+        .QueueSize = SafeCast<ui16>(Config->SendQueueSize),
         .MaxBufferSize = SafeCast<ui32>(Config->MaxBufferSize),
     };
     InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);

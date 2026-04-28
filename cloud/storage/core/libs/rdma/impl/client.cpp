@@ -496,6 +496,8 @@ private:
 
     std::atomic<ui64> ReqIdPool{0};
 
+    bool CompatibilityConnection = false;
+
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
     {
@@ -550,6 +552,9 @@ public:
     void AbortRequests() noexcept;
     bool Flushed() const;
     bool FlushHanging() const;
+
+    void SetCompatibilityConnection(bool compatibilityConnection);
+    bool GetCompatibilityConnection() const;
 
 private:
     // called from CQ thread
@@ -1372,6 +1377,14 @@ void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 ui64 TClientEndpoint::GetNewReqId() noexcept
 {
     return ReqIdPool.fetch_add(1);
+}
+
+void TClientEndpoint::SetCompatibilityConnection(bool compatibilityConnection) {
+    CompatibilityConnection = compatibilityConnection;
+}
+
+bool TClientEndpoint::GetCompatibilityConnection() const {
+    return CompatibilityConnection;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2227,7 +2240,10 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .RecvQueueSize = SafeCast<ui16>(endpoint->Config.RecvQueueSize),
             .MaxBufferSize = SafeCast<ui32>(endpoint->Config.MaxBufferSize),
         };
-        InitMessageHeader(&message, RDMA_PROTO_VERSION);
+        InitMessageHeader(
+            &message,
+            endpoint->GetCompatibilityConnection() ? RDMA_PROTO_VERSION
+                                                   : RDMA_PROTO_VERSION_2);
 
         rdma_conn_param param = {
             .private_data = &message,
@@ -2254,13 +2270,24 @@ void TClient::HandleConnected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    RDMA_DEBUG(endpoint->Log, "validate");
+    RDMA_DEBUG(endpoint->Log, "validate connect message");
 
     if (param->private_data == nullptr ||
-        param->private_data_len < sizeof(TAcceptMessage) ||
-        ParseMessageHeader(param->private_data) != RDMA_PROTO_VERSION)
+        param->private_data_len < sizeof(TAcceptMessage))
     {
-        RDMA_ERROR(endpoint->Log, "unable to parse accept message");
+        RDMA_ERROR(
+            endpoint->Log,
+            "couldn't parse private data in accept message");
+        endpoint->Disconnect();
+        return;
+    }
+
+    if (const int version = ParseMessageHeader(param->private_data);
+        version != RDMA_PROTO_VERSION)
+    {
+        RDMA_ERROR(
+            endpoint->Log,
+            "unable to parse message version: " << version);
         endpoint->Disconnect();
         return;
     }
@@ -2286,16 +2313,42 @@ void TClient::HandleRejected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    if (param->private_data == nullptr ||
-        param->private_data_len < sizeof(TRejectMessage) ||
-        ParseMessageHeader(param->private_data) != RDMA_PROTO_VERSION)
+    RDMA_DEBUG(endpoint->Log, "validate reject message");
+
+    if (param->private_data == nullptr)
     {
+        RDMA_ERROR(endpoint->Log, "no private data in reject message");
         endpoint->Disconnect();
         return;
     }
 
-    const auto* msg = static_cast<const TRejectMessage*>(
-        param->private_data);
+    const int version = ParseMessageHeader(param->private_data);
+    switch (version) {
+        case RDMA_PROTO_VERSION: {
+            const auto* msg =
+                static_cast<const TRejectMessage*>(param->private_data);
+            if (msg->Status == RDMA_PROTO_INVALID_REQUEST) {
+                RDMA_INFO(endpoint->Log, "invalid request, retry connect");
+                endpoint->Reconnect.Cancel();
+                endpoint->SetCompatibilityConnection(true);
+                Reconnect(endpoint);
+                return;
+            }
+            endpoint->Disconnect();
+            return;
+        }
+        case RDMA_PROTO_VERSION_2: {
+            const auto* msg =
+                static_cast<const TRejectMessage2*>(param->private_data);
+            break;
+        }
+        default:
+            RDMA_ERROR(
+                endpoint->Log,
+                "unknown protocol version in reject message: " << version);
+            endpoint->Disconnect();
+            return;
+    }
 
     if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
         if (endpoint->Config.QueueSize > msg->QueueSize) {
