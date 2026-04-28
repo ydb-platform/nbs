@@ -1041,7 +1041,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         for (bool lazyXAttrsEnabled: {false, true}) {
             config.SetLazyXAttrsEnabled(lazyXAttrsEnabled);
-                TShardedFileSystemConfig fsConfig;
+            TShardedFileSystemConfig fsConfig;
             CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
             auto counters =

@@ -106,7 +106,7 @@ TListNodesActor::TListNodesActor(
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(ListNodesRequest.GetFileSystemId())
-    , DisableMultiTabletForwarding(!disableMultiTabletForwarding)
+    , DisableMultiTabletForwarding(disableMultiTabletForwarding)
     , Unsafe(ListNodesRequest.GetUnsafe())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
@@ -139,7 +139,7 @@ void TListNodesActor::ListNodes(const TActorContext& ctx)
 
 void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
 {
-    if (!DisableMultiTabletForwarding) {
+    if (DisableMultiTabletForwarding) {
         GetNodeAttrResponses = Response.NodesSize();
         return;
     }
