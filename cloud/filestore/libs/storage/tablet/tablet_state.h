@@ -419,6 +419,8 @@ public:
         ui64 fileSize,
         TString* shardId);
 
+    void InitShardBalancer(const TStorageConfig& config);
+
     void UpdateShardBalancer(const TVector<TShardStats>& stats);
 
     TVector<IShardBalancer::TShardDescr> MakeOrderedShardList() const;

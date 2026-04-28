@@ -721,6 +721,9 @@ message TConfigureAsShardRequest
     // Shard FileSystem identifiers for regular files. If empty, then
     // ShardFileSystemIds will be used for regular files.
     repeated string FileShardFileSystemIds = 8;
+
+    // Override shard list validation.
+    bool Force = 9;
 }
 
 message TConfigureAsShardResponse

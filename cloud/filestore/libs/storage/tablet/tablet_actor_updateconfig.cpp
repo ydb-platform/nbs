@@ -107,6 +107,58 @@ TString ValidateUpdateConfigRequest(
     return {};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ValidateShardList(
+    const TStorageConfig& config,
+    const google::protobuf::RepeatedPtrField<TString>& shardIds,
+    const google::protobuf::RepeatedPtrField<TString>& newShardIds)
+{
+    if (newShardIds.size() < shardIds.size()) {
+        return MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+            " is smaller than prev shard list: "
+            << newShardIds.size() << " < " << shardIds.size());
+    }
+
+    if (static_cast<ui32>(newShardIds.size()) > config.GetMaxShardCount())
+    {
+        return MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+            " is bigger than limit: "
+            << newShardIds.size() << " > " << config.GetMaxShardCount());
+    }
+
+    for (int i = 0; i < shardIds.size(); ++i) {
+        if (shardIds[i] != newShardIds[i]) {
+            return MakeError(E_ARGUMENT, TStringBuilder() << "shard"
+                " change not allowed, pos=" << i << ", prev="
+                << shardIds[i] << ", new="
+                << newShardIds[i]);
+        }
+    }
+
+    return {};
+}
+
+NProto::TError ValidateFileShardList(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds,
+    const google::protobuf::RepeatedPtrField<TString>& fileShardIds)
+{
+    THashSet<TString> shardIdSet(shardIds.begin(), shardIds.end());
+    for (const auto& fileShardId: fileShardIds) {
+        const bool erased = shardIdSet.erase(fileShardId) > 0;
+        if (!erased) {
+            return MakeError(E_ARGUMENT, TStringBuilder() << "file shard "
+                << fileShardId << " not found in shard list");
+        }
+    }
+
+    if (shardIdSet.empty()) {
+        return MakeError(E_ARGUMENT, "non-file shard set is empty");
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -157,6 +209,8 @@ void TIndexTabletActor::HandleUpdateConfig(
     // Setting the fields that schemeshard is not aware of.
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
+    *newConfig.MutableFileShardFileSystemIds() =
+        oldConfig.GetFileShardFileSystemIds();
     newConfig.SetShardNo(oldConfig.GetShardNo());
     newConfig.SetMainFileSystemId(oldConfig.GetMainFileSystemId());
     newConfig.SetAutomaticShardCreationEnabled(
@@ -289,6 +343,7 @@ void TIndexTabletActor::HandleConfigureShards(
     requestInfo->StartedTs = ctx.Now();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    const auto& newShardIds = msg->Record.GetShardFileSystemIds();
     NProto::TError error;
     if (!IsMainTablet() && !msg->Record.GetForce()) {
         error = MakeError(E_INVALID_STATE, TStringBuilder() << "can't configure"
@@ -297,29 +352,15 @@ void TIndexTabletActor::HandleConfigureShards(
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
-        if (msg->Record.GetShardFileSystemIds().size() < shardIds.size()) {
-            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-                " is smaller than prev shard list: "
-                << msg->Record.GetShardFileSystemIds().size() << " < "
-                << shardIds.size());
-        } else if (
-            msg->Record.ShardFileSystemIdsSize() > Config->GetMaxShardCount())
-        {
-            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-                " is bigger than limit: "
-                << msg->Record.GetShardFileSystemIds().size() << " > "
-                << Config->GetMaxShardCount());
-        } else {
-            for (int i = 0; i < shardIds.size(); ++i) {
-                if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {
-                    error = MakeError(E_ARGUMENT, TStringBuilder() << "shard"
-                        " change not allowed, pos=" << i << ", prev="
-                        << shardIds[i] << ", new="
-                        << msg->Record.GetShardFileSystemIds(i));
-                    break;
-                }
-            }
-        }
+        error = ValidateShardList(*Config, shardIds, newShardIds);
+    }
+
+    const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
+    if (!HasError(error)
+            && !msg->Record.GetForce()
+            && !newFileShardIds.empty())
+    {
+        error = ValidateFileShardList(newShardIds, newFileShardIds);
     }
 
     if (error.GetCode() != S_OK) {
@@ -363,6 +404,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
     auto config = GetFileSystem();
     *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
+    *config.MutableFileShardFileSystemIds() =
+        std::move(*args.Request.MutableFileShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
     config.SetForceDirectoryCreationInShards(
@@ -385,9 +428,10 @@ void TIndexTabletActor::CompleteTx_ConfigureShards(
     TTxIndexTablet::TConfigureShards& args)
 {
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Configured shards, new shard list: %s",
+        "%s Configured shards, new shard list: %s, new file shard list: %s",
         LogTag.c_str(),
-        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
+        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str(),
+        JoinSeq(",", GetFileSystem().GetFileShardFileSystemIds()).c_str());
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvConfigureShardsResponse>();
@@ -432,6 +476,22 @@ void TIndexTabletActor::HandleConfigureAsShard(
         return;
     }
 
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    const auto& newShardIds = msg->Record.GetShardFileSystemIds();
+
+    NProto::TError error;
+    if (!HasError(error) && !msg->Record.GetForce()) {
+        error = ValidateShardList(*Config, shardIds, newShardIds);
+    }
+
+    const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
+    if (!HasError(error)
+            && !msg->Record.GetForce()
+            && !newFileShardIds.empty())
+    {
+        error = ValidateFileShardList(newShardIds, newFileShardIds);
+    }
+
     ExecuteTx<TConfigureAsShard>(
         ctx,
         std::move(requestInfo),
@@ -466,6 +526,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
     config.SetMainFileSystemId(args.Request.GetMainFileSystemId());
     *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
+    *config.MutableFileShardFileSystemIds() =
+        std::move(*args.Request.MutableFileShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
     config.SetForceDirectoryCreationInShards(
@@ -481,10 +543,12 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
     TTxIndexTablet::TConfigureAsShard& args)
 {
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Configured as shard, ShardNo: %u, new shard list: %s",
+        "%s Configured as shard, ShardNo: %u, new shard list: %s"
+        ", new file shard list: %s",
         LogTag.c_str(),
         args.Request.GetShardNo(),
-        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
+        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str(),
+        JoinSeq(",", GetFileSystem().GetFileShardFileSystemIds()).c_str());
 
     RegisterFileStore(ctx);
 
