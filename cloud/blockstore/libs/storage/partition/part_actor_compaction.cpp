@@ -1089,14 +1089,14 @@ public:
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui32 blobAlignment) override
+        ui32 enclosingCompactionRangeSize) override
     {
         if (commitId > MaxCommitId) {
             return true;
         }
 
         auto& ab = Args.AffectedBlobs[blobId];
-        ab.BlobAlignment = blobAlignment;
+        ab.EnclosingCompactionRangeSize = enclosingCompactionRangeSize;
 
         Args.MarkBlock(
             blockIndex,
@@ -1730,7 +1730,8 @@ void PrepareRangeCompaction(
         const bool compactRangeContainsBlob =
             args.BlockRange.Contains(kv.second.BlobRangeHint);
         const bool blobOnlyInOneCompactRange =
-            state.GetCompactionMap().GetRangeSize() == kv.second.BlobAlignment;
+            state.GetCompactionMap().GetRangeSize() ==
+            kv.second.EnclosingCompactionRangeSize;
 
         if ((!compactRangeContainsBlob && !blobOnlyInOneCompactRange) ||
             !readBlockMaskOnCompactionOptimizationEnabled)
