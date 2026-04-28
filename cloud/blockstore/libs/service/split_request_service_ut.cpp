@@ -727,6 +727,77 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             FormatError(result.GetError()));
     }
 
+    Y_UNIT_TEST(ShouldRecalculateChecksumOnWriteBlocksLocalSplit)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        const TString data = "aabbccddeeffgghhjjkk";
+        auto range =
+            TBlockRange64::WithLength(1, data.size() / DefaultBlockSize);
+
+        auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        env.SetupRequest(request, range, data);
+
+        {
+            auto guard = request->Sglist.Acquire();
+            *request->MutableChecksums()->Add() =
+                CalculateChecksum(guard.Get());
+        }
+
+        auto future = env.SplitRequestService->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+        UNIT_ASSERT_VALUES_EQUAL(false, future.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            testBlockStore.WriteBlocksLocalPromises.size());
+        auto* firstWrite = testBlockStore.WriteBlocksLocalPromises.FindPtr(
+            TBlockRange64::WithLength(1, 5));
+        auto* secondWrite = testBlockStore.WriteBlocksLocalPromises.FindPtr(
+            TBlockRange64::WithLength(6, 5));
+        UNIT_ASSERT(firstWrite != nullptr);
+        UNIT_ASSERT(secondWrite != nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, firstWrite->Request->ChecksumsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, secondWrite->Request->ChecksumsSize());
+
+        TSgList firstSgList = {{data.data(), 5 * DefaultBlockSize}};
+        TSgList secondSgList = {
+            {data.data() + 5 * DefaultBlockSize, 5 * DefaultBlockSize}};
+        const auto expectedFirst = CalculateChecksum(firstSgList);
+        const auto expectedSecond = CalculateChecksum(secondSgList);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedFirst.GetChecksum(),
+            firstWrite->Request->GetChecksums(0).GetChecksum());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedSecond.GetChecksum(),
+            secondWrite->Request->GetChecksums(0).GetChecksum());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5 * DefaultBlockSize,
+            firstWrite->Request->GetChecksums(0).GetByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            5 * DefaultBlockSize,
+            secondWrite->Request->GetChecksums(0).GetByteCount());
+
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            firstWrite->Request->GetChecksums(0).GetChecksum(),
+            secondWrite->Request->GetChecksums(0).GetChecksum());
+
+        firstWrite->Promise.SetValue(NProto::TWriteBlocksLocalResponse());
+        secondWrite->Promise.SetValue(NProto::TWriteBlocksLocalResponse());
+
+        const auto& result = future.GetValue(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
+    }
+
     Y_UNIT_TEST(ShouldForwardRequestIfSplittingIsNotRequired)
     {
         TTestEnvironment env;
