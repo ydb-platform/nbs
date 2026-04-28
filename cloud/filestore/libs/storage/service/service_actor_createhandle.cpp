@@ -307,9 +307,8 @@ void TStorageServiceActor::HandleCreateHandle(
     }
 
     const auto& shardId = session->SelectShard();
-    const bool multiTabletForwardingEnabled =
-        !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
-    if (!multiTabletForwardingEnabled || !shardId) {
+    if (msg->Record.GetHeaders().GetDisableMultiTabletForwarding() || !shardId)
+    {
         ForwardRequest<TEvService::TCreateHandleMethod>(ctx, ev);
         return;
     }

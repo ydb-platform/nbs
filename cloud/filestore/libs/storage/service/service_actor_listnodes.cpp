@@ -36,7 +36,7 @@ private:
     const TString LogTag;
 
     // Control flags
-    const bool MultiTabletForwardingEnabled;
+    const bool DisableMultiTabletForwarding;
     const bool Unsafe;
 
     // Response data
@@ -58,7 +58,7 @@ public:
     TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        bool multiTabletForwardingEnabled,
+        bool disableMultiTabletForwarding,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog);
 
@@ -100,13 +100,13 @@ private:
 TListNodesActor::TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        bool multiTabletForwardingEnabled,
+        bool disableMultiTabletForwarding,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(ListNodesRequest.GetFileSystemId())
-    , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
+    , DisableMultiTabletForwarding(!disableMultiTabletForwarding)
     , Unsafe(ListNodesRequest.GetUnsafe())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
@@ -139,7 +139,7 @@ void TListNodesActor::ListNodes(const TActorContext& ctx)
 
 void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
 {
-    if (!MultiTabletForwardingEnabled) {
+    if (!DisableMultiTabletForwarding) {
         GetNodeAttrResponses = Response.NodesSize();
         return;
     }
@@ -641,12 +641,10 @@ void TStorageServiceActor::HandleListNodes(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-    const bool multiTabletForwardingEnabled =
-        !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     auto actor = std::make_unique<TListNodesActor>(
         std::move(requestInfo),
         std::move(msg->Record),
-        multiTabletForwardingEnabled,
+        msg->Record.GetHeaders().GetDisableMultiTabletForwarding(),
         session->RequestStats,
         ProfileLog);
 

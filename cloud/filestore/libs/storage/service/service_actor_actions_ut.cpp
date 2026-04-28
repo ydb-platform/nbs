@@ -455,8 +455,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldPerformUnsafeNodeRefManipulations)
     {
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetThrottlingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -467,6 +465,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession("test", "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         const ui64 parentId = RootNodeId;
         const TString name1 = "file1";
@@ -657,8 +657,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldPerformResponseLogEntryManipulations)
     {
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetThrottlingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -672,6 +670,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession("test", "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         {
             NProtoPrivate::TWriteResponseLogEntryRequest request;
@@ -757,8 +757,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         //
 
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetThrottlingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -787,6 +785,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession(fsId, "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         const ui64 nodeId = service.CreateNode(
             headers,

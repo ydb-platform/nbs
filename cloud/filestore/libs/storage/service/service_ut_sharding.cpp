@@ -534,6 +534,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
+        headers.DisableMultiTabletForwarding = true;
 
         ui64 nodeId1 =
             service
@@ -639,6 +640,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto headers1 = headers;
         headers1.FileSystemId = fsConfig.Shard1Id;
+        headers1.DisableMultiTabletForwarding = true;
 
         const auto nodeId = service.CreateNode(
             headers1,
@@ -721,6 +723,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
+        headers.DisableMultiTabletForwarding = true;
 
         auto createHandleResponse = service.CreateHandle(
             headers,
@@ -4822,16 +4825,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         checkListNodes(TVector<TString>{});
 
         // send delayed response in shard and make sure node is listed
-        auto createNodeRsp =
-            std::make_unique<TEvService::TEvCreateNodeResponse>();
-        runtime.Send(
-            new IEventHandle(
-                createNodeOnShard->Sender,
-                createNodeOnShard->Recipient,
-                createNodeRsp.release(),
-                0,   // flags
-                createNodeOnShard->Cookie),
-            nodeIdx);
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(createNodeOnShard.Release(), nodeIdx);
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         checkListNodes(TVector<TString>{"file1"});
