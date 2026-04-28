@@ -1,8 +1,8 @@
 Tests {
     LoadTest {
-        Name: "datashard-like-read-write"
+        Name: "datashard-like-read-write-with-page-size"
         CreateFileStoreRequest: {
-            FileSystemId: "datashard-like-read-write"
+            FileSystemId: "datashard-like-read-write-wth-page-size"
             FolderId: "folder"
             CloudId: "cloud"
             BlocksCount: 1000000
@@ -20,9 +20,9 @@ Tests {
             ReadBytes: 4096
             WriteBytes: 4096
             InitialFileSize: 4194304
-            SharedMemoryFilePath: "{output_path}/shm/shm-loadtest.bin"
+            SharedMemoryFilePath: "{output_path}/shm/shm-page-size-loadtest.bin"
             SharedMemorySizeBytes: 33554432
-            SharedMemoryPageSize: 0
+            SharedMemoryPageSize: 4096
         }
         IODepth: 4
         TestDuration: 30
