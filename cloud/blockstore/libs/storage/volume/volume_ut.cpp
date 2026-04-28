@@ -1,6 +1,7 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
@@ -7762,6 +7763,71 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->Send(
             new IEventHandle(partActorId, sender, new TEvents::TEvPoisonPill()));
         volume.WaitReady();
+    }
+
+    Y_UNIT_TEST(ShouldStartFreshBlocksWriterOnlyForPartitionTablet)
+    {
+        const auto runTest = [](TTabletTypes::EType tabletType)
+        {
+            NProto::TStorageServiceConfig config;
+            config.SetFreshBlocksWriterEnabled(true);
+
+            auto runtime = PrepareTestActorRuntime(config);
+            TVolumeClient volume(*runtime);
+
+            ui32 freshBlocksWriterWaitReadyRequests = 0;
+            ui32 partitionWaitReadyRequests = 0;
+
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvHiveProxy::EvBootExternalResponse: {
+                            auto* msg = event->Get<
+                                TEvHiveProxy::TEvBootExternalResponse>();
+                            auto* storageInfo = const_cast<TTabletStorageInfo*>(
+                                msg->StorageInfo.Get());
+                            storageInfo->TabletType = tabletType;
+                            break;
+                        }
+                        case NFreshBlocksWriter::TEvFreshBlocksWriter::
+                            EvWaitReadyRequest: {
+                            ++freshBlocksWriterWaitReadyRequests;
+                            break;
+                        }
+                        case TEvPartition::EvWaitReadyRequest: {
+                            Cerr << "EvWaitReadyRequest Sender: "
+                                 << runtime->FindActorName(event->Sender)
+                                 << Endl;
+                            ++partitionWaitReadyRequests;
+                            break;
+                        }
+                    }
+
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            volume.UpdateVolumeConfig();
+            volume.WaitReady();
+
+            return std::make_pair(
+                freshBlocksWriterWaitReadyRequests,
+                partitionWaitReadyRequests);
+        };
+
+        {
+            const auto [freshRequests, partitionRequests] =
+                runTest(TTabletTypes::BlockStorePartition);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, freshRequests);
+        }
+
+        {
+            const auto [freshRequests, partitionRequests] =
+                runTest(TTabletTypes::BlockStorePartition2);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, freshRequests);
+        }
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateDiskRegistryPartitionParameters)
