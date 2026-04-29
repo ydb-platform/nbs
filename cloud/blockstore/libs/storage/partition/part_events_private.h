@@ -684,7 +684,11 @@ struct TEvPartitionPrivate
     struct TCompactionCompleted
         : TOperationCompleted
     {
-        ECompactionType CompactionType;
+        ECompactionType CompactionType = ECompactionType::Tablet;
+        TDuration ReadBlobsTime;
+        TDuration WriteBlobsTime;
+        TDuration AddBlobsTime;
+        TDuration CompactionTxTime;
     };
 
     //
