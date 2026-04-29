@@ -1306,7 +1306,7 @@ private:
     {
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is not empty, "
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
                 "executing Drain + FlushAllData",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
@@ -1335,21 +1335,27 @@ private:
         const NProto::TError& error)
     {
         if (WriteBackCache.IsDrained()) {
+            // It is possible for WriteBackCache to become drained after
+            // unsuccessful FlushAllData call. This may happen if the data is
+            // dropped by WriteBackCache itself (for example, if ReleaseHandle
+            // was called). In this case, we do not report FlushAllData error
+            // because it should have been already reported by WriteBackCache
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is drained",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
         } else if (HasError(error)) {
             STORAGE_WARN(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache::FlushAllData "
-                "failed, unflushed data will be lost. Error: %s",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained"
+                " because of FlushAllData error, unflushed data will be lost."
+                " Error: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 FormatError(error).c_str());
         } else {
             ReportWriteBackCacheDataLossError(Sprintf(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache was not emptied "
-                "after successful FlushAllData, possible data loss",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained "
+                "after successful FlushAllData, unflushed data will be lost",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str()));
         }

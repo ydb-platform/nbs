@@ -2168,6 +2168,20 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             0,
             persistentStorageMetrics.Storage.EntryMaxCount->Get());
     }
+
+    Y_UNIT_TEST(ShouldNotWriteToCacheInDrainingMode)
+    {
+        TBootstrap b;
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.Cache.Drain();
+
+        auto future = b.WriteToCache(1, 1, "def");
+        UNIT_ASSERT(future.HasValue());
+        auto error = future.GetValue().GetError();
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
