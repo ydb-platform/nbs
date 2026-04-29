@@ -601,7 +601,7 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Enqueued);
+    State->AccessFlushState().SetStatus(EOperationStatus::Enqueued, ctx.Now());
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvFlushRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
@@ -651,7 +651,7 @@ void TPartitionActor::HandleFlush(
 
     ui64 blocksCount = State->GetUnflushedFreshBlocksCount();
     if (!blocksCount) {
-        State->AccessFlushState().SetStatus(EOperationStatus::Idle);
+        State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(S_ALREADY, "nothing to flush"));
@@ -683,7 +683,7 @@ void TPartitionActor::HandleFlush(
         commitId,
         blocksCount);
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Started);
+    State->AccessFlushState().SetStatus(EOperationStatus::Started, ctx.Now());
 
     TVector<TBlob> blobs;
     {
@@ -810,10 +810,9 @@ void TPartitionActor::CompleteFlushToDevNull(
     const TActorContext& ctx,
     TTxPartition::TFlushToDevNull& args)
 {
-    Y_UNUSED(ctx);
     Y_UNUSED(args);
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Idle);
+    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
 }
 
 void TPartitionActor::HandleFlushCompleted(
@@ -855,7 +854,7 @@ void TPartitionActor::HandleFlushCompleted(
 
     State->AccessFlushedCommitIdsInProgress().clear();
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Idle);
+    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
     Actors.Erase(ev->Sender);
 

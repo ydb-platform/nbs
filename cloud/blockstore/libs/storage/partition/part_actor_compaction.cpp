@@ -1457,7 +1457,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     IncrementCompactionCounterByTriggerKind(PartCounters, info->TriggerKind);
 
     State->GetCompactionState(ECompactionType::Tablet)
-        .SetStatus(EOperationStatus::Enqueued);
+        .SetStatus(EOperationStatus::Enqueued, ctx.Now());
 
     if (Config->GetCompactionCountPerRunIncreasingThreshold() &&
         Config->GetCompactionCountPerRunDecreasingThreshold() &&
@@ -1701,8 +1701,8 @@ void TPartitionActor::HandleCompactionCompleted(
 
     const auto compactionStartedTs =
         State->GetCompactionState(msg->CompactionType).Timestamp;
-    State->GetCompactionState(msg->CompactionType).SetStatus(
-        EOperationStatus::Idle);
+    State->GetCompactionState(msg->CompactionType)
+        .SetStatus(EOperationStatus::Idle, ctx.Now());
 
     Actors.Erase(ev->Sender);
 
