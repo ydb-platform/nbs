@@ -120,8 +120,7 @@ NProto::TError ValidateShardList(
             << newShardIds.size() << " < " << shardIds.size());
     }
 
-    if (static_cast<ui32>(newShardIds.size()) > config.GetMaxShardCount())
-    {
+    if (static_cast<ui32>(newShardIds.size()) > config.GetMaxShardCount()) {
         return MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
             " is bigger than limit: "
             << newShardIds.size() << " > " << config.GetMaxShardCount());
@@ -129,10 +128,9 @@ NProto::TError ValidateShardList(
 
     for (int i = 0; i < shardIds.size(); ++i) {
         if (shardIds[i] != newShardIds[i]) {
-            return MakeError(E_ARGUMENT, TStringBuilder() << "shard"
-                " change not allowed, pos=" << i << ", prev="
-                << shardIds[i] << ", new="
-                << newShardIds[i]);
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "shard change not allowed, pos=" << i
+                << ", prev=" << shardIds[i] << ", new=" << newShardIds[i]);
         }
     }
 
@@ -344,6 +342,7 @@ void TIndexTabletActor::HandleConfigureShards(
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     const auto& newShardIds = msg->Record.GetShardFileSystemIds();
+
     NProto::TError error;
     if (!IsMainTablet() && !msg->Record.GetForce()) {
         error = MakeError(E_INVALID_STATE, TStringBuilder() << "can't configure"
@@ -356,10 +355,7 @@ void TIndexTabletActor::HandleConfigureShards(
     }
 
     const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
-    if (!HasError(error)
-            && !msg->Record.GetForce()
-            && !newFileShardIds.empty())
-    {
+    if (!HasError(error) && !msg->Record.GetForce()) {
         error = ValidateFileShardList(newShardIds, newFileShardIds);
     }
 
@@ -463,7 +459,10 @@ void TIndexTabletActor::HandleConfigureAsShard(
         MakeIntrusive<TCallContext>(GetFileSystemId()));
     requestInfo->StartedTs = ctx.Now();
 
-    const auto currentShardNo = GetFileSystem().GetShardNo();
+    const ui32 currentShardNo = GetFileSystem().GetShardNo();
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    const auto& newShardIds = msg->Record.GetShardFileSystemIds();
+
     NProto::TError error;
     if (currentShardNo && currentShardNo != msg->Record.GetShardNo()) {
         error = MakeError(
@@ -472,18 +471,12 @@ void TIndexTabletActor::HandleConfigureAsShard(
                 << currentShardNo << " != " << msg->Record.GetShardNo());
     }
 
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    const auto& newShardIds = msg->Record.GetShardFileSystemIds();
-
     if (!HasError(error) && !msg->Record.GetForce()) {
         error = ValidateShardList(*Config, shardIds, newShardIds);
     }
 
     const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
-    if (!HasError(error)
-            && !msg->Record.GetForce()
-            && !newFileShardIds.empty())
-    {
+    if (!HasError(error) && !msg->Record.GetForce()) {
         error = ValidateFileShardList(newShardIds, newFileShardIds);
     }
 
