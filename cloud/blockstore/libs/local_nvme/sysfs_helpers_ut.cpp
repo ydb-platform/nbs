@@ -96,6 +96,9 @@ struct TFixture: public NUnitTest::TBaseFixture
             const auto& device = Devices[1];
             const TFsPath devicePath = GetPCIDevicePath(device);
             NFs::SymLink(VFIODriverPath, devicePath / "driver");
+
+            const TFsPath vfioDeviceDir = devicePath / "vfio-dev" / device.GetVfioDevName();
+            NFs::MakeDirectoryRecursive(vfioDeviceDir);
         }
     }
 
@@ -133,6 +136,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                 SerialNumber: "NVME_1"
                 PCIAddress: "0000:31:00.0"
                 IOMMUGroup: 20
+                VfioDevName: "vfio0"
                 VendorId: 0x300
                 DeviceId: 0x400
                 Model: "Test NVMe 2"
@@ -306,6 +310,9 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 expected.GetDeviceId(),
                 device.GetDeviceId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.GetVfioDevName(),
+                device.GetVfioDevName());
         }
     }
 }
