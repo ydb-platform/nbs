@@ -164,7 +164,7 @@ void Convert(
 
     if (!success) {
         *response.MutableError() = MakeError(E_INVALID_STATE, TStringBuilder()
-            << "failed to parse response at name " << i);
+            << "failed to parse response at name " << (i - 1));
     }
 }
 
