@@ -3500,7 +3500,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Stop();
             };
 
-            UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled2.load());
+            // Drain triggers flush immediately
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
 
             auto flush =
                 bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
