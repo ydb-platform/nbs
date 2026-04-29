@@ -111,8 +111,8 @@ struct TPartitionSchema
         {
         };
 
-        struct EnclosingCompactionRangeSize
-            : public Column<6, NKikimr::NScheme::NTypeIds::Uint32>
+        struct CompactionRangeCountOverlaped
+            : public Column<6, NKikimr::NScheme::NTypeIds::Uint8>
         {
         };
 
@@ -123,7 +123,7 @@ struct TPartitionSchema
             BlobCommitId,
             BlobId,
             BlobOffset,
-            EnclosingCompactionRangeSize>;
+            CompactionRangeCountOverlaped>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;

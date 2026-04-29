@@ -415,7 +415,7 @@ message TVolumeStats
     uint64 TrimFreshLogToCommitId = 29;
 
     // Number of read block masks during compaction.
-    uint64 BlockMaskReadedDuringCompaction = 30;
+    uint64 BlockMaskReadDuringCompaction = 30;
 
     // Number of blobs processed during compaction.
     uint64 BlobsProcessedDuringCompaction = 31;

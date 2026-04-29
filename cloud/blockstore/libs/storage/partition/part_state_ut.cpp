@@ -398,14 +398,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 ui64 commitId,
                 const TPartialBlobId& blobId,
                 ui16 blobOffset,
-                ui32 enclosingCompactionRangeSize) override
+                ui8 compactionRangeCountOverlaped) override
             {
                 Blocks.emplace_back(
                     blobId,
                     commitId,
                     blockIndex,
                     blobOffset,
-                    enclosingCompactionRangeSize);
+                    compactionRangeCountOverlaped);
                 return true;
             }
 

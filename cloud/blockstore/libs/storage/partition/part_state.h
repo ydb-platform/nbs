@@ -561,7 +561,7 @@ public:
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
         const TVector<ui32>& blockIndices,
-        ui32 enclosingCompactionRangeSize);
+        ui8 compactionRangeCountOverlaped);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,
@@ -595,7 +595,7 @@ private:
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
     ui64 BlobsProcessedDuringCompaction = 0;
-    ui64 BlockMaskReadedDuringCompaction = 0;
+    ui64 BlockMaskReadDuringCompaction = 0;
 
 public:
     TOperationState& GetCompactionState(ECompactionType type);
@@ -706,9 +706,9 @@ public:
         ++BlobsProcessedDuringCompaction;
     }
 
-    void IncrementBlockMaskReadedDuringCompaction()
+    void IncrementBlockMaskReadDuringCompaction()
     {
-        ++BlockMaskReadedDuringCompaction;
+        ++BlockMaskReadDuringCompaction;
     }
 
     ui64 GetBlobsProcessedDuringCompaction() const
@@ -716,9 +716,9 @@ public:
         return BlobsProcessedDuringCompaction;
     }
 
-    ui64 GetBlockMaskReadedDuringCompaction() const
+    ui64 GetBlockMaskReadDuringCompaction() const
     {
-        return BlockMaskReadedDuringCompaction;
+        return BlockMaskReadDuringCompaction;
     }
 
 private:

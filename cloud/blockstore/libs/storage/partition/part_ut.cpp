@@ -13426,7 +13426,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetBlobsProcessedDuringCompaction());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetBlockMaskReadedDuringCompaction());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetBlockMaskReadDuringCompaction());
         }
 
         partition.Cleanup();
@@ -13463,7 +13463,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(5, stats.GetBlobsProcessedDuringCompaction());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetBlockMaskReadedDuringCompaction());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetBlockMaskReadDuringCompaction());
         }
 
         partition.Cleanup();
@@ -13588,7 +13588,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 stats.GetBlobsProcessedDuringCompaction());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                stats.GetBlockMaskReadedDuringCompaction());
+                stats.GetBlockMaskReadDuringCompaction());
         }
 
         partition.Cleanup();
@@ -13631,7 +13631,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 stats.GetBlobsProcessedDuringCompaction());
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                stats.GetBlockMaskReadedDuringCompaction());
+                stats.GetBlockMaskReadDuringCompaction());
         }
 
         partition.Cleanup();
@@ -13654,7 +13654,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 stats.GetBlobsProcessedDuringCompaction());
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                stats.GetBlockMaskReadedDuringCompaction());
+                stats.GetBlockMaskReadDuringCompaction());
         }
 
         partition.Cleanup();

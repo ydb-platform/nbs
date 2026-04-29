@@ -106,8 +106,8 @@ void TPartitionActor::HandleStatPartition(
     response->Record.MutableStats()->SetBlobsProcessedDuringCompaction(
         State->GetBlobsProcessedDuringCompaction());
 
-    response->Record.MutableStats()->SetBlockMaskReadedDuringCompaction(
-        State->GetBlockMaskReadedDuringCompaction());
+    response->Record.MutableStats()->SetBlockMaskReadDuringCompaction(
+        State->GetBlockMaskReadDuringCompaction());
 
     LWTRACK(
         ResponseSent_Partition,

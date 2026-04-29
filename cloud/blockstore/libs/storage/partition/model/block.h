@@ -102,7 +102,7 @@ struct IMixedBlocksIndexVisitor
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui32 enclosingCompactionRangeSize) = 0;
+        ui8 compactionRangeCountOverlaped) = 0;
 };
 
 struct IExtendedBlocksIndexVisitor

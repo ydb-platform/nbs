@@ -167,8 +167,8 @@ void TPartitionDatabase::WriteMixedBlock(TMixedBlock block)
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
                 NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
-                NIceDb::TUpdate<TTable::EnclosingCompactionRangeSize>(
-                    block.EnclosingCompactionRangeSize));
+                NIceDb::TUpdate<TTable::CompactionRangeCountOverlaped>(
+                    block.CompactionRangeCountOverlaped));
     } else {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
@@ -176,15 +176,15 @@ void TPartitionDatabase::WriteMixedBlock(TMixedBlock block)
                 NIceDb::TUpdate<TTable::BlobCommitId>(block.BlobId.CommitId()),
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
                 NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
-                NIceDb::TUpdate<TTable::EnclosingCompactionRangeSize>(
-                    block.EnclosingCompactionRangeSize));
+                NIceDb::TUpdate<TTable::CompactionRangeCountOverlaped>(
+                    block.CompactionRangeCountOverlaped));
     }
 }
 
 void TPartitionDatabase::WriteMixedBlocks(
     const TPartialBlobId& blobId,
     const TVector<ui32>& blocks,
-    ui32 enclosingCompactionRangeSize)
+    ui8 compactionRangeCountOverlaped)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
@@ -195,8 +195,8 @@ void TPartitionDatabase::WriteMixedBlocks(
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()),
                 NIceDb::TUpdate<TTable::BlobOffset>(blobOffset),
-                NIceDb::TUpdate<TTable::EnclosingCompactionRangeSize>(
-                    enclosingCompactionRangeSize));
+                NIceDb::TUpdate<TTable::CompactionRangeCountOverlaped>(
+                    compactionRangeCountOverlaped));
         ++blobOffset;
     }
 }
@@ -250,15 +250,15 @@ bool TPartitionDatabase::FindMixedBlocks(
                 it.GetValue<TTable::BlobId>());
 
             ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
-            ui32 enclosingCompactionRangeSize =
-                it.GetValue<TTable::EnclosingCompactionRangeSize>();
+            ui8 compactionRangeCountOverlaped =
+                it.GetValue<TTable::CompactionRangeCountOverlaped>();
 
             if (!visitor.VisitBlock(
                     blockIndex,
                     commitId,
                     blobId,
                     blobOffset,
-                    enclosingCompactionRangeSize))
+                    compactionRangeCountOverlaped))
             {
                 return true;   // interrupted
             }
@@ -314,15 +314,15 @@ bool TPartitionDatabase::FindMixedBlocks(
                         it.GetValue<TTable::BlobId>());
 
                     ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
-                    ui32 enclosingCompactionRangeSize =
-                        it.GetValue<TTable::EnclosingCompactionRangeSize>();
+                    ui8 compactionRangeCountOverlaped =
+                        it.GetValue<TTable::CompactionRangeCountOverlaped>();
 
                     if (!visitor.VisitBlock(
                             blockIndex,
                             commitId,
                             blobId,
                             blobOffset,
-                            enclosingCompactionRangeSize))
+                            compactionRangeCountOverlaped))
                     {
                         return true;    // interrupted
                     }

@@ -241,7 +241,7 @@ bool TMixedIndexCache::TImpl::VisitBlocksIfHot(
                 b.CommitId,
                 b.BlobId,
                 b.BlobOffset,
-                b.EnclosingCompactionRangeSize))
+                b.CompactionRangeCountOverlaped))
         {
             // interrupted
             return true;

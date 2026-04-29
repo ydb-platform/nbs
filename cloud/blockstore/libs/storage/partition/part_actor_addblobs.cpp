@@ -226,7 +226,7 @@ private:
             db,
             blob.BlobId,
             blob.Blocks,
-            blob.EnclosingCompactionRangeSize);
+            blob.CompactionRangeCountOverlaped);
 
         // update counters
         State.IncrementMixedBlobsCount(1);
@@ -382,7 +382,7 @@ private:
                  block.CommitId,
                  block.BlockIndex,
                  blobOffset++,
-                 blob.EnclosingCompactionRangeSize});
+                 blob.CompactionRangeCountOverlaped});
 
             if (block.IsStoredInDb) {
                 State.DeleteFreshBlockFromDb(
