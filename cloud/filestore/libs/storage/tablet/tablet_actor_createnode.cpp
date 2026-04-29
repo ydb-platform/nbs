@@ -103,6 +103,8 @@ private:
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
+    bool NodeAlreadyExists = false;
+    ui32 CreateNodeRetriesCount = 0;
 
 public:
     TCreateNodeInShardActor(
@@ -250,6 +252,8 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (msg->GetError().GetCode() == E_FS_EXIST) {
         // EXIST can arrive after a successful operation is retried, it's ok
+        NodeAlreadyExists = true;
+
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
@@ -267,6 +271,8 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (HasError(msg->GetError())) {
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            ++CreateNodeRetriesCount;
+
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
@@ -403,7 +409,9 @@ void TCreateNodeInShardActor::ReplyAndDie(
         OpLogEntryId,
         std::move(*Request.MutableName()),
         std::move(Result),
-        std::move(ProfileLogRequest)));
+        std::move(ProfileLogRequest),
+        NodeAlreadyExists,
+        CreateNodeRetriesCount));
 
     Die(ctx);
 }
@@ -943,6 +951,9 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
     WorkerActors.erase(ev->Sender);
 
     EndNodeCreateInShard(msg->NodeName);
+
+    Metrics.NodeExistsWhileCreatingInShardCount += msg->NodeAlreadyExists;
+    Metrics.CreateNodeInShardRetriesCount += msg->CreateNodeRetriesCount;
 
     NProto::TError error;
     if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {

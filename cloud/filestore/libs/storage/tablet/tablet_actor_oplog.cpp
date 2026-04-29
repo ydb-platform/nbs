@@ -37,6 +37,8 @@ void TIndexTabletActor::ReplayOpLog(
         }
 
         if (op.HasCreateNodeRequest()) {
+            Metrics.ReplayedCreateNodeInShardRequestsCount++;
+
             RegisterCreateNodeInShardActor(
                 ctx,
                 nullptr, // requestInfo
