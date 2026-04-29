@@ -661,6 +661,20 @@ void TPartitionState::UnsetUsedBlocks(
     }
 }
 
+ui32 TPartitionState::CalculateNewlyZeroedBlocks(
+    ui32 blockIndex,
+    ui64 usedBlockCount) const
+{
+    const auto& prevRangeStat = CompactionMap.Get(blockIndex);
+    const i64 usedBlockCountDiff =
+        static_cast<i64>(usedBlockCount) - prevRangeStat.UsedBlockCount;
+
+    return static_cast<ui32>(std::max(
+        static_cast<i64>(prevRangeStat.NewlyZeroedBlocks) -
+            usedBlockCountDiff,
+        static_cast<i64>(0)));
+}
+
 void TPartitionState::WriteUsedBlocksToDB(
     TPartitionDatabase& db,
     ui32 begin,
