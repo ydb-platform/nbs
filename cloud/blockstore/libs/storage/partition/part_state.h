@@ -561,7 +561,7 @@ public:
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
         const TVector<ui32>& blockIndices,
-        ui8 compactionRangeCountOverlaped);
+        ui8 compactionRangeCountOverlapped);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,

@@ -426,7 +426,7 @@ void TPartitionState::WriteMixedBlocks(
     TPartitionDatabase& db,
     const TPartialBlobId& blobId,
     const TVector<ui32>& blockIndices,
-    ui8 compactionRangeCountOverlaped)
+    ui8 compactionRangeCountOverlapped)
 {
     const ui64 commitId = blobId.CommitId();
     ui16 blobOffset = 0;
@@ -439,11 +439,11 @@ void TPartitionState::WriteMixedBlocks(
              commitId,
              blockIndex,
              blobOffset,
-             compactionRangeCountOverlaped});
+             compactionRangeCountOverlapped});
         ++blobOffset;
     }
 
-    db.WriteMixedBlocks(blobId, blockIndices, compactionRangeCountOverlaped);
+    db.WriteMixedBlocks(blobId, blockIndices, compactionRangeCountOverlapped);
 }
 
 void TPartitionState::DeleteMixedBlock(
@@ -485,14 +485,14 @@ bool TPartitionState::FindMixedBlocksForCompaction(
             ui64 commitId,
             const TPartialBlobId& blobId,
             ui16 blobOffset,
-            ui8 compactionRangeCountOverlaped) override
+            ui8 compactionRangeCountOverlapped) override
         {
             bool ok = Visitor.VisitBlock(
                 blockIndex,
                 commitId,
                 blobId,
                 blobOffset,
-                compactionRangeCountOverlaped);
+                compactionRangeCountOverlapped);
             Y_ABORT_UNLESS(ok);
 
             CacheInserter->Insert(
@@ -500,7 +500,7 @@ bool TPartitionState::FindMixedBlocksForCompaction(
                  commitId,
                  blockIndex,
                  blobOffset,
-                 compactionRangeCountOverlaped});
+                 compactionRangeCountOverlapped});
             return true;
         }
 

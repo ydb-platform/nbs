@@ -51,17 +51,17 @@ struct TAddMixedBlob
     const TPartialBlobId BlobId;
     const TVector<ui32> Blocks;
     const TVector<ui32> Checksums;
-    const ui8 CompactionRangeCountOverlaped = 0;
+    const ui8 CompactionRangeCountOverlapped = 0;
 
     TAddMixedBlob(
             const TPartialBlobId& blobId,
             TVector<ui32> blocks,
             TVector<ui32> checksums,
-            ui8 compactionRangeCountOverlaped)
+            ui8 compactionRangeCountOverlapped)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
-        , CompactionRangeCountOverlaped(compactionRangeCountOverlaped)
+        , CompactionRangeCountOverlapped(compactionRangeCountOverlapped)
     {}
 };
 
@@ -93,17 +93,17 @@ struct TAddFreshBlob
     const TPartialBlobId BlobId;
     const TVector<TBlock> Blocks;
     const TVector<ui32> Checksums;
-    const ui8 CompactionRangeCountOverlaped = 0;
+    const ui8 CompactionRangeCountOverlapped = 0;
 
     TAddFreshBlob(
             const TPartialBlobId& blobId,
             TVector<TBlock> blocks,
             TVector<ui32> checksums,
-            ui8 compactionRangeCountOverlaped)
+            ui8 compactionRangeCountOverlapped)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
-        , CompactionRangeCountOverlaped(compactionRangeCountOverlaped)
+        , CompactionRangeCountOverlapped(compactionRangeCountOverlapped)
     {}
 };
 
@@ -127,7 +127,7 @@ struct TAffectedBlob
     // All blocks in the blob contained in BlobRangeHint. Actual blob range can
     // be smaller.
     TBlockRange32 BlobRangeHint = TBlockRange32::Max();
-    ui8 CompactionRangeCountOverlaped = 0;
+    ui8 CompactionRangeCountOverlapped = 0;
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
     TVector<ui32> AffectedBlockIndices;

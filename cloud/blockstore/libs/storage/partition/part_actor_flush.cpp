@@ -37,19 +37,19 @@ public:
         TGuardedBuffer<TBlockBuffer> BlobContent;
         TVector<TBlock> Blocks;
         TVector<ui32> Checksums;
-        ui8 CompactionRangeCountOverlaped = 0;
+        ui8 CompactionRangeCountOverlapped = 0;
 
         TRequest(
                 const TPartialBlobId& blobId,
                 TBlockBuffer blobContent,
                 TVector<TBlock> blocks,
                 TVector<ui32> checksums,
-                ui8 compactionRangeCountOverlaped)
+                ui8 compactionRangeCountOverlapped)
             : BlobId(blobId)
             , BlobContent(std::move(blobContent))
             , Blocks(std::move(blocks))
             , Checksums(std::move(checksums))
-            , CompactionRangeCountOverlaped(compactionRangeCountOverlaped)
+            , CompactionRangeCountOverlapped(compactionRangeCountOverlapped)
         {}
     };
 
@@ -238,7 +238,7 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(req.Blocks),
             std::move(req.Checksums),
-            req.CompactionRangeCountOverlaped);
+            req.CompactionRangeCountOverlapped);
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -404,17 +404,17 @@ struct TBlob
     TBlockBuffer BlobContent;
     TVector<TBlock> Blocks;
     TVector<ui32> Checksums;
-    ui8 CompactionRangeCountOverlaped;
+    ui8 CompactionRangeCountOverlapped;
 
     TBlob(
             TBlockBuffer blobContent,
             TVector<TBlock> blocks,
             TVector<ui32> checksums,
-            ui8 compactionRangeCountOverlaped)
+            ui8 compactionRangeCountOverlapped)
         : BlobContent(std::move(blobContent))
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
-        , CompactionRangeCountOverlaped(compactionRangeCountOverlaped)
+        , CompactionRangeCountOverlapped(compactionRangeCountOverlapped)
     {}
 };
 
@@ -540,20 +540,20 @@ private:
         TVector<TBlock> blocks,
         TVector<ui32> checksums)
     {
-        const auto compactionRangeCountOverlaped =
+        const auto compactionRangeCountOverlapped =
             CompactionMap.GetRangeIndex(blocks.back().BlockIndex) -
             CompactionMap.GetRangeIndex(blocks.front().BlockIndex) + 1;
 
-        const ui8 compactionRangeCountOverlapedInOnyByte =
-            compactionRangeCountOverlaped <= Max<ui8>()
-                ? compactionRangeCountOverlaped
+        const ui8 compactionRangeCountOverlappedInOneByte =
+            compactionRangeCountOverlapped <= Max<ui8>()
+                ? compactionRangeCountOverlapped
                 : 0;
 
         Blobs.emplace_back(
             std::move(blobContent),
             std::move(blocks),
             std::move(checksums),
-            compactionRangeCountOverlapedInOnyByte);
+            compactionRangeCountOverlappedInOneByte);
     }
 
     static ui32 GetBlobRangeSize(const TVector<TBlock>& blocks, ui32 blockIndex)
@@ -770,7 +770,7 @@ void TPartitionActor::HandleFlush(
             std::move(blob.BlobContent),
             std::move(blob.Blocks),
             std::move(blob.Checksums),
-            blob.CompactionRangeCountOverlaped);
+            blob.CompactionRangeCountOverlapped);
     }
 
     Y_ABORT_UNLESS(requests);

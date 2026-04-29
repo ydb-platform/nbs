@@ -18,27 +18,27 @@ struct TMixedBlock
     ui64 CommitId;
     ui32 BlockIndex;
     ui16 BlobOffset;
-    ui8 CompactionRangeCountOverlaped;
+    ui8 CompactionRangeCountOverlapped;
 
     TMixedBlock(
             TPartialBlobId blobId,
             ui64 commitId,
             ui32 blockIndex,
             ui16 blobOffset,
-            ui8 compactionRangeCountOverlaped)
+            ui8 compactionRangeCountOverlapped)
         : BlobId(blobId)
         , CommitId(commitId)
         , BlockIndex(blockIndex)
         , BlobOffset(blobOffset)
-        , CompactionRangeCountOverlaped(compactionRangeCountOverlaped)
+        , CompactionRangeCountOverlapped(compactionRangeCountOverlapped)
     {}
 
     bool operator==(const TMixedBlock& other) const
     {
         return BlockIndex == other.BlockIndex && CommitId == other.CommitId &&
                BlobId == other.BlobId && BlobOffset == other.BlobOffset &&
-               CompactionRangeCountOverlaped ==
-                   other.CompactionRangeCountOverlaped;
+               CompactionRangeCountOverlapped ==
+                   other.CompactionRangeCountOverlapped;
     }
 };
 
