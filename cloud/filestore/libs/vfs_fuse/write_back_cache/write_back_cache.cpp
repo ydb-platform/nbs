@@ -160,7 +160,7 @@ public:
         ScheduleAutomaticFlushIfNeeded();
     }
 
-    // Only transition Enabled -> Draining -> Disabled is possible
+    // Only transition Normal -> Draining -> Drained is possible
     EWriteBackCacheState GetState()
     {
         // GetState may lie in a hot path - we want to avoid unnecessary mutex

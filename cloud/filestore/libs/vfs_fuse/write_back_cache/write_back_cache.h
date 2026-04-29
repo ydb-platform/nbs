@@ -111,10 +111,13 @@ public:
         return !!Impl;
     }
 
-    // Returns current state of WriteBackCache with weak memory ordering
-    // (without mutex acquision and memory synchronization) - suitable for hot
-    // paths. In order to ensure that WriteBackCache has been drained,
-    // IsDrained() should be used.
+    /* Returns current state of WriteBackCache with weak memory ordering.
+     * The common EWriteBackCacheState::Normal and EWriteBackCacheState::Drained
+     * cases are returned without mutex acquisition and are suitable for hot
+     * paths. In order to ensure that WriteBackCache has been drained,
+     * IsDrained() should be used, as drained state detection may require
+     * additional synchronization.
+     */
     EWriteBackCacheState GetState() const;
 
     /* Puts WriteBackCache into draining state - it prevents new WriteData
