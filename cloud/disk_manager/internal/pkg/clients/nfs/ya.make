@@ -17,7 +17,6 @@ END()
 
 RECURSE(
     config
-    protos
     testing
 )
 

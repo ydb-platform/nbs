@@ -9,7 +9,6 @@ import (
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
-	private_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
