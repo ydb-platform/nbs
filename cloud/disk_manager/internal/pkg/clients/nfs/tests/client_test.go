@@ -615,16 +615,16 @@ func (i inMemoryTestShardBackup) createChildRef(
 	child nfs.Node,
 ) {
 
-	childID := uint64(0)
 	shardID := child.ShardFileSystemID
 	shardNodeName := child.ShardNodeName
 
+	// The child node is created in the shard, so the childID is 0
 	err := i.client.UnsafeCreateNodeRef(
 		ctx,
 		i.shardFileSystemID,
 		parentID,
 		child.Name,
-		childID,
+		uint64(0), // childID
 		shardID,
 		shardNodeName,
 	)

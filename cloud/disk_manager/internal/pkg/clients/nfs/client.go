@@ -1,9 +1,9 @@
 package nfs
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/gofrs/uuid"
 	"github.com/golang/protobuf/jsonpb"
@@ -427,7 +427,7 @@ func (c *client) executeAction(
 	}
 
 	err = new(jsonpb.Unmarshaler).Unmarshal(
-		strings.NewReader(string(output)),
+		bytes.NewReader(output),
 		response,
 	)
 	if err != nil {
