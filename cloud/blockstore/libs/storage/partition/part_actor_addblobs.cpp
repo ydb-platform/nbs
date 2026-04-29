@@ -510,25 +510,29 @@ private:
         for (const auto& kv: CompactionCounters) {
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
-                Min(
-                    static_cast<ui64>(
-                        kv.first + State.GetCompactionMap().GetRangeSize()
-                    ),
-                    State.GetUsedBlocks().Capacity()
-                )
-            );
+                Min(static_cast<ui64>(
+                        kv.first + State.GetCompactionMap().GetRangeSize()),
+                    State.GetUsedBlocks().Capacity()));
+
+            ui32 newlyZeroedBlocks = 0;
+
+            if (Args.Mode != ADD_COMPACTION_RESULT) {
+                newlyZeroedBlocks =
+                    State.CalculateNewlyZeroedBlocks(kv.first, usedBlockCount);
+            }
+
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction
-            );
+                kv.second.Stat.BlockCount +
+                    kv.second.BlocksSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
-                Args.Mode == ADD_COMPACTION_RESULT
-            );
+                newlyZeroedBlocks,
+                Args.Mode == ADD_COMPACTION_RESULT);
         }
     }
 
