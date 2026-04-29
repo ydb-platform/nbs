@@ -322,7 +322,7 @@ private:
         for (size_t i = 0; i < Certificates.size(); ++i) {
             if (Certificates[i].Metrics && certNotAfterTs[i].has_value()) {
                 *Certificates[i].Metrics->GetCounter(
-                    "CertNotAfterUnixTimestampSec",
+                    "ExpireTs",
                     false) = *certNotAfterTs[i];
             }
 
