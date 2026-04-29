@@ -120,8 +120,7 @@ NProto::TError ValidateShardList(
             << newShardIds.size() << " < " << shardIds.size());
     }
 
-    if (static_cast<ui32>(newShardIds.size()) > config.GetMaxShardCount())
-    {
+    if (static_cast<ui32>(newShardIds.size()) > config.GetMaxShardCount()) {
         return MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
             " is bigger than limit: "
             << newShardIds.size() << " > " << config.GetMaxShardCount());
