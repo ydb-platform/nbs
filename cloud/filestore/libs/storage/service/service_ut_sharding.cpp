@@ -7744,7 +7744,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             listNodesResponse.GetNodes(0).GetId());
     }
 
-    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(ShouldReproRaceWhileCreatingHandle)
+    SERVICE_TEST(ShouldReproRaceWhileCreatingHandle)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
@@ -7866,7 +7866,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               0}});
     }
 
-    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(ShouldReplayOpLog)
+    SERVICE_TEST(ShouldReplayOpLog)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
