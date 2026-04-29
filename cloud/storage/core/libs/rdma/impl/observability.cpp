@@ -6,15 +6,15 @@ namespace NCloud::NStorage::NRdma {
 
 TObservabilityProvider::TObservabilityProvider(
     ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
     TString logComponent,
-    NMonitoring::TDynamicCountersPtr countersRoot,
-    TString countersGroupTag,
-    TString componentTag)
+    TString countersGroupName,
+    TString countersComponentName)
     : Logging(std::move(logging))
+    , Monitoring(std::move(monitoring))
     , LogComponent(std::move(logComponent))
-    , CountersRoot(std::move(countersRoot))
-    , CountersGroupTag(std::move(countersGroupTag))
-    , ComponentTag(std::move(componentTag))
+    , CountersGroupName(std::move(countersGroupName))
+    , CountersComponentName(std::move(countersComponentName))
 {}
 
 TLog TObservabilityProvider::CreateLog() const
@@ -24,9 +24,9 @@ TLog TObservabilityProvider::CreateLog() const
 
 NMonitoring::TDynamicCountersPtr TObservabilityProvider::CreateCounters() const
 {
-    return CountersRoot
-        ->GetSubgroup("counters", CountersGroupTag)
-        ->GetSubgroup("component", ComponentTag);
+    return Monitoring->GetCounters()
+        ->GetSubgroup("counters", CountersGroupName)
+        ->GetSubgroup("component", CountersComponentName);
 }
 
 }   // namespace NCloud::NStorage::NRdma

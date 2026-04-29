@@ -41,8 +41,8 @@ IClientPtr CreateTestClient(
         std::move(verbs),
         TObservabilityProvider(
             logging,
+            monitoring,
             "RDMA_TEST",
-            monitoring->GetCounters(),
             "rdma",
             "client"),
         std::move(config));

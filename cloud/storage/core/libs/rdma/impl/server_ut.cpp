@@ -40,8 +40,8 @@ IServerPtr CreateTestServer(
         std::move(verbs),
         TObservabilityProvider(
             logging,
+            monitoring,
             "RDMA_TEST",
-            monitoring->GetCounters(),
             "rdma",
             "server"),
         std::move(config));
