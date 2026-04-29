@@ -72,6 +72,27 @@ struct TWriteBackCacheArgs
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Only transition Normal -> Draining -> Drained is possible
+enum class EWriteBackCacheState
+{
+    // WriteBackCache is used normally
+    // New cached WriteData requests are accepted
+    Normal,
+
+    // WriteBackCache was requested to drain and it contains unflushed data
+    // New cached WriteData requests are not accepted and will return E_REJECTED
+    // Clients should continue working with WriteBackCache but use
+    // WriteDataDirect instead of WriteData
+    Draining,
+
+    // WriteBackCache was requested to drain and all the data is flushed
+    // New cached WriteData requests are not accepted and will return E_REJECTED
+    // Since WriteBackCache contains no data, clients may safely stop using it
+    Drained
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBackCache final
 {
 private:
@@ -89,6 +110,30 @@ public:
     {
         return !!Impl;
     }
+
+    // Returns current state of WriteBackCache with weak memory ordering
+    // (without mutex acquision and memory synchronization) - suitable for hot
+    // paths. In order to ensure that WriteBackCache has been drained,
+    // IsDrained() should be used.
+    EWriteBackCacheState GetState() const;
+
+    /* Puts WriteBackCache into draining state - it prevents new WriteData
+     * requests from being added to the cache (WriteDataDirect calls will still
+     * be allowed).
+     *
+     * WriteBackCache will remain in EWriteBackCacheState::Draining state until
+     * all pending and unflushed are flushed - then it will become
+     * EWriteBackCacheState::Drained.
+     *
+     * The call has no effect if WriteBackCache is already drained.
+     *
+     * Note: the call is not reversible (WriteBackCache cannot be returned to
+     * a normal state without restart).
+     */
+    void Drain();
+
+    // A reliable way to check that WriteBackCache has been drained
+    bool IsDrained() const;
 
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
@@ -159,8 +204,6 @@ public:
     NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TSetNodeAttrRequest> request);
-
-    bool IsEmpty() const;
 
     // Keep information about MinNodeSize for flushed nodes
     ui64 AcquireNodeStateRef();

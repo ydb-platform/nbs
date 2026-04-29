@@ -1053,6 +1053,10 @@ private:
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
 
+                    if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                        WriteBackCache.Drain();
+                    }
+
                     ModuleStatsRegistry->Register(
                         {.FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
@@ -1300,12 +1304,14 @@ private:
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
-        if (WriteBackCache && !WriteBackCache.IsEmpty()) {
+        if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
-                "[f:%s][c:%s] WriteBackCache is not empty, starting "
-                "FlushAllData",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not empty, "
+                "executing Drain + FlushAllData",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
+
+            WriteBackCache.Drain();
 
             WriteBackCache.FlushAllData().Subscribe(
                 [w = weak_from_this(),
@@ -1328,25 +1334,25 @@ private:
         TPromise<void> stopCompleted,
         const NProto::TError& error)
     {
-        if (HasError(error)) {
+        if (WriteBackCache.IsDrained()) {
+            STORAGE_INFO(
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is drained",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str());
+        } else if (HasError(error)) {
             STORAGE_WARN(
-                "[f:%s][c:%s] WriteBackCache::FlushAllData failed at "
-                "DestroySession, unflushed data will be lost. Error: %s",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache::FlushAllData "
+                "failed, unflushed data will be lost. Error: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 FormatError(error).c_str());
-        } else if (WriteBackCache && WriteBackCache.IsEmpty()) {
+        } else {
             ReportWriteBackCacheDataLossError(Sprintf(
-                "[f:%s][c:%s] WriteBackCache was not emptied after successful "
-                "FlushAllData at DestroySession, possible data loss",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache was not emptied "
+                "after successful FlushAllData, possible data loss",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str()));
         }
-
-        STORAGE_INFO(
-            "[f:%s][c:%s] completed FlushAllData",
-            Config->GetFileSystemId().Quote().c_str(),
-            Config->GetClientId().Quote().c_str());
 
         StopAsyncDestroySession(std::move(stopCompleted));
     }
