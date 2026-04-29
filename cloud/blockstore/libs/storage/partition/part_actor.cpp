@@ -1258,6 +1258,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags);
