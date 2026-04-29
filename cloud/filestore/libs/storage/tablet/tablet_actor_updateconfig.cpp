@@ -464,22 +464,17 @@ void TIndexTabletActor::HandleConfigureAsShard(
     requestInfo->StartedTs = ctx.Now();
 
     const auto currentShardNo = GetFileSystem().GetShardNo();
+    NProto::TError error;
     if (currentShardNo && currentShardNo != msg->Record.GetShardNo()) {
-        auto response =
-            std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
-        *response->Record.MutableError() = MakeError(
+        error = MakeError(
             E_ARGUMENT,
             TStringBuilder() << "ShardNo change not allowed: "
                 << currentShardNo << " != " << msg->Record.GetShardNo());
-
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
-        return;
     }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     const auto& newShardIds = msg->Record.GetShardFileSystemIds();
 
-    NProto::TError error;
     if (!HasError(error) && !msg->Record.GetForce()) {
         error = ValidateShardList(*Config, shardIds, newShardIds);
     }
@@ -490,6 +485,15 @@ void TIndexTabletActor::HandleConfigureAsShard(
             && !newFileShardIds.empty())
     {
         error = ValidateFileShardList(newShardIds, newFileShardIds);
+    }
+
+    if (error.GetCode() != S_OK) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
+        *response->Record.MutableError() = std::move(error);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
     }
 
     ExecuteTx<TConfigureAsShard>(

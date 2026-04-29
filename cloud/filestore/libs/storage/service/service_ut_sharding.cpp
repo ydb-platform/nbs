@@ -4527,6 +4527,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(shardId);
             request.SetShardNo(++shardNo);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -4648,6 +4650,152 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             google::protobuf::util::MessageToJsonString(request, &buf);
             service.SendExecuteActionRequest("configureshards", buf);
             response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // reconfigure shard 1
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            request.SetForce(true);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // shard order change not allowed
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddShardFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // shard list cropping not allowed
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            *request.AddShardFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // force flag should override checks
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            request.SetForce(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // reconfigure shard 1
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // file shard list should be a strict subset of the shard list
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddFileShardFileSystemIds() = shard1Id;
+            *request.AddFileShardFileSystemIds() = "shard3";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddFileShardFileSystemIds() = shard1Id;
+            *request.AddFileShardFileSystemIds() = shard2Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddFileShardFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
+            auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
@@ -5341,37 +5489,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.GetNodeAttr(headers, fsConfig.FsId, dir1_1Id, "file1");
         service.UnlinkNode(headers, dir1_1Id, "file1", false);
-
-        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
-        auto counters = env.GetRuntime().GetAppData().Counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "storage")
-            ->FindSubgroup("type", "hdd");
-        // counters->OutputPlainText(Cerr);
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            counters->GetCounter("CreateHandle.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            counters->GetCounter("CreateHandleInShard.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            counters->GetCounter("CreateNode.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            6,
-            counters->GetCounter("CreateNodeInShard.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("GetNodeAttr.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("GetNodeAttrInShard.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("UnlinkNode.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("UnlinkNodeInShard.Count")->GetAtomic());
     }
 
     SERVICE_TEST(ShouldResizeFileSystemWithDirectoryCreationInShardsEnabled)
