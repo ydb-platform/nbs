@@ -17,7 +17,7 @@ NCloud::NStorage::NRdma::IClientPtr CreateRdmaClient(
         NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
         NCloud::NStorage::NRdma::TObservabilityProvider(
             std::move(logging),
-            monitoring,
+            std::move(monitoring),
             "BLOCKSTORE_RDMA",
             "blockstore",
             "rdma_client"),
@@ -33,7 +33,7 @@ NCloud::NStorage::NRdma::IServerPtr CreateRdmaServer(
         NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
         NCloud::NStorage::NRdma::TObservabilityProvider(
             std::move(logging),
-            monitoring,
+            std::move(monitoring),
             "BLOCKSTORE_RDMA",
             "blockstore",
             "rdma_server"),
