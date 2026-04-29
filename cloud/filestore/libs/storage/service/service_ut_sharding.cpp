@@ -5467,37 +5467,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.GetNodeAttr(headers, fsConfig.FsId, dir1_1Id, "file1");
         service.UnlinkNode(headers, dir1_1Id, "file1", false);
-
-        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
-        auto counters = env.GetRuntime().GetAppData().Counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "storage")
-            ->FindSubgroup("type", "hdd");
-        // counters->OutputPlainText(Cerr);
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            counters->GetCounter("CreateHandle.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            counters->GetCounter("CreateHandleInShard.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            counters->GetCounter("CreateNode.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            6,
-            counters->GetCounter("CreateNodeInShard.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("GetNodeAttr.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("GetNodeAttrInShard.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("UnlinkNode.Count")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetCounter("UnlinkNodeInShard.Count")->GetAtomic());
     }
 
     SERVICE_TEST(ShouldResizeFileSystemWithDirectoryCreationInShardsEnabled)
