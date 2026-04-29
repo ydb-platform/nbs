@@ -697,6 +697,8 @@ public:
     void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
 
+    ui32 CalculateNewlyZeroedBlocks(ui32 blockIndex, ui64 usedBlockCount) const;
+
 private:
     void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);
 
