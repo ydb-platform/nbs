@@ -134,13 +134,13 @@ struct TCertificateProviderTestContext
         WriteTextFile(ClientPair.CertChainPath, ClientPem);
     }
 
-    ui64 GetNotAfterMetric(const TString& certPath) const
+    ui64 GetExpireTs(const TString& certPath) const
     {
         auto certGroup = ServerGroup
             ->GetSubgroup("subsystem", "certificates")
             ->GetSubgroup("cert", GetBaseName(certPath));
         return certGroup
-            ->GetCounter("CertNotAfterUnixTimestampSec", false)
+            ->GetCounter("ExpireTs", false)
             ->Val();
     }
 };
@@ -158,9 +158,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         context.Provider->UpdateCertificates().GetValueSync();
 
         UNIT_ASSERT(
-            context.GetNotAfterMetric(context.ServerPair.CertChainPath) > 0);
+            context.GetExpireTs(context.ServerPair.CertChainPath) > 0);
         UNIT_ASSERT(
-            context.GetNotAfterMetric(context.ClientPair.CertChainPath) > 0);
+            context.GetExpireTs(context.ClientPair.CertChainPath) > 0);
     }
 
     Y_UNIT_TEST(ShouldSkipUpdateIfRootCaIsInvalid)
@@ -169,8 +169,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         context.Provider->UpdateCertificates().GetValueSync();
 
         UNIT_ASSERT(
-            context.GetNotAfterMetric(context.ServerPair.CertChainPath) > 0);
-        const ui64 before = context.GetNotAfterMetric(
+            context.GetExpireTs(context.ServerPair.CertChainPath) > 0);
+        const ui64 before = context.GetExpireTs(
             context.ServerPair.CertChainPath);
 
         WriteTextFile(context.RootPath, "not a certificate");
@@ -179,7 +179,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             before,
-            context.GetNotAfterMetric(context.ServerPair.CertChainPath));
+            context.GetExpireTs(context.ServerPair.CertChainPath));
     }
 
     Y_UNIT_TEST(ShouldSkipUpdateIfAnyIdentityPairBecomesInvalid)
@@ -188,8 +188,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
         context.Provider->UpdateCertificates().GetValueSync();
         UNIT_ASSERT(
-            context.GetNotAfterMetric(context.ClientPair.CertChainPath) > 0);
-        const ui64 before = context.GetNotAfterMetric(
+            context.GetExpireTs(context.ClientPair.CertChainPath) > 0);
+        const ui64 before = context.GetExpireTs(
             context.ClientPair.CertChainPath);
 
         WriteTextFile(
@@ -200,7 +200,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             before,
-            context.GetNotAfterMetric(context.ClientPair.CertChainPath));
+            context.GetExpireTs(context.ClientPair.CertChainPath));
     }
 
     Y_UNIT_TEST(ShouldFailOnRepeatedInit)
