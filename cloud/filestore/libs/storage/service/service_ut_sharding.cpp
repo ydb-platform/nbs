@@ -505,6 +505,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
+        headers.DisableMultiTabletForwarding = true;
 
         ui64 nodeId1 =
             service
@@ -610,6 +611,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto headers1 = headers;
         headers1.FileSystemId = fsConfig.Shard1Id;
+        headers1.DisableMultiTabletForwarding = true;
 
         const auto nodeId = service.CreateNode(
             headers1,
@@ -691,6 +693,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
+        headers.DisableMultiTabletForwarding = true;
 
         auto createHandleResponse = service.CreateHandle(
             headers,
@@ -782,8 +785,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldReturnShardInfoFromUnsafeListNodes)
     {
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -832,8 +833,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(ShouldForwardRequestsToShard)
     {
         config.SetLazyXAttrsEnabled(false);
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -1042,8 +1041,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         for (bool lazyXAttrsEnabled: {false, true}) {
             config.SetLazyXAttrsEnabled(lazyXAttrsEnabled);
-            config.SetMultiTabletForwardingEnabled(true);
-
             TShardedFileSystemConfig fsConfig;
             CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -1202,8 +1199,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldCreateDirectoryStructureInLeader)
     {
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -1281,7 +1276,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldReturnErrorForInvalidShardNo)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -1315,7 +1309,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldNotReturnInvalidShardNoErrorForDirectShardRequests)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -1379,8 +1372,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldHandleCreateNodeErrorFromShardUponCreateHandleViaLeader)
     {
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -1442,8 +1433,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldNotFailListNodesUponGetAttrENOENT)
     {
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -1598,7 +1587,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldListMultipleNodesWithGetNodeAttrBatch)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -1793,7 +1781,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRenameExternalNodes)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -2029,7 +2016,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldPerformLocksForExternalNodes)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -2153,7 +2139,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldLinkExternalNodes)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -2282,7 +2267,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldAggregateFileSystemMetrics)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -2371,7 +2355,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(
         ShouldGetMultishardedSystemTopologyWithStrictFileSystemSizeEnforcement)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
@@ -2433,7 +2416,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldGetStorageStatsInDifferentModes)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
@@ -2549,7 +2531,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldEnableStrictFileSystemSizeEnforcementAndDirectoryCreationInShards)
     {
         // Create file system with two shards 1000 * 4 * 1024 bytes each
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(false);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
@@ -2685,7 +2666,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldResizeShardsInStrictWithStrictFileSystemSizeEnforcement)
     {
         // Create file system with two shards 1000 * 4 * 1024 bytes each
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
@@ -2710,7 +2690,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(ShouldRetryFileSystemResize)
     {
         // Create a filsystem with two shards.
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
@@ -2886,7 +2865,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldAggregateFileSystemMetricsInBackground)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -3092,7 +3070,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRetryUnlinkingInShard)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -3192,7 +3169,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRetryUnlinkingInShardUponLeaderRestart)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -3280,7 +3256,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRetryUnlinkingInShardUponLeaderRestartForRenameNode)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -3385,7 +3360,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRetryNodeCreationInShard)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -3473,7 +3447,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRetryNodeCreationInShardUponLeaderRestart)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -3582,7 +3555,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRetryNodeCreationInShardUponCreateHandle)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -3679,7 +3651,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(
         ShouldRetryNodeCreationInShardUponCreateHandleUponLeaderRestart)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -4817,16 +4788,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         checkListNodes(TVector<TString>{});
 
         // send delayed response in shard and make sure node is listed
-        auto createNodeRsp =
-            std::make_unique<TEvService::TEvCreateNodeResponse>();
-        runtime.Send(
-            new IEventHandle(
-                createNodeOnShard->Sender,
-                createNodeOnShard->Recipient,
-                createNodeRsp.release(),
-                0,   // flags
-                createNodeOnShard->Cookie),
-            nodeIdx);
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(createNodeOnShard.Release(), nodeIdx);
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         checkListNodes(TVector<TString>{"file1"});
@@ -4864,7 +4827,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticallyCreatedShardSize(4_MB);
         config.SetShardBalancerMinFreeSpaceReserve(4_KB);
         config.SetShardBalancerDesiredFreeSpaceReserve(1_MB);
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetShardBalancerPrecisionBytes(4_KB);
 
         TTestEnv env({}, config);
@@ -5039,7 +5001,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldCreateDirectoryStructureInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -5181,7 +5142,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldResizeFileSystemWithDirectoryCreationInShardsEnabled)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
@@ -5296,7 +5256,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(
         ShouldNotResizeShardWithStrictModeAndDirectoryCreationInShardsEnabled)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
@@ -5367,7 +5326,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldResizeShardWithDirectoryCreationInShardsEnabled)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
@@ -5495,7 +5453,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldCreateHardLinks)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -5523,7 +5480,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     // See #5826 for more details
     SERVICE_TEST(ShouldRejectHardLinkFromShardDirToMainTabletNode)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
 
         const TString fsId = "test";
@@ -5592,7 +5548,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldListNodesAndGetNodeAttrInDirectoryInShard)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -5709,7 +5664,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(
         ShouldAggregateFileSystemMetricsInBackgroundWithDirectoriesInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -5844,7 +5798,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldUnlinkNodeWithDirectoriesInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -5963,7 +5916,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldHandleUnlinkedNodeUponListingWithDirectoriesInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -6059,7 +6011,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldHandleRenameNodeInDestinationError)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -6191,7 +6142,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(
         ShouldRetryRenameNodeInShardUponLeaderRestartWithDirectoriesInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -6320,7 +6270,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldLockSourceNodeRefsUponRenameNodeWithDirectoriesInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -6527,7 +6476,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(
         ShouldRestoreNodeRefLocksUponLeaderRestartWithDirectoriesInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -6633,7 +6581,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(
         ShouldProcessRenameNodeInDestinationErrorWithDirectoriesInShards)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -6724,8 +6671,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldRestoreSessionAfterShardRestartViaGetNodeAttr)
     {
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -6832,8 +6777,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_DIR_CREATION_IN_SHARDS(
         ShouldNotRequireActiveSessionForGetNodeAttrBatchToShard)
     {
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -6893,7 +6836,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     // TODO(2566) get rid of this test after migration
     SERVICE_TEST(ShouldReportSevenBytesHandlesCount)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
         TShardedFileSystemConfig fsConfig;
@@ -7045,7 +6987,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const ui64 fsSize =
             shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
 
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
         config.SetAutomaticShardCreationEnabled(true);
@@ -7145,7 +7086,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const ui64 fsSize =
             shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
 
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
 
@@ -7213,7 +7153,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const ui64 fsSize =
             shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
 
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
         config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
@@ -7329,8 +7268,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldReturnListNodesMissingFromShardsWithUnsafeFlag)
     {
-        config.SetMultiTabletForwardingEnabled(true);
-
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -7414,7 +7351,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 ? (fsSize * blockSize) / sizeToNodeRatio
                 : (2 * shardAllocationUnit) / sizeToNodeRatio;
 
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
@@ -7581,7 +7517,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldSwitchOnDirectoryCreationInShardsForExistingFilesystem)
     {
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(false);
 
         TShardedFileSystemConfig fsConfig;

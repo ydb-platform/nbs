@@ -214,7 +214,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         TDuration,                                                             \
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
-    xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(AllowFileStoreDestroyWithOrphanSessions,        bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\

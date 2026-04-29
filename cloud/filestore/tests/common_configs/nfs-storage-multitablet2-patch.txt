@@ -5,7 +5,7 @@ UnalignedThreeStageWriteEnabled: true
 # Caches
 ReadAheadCacheRangeSize: 1048576
 # Sharding
-MultiTabletForwardingEnabled: true
+
 DirectoryCreationInShardsEnabled: true
 
 GidPropagationEnabled: true

@@ -4,7 +4,7 @@ NewCleanupEnabled: true
 ThreeStageWriteEnabled: true
 ReadAheadCacheRangeSize: 1048576
 PreferredBlockSizeMultiplier: 64
-MultiTabletForwardingEnabled: true
+
 UnalignedThreeStageWriteEnabled: true
 InMemoryIndexCacheEnabled: true
 InMemoryIndexCacheNodesCapacity: 10

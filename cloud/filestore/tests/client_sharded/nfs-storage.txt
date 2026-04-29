@@ -1,4 +1,3 @@
-MultiTabletForwardingEnabled: true
 LargeDeletionMarkersEnabled: true
 MaxFileBlocks: 536870912
 AutomaticShardCreationEnabled: true
