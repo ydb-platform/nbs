@@ -4,6 +4,7 @@
 #include <contrib/libs/grpc/src/core/lib/iomgr/exec_ctx.h>
 
 #include <library/cpp/logger/log.h>
+#include <library/cpp/logger/null.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NStorage::NGrpc {
@@ -19,9 +20,10 @@ Y_UNIT_TEST_SUITE(TShutdownTest)
         // thread (due to an active ExecCtx) and invokes the custom logger,
         // triggering the shutdown/teardown race covered by this test.
         // If GrpcLoggerInit() does not register
-        // grpc_maybe_wait_for_async_shutdown() in AtExit, TSAN reports the race.
+        // grpc_maybe_wait_for_async_shutdown() in AtExit, TSAN reports the
+        // race.
         const bool enableTracing = true;
-        GrpcLoggerInit(CreateLogBackend("console"), enableTracing);
+        GrpcLoggerInit(TLog(MakeHolder<TNullLogBackend>()), enableTracing);
 
         // With an active ExecCtx grpc_shutdown() must not clean up inline.
         // Instead it spawns a dedicated shutdown thread (running
