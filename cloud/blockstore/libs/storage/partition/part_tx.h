@@ -318,7 +318,6 @@ struct TTxPartition
         const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
 
         ui64 DeletionCommitId = 0;
-        TInstant TxStartedTs;
 
         TAddBlobs(
                 TRequestInfoPtr requestInfo,

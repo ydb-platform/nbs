@@ -30,7 +30,9 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->AccessTrimFreshLogState().SetStatus(EOperationStatus::Enqueued);
+    State->AccessTrimFreshLogState().SetStatus(
+        EOperationStatus::Enqueued,
+        ctx.Now());
 
     using TRequest = TEvPartitionCommonPrivate::TEvTrimFreshLogRequest;
     auto request = std::make_unique<TRequest>(
@@ -125,7 +127,9 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
-    State->AccessTrimFreshLogState().SetStatus(EOperationStatus::Started);
+    State->AccessTrimFreshLogState().SetStatus(
+        EOperationStatus::Started,
+        ctx.Now());
 
     TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Fresh;
@@ -174,7 +178,9 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
         State->TrimFreshBlobs(msg->CommitId);
     }
 
-    State->AccessTrimFreshLogState().SetStatus(EOperationStatus::Idle);
+    State->AccessTrimFreshLogState().SetStatus(
+        EOperationStatus::Idle,
+        ctx.Now());
 
     Actors.Erase(ev->Sender);
 

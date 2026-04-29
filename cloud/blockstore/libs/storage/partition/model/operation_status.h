@@ -22,9 +22,7 @@ struct TOperationState
     EOperationStatus Status = EOperationStatus::Idle;
     TInstant Timestamp;
 
-    void SetStatus(
-        EOperationStatus status,
-        TInstant timestamp = TInstant::Now())
+    void SetStatus(EOperationStatus status, TInstant timestamp)
     {
         Status = status;
         Timestamp = timestamp;

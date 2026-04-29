@@ -2469,6 +2469,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionWriteBlobsTime = 0;
         ui64 compactionAddBlobsTime = 0;
         ui64 compactionTotalTime = 0;
+        ui64 compactionExecutionTime = 0;
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
@@ -2499,6 +2500,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         compactionAddBlobsTime =
                             cc.CompactionAddBlobsTime.Value;
                         compactionTotalTime = cc.CompactionTotalTime.Value;
+                        compactionExecutionTime =
+                            cc.CompactionExecutionTime.Value;
                         break;
                     }
                 }
@@ -2539,6 +2542,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(compactionWriteBlobsTime > 0);
         UNIT_ASSERT(compactionAddBlobsTime > 0);
         UNIT_ASSERT(compactionTotalTime > 0);
+        UNIT_ASSERT(compactionExecutionTime > 0);
 
         UNIT_ASSERT(
             compactionTotalTime >= compactionTxTime + compactionReadBlobsTime +
