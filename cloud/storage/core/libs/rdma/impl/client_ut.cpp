@@ -24,7 +24,12 @@ using namespace std::chrono_literals;
 ////////////////////////////////////////////////////////////////////////////////
 
 NMonitoring::TDynamicCountersPtr GetClientCounters(
-    const IMonitoringServicePtr& monitoring);
+    const IMonitoringServicePtr& monitoring)
+{
+    return monitoring->GetCounters()
+        ->GetSubgroup("counters", "rdma")
+        ->GetSubgroup("component", "client");
+}
 
 IClientPtr CreateTestClient(
     NVerbs::IVerbsPtr verbs,
@@ -37,16 +42,10 @@ IClientPtr CreateTestClient(
         TObservabilityProvider(
             logging,
             "RDMA_TEST",
-            GetClientCounters(monitoring)),
+            monitoring->GetCounters(),
+            "rdma",
+            "client"),
         std::move(config));
-}
-
-NMonitoring::TDynamicCountersPtr GetClientCounters(
-    const IMonitoringServicePtr& monitoring)
-{
-    return monitoring->GetCounters()
-        ->GetSubgroup("counters", "rdma")
-        ->GetSubgroup("component", "client");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

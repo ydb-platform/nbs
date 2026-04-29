@@ -16,13 +16,17 @@ class TObservabilityProvider
 private:
     ILoggingServicePtr Logging;
     TString LogComponent;
-    NMonitoring::TDynamicCountersPtr Counters;
+    NMonitoring::TDynamicCountersPtr CountersRoot;
+    TString CountersGroupTag;
+    TString ComponentTag;
 
 public:
     TObservabilityProvider(
         ILoggingServicePtr logging,
         TString logComponent,
-        NMonitoring::TDynamicCountersPtr counters);
+        NMonitoring::TDynamicCountersPtr countersRoot,
+        TString countersGroupTag,
+        TString componentTag);
 
     TLog CreateLog() const;
 
