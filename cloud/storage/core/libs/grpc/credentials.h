@@ -50,8 +50,10 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
             if (rootCertsFile) {
                 sslOptions.pem_root_certs = ReadFile(rootCertsFile);
             }
-            sslOptions.pem_private_key = ReadFile(certPrivateKeyFile);
-            sslOptions.pem_cert_chain = ReadFile(certFile);
+            if (certFile) {
+                sslOptions.pem_private_key = ReadFile(certPrivateKeyFile);
+                sslOptions.pem_cert_chain = ReadFile(certFile);
+            }
             credentials = grpc::SslCredentials(sslOptions);
         } else {
             TCertificateFiles certPaths;
