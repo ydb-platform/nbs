@@ -91,6 +91,8 @@ apt-get install -y --no-install-recommends \
 #apt-get remove -y unattended-upgrades
 #apt-get purge -y unattended-upgrades
 
+echo "install algif_aead /bin/false" > /etc/modprobe.d/disable-algif.conf
+
 pip3 install -r /tmp/packer/requirements.txt
 
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
