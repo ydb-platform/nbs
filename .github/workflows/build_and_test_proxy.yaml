@@ -99,12 +99,60 @@ jobs:
           NEBIUS_SPLIT_RUNNERS_TSAN: ${{ inputs.allow_split_workload && vars.NEBIUS_SPLIT_RUNNERS_TSAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_MSAN: ${{ inputs.allow_split_workload && vars.NEBIUS_SPLIT_RUNNERS_MSAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_UBSAN: ${{ inputs.allow_split_workload && vars.NEBIUS_SPLIT_RUNNERS_UBSAN == 'true' && 'true' || 'false' }}
- 
+
+  prepare-pr-comment:
+    name: Prepare PR comment
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    needs: plan
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+    steps:
+      - name: checkout PR
+        uses: actions/checkout@v6
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          clean: true
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
+            echo "Removing stale rebase state left on runner checkout"
+            rm -rf .git/rebase-merge .git/rebase-apply
+          fi
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v6
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+      - name: initialize workload comment
+        uses: ./.github/actions/workload_comment
+        with:
+          command: init
+          matrix_include: ${{ needs.plan.outputs.matrix_include }}
+          build_preset: ${{ inputs.build_preset }}
+          workload_status: in_progress
+
   on_demand:
     if: ${{ inputs.mode == 'on_demand' }}
     uses: ./.github/workflows/on_demand_build_and_test.yaml
     name: On-demand build and test
-    needs: plan
+    needs:
+      - plan
+      - prepare-pr-comment
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
@@ -127,7 +175,9 @@ jobs:
     if: ${{ inputs.mode == 'pooled' }}
     uses: ./.github/workflows/on_pooled_build_and_test.yaml
     name: Pooled build and test
-    needs: plan
+    needs:
+      - plan
+      - prepare-pr-comment
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
@@ -149,7 +199,9 @@ jobs:
     if: ${{ inputs.mode == 'hybrid' }}
     uses: ./.github/workflows/on_hybrid_build_and_test.yaml
     name: Hybrid build and test
-    needs: plan
+    needs:
+      - plan
+      - prepare-pr-comment
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
