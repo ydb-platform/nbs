@@ -1109,10 +1109,6 @@ public:
 
     bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
     {
-        if (blobId.CommitId() > MaxCommitId) {
-            return true;
-        }
-
         auto& ab = Args.AffectedBlobs[blobId];
         ab.BlobRangeHint = blockRange;
         return true;
