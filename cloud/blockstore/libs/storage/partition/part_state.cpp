@@ -425,23 +425,25 @@ void TPartitionState::WriteMixedBlock(
 void TPartitionState::WriteMixedBlocks(
     TPartitionDatabase& db,
     const TPartialBlobId& blobId,
-    const TVector<ui32>& blockIndices)
+    const TVector<ui32>& blockIndices,
+    ui8 compactionRangeCount)
 {
     const ui64 commitId = blobId.CommitId();
     ui16 blobOffset = 0;
 
     for (const ui32 blockIndex: blockIndices) {
         const ui32 rangeIdx = CompactionMap.GetRangeIndex(blockIndex);
-        MixedIndexCache.InsertBlockIfHot(rangeIdx, {
-            blobId,
-            commitId,
-            blockIndex,
-            blobOffset
-        });
+        MixedIndexCache.InsertBlockIfHot(
+            rangeIdx,
+            {blobId,
+             commitId,
+             blockIndex,
+             blobOffset,
+             compactionRangeCount});
         ++blobOffset;
     }
 
-    db.WriteMixedBlocks(blobId, blockIndices);
+    db.WriteMixedBlocks(blobId, blockIndices, compactionRangeCount);
 }
 
 void TPartitionState::DeleteMixedBlock(
@@ -456,7 +458,7 @@ void TPartitionState::DeleteMixedBlock(
 
 bool TPartitionState::FindMixedBlocksForCompaction(
     TPartitionDatabase& db,
-    IBlocksIndexVisitor& visitor,
+    IMixedBlocksIndexVisitor& visitor,
     ui32 rangeIdx)
 {
     if (MixedIndexCache.VisitBlocksIfHot(rangeIdx, visitor)) {
@@ -466,29 +468,39 @@ bool TPartitionState::FindMixedBlocksForCompaction(
 
     auto cacheInserter = MixedIndexCache.GetInserterForRange(rangeIdx);
 
-    struct TVisitorAndCacheInserter final
-        : public IBlocksIndexVisitor
+    struct TVisitorAndCacheInserter final: public IMixedBlocksIndexVisitor
     {
-        IBlocksIndexVisitor& Visitor;
+        IMixedBlocksIndexVisitor& Visitor;
         TMixedIndexCache::TInserterPtr CacheInserter;
 
         TVisitorAndCacheInserter(
-                IBlocksIndexVisitor& visitor,
-                TMixedIndexCache::TInserterPtr cacheInserter)
+            IMixedBlocksIndexVisitor& visitor,
+            TMixedIndexCache::TInserterPtr cacheInserter)
             : Visitor(visitor)
             , CacheInserter(std::move(cacheInserter))
         {}
 
-        bool Visit(
+        bool VisitBlock(
             ui32 blockIndex,
             ui64 commitId,
             const TPartialBlobId& blobId,
-            ui16 blobOffset) override
+            ui16 blobOffset,
+            ui8 compactionRangeCount) override
         {
-            bool ok = Visitor.Visit(blockIndex, commitId, blobId, blobOffset);
+            bool ok = Visitor.VisitBlock(
+                blockIndex,
+                commitId,
+                blobId,
+                blobOffset,
+                compactionRangeCount);
             Y_ABORT_UNLESS(ok);
 
-            CacheInserter->Insert({blobId, commitId, blockIndex, blobOffset});
+            CacheInserter->Insert(
+                {blobId,
+                 commitId,
+                 blockIndex,
+                 blobOffset,
+                 compactionRangeCount});
             return true;
         }
 

@@ -662,7 +662,11 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blockIndices.emplace_back(blockIndex);
                 }
             }
-            mixedBlobs.emplace_back(blobId, std::move(blockIndices), blockChecksums);
+            mixedBlobs.emplace_back(
+                blobId,
+                std::move(blockIndices),
+                blockChecksums,
+                0);   // unknown blob alignment
             mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else {
             LOG_ERROR(
@@ -1072,6 +1076,7 @@ STFUNC(TCompactionActor::StateWork)
 class TCompactionBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
     , public IBlobsVisitor
 {
 private:
@@ -1106,6 +1111,29 @@ public:
         if (commitId > MaxCommitId) {
             return true;
         }
+
+        Args.MarkBlock(
+            blockIndex,
+            commitId,
+            blobId,
+            blobOffset,
+            KeepTrackOfAffectedBlocks);
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        if (commitId > MaxCommitId) {
+            return true;
+        }
+
+        auto& ab = Args.AffectedBlobs[blobId];
+        ab.CompactionRangeCount = compactionRangeCount;
 
         Args.MarkBlock(
             blockIndex,
@@ -1894,12 +1922,18 @@ void PrepareRangeCompaction(
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
+        state.IncrementBlobsProcessedDuringCompaction();
+
         const bool compactRangeContainsBlob =
             args.BlockRange.Contains(kv.second.BlobRangeHint);
+        const bool blobOnlyInOneCompactRange =
+            kv.second.CompactionRangeCount == 1;
 
-        if (!compactRangeContainsBlob ||
+        if ((!compactRangeContainsBlob && !blobOnlyInOneCompactRange) ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
+            state.IncrementBlockMaskReadDuringCompaction();
+
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
                 STORAGE_VERIFY_C(
                     kv.second.BlockMask.Defined(),
