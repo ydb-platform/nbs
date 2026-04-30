@@ -242,7 +242,6 @@ private:
         TVector<y_absl::optional<PemKeyCertPairList>> identities(
             Certificates.size());
         TVector<y_absl::optional<ui64>> certNotAfterTs(Certificates.size());
-        bool hasUpdates = false;
 
         const bool needsRoot = !!GetRootCertPath();
         TResultOrError<TString> rootResult = TString{};
@@ -276,24 +275,23 @@ private:
                     << identityResult.GetError().GetMessage());
             }
 
-            if (needsRoot && hasNewRoot && identities[i].has_value()) {
-                const auto& pair = identities[i]->front();
-                auto rootValidation =
-                    NTlsUtils::ValidateIdentityCertificateWithRoot(
-                        *newRoot,
-                        pair.cert_chain());
-                if (HasError(rootValidation.GetError())) {
-                    STORAGE_WARN(
-                        "Identity certificate chain from "
-                        << files.CertChainPath.Quote()
-                        << " is not trusted by root CA "
-                        << RootCertPath.Quote()
-                        << ", continue without failing update");
-                }
-            }
-
             if (identities[i].has_value()) {
                 const auto& pair = identities[i]->front();
+                if (needsRoot && hasNewRoot) {
+                    auto rootValidation =
+                        NTlsUtils::ValidateIdentityCertificateWithRoot(
+                            *newRoot,
+                            pair.cert_chain());
+                    if (HasError(rootValidation.GetError())) {
+                        STORAGE_WARN(
+                            "Identity certificate chain from "
+                            << files.CertChainPath.Quote()
+                            << " is not trusted by root CA "
+                            << RootCertPath.Quote()
+                            << ", continue without failing update");
+                    }
+                }
+
                 auto notAfterTs =
                     NTlsUtils::GetCertificateNotAfterTimestampSec(
                         pair.cert_chain());
@@ -317,7 +315,7 @@ private:
             rootChanged = newRoot != RootCertificate;
             RootCertificate = newRoot;
         }
-        hasUpdates = hasUpdates || rootChanged;
+        bool hasUpdates = rootChanged;
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
             if (Certificates[i].Metrics && certNotAfterTs[i].has_value()) {
