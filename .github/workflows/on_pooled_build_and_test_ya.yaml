@@ -105,7 +105,7 @@ jobs:
   build-and-test:
     name: Build and test ${{ inputs.build_preset }}
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
-    timeout-minutes: 420
+    timeout-minutes: 480
     needs: calculate-runs-on
     outputs:
       # outcome failure and test_failed is null -> vm is broken
@@ -151,7 +151,7 @@ jobs:
       id: cli
       uses: ./.github/actions/nebius_cli
       with:
-        sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+        config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
     - name: set up gh cli
       id: gh
       uses: ./.github/actions/gh_cli
@@ -182,6 +182,19 @@ jobs:
         vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
         tests_size: ${{ inputs.test_size }}
 
+    - name: mark workload as running
+      id: workload-comment
+      if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: running
+        current_job_name: Build and test ${{ inputs.build_preset }}
+        runner_name: ${{ runner.name }}
+        add_summary_link: yes
+
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:
@@ -203,6 +216,7 @@ jobs:
         sudo apt-get install -y unattended-upgrades
 
     - name: Build
+      id: build
       uses: ./.github/actions/build
       if: inputs.run_build
       with:
@@ -240,6 +254,16 @@ jobs:
         use_network_cache: ${{ inputs.use_network_cache }}
         number_of_retries: ${{ inputs.number_of_retries }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
+
+    - name: mark workload build failed
+      if: ${{ failure() && steps.build.outcome == 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: failed_build
+
     - id: sleep
       name: Sleep after failed tests
       if: ${{ inputs.sleep_after_tests != '0' && failure() }}
@@ -248,10 +272,19 @@ jobs:
         SLEEP_AFTER_TESTS: ${{ inputs.sleep_after_tests || '7200' }}
       run: |
         sleep "$SLEEP_AFTER_TESTS"
+
+    - name: mark workload as completed
+      if: ${{ always() && steps.build.outcome != 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: completed
   debug:
     name: Debug
     runs-on: [self-hosted, "self-hosted", "runner_light"]
-    needs: 
+    needs:
       - calculate-runs-on
       - build-and-test
     if: ${{ !cancelled() }}
@@ -273,7 +306,6 @@ jobs:
           echo "Test failed is empty: ${{ needs.build-and-test.outputs.test_failed == '' }}"
           echo "Condition: ${{ needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null }}"
           echo "Condition: ${{ needs.build-and-test.outputs.test_failed == '' && needs.build-and-test.outputs.test_run_outcome == '' }}"
-          
         env:
           test_run_outcome: ${{ needs.build-and-test.outputs.test_run_outcome }}
           test_failed: ${{ needs.build-and-test.outputs.test_failed }}
@@ -287,7 +319,7 @@ jobs:
           test_run_outcome_is_cancelled: ${{ needs.build-and-test.outputs.test_run_outcome == 'cancelled' }}
           test_run_outcome_is_empty: ${{ needs.build-and-test.outputs.test_run_outcome == '' }}
           test_failed_is_empty: ${{ needs.build-and-test.outputs.test_failed == '' }}
-    
+
   test-retry:
     name: Retry tests
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
@@ -334,7 +366,7 @@ jobs:
         id: cli
         uses: ./.github/actions/nebius_cli
         with:
-          sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+          config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
       - name: set up gh cli
         id: gh
         uses: ./.github/actions/gh_cli

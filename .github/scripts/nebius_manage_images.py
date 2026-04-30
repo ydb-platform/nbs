@@ -1,11 +1,15 @@
 import os
 import asyncio
 import argparse
+from dataclasses import dataclass
 from .helpers import setup_logger, convert_size
 from github import Github
 from nebius.sdk import SDK
+from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
+from nebius.api.nebius.compute.v1 import Image
 from nebius.api.nebius.compute.v1 import (
+    DeleteImageRequest,
     ListImagesRequest,
     ImageServiceClient,
 )
@@ -15,59 +19,41 @@ logger = setup_logger()
 # they won't appear in the list of images
 # but they will be protected from deletion anyway
 PROTECTED_IMAGE_IDS = [
-    "computeimage-e00f4cy4p43wx8gm4v",
+    "computeimage-e02z08pb34vxn8epq0",
 ]
 
+IMAGE_FAMILY_NAME = "ubuntu22.04-nbs-github-ci"
 
-async def main(
-    sdk: SDK,
-    github_token: str,
-    github_repository: str,
-    new_image_id: str,
-    image_variable_name: str,
-    update_image_id: bool,
-    parent_id: str,
-) -> None:
-    github = Github(github_token)
-    repo = github.get_repo(github_repository)
-    github_repository_owner, github_repository_name = github_repository.split("/")
-    image_family_name = (
-        f"github-runner-{github_repository_owner}-{github_repository_name}"
-    )
 
-    variable = repo.get_variable(image_variable_name)
+@dataclass(frozen=True)
+class ManageImagesOptions:
+    github_token: str
+    github_repository: str
+    new_image_id: str | None
+    image_variable_name: str
+    update_image_id: bool
+    parent_id: str
+    images_to_keep: int
+    remove_old_images: bool
 
-    logger.info("%s (old) = %s" % (image_variable_name, variable.value))
 
-    if new_image_id is None:
-        new_image_id = variable.value
+def resolve_new_image_id(current_image_id: str, new_image_id: str | None) -> str:
+    return new_image_id or current_image_id
 
-    if update_image_id:
-        variable.edit(value=new_image_id)
-        logger.info("%s (new) = %s", image_variable_name, new_image_id)
-    else:
-        logger.info("Would set %s (new) = %s", image_variable_name, new_image_id)
 
-    service = ImageServiceClient(sdk)
-    request = ListImagesRequest(
-        parent_id=parent_id,
-        filter=f"family IN ('{image_family_name}') AND status = 'READY'",
-    )
-    result = []
-    try:
-        while True:
-            response = await service.list(request)
-            result.extend(response.items)
-            if not response.next_page_token:
-                break
-            request.page_token = response.next_page_token
-    except RequestError as e:
-        logger.info("Result: %s", result)
-        logger.error("Failed to list images", exc_info=True)
-        raise e
+def fetch_repo_variable(
+    github_client, github_repository: str, image_variable_name: str
+):
+    repo = github_client.get_repo(github_repository)
+    return repo, repo.get_variable(image_variable_name)
 
-    candidate_images = []
-    for image in result:
+
+def log_image_inventory(
+    images: list[Image], image_family_name: str, new_image_id: str
+) -> list[Image]:
+    candidate_images: list[Image] = []
+
+    for image in images:
         status = image.status.state.name
         created_at = image.metadata.created_at
         storage_size = convert_size(image.status.storage_size_bytes)
@@ -79,7 +65,8 @@ async def main(
             postfix = " (NEW)"
 
         if (
-            image.metadata.id not in PROTECTED_IMAGE_IDS
+            image.status.state.name == "READY"
+            and image.metadata.id not in PROTECTED_IMAGE_IDS  # noqa: W503
             and image.spec.image_family == image_family_name  # noqa: W503
             and image.metadata.id != new_image_id  # noqa: W503
         ):
@@ -88,14 +75,102 @@ async def main(
             candidate_images.append(image)
 
         logger.info(
-            "Found image%s: %s %s %s %s %s %s %s %s",
+            "Found image%s: %s %s %s %s %s %s %s %s%s",
             # fmt: off
             prefix, image.metadata.id, image.metadata.name, status, created_at,
             image.spec.image_family, storage_size, min_disk_size,
-            ', '.join(f"{k}={v}" for k, v in image.metadata.labels.items())
+            ', '.join(f"{k}={v}" for k, v in image.metadata.labels.items()),
+            postfix,
             # fmt: on
         )
-    logger.info("Total images: %d", len(response.items))
+
+    return candidate_images
+
+
+def select_images_to_remove(
+    candidate_images: list[Image], images_to_keep: int
+) -> list[Image]:
+    return candidate_images[images_to_keep:]
+
+
+async def list_ready_images(
+    service: ImageServiceClient, parent_id: str, image_family_name: str
+) -> list[Image]:
+    request = ListImagesRequest(parent_id=parent_id)
+    images: list[Image] = []
+    try:
+        while True:
+            response = await service.list(request)
+            images.extend(response.items)
+            if not response.next_page_token:
+                break
+            request.page_token = response.next_page_token
+    except RequestError as e:
+        logger.info("Result: %s", images)
+        logger.error("Failed to list images", exc_info=True)
+        raise e
+
+    logger.info(
+        "Client-side filtering images by family=%s and status=READY",
+        image_family_name,
+    )
+    return images
+
+
+async def remove_images(
+    service: ImageServiceClient, images_to_remove: list[Image]
+) -> None:
+    for image in images_to_remove:
+        logger.info("Removing image %s", image.metadata.id)
+        request = DeleteImageRequest(id=image.metadata.id)
+        response = await service.remove(request)
+        if response.error:
+            logger.error(
+                "Failed to remove image %s: %s", image.metadata.id, response.error
+            )
+        else:
+            logger.info("Image %s removed", image.metadata.id)
+
+
+async def main(
+    sdk: SDK,
+    options: ManageImagesOptions,
+    github_client_factory=Github,
+    image_service_factory=ImageServiceClient,
+) -> None:
+    github = github_client_factory(options.github_token)
+    _, variable = fetch_repo_variable(
+        github, options.github_repository, options.image_variable_name
+    )
+
+    logger.info("%s (old) = %s", options.image_variable_name, variable.value)
+
+    new_image_id = resolve_new_image_id(variable.value, options.new_image_id)
+
+    if options.update_image_id:
+        variable.edit(value=new_image_id)
+        logger.info("%s (new) = %s", options.image_variable_name, new_image_id)
+    else:
+        logger.info(
+            "Would set %s (new) = %s", options.image_variable_name, new_image_id
+        )
+
+    service = image_service_factory(sdk)
+    images = await list_ready_images(service, options.parent_id, IMAGE_FAMILY_NAME)
+    candidate_images = log_image_inventory(images, IMAGE_FAMILY_NAME, new_image_id)
+
+    logger.info("Total images before cleanup: %d", len(images))
+    if not options.remove_old_images:
+        logger.info("Old images will not be removed")
+        return
+
+    images_to_remove = select_images_to_remove(candidate_images, options.images_to_keep)
+    images_to_remove_ids = [image.metadata.id for image in images_to_remove]
+    logger.info("Images selected for removal: %s", images_to_remove_ids)
+    await remove_images(service, images_to_remove)
+    logger.info(
+        "Total images after cleanup: %d", len(candidate_images) - len(images_to_remove)
+    )
 
 
 if __name__ == "__main__":
@@ -118,14 +193,9 @@ if __name__ == "__main__":
         help="Parent ID where the VM will be created",
     )
     parser.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account key file",
-    )
-    parser.add_argument(
         "--new-image-id",
         default=os.getenv("NEW_IMAGE_ID"),
-        help="Name of the artifact to download and extract",
+        help="ID of the new image to use",
     )
     parser.add_argument(
         "--image-variable-name",
@@ -138,19 +208,32 @@ if __name__ == "__main__":
         action="store_true",
         help="Update the image id in Github Actions variables",
     )
+    parser.add_argument(
+        "--images-to-keep", default=7, type=int, help="Number of images to keep"
+    )
+    parser.add_argument(
+        "--remove-old-images",
+        default=False,
+        action="store_true",
+        help="Remove old images",
+    )
 
     args = parser.parse_args()
     logger.info(args)
 
-    sdk = SDK(credentials_file_name=args.service_account_key)
+    sdk = SDK(config_reader=Config())
     asyncio.run(
         main(
             sdk=sdk,
-            github_token=args.github_token,
-            github_repository=args.github_repo,
-            new_image_id=args.new_image_id,
-            image_variable_name=args.image_variable_name,
-            update_image_id=args.update_image_id,
-            parent_id=args.parent_id,
+            options=ManageImagesOptions(
+                github_token=args.github_token,
+                github_repository=args.github_repo,
+                new_image_id=args.new_image_id,
+                image_variable_name=args.image_variable_name,
+                update_image_id=args.update_image_id,
+                parent_id=args.parent_id,
+                images_to_keep=args.images_to_keep,
+                remove_old_images=args.remove_old_images,
+            ),
         )
     )

@@ -8,8 +8,11 @@ inputs:
     required: true
     description: "repo name"
   service_account_key:
-    required: true
-    description: "service account key"
+    required: false
+    description: "Deprecated legacy Nebius service-account JSON credentials"
+  nebius_config_yaml:
+    required: false
+    description: "Nebius CLI config.yaml content for SDK authentication"
   token:
     required: true
     description: "GITHUB_TOKEN"
@@ -23,14 +26,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: write service account key to file
-      shell: bash
-      run: |
-        export SERVICE_ACCOUNT_KEY=$(mktemp sa.XXXX)
-        echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
-        echo "${KEY_CONTENTS}" > $SERVICE_ACCOUNT_KEY
-      env:
-        KEY_CONTENTS: ${{ inputs.service_account_key }}
+    - name: set up nebius cli
+      id: nebius-cli
+      uses: ./.github/actions/nebius_cli
+      with:
+        config_yaml: ${{ inputs.nebius_config_yaml }}
+        service_account_key: ${{ inputs.service_account_key }}
     - name: install dependencies
       shell: bash
       run: |
@@ -43,17 +44,13 @@ runs:
         python3 -m scripts.nebius_manage_vm remove \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
-          --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           --parent-id "${PARENT_ID}" \
           --id "${VM_ID}" \
           --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
+        NEBIUS_IAM_TOKEN: ${{ steps.nebius-cli.outputs.NEBIUS_IAM_TOKEN }}
         REPO_OWNER: ${{ inputs.repo_owner }}
         REPO: ${{ inputs.repo }}
         VM_ID: ${{ inputs.vm_id }}
         PARENT_ID: ${{ inputs.vm_parent_id }}
-    - name: cleanup
-      if: always()
-      shell: bash
-      run: rm -f "${SERVICE_ACCOUNT_KEY}"

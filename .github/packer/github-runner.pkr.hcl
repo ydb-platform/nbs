@@ -50,9 +50,9 @@ variable "GITHUB_TOKEN" {
   default = env("GITHUB_TOKEN")
 }
 
-variable "NEBIUS_TOKEN" {
+variable "NEBIUS_IAM_TOKEN" {
   type    = string
-  default = env("NEBIUS_TOKEN")
+  default = env("NEBIUS_IAM_TOKEN")
 }
 
 variable "PARENT_ID" {
@@ -77,7 +77,7 @@ locals {
 source "nebius-image" "ubuntu2204-nbs-github-ci" {
   communicator = "ssh"
   ssh_username = "ubuntu"
-  token      = var.NEBIUS_TOKEN
+  token      = var.NEBIUS_IAM_TOKEN
   disk {
     size_gibibytes = 16
   }

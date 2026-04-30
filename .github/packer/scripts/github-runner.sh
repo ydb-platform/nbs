@@ -93,6 +93,15 @@ apt-get install -y --no-install-recommends \
 
 pip3 install -r /tmp/packer/requirements.txt
 
+YQ_VERSION=$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name')
+if [ -z "$YQ_VERSION" ] || [ "$YQ_VERSION" = "null" ]; then
+    echo "Failed to resolve latest yq release"
+    exit 1
+fi
+curl -fsSL -o /usr/local/bin/yq \
+    "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+chmod 0755 /usr/local/bin/yq
+
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
 sudo ./aws/install

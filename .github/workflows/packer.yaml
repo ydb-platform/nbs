@@ -1,5 +1,6 @@
 name: Build VM Image
-run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }} image_id:${{ inputs.image_id }} build_image:${{ inputs.build_image }} check_vm_creation:${{ inputs.check_vm_creation }}
+run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }}
+  image_id:${{ inputs.image_id }} build_image:${{ inputs.build_image }} check_vm_creation:${{ inputs.check_vm_creation }}
 on:
   # schedule:
   #   - cron: "0 5 * * *"
@@ -29,6 +30,11 @@ on:
         required: false
         default: false
         type: boolean
+      images_to_keep:
+        description: "Number of latest images to keep during cleanup"
+        required: false
+        default: 14
+        type: number
   workflow_dispatch:
     inputs:
       image_id:
@@ -56,7 +62,11 @@ on:
         required: false
         default: false
         type: boolean
-
+      images_to_keep:
+        description: "Number of latest images to keep during cleanup"
+        required: false
+        default: 14
+        type: number
 
 defaults:
   run:
@@ -64,152 +74,149 @@ defaults:
 
 jobs:
   build:
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
-    - name: Checkout PR
-      uses: actions/checkout@v6
-      with:
-        sparse-checkout: '.github'
-        clean: true
-    - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
-      if: ${{ always() }}
-      run: git config core.sparseCheckout false
-      continue-on-error: true
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: ".github"
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
 
-    - name: install dependencies
-      run: |
-        pip install -r .github/scripts/requirements.txt
-        echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
+      - name: install dependencies
+        run: |
+          pip install -r .github/scripts/requirements.txt
+          echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
-    - name: set up nebius cli
-      id: cli
-      uses: ./.github/actions/nebius_cli
-      with:
-        sa_json: ${{ secrets.POOLED_LIGHT_SA_JSON }}
-    
-    - name: get nebius iam token
-      if: inputs.image_id == '' && inputs.build_image == true
-      run: |
-        NEBIUS_TOKEN=$(nebius iam get-access-token)
-        echo "::add-mask::${NEBIUS_TOKEN}"
-        echo "NEBIUS_TOKEN=$NEBIUS_TOKEN" >> $GITHUB_ENV
+      - name: set up nebius cli
+        id: cli
+        uses: ./.github/actions/nebius_cli
+        with:
+          config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
 
-    - name: set up packer
-      if: inputs.image_id == '' && inputs.build_image == true
-      uses: hashicorp/setup-packer@v3.2.0
-      with:
-        version: 1.10.0
-    
-    - name: init packer
-      if: inputs.image_id == '' && inputs.build_image == true
-      run: |
-        cd .github/packer || exit
-        packer init github-runner.pkr.hcl
+      - name: set up packer
+        if: inputs.image_id == '' && inputs.build_image == true
+        uses: hashicorp/setup-packer@v3.2.0
+        with:
+          version: 1.10.0
 
-    - name: build image
-      if: inputs.image_id == '' && inputs.build_image == true
-      id: build-image
-      env:
-        PASSWORD_HASH: ${{ secrets.VM_USER_PASSWD }}
-        NEBIUS_TOKEN: ${{ env.NEBIUS_TOKEN }}
-        RUNNER_VERSION: ${{ vars.RUNNER_VERSION }}
-        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-        PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
-        SUBNET_ID: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
-      run: |
-        cd .github/packer || exit
-        packer build github-runner.pkr.hcl
-        cat reports/manifest.json
-        echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' reports/manifest.json)" >> $GITHUB_OUTPUT
+      - name: init packer
+        if: inputs.image_id == '' && inputs.build_image == true
+        run: |
+          cd .github/packer || exit
+          packer init github-runner.pkr.hcl
 
-    - name: Get latest image ID from Nebius
-      id: get-image-id
-      env: 
-        IMAGE_ID: ${{ inputs.image_id }}
-        PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
-      run: |
-        if [ -n "${IMAGE_ID}" ]; then
-          if [[ "${IMAGE_ID}" != computeimage-* ]]; then
-            echo "Provided image id is not valid: ${IMAGE_ID}"
-            exit 1
+      - name: build image
+        if: inputs.image_id == '' && inputs.build_image == true
+        id: build-image
+        env:
+          PASSWORD_HASH: ${{ secrets.VM_USER_PASSWD }}
+          NEBIUS_IAM_TOKEN: ${{ steps.cli.outputs.NEBIUS_IAM_TOKEN }}
+          RUNNER_VERSION: ${{ vars.RUNNER_VERSION }}
+          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
+          SUBNET_ID: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
+        run: |
+          cd .github/packer || exit
+          packer build github-runner.pkr.hcl
+          cat reports/manifest.json
+          echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' reports/manifest.json)" >> $GITHUB_OUTPUT
+
+      - name: Get latest image ID from Nebius
+        id: get-image-id
+        env:
+          IMAGE_ID: ${{ inputs.image_id }}
+          PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
+        run: |
+          if [ -n "${IMAGE_ID}" ]; then
+            if [[ "${IMAGE_ID}" != computeimage-* ]]; then
+              echo "Provided image id is not valid: ${IMAGE_ID}"
+              exit 1
+            fi
+            echo "IMAGE_ID_2204=${IMAGE_ID}" >> $GITHUB_OUTPUT
+            echo "Using image id provided by inputs: ${IMAGE_ID}"
+            exit 0
           fi
-          echo "IMAGE_ID_2204=${IMAGE_ID}" >> $GITHUB_OUTPUT
-          echo "Using image id provided by inputs: ${IMAGE_ID}"
-          exit 0
-        fi
-        IMAGE_ID=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id "${PARENT_ID}" --format json | jq -r .metadata.id)
-        echo "IMAGE_ID_2204=$IMAGE_ID" >> $GITHUB_OUTPUT
-    
+          IMAGE_ID=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id "${PARENT_ID}" --format json | jq -r .metadata.id)
+          echo "IMAGE_ID_2204=$IMAGE_ID" >> $GITHUB_OUTPUT
 
-    - name: Start runner
-      id: start-runner
-      if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
-      uses: ./.github/actions/nebius_runner_create
-      timeout-minutes: 60
-      with:
-        org: ydb-platform
-        team: nbs
-        repo_owner: ${{ github.repository_owner }}
-        repo: ${{ github.event.repository.name }}
-        service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
-        token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-        vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
-        vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
-        vm_platform_id: ${{ vars.POOLED_HEAVY_PLATFORM_ID }}
-        vm_preset: "4vcpu-16gb"
-        vm_disk_type: 'network-ssd-nonreplicated'
-        vm_disk_size: 93
-        vm_subnet: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
-        vm_image: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
-        vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
-        vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-        vm_public_ip: ${{ vars.POOLED_HEAVY_PUBLIC_IP_ENABLE == 'yes' && 'yes' || 'no' }}
+      - name: Start runner
+        id: start-runner
+        if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 !=
+          vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
+        uses: ./.github/actions/nebius_runner_create
+        timeout-minutes: 60
+        with:
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          nebius_config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
+          vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
+          vm_platform_id: ${{ vars.POOLED_HEAVY_PLATFORM_ID }}
+          vm_preset: "4vcpu-16gb"
+          vm_disk_type: "network-ssd-nonreplicated"
+          vm_disk_size: 93
+          vm_subnet: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
+          vm_image: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
+          vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+          vm_public_ip: ${{ vars.POOLED_HEAVY_PUBLIC_IP_ENABLE == 'yes' && 'yes' || 'no' }}
 
+      - name: Stop runner
+        uses: ./.github/actions/nebius_runner_remove
+        if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 !=
+          vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204) &&
+          steps.start-runner.outputs.INSTANCE_ID != ''
+        timeout-minutes: 60
+        with:
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          nebius_config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
+          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
+          vm_id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
 
-    - name: Stop runner
-      uses: ./.github/actions/nebius_runner_remove
-      if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204) && steps.start-runner.outputs.INSTANCE_ID != ''
-      timeout-minutes: 60
-      with:
-        service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
-        token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-        repo_owner: ${{ github.repository_owner }}
-        repo: ${{ github.event.repository.name }}
-        vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
-        vm_id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
+      - name: Set new image id
+        if: inputs.update_image_id == true
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+          python3 -m scripts.nebius_manage_images \
+            --new-image-id ${NEW_IMAGE_ID} \
+            --remove-old-images \
+            --images-to-keep ${IMAGES_TO_KEEP} \
+            --image-variable-name NEBIUS_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
+          UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
+          IMAGES_TO_KEEP: ${{ inputs.images_to_keep }}
+          PARENT_ID: $${{ vars.PARENT_ID }}
 
-    - name: Set new image id
-      if: inputs.update_image_id == true
-      run: |
-        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-        python3 -m scripts.nebius_manage_images \
-          --service-account-key sa.json \
-          --new-image-id ${NEW_IMAGE_ID} \
-          --image-variable-name NEBIUS_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-        NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
-        UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
-        PARENT_ID: $${{ vars.PARENT_ID }}
+      - name: Set new pooled image id
+        if: inputs.update_pooled_image_ids == true
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+          python3 -m scripts.nebius_manage_images \
+            --parent-id ${LIGHT_PARENT_ID} \
+            --new-image-id ${NEW_IMAGE_ID} \
+            --remove-old-images \
+            --images-to-keep ${IMAGES_TO_KEEP} \
+            --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
 
-    - name: Set new pooled image id
-      if: inputs.update_pooled_image_ids == true
-      run: |
-        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-        python3 -m scripts.nebius_manage_images \
-          --service-account-key sa.json \
-          --parent-id ${LIGHT_PARENT_ID} \
-          --new-image-id ${NEW_IMAGE_ID} \
-          --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
-
-        python3 -m scripts.nebius_manage_images \
-          --service-account-key sa.json \
-          --parent-id ${HEAVY_PARENT_ID} \
-          --new-image-id ${NEW_IMAGE_ID} \
-          --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-        NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
-        UPDATE_IMAGE_ID: ${{ inputs.update_pooled_image_ids && '--update-image-id' || '' }}
-        HEAVY_PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
-        LIGHT_PARENT_ID: ${{ vars.POOLED_LIGHT_PARENT_ID }}
+          python3 -m scripts.nebius_manage_images \
+            --parent-id ${HEAVY_PARENT_ID} \
+            --new-image-id ${NEW_IMAGE_ID} \
+            --remove-old-images \
+            --images-to-keep ${IMAGES_TO_KEEP} \
+            --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
+          UPDATE_IMAGE_ID: ${{ inputs.update_pooled_image_ids && '--update-image-id' || '' }}
+          IMAGES_TO_KEEP: ${{ inputs.images_to_keep }}
+          HEAVY_PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
+          LIGHT_PARENT_ID: ${{ vars.POOLED_LIGHT_PARENT_ID }}

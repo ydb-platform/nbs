@@ -94,7 +94,6 @@ concurrency:
 env:
   disk_size: ${{ inputs.flavor == 'heavy' && ( vars.POOLED_HEAVY_DISK_SIZE_GB || 2046 ) || ( vars.POOLED_LIGHT_DISK_SIZE_GB || 1023 ) }}
   parent_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PARENT_ID || vars.POOLED_LIGHT_PARENT_ID }}
-  sa_json: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_SA_JSON || secrets.POOLED_LIGHT_SA_JSON }}
   preset: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_VM_PRESET || vars.POOLED_LIGHT_VM_PRESET }}
   subnet_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_SUBNET_ID || vars.POOLED_LIGHT_SUBNET_ID }}
   public_ip: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PUBLIC_IP_ENABLE || vars.POOLED_LIGHT_PUBLIC_IP_ENABLE }}
@@ -130,9 +129,9 @@ jobs:
           vms_ttl: ${{ inputs.vms_ttl }}
           flavor: ${{ inputs.flavor }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          nebius_config_yaml: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML || secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           maximum_amount_of_vms_to_have: ${{ inputs.maximum_amount_of_vms_to_have }}
           extra_vms_if_needed: ${{ inputs.extra_vms_if_needed }}
-          service_account_key: ${{ env.sa_json }}
           loop:  ${{ inputs.provision_mode == 'initial' && 'no' || inputs.loop }}
   remove_vms:
     needs: calculate_missing_vms
@@ -161,10 +160,10 @@ jobs:
         uses: ./.github/actions/nebius_runner_remove
         timeout-minutes: 60
         with:
-          service_account_key: ${{ env.sa_json }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
+          nebius_config_yaml: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML || secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.vms_to_remove }}
   remove_broken:
@@ -191,10 +190,10 @@ jobs:
         uses: ./.github/actions/nebius_runner_remove
         timeout-minutes: 60
         with:
-          service_account_key: ${{ env.sa_json }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
+          nebius_config_yaml: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML || secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.broken_vms_to_remove }}
   create_vms:
@@ -221,11 +220,9 @@ jobs:
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
-          org: ydb-platform
-          team: nbs
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ env.sa_json }}
+          nebius_config_yaml: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML || secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: ${{ env.parent_id }}
           vm_name: ${{ matrix.vms_to_create }}
