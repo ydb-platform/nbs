@@ -342,6 +342,22 @@ func (client *durableClient) UnlinkNode(
 	return resp.(*protos.TUnlinkNodeResponse), err
 }
 
+func (client *durableClient) ExecuteAction(
+	ctx context.Context,
+	req *protos.TExecuteActionRequest,
+) (*protos.TExecuteActionResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ExecuteAction(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TExecuteActionResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type durableEndpointClient struct {

@@ -33,6 +33,23 @@ type FilesystemModel struct {
 	PerformanceProfile FilesystemPerformanceProfile
 }
 
+type ConfigureAsShardParams struct {
+	ShardNo                                uint32
+	ShardFileSystemIDs                     []string
+	MainFileSystemID                       string
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	ForceDirectoryCreationInShards         bool
+}
+
+type ConfigureShardsParams struct {
+	ShardFileSystemIDs                     []string
+	Force                                  bool
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	ForceDirectoryCreationInShards         bool
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Session interface {
@@ -136,6 +153,34 @@ type Client interface {
 		checkpointID string,
 		readonly bool,
 	) (Session, error)
+
+	UnsafeCreateNode(
+		ctx context.Context,
+		filesystemID string,
+		node Node,
+	) error
+
+	UnsafeCreateNodeRef(
+		ctx context.Context,
+		filesystemID string,
+		parentID uint64,
+		name string,
+		childID uint64,
+		shardID string,
+		shardNodeName string,
+	) error
+
+	ConfigureAsShard(
+		ctx context.Context,
+		filesystemID string,
+		params ConfigureAsShardParams,
+	) error
+
+	ConfigureShards(
+		ctx context.Context,
+		filesystemID string,
+		params ConfigureShardsParams,
+	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////

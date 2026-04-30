@@ -563,6 +563,24 @@ func (client *Client) UnlinkNode(
 	return err
 }
 
+func (client *Client) ExecuteAction(
+	ctx context.Context,
+	action string,
+	input []byte,
+) ([]byte, error) {
+
+	req := &protos.TExecuteActionRequest{
+		Action: action,
+		Input:  input,
+	}
+	resp, err := client.Impl.ExecuteAction(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetOutput(), nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type StartEndpointOpts struct {
