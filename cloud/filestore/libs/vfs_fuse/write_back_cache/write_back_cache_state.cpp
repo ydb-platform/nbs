@@ -43,17 +43,43 @@ bool TWriteBackCacheState::Init(IPersistentStoragePtr persistentStorage)
         { AddRequest(std::move(request)); });
 }
 
-bool TWriteBackCacheState::HasUnflushedRequests() const
+void TWriteBackCacheState::SetDrainingMode()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    return RequestManager.HasPendingOrUnflushedRequests();
+    DrainingMode = true;
+}
+
+bool TWriteBackCacheState::IsDrained() const
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    return DrainingMode && !RequestManager.HasPendingOrUnflushedRequests();
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     std::shared_ptr<TWriteDataRequest> request)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
+
+    if (DrainingMode) {
+        // This may happen due to race condition that is valid scenario:
+        // - TWriteBackCache::Drain is called in one thread;
+        // - WriteData request is being processed in another thread.
+        //
+        // But currently, Drain is called only at session creation
+        // or destruction where WriteData requests are not expected.
+        // Therefore, we report an error.
+        ReportWriteBackCacheStateError(
+            LogTag +
+            " Cached WriteData request received while WriteBackCache is "
+            "in draining mode");
+
+        return MakeFuture(
+            ErrorResponse<TWriteDataResponse>(
+                E_REJECTED,
+                "WriteBackCache doesn't accept new WriteData requests"));
+    }
 
     auto variant = RequestManager.AddRequest(std::move(request));
 

@@ -21,6 +21,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
+#include <util/stream/output.h>
 #include <util/system/mutex.h>
 #include <util/system/spinlock.h>
 #include <util/system/tempfile.h>
@@ -2028,13 +2029,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         auto flushAllDataFuture = b.Cache.FlushAllData();
 
-        UNIT_ASSERT(!b.Cache.IsEmpty());
+        b.Cache.Drain();
+        UNIT_ASSERT(!b.Cache.IsDrained());
 
         writeRequests.ProceedAll();
 
         UNIT_ASSERT(flushAllDataFuture.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
-        UNIT_ASSERT(b.Cache.IsEmpty());
+        UNIT_ASSERT(b.Cache.IsDrained());
     }
 
     Y_UNIT_TEST(ShouldNotReadBeyondFileEnd)
@@ -2070,8 +2072,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Scenario 1: empty cache
         b.WriteToCacheSync(1, 2, "abcdef");
         b.FlushCache(1);
-
-        UNIT_ASSERT(b.Cache.IsEmpty());
 
         UNIT_ASSERT_VALUES_EQUAL("cdef", readFromSession(4, 12));
         UNIT_ASSERT_VALUES_EQUAL("", readFromSession(13, 5));
@@ -2168,6 +2168,40 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             0,
             persistentStorageMetrics.Storage.EntryMaxCount->Get());
     }
+
+    Y_UNIT_TEST(ShouldNotWriteToCacheInDrainingMode)
+    {
+        TBootstrap b;
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.Cache.Drain();
+
+        auto future = b.WriteToCache(1, 1, "def");
+        UNIT_ASSERT(future.HasValue());
+        auto error = future.GetValue().GetError();
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <>
+void Out<NCloud::NFileStore::NFuse::EWriteBackCacheState>(
+    IOutputStream& out,
+    NCloud::NFileStore::NFuse::EWriteBackCacheState value)
+{
+    switch (value) {
+        case NCloud::NFileStore::NFuse::EWriteBackCacheState::Normal:
+            out << "Normal";
+            break;
+        case NCloud::NFileStore::NFuse::EWriteBackCacheState::Draining:
+            out << "Draining";
+            break;
+        case NCloud::NFileStore::NFuse::EWriteBackCacheState::Drained:
+            out << "Drained";
+            break;
+    }
+}
