@@ -1,5 +1,48 @@
 .git
 
+# Ignore all
+cloud/disk_manager/**
+cloud/tasks/**
+cloud/blockstore/**
+cloud/filestore/**
+cloud/storage/**
+
+# Unignore all with extensions
+!*.*
+# Unignore all dirs
+!*/
+# Allow docker files
+!Dockerfile
+# nginx default conf
+!default
+!LICENSE
+!crontab
+# id_rsa key used for testing vm created localy during the test
+!id_rsa
+
+!README
+!gradlew
+!conf
+!makefile
+!ya
+!run_testpack
+
+# Ignore all img files except for test images
+*.img
+!./cloud/disk_manager/test/images/recipe/data/vmdk.img
+!./cloud/disk_manager/test/images/recipe/data/vmdk_stream_optimized.img
+!./cloud/disk_manager/test/images/recipe/data/qcow2.img
+!./cloud/disk_manager/test/images/recipe/data/vhd_dynamic.img
+!./cloud/disk_manager/test/images/recipe/data/vhd_raw.img
+!./cloud/disk_manager/test/images/recipe/data/raw.img
+!./cloud/disk_manager/test/images/recipe/data/qcow2_other.img
+
+# debian package built during tests
+*.deb
+
+# logs
+*.log
+
 # build system generated files
 cmake-build-debug-system/*
 cmake-build-debug/*
