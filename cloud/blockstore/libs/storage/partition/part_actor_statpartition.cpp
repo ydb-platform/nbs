@@ -103,6 +103,12 @@ void TPartitionActor::HandleStatPartition(
     response->Record.MutableStats()->SetTrimFreshLogToCommitId(
         State->GetTrimFreshLogToCommitId());
 
+    response->Record.MutableStats()->SetBlobsProcessedDuringCompaction(
+        State->GetBlobsProcessedDuringCompaction());
+
+    response->Record.MutableStats()->SetBlockMaskReadDuringCompaction(
+        State->GetBlockMaskReadDuringCompaction());
+
     LWTRACK(
         ResponseSent_Partition,
         requestInfo->CallContext->LWOrbit,

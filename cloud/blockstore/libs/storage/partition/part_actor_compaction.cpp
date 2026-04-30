@@ -662,7 +662,11 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blockIndices.emplace_back(blockIndex);
                 }
             }
-            mixedBlobs.emplace_back(blobId, std::move(blockIndices), blockChecksums);
+            mixedBlobs.emplace_back(
+                blobId,
+                std::move(blockIndices),
+                blockChecksums,
+                0);   // unknown blob alignment
             mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else {
             LOG_ERROR(
@@ -1072,18 +1076,22 @@ STFUNC(TCompactionActor::StateWork)
 class TCompactionBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
     , public IBlobsVisitor
 {
 private:
     TTxPartition::TRangeCompaction& Args;
     const ui64 MaxCommitId;
+    const TCompactionMap& CompactionMap;
 
 public:
     TCompactionBlockVisitor(
             TTxPartition::TRangeCompaction& args,
-            ui64 maxCommitId)
+            ui64 maxCommitId,
+            const TCompactionMap& compactionMap)
         : Args(args)
         , MaxCommitId(maxCommitId)
+        , CompactionMap(compactionMap)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -1116,10 +1124,34 @@ public:
         return true;
     }
 
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        if (commitId > MaxCommitId) {
+            return true;
+        }
+
+        auto& ab = Args.AffectedBlobs[blobId];
+        ab.CompactionRangeCount = compactionRangeCount;
+
+        Args.MarkBlock(
+            blockIndex,
+            commitId,
+            blobId,
+            blobOffset,
+            KeepTrackOfAffectedBlocks);
+        return true;
+    }
+
     bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
-        ab.BlobRangeHint = blockRange;
+        ab.CompactionRangeCount = CompactionMap.GetRangeIndex(blockRange.End) -
+            CompactionMap.GetRangeIndex(blockRange.Start) + 1;
         return true;
     }
 };
@@ -1784,7 +1816,7 @@ void PrepareRangeCompaction(
     TTxPartition::TRangeCompaction& args,
     const TString& logTitle)
 {
-    TCompactionBlockVisitor visitor(args, commitId);
+    TCompactionBlockVisitor visitor(args, commitId, state.GetCompactionMap());
     state.FindFreshBlocks(visitor, args.BlockRange, commitId);
     visitor.KeepTrackOfAffectedBlocks = true;
     ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);
@@ -1894,12 +1926,16 @@ void PrepareRangeCompaction(
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
-        const bool compactRangeContainsBlob =
-            args.BlockRange.Contains(kv.second.BlobRangeHint);
+        state.IncrementBlobsProcessedDuringCompaction();
 
-        if (!compactRangeContainsBlob ||
+        const bool blobOnlyInOneCompactRange =
+            kv.second.CompactionRangeCount == 1;
+
+        if (!blobOnlyInOneCompactRange ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
+            state.IncrementBlockMaskReadDuringCompaction();
+
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
                 STORAGE_VERIFY_C(
                     kv.second.BlockMask.Defined(),
