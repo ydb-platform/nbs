@@ -54,6 +54,8 @@ message TFileSystem
     bool StrictFileSystemSizeEnforcementEnabled = 19;
     bool Frozen = 20;
     bool ForceDirectoryCreationInShards = 21;
+
+    repeated string FileShardFileSystemIds = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

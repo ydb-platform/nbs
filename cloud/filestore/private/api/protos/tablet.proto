@@ -679,6 +679,10 @@ message TConfigureShardsRequest
     // If DirectoryCreationInShardsEnabled is true, forces directory creation
     // in shards even if main tablet has already created some nodes.
     bool ForceDirectoryCreationInShards = 6;
+
+    // Shard FileSystem identifiers for regular files. If empty, then
+    // ShardFileSystemIds will be used for regular files.
+    repeated string FileShardFileSystemIds = 7;
 }
 
 message TConfigureShardsResponse
@@ -713,6 +717,13 @@ message TConfigureAsShardRequest
     // If DirectoryCreationInShardsEnabled is true, forces directory creation
     // in shards even if main tablet has already created some nodes.
     bool ForceDirectoryCreationInShards = 7;
+
+    // Shard FileSystem identifiers for regular files. If empty, then
+    // ShardFileSystemIds will be used for regular files.
+    repeated string FileShardFileSystemIds = 8;
+
+    // Override shard list validation.
+    bool Force = 9;
 }
 
 message TConfigureAsShardResponse
@@ -967,6 +978,9 @@ message TGetFileSystemTopologyResponse
     uint32 MaxShardCount = 6;
 
     bool ForceDirectoryCreationInShards = 7;
+
+    // Shard FileSystem identifiers for regular files.
+    repeated string FileShardFileSystemIds = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
