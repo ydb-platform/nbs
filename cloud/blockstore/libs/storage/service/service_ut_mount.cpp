@@ -6003,7 +6003,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         hiveDown = false;
 
-
         runtime.DispatchEvents(
             {.FinalEvents = {TEvServicePrivate::EvMountRequestProcessed}});
 
