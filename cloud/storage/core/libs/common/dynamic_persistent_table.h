@@ -575,6 +575,10 @@ private:
             FinishMoveHeadToTail();
         }
 
+        if (movedBytes > expansionBytes) {
+            GapSpaceSize += movedBytes - expansionBytes;
+        }
+
         std::memset(&DescriptorsPtr[MaxRecords], 0, expansionBytes);
 
         HeaderPtr->MaxRecords = targetMaxRecords;
