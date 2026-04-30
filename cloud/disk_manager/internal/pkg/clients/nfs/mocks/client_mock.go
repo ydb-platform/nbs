@@ -116,6 +116,7 @@ func (c *ClientMock) UnsafeCreateNode(
 	filesystemID string,
 	node nfs.Node,
 ) error {
+
 	args := c.Called(ctx, filesystemID, node)
 	return args.Error(0)
 }
@@ -129,6 +130,7 @@ func (c *ClientMock) UnsafeCreateNodeRef(
 	shardID string,
 	shardNodeName string,
 ) error {
+
 	args := c.Called(
 		ctx,
 		filesystemID,
@@ -146,6 +148,7 @@ func (c *ClientMock) ConfigureAsShard(
 	filesystemID string,
 	params nfs.ConfigureAsShardParams,
 ) error {
+
 	args := c.Called(ctx, filesystemID, params)
 	return args.Error(0)
 }
@@ -155,6 +158,7 @@ func (c *ClientMock) ConfigureShards(
 	filesystemID string,
 	params nfs.ConfigureShardsParams,
 ) error {
+
 	args := c.Called(ctx, filesystemID, params)
 	return args.Error(0)
 }

@@ -413,6 +413,7 @@ func (c *client) executeAction(
 	request proto.Message,
 	response proto.Message,
 ) error {
+
 	input, err := new(jsonpb.Marshaler).MarshalToString(request)
 	if err != nil {
 		return errors.NewNonRetriableErrorf(
