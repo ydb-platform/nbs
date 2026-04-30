@@ -937,7 +937,6 @@ private:
     NProto::TBlockStoreDataService::AsyncService DataService;
 
     TVector<std::unique_ptr<TExecutor>> Executors;
-    std::shared_ptr<grpc::experimental::CertificateProviderInterface> CertificateProvider;
 
     std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
 

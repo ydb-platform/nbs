@@ -1532,7 +1532,6 @@ private:
     std::unique_ptr<grpc::Server> Server;
     TAdaptiveLock ExecutorsLock;
     TVector<std::unique_ptr<TExecutor>> Executors;
-    std::shared_ptr<grpc::experimental::CertificateProviderInterface> CertificateProvider;
 
     std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
 
