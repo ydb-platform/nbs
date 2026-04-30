@@ -89,7 +89,7 @@ sequenceDiagram
         participant VolumeBalancer
         participant Service
         participant VolumeSession
-        participant GentlePreemptionRequestActor
+        participant GentlePreemptionActor
         participant MountRequestActor
         participant AddClientActor
         participant StartVolumeActor
@@ -120,8 +120,8 @@ sequenceDiagram
     SS -->> MountRequestActor: TEvDescribeVolumeResponse
     MountRequestActor ->>+ AddClientActor: Register Actor
     AddClientActor -->>- MountRequestActor: TEvAddClientResponse
-    MountRequestActor ->>+ GentlePreemptionRequestActor: Register Actor
-    GentlePreemptionRequestActor ->> VolumeSession: TEvReleaseVolumeToHiveRequest
+    MountRequestActor ->>+ GentlePreemptionActor: Register Actor
+    GentlePreemptionActor ->> VolumeSession: TEvReleaseVolumeToHiveRequest
     VolumeSession ->> Hive: TEvUnlockTabletRequest
     Note over Hive: Hive dependency
     Hive -->> VolumeSession: TEvUnlockTabletResponse
@@ -132,8 +132,8 @@ sequenceDiagram
     Volume ->>- StartVolumeActor: TEvTabletDead
     StartVolumeActor ->> StartVolumeActor: Shutdown
     StartVolumeActor ->>- VolumeSession: TEvStartVolumeActorStopped
-    VolumeSession -->> GentlePreemptionRequestActor: TEvReleaseVolumeToHiveResponse
-    GentlePreemptionRequestActor -->>- MountRequestActor: TEvGentlePreemptionRequestProcessed
+    VolumeSession -->> GentlePreemptionActor: TEvReleaseVolumeToHiveResponse
+    GentlePreemptionActor -->>- MountRequestActor: TEvGentlePreemptionRequestProcessed
     MountRequestActor ->>+ WaitReadyActor: Register Actor
     WaitReadyActor ->> Volume_Remote: Ready?
     Volume_Remote ->> WaitReadyActor: Ready
@@ -158,7 +158,7 @@ Remote-to-local migration already uses safe operation order and is not changed:
 2. Boot volume tablet locally
 
 Both migration operations are wrapped into timed retry-on-error loops inside of
-GentlePreemptionRequestActor,
+GentlePreemptionActor,
 which helps to contain inconsistencies inside a mount request and keep client
 session up
 

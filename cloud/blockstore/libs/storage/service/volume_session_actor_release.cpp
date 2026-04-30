@@ -21,7 +21,7 @@ void TVolumeSessionActor::HandleReleaseVolumeToHiveRequest(
                     S_ALREADY,
                     TStringBuilder()
                         << "Volume " << diskId << " is not running locally"));
-        LOG_DEBUG(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
             "%s %s",
@@ -38,7 +38,7 @@ void TVolumeSessionActor::HandleReleaseVolumeToHiveRequest(
                     E_INVALID_STATE,
                     TStringBuilder()
                         << "Volume " << diskId << " is not is running state"));
-        LOG_DEBUG(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
             "%s %s",
@@ -81,14 +81,6 @@ void TVolumeSessionActor::HandleUnlockTabletResponse(
             VolumeRequestInfo = {};
             CurrentRequest = NONE;
             return;
-        }
-
-        if (error.GetCode() == S_ALREADY) {
-            auto response = std::make_unique<
-                TEvServicePrivate::TEvReleaseVolumeToHiveResponse>(msg->Error);
-            NCloud::Reply(ctx, *VolumeRequestInfo, std::move(response));
-            VolumeRequestInfo = {};
-            CurrentRequest = NONE;
         }
 
         LOG_INFO(
