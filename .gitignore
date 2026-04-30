@@ -106,6 +106,7 @@ compile_commands.json
 *.pb.h
 *.pb.cc
 *.pb.go
+*.pb.gw.go
 *.pb.h_serialized.cpp
 *_pb2.py
 *_pb2_grpc.py
@@ -148,6 +149,7 @@ test-results
 /.vscode/*
 /*.code-workspace
 /*.code-workspace.bak
+.codex
 
 # act files
 .input
@@ -162,3 +164,8 @@ contrib/ydb/library/yql/public/udf/tz/gen/tz_gen
 
 # env files
 .env
+
+# QEMU recipe files
+cloud/storage/core/tools/testing/qemu/bin/usr/**
+
+
