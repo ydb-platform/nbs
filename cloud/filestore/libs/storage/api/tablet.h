@@ -46,6 +46,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ConfigureAsShard,           __VA_ARGS__)                               \
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
     xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
+    xxx(ListNodesInternal,          __VA_ARGS__)                               \
     xxx(WriteCompactionMap,         __VA_ARGS__)                               \
     xxx(ForcedOperationStatus,      __VA_ARGS__)                               \
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
@@ -200,6 +201,9 @@ struct TEvIndexTablet
 
         EvUnsafeChangeTabletStateRequest = EvBegin + 81,
         EvUnsafeChangeTabletStateResponse,
+
+        EvListNodesInternalRequest = EvBegin + 83,
+        EvListNodesInternalResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out

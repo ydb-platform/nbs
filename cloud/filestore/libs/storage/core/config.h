@@ -180,6 +180,7 @@ public:
     ui32 GetMaxResponseEntries() const;
     ui32 GetMaxBytesMultiplier() const;
     NProto::EListNodesSizeMode GetListNodesSizeMode() const;
+    bool GetUseListNodesInternal() const;
 
     ui32 GetDefaultNodesLimit() const;
     ui32 GetSizeToNodesRatio() const;

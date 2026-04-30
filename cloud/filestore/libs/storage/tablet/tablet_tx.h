@@ -1473,6 +1473,7 @@ struct TTxIndexTablet
         const TString Cookie;
         const ui32 MaxBytes;
         const ui32 MaxBytesMultiplier;
+        const bool ReplyInternal;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
@@ -1487,7 +1488,8 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 const NProto::TListNodesRequest& request,
                 ui32 maxBytes,
-                ui32 maxBytesMultiplier)
+                ui32 maxBytesMultiplier,
+                bool replyInternal)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1495,6 +1497,7 @@ struct TTxIndexTablet
             , Cookie(request.GetCookie())
             , MaxBytes(maxBytes)
             , MaxBytesMultiplier(maxBytesMultiplier)
+            , ReplyInternal(replyInternal)
             , BytesToPrecharge(MaxBytes)
         {}
 
