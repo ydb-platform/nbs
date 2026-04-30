@@ -1,7 +1,7 @@
 LIBRARY()
 
 SRCS(
-    device_health_check_actor.cpp
+    device_integrity_check_actor.cpp
     direct_copy_actor.cpp
     io_request_parser.cpp
     multi_agent_write_device_blocks_actor.cpp
@@ -10,6 +10,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/protos

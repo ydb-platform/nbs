@@ -1,8 +1,10 @@
-#include "device_health_check_actor.h"
+#include "device_integrity_check_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -10,6 +12,8 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/datetime/base.h>
+#include <util/folder/path.h>
+#include <util/generic/hash.h>
 #include <util/generic/vector.h>
 #include <util/random/fast.h>
 
@@ -20,6 +24,14 @@ using namespace NActors;
 namespace NCloud::NBlockStore::NStorage::NDiskAgent {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EWakeupTag
+{
+    HealthCheck = 1,
+    SymlinkCheck,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,30 +58,32 @@ EDeviceHealthStatus GetHealthStatus(EWellKnownResultCodes code)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceHealthCheckActor
-    : public TActorBootstrapped<TDeviceHealthCheckActor>
+class TDeviceIntegrityCheckActor
+    : public TActorBootstrapped<TDeviceIntegrityCheckActor>
 {
 private:
     const TActorId DiskAgent;
     const TVector<NProto::TDeviceConfig> Devices;
     const TDuration HealthCheckDelay;
+    const TDuration SymlinkCheckInterval;
 
     TVector<EDeviceHealthStatus> DevicesHealth;
+    THashMap<TString, TString> SymlinkSnapshot;
     std::optional<TFastRng<ui64>> Rng;
 
     int PendingRequests = 0;
 
 public:
-    TDeviceHealthCheckActor(
+    TDeviceIntegrityCheckActor(
         const TActorId& diskAgent,
         TVector<NProto::TDeviceConfig> devices,
-        TDuration healthCheckDelay);
+        TDeviceIntegrityCheckParams params);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ScheduleHealthCheck(const TActorContext& ctx);
     void CheckDevicesHealth(const TActorContext& ctx);
+    void CheckSymlinks();
 
 private:
     STFUNC(StateWork);
@@ -89,40 +103,63 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDeviceHealthCheckActor::TDeviceHealthCheckActor(
-        const TActorId& diskAgent,
-        TVector<NProto::TDeviceConfig> devices,
-        TDuration healthCheckDelay)
+TDeviceIntegrityCheckActor::TDeviceIntegrityCheckActor(
+    const TActorId& diskAgent,
+    TVector<NProto::TDeviceConfig> devices,
+    TDeviceIntegrityCheckParams params)
     : DiskAgent{diskAgent}
     , Devices(std::move(devices))
-    , HealthCheckDelay(healthCheckDelay)
+    , HealthCheckDelay(params.HealthCheckInterval)
+    , SymlinkCheckInterval(params.SymlinkCheckInterval)
     , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
 {}
 
-void TDeviceHealthCheckActor::Bootstrap(const TActorContext& ctx)
+void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
 {
     Rng.emplace(ctx.Now().GetValue());
 
+    for (const auto& device: Devices) {
+        TFsPath path(device.GetDeviceName());
+        if (path.IsSymlink()) {
+            SymlinkSnapshot.emplace(
+                device.GetDeviceName(),
+                path.ReadLink().GetPath());
+        }
+    }
+
     Become(&TThis::StateWork);
-    ScheduleHealthCheck(ctx);
+    ctx.Schedule(
+        HealthCheckDelay,
+        new TEvents::TEvWakeup(EWakeupTag::HealthCheck));
+    ctx.Schedule(
+        SymlinkCheckInterval,
+        new TEvents::TEvWakeup(EWakeupTag::SymlinkCheck));
 
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT_WORKER,
-        "Device Health Check Actor started. Devices: " << Devices.size());
+        "Device Integrity Check Actor started. Devices: " << Devices.size());
 }
 
-void TDeviceHealthCheckActor::ScheduleHealthCheck(const TActorContext& ctx)
+void TDeviceIntegrityCheckActor::CheckSymlinks()
 {
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::DISK_AGENT_WORKER,
-        "Schedule health check");
-
-    ctx.Schedule(HealthCheckDelay, new TEvents::TEvWakeup());
+    for (const auto& [configPath, expected]: SymlinkSnapshot) {
+        TString current;
+        TFsPath path(configPath);
+        if (path.IsSymlink()) {
+            current = path.ReadLink().GetPath();
+        }
+        if (current != expected) {
+            ReportDiskAgentDeviceSymlinkMismatch(
+                "Partlabel may point to a different physical disk",
+                {{"path", configPath},
+                 {"expected", expected},
+                 {"actual", current}});
+        }
+    }
 }
 
-void TDeviceHealthCheckActor::CheckDevicesHealth(const TActorContext& ctx)
+void TDeviceIntegrityCheckActor::CheckDevicesHealth(const TActorContext& ctx)
 {
     for (size_t i = 0; i < Devices.size(); ++i) {
         const auto& device = Devices[i];
@@ -146,7 +183,7 @@ void TDeviceHealthCheckActor::CheckDevicesHealth(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDeviceHealthCheckActor::HandlePoisonPill(
+void TDeviceIntegrityCheckActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -155,16 +192,26 @@ void TDeviceHealthCheckActor::HandlePoisonPill(
     Die(ctx);
 }
 
-void TDeviceHealthCheckActor::HandleWakeup(
+void TDeviceIntegrityCheckActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    CheckDevicesHealth(ctx);
+    switch (ev->Get()->Tag) {
+        case EWakeupTag::HealthCheck:
+            CheckDevicesHealth(ctx);
+            break;
+        case EWakeupTag::SymlinkCheck:
+            CheckSymlinks();
+            ctx.Schedule(
+                SymlinkCheckInterval,
+                new TEvents::TEvWakeup(EWakeupTag::SymlinkCheck));
+            break;
+        default:
+            break;
+    }
 }
 
-void TDeviceHealthCheckActor::HandleReadDeviceBlocksResponse(
+void TDeviceIntegrityCheckActor::HandleReadDeviceBlocksResponse(
     const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -229,11 +276,13 @@ void TDeviceHealthCheckActor::HandleReadDeviceBlocksResponse(
     }
 
     if (--PendingRequests == 0) {
-        ScheduleHealthCheck(ctx);
+        ctx.Schedule(
+            HealthCheckDelay,
+            new TEvents::TEvWakeup(EWakeupTag::HealthCheck));
     }
 }
 
-STFUNC(TDeviceHealthCheckActor::StateWork)
+STFUNC(TDeviceIntegrityCheckActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -254,15 +303,15 @@ STFUNC(TDeviceHealthCheckActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IActor> CreateDeviceHealthCheckActor(
+std::unique_ptr<IActor> CreateDeviceIntegrityCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
-    TDuration healthCheckDelay)
+    TDeviceIntegrityCheckParams params)
 {
-    return std::make_unique<TDeviceHealthCheckActor>(
+    return std::make_unique<TDeviceIntegrityCheckActor>(
         diskAgent,
         std::move(devices),
-        healthCheckDelay);
+        params);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent
