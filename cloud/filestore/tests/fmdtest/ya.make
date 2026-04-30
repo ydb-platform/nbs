@@ -8,6 +8,7 @@ TEST_SRCS(
 )
 
 DEPENDS(
+    cloud/filestore/apps/client
     cloud/filestore/tools/testing/fmdtest/bin
 )
 

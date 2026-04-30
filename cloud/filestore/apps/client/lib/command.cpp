@@ -430,6 +430,7 @@ NProto::TNodeAttr TFileStoreCommand::ResolveNode(
     }
 
     auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
+    request->MutableHeaders()->SetDisableMultiTabletForwarding(false);
     request->SetNodeId(parentNodeId);
     request->SetName(std::move(name));
 

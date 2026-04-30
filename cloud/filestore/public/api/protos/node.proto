@@ -66,9 +66,9 @@ message TNodeAttr
 
     // Shard FS id. Set if this node is actually located in the shard FS.
     // ATime, MTime, CTime and Size are stored in the shard FS.
-    string ShardFileSystemId = 11;
+    bytes ShardFileSystemId = 11;
     // Node name in the shard FS.
-    string ShardNodeName = 12;
+    bytes ShardNodeName = 12;
 
     uint64 DevId = 13;
 }
