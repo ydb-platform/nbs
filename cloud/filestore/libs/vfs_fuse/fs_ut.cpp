@@ -303,6 +303,12 @@ struct TBootstrap
     {
         auto stop = StopAsync();
         StopTriggered.TrySetValue();
+
+        auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
+        if (testScheduler) {
+            testScheduler->RunAllScheduledTasks();
+        }
+
         UNIT_ASSERT(stop.Wait(WaitTimeout));
 
         if (Scheduler) {
@@ -4797,42 +4803,22 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handleId = 456;
 
         auto writeDataCalled = NewPromise();
+        auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
 
-        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+        bootstrap.Service->WriteDataHandler = [&](auto callContext, auto)
+        {
             // The callback is expected to be called in the scheduler thread
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             writeDataCalled.SetValue();
 
-            auto counter = bootstrap.Counters
-                ->FindSubgroup("component", "fs_ut_fs")
-                ->FindSubgroup("host", "cluster")
-                ->FindSubgroup("filesystem", FileSystemId)
-                ->FindSubgroup("client", "")
-                ->FindSubgroup("cloud", "")
-                ->FindSubgroup("folder", "")
-                ->FindSubgroup("module", "WriteBackCache")
-                ->GetCounter("FlushAllRequests_InProgressCount");
-
-            // Automatic flush does not create a request internally
-            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
-
-            // Wait until Stop is called and FlushAll is triggered
-            // because of cache non-emptiness at session destroy
-            UNIT_ASSERT(WaitForCondition(
-                WaitTimeout,
-                [&]
-                {
-                    // We block scheduler thread so counters will not be updated
-                    // automatically - need to call UpdateStats manually
-                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                    return counter->GetAtomic() > 0;
-                }));
-
-            return MakeFuture<NProto::TWriteDataResponse>({});
+            // Promise will be completed on a scheduler thread when FlushAll is
+            // triggered in session destroy handler
+            return writeDataPromise.GetFuture();
         };
 
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
         };
 
@@ -4849,6 +4835,37 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Wait until automatic flush is called
         UNIT_ASSERT_NO_EXCEPTION(
             writeDataCalled.GetFuture().GetValue(WaitTimeout));
+
+        auto counter = bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
+                           ->FindSubgroup("host", "cluster")
+                           ->FindSubgroup("filesystem", FileSystemId)
+                           ->FindSubgroup("client", "")
+                           ->FindSubgroup("cloud", "")
+                           ->FindSubgroup("folder", "")
+                           ->FindSubgroup("module", "WriteBackCache")
+                           ->GetCounter("FlushAllRequests_InProgressCount");
+
+        // Automatic flush does not create a request internally
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+        auto stopFuture = bootstrap.StopAsync();
+
+        // Wait until FlushAll is triggered in session destroy handler
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]
+            {
+                // Stats are updated automatically with 1-second interval
+                // Update it manually to speed up the test
+                bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                return counter->GetAtomic() > 0;
+            }));
+
+        bootstrap.Scheduler->Schedule(
+            TInstant::Zero(),
+            [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
+
+        UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 }
 
