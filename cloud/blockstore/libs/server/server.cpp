@@ -964,6 +964,7 @@ private:
     void StartRequest(TService& service);
     void StartRequests();
 
+    std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials();
     grpc::SslServerCredentialsOptions CreateSslOptions();
 
     void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog);
@@ -1062,8 +1063,7 @@ void TServer::Start()
         auto address = Join(":", host, port);
         STORAGE_INFO("Listen on (secure control) " << address);
 
-        auto sslOptions = CreateSslOptions();
-        auto credentials = grpc::SslServerCredentials(sslOptions);
+        auto credentials = CreateSecureServerCredentials();
         credentials->SetAuthMetadataProcessor(
             std::make_shared<TAuthMetadataProcessor>(
                 RequestSourceKinds,
@@ -1124,20 +1124,7 @@ grpc::SslServerCredentialsOptions TServer::CreateSslOptions()
         sslOptions.pem_root_certs = ReadFile(rootCertsFile);
     }
 
-    if (Config->GetCerts().empty()) {
-        // TODO: Remove, when old CertFile, CertPrivateKeyFile options are gone.
-        grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-
-        Y_ENSURE(Config->GetCertFile(), "Empty CertFile");
-        keyCert.cert_chain = ReadFile(Config->GetCertFile());
-
-        Y_ENSURE(Config->GetCertPrivateKeyFile(), "Empty CertPrivateKeyFile");
-        keyCert.private_key = ReadFile(Config->GetCertPrivateKeyFile());
-
-        sslOptions.pem_key_cert_pairs.push_back(keyCert);
-    }
-
-    for (const auto& cert: Config->GetCerts()) {
+    for (const auto& cert: Config->GetCertsWithLegacyFallback()) {
         grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
 
         Y_ENSURE(cert.CertFile, "Empty CertFile");
@@ -1150,6 +1137,37 @@ grpc::SslServerCredentialsOptions TServer::CreateSslOptions()
     }
 
     return sslOptions;
+}
+
+std::shared_ptr<grpc::ServerCredentials> TServer::CreateSecureServerCredentials()
+{
+    auto provider = GetCertificateRefresher()->GetCertificateProvider();
+
+    if (!provider) {
+        auto sslOptions = CreateSslOptions();
+        return grpc::SslServerCredentials(sslOptions);
+    }
+
+    TVector<NCloud::TCertificateFiles> certPathList;
+    for (const auto& cert: Config->GetCertsWithLegacyFallback()) {
+        Y_ENSURE(cert.CertFile, "Empty CertFile");
+        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+
+        NCloud::TCertificateFiles certPaths;
+        certPaths.PrivateKeyPath = cert.CertPrivateKeyFile;
+        certPaths.CertChainPath = cert.CertFile;
+        certPathList.push_back(std::move(certPaths));
+    }
+
+    grpc::experimental::TlsServerCredentialsOptions tlsOptions(std::move(provider));
+    tlsOptions.set_cert_request_type(GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
+    tlsOptions.watch_identity_key_cert_pairs();
+
+    if (Config->GetRootCertsFile()) {
+        tlsOptions.watch_root_certs();
+    }
+
+    return grpc::experimental::TlsServerCredentials(tlsOptions);
 }
 
 void TServer::StartListenUnixSocket(

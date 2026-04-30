@@ -47,6 +47,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -329,6 +330,30 @@ void TBootstrapVhost::InitComponents()
 
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
+
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        TVector<TCertificateFiles> certPathList;
+        for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+            Y_ENSURE(cert.CertFile, "Empty CertFile");
+            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+            certPathList.push_back({
+                cert.CertPrivateKeyFile,
+                cert.CertFile
+            });
+        }
+
+        if (!certPathList.empty()) {
+            CertificateRefresher = GetCertificateRefresher();
+            CertificateRefresher->Init(
+                Logging,
+                "FILESTORE_TLS_CERTIFICATE_PROVIDER",
+                serverCounters,
+                Configs->ServerConfig->GetRootCertsFile(),
+                std::move(certPathList),
+                Configs->ServerConfig->GetRefreshCertsPeriod());
+            CertificateProvider = CertificateRefresher->GetCertificateProvider();
+        }
+    }
 
     Server = CreateServer(
         Configs->ServerConfig,

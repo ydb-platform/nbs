@@ -61,6 +61,7 @@ public:
     bool GetSharedMemoryTransportEnabled() const;
     TString GetSharedMemoryBasePath() const;
     TDuration GetSharedMemoryRegionTimeout() const;
+    TDuration GetRefreshCertsPeriod() const;
 
     const NProto::TServerConfig& GetProto() const
     {

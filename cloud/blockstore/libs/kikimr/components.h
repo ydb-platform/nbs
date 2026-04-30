@@ -61,6 +61,7 @@ namespace NCloud::NBlockStore {
     BLOCKSTORE_ACTORS(xxx)                                                     \
     xxx(USER_STATS)                                                            \
     xxx(CELLS)                                                                 \
+    xxx(TLS_CERTIFICATE_PROVIDER)                                              \
 // BLOCKSTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////

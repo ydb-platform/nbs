@@ -72,6 +72,7 @@ public:
     TString GetCertFile() const;
     TString GetCertPrivateKeyFile() const;
     TVector<TCertificate> GetCerts() const;
+    TVector<TCertificate> GetCertsWithLegacyFallback() const;
     bool GetKeepAliveEnabled() const;
     TDuration GetKeepAliveIdleTimeout() const;
     TDuration GetKeepAliveProbeTimeout() const;
@@ -148,6 +149,7 @@ public:
     bool GetAutomaticNbdDeviceManagement() const;
     bool GetEnableOverlappingRequestsGuard() const;
     bool GetEnableRequestSplitter() const;
+    TDuration GetRefreshCertsPeriod() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
