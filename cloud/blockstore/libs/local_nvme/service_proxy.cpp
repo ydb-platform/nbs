@@ -72,6 +72,9 @@ public:
                     if (src.HasIOMMUGroup()) {
                         dst->SetIOMMUGroup(src.GetIOMMUGroup());
                     }
+                    if (src.HasVfioDevName()) {
+                        dst->SetVfioDevName(src.GetVfioDevName());
+                    }
                 }
 
                 return response;

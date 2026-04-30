@@ -25,6 +25,9 @@ message TNVMeDevice
 
     // Model of NVMe.
     string Model = 6;
+
+    // vfio device name.
+    optional string VfioDevName = 7;
 }
 
 // List of NVMe devices.
