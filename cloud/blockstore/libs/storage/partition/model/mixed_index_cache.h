@@ -18,38 +18,38 @@ struct TMixedBlock
     ui64 CommitId;
     ui32 BlockIndex;
     ui16 BlobOffset;
-    ui8 CompactionRangeCountOverlapped;
+    ui8 CompactionRangeCount;
 
     TMixedBlock(
             TPartialBlobId blobId,
             ui64 commitId,
             ui32 blockIndex,
             ui16 blobOffset,
-            ui8 compactionRangeCountOverlapped)
+            ui8 compactionRangeCount)
         : BlobId(blobId)
         , CommitId(commitId)
         , BlockIndex(blockIndex)
         , BlobOffset(blobOffset)
-        , CompactionRangeCountOverlapped(compactionRangeCountOverlapped)
+        , CompactionRangeCount(compactionRangeCount)
     {}
 
     bool operator==(const TMixedBlock& other) const
     {
         return BlockIndex == other.BlockIndex && CommitId == other.CommitId &&
                BlobId == other.BlobId && BlobOffset == other.BlobOffset &&
-               CompactionRangeCountOverlapped ==
-                   other.CompactionRangeCountOverlapped;
+               CompactionRangeCount ==
+                   other.CompactionRangeCount;
     }
 };
 
 static_assert(sizeof(TMixedBlock) == 32);
 
-// BlobOffset and CompactionRangeCountOverlapped are stored in a single 32-bit
+// BlobOffset and CompactionRangeCount are stored in a single 32-bit
 // integer in the local database.
 static_assert(sizeof(TMixedBlock::BlobOffset) == 2);
-static_assert(sizeof(TMixedBlock::CompactionRangeCountOverlapped) == 1);
+static_assert(sizeof(TMixedBlock::CompactionRangeCount) == 1);
 static_assert(
-    sizeof(TMixedBlock::CompactionRangeCountOverlapped) +
+    sizeof(TMixedBlock::CompactionRangeCount) +
         sizeof(TMixedBlock::BlobOffset) <=
     4);
 

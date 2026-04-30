@@ -59,7 +59,7 @@ struct TTestBlockVisitor final
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui8 compactionRangeCountOverlapped) override
+        ui8 compactionRangeCount) override
     {
         Y_UNUSED(blobId);
         Y_UNUSED(blobOffset);
@@ -68,7 +68,7 @@ struct TTestBlockVisitor final
             Result << " ";
         }
         Result << "#" << blockIndex << ":" << CommitId2Str(commitId) << ":"
-               << ui32{compactionRangeCountOverlapped};
+               << ui32{compactionRangeCount};
         return true;
     }
 };

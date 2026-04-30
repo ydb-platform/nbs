@@ -1089,14 +1089,14 @@ public:
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui8 compactionRangeCountOverlapped) override
+        ui8 compactionRangeCount) override
     {
         if (commitId > MaxCommitId) {
             return true;
         }
 
         auto& ab = Args.AffectedBlobs[blobId];
-        ab.CompactionRangeCountOverlapped = compactionRangeCountOverlapped;
+        ab.CompactionRangeCount = compactionRangeCount;
 
         Args.MarkBlock(
             blockIndex,
@@ -1730,7 +1730,7 @@ void PrepareRangeCompaction(
         const bool compactRangeContainsBlob =
             args.BlockRange.Contains(kv.second.BlobRangeHint);
         const bool blobOnlyInOneCompactRange =
-            kv.second.CompactionRangeCountOverlapped == 1;
+            kv.second.CompactionRangeCount == 1;
 
         if ((!compactRangeContainsBlob && !blobOnlyInOneCompactRange) ||
             !readBlockMaskOnCompactionOptimizationEnabled)

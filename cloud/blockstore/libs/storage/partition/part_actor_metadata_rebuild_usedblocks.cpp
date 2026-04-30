@@ -58,10 +58,10 @@ public:
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui8 compactionRangeCountOverlapped) override
+        ui8 compactionRangeCount) override
     {
         Y_UNUSED(blobOffset);
-        Y_UNUSED(compactionRangeCountOverlapped);
+        Y_UNUSED(compactionRangeCount);
 
         OnBlock(blockIndex, commitId, !IsDeletionMarker(blobId));
 

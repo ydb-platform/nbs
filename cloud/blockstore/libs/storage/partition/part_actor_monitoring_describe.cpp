@@ -61,9 +61,9 @@ public:
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui8 compactionRangeCountOverlapped) override
+        ui8 compactionRangeCount) override
     {
-        Y_UNUSED(compactionRangeCountOverlapped);
+        Y_UNUSED(compactionRangeCount);
 
         Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
         return true;

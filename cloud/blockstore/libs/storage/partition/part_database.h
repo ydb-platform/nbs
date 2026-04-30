@@ -72,7 +72,7 @@ public:
     void WriteMixedBlocks(
         const TPartialBlobId& blobId,
         const TVector<ui32>& blocks,
-        ui8 compactionRangeCountOverlapped);
+        ui8 compactionRangeCount);
 
     void DeleteMixedBlock(ui32 blockIndex, ui64 commitId);
 
