@@ -51,6 +51,7 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadFollowers(args.FollowerDisks),
         db.ReadLeaders(args.LeaderDisks),
+        db.ReadBrokenDevices(args.BrokenDevices),
     };
 
     if (args.Meta) {
@@ -161,6 +162,10 @@ void TVolumeActor::CompleteLoadState(
             {
                 CopyCachedStatsToPartCounters(partStats.Stats, *info);
             }
+        }
+
+        for (const auto& info: args.BrokenDevices) {
+            DeviceUUIDToBrokenAt[info.DeviceUUID] = info.BrokenTs;
         }
 
         Y_ABORT_UNLESS(CurrentState == STATE_INIT);

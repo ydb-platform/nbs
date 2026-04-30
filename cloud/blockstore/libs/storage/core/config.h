@@ -473,6 +473,7 @@ public:
     TDuration GetDeletedCheckpointHistoryLifetime() const;
     bool GetNonReplicatedMigrationStartAllowed() const;
     bool GetNonReplicatedVolumeMigrationDisabled() const;
+    [[nodiscard]] bool GetVolumeHealthNotificationEnabled() const;
     ui32 GetMigrationIndexCachingInterval() const;
     ui32 GetMaxMigrationBandwidth() const;
     ui32 GetMaxMigrationIoDepth() const;
