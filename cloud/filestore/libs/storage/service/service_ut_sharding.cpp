@@ -1706,8 +1706,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        const auto shard3Id = fsConfig.FsId + "-f3";
-        service.CreateFileStore(shard3Id, 1'000);
+        const auto shard3Id = fsConfig.FsId + "_s3";
+        service.CreateFileStore(shard3Id, fsConfig.ShardBlockCount - 1);
 
         // ShardNo change not allowed
         {

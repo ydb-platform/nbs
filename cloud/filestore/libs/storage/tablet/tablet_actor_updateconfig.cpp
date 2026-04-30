@@ -150,7 +150,7 @@ NProto::TError ValidateFileShardList(
         }
     }
 
-    if (shardIdSet.empty()) {
+    if (shardIdSet.empty() && !shardIds.empty()) {
         return MakeError(E_ARGUMENT, "non-file shard set is empty");
     }
 
