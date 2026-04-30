@@ -337,11 +337,14 @@ private:
 
     THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
 
-    struct THealthNotification {
+    struct THealthNotification
+    {
         NProto::EVolumeHealth Health = NProto::VOLUME_HEALTH_HEALTHY;
         ui64 SeqNo = 0;
     };
-    TDeque<THealthNotification> PendingHealthNotifications;
+
+    std::optional<THealthNotification> InFlightHealthNotification;
+    std::optional<THealthNotification> PendingHealthNotification;
     ui32 VolumeHealthLocalSeqNo = 0;
 
     TVolumeRequestMap VolumeRequests;

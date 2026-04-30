@@ -222,13 +222,19 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);
 
-        SendBrokenDeviceNotification(volume, "uuid-1");      // → UNHEALTHY
-        SendRecoveredDeviceNotification(volume, "uuid-1");   // → HEALTHY
-        SendBrokenDeviceNotification(volume, "uuid-1");      // → UNHEALTHY
+        SendBrokenDeviceNotification(
+            volume,
+            "uuid-1");   // → UNHEALTHY (in-flight)
+        SendRecoveredDeviceNotification(
+            volume,
+            "uuid-1");   // → HEALTHY (pending)
+        SendBrokenDeviceNotification(
+            volume,
+            "uuid-1");   // → UNHEALTHY (overwrites pending)
 
         runtime->DispatchEvents({}, 1s);
 
-        UNIT_ASSERT_VALUES_EQUAL(3, state->UpdateVolumeHealthRequests);
+        UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
             NProto::VOLUME_HEALTH_UNHEALTHY,
             state->LastVolumeHealth);

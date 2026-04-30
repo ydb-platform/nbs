@@ -58,9 +58,11 @@ void TVolumeActor::EnqueueVolumeHealthNotification(
     const ui64 seqNo = (static_cast<ui64>(Executor()->Generation()) << 32) |
                        (++VolumeHealthLocalSeqNo);
     THealthNotification notification{health, seqNo};
-    PendingHealthNotifications.push_back(notification);
-    if (PendingHealthNotifications.size() == 1) {
+    if (!InFlightHealthNotification) {
+        InFlightHealthNotification = notification;
         SendVolumeHealthNotification(ctx, notification);
+    } else {
+        PendingHealthNotification = notification;
     }
 }
 
@@ -176,7 +178,7 @@ void TVolumeActor::HandleUpdateVolumeHealthResponse(
     const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(!PendingHealthNotifications.empty());
+    Y_ABORT_UNLESS(InFlightHealthNotification);
 
     const auto& error = ev->Get()->Record.GetError();
     if (HasError(error)) {
@@ -187,9 +189,7 @@ void TVolumeActor::HandleUpdateVolumeHealthResponse(
                 "%s UpdateVolumeHealth response error: %s, will retry",
                 LogTitle.GetWithTime().c_str(),
                 FormatError(error).c_str());
-            SendVolumeHealthNotification(
-                ctx,
-                PendingHealthNotifications.front());
+            SendVolumeHealthNotification(ctx, *InFlightHealthNotification);
             return;
         }
         LOG_ERROR(
@@ -200,9 +200,11 @@ void TVolumeActor::HandleUpdateVolumeHealthResponse(
             FormatError(error).c_str());
     }
 
-    PendingHealthNotifications.pop_front();
-    if (!PendingHealthNotifications.empty()) {
-        SendVolumeHealthNotification(ctx, PendingHealthNotifications.front());
+    InFlightHealthNotification.reset();
+    if (PendingHealthNotification) {
+        InFlightHealthNotification = *PendingHealthNotification;
+        PendingHealthNotification.reset();
+        SendVolumeHealthNotification(ctx, *InFlightHealthNotification);
     }
 }
 
