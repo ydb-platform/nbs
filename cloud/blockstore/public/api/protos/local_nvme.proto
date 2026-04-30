@@ -22,6 +22,9 @@ message TNVMeDeviceDesc
 
     // vfio device name.
     optional string VfioDevName = 4;
+
+    // NUMA node.
+    optional uint32 NumaNode = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
