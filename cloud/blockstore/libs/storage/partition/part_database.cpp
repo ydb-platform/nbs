@@ -61,6 +61,19 @@ ui16 ProcessCompactionCounter(ui32 value)
     return value > Max<ui16>() ? Max<ui16>() : value;
 }
 
+ui32 UnifyBlobOffsetAndCompactionRangeCountOverlapped(
+    ui16 blobOffset,
+    ui8 compactionRangeCountOverlapped)
+{
+    return ui32{compactionRangeCountOverlapped} << 16 | blobOffset;
+}
+
+std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCountOverlapped(
+    ui32 value)
+{
+    return {value & Max<ui16>(), value >> 16};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -161,23 +174,28 @@ void TPartitionDatabase::WriteMixedBlock(TMixedBlock block)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
+    const ui32 blobOffsetAndCompactionRangeCountOverlapped =
+        UnifyBlobOffsetAndCompactionRangeCountOverlapped(
+            block.BlobOffset,
+            block.CompactionRangeCountOverlapped);
+
     if (block.CommitId == block.BlobId.CommitId()) {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
-                NIceDb::TUpdate<TTable::CompactionRangeCountOverlapped>(
-                    block.CompactionRangeCountOverlapped));
+                NIceDb::TUpdate<
+                    TTable::BlobOffsetAndCompactionRangeCountOverlapped>(
+                    blobOffsetAndCompactionRangeCountOverlapped));
     } else {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobCommitId>(block.BlobId.CommitId()),
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
-                NIceDb::TUpdate<TTable::CompactionRangeCountOverlapped>(
-                    block.CompactionRangeCountOverlapped));
+                NIceDb::TUpdate<
+                    TTable::BlobOffsetAndCompactionRangeCountOverlapped>(
+                    blobOffsetAndCompactionRangeCountOverlapped));
     }
 }
 
@@ -190,13 +208,18 @@ void TPartitionDatabase::WriteMixedBlocks(
 
     ui16 blobOffset = 0;
     for (ui32 blockIndex: blocks) {
+        const ui32 blobOffsetAndCompactionRangeCountOverlapped =
+            UnifyBlobOffsetAndCompactionRangeCountOverlapped(
+                blobOffset,
+                compactionRangeCountOverlapped);
+
         Table<TTable>()
             .Key(blockIndex, ReverseCommitId(blobId.CommitId()))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(blobOffset),
-                NIceDb::TUpdate<TTable::CompactionRangeCountOverlapped>(
-                    compactionRangeCountOverlapped));
+                NIceDb::TUpdate<
+                    TTable::BlobOffsetAndCompactionRangeCountOverlapped>(
+                    blobOffsetAndCompactionRangeCountOverlapped));
         ++blobOffset;
     }
 }
@@ -249,9 +272,11 @@ bool TPartitionDatabase::FindMixedBlocks(
                 blobCommitId ? blobCommitId : commitId,
                 it.GetValue<TTable::BlobId>());
 
-            ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
-            ui8 compactionRangeCountOverlapped =
-                it.GetValue<TTable::CompactionRangeCountOverlapped>();
+            ui32 blobOffsetAndCompactionRangeCountOverlapped = it.GetValue<
+                TTable::BlobOffsetAndCompactionRangeCountOverlapped>();
+            auto [blobOffset, compactionRangeCountOverlapped] =
+                SplitBlobOffsetAndCompactionRangeCountOverlapped(
+                    blobOffsetAndCompactionRangeCountOverlapped);
 
             if (!visitor.VisitBlock(
                     blockIndex,
@@ -313,9 +338,13 @@ bool TPartitionDatabase::FindMixedBlocks(
                         blobCommitId ? blobCommitId : commitId,
                         it.GetValue<TTable::BlobId>());
 
-                    ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
-                    ui8 compactionRangeCountOverlapped =
-                        it.GetValue<TTable::CompactionRangeCountOverlapped>();
+                    ui32 blobOffsetAndCompactionRangeCountOverlapped =
+                        it.GetValue<
+                            TTable::
+                                BlobOffsetAndCompactionRangeCountOverlapped>();
+                    auto [blobOffset, compactionRangeCountOverlapped] =
+                        SplitBlobOffsetAndCompactionRangeCountOverlapped(
+                            blobOffsetAndCompactionRangeCountOverlapped);
 
                     if (!visitor.VisitBlock(
                             blockIndex,

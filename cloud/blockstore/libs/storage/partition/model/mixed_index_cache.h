@@ -44,6 +44,15 @@ struct TMixedBlock
 
 static_assert(sizeof(TMixedBlock) == 32);
 
+// BlobOffset and CompactionRangeCountOverlapped are stored in a single 32-bit
+// integer in the local database.
+static_assert(sizeof(TMixedBlock::BlobOffset) == 2);
+static_assert(sizeof(TMixedBlock::CompactionRangeCountOverlapped) == 1);
+static_assert(
+    sizeof(TMixedBlock::CompactionRangeCountOverlapped) +
+        sizeof(TMixedBlock::BlobOffset) <=
+    4);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TMixedIndexCache
