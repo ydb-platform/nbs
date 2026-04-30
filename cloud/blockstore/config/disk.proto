@@ -76,6 +76,9 @@ message TFileDeviceArgs
     optional uint64 Offset = 6;
     // File size override.
     optional uint64 FileSize = 7;
+
+    // Device model.
+    optional string DeviceModel = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

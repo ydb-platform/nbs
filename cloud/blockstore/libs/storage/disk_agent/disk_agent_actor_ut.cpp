@@ -96,10 +96,13 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
 struct TTestNvmeManager: NNvme::INvmeManager
 {
     THashMap<TString, TString> PathToSerial;
+    THashMap<TString, TString> PathToModel;
 
-    explicit TTestNvmeManager(
-            const TVector<std::pair<TString, TString>>& pathToSerial)
+    TTestNvmeManager(
+            const TVector<std::pair<TString, TString>>& pathToSerial,
+            const TVector<std::pair<TString, TString>>& pathToModel)
         : PathToSerial{pathToSerial.cbegin(), pathToSerial.cend()}
+        , PathToModel{pathToModel.cbegin(), pathToModel.cend()}
     {}
 
     void Start() final
@@ -141,6 +144,23 @@ struct TTestNvmeManager: NNvme::INvmeManager
 
         auto it = PathToSerial.find(device);
         if (it == PathToSerial.end()) {
+            return MakeError(MAKE_SYSTEM_ERROR(42), path);
+        }
+
+        return it->second;
+    }
+
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        TString device;
+        try {
+            device = NFs::ReadLink(path);
+        } catch (...) {
+            return MakeError(E_FAIL, CurrentExceptionMessage());
+        }
+
+        auto it = PathToModel.find(path);
+        if (it == PathToModel.end()) {
             return MakeError(MAKE_SYSTEM_ERROR(42), path);
         }
 
@@ -5500,6 +5520,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             {Devices[3], "Z"},   // nvme3n1
         };
 
+        TVector<std::pair<TString, TString>> pathToModel{
+            {Devices[0], "A"},   // nvme0n1
+            {Devices[1], "B"},   // nvme1n1
+            {Devices[2], "C"},   // nvme2n1
+            {Devices[3], "D"},   // nvme3n1
+        };
+
         // build the config cache
         {
             NProto::TDiskAgentConfig config;
@@ -5548,10 +5575,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             });
 
         auto env = TTestEnvBuilder(*Runtime)
-            .With(CreateDiskAgentConfig())
-            .With(std::make_shared<TTestNvmeManager>(pathToSerial))
-            .With(diskregistryState)
-            .Build();
+                       .With(CreateDiskAgentConfig())
+                       .With(
+                           std::make_shared<TTestNvmeManager>(
+                               pathToSerial,
+                               pathToModel))
+                       .With(diskregistryState)
+                       .Build();
 
         Runtime->UpdateCurrentTime(Now());
 
@@ -6922,10 +6952,18 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             {Devices[3], "Z"},   // nvme3n1
         };
 
+        TVector<std::pair<TString, TString>> pathToModel{
+            {Devices[0], "A"},   // nvme0n1
+            {Devices[1], "B"},   // nvme1n1
+            {Devices[2], "C"},   // nvme2n1
+            {Devices[3], "D"},   // nvme3n1
+        };
+
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        auto nvmeManager = std::make_shared<TTestNvmeManager>(pathToSerial);
+        auto nvmeManager =
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel);
 
         auto env = TTestEnvBuilder(*Runtime)
                        .With(CreateDiskAgentConfig())
