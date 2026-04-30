@@ -124,9 +124,6 @@ struct TWriteFreshBlocksRequest
 
 struct TAffectedBlob
 {
-    // All blocks in the blob contained in BlobRangeHint. Actual blob range can
-    // be smaller.
-    TBlockRange32 BlobRangeHint = TBlockRange32::Max();
     ui8 CompactionRangeCount = 0;
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;

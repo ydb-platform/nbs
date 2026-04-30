@@ -431,6 +431,7 @@ private:
     const ui32 MaxBlocksInBlob;
     const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
     const TCompactionMap& CompactionMap;
+    const bool ReadBlockMaskOnCompactionOptimizationEnabled;
 
     TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
 
@@ -446,7 +447,8 @@ public:
             ui32 maxBlobRangeSize,
             ui32 maxBlocksInBlob,
             ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
-            const TCompactionMap& compactionMap)
+            const TCompactionMap& compactionMap,
+            bool readBlockMaskOnCompactionOptimizationEnabled)
         : Blobs(blobs)
         , BlockSize(blockSize)
         , FlushBlobSizeThreshold(flushBlobSizeThreshold)
@@ -455,6 +457,8 @@ public:
         , DiskPrefixLengthWithBlockChecksumsInBlobs(
               diskPrefixLengthWithBlockChecksumsInBlobs)
         , CompactionMap(compactionMap)
+        , ReadBlockMaskOnCompactionOptimizationEnabled(
+              readBlockMaskOnCompactionOptimizationEnabled)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -540,12 +544,13 @@ private:
         TVector<TBlock> blocks,
         TVector<ui32> checksums)
     {
-        const auto compactionRangeCount =
+        const ui32 compactionRangeCount =
             CompactionMap.GetRangeIndex(blocks.back().BlockIndex) -
             CompactionMap.GetRangeIndex(blocks.front().BlockIndex) + 1;
 
         const ui8 compactionRangeCountInOneByte =
-            compactionRangeCount <= Max<ui8>()
+            compactionRangeCount <= Max<ui8>() &&
+                    ReadBlockMaskOnCompactionOptimizationEnabled
                 ? compactionRangeCount
                 : 0;
 
@@ -733,7 +738,8 @@ void TPartitionActor::HandleFlush(
             Config->GetMaxBlobRangeSize(),
             State->GetMaxBlocksInBlob(),
             Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
-            State->GetCompactionMap());
+            State->GetCompactionMap(),
+            IsReadBlockMaskOnCompactionOptimizationEnabled());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 

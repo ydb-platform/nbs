@@ -1045,13 +1045,16 @@ class TCompactionBlockVisitor final
 private:
     TTxPartition::TRangeCompaction& Args;
     const ui64 MaxCommitId;
+    const TCompactionMap& CompactionMap;
 
 public:
     TCompactionBlockVisitor(
             TTxPartition::TRangeCompaction& args,
-            ui64 maxCommitId)
+            ui64 maxCommitId,
+            const TCompactionMap& compactionMap)
         : Args(args)
         , MaxCommitId(maxCommitId)
+        , CompactionMap(compactionMap)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -1110,7 +1113,8 @@ public:
     bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
-        ab.BlobRangeHint = blockRange;
+        ab.CompactionRangeCount = CompactionMap.GetRangeIndex(blockRange.End) -
+            CompactionMap.GetRangeIndex(blockRange.Start) + 1;
         return true;
     }
 };
@@ -1611,7 +1615,7 @@ void PrepareRangeCompaction(
     TTxPartition::TRangeCompaction& args,
     const TString& logTitle)
 {
-    TCompactionBlockVisitor visitor(args, commitId);
+    TCompactionBlockVisitor visitor(args, commitId, state.GetCompactionMap());
     state.FindFreshBlocks(visitor, args.BlockRange, commitId);
     visitor.KeepTrackOfAffectedBlocks = true;
     ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);
@@ -1723,12 +1727,10 @@ void PrepareRangeCompaction(
     for (auto& kv: args.AffectedBlobs) {
         state.IncrementBlobsProcessedDuringCompaction();
 
-        const bool compactRangeContainsBlob =
-            args.BlockRange.Contains(kv.second.BlobRangeHint);
         const bool blobOnlyInOneCompactRange =
             kv.second.CompactionRangeCount == 1;
 
-        if ((!compactRangeContainsBlob && !blobOnlyInOneCompactRange) ||
+        if (!blobOnlyInOneCompactRange ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             state.IncrementBlockMaskReadDuringCompaction();
