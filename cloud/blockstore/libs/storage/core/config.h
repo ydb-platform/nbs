@@ -811,6 +811,10 @@ public:
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
 
     [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
+
+    [[nodiscard]] bool GetVolumeBalancerGentlePreemptionEnabled() const;
+
+    [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
 };
 
 ui64 GetAllocationUnit(

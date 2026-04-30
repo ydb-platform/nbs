@@ -331,6 +331,14 @@ STFUNC(TVolumeSessionActor::StateWork)
             TEvService::TEvChangeVolumeBindingRequest,
             HandleChangeVolumeBindingRequest);
 
+        HFunc(
+            NCloud::NStorage::TEvHiveProxy::TEvUnlockTabletResponse,
+            HandleUnlockTabletResponse);
+
+        HFunc(
+            TEvServicePrivate::TEvReleaseVolumeToHiveRequest,
+            HandleReleaseVolumeToHiveRequest);
+
         IgnoreFunc(TEvService::TEvUnmountVolumeResponse);
 
         default:
