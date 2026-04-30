@@ -394,8 +394,8 @@ func (client *Client) ListNodes(
 			GID:               uint64(nodes[idx].GetGid()),
 			Links:             nodes[idx].GetLinks(),
 			Type:              nodeType,
-			ShardFileSystemID: nodes[idx].GetShardFileSystemId(),
-			ShardNodeName:     nodes[idx].GetShardNodeName(),
+			ShardFileSystemID: string(nodes[idx].GetShardFileSystemId()),
+			ShardNodeName:     string(nodes[idx].GetShardNodeName()),
 			DevID:             nodes[idx].GetDevId(),
 		}
 	}
