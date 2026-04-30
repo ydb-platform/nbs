@@ -1015,6 +1015,23 @@ func (client *discoveryClient) ReleaseNVMeDevice(
 	panic("not implemented")
 }
 
+func (client *discoveryClient) QueryKnownStorage(
+	ctx context.Context,
+	req *protos.TQueryKnownStorageRequest,
+) (*protos.TQueryKnownStorageResponse, error) {
+	resp, err := client.executeRequest(
+		ctx,
+		func(ctx context.Context, impl ClientIface) (response, error) {
+			return impl.QueryKnownStorage(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TQueryKnownStorageResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func createDurableClient(

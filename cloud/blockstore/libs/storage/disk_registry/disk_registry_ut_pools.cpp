@@ -559,6 +559,103 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, allocateSSD("local0")->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, allocateSSD("local1")->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldQueryKnownStorage)
+    {
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("dev-1", "uuid-1"),
+                 Device("dev-2", "uuid-2") |
+                     WithPool("foo", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-3", "uuid-3"),
+                 Device("dev-4", "uuid-4") |
+                     WithPool("foo", NProto::DEVICE_POOL_KIND_LOCAL)}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("dev-1", "uuid-5"), Device("dev-2", "uuid-6")}),
+            CreateAgentConfig(
+                "agent-3",
+                {Device("dev-1", "uuid-7") |
+                     WithPool("bar", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-2", "uuid-8") |
+                     WithPool("bar", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-3", "uuid-9")})};
+
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, agents);
+
+                auto* foo = config.AddDevicePoolConfigs();
+                foo->SetName("foo");
+                foo->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                foo->SetAllocationUnit(3_GB);
+
+                auto* bar = config.AddDevicePoolConfigs();
+                bar->SetName("bar");
+                bar->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                bar->SetAllocationUnit(4_GB);
+
+                return config;
+            }());
+
+        RegisterAgents(*runtime, agents.size());
+        WaitForAgents(*runtime, agents.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(4, GetSuspendedDeviceCount(diskRegistry));
+        WaitForSecureErase(*runtime, GetDirtyDeviceCount(diskRegistry));
+
+        auto query = [&](TVector<TString> ids)
+        {
+            auto response = diskRegistry.QueryKnownStorage(ids);
+
+            auto& msg = response->Record;
+            SortBy(
+                *msg.MutableKnownStorage(),
+                [](auto& info) { return info.GetAgentId(); });
+            return msg;
+        };
+
+        {
+            NProto::TQueryKnownStorageResponse msg =
+                query({"agent-1", "agent-2", "agent-3"});
+
+            UNIT_ASSERT_VALUES_EQUAL(3, msg.KnownStorageSize());
+            for (size_t i = 0; i < msg.KnownStorageSize(); i++) {
+                auto info = msg.GetKnownStorage(i);
+                UNIT_ASSERT_EQUAL(info.GetAgentId(), agents[i].GetAgentId());
+                UNIT_ASSERT_EQUAL(
+                    info.KnownPathInfosSize(),
+                    agents[i].DevicesSize());
+
+                SortBy(
+                    *info.MutableKnownPathInfos(),
+                    [](auto& info) { return info.GetPath(); });
+
+                for (size_t deviceIdx = 0; deviceIdx < agents[i].DevicesSize();
+                     deviceIdx++)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        info.GetKnownPathInfos(deviceIdx).GetPath(),
+                        agents[i].GetDevices(deviceIdx).GetDeviceName());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        info.GetKnownPathInfos(deviceIdx).GetStoragePoolName(),
+                        agents[i].GetDevices(deviceIdx).GetPoolName());
+                    UNIT_ASSERT_EQUAL(
+                        info.GetKnownPathInfos(deviceIdx).GetStoragePoolKind(),
+                        ToStoragePoolKind(
+                            agents[i].GetDevices(deviceIdx).GetPoolKind()));
+                }
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

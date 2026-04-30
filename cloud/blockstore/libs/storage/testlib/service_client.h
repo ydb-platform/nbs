@@ -267,6 +267,9 @@ public:
 
     void WaitForVolume(const TString& diskId = DefaultDiskId);
 
+    std::unique_ptr<TEvService::TEvQueryKnownStorageRequest>
+    CreateQueryKnownStorageRequest(const TVector<TString>& agentIds);
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
