@@ -295,6 +295,8 @@ struct TTabletMetrics
 
     std::atomic<i64> RenameNotSupportedErrorCount{0};
 
+    std::atomic<i64> ShardBalancerUpdateErrorCount{0};
+
     const NMetrics::IMetricsRegistryPtr StorageRegistry;
     const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
 

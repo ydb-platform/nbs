@@ -1545,7 +1545,8 @@ NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
     return e;
 }
 
-void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
+NProto::TError TIndexTabletState::UpdateShardBalancer(
+    const TVector<TShardStats>& stats)
 {
     std::optional<ui64> desiredFreeSpaceReserve;
     std::optional<ui64> minFreeSpaceReserve;
@@ -1557,7 +1558,7 @@ void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
         minFreeSpaceReserve = 0;
     }
 
-    Impl->ShardBalancer->Update(
+    return Impl->ShardBalancer->Update(
         stats,
         desiredFreeSpaceReserve,
         minFreeSpaceReserve);

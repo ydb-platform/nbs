@@ -393,6 +393,10 @@ void TTabletMetrics::Register(
         RenameNotSupportedErrorCount,
         EMetricType::MT_DERIVATIVE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        ShardBalancerUpdateErrorCount,
+        EMetricType::MT_DERIVATIVE);
+
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER
