@@ -671,6 +671,7 @@ func TestUnsafeCreateNodeRestoreShardAfterDeletion(t *testing.T) {
 	)
 	defer model.Close()
 	model.CreateAllNodesRecursively()
+	model.CollectStats()
 
 	initialNodes := model.ListAllNodesRecursively(true)
 	logger.Infof("initial listing has %d nodes", len(initialNodes))

@@ -340,6 +340,35 @@ func (f *FileSystemModel) CreateAllNodesRecursively() {
 	}
 }
 
+func (f *FileSystemModel) CollectStats() {
+	eg, ctx := errgroup.WithContext(f.ctx)
+	eg.SetLimit(10)
+	for index := range f.ExpectedNodes {
+		index := index
+		eg.Go(func() error {
+			node := f.ExpectedNodes[index]
+			nodeWithStats, err := f.session.GetNodeAttr(
+				ctx,
+				node.ParentID,
+				node.Name,
+			)
+			if err != nil {
+				return err
+			}
+
+			f.ExpectedNodes[index].Atime = nodeWithStats.Atime
+			f.ExpectedNodes[index].Mtime = nodeWithStats.Mtime
+			f.ExpectedNodes[index].Ctime = nodeWithStats.Ctime
+			f.ExpectedNodes[index].Size = nodeWithStats.Size
+			f.ExpectedNodes[index].Links = nodeWithStats.Links
+			f.ExpectedNodes[index].DevID = nodeWithStats.DevID
+			return nil
+		})
+	}
+
+	require.NoError(f.t, eg.Wait())
+}
+
 func (f *FileSystemModel) ListAllNodes(
 	parentNodeID uint64,
 	unsafe bool,
