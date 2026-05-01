@@ -5,16 +5,16 @@ on:
     branches:
       - main
     paths:
-    - ".github/**"
+      - ".github/**"
     types:
-      - 'opened'
-      - 'synchronize'
-      - 'reopened'
-      - 'labeled'
+      - "opened"
+      - "synchronize"
+      - "reopened"
+      - "labeled"
   workflow_dispatch:
     inputs:
       allow_downgrade:
-        description: 'Allow downgrade'
+        description: "Allow downgrade"
         required: false
         type: choice
         default: "no"
@@ -22,7 +22,7 @@ on:
           - "yes"
           - "no"
       large_tests:
-        description: 'Launch large tests'
+        description: "Launch large tests"
         required: false
         type: choice
         default: "no"
@@ -40,7 +40,8 @@ defaults:
     shell: bash
 
 env:
-  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
+  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name,
+    'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
   large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
 concurrency:
@@ -49,7 +50,7 @@ concurrency:
 
 jobs:
   set-env:
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
       large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
@@ -59,11 +60,17 @@ jobs:
         id: set-env
         run: echo
   check-running-allowed:
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
-      result: ${{ steps.check-ownership-membership.outputs.result }}
+      result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
     steps:
+      - name: Allow local act run
+        if: ${{ env.ACT == 'true' }}
+        id: allow-local
+        run: echo "result=true" >> "$GITHUB_OUTPUT"
+
       - name: Check if running tests is allowed
+        if: ${{ env.ACT != 'true' }}
         id: check-ownership-membership
         uses: actions/github-script@v9
         with:
@@ -139,8 +146,7 @@ jobs:
             core.info(`'ok-to-test' label added by an org member => authorized`);
             return true
       - name: comment-if-waiting-on-ok
-        if: steps.check-ownership-membership.outputs.result == 'false' &&
-            github.event.action == 'opened'
+        if: env.ACT != 'true' && steps.check-ownership-membership.outputs.result == 'false' && github.event.action == 'opened'
         uses: actions/github-script@v9
         with:
           script: |
@@ -151,6 +157,7 @@ jobs:
               body: 'Hi! Thank you for contributing!\nThe tests on this PR will run after a maintainer adds an `ok-to-test` label to this PR manually. Thank you for your patience!'
             });
       - name: cleanup-labels
+        if: ${{ env.ACT != 'true' }}
         uses: actions/github-script@v9
         with:
           script: |
@@ -175,16 +182,16 @@ jobs:
               }
             }
   shell:
-    needs: [set-env, check-running-allowed]
+    needs: [ set-env, check-running-allowed ]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
 
     steps:
       - name: checkout
         uses: actions/checkout@v6
         with:
           submodules: false
-          sparse-checkout: '.github'
+          sparse-checkout: ".github"
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
@@ -213,7 +220,6 @@ jobs:
         env:
           SHELLCHECK_OPTS: "-e SC2155,SC2086"
 
-
       - name: shellcheck for github actions shell scripts in .temporary dir
         uses: ludeeus/action-shellcheck@master
         env:
@@ -229,16 +235,16 @@ jobs:
           shfmt_flags: "-i 4 -ci -kp -bn -sr"
 
   python:
-    needs: [set-env, check-running-allowed]
+    needs: [ set-env, check-running-allowed ]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
 
     steps:
       - name: checkout
         uses: actions/checkout@v6
         with:
           submodules: false
-          sparse-checkout: '.github'
+          sparse-checkout: ".github"
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
@@ -254,6 +260,7 @@ jobs:
           if_false: "github-check"
 
       - name: Prepare s3
+        if: ${{ env.ACT != 'true' }}
         id: s3
         uses: ./.github/actions/s3cmd
         with:
@@ -277,64 +284,134 @@ jobs:
           pip install -r .github/scripts/requirements_dev.txt
 
       - name: flake8
+        if: ${{ env.ACT != 'true' }}
         uses: reviewdog/action-flake8@v3.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
-          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400"
+          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704"
+
+      - name: flake8 (act)
+        if: ${{ env.ACT == 'true' }}
+        run: |
+          pip install flake8==7.3.0
+          flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400 .github/
 
       - name: black
+        if: ${{ env.ACT != 'true' }}
         uses: reviewdog/action-black@v3.10.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
-      
+
+      - name: black (act)
+        if: ${{ env.ACT == 'true' }}
+        run: |
+          pip install black==26.3.1
+          black --check .github/
+
       - name: pytest
         id: pytest
         shell: bash
         run: |
           set -x
-          export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-          cd .github/ || true
-          pytest --tb=short --disable-warnings --maxfail=1 --junitxml=${GITHUB_WORKSPACE}/pytest-test-results.xml --html=${GITHUB_WORKSPACE}/pytest-report.html --self-contained-html
-      - name: Upload pytest test results
-        if: ${{ always() }}
+          export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+          pytest --tb=short --disable-warnings --maxfail=1 \
+            --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
+            --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
+            --self-contained-html \
+            .github/scripts/*_test.py \
+            .github/scripts/tests
+
+      - name: Upload pytest test results artifact
+        if: ${{ env.ACT != 'true' &&always() }}
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-results
-          path: pytest-test-results.xml
-      - name: Upload pytest test results
-        if: ${{ always() }}
+          name: ga-scripts-pytest-results
+          path: ga-scripts-pytest-results.xml
+
+      - name: Upload pytest html report artifact
+        if: ${{ env.ACT != 'true' &&always() }}
         id: upload-html
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-report-html
-          path: pytest-report.html 
+          name: ga-scripts-pytest-report-html
+          path: ga-scripts-pytest-report.html
+
       - name: upload test results to s3
-        if: ${{ always() }}
+        if: ${{ env.ACT != 'true' && always() }}
         run: |
           set -x
-          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-report.html "$S3_BUCKET_PATH/test_reports/pytest-report.html"
-          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-test-results.xml "$S3_BUCKET_PATH/test_reports/pytest-test-results.xml"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
+
+      - name: build pytest summary table
+        if: ${{ always() }}
+        id: pytest-summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+          SUMMARY_OUT=$(mktemp)
+          python3 -m scripts.tests.pytest_summary \
+            --title "GA Scripts pytest" \
+            ga-scripts-pytest-results.xml > "$SUMMARY_OUT"
+          {
+            echo "markdown<<EOF"
+            cat "$SUMMARY_OUT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: add test report links to summary
+        if: ${{ always() }}
+        shell: bash
+        env:
+          PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
+        run: |
+          {
+            echo "### GA Scripts pytest reports"
+            if [ -n "${PYTEST_SUMMARY_MARKDOWN}" ]; then
+              echo
+              printf '%s\n' "${PYTEST_SUMMARY_MARKDOWN}"
+              echo
+            fi
+            if [ "${ACT}" = "true" ]; then
+              echo "- Local act run: reports were written to ga-scripts-pytest-report.html and ga-scripts-pytest-results.xml"
+            else
+              echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
+              echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
+              echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
+              echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: comment on issue (${{ steps.pytest.outcome }})
-        if: ${{ github.event_name == 'pull_request' && always() }}
+        if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v9
         env:
           STEP_OUTCOME: ${{ steps.pytest.outcome }}
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
+          PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         with:
           script: |
-            const s3_path = process.env.S3_URL_PREFIX;
             const outcome = process.env.STEP_OUTCOME;
-            const artifact_url = process.env.ARTIFACT_URL;
-            const html_artifact_url = process.env.HTML_ARTIFACT_URL;
             const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
-            const comment = 'status: ' + status_emoji + ' [pytest result (artifact)](' + artifact_url + ') [pytest report (artifact)](' + html_artifact_url + ') [pytest report (s3)](' + s3_path + '/test_reports/pytest-report.html) [pytest results (s3)](' + s3_path + '/test_reports/pytest-test-results.xml)';
+            const s3_path = process.env.S3_URL_PREFIX;
+            let comment =
+              'status: ' + status_emoji +
+              ' [GA scripts pytest result (artifact)](' + process.env.ARTIFACT_URL + ')' +
+              ' [GA scripts pytest report (artifact)](' + process.env.HTML_ARTIFACT_URL + ')' +
+              ' [GA scripts pytest report (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-report.html)' +
+              ' [GA scripts pytest results (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-results.xml)';
+
+            if (process.env.PYTEST_SUMMARY_MARKDOWN) {
+              comment += '\n\n' + process.env.PYTEST_SUMMARY_MARKDOWN;
+            }
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -342,17 +419,16 @@ jobs:
               body: comment
             })
 
-
   workflows:
-    needs: [set-env, check-running-allowed]
+    needs: [ set-env, check-running-allowed ]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
       - name: checkout
         uses: actions/checkout@v6
         with:
           submodules: false
-          sparse-checkout: '.github'
+          sparse-checkout: ".github"
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
@@ -406,7 +482,7 @@ jobs:
 
       - name: comment on issue
         uses: actions/github-script@v9
-        if:  ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           STEP_OUTCOME: ${{ steps.lint.outcome }}
         with:
@@ -419,18 +495,11 @@ jobs:
               repo: context.repo.repo,
               body: 'status: ' + status_emoji + ' [workflow lint result (s3)](' + process.env.S3_URL_PREFIX + '/workflow_lint/workflow-lint.txt)'
             })
-  nbs-github-actions:
-    needs: [set-env, check-running-allowed]
-    if: needs.check-running-allowed.outputs.result == 'true'
-    name: Launch scripts on test-data
-    uses: ./.github/workflows/github_actions_scripts.yaml
-    secrets: inherit
-
   create-build-and-test-target-var:
     needs:
       - check-running-allowed
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
       matrix_include_asan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_asan }}
@@ -443,7 +512,7 @@ jobs:
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
-          sparse-checkout: '.github'
+          sparse-checkout: ".github"
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: rebase PR
@@ -463,7 +532,7 @@ jobs:
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
-          sparse-checkout: '.github'
+          sparse-checkout: ".github"
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
@@ -476,7 +545,7 @@ jobs:
           scheduling_type: ${{ vars.NEBIUS_SCHEDULING_TYPE || 'on_demand' }}
 
   build_and_test:
-    needs: [check-running-allowed, create-build-and-test-target-var]
+    needs: [ check-running-allowed, create-build-and-test-target-var ]
     if: needs.check-running-allowed.outputs.result == 'true'
     strategy:
       fail-fast: false
