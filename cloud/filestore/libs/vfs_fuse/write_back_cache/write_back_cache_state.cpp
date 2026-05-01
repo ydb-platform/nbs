@@ -70,7 +70,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
         // But currently, Drain is called only at session creation
         // or destruction where WriteData requests are not expected.
         // Therefore, we report an error.
-        ReportWriteBackCacheStateError(
+        ReportWriteBackCacheWritingNotAllowedInDrainingMode(
             LogTag +
             " Cached WriteData request received while WriteBackCache is "
             "in draining mode");

@@ -2176,13 +2176,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TBootstrap b;
 
         b.WriteToCacheSync(1, 0, "abc");
-        b.Cache.Drain();
+        auto drain = b.Cache.Drain();
 
         auto future = b.WriteToCache(1, 1, "def");
         UNIT_ASSERT(future.HasValue());
         auto error = future.GetValue().GetError();
         UNIT_ASSERT(HasError(error));
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        UNIT_ASSERT(drain.HasValue());
     }
 }
 

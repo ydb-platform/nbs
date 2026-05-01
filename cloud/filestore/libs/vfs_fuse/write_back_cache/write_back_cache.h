@@ -137,7 +137,7 @@ public:
      * Note: the call is not reversible (WriteBackCache cannot be returned to
      * EWriteBackCacheMode::Normal mode without restart).
      */
-    NThreading::TFuture<NCloud::NProto::TError> Drain();
+    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Drain();
 
     // A reliable way to check that WriteBackCache has been drained
     bool IsDrained() const;

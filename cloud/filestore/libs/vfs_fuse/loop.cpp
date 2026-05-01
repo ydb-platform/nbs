@@ -1054,7 +1054,10 @@ private:
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
 
                     if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                        WriteBackCache.Drain();
+                        auto future = WriteBackCache.Drain();
+                        // Drain will run asynchronously in background
+                        // No need to wait for it
+                        Y_UNUSED(future);
                     }
 
                     ModuleStatsRegistry->Register(
