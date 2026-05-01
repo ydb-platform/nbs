@@ -400,13 +400,14 @@ if __name__ == "__main__":
     now = datetime.now(timezone.utc)
 
     target_dirs = {
+        "artifacts",
+        "build_logs",
+        "logs",
+        "summary",
         "test_reports",
         "test_data",
         "test_logs",
-        "summary",
-        "logs",
-        "build_logs",
-        "artifacts",
+        "workflow_lint",
         "ya_archive",
     }
 
