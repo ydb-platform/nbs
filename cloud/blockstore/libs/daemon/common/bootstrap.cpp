@@ -691,6 +691,10 @@ void TBootstrapBase::Init()
     if (LocalNVMeService) {
         Service =
             CreateLocalNVMeServiceProxy(std::move(Service), LocalNVMeService);
+
+        udsService = CreateLocalNVMeServiceProxy(
+            std::move(udsService),
+            LocalNVMeService);
     }
 
     Server = CreateServer(
