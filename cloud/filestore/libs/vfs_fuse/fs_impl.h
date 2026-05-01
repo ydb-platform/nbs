@@ -54,17 +54,17 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EWriteBackCacheRequestMode
+enum class EWriteBackCacheRequestStrategy
 {
     // WriteBackCache should not be used, the requests should go directly to the
     // session
-    Bypass,
+    DoNotUse,
 
     // WriteBackCache should be used, with ReadData/WriteData
-    Cached,
+    UseNonDirect,
 
-    // WriteBackCache should be used, with ReadDataDirect/WriteDataDirect
-    Direct
+    // WriteBackCache should be used, with ReadDataDirect/WriteDataDirect only
+    UseDirect
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -406,7 +406,7 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    EWriteBackCacheRequestMode GetWriteBackCacheRequestMode(
+    EWriteBackCacheRequestStrategy GetWriteBackCacheRequestStrategy(
         const fuse_file_info* fi) const;
 
     TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;

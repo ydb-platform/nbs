@@ -2029,14 +2029,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         auto flushAllDataFuture = b.Cache.FlushAllData();
 
-        b.Cache.Drain();
+        auto future = b.Cache.Drain();
         UNIT_ASSERT(!b.Cache.IsDrained());
+        UNIT_ASSERT(!future.HasValue());
 
         writeRequests.ProceedAll();
 
         UNIT_ASSERT(flushAllDataFuture.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
         UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT(future.HasValue());
     }
 
     Y_UNIT_TEST(ShouldNotReadBeyondFileEnd)
@@ -2189,18 +2191,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-void Out<NCloud::NFileStore::NFuse::EWriteBackCacheState>(
+void Out<NCloud::NFileStore::NFuse::EWriteBackCacheMode>(
     IOutputStream& out,
-    NCloud::NFileStore::NFuse::EWriteBackCacheState value)
+    NCloud::NFileStore::NFuse::EWriteBackCacheMode value)
 {
     switch (value) {
-        case NCloud::NFileStore::NFuse::EWriteBackCacheState::Normal:
+        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Normal:
             out << "Normal";
             break;
-        case NCloud::NFileStore::NFuse::EWriteBackCacheState::Draining:
+        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Draining:
             out << "Draining";
             break;
-        case NCloud::NFileStore::NFuse::EWriteBackCacheState::Drained:
+        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Drained:
             out << "Drained";
             break;
     }

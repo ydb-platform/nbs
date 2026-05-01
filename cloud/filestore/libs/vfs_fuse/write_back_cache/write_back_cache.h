@@ -73,7 +73,7 @@ struct TWriteBackCacheArgs
 ////////////////////////////////////////////////////////////////////////////////
 
 // Only transition Normal -> Draining -> Drained is possible
-enum class EWriteBackCacheState
+enum class EWriteBackCacheMode
 {
     // WriteBackCache is used normally
     // New cached WriteData requests are accepted
@@ -111,29 +111,33 @@ public:
         return !!Impl;
     }
 
-    /* Returns current state of WriteBackCache with weak memory ordering.
-     * The common EWriteBackCacheState::Normal and EWriteBackCacheState::Drained
+    /* Returns current mode of WriteBackCache with weak memory ordering.
+     * The common EWriteBackCacheMode::Normal and EWriteBackCacheMode::Drained
      * cases are returned without mutex acquisition and are suitable for hot
      * paths. In order to ensure that WriteBackCache has been drained,
-     * IsDrained() should be used, as drained state detection may require
+     * IsDrained() should be used, as drained mode detection may require
      * additional synchronization.
      */
-    EWriteBackCacheState GetState() const;
+    EWriteBackCacheMode GetMode() const;
 
-    /* Puts WriteBackCache into draining state - it prevents new WriteData
-     * requests from being added to the cache (WriteDataDirect calls will still
-     * be allowed).
+    /* Puts WriteBackCache into draining mode - it prevents new WriteData
+     * requests from being added to the cache and triggers flush
+     * (WriteDataDirect calls will still be allowed).
      *
-     * WriteBackCache will remain in EWriteBackCacheState::Draining state until
+     * WriteBackCache will remain in EWriteBackCacheMode::Draining mode until
      * all pending and unflushed are flushed - then it will become
-     * EWriteBackCacheState::Drained.
+     * EWriteBackCacheMode::Drained.
      *
-     * The call has no effect if WriteBackCache is already drained.
+     * The returned future is completed successfully when WriteBackCache become
+     * drained. An error is returned if flush is failed.
+     *
+     * The call has no effect if WriteBackCache is already drained and will
+     * return a completed future immediately.
      *
      * Note: the call is not reversible (WriteBackCache cannot be returned to
-     * a normal state without restart).
+     * EWriteBackCacheMode::Normal mode without restart).
      */
-    void Drain();
+    NThreading::TFuture<NCloud::NProto::TError> Drain();
 
     // A reliable way to check that WriteBackCache has been drained
     bool IsDrained() const;

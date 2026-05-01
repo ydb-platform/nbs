@@ -480,21 +480,21 @@ void TFileSystem::Read(
         }
     };
 
-    const auto mode = GetWriteBackCacheRequestMode(fi);
+    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
 
-    switch (mode) {
-        case EWriteBackCacheRequestMode::Bypass: {
+    switch (strategy) {
+        case EWriteBackCacheRequestStrategy::DoNotUse: {
             Session->ReadData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
-        case EWriteBackCacheRequestMode::Direct: {
+        case EWriteBackCacheRequestStrategy::UseDirect: {
             WriteBackCache
                 .ReadDataDirect(std::move(callContext), std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
-        case EWriteBackCacheRequestMode::Cached: {
+        case EWriteBackCacheRequestStrategy::UseNonDirect: {
             WriteBackCache.ReadData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
@@ -547,7 +547,7 @@ void TFileSystem::DoWrite(
     ui64 size,
     fuse_file_info* fi)
 {
-    const auto mode = GetWriteBackCacheRequestMode(fi);
+    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -562,7 +562,7 @@ void TFileSystem::DoWrite(
         const auto& response = future.GetValue();
         const auto& error = response.GetError();
 
-        if (mode != EWriteBackCacheRequestMode::Cached) {
+        if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
             self->FSyncQueue
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
@@ -578,22 +578,22 @@ void TFileSystem::DoWrite(
         }
     };
 
-    if (mode != EWriteBackCacheRequestMode::Cached) {
+    if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
         FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
     }
 
-    switch (mode) {
-        case EWriteBackCacheRequestMode::Cached: {
+    switch (strategy) {
+        case EWriteBackCacheRequestStrategy::UseNonDirect: {
             WriteBackCache.WriteData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
-        case EWriteBackCacheRequestMode::Bypass: {
+        case EWriteBackCacheRequestStrategy::DoNotUse: {
             Session->WriteData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
-        case EWriteBackCacheRequestMode::Direct: {
+        case EWriteBackCacheRequestStrategy::UseDirect: {
             WriteBackCache
                 .WriteDataDirect(std::move(callContext), std::move(request))
                 .Subscribe(std::move(callback));
@@ -1094,24 +1094,24 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EWriteBackCacheRequestMode TFileSystem::GetWriteBackCacheRequestMode(
+EWriteBackCacheRequestStrategy TFileSystem::GetWriteBackCacheRequestStrategy(
     const fuse_file_info* fi) const
 {
     if (!WriteBackCache) {
-        return EWriteBackCacheRequestMode::Bypass;
+        return EWriteBackCacheRequestStrategy::DoNotUse;
     }
 
-    switch (WriteBackCache.GetState()) {
-        case EWriteBackCacheState::Normal:
+    switch (WriteBackCache.GetMode()) {
+        case EWriteBackCacheMode::Normal:
             return fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)
-                       ? EWriteBackCacheRequestMode::Direct
-                       : EWriteBackCacheRequestMode::Cached;
+                       ? EWriteBackCacheRequestStrategy::UseDirect
+                       : EWriteBackCacheRequestStrategy::UseNonDirect;
 
-        case EWriteBackCacheState::Draining:
-            return EWriteBackCacheRequestMode::Direct;
+        case EWriteBackCacheMode::Draining:
+            return EWriteBackCacheRequestStrategy::UseDirect;
 
-        case EWriteBackCacheState::Drained:
-            return EWriteBackCacheRequestMode::Bypass;
+        case EWriteBackCacheMode::Drained:
+            return EWriteBackCacheRequestStrategy::DoNotUse;
     }
 }
 

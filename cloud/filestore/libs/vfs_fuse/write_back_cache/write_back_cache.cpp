@@ -161,29 +161,30 @@ public:
     }
 
     // Only transition Normal -> Draining -> Drained is possible
-    EWriteBackCacheState GetState()
+    EWriteBackCacheMode GetMode()
     {
-        // GetState may lie in a hot path - we want to avoid unnecessary mutex
+        // GetMode may lie in a hot path - we want to avoid unnecessary mutex
         // acquisition and memory synchronization
         //
         // DrainRequested and DrainCompleted don't participate
         // in data synchronization so relaxed memory ordering can be used
         //
         if (!DrainRequested.load(std::memory_order_relaxed)) {
-            return EWriteBackCacheState::Normal;
+            return EWriteBackCacheMode::Normal;
         }
 
-        return IsDrained() ? EWriteBackCacheState::Drained
-                           : EWriteBackCacheState::Draining;
+        return IsDrained() ? EWriteBackCacheMode::Drained
+                           : EWriteBackCacheMode::Draining;
     }
 
-    void Drain()
+    NThreading::TFuture<NCloud::NProto::TError> Drain()
     {
         if (!DrainRequested.exchange(true)) {
-            State.SetDrainingMode();
-            State.TriggerPeriodicFlushAll();
             STORAGE_INFO(LogTag << " Start WriteBackCache draining");
         }
+
+        State.SetDrainingMode();
+        return State.AddFlushAllRequest();
     }
 
     bool IsDrained()
@@ -587,14 +588,14 @@ TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
 
 TWriteBackCache::~TWriteBackCache() = default;
 
-EWriteBackCacheState TWriteBackCache::GetState() const
+EWriteBackCacheMode TWriteBackCache::GetMode() const
 {
-    return Impl->GetState();
+    return Impl->GetMode();
 }
 
-void TWriteBackCache::Drain()
+NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
 {
-    Impl->Drain();
+    return Impl->Drain();
 }
 
 bool TWriteBackCache::IsDrained() const

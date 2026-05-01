@@ -1307,18 +1307,16 @@ private:
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
-                "executing Drain + FlushAllData",
+                "executing Drain()",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 
-            WriteBackCache.Drain();
-
-            WriteBackCache.FlushAllData().Subscribe(
+            WriteBackCache.Drain().Subscribe(
                 [w = weak_from_this(),
                  s = std::move(stopCompleted)](const auto& f) mutable
                 {
                     if (auto p = w.lock()) {
-                        p->StopAsyncOnWriteBackCacheFlushed(
+                        p->StopAsyncOnWriteBackCacheDrained(
                             std::move(s),
                             f.GetValue());
                     } else {
@@ -1330,7 +1328,7 @@ private:
         }
     }
 
-    void StopAsyncOnWriteBackCacheFlushed(
+    void StopAsyncOnWriteBackCacheDrained(
         TPromise<void> stopCompleted,
         const NProto::TError& error)
     {
@@ -1347,7 +1345,7 @@ private:
         } else if (HasError(error)) {
             STORAGE_WARN(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained"
-                " because of FlushAllData error, unflushed data will be lost."
+                " because of Drain() error, unflushed data will be lost."
                 " Error: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
@@ -1355,7 +1353,7 @@ private:
         } else {
             ReportWriteBackCacheDataLossError(Sprintf(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained "
-                "after successful FlushAllData, unflushed data will be lost",
+                "after successful Drain(), unflushed data will be lost",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str()));
         }
