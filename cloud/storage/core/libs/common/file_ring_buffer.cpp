@@ -2,6 +2,7 @@
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 #include <util/stream/mem.h>
 #include <util/system/align.h>
@@ -16,8 +17,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 VERSION_PREV = 2;
-constexpr ui32 VERSION = 3;
+constexpr ui32 VERSION_PREV = 3;
+constexpr ui32 VERSION = 4;
 constexpr ui64 INVALID_POS = Max<ui64>();
 
 // Reserve some space after header so adding new fields will not require data
@@ -49,8 +50,49 @@ static_assert(sizeof(THeader) <= HeaderReserveSize);
 
 struct Y_PACKED TEntryHeader
 {
+private:
+    static constexpr ui32 SkipFlagMask = 1U << 31U;
+    static constexpr ui32 SizeMask = SkipFlagMask - 1;
+
     ui32 DataSize = 0;
     ui32 Checksum = 0;
+
+public:
+    static constexpr ui32 MaxDataSize = SizeMask;
+
+    ui32 GetDataSize() const
+    {
+        return DataSize & SizeMask;
+    }
+
+    void SetDataSize(ui32 value)
+    {
+        DataSize = (DataSize & ~SizeMask) | (value & SizeMask);
+    }
+
+    bool GetSkipFlag() const
+    {
+        return (DataSize & SkipFlagMask) != 0;
+    }
+
+    void SetSkipFlag(bool value)
+    {
+        if (value) {
+            DataSize |= SkipFlagMask;
+        } else {
+            DataSize &= ~SkipFlagMask;
+        }
+    }
+
+    ui32 GetChecksum() const
+    {
+        return Checksum;
+    }
+
+    void SetChecksum(ui32 value)
+    {
+        Checksum = value;
+    }
 };
 
 //  Structure contract:
@@ -99,10 +141,10 @@ private:
     char* DoGetEntryData(const TEntryHeader* eh) const
     {
         Y_ABORT_UNLESS(eh != nullptr);
-        Y_ABORT_UNLESS(eh->DataSize != 0);
+        Y_ABORT_UNLESS(eh->GetDataSize() != 0);
 
-        ui64 pos = reinterpret_cast<const char*>(eh) - Data.data();
-        return GetPtr(pos + sizeof(eh), eh->DataSize);
+        ui64 pos = GetEntryPos(eh);
+        return GetPtr(pos + sizeof(eh), eh->GetDataSize());
     }
 
 public:
@@ -122,6 +164,12 @@ public:
         return GetPtr<TEntryHeader>(pos);
     }
 
+    ui64 GetEntryPos(const TEntryHeader* eh) const
+    {
+        Y_ABORT_UNLESS(eh != nullptr);
+        return reinterpret_cast<const char*>(eh) - Data.data();
+    }
+
     char* GetEntryData(TEntryHeader* eh)
     {
         return DoGetEntryData(eh);
@@ -137,8 +185,10 @@ public:
         auto* eh = GetEntryHeader(pos);
         Y_ABORT_UNLESS(eh != nullptr);
 
-        eh->DataSize = data.size();
-        eh->Checksum = Crc32c(data.data(), data.size());
+        eh->SetDataSize(data.size());
+        Y_ABORT_UNLESS(eh->GetDataSize() == data.size());
+
+        eh->SetChecksum(Crc32c(data.data(), data.size()));
 
         auto* dst = GetEntryData(eh);
         Y_ABORT_UNLESS(dst != nullptr);
@@ -164,15 +214,21 @@ struct TEntryInfo
         return ActualPos == INVALID_POS;
     }
 
+    bool GetSkipFlag() const
+    {
+        return Header->GetSkipFlag();
+    }
+
     TStringBuf GetData() const
     {
-        return HasValue() ? TStringBuf(Data, Header->DataSize) : TStringBuf();
+        return HasValue() ? TStringBuf(Data, Header->GetDataSize())
+                          : TStringBuf();
     }
 
     ui64 GetNextEntryPos() const
     {
-        return Header != nullptr && Header->DataSize > 0
-            ? ActualPos + sizeof(TEntryHeader) + Header->DataSize
+        return Header != nullptr && Header->GetDataSize() > 0
+            ? ActualPos + sizeof(TEntryHeader) + Header->GetDataSize()
             : INVALID_POS;
     }
 
@@ -183,7 +239,7 @@ struct TEntryInfo
     {
         Y_ABORT_UNLESS(pos != INVALID_POS);
         Y_ABORT_UNLESS(header != nullptr);
-        Y_ABORT_UNLESS(header->DataSize > 0);
+        Y_ABORT_UNLESS(header->GetDataSize() > 0);
         Y_ABORT_UNLESS(data != nullptr);
 
         return TEntryInfo{.ActualPos = pos, .Header = header, .Data = data};
@@ -227,12 +283,12 @@ private:
     TFileMap Map;
 
     TEntriesData Data;
-    ui64 Count = 0;
     bool Corrupted = false;
 
     TEntryHeader* CurrentAllocation = nullptr;
-    ui64 WritePosAfterCommit = 0;
-    ui64 LastEntrySizeAfterCommit = 0;
+
+    // Map of non-skipped entries: data ptr -> pos
+    THashMap<const void*, ui64> EntryMap;
 
 private:
     THeader* Header()
@@ -258,7 +314,7 @@ private:
             }
 
             const auto* eh = Data.GetEntryHeader(pos);
-            if (eh != nullptr && eh->DataSize != 0) {
+            if (eh != nullptr && eh->GetDataSize() != 0) {
                 const auto* data = Data.GetEntryData(eh);
                 return data != nullptr
                     ? TEntryInfo::Create(pos, eh, data)
@@ -280,7 +336,7 @@ private:
         }
 
         const auto* eh = Data.GetEntryHeader(pos);
-        if (eh == nullptr || eh->DataSize == 0) {
+        if (eh == nullptr || eh->GetDataSize() == 0) {
             return TEntryInfo::CreateInvalid();
         }
 
@@ -334,7 +390,6 @@ private:
         }
 
         while (cur.HasValue()) {
-            Count++;
             back = cur;
             cur = GetNextEntry(cur);
         }
@@ -383,36 +438,17 @@ private:
         MemCopy(dst.data(), src.data(), size);
     }
 
-    void Migrate(const THeader& header)
+    void Migrate()
     {
-        Y_ABORT_UNLESS(Header()->DataCapacity == header.DataCapacity);
-        Y_ABORT_UNLESS(sizeof(THeaderPrev) <= header.DataOffset);
+        // In the new version, the highest bit of the entry size is used as a
+        // skip flag - need to ensure that nobody use it
+        Visit([](auto checksum, auto data)
+        {
+            Y_UNUSED(checksum);
+            Y_ABORT_UNLESS(data.size() <= TEntryHeader::MaxDataSize);
+        });
 
-        const ui64 newFileSize = header.DataOffset + header.DataCapacity;
-
-        // Make a copy of all data in the end of the file
-        // Then copy it to the right place
-        ResizeAndRemap(newFileSize + header.DataCapacity);
-
-        if (Header()->HeaderSize == 0) {
-            CopyMappedData(
-                newFileSize,
-                sizeof(THeaderPrev),
-                header.DataCapacity);
-            // Indicate that the data has been copied
-            Header()->HeaderSize = sizeof(THeader);
-        }
-
-        Y_ABORT_UNLESS(Header()->HeaderSize == sizeof(THeader));
-        CopyMappedData(header.DataOffset, newFileSize, header.DataCapacity);
-
-        Header()->DataOffset = header.DataOffset;
-        Header()->MetadataOffset = header.MetadataOffset;
-        Header()->MetadataCapacity = header.MetadataCapacity;
-        Header()->MetadataSize = 0;
         Header()->Version = VERSION;
-
-        ResizeAndRemap(newFileSize);
     }
 
     void ResizeMetadata(ui64 desiredMetadataCapacity)
@@ -462,6 +498,37 @@ private:
         Header()->MetadataCapacity = newMetadataCapacity;
     }
 
+    void VisitNonSkippedEntries(auto visitor)
+    {
+        auto e = GetFrontEntry();
+
+        while (e.HasValue()) {
+            if (!e.GetSkipFlag()) {
+                visitor(e);
+            }
+            e = GetNextEntry(e);
+        }
+
+        if (e.IsInvalid()) {
+            SetCorrupted();
+        }
+    }
+
+    void PopFrontSkippedEntries()
+    {
+        auto front = GetFrontEntry();
+        while (front.HasValue() && front.GetSkipFlag()) {
+            front = GetNextEntry(front);
+        }
+
+        if (front.HasValue()) {
+            Header()->ReadPos = front.ActualPos;
+        } else {
+            Header()->ReadPos = 0;
+            Header()->WritePos = 0;
+        }
+    }
+
 public:
     TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
@@ -477,8 +544,7 @@ public:
         }
 
         if (Header()->Version == VERSION_PREV) {
-            auto header = InitHeader(Header()->DataCapacity, metadataCapacity);
-            Migrate(header);
+            Migrate();
         }
 
         ValidateStructure();
@@ -491,6 +557,11 @@ public:
             GetMappedData(Header()->DataOffset, Header()->DataCapacity));
 
         ValidateDataStructure();
+
+        VisitNonSkippedEntries([&](const TEntryInfo& e)
+                               { EntryMap[e.Data] = e.ActualPos; });
+
+        PopFrontSkippedEntries();
     }
 
     bool PushBack(TStringBuf data)
@@ -525,6 +596,10 @@ public:
                 "Zero size allocations are not allowed");
         }
 
+        if (size > TEntryHeader::MaxDataSize) {
+            return nullptr;
+        }
+
         const auto sz = size + sizeof(TEntryHeader);
         if (sz > Header()->DataCapacity) {
             return nullptr;
@@ -545,7 +620,7 @@ public:
                     }
                     auto* eh = Data.GetEntryHeader(Header()->WritePos);
                     if (eh != nullptr) {
-                        eh->DataSize = 0;
+                        eh->SetDataSize(0);
                     }
                     writePos = 0;
                 }
@@ -561,10 +636,8 @@ public:
         }
 
         CurrentAllocation = Data.GetEntryHeader(writePos);
-        CurrentAllocation->DataSize = size;
-
-        WritePosAfterCommit = writePos + sz;
-        LastEntrySizeAfterCommit = sz;
+        CurrentAllocation->SetDataSize(size);
+        CurrentAllocation->SetSkipFlag(false);
 
         char* ptr = Data.GetEntryData(CurrentAllocation);
         Y_ABORT_UNLESS(ptr != nullptr);
@@ -580,17 +653,37 @@ public:
         char* ptr = Data.GetEntryData(CurrentAllocation);
         Y_ABORT_UNLESS(ptr != nullptr);
 
-        CurrentAllocation->Checksum = Crc32c(ptr, CurrentAllocation->DataSize);
+        CurrentAllocation->SetChecksum(
+            Crc32c(ptr, CurrentAllocation->GetDataSize()));
 
         // We need to ensure that all previous writes are visible before
         // updating the write position
         std::atomic_thread_fence(std::memory_order_release);
 
-        Header()->WritePos = WritePosAfterCommit;
-        Header()->LastEntrySize = LastEntrySizeAfterCommit;
-        ++Count;
+        auto writePos = Data.GetEntryPos(CurrentAllocation);
+        auto sz = sizeof(TEntryHeader) + CurrentAllocation->GetDataSize();
+
+        Header()->WritePos = writePos + sz;
+        Header()->LastEntrySize = sz;
+        EntryMap[ptr] = writePos;
 
         CurrentAllocation = nullptr;
+        return true;
+    }
+
+    bool Free(const void* ptr)
+    {
+        auto it = EntryMap.find(ptr);
+        if (it == EntryMap.end()) {
+            return false;
+        }
+
+        auto* eh = Data.GetEntryHeader(it->second);
+        eh->SetSkipFlag(true);
+        EntryMap.erase(it);
+
+        PopFrontSkippedEntries();
+
         return true;
     }
 
@@ -639,26 +732,18 @@ public:
             return;
         }
 
-        auto next = GetNextEntry(cur);
-        if (next.HasValue()) {
-            Header()->ReadPos = next.ActualPos;
-        } else {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
-        }
-
-        --Count;
+        Free(cur.GetData().data());
     }
 
     ui64 Size() const
     {
-        return Count;
+        return EntryMap.size();
     }
 
     bool Empty() const
     {
         const bool result = Header()->ReadPos == Header()->WritePos;
-        Y_DEBUG_ABORT_UNLESS(result == (Count == 0));
+        Y_DEBUG_ABORT_UNLESS(result == (EntryMap.size() == 0));
         return result;
     }
 
@@ -681,16 +766,9 @@ public:
 
     void Visit(const TVisitor& visitor)
     {
-        auto e = GetFrontEntry();
-
-        while (e.HasValue()) {
-            visitor(e.Header->Checksum, e.GetData());
-            e = GetNextEntry(e);
-        }
-
-        if (e.IsInvalid()) {
-            SetCorrupted();
-        }
+        VisitNonSkippedEntries(
+            [&](const TEntryInfo& e)
+            { visitor(e.Header->GetChecksum(), e.GetData()); });
     }
 
     bool IsCorrupted() const
@@ -809,6 +887,11 @@ TResultOrError<char*> TFileRingBuffer::Alloc(size_t size)
 bool TFileRingBuffer::Commit()
 {
     return Impl->Commit();
+}
+
+bool TFileRingBuffer::Free(const void* ptr)
+{
+    return Impl->Free(ptr);
 }
 
 TStringBuf TFileRingBuffer::Front() const
