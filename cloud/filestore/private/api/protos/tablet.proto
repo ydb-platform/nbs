@@ -656,6 +656,117 @@ message TForcedOperationStatusResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ConfigureShards request/response.
+
+message TConfigureShardsRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // Shard FileSystem identifiers.
+    repeated string ShardFileSystemIds = 2;
+
+    // Override shard list validation.
+    bool Force = 3;
+
+    // Make it possible to create directories in shards.
+    bool DirectoryCreationInShardsEnabled = 4;
+
+    // Allow shards aggregate statistics from all other shards and strictly
+    // enforce filesystem size.
+    bool StrictFileSystemSizeEnforcementEnabled = 5;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 6;
+
+    // Shard FileSystem identifiers for regular files. If empty, then
+    // ShardFileSystemIds will be used for regular files.
+    repeated string FileShardFileSystemIds = 7;
+}
+
+message TConfigureShardsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// FastShard config.
+//
+// Experimental. This API is subject to change in the future.
+
+message TStorageDevice
+{
+    string Host = 1;
+    uint32 Port = 2;
+    string DeviceId = 3;
+}
+
+message TStorageGroup
+{
+    enum EStorageGroupType
+    {
+        E_SG_MIRROR = 0;
+    };
+
+    repeated TStorageDevice Devices = 1;
+    EStorageGroupType Type = 2;
+}
+
+message TFastShardConfig
+{
+    repeated TStorageGroup StorageGroups = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfigureAsShard request/response.
+
+message TConfigureAsShardRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // ShardNo (will be used for the high bits of NodeId and HandleId)
+    uint32 ShardNo = 2;
+
+    // Shard FileSystem identifiers and main FileSystem identifier (manages
+    // RootNode). Needed for directory creation in shards.
+    repeated string ShardFileSystemIds = 3;
+    string MainFileSystemId = 4;
+
+    // Make it possible to create directories in shards.
+    bool DirectoryCreationInShardsEnabled = 5;
+
+    // Allow shards aggregate statistics from all other shards and strictly
+    // enforce filesystem size.
+    bool StrictFileSystemSizeEnforcementEnabled = 6;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 7;
+
+    // Shard FileSystem identifiers for regular files. If empty, then
+    // ShardFileSystemIds will be used for regular files.
+    repeated string FileShardFileSystemIds = 8;
+
+    // Override shard list validation.
+    bool Force = 9;
+
+    // If set, this shard will work in "fast shard" mode and will use
+    // FastShardConfig to determine where and how to store the files instead of
+    // using BlobStorage.
+    bool IsFastShard = 10;
+    TFastShardConfig FastShardConfig = 11;
+}
+
+message TConfigureAsShardResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // GetStorageConfig request/response.
 
 message TGetStorageConfigRequest

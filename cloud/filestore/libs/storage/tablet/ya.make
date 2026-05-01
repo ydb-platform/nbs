@@ -13,6 +13,7 @@ SRCS(
     tablet_actor.cpp
     tablet_actor_accessnode.cpp
     tablet_actor_acquirelock.cpp
+    tablet_actor_adapter.cpp
     tablet_actor_addblob.cpp
     tablet_actor_adddata.cpp
     tablet_actor_adddata_unconfirmed.cpp
@@ -107,6 +108,7 @@ PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
+    cloud/filestore/libs/storage/fastshard/iface
     cloud/filestore/libs/storage/model
     cloud/filestore/libs/storage/tablet/actors
     cloud/filestore/libs/storage/tablet/events

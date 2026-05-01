@@ -68,6 +68,26 @@ namespace NCloud::NFileStore::NStorage {
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
+#define FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN(xxx, ...)                      \
+    xxx(WaitReady,                  __VA_ARGS__)                               \
+    xxx(CreateSession,              __VA_ARGS__)                               \
+    xxx(DestroySession,             __VA_ARGS__)                               \
+    xxx(GetStorageStats,            __VA_ARGS__)                               \
+    xxx(GetFileSystemConfig,        __VA_ARGS__)                               \
+    xxx(GetStorageConfigFields,     __VA_ARGS__)                               \
+    xxx(ChangeStorageConfig,        __VA_ARGS__)                               \
+    xxx(DescribeSessions,           __VA_ARGS__)                               \
+    xxx(ConfigureShards,            __VA_ARGS__)                               \
+    xxx(ConfigureAsShard,           __VA_ARGS__)                               \
+    xxx(GetStorageConfig,           __VA_ARGS__)                               \
+    xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
+    xxx(RestartTablet,              __VA_ARGS__)                               \
+// FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN
+
+#define FILESTORE_TABLET_ADAPTER_REQUESTS(xxx, ...)                            \
+    xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
+// FILESTORE_TABLET_ADAPTER_REQUESTS
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEvIndexTablet

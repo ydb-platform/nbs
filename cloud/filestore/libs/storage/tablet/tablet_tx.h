@@ -508,12 +508,15 @@ struct TTxIndexTablet
     struct TConfigureAsShard: TTxIndexTabletBase
     {
         const TRequestInfoPtr RequestInfo;
+        const bool IsFastShard;
         NProtoPrivate::TConfigureAsShardRequest Request;
 
         TConfigureAsShard(
                 TRequestInfoPtr requestInfo,
+                bool isFastShard,
                 NProtoPrivate::TConfigureAsShardRequest request)
             : RequestInfo(std::move(requestInfo))
+            , IsFastShard(isFastShard)
             , Request(std::move(request))
         {}
 

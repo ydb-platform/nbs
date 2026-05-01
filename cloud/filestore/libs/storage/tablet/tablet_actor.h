@@ -15,6 +15,7 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
+#include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
@@ -115,6 +116,7 @@ class TIndexTabletActor final
         STATE_BOOT,
         STATE_INIT,
         STATE_WORK,
+        STATE_ADAPTER,
         STATE_ZOMBIE,
         STATE_BROKEN,
         STATE_MAX,
@@ -181,6 +183,8 @@ private:
     TVector<ui32> RangesWithEmptyCompactionScore;
 
     TProtoMessagePrinter ProtoMessagePrinter;
+
+    NFastShard::IFileSystemShardPtr FastShard;
 
 public:
     TIndexTabletActor(
@@ -448,6 +452,10 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
+    //
+    // Helper actor factory funcs.
+    //
+
     void RegisterCreateNodeInShardActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
@@ -495,9 +503,17 @@ private:
         TString dstShardNodeName,
         bool isLocalRename);
 
+    //
+    // Misc.
+    //
+
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
+
+    void CompleteAdapterLoadState(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TLoadState& args);
 
     bool IsMainTablet() const;
     bool BehaveAsShard(const NProto::THeaders& headers) const;
@@ -565,6 +581,10 @@ private:
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TListNodes& args);
 
+    //
+    // Common event handlers.
+    //
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -572,6 +592,10 @@ private:
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    //
+    // Monpage handlers.
+    //
 
     void HandleHttpInfo(
         const NActors::NMon::TEvRemoteHttpInfo::TPtr& ev,
@@ -596,6 +620,10 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+
+    //
+    // Custom event handlers.
+    //
 
     void HandleSessionDisconnected(
         const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
@@ -713,6 +741,10 @@ private:
     std::unique_ptr<TEvIndexTabletPrivate::TEvAddBlobRequest>
     BuildAddBlobRequest(ui64 commitId, const NProto::TUnconfirmedData& entry);
 
+    //
+    // Unconfirmed flow.
+    //
+
     void AddBlobForUnconfirmedData(
         const NActors::TActorContext& ctx,
         ui64 commitId,
@@ -737,8 +769,13 @@ private:
 
     TCPUUsageTimer& AccessCPUUsageTimer();
 
+    //
+    // Request handlers.
+    //
+
     bool HandleRequests(STFUNC_SIG);
     bool HandleRequestsByFrozenTablet(STFUNC_SIG);
+    bool HandleRequestsByAdapter(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
     bool RejectRequestsByBrokenTablet(STFUNC_SIG);
 
@@ -747,9 +784,19 @@ private:
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTablet)
     FILESTORE_SERVICE_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvService)
+    FILESTORE_SERVICE_ADAPTER_REQUESTS(
+        FILESTORE_IMPLEMENT_ADAPTER_REQUEST,
+        TEvService)
+    FILESTORE_TABLET_ADAPTER_REQUESTS(
+        FILESTORE_IMPLEMENT_ADAPTER_REQUEST,
+        TEvIndexTablet)
 
-    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTabletPrivate)
-    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IMPLEMENT_ASYNC_REQUEST, TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(
+        FILESTORE_IMPLEMENT_REQUEST,
+        TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+        FILESTORE_IMPLEMENT_ASYNC_REQUEST,
+        TEvIndexTabletPrivate)
 
     FILESTORE_TABLET_RW_TRANSACTIONS(
         FILESTORE_IMPLEMENT_RW_TRANSACTION,
@@ -763,6 +810,7 @@ private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
     STFUNC(StateWork);
+    STFUNC(StateAdapter);
     STFUNC(StateZombie);
     STFUNC(StateBroken);
 

@@ -56,6 +56,9 @@ message TFileSystem
     bool ForceDirectoryCreationInShards = 21;
 
     repeated string FileShardFileSystemIds = 22;
+
+    bool IsFastShard = 23;
+    NProtoPrivate.TFastShardConfig FastShardConfig = 24;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
