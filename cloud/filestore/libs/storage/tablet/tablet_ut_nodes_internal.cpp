@@ -2250,6 +2250,54 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             response->GetStatus(),
             FormatError(response->GetError()));
     }
+
+    TABLET_TEST_4K_ONLY(ShouldReturnErrorUponFileUnlinkWithUnlinkDirectoryFlag)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        auto nodeOpErrorFromShardCounter = counters->GetCounter(
+            "AppCriticalEvents/ReceivedNodeOpErrorFromShard",
+            true);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        tablet.SendUnlinkNodeRequest(
+            RootNodeId,
+            name1,
+            true /* unlinkDirectory */);
+        auto response = tablet.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOTDIR,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, nodeOpErrorFromShardCounter->Val());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
