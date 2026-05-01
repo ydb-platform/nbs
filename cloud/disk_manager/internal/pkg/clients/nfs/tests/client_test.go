@@ -130,7 +130,7 @@ func TestListNodesFileSystem(t *testing.T) {
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(false)
-	model.RequireNodesEqual(nodes)
+	model.RequireNodesEqual(nodes, false)
 	require.Equal(
 		t,
 		nfs_testing.StandardFilesystemExpectedNames,
@@ -173,7 +173,7 @@ func TestListNodesFileSystemUnsafe(t *testing.T) {
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(true)
-	model.RequireNodesEqual(nodes)
+	model.RequireNodesEqual(nodes, false)
 	require.Equal(
 		t,
 		nfs_testing.StandardFilesystemExpectedNames,
@@ -478,16 +478,20 @@ var unsafeCreateNodeFilesystem = nfs_testing.Root(
 			nfs_testing.File("1"),
 			nfs_testing.File("2"),
 			nfs_testing.File("3"),
+			nfs_testing.BlockDev("dev_1", 1),
 		),
 		nfs_testing.Dir("b",
 			nfs_testing.File("1"),
 			nfs_testing.File("2"),
 			nfs_testing.File("3"),
+			nfs_testing.CharDev("dev_2", 1),
+			nfs_testing.CharDev("dev_5", 1),
 		),
 		nfs_testing.Dir("c",
 			nfs_testing.File("1"),
 			nfs_testing.File("2"),
 			nfs_testing.File("3"),
+			nfs_testing.BlockDev("dev_3", 1),
 		),
 		nfs_testing.File("1"),
 		nfs_testing.File("2"),
@@ -536,6 +540,7 @@ var unsafeCreateNodeFilesystem = nfs_testing.Root(
 	nfs_testing.File("1"),
 	nfs_testing.File("2"),
 	nfs_testing.File("3"),
+	nfs_testing.BlockDev("dev", 1),
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -727,5 +732,5 @@ func TestUnsafeCreateNodeRestoreShardAfterDeletion(t *testing.T) {
 
 	// Verify the restored listing matches the original.
 	restoredNodes := model.ListAllNodesRecursively(true)
-	model.RequireNodesEqual(restoredNodes)
+	model.RequireNodesEqual(restoredNodes, true)
 }

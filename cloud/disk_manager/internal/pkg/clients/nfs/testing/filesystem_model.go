@@ -420,6 +420,7 @@ func (f *FileSystemModel) ListAllNodesRecursively(unsafe bool) []nfs.Node {
 
 func (f *FileSystemModel) RequireNodesEqual(
 	nodes []nfs.Node,
+	checkExactMatch bool,
 ) {
 
 	require.Equal(f.t, len(f.ExpectedNodes), len(nodes))
@@ -435,6 +436,14 @@ func (f *FileSystemModel) RequireNodesEqual(
 		require.Equal(f.t, expectedNode.UID, node.UID)
 		require.Equal(f.t, expectedNode.GID, node.GID)
 		require.Equal(f.t, expectedNode.LinkTarget, node.LinkTarget)
+		if checkExactMatch {
+			require.Equal(f.t, expectedNode.Atime, node.Atime)
+			require.Equal(f.t, expectedNode.Mtime, node.Mtime)
+			require.Equal(f.t, expectedNode.Ctime, node.Ctime)
+			require.Equal(f.t, expectedNode.Size, node.Size)
+			require.Equal(f.t, expectedNode.Links, node.Links)
+			require.Equal(f.t, expectedNode.DevID, node.DevID)
+		}
 	}
 }
 
