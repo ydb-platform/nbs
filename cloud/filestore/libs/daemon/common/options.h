@@ -11,6 +11,8 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// IMPORTANT: do not delete "null", "local", or "kikimr" annotations as they are
+// used for enum serialization
 enum class EServiceKind
 {
     Null   /* "null"   */ ,
