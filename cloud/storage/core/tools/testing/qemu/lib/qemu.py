@@ -70,7 +70,7 @@ class QemuException(Exception):
 
 class Qemu:
     def __init__(self,
-                 qemu_kmv,
+                 qemu_kvm,
                  qemu_firmware,
                  rootfs,
                  kernel,
@@ -94,7 +94,7 @@ class Qemu:
         self.seqno = 0
         self.qemu_bin = None
 
-        self.qemu_kmv = qemu_kmv
+        self.qemu_kvm = qemu_kvm
         self.qemu_firmware = qemu_firmware
         self.rootfs = rootfs
         self.kernel = kernel
@@ -222,7 +222,7 @@ class Qemu:
         self.qmp_socket = create_qmp_socket()
 
         cmd = [
-            self.qemu_kmv,
+            self.qemu_kvm,
             "-nodefaults",
             "-msg", "timestamp=on",
             "-smp", str(self.proc),
