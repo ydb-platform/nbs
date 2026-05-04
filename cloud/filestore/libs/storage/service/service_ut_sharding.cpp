@@ -7870,14 +7870,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         //
         // file1 - managed by a shard.
+        // subdir1 - managed by the main tablet.
         //
 
         auto node1Id = service.CreateNode(
             headers,
-            TCreateNodeArgs::File(
-            dir0_1Id,
-            "file1"))->Record.GetNode().GetId();
+            TCreateNodeArgs::File(dir0_1Id, "file1")
+        )->Record.GetNode().GetId();
         UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(node1Id));
+
+        auto subdir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir0_1Id, "subdir1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(subdir1Id));
 
         //
         // Forcing directory creation in shards.
@@ -7893,7 +7899,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             true /* forceDirectoryCreationInShards */);
 
         //
-        // dir2 and dir3 - managed by shards.
+        // dir2, dir3, subdir2 - managed by shards.
         //
 
         ui64 dir2Id = service.CreateNode(
@@ -7907,6 +7913,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TCreateNodeArgs::Directory(dir2Id, "dir3")
         )->Record.GetNode().GetId();
         UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir3Id));
+
+        auto subdir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir0_1Id, "subdir2")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(subdir2Id));
 
         //
         // Trying to move dir0_1 into dir2 - should fail because the
@@ -7925,6 +7937,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             auto renameResponse = service.RecvRenameNodeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_XDEV,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        //
+        // Trying to rename subdir1 to subdir2 - should succeed.
+        //
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir0_1Id,
+            "subdir1",
+            dir0_1Id,
+            "subdir2",
+            0 /* flags */);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
                 renameResponse->GetError().GetCode(),
                 renameResponse->GetError().GetMessage());
         }
@@ -8028,12 +8060,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fsConfig.FsId,
             dir0_1Id)->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
         UNIT_ASSERT_VALUES_EQUAL("dir3", listNodesResponse.GetNames(0));
         UNIT_ASSERT_VALUES_EQUAL(
             dir3Id,
             listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL("subdir2", listNodesResponse.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            subdir1Id,
+            listNodesResponse.GetNodes(1).GetId());
 
         listNodesResponse = service.ListNodes(
             headers,

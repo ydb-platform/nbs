@@ -434,19 +434,6 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             return true;
         }
 
-        // oldpath directory: newpath must either not exist, or it must specify
-        // an empty directory.
-        if (args.ChildNode
-                && args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
-        {
-            if (!args.NewChildNode || args.NewChildNode->Attrs.GetType()
-                    != NProto::E_DIRECTORY_NODE)
-            {
-                args.Error = ErrorIsNotDirectory(args.NewChildNode->NodeId);
-                return true;
-            }
-        }
-
         bool childIsDir = false;
         bool newChildIsDir = false;
         bool newChildIsEmpty = false;
@@ -522,6 +509,9 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
                 args.Error = ErrorIsNotEmpty(newChildNodeId);
                 return true;
             }
+        } else if (childIsDir) {
+            args.Error = ErrorIsNotDirectory(newChildNodeId);
+            return true;
         }
     } else if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
         args.Error = ErrorInvalidTarget(args.NewParentNodeId, args.NewName);

@@ -593,12 +593,11 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         }
 
         if (args.IsSecondPass) {
-            // oldpath directory: newpath must either not exist, or it must
-            // specify an empty directory.
-            if (args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE) {
-                if (args.SourceNodeAttr.GetType()
-                        != NProto::E_DIRECTORY_NODE)
-                {
+            const auto dirType = NProto::E_DIRECTORY_NODE;
+
+            // newpath directory: oldpath must be a directory as well
+            if (args.DestinationNodeAttr.GetType() == dirType) {
+                if (args.SourceNodeAttr.GetType() != dirType) {
                     args.Error =
                         ErrorIsDirectory(args.SourceNodeAttr.GetId());
                     return true;
@@ -607,6 +606,14 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
                 // we don't need a separate emptiness check here because
                 // emptiness is checked upon PrepareUnlinkDirectoryNodeInShard
                 // which happens after the first pass
+            }
+
+            // oldpath directory: newpath must be a directory as well
+            if (args.DestinationNodeAttr.GetType() != dirType
+                    && args.SourceNodeAttr.GetType() == dirType)
+            {
+                args.Error = ErrorIsNotDirectory(args.SourceNodeAttr.GetId());
+                return true;
             }
         } else {
             args.SecondPassRequired = true;
