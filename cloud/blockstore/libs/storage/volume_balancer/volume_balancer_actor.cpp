@@ -147,6 +147,7 @@ TVolumeBalancerActor::TVolumeBalancerActor(
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
     TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , VolumeStats(std::move(volumeStats))
     , StatsFetcher(std::move(statsFetcher))
     , ServiceActorId(serviceActorId)
