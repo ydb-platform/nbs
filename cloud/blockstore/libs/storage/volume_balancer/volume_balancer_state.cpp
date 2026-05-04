@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+#include "cloud/storage/core/libs/throttling/helpers.h"
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -79,6 +80,27 @@ void TVolumeBalancerState::UpdateVolumeStats(
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
             info.SufferCount = perfIt->second;
         }
+
+        info.Cost = {};
+
+        if (info.IsLocal) {
+            TYdbDiskLoadCounters currentLoadCounters{
+                v.GetReadBlobCount(),
+                v.GetWriteBlobCount(),
+                v.GetReadBlobBytes(),
+                v.GetWriteBlobBytes(),
+            };
+
+            if (info.LoadCountersUpdateTs) {
+                info.Cost = CalculateCost(info, currentLoadCounters);
+            }
+            info.LoadCounters = currentLoadCounters;
+            info.LoadCountersUpdateTs = now;
+        } else {
+            info.LoadCounters = {};
+            info.LoadCountersUpdateTs = {};
+        }
+
         knownDisks.erase(v.GetDiskId());
     }
 
@@ -116,6 +138,7 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                     TABLEH() { out << "Volume"; }
                     TABLEH() { out << "Preemption allowed"; }
                     TABLEH() { out << "Suffer Count"; }
+                    TABLEH() { out << "IO Cost"; }
                 }
             }
             for (const auto& v: Volumes) {
@@ -129,6 +152,9 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                         }
                         TABLED() {
                             out << v.second.SufferCount;
+                        }
+                        TABLED() {
+                            out << v.second.Cost;
                         }
                     }
                 }
@@ -296,6 +322,37 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         balancerEnabled &&
         isSuitableMediaKind &&
         !VolumesInProgress.count(diskId);
+}
+
+TDuration TVolumeBalancerState::CalculateCost(
+        const TVolumeInfo& info,
+        const TYdbDiskLoadCounters& currentLoad) const
+{
+    const auto& last = info.LoadCounters;
+
+    const auto perfSettings =
+        GetPerfSettings(*DiagnosticsConfig, info.MediaKind);
+
+    const ui32 expectedParallelism =
+        DiagnosticsConfig->GetExpectedIoParallelism();
+
+    const TDuration writeCost =
+        expectedParallelism *
+        CostPerIO(
+            perfSettings.WriteIops,
+            perfSettings.WriteBandwidth,
+            currentLoad.WriteBlobBytes - last.WriteBlobBytes,
+            currentLoad.WriteBlobCount - last.WriteBlobCount);
+
+    const TDuration readCost =
+        expectedParallelism *
+        CostPerIO(
+            perfSettings.ReadIops,
+            perfSettings.ReadBandwidth,
+            currentLoad.ReadBlobBytes - last.ReadBlobBytes,
+            currentLoad.WriteBlobCount - last.WriteBlobCount);
+
+    return writeCost + readCost;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
