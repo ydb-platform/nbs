@@ -51,6 +51,7 @@ TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfig(
           Devices,
           [this](const NProto::TDeviceConfig& device)
           { return IsDeviceReadyForReading(device); }))
+    , BrokenAtByDeviceId(std::move(params.BrokenAtByDeviceId))
 
 {
     Y_ABORT_UNLESS(Devices.size());

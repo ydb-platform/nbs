@@ -1539,6 +1539,7 @@ struct TTxDiskRegistry
         const TString DiskId;
         const TInstant Now;
         const NProto::EVolumeHealth VolumeHealth;
+        const ui64 VolumeHealthSeqNo;
 
         NProto::TError Error;
 
@@ -1546,11 +1547,13 @@ struct TTxDiskRegistry
             TRequestInfoPtr requestInfo,
             TString diskId,
             TInstant now,
-            NProto::EVolumeHealth volumeHealth)
+            NProto::EVolumeHealth volumeHealth,
+            ui64 volumeHealthSeqNo)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , Now(now)
             , VolumeHealth(volumeHealth)
+            , VolumeHealthSeqNo(volumeHealthSeqNo)
         {}
 
         void Clear()

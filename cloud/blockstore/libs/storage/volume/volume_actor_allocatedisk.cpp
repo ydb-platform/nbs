@@ -716,6 +716,8 @@ void TVolumeActor::CompleteUpdateDevices(
                 std::move(outdatedDevices)));
     };
 
+    CleanupStaleBrokenDevices(ctx);
+
     StopPartitions(ctx, onPartitionDestroy);
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);

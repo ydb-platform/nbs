@@ -310,6 +310,9 @@ message TDiskConfig
     // Health state reported by TVolumeActor (set to UNHEALTHY when at least
     // one device timed out from the volume's perspective).
     EVolumeHealth VolumeHealth = 19;
+
+    // Last applied SeqNo from TVolumeActor health notification.
+    uint64 VolumeHealthSeqNo = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
