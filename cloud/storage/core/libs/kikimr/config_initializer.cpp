@@ -10,6 +10,10 @@
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/shared_cache.pb.h>
 
+#include <algorithm>
+#include <cmath>
+#include <optional>
+
 namespace NCloud::NStorage {
 
 namespace {
@@ -18,10 +22,21 @@ namespace {
 
 void AdjustActorSystemThreadsAccordingToAvailableCpus(
     NKikimrConfig::TActorSystemConfig& config,
-    ui32 availableCpuCoresPercentage)
+    ui32 availableCpuCoresPercentage,
+    const std::optional<ui32>& servicesCpuCount)
 {
     if (availableCpuCoresPercentage == 0) {
         // do nothing
+        return;
+    }
+
+    if (config.HasUseAutoConfig() && config.GetUseAutoConfig()) {
+        if (servicesCpuCount && *servicesCpuCount > 0) {
+            const ui32 scaledCpu = static_cast<ui32>(std::round(
+                (*servicesCpuCount * 1.0 * availableCpuCoresPercentage) /
+                100.0));
+            config.SetCpuCount(std::max<ui32>(1, scaledCpu));
+        }
         return;
     }
 
@@ -109,7 +124,8 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
     }
     AdjustActorSystemThreadsAccordingToAvailableCpus(
         sysConfig,
-        Options->ActorSystemAvailableCpuCoresPercentage);
+        Options->ActorSystemAvailableCpuCoresPercentage,
+        ServicesCpuCount);
 
     auto& interconnectConfig = *KikimrConfig->MutableInterconnectConfig();
     if (Options->InterconnectConfig) {

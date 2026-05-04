@@ -6,6 +6,8 @@
 
 #include <contrib/ydb/core/protos/config.pb.h>
 
+#include <optional>
+
 namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,6 +16,8 @@ struct TConfigInitializerYdbBase
     : public virtual TConfigInitializerBase
 {
     TOptionsYdbBasePtr Options;
+
+    std::optional<ui32> ServicesCpuCount;
 
     NKikimrConfig::TAppConfigPtr KikimrConfig;
 
@@ -50,4 +54,4 @@ protected:
     TString GetFullSchemeShardDir() const;
 };
 
-}   // namespace NCloud::NServer
+}   // namespace NCloud::NStorage

@@ -68,6 +68,8 @@ struct TConfigInitializerYdb final
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
+    void InitKikimrConfig();
+
     void InitFeaturesConfig();
     void InitLogbrokerConfig();
     void InitNotifyConfig();

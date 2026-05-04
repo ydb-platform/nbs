@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
 #include <cloud/storage/core/config/features.pb.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
@@ -46,6 +47,29 @@ TConfigInitializerYdb::TConfigInitializerYdb(TOptionsYdbPtr options)
     , NCloud::NStorage::TConfigInitializerYdbBase(options)
     , Options(options)
 {}
+
+void TConfigInitializerYdb::InitKikimrConfig()
+{
+    ServicesCpuCount.reset();
+
+    NProto::TClientAppConfig appConfig;
+    if (Options->EndpointConfig) {
+        ParseProtoTextFromFileRobust(Options->EndpointConfig, appConfig);
+        const auto& tc = appConfig.GetClientConfig().GetThrottlingConfig();
+        if (auto json = ReadJsonFile(tc.GetInfraThrottlingConfigPath())) {
+            try {
+                if (auto* value = json->GetValueByPath("services_cores_num")) {
+                    ServicesCpuCount = value->GetUIntegerSafe();
+                }
+            } catch (...) {
+                STORAGE_ERROR("Failed to read ServicesCpuCount. Error: "
+                    << CurrentExceptionMessage().c_str());
+            }
+        }
+    }
+
+    NCloud::NStorage::TConfigInitializerYdbBase::InitKikimrConfig();
+}
 
 void TConfigInitializerYdb::InitStatsUploadConfig()
 {
