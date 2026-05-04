@@ -812,6 +812,8 @@ public:
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
 
     [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
+
+    [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
 };
 
 ui64 GetAllocationUnit(

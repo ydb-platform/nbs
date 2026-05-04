@@ -695,6 +695,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
         bool,                                                                  \
         false                                                                 )\
+    xxx(SplitByCompactionRangeMaxBlobCount,   ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
