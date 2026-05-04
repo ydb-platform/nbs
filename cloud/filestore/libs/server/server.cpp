@@ -1558,6 +1558,38 @@ public:
     }
 
 private:
+    std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials()
+    {
+        auto provider = GetCertificateRefresher()->GetCertificateProvider();
+
+        if (!provider) {
+            auto sslOptions = CreateSslOptions();
+            return grpc::SslServerCredentials(sslOptions);
+        }
+
+        TVector<NCloud::TCertificateFiles> certPathList;
+        for (const auto& cert: Config->GetCerts()) {
+            Y_ENSURE(cert.CertFile, "Empty CertFile");
+            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+
+            NCloud::TCertificateFiles certPaths;
+            certPaths.PrivateKeyPath = cert.CertPrivateKeyFile;
+            certPaths.CertChainPath = cert.CertFile;
+            certPathList.push_back(std::move(certPaths));
+        }
+        Y_ENSURE(!certPathList.empty(), "Empty Certs");
+
+        grpc::experimental::TlsServerCredentialsOptions tlsOptions(std::move(provider));
+        tlsOptions.set_cert_request_type(GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
+        tlsOptions.watch_identity_key_cert_pairs();
+
+        if (Config->GetRootCertsFile()) {
+            tlsOptions.watch_root_certs();
+        }
+
+        return grpc::experimental::TlsServerCredentials(tlsOptions);
+    }
+
     void InitializeAppContext(
         auto& ctx,
         auto& /*service*/,
@@ -1665,8 +1697,7 @@ public:
             auto address = Join(":", host, port);
             STORAGE_INFO("Listen on (secure control) " << address);
 
-            auto sslOptions = CreateSslOptions();
-            auto credentials = grpc::SslServerCredentials(sslOptions);
+            auto credentials = CreateSecureServerCredentials();
             credentials->SetAuthMetadataProcessor(
                 std::make_shared<TAuthMetadataProcessor>(
                     RequestSourceKinds,
