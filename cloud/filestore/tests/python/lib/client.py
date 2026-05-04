@@ -25,7 +25,7 @@ class FilestoreCliClient:
         vhost_port=None,
         verbose=False,
         cwd=".",
-        timeout=60,
+        timeout=200,
         config_path=None,
         auth_token=None,
         check_exit_code=True,
