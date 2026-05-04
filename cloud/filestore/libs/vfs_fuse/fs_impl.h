@@ -54,19 +54,17 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EServerWriteBackCacheState
+enum class EWriteBackCacheRequestStrategy
 {
-    // WriteBackCache is turned off
-    Disabled,
+    // WriteBackCache should not be used, the requests should go directly to the
+    // session
+    DoNotUse,
 
-    // Requests should go to the WriteBackCache
-    Enabled,
+    // WriteBackCache should be used, with ReadData/WriteData
+    UseNonDirect,
 
-    // WriteBackCache is being turned off or a request with
-    // O_DIRECT/O_SYNC/O_DSYNC is made.
-    // Requests should wait until WriteBackCache is flushed and then go
-    // directly to the session
-    Draining
+    // WriteBackCache should be used, with ReadDataDirect/WriteDataDirect only
+    UseDirect
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -408,7 +406,7 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    EServerWriteBackCacheState GetServerWriteBackCacheState(
+    EWriteBackCacheRequestStrategy GetWriteBackCacheRequestStrategy(
         const fuse_file_info* fi) const;
 
     TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;
