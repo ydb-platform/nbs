@@ -416,7 +416,7 @@ public:
 
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 
-    void UpdateShardBalancer(const TVector<TShardStats>& stats);
+    NProto::TError UpdateShardBalancer(const TVector<TShardStats>& stats);
 
     TVector<IShardBalancer::TShardDescr> MakeOrderedShardList() const;
 
