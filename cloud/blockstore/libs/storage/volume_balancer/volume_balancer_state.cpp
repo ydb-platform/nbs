@@ -25,8 +25,11 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
     , LastSuccessfulPull(TInstant::Now())
 {}
 
-TVolumeBalancerState::TVolumeBalancerState(TStorageConfigPtr storageConfig)
+TVolumeBalancerState::TVolumeBalancerState(
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig)
     : StorageConfig(std::move(storageConfig))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , InitialVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , OverridenVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
