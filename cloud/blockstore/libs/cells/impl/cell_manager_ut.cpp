@@ -257,7 +257,6 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             .SetCellId("xyz")
             .BuildServer(service);
 
-
         auto cfg = TCellConfigBuilder("abc", true)
             .AddCell(
                 "xyz",  // cellid
@@ -317,7 +316,6 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
                 "certs/server.key")
             .SetCellId("xyz")
             .BuildServer(service);
-
 
         auto cfg = TCellConfigBuilder("abc", true)
             .AddCell(
