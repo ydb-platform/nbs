@@ -532,7 +532,7 @@ void TBootstrapVhost::Drain()
     if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr &&
         GetShouldContinue().PollState() != TProgramShouldContinue::Continue)
     {
-        auto code = GetShouldContinue().GetReturnCode();
+        const int code = GetShouldContinue().GetReturnCode();
         if (code == NodeLeaseExpirationExitCode) {
             ythrow TAppShouldExitWithoutShutdownException()
                 << "Node lease is expired";

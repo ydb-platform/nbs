@@ -192,14 +192,14 @@ auto MakeSslServerCredentials()
 ////////////////////////////////////////////////////////////////////////////////
 
 // Needed to mock NodeBroker to allow our dynamic node to register
-class FakeYdbDiscoveryService final
+class TFakeYdbDiscoveryService final
     : public Ydb::Discovery::V1::DiscoveryService::Service
 {
 private:
     ui64 DynamicNodeIcPort;
 
 public:
-    FakeYdbDiscoveryService(ui64 dynamicNodeIcPort)
+    explicit TFakeYdbDiscoveryService(ui64 dynamicNodeIcPort)
         : DynamicNodeIcPort(dynamicNodeIcPort)
     {}
 
@@ -232,12 +232,12 @@ public:
     }
 };
 
-// Grpc server for FakeYdbDiscoveryService.
+// Grpc server for TFakeYdbDiscoveryService.
 // Needed to mock NodeBroker to allow our dynamic node to register
 class TestYdbDiscoveryServer
 {
 private:
-    FakeYdbDiscoveryService Service;
+    TFakeYdbDiscoveryService Service;
     std::unique_ptr<grpc::Server> Server;
 
     TPortManager PortManager;
