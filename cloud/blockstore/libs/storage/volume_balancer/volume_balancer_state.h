@@ -23,6 +23,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TVolumeBalancerState
 {
+    struct TYdbDiskLoadCounters
+    {
+        ui64 ReadBlobCount = 0;
+        ui64 WriteBlobCount = 0;
+        ui64 ReadBlobBytes = 0;
+        ui64 WriteBlobBytes = 0;
+    };
+
     struct TVolumeInfo
     {
         TString CloudId;
@@ -39,6 +47,12 @@ class TVolumeBalancerState
         TInstant LastSuccessfulPull;
 
         ui32 SufferCount = 0;
+
+        TInstant LoadCountersUpdateTs = {};
+
+        TYdbDiskLoadCounters LoadCounters = {};
+
+        TDuration Cost = {};
 
         TVolumeInfo(TDuration pullInterval);
     };
@@ -137,6 +151,10 @@ private:
     bool IsVolumePreemptible(
         const TString& diskId,
         const TVolumeInfo& volume) const;
+
+    TDuration CalculateCost(
+        const TVolumeInfo& info,
+        const TYdbDiskLoadCounters& currentLoad) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
