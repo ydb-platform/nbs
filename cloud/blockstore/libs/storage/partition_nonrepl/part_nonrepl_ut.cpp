@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -75,6 +76,8 @@ struct TTestEnv
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         TDuration MaxTimedOutDeviceStateDuration = TDuration::Seconds(20);
+        NProto::ERequestSplitterPolicy SplitterPolicy =
+            NProto::ERequestSplitterPolicy::RSP_ENABLE;
 
         TDevices Devices;
     };
@@ -120,6 +123,7 @@ struct TTestEnv
         storageConfig.SetNonReplicatedAgentMaxTimeout(300'000);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
         storageConfig.SetLaggingDeviceTimeoutThreshold(3'000);
+        storageConfig.SetRequestSplitterPolicy(params.SplitterPolicy);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -2574,6 +2578,50 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             DescribeRange(range),
             response->Record.FailInfo.FailedRanges[0]);
+    }
+
+    Y_UNIT_TEST(ShouldReportCrossDeviceRequestDetected)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.SplitterPolicy =
+                 NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto crossDeviceCounter = counters->GetCounter(
+            "AppCriticalEvents/CrossPartitionRequestDetected",
+            true);
+
+        client.WriteBlocks(TBlockRange64::WithLength(2000, 100), 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, crossDeviceCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCrossDeviceRequestDetectedForSingleDevice)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.SplitterPolicy =
+                 NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto crossDeviceCounter = counters->GetCounter(
+            "AppCriticalEvents/CrossPartitionRequestDetected",
+            true);
+
+        client.WriteBlocks(TBlockRange64::WithLength(0, 100), 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crossDeviceCounter->Val());
     }
 }
 
