@@ -343,7 +343,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 uuid2);
             response = tablet.RecvRenameNodeInDestinationResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
+                E_FS_NOTDIR,
                 response->GetStatus(),
                 FormatError(response->GetError()));
         } else {
@@ -357,7 +357,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             tablet.SendRenameNodeRequest(RootNodeId, name2, RootNodeId, name1);
             response = tablet.RecvRenameNodeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
+                E_FS_NOTDIR,
                 response->GetStatus(),
                 FormatError(response->GetError()));
         }
