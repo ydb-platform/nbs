@@ -1,6 +1,7 @@
 #include "volume_actor.h"
 
 #include "volume_database.h"
+#include "actors/volume_health_sync_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -51,6 +52,7 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadFollowers(args.FollowerDisks),
         db.ReadLeaders(args.LeaderDisks),
+        db.ReadBrokenDevices(args.BrokenDevices),
     };
 
     if (args.Meta) {
@@ -106,6 +108,8 @@ void TVolumeActor::CompleteLoadState(
     const TActorContext& ctx,
     TTxVolume::TLoadState& args)
 {
+    VolumeHealthRequestId = TCompositeId::FromGeneration(Executor()->Generation());
+
     if (args.StorageConfig.Defined()) {
         Config =
             TStorageConfig::Merge(GlobalStorageConfig, *args.StorageConfig);
@@ -161,6 +165,21 @@ void TVolumeActor::CompleteLoadState(
             {
                 CopyCachedStatsToPartCounters(partStats.Stats, *info);
             }
+        }
+
+        for (const auto& info: args.BrokenDevices) {
+            DeviceUUIDToBrokenAt[info.DeviceUUID] = info.BrokenTs;
+        }
+
+        if (!ShouldSkipVolumeHealthNotification()) {
+            VolumeHealthSyncActorId = NCloud::Register<TVolumeHealthSyncActor>(
+                ctx,
+                SelfId(),
+                State->GetDiskId(),
+                LogTitle.GetChild(GetCycleCount()),
+                TDuration::Seconds(1),
+                TDuration::Seconds(30));
+            Actors.insert(VolumeHealthSyncActorId);
         }
 
         Y_ABORT_UNLESS(CurrentState == STATE_INIT);

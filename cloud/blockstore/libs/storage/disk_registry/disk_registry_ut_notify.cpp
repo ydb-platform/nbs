@@ -536,7 +536,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.UpdateVolumeHealth(
             "nonrepl-vol",
-            NProto::VOLUME_HEALTH_UNHEALTHY);
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            1);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
@@ -554,7 +555,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.UpdateVolumeHealth(
             "nonrepl-vol",
-            NProto::VOLUME_HEALTH_HEALTHY);
+            NProto::VOLUME_HEALTH_HEALTHY,
+            2);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
@@ -565,6 +567,92 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             notifyService->Requests[1].Event,
             TDiskBackOnline,
             DiskId);
+    }
+
+    Y_UNIT_TEST(ShouldRejectStaleSeqNoWithEAborted)
+    {
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                }),
+        };
+
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+        TDiskRegistryClient diskRegistry(*runtime);
+
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        diskRegistry.AllocateDisk("nonrepl-vol", 10_GB);
+
+        diskRegistry.UpdateVolumeHealth(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            5);
+
+        diskRegistry.SendUpdateVolumeHealthRequest(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_HEALTHY,
+            3);
+        auto response = diskRegistry.RecvUpdateVolumeHealthResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldReturnSAlreadyForDuplicateSeqNo)
+    {
+        auto notifyService = std::make_shared<TFakeNotifyService>();
+
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                }),
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+                           .WithAgents(agents)
+                           .With(notifyService)
+                           .Build();
+        TDiskRegistryClient diskRegistry(*runtime);
+
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        diskRegistry.AllocateDisk(
+            "nonrepl-vol",
+            10_GB,
+            4_KB,
+            "",
+            0,
+            "yc-nbs",
+            "yc-nbs.folder");
+
+        diskRegistry.UpdateVolumeHealth(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            5);
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
+
+        diskRegistry.SendUpdateVolumeHealthRequest(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            5);
+        auto response = diskRegistry.RecvUpdateVolumeHealthResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
     }
 }
 

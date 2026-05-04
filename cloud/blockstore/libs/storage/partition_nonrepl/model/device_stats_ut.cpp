@@ -75,7 +75,7 @@ Y_UNIT_TEST_SUITE(TDeviceStatTest)
 
         const auto now = TInstant::Seconds(100);
 
-        stat.MarkBroken(now);
+        stat.MarkBrokenAndNotify(now);
         UNIT_ASSERT_VALUES_EQUAL(1, observer.BrokenCount);
 
         stat.MarkOk(now, TDuration::MilliSeconds(5));

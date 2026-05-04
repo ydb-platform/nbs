@@ -31,10 +31,14 @@ TVector<TDeviceStat> CreateDeviceStats(
     IDeviceStatObserver* observer)
 {
     const auto& devices = partConfig.GetDevices();
+    const auto& brokenAt = partConfig.GetBrokenAtByDeviceId();
     TVector<TDeviceStat> stats;
     stats.reserve(devices.size());
     for (const auto& device: devices) {
         stats.emplace_back(device.GetDeviceUUID(), observer);
+        if (const TInstant* ts = brokenAt.FindPtr(device.GetDeviceUUID())) {
+            stats.back().MarkBroken(*ts);
+        }
     }
     return stats;
 }
@@ -360,7 +364,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         TDeviceStat& deviceStat = DeviceStats[dr.DeviceIdx];
         if (dr.Device.GetNodeId() == 0) {
             // Accessing a non-allocated device causes the disk to break.
-            deviceStat.MarkBroken(ctx.Now());
+            deviceStat.MarkBrokenAndNotify(ctx.Now());
 
             reply(
                 ctx,

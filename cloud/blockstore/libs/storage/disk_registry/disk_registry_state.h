@@ -277,6 +277,7 @@ class TDiskRegistryState
         TVector<TLaggingDevice> OutdatedLaggingDevices;
 
         NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
+        ui64 VolumeHealthSeqNo = 0;
     };
 
     struct TVolumeDeviceOverrides
@@ -795,7 +796,8 @@ public:
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TInstant now,
-        NProto::EVolumeHealth volumeHealth);
+        NProto::EVolumeHealth volumeHealth,
+        ui64 volumeHealthSeqNo = 0);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 

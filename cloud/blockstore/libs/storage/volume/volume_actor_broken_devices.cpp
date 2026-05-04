@@ -1,10 +1,55 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
+#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+using namespace NKikimr;
+using namespace NKikimr::NTabletFlatExecutor;
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TVolumeActor::ShouldSkipVolumeHealthNotification() const
+{
+    return !State ||
+           IsReliableDiskRegistryMediaKind(
+               State->GetMeta().GetConfig().GetStorageMediaKind()) ||
+           !Config->GetVolumeHealthNotificationEnabled();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::SendVolumeHealthNotification(
+    const TActorContext& ctx,
+    NProto::EVolumeHealth volumeHealth)
+{
+    if (ShouldSkipVolumeHealthNotification()) {
+        return;
+    }
+
+    VolumeHealth = volumeHealth;
+    const ui64 seqNo = VolumeHealthRequestId.Advance();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Setting desired volume health = %s "
+        "(volumeRequestId=%" PRIu64 ")",
+        LogTitle.GetWithTime().c_str(),
+        volumeHealth == NProto::VOLUME_HEALTH_HEALTHY ? "healthy" : "unhealthy",
+        seqNo);
+
+    NCloud::Send(
+        ctx,
+        VolumeHealthSyncActorId,
+        std::make_unique<TEvVolumePrivate::TEvSetDesiredVolumeHealth>(
+            volumeHealth,
+            seqNo));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -12,35 +57,136 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ShouldSkipVolumeHealthNotification()) {
+        return;
+    }
+
     auto* msg = ev->Get();
+    const auto& uuid = msg->DeviceUUID;
+    const auto& ts = msg->BrokenTs;
+
+    if (DeviceUUIDToBrokenAt.contains(uuid)) {
+        return;
+    }
 
     LOG_WARN(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Device %s is broken (broken at %s)",
         LogTitle.GetWithTime().c_str(),
-        msg->DeviceUUID.Quote().c_str(),
-        msg->BrokenTs.ToString().c_str());
+        uuid.Quote().c_str(),
+        ts.ToString().c_str());
 
-    // TODO: save the broken device to the database
+    const bool wasEmpty = DeviceUUIDToBrokenAt.empty();
+    DeviceUUIDToBrokenAt[uuid] = ts;
+    ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, ts, /*add=*/true);
+
+    if (wasEmpty) {
+        SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_UNHEALTHY);
+    }
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleDeviceRecoveredNotification(
     const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ShouldSkipVolumeHealthNotification()) {
+        return;
+    }
+
     auto* msg = ev->Get();
+    const auto& uuid = msg->DeviceUUID;
+
+    if (!DeviceUUIDToBrokenAt.contains(uuid)) {
+        return;
+    }
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Device %s has recovered",
         LogTitle.GetWithTime().c_str(),
-        msg->DeviceUUID.Quote().c_str());
+        uuid.Quote().c_str());
 
-    // TODO: remove the device from the list of broken ones in the database
+    DeviceUUIDToBrokenAt.erase(uuid);
+    ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, TInstant::Zero(), /*add=*/false);
+
+    if (DeviceUUIDToBrokenAt.empty()) {
+        SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TVolumeActor::PrepareUpdateBrokenDevice(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxVolume::TUpdateBrokenDevice& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+    return true;
+}
+
+void TVolumeActor::ExecuteUpdateBrokenDevice(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxVolume::TUpdateBrokenDevice& args)
+{
+    Y_UNUSED(ctx);
+
+    TVolumeDatabase db(tx.DB);
+    if (args.Add) {
+        db.WriteBrokenDevice(args.DeviceUUID, args.BrokenTs);
+    } else {
+        db.DeleteBrokenDevice(args.DeviceUUID);
+    }
+}
+
+void TVolumeActor::CompleteUpdateBrokenDevice(
+    const TActorContext& ctx,
+    TTxVolume::TUpdateBrokenDevice& args)
+{
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s BrokenDevice %s: %s",
+        LogTitle.GetWithTime().c_str(),
+        args.Add ? "persisted" : "removed",
+        args.DeviceUUID.Quote().c_str());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::CleanupStaleBrokenDevices(const TActorContext& ctx)
+{
+    if (DeviceUUIDToBrokenAt.empty()) {
+        return;
+    }
+
+    THashSet<TString> currentUUIDs;
+    for (const auto* dev: GetAllDevices(State->GetMeta())) {
+        currentUUIDs.insert(dev->GetDeviceUUID());
+    }
+    for (auto it = DeviceUUIDToBrokenAt.begin();
+         it != DeviceUUIDToBrokenAt.end();)
+    {
+        if (!currentUUIDs.contains(it->first)) {
+            ExecuteTx<TUpdateBrokenDevice>(
+                ctx,
+                it->first,
+                TInstant::Zero(),
+                /*add=*/false);
+            DeviceUUIDToBrokenAt.erase(it++);
+        } else {
+            ++it;
+        }
+    }
+
+    if (DeviceUUIDToBrokenAt.empty()) {
+        SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

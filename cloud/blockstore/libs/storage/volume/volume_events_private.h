@@ -515,6 +515,21 @@ struct TEvVolumePrivate
     };
 
     //
+    //  SetDesiredVolumeHealth
+    //
+
+    struct TSetDesiredVolumeHealth
+    {
+        NProto::EVolumeHealth VolumeHealth;
+        ui64 SeqNo;
+
+        TSetDesiredVolumeHealth(NProto::EVolumeHealth volumeHealth, ui64 seqNo)
+            : VolumeHealth(volumeHealth)
+            , SeqNo(seqNo)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -547,6 +562,7 @@ struct TEvVolumePrivate
         EvCreateLinkFinished,
         EvDiskRegistryDeviceOperationStarted,
         EvDiskRegistryDeviceOperationFinished,
+        EvSetDesiredVolumeHealth,
 
         EvEnd
     };
@@ -651,6 +667,10 @@ struct TEvVolumePrivate
     using TEvDiskRegistryDeviceOperationFinished = TRequestEvent<
         TDiskRegistryDeviceOperationFinished,
         EvDiskRegistryDeviceOperationFinished>;
+
+    using TEvSetDesiredVolumeHealth = TRequestEvent<
+        TSetDesiredVolumeHealth,
+        EvSetDesiredVolumeHealth>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

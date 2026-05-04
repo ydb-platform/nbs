@@ -1564,4 +1564,9 @@ message TStorageServiceConfig
 
     // Timeout for gentle preemption (ms).
     optional uint32 VolumeBalancerGentlePreemptionTimeout = 496;
+
+    // If true, TVolumeActor notifies DiskRegistry about volume health changes
+    // (VOLUME_HEALTH_UNHEALTHY when all devices are broken, VOLUME_HEALTH_HEALTHY
+    // when recovered) for non-replicated disks.
+    optional bool VolumeHealthNotificationEnabled = 497;
 }
