@@ -433,6 +433,7 @@ private:
     const TCompactionMap& CompactionMap;
     const bool ReadBlockMaskOnCompactionOptimizationEnabled;
     const ui64 SplitByCompactionRangeMaxBlobCount;
+    const ui64 TabletId;
 
     TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
 
@@ -450,7 +451,8 @@ public:
             ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
             const TCompactionMap& compactionMap,
             bool readBlockMaskOnCompactionOptimizationEnabled,
-            ui64 splitByCompactionRangeMaxBlobCount)
+            ui64 splitByCompactionRangeMaxBlobCount,
+            ui64 tabletId)
         : Blobs(blobs)
         , BlockSize(blockSize)
         , FlushBlobSizeThreshold(flushBlobSizeThreshold)
@@ -462,6 +464,7 @@ public:
         , ReadBlockMaskOnCompactionOptimizationEnabled(
               readBlockMaskOnCompactionOptimizationEnabled)
         , SplitByCompactionRangeMaxBlobCount(splitByCompactionRangeMaxBlobCount)
+        , TabletId(tabletId)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -538,28 +541,21 @@ private:
     [[nodiscard]] ui64 CountCompactionRangeCountWithSplitOptimization(
         const TVector<TBlock>& blocks) const
     {
-        if (!ReadBlockMaskOnCompactionOptimizationEnabled) {
-            return 0;
-        }
-        ui32 runs = 1;
+        ui32 ranges = 1;
         for (size_t i = 1; i < blocks.size(); ++i) {
             if (CompactionMap.GetRangeStart(blocks[i - 1].BlockIndex) !=
                 CompactionMap.GetRangeStart(blocks[i].BlockIndex))
             {
-                ++runs;
+                ++ranges;
             }
         }
 
-        return runs;
+        return ranges;
     }
 
     [[nodiscard]] ui8 CountCompactionRangeCount(
         const TVector<TBlock>& blocks) const
     {
-        if (!ReadBlockMaskOnCompactionOptimizationEnabled) {
-            return 0;
-        }
-
         const ui32 compactionRangeCount =
             CompactionMap.GetRangeIndex(blocks.back().BlockIndex) -
             CompactionMap.GetRangeIndex(blocks.front().BlockIndex) + 1;
@@ -572,7 +568,10 @@ private:
         TVector<TBlock> blocks,
         TVector<ui32> checksums)
     {
-        const ui64 compactionRangeCount = CountCompactionRangeCount(blocks);
+        const ui8 compactionRangeCount =
+            ReadBlockMaskOnCompactionOptimizationEnabled
+                ? CountCompactionRangeCount(blocks)
+                : 0;
         Blobs.emplace_back(
             std::move(blobContent),
             std::move(blocks),
@@ -590,9 +589,7 @@ private:
         TVector<TBlock> blocks,
         TVector<ui32> checksums)
     {
-        if (!blocks) {
-            return;
-        }
+        STORAGE_VERIFY(blocks, TWellKnownEntityTypes::TABLET, TabletId);
 
         if (!SplitByCompactionRangeMaxBlobCount ||
             !ReadBlockMaskOnCompactionOptimizationEnabled)
@@ -842,7 +839,8 @@ void TPartitionActor::HandleFlush(
             Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
             State->GetCompactionMap(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
-            Config->GetSplitByCompactionRangeMaxBlobCount());
+            Config->GetSplitByCompactionRangeMaxBlobCount(),
+            TabletID());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
