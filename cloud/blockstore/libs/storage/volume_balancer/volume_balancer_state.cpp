@@ -147,6 +147,9 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                                 out << "-";
                             }
                         }
+                        TABLED() {
+                            out << v.second.Cost;
+                        }
                     }
                 }
             }
@@ -355,6 +358,37 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
                                   perfSettings.Read.Bandwidth,
                                   stats.GetReadBlobBytes(),
                                   stats.GetReadBlobCount());
+    return writeCost + readCost;
+}
+
+TDuration TVolumeBalancerState::CalculateCost(
+        const TVolumeInfo& info,
+        const TYdbDiskLoadCounters& currentLoad) const
+{
+    const auto& last = info.LoadCounters;
+
+    const auto perfSettings =
+        GetPerfSettings(*DiagnosticsConfig, info.MediaKind);
+
+    const ui32 expectedParallelism =
+        DiagnosticsConfig->GetExpectedIoParallelism();
+
+    const TDuration writeCost =
+        expectedParallelism *
+        CostPerIO(
+            perfSettings.WriteIops,
+            perfSettings.WriteBandwidth,
+            currentLoad.WriteBlobBytes - last.WriteBlobBytes,
+            currentLoad.WriteBlobCount - last.WriteBlobCount);
+
+    const TDuration readCost =
+        expectedParallelism *
+        CostPerIO(
+            perfSettings.ReadIops,
+            perfSettings.ReadBandwidth,
+            currentLoad.ReadBlobBytes - last.ReadBlobBytes,
+            currentLoad.WriteBlobCount - last.WriteBlobCount);
+
     return writeCost + readCost;
 }
 
