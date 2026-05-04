@@ -246,7 +246,10 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             if (!behaveAsShard
                     && !GetFileSystem().GetShardFileSystemIds().empty())
             {
-                args.Error = SelectShard(0 /*fileSize*/, &shardId);
+                args.Error = SelectShard(
+                    NProto::E_REGULAR_NODE,
+                    0 /*fileSize*/,
+                    &shardId);
                 if (HasError(args.Error)) {
                     return true;
                 }
