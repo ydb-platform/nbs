@@ -615,10 +615,7 @@ private:
         }
 
         const auto& dataRefs = blobContent.GetBlocks();
-        Y_DEBUG_ABORT_UNLESS(
-            (dataRefs.size() == blocks.size() &&
-             checksums.size() == blocks.size()) ||
-            (!dataRefs && !checksums));
+        Y_DEBUG_ABORT_UNLESS((dataRefs.size() == blocks.size()) || (!dataRefs));
 
         size_t start = 0;
         while (start < blocks.size()) {
@@ -643,11 +640,12 @@ private:
 
             TVector<ui32> pieceChecksums;
             if (checksums) {
-                pieceChecksums.reserve(end - start);
-                for (size_t i = start; i < end; ++i) {
-                    if (i < checksums.size()) {
-                        pieceChecksums.push_back(checksums[i]);
-                    }
+                size_t checksumsStart = Min(start, checksums.size());
+                size_t checksumsEnd = Min(end, checksums.size());
+
+                pieceChecksums.reserve(checksumsEnd - checksumsStart);
+                for (size_t i = checksumsStart; i < checksumsEnd; ++i) {
+                    pieceChecksums.push_back(checksums[i]);
                 }
             }
 
