@@ -612,15 +612,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
-        bool called = false;
-        auto promise = NewPromise<NProto::TCreateHandleResponse>();
-        bootstrap.Service->CreateHandleHandler = [&] (auto callContext, auto request) {
+        std::atomic<int> called = 0;
+        bootstrap.Service->CreateHandleHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
+            called++;
             NProto::TCreateHandleResponse result;
-            if (!called) {
-                called = true;
-                return promise.GetFuture();
+            if (!recovered) {
+                result =
+                    TErrorResponse(E_FS_INVALID_SESSION, "invalid session");
             } else if (GetSessionId(*request) != sessionId) {
                 result = TErrorResponse(E_ARGUMENT, "");
             } else {
@@ -637,19 +639,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future1 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
-        UNIT_ASSERT(!future1.HasValue());
+        auto future1 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
 
-        auto future2 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file2", RootNodeId);
-        UNIT_ASSERT(!future2.HasValue());
-
-        NProto::TCreateHandleResponse result;
-        result = TErrorResponse(E_FS_INVALID_SESSION, "invalid session");
-        promise.SetValue(result);
+        auto future2 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file2",
+            RootNodeId);
 
         UNIT_ASSERT(IsIn(expected, future1.GetValue(WaitTimeout)));
         UNIT_ASSERT(IsIn(expected, future2.GetValue(WaitTimeout)));
         UNIT_ASSERT(recovered);
+        UNIT_ASSERT_LT(2, called.load());
     }
 
     Y_UNIT_TEST(ShouldFailRequestIfFailedToRecoverSession)
