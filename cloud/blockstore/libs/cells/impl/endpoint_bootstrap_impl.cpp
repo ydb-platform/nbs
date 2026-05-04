@@ -19,7 +19,7 @@ auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
         bootstrap.GrpcClient,
         config.GetFqdn(),
         config.GetSecureGrpcPort() ? config.GetSecureGrpcPort() : config.GetGrpcPort(),
-        false);
+        config.GetSecureGrpcPort() != 0);
 
     return MakeFuture(endpoint);
 }
