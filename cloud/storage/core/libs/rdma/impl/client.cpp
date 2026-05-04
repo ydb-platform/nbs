@@ -10,11 +10,6 @@
 #include "verbs.h"
 #include "work_queue.h"
 
-#include <cloud/storage/core/libs/rdma/iface/log.h>
-#include <cloud/storage/core/libs/rdma/iface/probes.h>
-#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
-#include <cloud/storage/core/libs/rdma/iface/protocol.h>
-
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -22,6 +17,10 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/rdma/iface/log.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -496,6 +495,8 @@ private:
 
     std::atomic<ui64> ReqIdPool{0};
 
+    int NegotiatedProtocolVersion = RDMA_PROTO_CURR_VERSION;
+
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
     {
@@ -550,6 +551,9 @@ public:
     void AbortRequests() noexcept;
     bool Flushed() const;
     bool FlushHanging() const;
+
+    void SetNegotiatedProtocolVersion(int negotiatedProtocolVersion);
+    int GetNegotiatedProtocolVersion() const;
 
 private:
     // called from CQ thread
@@ -1157,7 +1161,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
     auto* requestMsg = send->Message();
     Zero(*requestMsg);
 
-    InitMessageHeader(requestMsg, RDMA_PROTO_VERSION);
+    InitMessageHeader(requestMsg, NegotiatedProtocolVersion);
 
     requestMsg->ReqId = req->ReqId;
     requestMsg->In = req->InBuffer;
@@ -1230,10 +1234,11 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
     auto* msg = recv->Message();
 
     int version = ParseMessageHeader(msg);
-    if (version != RDMA_PROTO_VERSION) {
+    if (version != NegotiatedProtocolVersion) {
         RDMA_ERROR(
             recv << " incompatible protocol version " << version
-                 << ", expected " << static_cast<int>(RDMA_PROTO_VERSION));
+                 << ", expected "
+                 << static_cast<int>(NegotiatedProtocolVersion));
         Counters->RecvResponseCompleted();
         Counters->Error();
         RecvResponse(recv);
@@ -1372,6 +1377,17 @@ void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 ui64 TClientEndpoint::GetNewReqId() noexcept
 {
     return ReqIdPool.fetch_add(1);
+}
+
+void TClientEndpoint::SetNegotiatedProtocolVersion(
+    int negotiatedProtocolVersion)
+{
+    NegotiatedProtocolVersion = negotiatedProtocolVersion;
+}
+
+int TClientEndpoint::GetNegotiatedProtocolVersion() const
+{
+    return NegotiatedProtocolVersion;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2227,7 +2243,7 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .RecvQueueSize = SafeCast<ui16>(endpoint->Config.RecvQueueSize),
             .MaxBufferSize = SafeCast<ui32>(endpoint->Config.MaxBufferSize),
         };
-        InitMessageHeader(&message, RDMA_PROTO_VERSION);
+        InitMessageHeader(&message, endpoint->GetNegotiatedProtocolVersion());
 
         rdma_conn_param param = {
             .private_data = &message,
@@ -2254,17 +2270,29 @@ void TClient::HandleConnected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    RDMA_DEBUG(endpoint->Log, "validate");
+    RDMA_DEBUG(endpoint->Log, "validate connect message");
 
     if (param->private_data == nullptr ||
-        param->private_data_len < sizeof(TAcceptMessage) ||
-        ParseMessageHeader(param->private_data) != RDMA_PROTO_VERSION)
+        param->private_data_len < sizeof(TAcceptMessage))
     {
-        RDMA_ERROR(endpoint->Log, "unable to parse accept message");
+        RDMA_ERROR(
+            endpoint->Log,
+            "couldn't parse private data in accept message");
         endpoint->Disconnect();
         return;
     }
 
+    const int version = ParseMessageHeader(param->private_data);
+    if (version < RDMA_PROTO_PREV_VERSION || version > RDMA_PROTO_CURR_VERSION)
+    {
+        RDMA_ERROR(
+            endpoint->Log,
+            "unable to parse message version: " << version);
+        endpoint->Disconnect();
+        return;
+    }
+
+    endpoint->SetNegotiatedProtocolVersion(version);
     endpoint->ChangeState(
         EEndpointState::Connecting,
         EEndpointState::Connected);
@@ -2286,31 +2314,81 @@ void TClient::HandleRejected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
+    RDMA_DEBUG(endpoint->Log, "validate reject message");
+
     if (param->private_data == nullptr ||
-        param->private_data_len < sizeof(TRejectMessage) ||
-        ParseMessageHeader(param->private_data) != RDMA_PROTO_VERSION)
+        param->private_data_len < sizeof(TRejectMessage))
     {
+        RDMA_ERROR(endpoint->Log, "no private data in reject message");
         endpoint->Disconnect();
         return;
     }
 
-    const auto* msg = static_cast<const TRejectMessage*>(
-        param->private_data);
-
-    if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
-        if (endpoint->Config.QueueSize > msg->QueueSize) {
-            RDMA_INFO(endpoint->Log, "set QueueSize=" << msg->QueueSize
-                << " supported by " << endpoint->Host);
-
-            endpoint->Config.QueueSize = msg->QueueSize;
+    const int version = ParseMessageHeader(param->private_data);
+    switch (version) {
+        case RDMA_PROTO_PREV_VERSION: {
+            const auto* msg =
+                static_cast<const TRejectMessage*>(param->private_data);
+            if (msg->Status == RDMA_PROTO_INVALID_REQUEST &&
+                endpoint->GetNegotiatedProtocolVersion() !=
+                    RDMA_PROTO_PREV_VERSION)
+            {
+                RDMA_WARN(
+                    endpoint->Log,
+                    "connection rejected, retry connect with previous protocol "
+                    "version");
+                endpoint->SetNegotiatedProtocolVersion(RDMA_PROTO_PREV_VERSION);
+            }
+            break;
         }
+        case RDMA_PROTO_VERSION_2: {
+            const auto* msg =
+                static_cast<const TRejectMessage2*>(param->private_data);
+            if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
+                bool changed = false;
+                if (endpoint->Config.SendQueueSize > msg->RecvQueueSize) {
+                    endpoint->Config.SendQueueSize = msg->RecvQueueSize / 2;
+                    changed = true;
 
-        if (endpoint->Config.MaxBufferSize > msg->MaxBufferSize) {
-            RDMA_INFO(endpoint->Log, "set MaxBufferSize=" << msg->MaxBufferSize
-                << " supported by " << endpoint->Host);
+                    RDMA_WARN(
+                        endpoint->Log,
+                        "set SendQueueSize=" << endpoint->Config.SendQueueSize
+                                             << " supported by "
+                                             << endpoint->Host);
+                }
+                if (msg->SendQueueSize > endpoint->Config.RecvQueueSize) {
+                    endpoint->Config.RecvQueueSize = msg->SendQueueSize * 2;
+                    changed = true;
 
-            endpoint->Config.MaxBufferSize = msg->MaxBufferSize;
+                    RDMA_WARN(
+                        endpoint->Log,
+                        "set RecvQueueSize=" << endpoint->Config.RecvQueueSize
+                                             << " supported by "
+                                             << endpoint->Host);
+                }
+                if (endpoint->Config.MaxBufferSize > msg->MaxBufferSize) {
+                    endpoint->Config.MaxBufferSize = msg->MaxBufferSize;
+                    changed = true;
+
+                    RDMA_WARN(
+                        endpoint->Log,
+                        "set MaxBufferSize=" << endpoint->Config.MaxBufferSize
+                                             << " supported by "
+                                             << endpoint->Host);
+                }
+
+                if (changed) {
+                    endpoint->TryForceReconnect();
+                    return;
+                }
+            }
+            break;
         }
+        default:
+            RDMA_ERROR(
+                endpoint->Log,
+                "unknown protocol version in reject message: " << version);
+            break;
     }
 
     endpoint->Disconnect();
@@ -2411,7 +2489,9 @@ inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
 {
     out << "SEND " << TWorkRequestId(send->wr.wr_id);
     if (auto msg = send->Message()) {
-        if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
+        if (auto ver = ParseMessageHeader(msg);
+            ver == RDMA_PROTO_CURR_VERSION || ver == RDMA_PROTO_PREV_VERSION)
+        {
             out << " [request=" << msg->ReqId << "]";
         }
     }
@@ -2422,7 +2502,9 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 {
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
-        if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
+        if (auto ver = ParseMessageHeader(msg);
+            ver == RDMA_PROTO_CURR_VERSION || ver == RDMA_PROTO_PREV_VERSION)
+        {
             out << " [request=" << msg->ReqId << "]";
         }
     }

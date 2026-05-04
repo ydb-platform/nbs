@@ -50,6 +50,7 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(BufferPool.ChunkSize, BufferPool.ChunkSize);
                 ENTRY(BufferPool.MaxChunkAlloc, BufferPool.MaxChunkAlloc);
                 ENTRY(BufferPool.MaxFreeChunks, BufferPool.MaxFreeChunks);
+                ENTRY(StrictValidation, StrictValidation);
             }
         }
     }

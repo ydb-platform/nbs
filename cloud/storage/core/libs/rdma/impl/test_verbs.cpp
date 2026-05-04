@@ -471,7 +471,7 @@ struct TTestVerbs
                 SafeCast<ui16>(connect->SendQueueSize + connect->RecvQueueSize),
             .MaxBufferSize = connect->MaxBufferSize,
         };
-        InitMessageHeader(&reject, RDMA_PROTO_VERSION);
+        InitMessageHeader(&reject, RDMA_PROTO_CURR_VERSION);
 
         auto param2 = *param;
         param2.private_data = &reject;
@@ -487,6 +487,11 @@ struct TTestVerbs
 
     void Connect(rdma_cm_id* id, rdma_conn_param* param) override
     {
+        if (TestContext->HandleConnect) {
+            TestContext->HandleConnect(id, param);
+            return;
+        }
+
         if (!TestContext->AllowConnect) {
             return Reject(id, param, RDMA_PROTO_FAIL);
         }
@@ -586,7 +591,7 @@ void CreateConnection(
     ui32 maxBufferSize)
 {
     TConnectMessage message = {};
-    InitMessageHeader(&message, RDMA_PROTO_VERSION);
+    InitMessageHeader(&message, RDMA_PROTO_CURR_VERSION);
     message.SendQueueSize = sendQueueSize;
     message.RecvQueueSize = recvQueueSize;
     message.MaxBufferSize = maxBufferSize;
@@ -607,6 +612,42 @@ void CreateConnection(
         &param);
 
     context->ClientConnections.push_back(std::move(id));
+}
+
+void EnqueueAcceptEvent(
+    TTestContextPtr context,
+    rdma_cm_id* id,
+    const void* privateData,
+    size_t privateDataLen)
+{
+    rdma_conn_param param = {};
+    param.private_data = privateData;
+    param.private_data_len = SafeCast<ui8>(privateDataLen);
+
+    EnqueueConnectionEvent(
+        std::move(context),
+        RDMA_CM_EVENT_ESTABLISHED,
+        id,
+        nullptr,   // listenId
+        &param);
+}
+
+void EnqueueRejectEvent(
+    TTestContextPtr context,
+    rdma_cm_id* id,
+    const void* privateData,
+    size_t privateDataLen)
+{
+    rdma_conn_param param = {};
+    param.private_data = privateData;
+    param.private_data_len = SafeCast<ui8>(privateDataLen);
+
+    EnqueueConnectionEvent(
+        std::move(context),
+        RDMA_CM_EVENT_REJECTED,
+        id,
+        nullptr,   // listenId
+        &param);
 }
 
 void Disconnect(TTestContextPtr context)

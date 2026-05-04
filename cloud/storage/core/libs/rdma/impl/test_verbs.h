@@ -44,6 +44,12 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     std::function<void(ibv_qp* qp, ibv_qp_attr* attr, int mask)> ModifyQP;
     std::function<void(ibv_pd* pd, void* addr, size_t length, int flags)>
         RegisterMemoryRegion;
+
+    // If set, overrides the default behavior of TTestVerbs::Connect. The test
+    // can use it together with EnqueueAcceptEvent / EnqueueRejectEvent helpers
+    // to simulate custom server-side responses (e.g. specific reject messages
+    // or accept messages with a particular protocol version).
+    std::function<void(rdma_cm_id* id, rdma_conn_param* param)> HandleConnect;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;
@@ -59,5 +65,23 @@ void CreateConnection(
     ui16 recvQueueSize,
     ui32 maxBufferSize);
 void Disconnect(TTestContextPtr context);
+
+// Enqueues an RDMA_CM_EVENT_ESTABLISHED for the given connection with the
+// supplied private data (typically a TAcceptMessage). Intended to be used from
+// TTestContext::HandleConnect.
+void EnqueueAcceptEvent(
+    TTestContextPtr context,
+    rdma_cm_id* id,
+    const void* privateData,
+    size_t privateDataLen);
+
+// Enqueues an RDMA_CM_EVENT_REJECTED for the given connection with the
+// supplied private data (typically a TRejectMessage / TRejectMessage2).
+// Intended to be used from TTestContext::HandleConnect.
+void EnqueueRejectEvent(
+    TTestContextPtr context,
+    rdma_cm_id* id,
+    const void* privateData,
+    size_t privateDataLen);
 
 }   // namespace NCloud::NStorage::NRdma::NVerbs

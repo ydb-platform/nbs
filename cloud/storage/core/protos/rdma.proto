@@ -52,6 +52,7 @@ message TRdmaServer
 
     uint32 SendQueueSize = 15;
     uint32 RecvQueueSize = 16;
+    bool StrictValidation = 17;
 }
 
 message TRdmaClient
