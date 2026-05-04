@@ -3653,13 +3653,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         registry->Visit(TInstant::Zero(), visitor);
 
         visitor.ValidateExpectedCounters(
-            {{{{"sensor", "CreateNodeInShardRetriesCount"},
+            {{{{"sensor", "CreateNodeInShardRetryCount"},
                {"filesystem", "test"}},
               1},
-             {{{"sensor", "CreateNodeInShardRetriesCount"},
+             {{{"sensor", "CreateNodeInShardRetryCount"},
                {"filesystem", "test_s1"}},
               0},
-             {{{"sensor", "CreateNodeInShardRetriesCount"},
+             {{{"sensor", "CreateNodeInShardRetryCount"},
                {"filesystem", "test_s2"}},
               0}});
 
@@ -8185,15 +8185,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             });
 
         // Send stolen createNodeInShard event and get E_FS_EXIST from the
-        // shard. After a planed fix the previous CreateHandle should get
+        // shard. After a planned fix the previous CreateHandle should get
         // E_REJECTED.
         env.GetRuntime().Send(createNodeInShard.Release(), nodeIdx);
 
-        auto creatHandleResponse1 = service.RecvCreateHandleResponse();
+        auto createHandleResponse1 = service.RecvCreateHandleResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
-            creatHandleResponse1->GetStatus(),
-            creatHandleResponse1->GetErrorReason());
+            createHandleResponse1->GetStatus(),
+            createHandleResponse1->GetErrorReason());
 
         UNIT_ASSERT_VALUES_EQUAL(
             nodeId,

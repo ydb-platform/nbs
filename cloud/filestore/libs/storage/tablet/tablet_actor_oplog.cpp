@@ -37,7 +37,9 @@ void TIndexTabletActor::ReplayOpLog(
         }
 
         if (op.HasCreateNodeRequest()) {
-            Metrics.ReplayedCreateNodeInShardRequestsCount++;
+            Metrics.ReplayedCreateNodeInShardRequestsCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
 
             RegisterCreateNodeInShardActor(
                 ctx,

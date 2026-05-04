@@ -167,7 +167,7 @@ void TTabletMetrics::Register(
         NodeExistsWhileCreatingInShardCount,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
-        CreateNodeInShardRetriesCount,
+        CreateNodeInShardRetryCount,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
         ReplayedCreateNodeInShardRequestsCount,
