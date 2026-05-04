@@ -662,7 +662,7 @@ TEvStatsService::TVolumeSelfCounters TVolumeActor::GetVolumeSelfCounters(
         tp.GetWriteCostMultiplier();
     constexpr double Epsilon = 1e-16;
     simple.RealMaxWriteBandwidth.Set(
-        tp.GetWriteCostMultiplier() < Epsilon
+        tp.GetWriteCostMultiplier() > Epsilon
             ? static_cast<ui64>(realMaxWriteBandwidth)
             : 0);
     simple.PostponedQueueWeight.Set(tp.CalculatePostponedWeight());
