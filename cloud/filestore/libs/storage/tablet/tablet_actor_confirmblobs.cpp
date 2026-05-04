@@ -312,6 +312,10 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
             std::move(unrecoverableCommitIds));
     }
 
+    if (recoverableCommitIds.empty()) {
+        return BlobsConfirmed(ctx);
+    }
+
     // Recovery must replay confirmations in commitId order to preserve write
     // order for overlapping ranges.
     Sort(recoverableCommitIds);
@@ -321,8 +325,6 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
         // imeadeately
         ConfirmData(commitId, ctx);
     }
-
-    BlobsConfirmed(ctx);
 }
 
 void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
