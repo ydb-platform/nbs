@@ -87,6 +87,33 @@ type Node struct {
 	DevID             uint64
 }
 
+func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
+	// On the filestore side, symlinks are represented as links
+	// and links are regular files with Links >= 2.
+	nodeType := NodeType(attr.GetType())
+	if nodeType == NODE_KIND_LINK {
+		nodeType = NODE_KIND_SYMLINK
+	}
+
+	return Node{
+		ParentID:          parentID,
+		NodeID:            attr.GetId(),
+		Name:              name,
+		Atime:             attr.GetATime(),
+		Mtime:             attr.GetMTime(),
+		Ctime:             attr.GetCTime(),
+		Size:              attr.GetSize(),
+		Mode:              attr.GetMode(),
+		UID:               uint64(attr.GetUid()),
+		GID:               uint64(attr.GetGid()),
+		Links:             attr.GetLinks(),
+		Type:              nodeType,
+		ShardFileSystemID: string(attr.GetShardFileSystemId()),
+		ShardNodeName:     string(attr.GetShardNodeName()),
+		DevID:             attr.GetDevId(),
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func headersForSession(session Session) *protos.THeaders {
@@ -374,30 +401,7 @@ func (client *Client) ListNodes(
 	nodes := resp.GetNodes()
 	result := make([]Node, len(nodes))
 	for idx, name := range resp.GetNames() {
-		// On the filestore side, symlinks are represented as links
-		// and links are regular files with Links >= 2.
-		nodeType := NodeType(nodes[idx].GetType())
-		if nodeType == NODE_KIND_LINK {
-			nodeType = NODE_KIND_SYMLINK
-		}
-
-		result[idx] = Node{
-			ParentID:          nodeID,
-			NodeID:            nodes[idx].GetId(),
-			Name:              string(name),
-			Atime:             nodes[idx].GetATime(),
-			Mtime:             nodes[idx].GetMTime(),
-			Ctime:             nodes[idx].GetCTime(),
-			Size:              nodes[idx].GetSize(),
-			Mode:              nodes[idx].GetMode(),
-			UID:               uint64(nodes[idx].GetUid()),
-			GID:               uint64(nodes[idx].GetGid()),
-			Links:             nodes[idx].GetLinks(),
-			Type:              nodeType,
-			ShardFileSystemID: string(nodes[idx].GetShardFileSystemId()),
-			ShardNodeName:     string(nodes[idx].GetShardNodeName()),
-			DevID:             nodes[idx].GetDevId(),
-		}
+		result[idx] = nodeFromAttr(nodeID, string(name), nodes[idx])
 	}
 
 	return result, string(resp.GetCookie()), nil
@@ -525,22 +529,7 @@ func (client *Client) GetNodeAttr(
 		return Node{}, err
 	}
 
-	attr := resp.GetNode()
-	return Node{
-		ParentID: parentNodeID,
-		NodeID:   attr.GetId(),
-		Name:     name,
-		Atime:    attr.GetATime(),
-		Mtime:    attr.GetMTime(),
-		Ctime:    attr.GetCTime(),
-		Size:     attr.GetSize(),
-		Mode:     attr.GetMode(),
-		UID:      uint64(attr.GetUid()),
-		GID:      uint64(attr.GetGid()),
-		Links:    attr.GetLinks(),
-		Type:     NodeType(attr.GetType()),
-		DevID:    attr.GetDevId(),
-	}, nil
+	return nodeFromAttr(parentNodeID, name, resp.GetNode()), nil
 }
 
 func (client *Client) UnlinkNode(
@@ -561,6 +550,24 @@ func (client *Client) UnlinkNode(
 
 	_, err := client.Impl.UnlinkNode(ctx, req)
 	return err
+}
+
+func (client *Client) ExecuteAction(
+	ctx context.Context,
+	action string,
+	input []byte,
+) ([]byte, error) {
+
+	req := &protos.TExecuteActionRequest{
+		Action: action,
+		Input:  input,
+	}
+	resp, err := client.Impl.ExecuteAction(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetOutput(), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

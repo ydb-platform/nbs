@@ -7,6 +7,7 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 

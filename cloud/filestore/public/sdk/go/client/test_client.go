@@ -204,3 +204,11 @@ func (client *testClient) UnlinkNode(
 
 	return &protos.TUnlinkNodeResponse{}, nil
 }
+
+func (client *testClient) ExecuteAction(
+	ctx context.Context,
+	req *protos.TExecuteActionRequest,
+) (*protos.TExecuteActionResponse, error) {
+
+	return &protos.TExecuteActionResponse{}, nil
+}
