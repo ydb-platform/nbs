@@ -2270,14 +2270,12 @@ void TClient::HandleConnected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    RDMA_DEBUG(endpoint->Log, "validate connect message");
+    RDMA_DEBUG(endpoint->Log, "validate accept message");
 
     if (param->private_data == nullptr ||
         param->private_data_len < sizeof(TAcceptMessage))
     {
-        RDMA_ERROR(
-            endpoint->Log,
-            "couldn't parse private data in accept message");
+        RDMA_ERROR(endpoint->Log, "unable to parse accept message");
         endpoint->Disconnect();
         return;
     }
@@ -2287,7 +2285,7 @@ void TClient::HandleConnected(
     {
         RDMA_ERROR(
             endpoint->Log,
-            "unable to parse message version: " << version);
+            "unsupported message version: " << version);
         endpoint->Disconnect();
         return;
     }
@@ -2319,7 +2317,7 @@ void TClient::HandleRejected(
     if (param->private_data == nullptr ||
         param->private_data_len < sizeof(TRejectMessage))
     {
-        RDMA_ERROR(endpoint->Log, "no private data in reject message");
+        RDMA_ERROR(endpoint->Log, "unable to parse reject message");
         endpoint->Disconnect();
         return;
     }
@@ -2347,7 +2345,8 @@ void TClient::HandleRejected(
             if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
                 bool changed = false;
                 if (endpoint->Config.SendQueueSize > msg->RecvQueueSize) {
-                    endpoint->Config.SendQueueSize = msg->RecvQueueSize / 2;
+                    endpoint->Config.SendQueueSize =
+                        std::max<ui16>(1, msg->RecvQueueSize / 2);
                     changed = true;
 
                     RDMA_WARN(
@@ -2357,7 +2356,7 @@ void TClient::HandleRejected(
                                              << endpoint->Host);
                 }
                 if (msg->SendQueueSize > endpoint->Config.RecvQueueSize) {
-                    endpoint->Config.RecvQueueSize = msg->SendQueueSize * 2;
+                    endpoint->Config.RecvQueueSize = std::min<ui16>(std::numeric_limits<ui16>::max(), msg->SendQueueSize * 2);
                     changed = true;
 
                     RDMA_WARN(

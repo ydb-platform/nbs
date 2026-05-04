@@ -465,10 +465,10 @@ struct TTestVerbs
             param->private_data);
 
         // emulate internal server error
-        TRejectMessage reject = {
+        TRejectMessage2 reject = {
             .Status = SafeCast<ui16>(status),
-            .QueueSize =
-                SafeCast<ui16>(connect->SendQueueSize + connect->RecvQueueSize),
+            .SendQueueSize = SafeCast<ui16>(connect->SendQueueSize),
+            .RecvQueueSize = SafeCast<ui16>(connect->RecvQueueSize),
             .MaxBufferSize = connect->MaxBufferSize,
         };
         InitMessageHeader(&reject, RDMA_PROTO_CURR_VERSION);

@@ -2021,7 +2021,8 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 {
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
-        if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_CURR_VERSION)
+        if (auto ver = ParseMessageHeader(msg);
+            ver == RDMA_PROTO_CURR_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
             out << " [request=" << msg->ReqId << "]";
         }
