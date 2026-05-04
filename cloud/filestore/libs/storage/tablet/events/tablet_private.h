@@ -66,6 +66,12 @@ namespace NCloud::NFileStore::NStorage {
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx,  __VA_ARGS__)                  \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
+#define FILESTORE_TABLET_ADAPTER_REQUESTS_PRIVATE(xxx, ...)                    \
+    xxx(SyncSessions,                           __VA_ARGS__)                   \
+    xxx(CleanupSessions,                        __VA_ARGS__)                   \
+    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
+// FILESTORE_TABLET_REQUESTS_PRIVATE
+
 #define FILESTORE_DECLARE_PRIVATE_EVENT_IDS(name, ...)                         \
     FILESTORE_DECLARE_EVENT_IDS(name, __VA_ARGS__)                             \
     Ev##name##Completed,                                                       \

@@ -75,6 +75,34 @@ message TConfigureShardsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FastShard config.
+//
+// Experimental. This API is subject to change in the future.
+
+message TStorageDevice
+{
+    string Host = 1;
+    uint32 Port = 2;
+    string DeviceId = 3;
+}
+
+message TStorageGroup
+{
+    enum EStorageGroupType
+    {
+        E_SG_MIRROR = 0;
+    };
+
+    repeated TStorageDevice Devices = 1;
+    EStorageGroupType Type = 2;
+}
+
+message TFastShardConfig
+{
+    repeated TStorageGroup StorageGroups = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ConfigureAsShard request/response.
 
 message TConfigureAsShardRequest
@@ -107,6 +135,12 @@ message TConfigureAsShardRequest
 
     // Override shard list validation.
     bool Force = 9;
+
+    // If set, this shard will work in "fast shard" mode and will use
+    // FastShardConfig to determine where and how to store the files instead of
+    // using BlobStorage.
+    bool IsFastShard = 10;
+    TFastShardConfig FastShardConfig = 11;
 }
 
 message TConfigureAsShardResponse

@@ -209,6 +209,8 @@ void TIndexTabletActor::HandleUpdateConfig(
         oldConfig.GetShardFileSystemIds();
     *newConfig.MutableFileShardFileSystemIds() =
         oldConfig.GetFileShardFileSystemIds();
+    newConfig.SetIsFastShard(oldConfig.GetIsFastShard());
+    *newConfig.MutableFastShardConfig() = oldConfig.GetFastShardConfig();
     newConfig.SetShardNo(oldConfig.GetShardNo());
     newConfig.SetMainFileSystemId(oldConfig.GetMainFileSystemId());
     newConfig.SetAutomaticShardCreationEnabled(
@@ -492,6 +494,7 @@ void TIndexTabletActor::HandleConfigureAsShard(
     ExecuteTx<TConfigureAsShard>(
         ctx,
         std::move(requestInfo),
+        GetFileSystem().GetIsFastShard(),
         std::move(msg->Record));
 }
 
@@ -531,6 +534,9 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
         args.Request.GetForceDirectoryCreationInShards());
     config.SetStrictFileSystemSizeEnforcementEnabled(
         args.Request.GetStrictFileSystemSizeEnforcementEnabled());
+    config.SetIsFastShard(args.Request.GetIsFastShard());
+    *config.MutableFastShardConfig() =
+        std::move(*args.Request.MutableFastShardConfig());
 
     UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }
@@ -553,6 +559,17 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
         std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.IsFastShard != GetFileSystem().GetIsFastShard()) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Suiciding after IsFastShard change, new value: %d",
+            LogTag.c_str(),
+            GetFileSystem().GetIsFastShard());
+
+        Suicide(ctx);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
