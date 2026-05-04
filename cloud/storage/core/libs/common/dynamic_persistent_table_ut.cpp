@@ -123,7 +123,7 @@ CreateTable(const TString& fileName, ui64 maxRecords, ui64 initialDataAreaSize)
             .MaxRecords = maxRecords,
             .InitialDataAreaSize = initialDataAreaSize,
             .MaxDataAreaStepSize = 1_GB,
-            .InitialDataCompactionBufferSize = 100,
+            .InitialDataMoveBufferSize = 100,
         });
 }
 
@@ -147,6 +147,12 @@ GetTableInternals(TTable& table)
             filePtr + tableHeader->HeaderSize);
 
     return std::make_tuple(tableHeader, descriptorsPtr, filePtr);
+}
+
+ui64 CalcDataAreaOffset(const TTable::THeader* tableHeader)
+{
+    return tableHeader->HeaderSize +
+           tableHeader->MaxRecords * tableHeader->RecordDescriptorSize;
 }
 
 ui64 AllocAndCommitRecord(TTable& table, const TString& data)
@@ -185,8 +191,8 @@ TVector<TTestData> TestDataRecords = {
 
 struct TReferenceImplementation
 {
-    ui32 MaxTableSize;
-    ui32 NextFreeRecord = 0;
+    ui64 MaxTableSize;
+    ui64 NextFreeRecord = 0;
     TVector<TString> Records;
 
     TDeque<ui64> FreeRecords;
@@ -217,7 +223,11 @@ struct TReferenceImplementation
             return NextFreeRecord++;
         }
 
-        return TDynamicPersistentTable<TTestHeader>::InvalidIndex;
+        const ui64 newMaxTableSize =
+            MaxTableSize + TTable::RecordAreaExpansionStep;
+        Records.resize(newMaxTableSize);
+        MaxTableSize = newMaxTableSize;
+        return NextFreeRecord++;
     }
 
     void CommitRecord(ui64 index, const TString& data)
@@ -453,16 +463,11 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         UNIT_ASSERT_VALUES_EQUAL(4, table.CountRecords());
 
-        TTestData extraData{999, "extra", {999}};
-        TString extraSerialized = extraData.Serialize();
-        ui64 extraIndex = table.AllocRecord(extraSerialized.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            TDynamicPersistentTable<TTestHeader>::InvalidIndex,
-            extraIndex);
-
         table.DeleteRecord(indices[1]);
         UNIT_ASSERT_VALUES_EQUAL(3, table.CountRecords());
 
+        TTestData extraData{999, "extra", {999}};
+        TString extraSerialized = extraData.Serialize();
         ui64 newIndex = table.AllocRecord(extraSerialized.size());
         UNIT_ASSERT(
             newIndex != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
@@ -545,9 +550,10 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             for (ui64 index: indices) {
                 UNIT_ASSERT_C(
                     descriptorsPtr[index].DataOffset >=
-                        tableHeader->DataAreaOffset,
+                        CalcDataAreaOffset(tableHeader),
                     "Expected absolute data offset");
-                descriptorsPtr[index].DataOffset -= tableHeader->DataAreaOffset;
+                descriptorsPtr[index].DataOffset -=
+                    CalcDataAreaOffset(tableHeader);
             }
 
             tableHeader->Version = 1;
@@ -565,7 +571,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 UNIT_ASSERT_VALUES_EQUAL(payloads[i], TString(record));
                 UNIT_ASSERT_C(
                     descriptorsPtr[indices[i]].DataOffset >=
-                        tableHeader->DataAreaOffset,
+                        CalcDataAreaOffset(tableHeader),
                     "Expected migrated absolute data offset");
             }
         }
@@ -836,63 +842,76 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldFailWhenMaxRecordsLimitReached)
+    Y_UNIT_TEST(ShouldExpandRecordAreaWhenMaxRecordsLimitReached)
     {
         TTempDir tempDir;
         TString tablePath = tempDir.Path() / "test.table";
 
-        auto table = CreateTable(tablePath, 3, 1024);
+        const ui64 initialMaxRecords = 3;
+        const TString payload(32, 'r');
 
-        TVector<ui64> indices;
+        {
+            auto table = CreateTable(tablePath, initialMaxRecords, 8_MB);
 
-        for (int i = 0; i < 3; ++i) {
-            TTestData data{
-                static_cast<ui64>(i),
-                TStringBuilder() << "record" << i,
-                {static_cast<ui32>(i)}};
-            TString serialized = data.Serialize();
+            TVector<ui64> indices =
+                FillTable(table, initialMaxRecords, payload);
+            UNIT_ASSERT_VALUES_EQUAL(initialMaxRecords, indices.size());
+            UNIT_ASSERT_VALUES_EQUAL(initialMaxRecords, table.CountRecords());
 
-            ui64 index = table.AllocRecord(serialized.size());
-            UNIT_ASSERT(
-                index != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
-            UNIT_ASSERT(table.WriteRecordData(
-                index,
-                serialized.data(),
-                serialized.size()));
-            table.CommitRecord(index);
-            indices.push_back(index);
+            const ui64 expandedIndex = AllocAndCommitRecord(table, payload);
+            auto* tableHeader = GetTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(initialMaxRecords, expandedIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialMaxRecords + 1,
+                table.CountRecords());
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialMaxRecords + TTable::RecordAreaExpansionStep,
+                tableHeader->MaxRecords);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(3, table.CountRecords());
+        {
+            auto table = CreateTable(tablePath, initialMaxRecords, 8_MB);
+            auto* tableHeader = GetTableHeader(table);
 
-        TTestData extraData{999, "extra", {999}};
-        TString extraSerialized = extraData.Serialize();
-        ui64 extraIndex = table.AllocRecord(extraSerialized.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialMaxRecords + 1,
+                table.CountRecords());
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialMaxRecords + TTable::RecordAreaExpansionStep,
+                tableHeader->MaxRecords);
+
+            for (ui64 index = 0; index <= initialMaxRecords; ++index) {
+                TStringBuf record = table.GetRecordWithValidation(index);
+                UNIT_ASSERT_VALUES_EQUAL(payload, TString(record));
+            }
+        }
+    }
+
+    Y_UNIT_TEST(
+        ShouldExpandDataAreaBeforeRecordExpansionWhenTailSpaceIsInsufficient)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        const ui64 initialDataAreaSize = 1_KB;
+        const TString payload(64, 'd');
+        auto table = CreateTable(tablePath, 3, initialDataAreaSize);
+
+        FillTable(table, 3, payload);
         UNIT_ASSERT_VALUES_EQUAL(
-            TDynamicPersistentTable<TTestHeader>::InvalidIndex,
-            extraIndex);
+            initialDataAreaSize,
+            GetTableHeader(table)->DataAreaSize);
 
-        UNIT_ASSERT_VALUES_EQUAL(3, table.CountRecords());
-        for (size_t i = 0; i < indices.size(); ++i) {
-            TStringBuf record = table.GetRecord(indices[i]);
-            UNIT_ASSERT(!record.empty());
-        }
+        const ui64 expandedIndex = AllocAndCommitRecord(table, payload);
+        auto* tableHeader = GetTableHeader(table);
 
-        // Test slot reuse after deletion
-        table.DeleteRecord(indices[1]);
-        UNIT_ASSERT_VALUES_EQUAL(2, table.CountRecords());
-
-        ui64 newIndex = table.AllocRecord(extraSerialized.size());
-        UNIT_ASSERT(
-            newIndex != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
-        UNIT_ASSERT_VALUES_EQUAL(indices[1], newIndex);
-        UNIT_ASSERT(table.WriteRecordData(
-            newIndex,
-            extraSerialized.data(),
-            extraSerialized.size()));
-        table.CommitRecord(newIndex);
-
-        UNIT_ASSERT_VALUES_EQUAL(3, table.CountRecords());
+        UNIT_ASSERT_VALUES_EQUAL(3, expandedIndex);
+        UNIT_ASSERT_LT(initialDataAreaSize, tableHeader->DataAreaSize);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 + TTable::RecordAreaExpansionStep,
+            tableHeader->MaxRecords);
+        UNIT_ASSERT_VALUES_EQUAL(4, table.CountRecords());
     }
 
     Y_UNIT_TEST(ShouldHandleZeroSizeData)
@@ -974,7 +993,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = initialDataAreaSize,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 8_KB,
+                    .InitialDataMoveBufferSize = 8_KB,
                 });
 
             for (ui32 i = 0; i < totalRecords; ++i) {
@@ -1002,7 +1021,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = initialDataAreaSize,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 8_KB,
+                    .InitialDataMoveBufferSize = 8_KB,
                 });
 
             auto* header = GetTableHeader(table);
@@ -1036,7 +1055,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = 1_GB,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
             });
 
@@ -1085,7 +1104,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = 1_GB,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
             });
 
@@ -1135,7 +1154,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = 1_GB,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
                 .ShrinkMode = EDynamicPersistentTableShrinkMode::AnyOp,
             });
@@ -1189,7 +1208,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = 1_GB,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
             });
 
@@ -1232,7 +1251,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = 1_GB,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
             });
 
@@ -1282,7 +1301,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = initialDataAreaSize,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 1_KB,
+                    .InitialDataMoveBufferSize = 1_KB,
                 });
             indices = FillTable(table, totalRecords, payload);
 
@@ -1301,7 +1320,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = initialDataAreaSize,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 1_KB,
+                    .InitialDataMoveBufferSize = 1_KB,
                 });
             auto* header = GetTableHeader(table);
 
@@ -1325,7 +1344,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = 1_GB,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
             });
 
         TVector<ui64> indices = FillTable(table, totalRecords, payload);
@@ -1362,7 +1381,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = maxDataAreaStepSize,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
                 .GapSpacePercentageCompactionThreshold = 100,
             });
 
@@ -1396,7 +1415,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = maxDataAreaStepSize,
-                .InitialDataCompactionBufferSize = 4_KB,
+                .InitialDataMoveBufferSize = 4_KB,
             });
 
         auto assertDataAreaSize = [&](ui64 expectedSize)
@@ -1449,7 +1468,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .MaxRecords = 32,
                 .InitialDataAreaSize = initialDataAreaSize,
                 .MaxDataAreaStepSize = maxDataAreaStepSize,
-                .InitialDataCompactionBufferSize = 1_KB,
+                .InitialDataMoveBufferSize = 1_KB,
                 .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
                 .ShrinkMode = EDynamicPersistentTableShrinkMode::AnyOp,
             });
@@ -1586,7 +1605,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 1,
+                    .InitialDataMoveBufferSize = 1,
                 });
 
             for (const auto& data: testData) {
@@ -1611,9 +1630,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Get table internals to simulate partial compaction
             auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
-            char* dataCompactionBufferPtr = filePtr +
-                                            tableHeader->DataAreaOffset +
-                                            tableHeader->DataAreaSize;
+            char* dataMoveBufferPtr = filePtr +
+                                      CalcDataAreaOffset(tableHeader) +
+                                      tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
@@ -1623,7 +1642,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do), but only half of the record to simulate crash/abort
             std::memcpy(
-                dataCompactionBufferPtr,
+                dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize / 2);
         }
@@ -1635,7 +1654,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 2,
+                    .InitialDataMoveBufferSize = 2,
                 });
 
             // All records should be accessible and valid
@@ -1669,7 +1688,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 1,
+                    .InitialDataMoveBufferSize = 1,
                 });
 
             for (const auto& data: testData) {
@@ -1694,9 +1713,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Get table internals to simulate partial compaction
             auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
-            char* dataCompactionBufferPtr = filePtr +
-                                            tableHeader->DataAreaOffset +
-                                            tableHeader->DataAreaSize;
+            char* dataMoveBufferPtr = filePtr +
+                                      CalcDataAreaOffset(tableHeader) +
+                                      tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
@@ -1706,11 +1725,11 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do)
             std::memcpy(
-                dataCompactionBufferPtr,
+                dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize);
 
-            tableHeader->DataCompactionRecordIndex = recordToMoveIndex;
+            tableHeader->DataMoveRecordIndex = recordToMoveIndex;
 
             // DO NOT update the descriptor offset (simulate crash/abort)
             // This creates case: data is copied to the tmp buffer and index is
@@ -1725,7 +1744,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 1,
+                    .InitialDataMoveBufferSize = 1,
                 });
 
             // All records should be accessible and valid
@@ -1759,7 +1778,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 2,
+                    .InitialDataMoveBufferSize = 2,
                 });
 
             for (const auto& data: testData) {
@@ -1784,9 +1803,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Get table internals to simulate partial compaction
             auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
-            char* dataCompactionBufferPtr = filePtr +
-                                            tableHeader->DataAreaOffset +
-                                            tableHeader->DataAreaSize;
+            char* dataMoveBufferPtr = filePtr +
+                                      CalcDataAreaOffset(tableHeader) +
+                                      tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
@@ -1796,11 +1815,11 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do)
             std::memcpy(
-                dataCompactionBufferPtr,
+                dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize);
 
-            tableHeader->DataCompactionRecordIndex = recordToMoveIndex;
+            tableHeader->DataMoveRecordIndex = recordToMoveIndex;
 
             // Calculate where this record should be moved to fill the gap
             ui64 newOffset = descriptorsPtr[indices[1]].DataOffset +
@@ -1822,7 +1841,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 2,
+                    .InitialDataMoveBufferSize = 2,
                 });
 
             // All records should be accessible and valid
@@ -1856,7 +1875,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 2,
+                    .InitialDataMoveBufferSize = 2,
                 });
 
             for (const auto& data: testData) {
@@ -1881,9 +1900,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // Get table internals to simulate partial compaction
             auto [tableHeader, descriptorsPtr, filePtr] =
                 GetTableInternals(table);
-            char* dataCompactionBufferPtr = filePtr +
-                                            tableHeader->DataAreaOffset +
-                                            tableHeader->DataAreaSize;
+            char* dataMoveBufferPtr = filePtr +
+                                      CalcDataAreaOffset(tableHeader) +
+                                      tableHeader->DataAreaSize;
 
             // Find the record that will be moved during compaction
             ui64 recordToMoveIndex = indices[2];
@@ -1896,20 +1915,17 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // SIMULATE ABORTED COMPACTION:
             // Copy the data to tmp buffer using memcpy (as compaction would do)
             std::memcpy(
-                dataCompactionBufferPtr,
+                dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
                 recordSize);
 
-            tableHeader->DataCompactionRecordIndex = recordToMoveIndex;
+            tableHeader->DataMoveRecordIndex = recordToMoveIndex;
 
             descriptorsPtr[recordToMoveIndex].DataOffset = newOffset;
 
             // Copy the data to the new offset, but only half of the record to
             // simulate crash/abort
-            std::memcpy(
-                filePtr + newOffset,
-                dataCompactionBufferPtr,
-                recordSize / 2);
+            std::memcpy(filePtr + newOffset, dataMoveBufferPtr, recordSize / 2);
         }
 
         {
@@ -1919,7 +1935,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataCompactionBufferSize = 1,
+                    .InitialDataMoveBufferSize = 1,
                 });
 
             // All records should be accessible and valid
@@ -1934,6 +1950,165 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     recovered == testData[i],
                     "Record data should be intact");
             }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResumeAbortedRecordAreaExpansionDuringRecordMove)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        TVector<TString> payloads = {
+            TString(32, 'a'),
+            TString(32, 'b'),
+            TString(32, 'c')};
+        TVector<ui64> indices;
+
+        {
+            auto table = CreateTable(tablePath, 3, 8_MB);
+            for (const auto& payload: payloads) {
+                indices.push_back(AllocAndCommitRecord(table, payload));
+            }
+
+            auto [tableHeader, descriptorsPtr, filePtr] =
+                GetTableInternals(table);
+            char* dataMoveBufferPtr = filePtr +
+                                      CalcDataAreaOffset(tableHeader) +
+                                      tableHeader->DataAreaSize;
+
+            const ui64 futureDataAreaOffset =
+                CalcDataAreaOffset(tableHeader) +
+                TTable::RecordAreaExpansionStep *
+                    sizeof(TTable::TRecordDescriptor);
+
+            std::memcpy(
+                dataMoveBufferPtr,
+                filePtr + descriptorsPtr[indices[0]].DataOffset,
+                descriptorsPtr[indices[0]].DataSize);
+
+            tableHeader->DataMoveRecordIndex = indices[0];
+            descriptorsPtr[indices[0]].DataOffset = futureDataAreaOffset;
+        }
+
+        {
+            auto table = CreateTable(tablePath, 3, 8_MB);
+            auto* tableHeader = GetTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(payloads.size(), table.CountRecords());
+            UNIT_ASSERT_VALUES_EQUAL(3, tableHeader->MaxRecords);
+
+            for (size_t i = 0; i < indices.size(); ++i) {
+                TStringBuf record = table.GetRecordWithValidation(indices[i]);
+                UNIT_ASSERT_VALUES_EQUAL(payloads[i], TString(record));
+            }
+
+            const TString extraPayload(32, 'd');
+            const ui64 expandedIndex =
+                AllocAndCommitRecord(table, extraPayload);
+            tableHeader = GetTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, expandedIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                3 + TTable::RecordAreaExpansionStep,
+                tableHeader->MaxRecords);
+            UNIT_ASSERT_VALUES_EQUAL(payloads.size() + 1, table.CountRecords());
+            UNIT_ASSERT_VALUES_EQUAL(
+                extraPayload,
+                TString(table.GetRecordWithValidation(expandedIndex)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResumeAbortedRecordAreaExpansionDuringMoveHeadToTail)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        TVector<TString> payloads = {
+            TString(32, 'm'),
+            TString(32, 'n'),
+            TString(32, 'o')};
+        TVector<ui64> indices;
+
+        {
+            auto table = CreateTable(tablePath, 3, 8_MB);
+            for (const auto& payload: payloads) {
+                indices.push_back(AllocAndCommitRecord(table, payload));
+            }
+
+            auto [tableHeader, descriptorsPtr, filePtr] =
+                GetTableInternals(table);
+            const ui64 futureDataAreaOffset =
+                CalcDataAreaOffset(tableHeader) +
+                TTable::RecordAreaExpansionStep *
+                    sizeof(TTable::TRecordDescriptor);
+
+            std::memcpy(
+                filePtr + futureDataAreaOffset,
+                filePtr + descriptorsPtr[indices[0]].DataOffset,
+                descriptorsPtr[indices[0]].DataSize);
+            descriptorsPtr[indices[0]].DataOffset = futureDataAreaOffset;
+
+            tableHeader->ListOperationState =
+                TTable::EListOperationState::MoveHeadToTail;
+            tableHeader->ListOperationPrevIndex = indices[2];
+            tableHeader->ListOperationNextIndex = indices[1];
+            tableHeader->ListOperationIndex = indices[0];
+
+            // Simulate crash after some links were updated but before the
+            // relink operation completed.
+            descriptorsPtr[indices[2]].NextDataIndex = indices[0];
+            descriptorsPtr[indices[0]].NextDataIndex = TTable::InvalidIndex;
+        }
+
+        {
+            auto table = CreateTable(tablePath, 3, 8_MB);
+            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TTable::EListOperationState::None),
+                static_cast<int>(tableHeader->ListOperationState));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->ListOperationIndex);
+
+            UNIT_ASSERT_VALUES_EQUAL(payloads.size(), table.CountRecords());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                descriptorsPtr[indices[1]].PrevDataIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                indices[2],
+                descriptorsPtr[indices[1]].NextDataIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                indices[1],
+                descriptorsPtr[indices[2]].PrevDataIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                indices[0],
+                descriptorsPtr[indices[2]].NextDataIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                indices[2],
+                descriptorsPtr[indices[0]].PrevDataIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                descriptorsPtr[indices[0]].NextDataIndex);
+
+            for (size_t i = 0; i < indices.size(); ++i) {
+                TStringBuf record = table.GetRecordWithValidation(indices[i]);
+                UNIT_ASSERT_VALUES_EQUAL(payloads[i], TString(record));
+            }
+
+            const TString extraPayload(32, 'p');
+            const ui64 expandedIndex =
+                AllocAndCommitRecord(table, extraPayload);
+            tableHeader = GetTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, expandedIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                3 + TTable::RecordAreaExpansionStep,
+                tableHeader->MaxRecords);
+            UNIT_ASSERT_VALUES_EQUAL(payloads.size() + 1, table.CountRecords());
+            UNIT_ASSERT_VALUES_EQUAL(
+                extraPayload,
+                TString(table.GetRecordWithValidation(expandedIndex)));
         }
     }
 

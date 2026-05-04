@@ -14,7 +14,7 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     ui64 recordsCount,
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
-    ui64 initialDataCompactionBufferSize)
+    ui64 initialDataMoveBufferSize)
     : Log(log)
 {
     Table = std::make_unique<TDirectoryHandleTable>(
@@ -23,7 +23,7 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
             .MaxRecords = recordsCount,
             .InitialDataAreaSize = initialDataAreaSize,
             .MaxDataAreaStepSize = maxDataAreaStepSize,
-            .InitialDataCompactionBufferSize = initialDataCompactionBufferSize,
+            .InitialDataMoveBufferSize = initialDataMoveBufferSize,
         });
 }
 
@@ -277,7 +277,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     ui64 recordsCount,
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
-    ui64 initialDataCompactionBufferSize)
+    ui64 initialDataMoveBufferSize)
 {
     return std::make_unique<TDirectoryHandleStorage>(
         log,
@@ -285,7 +285,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
         recordsCount,
         initialDataAreaSize,
         maxDataAreaStepSize,
-        initialDataCompactionBufferSize);
+        initialDataMoveBufferSize);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

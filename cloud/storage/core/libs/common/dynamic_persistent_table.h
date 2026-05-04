@@ -37,7 +37,7 @@ struct TDynamicPersistentTableConfig
     ui64 MaxRecords = 0;
     ui64 InitialDataAreaSize = 0;
     ui64 MaxDataAreaStepSize = 0;
-    ui64 InitialDataCompactionBufferSize = 0;
+    ui64 InitialDataMoveBufferSize = 0;
     ui64 GapSpacePercentageCompactionThreshold = 30;
     ui64 ShrinkLowMemoryOpThreshold = 100;
     ui64 ShrinkTriggerPercent = 25;
@@ -81,6 +81,7 @@ public:
         None = 0,
         Add,
         Remove,
+        MoveHeadToTail,
     };
 
     struct THeader
@@ -88,9 +89,13 @@ public:
         ui32 Version = 0;
         ui64 HeaderSize = 0;
         ui64 RecordDescriptorSize = 0;
+
+        // Persisted for compatibility, but runtime currently derives the
+        // current data area offset from MaxRecords instead of using this field.
         ui64 DataAreaOffset = 0;
+
         ui64 DataAreaSize = 0;
-        ui64 DataCompactionBufferSize = 0;
+        ui64 DataMoveBufferSize = 0;
         ui64 NextFreeRecordIndex = 0;
         ui64 MaxRecords = 0;
 
@@ -105,8 +110,8 @@ public:
         ui64 ListOperationPrevIndex = InvalidIndex;
         ui64 ListOperationNextIndex = InvalidIndex;
 
-        // index of data record that is being compacted in case of crash
-        ui64 DataCompactionRecordIndex = InvalidIndex;
+        // index of data record that is being moved in case of crash
+        ui64 DataMoveRecordIndex = InvalidIndex;
 
         H Data;
     };
@@ -155,11 +160,12 @@ private:
     TRecordDescriptor* DescriptorsPtr = nullptr;
     char* FilePtr = nullptr;
     char* DataPtr = nullptr;
-    char* DataCompactionBufferPtr = nullptr;
+    char* DataMoveBufferPtr = nullptr;
 
 public:
     static constexpr ui64 InvalidIndex = -1;
     static constexpr ui32 Version = 2;
+    static constexpr ui64 RecordAreaExpansionStep = 100000;
 
     class TIterator
     {
@@ -298,6 +304,9 @@ public:
             index = FreeRecordIndexes.front();
             FreeRecordIndexes.pop_front();
         } else if (NextFreeRecordIndex < MaxRecords) {
+            index = NextFreeRecordIndex++;
+        } else {
+            ExpandRecordArea();
             index = NextFreeRecordIndex++;
         }
 
@@ -443,6 +452,142 @@ private:
         HeaderPtr->Version = Version;
     }
 
+    ui64 CalcDataAreaOffset(ui64 maxRecords) const
+    {
+        return sizeof(THeader) + maxRecords * sizeof(TRecordDescriptor);
+    }
+
+    void MoveRecordData(ui64 currentIndex, ui64 dstOffset)
+    {
+        const ui64 dataSize = DescriptorsPtr[currentIndex].DataSize;
+
+        if (HeaderPtr->DataMoveBufferSize < dataSize) {
+            HeaderPtr->DataMoveBufferSize = dataSize;
+            ResizeAndRemap();
+        }
+
+        std::memcpy(
+            DataMoveBufferPtr,
+            FilePtr + DescriptorsPtr[currentIndex].DataOffset,
+            dataSize);
+
+        // We can omit handling the case where a crash occurs after
+        // currentIndex but before setting newOffset, since in that
+        // scenario the data will simply be copied back to the old
+        // location.
+        HeaderPtr->DataMoveRecordIndex = currentIndex;
+        DescriptorsPtr[currentIndex].DataOffset = dstOffset;
+
+        std::memcpy(FilePtr + dstOffset, DataMoveBufferPtr, dataSize);
+
+        HeaderPtr->DataMoveRecordIndex = InvalidIndex;
+    }
+
+    void PrepareMoveHeadToTail()
+    {
+        if (HeadDataIndex == InvalidIndex || TailDataIndex == InvalidIndex ||
+            HeadDataIndex == TailDataIndex)
+        {
+            return;
+        }
+
+        HeaderPtr->ListOperationState = EListOperationState::MoveHeadToTail;
+        HeaderPtr->ListOperationPrevIndex = TailDataIndex;
+        HeaderPtr->ListOperationNextIndex =
+            DescriptorsPtr[HeadDataIndex].NextDataIndex;
+        HeaderPtr->ListOperationIndex = HeadDataIndex;
+    }
+
+    void FinishMoveHeadToTail()
+    {
+        if (HeaderPtr->ListOperationState !=
+                EListOperationState::MoveHeadToTail &&
+            HeaderPtr->ListOperationState != EListOperationState::None)
+        {
+            return;
+        }
+
+        Y_DEFER
+        {
+            HeaderPtr->ListOperationState = EListOperationState::None;
+            HeaderPtr->ListOperationPrevIndex = InvalidIndex;
+            HeaderPtr->ListOperationNextIndex = InvalidIndex;
+            HeaderPtr->ListOperationIndex = InvalidIndex;
+        };
+
+        if (HeaderPtr->ListOperationState == EListOperationState::None ||
+            HeaderPtr->ListOperationIndex == InvalidIndex)
+        {
+            return;
+        }
+
+        const ui64 prevIndex = HeaderPtr->ListOperationPrevIndex;
+        const ui64 nextIndex = HeaderPtr->ListOperationNextIndex;
+        const ui64 index = HeaderPtr->ListOperationIndex;
+
+        DescriptorsPtr[prevIndex].NextDataIndex = index;
+        DescriptorsPtr[nextIndex].PrevDataIndex = InvalidIndex;
+        DescriptorsPtr[index].PrevDataIndex = prevIndex;
+        DescriptorsPtr[index].NextDataIndex = InvalidIndex;
+
+        HeadDataIndex = nextIndex;
+        TailDataIndex = index;
+    }
+
+    void ExpandRecordArea()
+    {
+        if (GapSpaceSize != 0) {
+            CompactDataArea();
+        }
+
+        const ui64 targetMaxRecords = MaxRecords + RecordAreaExpansionStep;
+        const ui64 targetDataAreaOffset = CalcDataAreaOffset(targetMaxRecords);
+        const ui64 expansionBytes = targetDataAreaOffset - DataAreaOffset;
+
+        ui64 movedBytes = 0;
+        for (ui64 currentIndex = HeadDataIndex;
+             currentIndex != InvalidIndex &&
+             DescriptorsPtr[currentIndex].DataOffset < targetDataAreaOffset;
+             currentIndex = DescriptorsPtr[currentIndex].NextDataIndex)
+        {
+            movedBytes += DescriptorsPtr[currentIndex].DataSize;
+        }
+
+        if (NextDataOffset < expansionBytes) {
+            NextDataOffset = expansionBytes;
+        }
+
+        if (NextDataOffset + movedBytes > DataAreaSize) {
+            ExpandDataArea(movedBytes);
+        }
+
+        ui64 nextAppendOffset = DataAreaOffset + NextDataOffset;
+
+        while (HeadDataIndex != InvalidIndex &&
+               DescriptorsPtr[HeadDataIndex].DataOffset < targetDataAreaOffset)
+        {
+            const ui64 currentIndex = HeadDataIndex;
+            const ui64 dataSize = DescriptorsPtr[currentIndex].DataSize;
+            MoveRecordData(currentIndex, nextAppendOffset);
+            NextDataOffset += dataSize;
+            nextAppendOffset += dataSize;
+            PrepareMoveHeadToTail();
+            FinishMoveHeadToTail();
+        }
+
+        if (movedBytes > expansionBytes) {
+            GapSpaceSize += movedBytes - expansionBytes;
+        }
+
+        std::memset(&DescriptorsPtr[MaxRecords], 0, expansionBytes);
+
+        HeaderPtr->MaxRecords = targetMaxRecords;
+        MaxRecords = targetMaxRecords;
+        DataAreaOffset = targetDataAreaOffset;
+        ResizeAndRemap();
+        NextDataOffset -= expansionBytes;
+    }
+
     void PrepareAddRecord(ui64 index)
     {
         HeaderPtr->ListOperationState = EListOperationState::Add;
@@ -563,11 +708,8 @@ private:
             HeaderPtr->RecordDescriptorSize = sizeof(TRecordDescriptor);
             HeaderPtr->MaxRecords = MaxRecords;
             HeaderPtr->NextFreeRecordIndex = 0;
-            HeaderPtr->DataAreaOffset =
-                sizeof(THeader) + MaxRecords * sizeof(TRecordDescriptor);
             HeaderPtr->DataAreaSize = DataAreaSize;
-            HeaderPtr->DataCompactionBufferSize =
-                Config.InitialDataCompactionBufferSize;
+            HeaderPtr->DataMoveBufferSize = Config.InitialDataMoveBufferSize;
             HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
             HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
         }
@@ -590,7 +732,7 @@ private:
 
         MaxRecords = HeaderPtr->MaxRecords;
         NextFreeRecordIndex = HeaderPtr->NextFreeRecordIndex;
-        DataAreaOffset = HeaderPtr->DataAreaOffset;
+        DataAreaOffset = CalcDataAreaOffset(MaxRecords);
         DataAreaSize = HeaderPtr->DataAreaSize;
 
         ResizeAndRemap();
@@ -601,18 +743,19 @@ private:
 
         FinishRemoveRecord();
         FinishAddRecord();
+        FinishMoveHeadToTail();
 
-        FinishDataAreaCompaction();
+        FinishDataAreaMove();
 
         CompactRecords();
         CompactDataArea();
         ShrinkDataArea();
     }
 
-    ui64 CalcFileSize(ui64 dataAreaSize)
+    ui64 CalcFileSize(ui64 dataAreaSize) const
     {
         return sizeof(THeader) + MaxRecords * sizeof(TRecordDescriptor) +
-               dataAreaSize + HeaderPtr->DataCompactionBufferSize;
+               dataAreaSize + HeaderPtr->DataMoveBufferSize;
     }
 
     void CompactRecords()
@@ -829,31 +972,7 @@ private:
             ui64 nextIndex = DescriptorsPtr[currentIndex].NextDataIndex;
 
             if (oldOffset != newOffset) {
-                if (HeaderPtr->DataCompactionBufferSize < dataSize) {
-                    HeaderPtr->DataCompactionBufferSize = dataSize;
-                    ResizeAndRemap();
-                }
-
-                std::memcpy(
-                    DataCompactionBufferPtr,
-                    FilePtr + DescriptorsPtr[currentIndex].DataOffset,
-                    dataSize);
-
-                // We can omit handling the case where a crash occurs after
-                // currentIndex but before setting newOffset, since in that
-                // scenario the data will simply be copied back to the old
-                // location.
-                HeaderPtr->DataCompactionRecordIndex = currentIndex;
-
-                DescriptorsPtr[currentIndex].DataOffset =
-                    DataAreaOffset + newOffset;
-
-                std::memcpy(
-                    DataPtr + newOffset,
-                    DataCompactionBufferPtr,
-                    dataSize);
-
-                HeaderPtr->DataCompactionRecordIndex = InvalidIndex;
+                MoveRecordData(currentIndex, DataAreaOffset + newOffset);
             }
             newOffset += dataSize;
             currentIndex = nextIndex;
@@ -863,29 +982,28 @@ private:
         GapSpaceSize = 0;
     }
 
-    void FinishDataAreaCompaction()
+    void FinishDataAreaMove()
     {
-        if (HeaderPtr->DataCompactionRecordIndex == InvalidIndex) {
+        if (HeaderPtr->DataMoveRecordIndex == InvalidIndex) {
             return;
         }
 
-        const ui64 currentIndex = HeaderPtr->DataCompactionRecordIndex;
+        const ui64 currentIndex = HeaderPtr->DataMoveRecordIndex;
 
         std::memcpy(
             FilePtr + DescriptorsPtr[currentIndex].DataOffset,
-            DataCompactionBufferPtr,
+            DataMoveBufferPtr,
             DescriptorsPtr[currentIndex].DataSize);
 
-        HeaderPtr->DataCompactionRecordIndex = InvalidIndex;
+        HeaderPtr->DataMoveRecordIndex = InvalidIndex;
 
-        HeaderPtr->DataCompactionBufferSize =
-            Config.InitialDataCompactionBufferSize;
+        HeaderPtr->DataMoveBufferSize = Config.InitialDataMoveBufferSize;
     }
 
     void ExpandDataArea(ui64 requiredRecordDataSize)
     {
         ui64 newDataAreaSize = DataAreaSize;
-        while (requiredRecordDataSize > newDataAreaSize - NextDataOffset) {
+        while (NextDataOffset + requiredRecordDataSize > newDataAreaSize) {
             const ui64 dataAreaStepSize =
                 newDataAreaSize < Config.MaxDataAreaStepSize
                     ? newDataAreaSize
@@ -929,7 +1047,7 @@ private:
         DescriptorsPtr =
             reinterpret_cast<TRecordDescriptor*>(FilePtr + sizeof(THeader));
         DataPtr = FilePtr + DataAreaOffset;
-        DataCompactionBufferPtr = DataPtr + DataAreaSize;
+        DataMoveBufferPtr = DataPtr + DataAreaSize;
     }
 
     TStringBuf GetRecord(ui64 index, EDataRetrievalMode mode) const
