@@ -20,44 +20,11 @@ using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
-    TDiagnosticsConfigPtr diagnosticsConfig) const
-{
-    switch (MediaKind) {
-        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
-            return diagnosticsConfig->GetNonreplPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
-            return diagnosticsConfig->GetHddNonreplPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
-            return diagnosticsConfig->GetMirror2PerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
-            return diagnosticsConfig->GetMirror3PerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
-            return diagnosticsConfig->GetLocalSSDPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
-            return diagnosticsConfig->GetLocalHDDPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD: {
-            return diagnosticsConfig->GetSsdPerfSettings();
-        }
-        default: {
-            return diagnosticsConfig->GetHddPerfSettings();
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TVolumePerformanceCalculator::TVolumePerformanceCalculator(
         const NProto::TVolume& volume,
         TDiagnosticsConfigPtr diagnosticsConfig)
     : MediaKind(volume.GetStorageMediaKind())
-    , ConfigSettings(GetConfigSettings(diagnosticsConfig))
+    , ConfigSettings(GetPerfSettings(*diagnosticsConfig, MediaKind))
     , ExpectedIoParallelism(diagnosticsConfig->GetExpectedIoParallelism())
 {
     TIntrusivePtr<TVolumePerfSettings> settings =
