@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -47,6 +48,7 @@ public:
 
 private:
     TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
 
     ui64 CpuLack = 0;
 
@@ -66,7 +68,9 @@ private:
     TDuration PullDelayResetTimespan;
 
 public:
-    TVolumeBalancerState(TStorageConfigPtr storageConfig);
+    TVolumeBalancerState(
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;
