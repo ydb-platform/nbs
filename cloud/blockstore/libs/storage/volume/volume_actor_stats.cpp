@@ -656,15 +656,16 @@ TEvStatsService::TVolumeSelfCounters TVolumeActor::GetVolumeSelfCounters(
     }
 
     const auto& tp = State->GetThrottlingPolicy();
-    double realMaxWriteBandwidth =
-        static_cast<double>(
-            volumeThrottlingPolicyConfig.GetMaxWriteBandwidth()) /
-        tp.GetWriteCostMultiplier();
     constexpr double Epsilon = 1e-16;
-    simple.RealMaxWriteBandwidth.Set(
+
+    double realMaxWriteBandwidth =
         tp.GetWriteCostMultiplier() > Epsilon
-            ? static_cast<ui64>(realMaxWriteBandwidth)
-            : 0);
+            ? static_cast<double>(
+                  volumeThrottlingPolicyConfig.GetMaxWriteBandwidth()) /
+                  tp.GetWriteCostMultiplier()
+            : 0.0;
+
+    simple.RealMaxWriteBandwidth.Set(static_cast<ui64>(realMaxWriteBandwidth));
     simple.PostponedQueueWeight.Set(tp.CalculatePostponedWeight());
 
     const auto& bp = tp.GetCurrentBackpressure();

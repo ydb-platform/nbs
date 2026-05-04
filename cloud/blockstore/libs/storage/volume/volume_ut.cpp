@@ -4478,6 +4478,77 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldExposeRealMaxWriteBandwidthAccordingToWriteCostMultiplier)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetThrottlingEnabled(true);
+        auto runtime = PrepareTestActorRuntime(storageServiceConfig);
+
+        bool receivedSelfCounters = false;
+        ui64 lastRealMaxWriteBandwidth = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient == MakeStorageStatsServiceId() &&
+                    event->GetTypeRewrite() ==
+                        TEvStatsService::EvVolumeSelfCounters)
+                {
+                    auto* msg =
+                        event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                    lastRealMaxWriteBandwidth =
+                        msg->VolumeSelfCounters->Simple.RealMaxWriteBandwidth
+                            .Value;
+                    receivedSelfCounters = true;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TVolumeClient volume(*runtime);
+
+        constexpr ui64 maxWriteBandwidth = 1'000'003;
+        volume.UpdateVolumeConfig(
+            maxWriteBandwidth,
+            100,
+            10,
+            DefaultBlockSize * 5,
+            true,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+        volume.WaitReady();
+
+        auto flushStats = [&]() -> ui64
+        {
+            receivedSelfCounters = false;
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_C(
+                receivedSelfCounters,
+                "Expected TEvVolumeSelfCounters after TEvUpdateCounters");
+            return lastRealMaxWriteBandwidth;
+        };
+
+        // Default write cost multiplier is 1 => RealMax equals configured max.
+        UNIT_ASSERT_VALUES_EQUAL(maxWriteBandwidth, flushStats());
+
+        // Backpressure raises WriteCostMultiplier; counter is MaxWriteBw / m
+        // (truncated toward zero).
+        volume.SendToPipe(volume.CreateBackpressureReport({4, 0, 0, 0}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui64>(static_cast<double>(maxWriteBandwidth) / 4),
+            flushStats());
+
+        // Clearing backpressure restores multiplier 1.
+        volume.SendToPipe(volume.CreateBackpressureReport({0, 0, 0, 0}));
+        UNIT_ASSERT_VALUES_EQUAL(maxWriteBandwidth, flushStats());
+
+        // Multiplier is capped by MaxWriteCostMultiplier (default 10).
+        volume.SendToPipe(volume.CreateBackpressureReport({100, 0, 0, 0}));
+        UNIT_ASSERT_VALUES_EQUAL(maxWriteBandwidth / 10, flushStats());
+    }
+
     Y_UNIT_TEST(ShouldMaintainRequestOrderWhenThrottling)
     {
         TThrottledVolumeTestEnv env(6);
