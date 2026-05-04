@@ -73,8 +73,7 @@ void TIndexTabletActor::UnconfirmedAddBlobSafePointReached(
     if (commitId == InvalidCommitId) {
         ReportInvalidCommitIdInUnconfirmedAddBlobSafePoint(
             TStringBuilder()
-                << "tabletId: " << TabletID()
-                << ", commitId: " << commitId);
+            << "tabletId: " << TabletID() << ", commitId: " << commitId);
         return;
     }
 
@@ -391,31 +390,27 @@ void TIndexTabletActor::DeleteUnconfirmedDataForSession(
     const TString& sessionId,
     const TActorContext& ctx)
 {
-    TVector<ui64> commitIdsToDeleteNow;
-    ui64 commitIdsToDeleteOnTx = 0;
+    TVector<ui64> commitIdsToDelete;
 
-    for (const auto& [commitId, trackedData]: UnconfirmedData) {
-        if (trackedData.SessionId != sessionId) {
-            continue;
+    auto enqueueCommitIdsToDelete = [&](const auto& data)
+    {
+        for (const auto& [commitId, trackedData]: data) {
+            if (trackedData.SessionId != sessionId) {
+                continue;
+            }
+
+            if (!DeletionQueue.emplace(commitId).second) {
+                continue;
+            }
+
+            commitIdsToDelete.push_back(commitId);
         }
+    };
 
-        if (!DeletionQueue.emplace(commitId).second) {
-            continue;
-        }
-        commitIdsToDeleteNow.push_back(commitId);
-    }
+    enqueueCommitIdsToDelete(UnconfirmedData);
+    enqueueCommitIdsToDelete(UnconfirmedDataInProgress);
 
-    for (const auto& [commitId, inProgressData]: UnconfirmedDataInProgress) {
-        if (inProgressData.SessionId != sessionId) {
-            continue;
-        }
-
-        if (DeletionQueue.emplace(commitId).second) {
-            ++commitIdsToDeleteOnTx;
-        }
-    }
-
-    if (!commitIdsToDeleteNow.empty()) {
+    if (!commitIdsToDelete.empty()) {
         // Session cleanup has the same ordering requirement as CancelAddData:
         // once commitIds are placed into DeletionQueue, DeleteUnconfirmedData
         // must be executed before any later AddBlob execute. For that reason it
@@ -426,19 +421,16 @@ void TIndexTabletActor::DeleteUnconfirmedDataForSession(
                 SelfId(),
                 0 /* cookie */,
                 MakeIntrusive<TCallContext>()),
-            std::move(commitIdsToDeleteNow));
-    }
+            std::move(commitIdsToDelete));
 
-    if (!commitIdsToDeleteNow.empty() || commitIdsToDeleteOnTx) {
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET,
             "%s Deleting unconfirmed data: sessionId=%s, "
-            "deleteNow=%zu, deleteOnTx=%lu",
+            "deleteNow=%zu",
             LogTag.c_str(),
             sessionId.Quote().c_str(),
-            commitIdsToDeleteNow.size(),
-            commitIdsToDeleteOnTx);
+            commitIdsToDelete.size());
     }
 }
 
@@ -469,7 +461,7 @@ void TIndexTabletActor::ExecuteTx_DeleteUnconfirmedData(
     for (ui64 commitId: args.CommitIds) {
         db.DeleteUnconfirmedData(commitId);
         UnconfirmedData.erase(commitId);
-        TryReleaseCollectBarrier(commitId);
+        TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
     }
 
     LOG_DEBUG(
