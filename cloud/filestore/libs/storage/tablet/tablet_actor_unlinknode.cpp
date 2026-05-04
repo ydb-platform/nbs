@@ -173,29 +173,33 @@ void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
         }
 
         const auto message = Sprintf(
-            "Shard node unlinking failed for %s, %s with error %s"
+            "%s Shard node unlinking failed for %s, %s with error %s"
             ", will not retry",
+            LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
-        if (ShouldUnlockUponCompletion &&
-            msg->GetError().GetCode() == E_FS_NOTEMPTY)
+        const ui32 code = msg->GetError().GetCode();
+        if (ShouldUnlockUponCompletion && (code == E_FS_NOTEMPTY
+            || Request.GetUnlinkDirectory() && code == E_FS_NOTDIR))
         {
-            // The response from shard E_FS_NOTEMPTY is expected for directories
-            // and should not be considered erroneous
-            LOG_DEBUG(
+            //
+            // These errors may happen during normal operation.
+            //
+
+            LOG_INFO(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s %s",
-                LogTag.c_str(),
                 message.c_str());
         } else {
+            //
+            // Other non-retriable errors are not expected.
+            //
+
             LOG_ERROR(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s %s",
-                LogTag.c_str(),
                 message.c_str());
             ReportReceivedNodeOpErrorFromShard(message);
         }
