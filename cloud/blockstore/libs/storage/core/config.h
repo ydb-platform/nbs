@@ -816,6 +816,8 @@ public:
     [[nodiscard]] bool GetVolumeBalancerGentlePreemptionEnabled() const;
 
     [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
+
+    [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
 };
 
 ui64 GetAllocationUnit(

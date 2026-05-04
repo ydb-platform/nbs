@@ -1,12 +1,55 @@
 #include "flush_blocks_visitor.h"
 
+#include "library/cpp/containers/stack_vector/stack_vec.h"
+
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+namespace {
+
+constexpr size_t MaxOnStackTmpVectorSize = 128;
+
 ////////////////////////////////////////////////////////////////////////////////
+
+template <typename TOutputContainer>
+TOutputContainer SplitBlocksByCompactionRangeBorders(
+    const TVector<TBlock>& blocks,
+    const TCompactionMap& compactionMap)
+{
+    TOutputContainer blocksByRanges;
+    size_t start = 0;
+    while (start < blocks.size()) {
+        size_t end = start + 1;
+        while (end < blocks.size() &&
+               compactionMap.GetRangeStart(blocks[end - 1].BlockIndex) ==
+                   compactionMap.GetRangeStart(blocks[end].BlockIndex))
+        {
+            ++end;
+        }
+
+        blocksByRanges.emplace_back(start, end);
+        start = end;
+    }
+    return blocksByRanges;
+}
+
+} // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TFlushBlocksVisitor::TBlob::TBlob(
+        TBlockBuffer blobContent,
+        TVector<TBlock> blocks,
+        TVector<ui32> checksums,
+        ui8 compactionRangeCount)
+    : BlobContent(std::move(blobContent))
+    , Blocks(std::move(blocks))
+    , Checksums(std::move(checksums))
+    , CompactionRangeCount(compactionRangeCount)
+{}
 
 TFlushBlocksVisitor::TFlushBlocksVisitor(
         ui32 blockSize,
@@ -16,6 +59,8 @@ TFlushBlocksVisitor::TFlushBlocksVisitor(
         ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
         const TCompactionMap& compactionMap,
         bool readBlockMaskOnCompactionOptimizationEnabled,
+        ui64 splitByCompactionRangeMaxBlobCount,
+        ui64 tabletId,
         TVector<TBlob>& blobs)
     : BlockSize(blockSize)
     , FlushBlobSizeThreshold(flushBlobSizeThreshold)
@@ -26,6 +71,8 @@ TFlushBlocksVisitor::TFlushBlocksVisitor(
     , CompactionMap(compactionMap)
     , ReadBlockMaskOnCompactionOptimizationEnabled(
           readBlockMaskOnCompactionOptimizationEnabled)
+    , SplitByCompactionRangeMaxBlobCount(splitByCompactionRangeMaxBlobCount)
+    , TabletId(tabletId)
     , Blobs(blobs)
 {}
 
@@ -113,12 +160,7 @@ ui8 TFlushBlocksVisitor::CalculateCompactionRangeCount(
     return compactionRangeCount <= Max<ui8>() ? compactionRangeCount : 0;
 }
 
-void TFlushBlocksVisitor::FlushZeroBlob(TVector<TBlock> blocks)
-{
-    FlushBlob({}, std::move(blocks), {});
-}
-
-void TFlushBlocksVisitor::FlushBlob(
+void TFlushBlocksVisitor::AppendDataBlob(
     TBlockBuffer blobContent,
     TVector<TBlock> blocks,
     TVector<ui32> checksums)
@@ -132,6 +174,103 @@ void TFlushBlocksVisitor::FlushBlob(
         std::move(blocks),
         std::move(checksums),
         compactionRangeCount);
+}
+
+void TFlushBlocksVisitor::FlushZeroBlob(TVector<TBlock> blocks)
+{
+    FlushBlob({}, std::move(blocks), {});
+}
+
+void TFlushBlocksVisitor::FlushBlob(
+    TBlockBuffer blobContent,
+    TVector<TBlock> blocks,
+    TVector<ui32> checksums)
+{
+    const size_t maxCompactionRangeCountPerBlob =
+        MaxBlobRangeSize / CompactionMap.GetRangeSize();
+
+    // With standard compaction range size and max blob range size
+    // the number of compaction ranges per blob will not exceed
+    // MaxOnStackTmpVectorSize
+    if (Y_LIKELY(maxCompactionRangeCountPerBlob <= MaxOnStackTmpVectorSize)) {
+        FlushBlobImpl<
+            TStackVec<std::pair<size_t, size_t>, MaxOnStackTmpVectorSize>>(
+            std::move(blobContent),
+            std::move(blocks),
+            std::move(checksums));
+    } else {
+        FlushBlobImpl<TVector<std::pair<size_t, size_t>>>(
+            std::move(blobContent),
+            std::move(blocks),
+            std::move(checksums));
+    }
+}
+
+template <typename TTmpContainerType>
+void TFlushBlocksVisitor::FlushBlobImpl(
+    TBlockBuffer blobContent,
+    TVector<TBlock> blocks,
+    TVector<ui32> checksums)
+{
+    STORAGE_VERIFY(blocks, TWellKnownEntityTypes::TABLET, TabletId);
+
+    if (!SplitByCompactionRangeMaxBlobCount ||
+        !ReadBlockMaskOnCompactionOptimizationEnabled)
+    {
+        AppendDataBlob(
+            std::move(blobContent),
+            std::move(blocks),
+            std::move(checksums));
+        return;
+    }
+
+    auto blocksByRanges =
+        SplitBlocksByCompactionRangeBorders<TTmpContainerType>(
+            blocks,
+            CompactionMap);
+
+    const ui64 compactionRangeCount = blocksByRanges.size();
+    const bool splitByCompactionBorders =
+        compactionRangeCount <= SplitByCompactionRangeMaxBlobCount;
+
+    if (!splitByCompactionBorders || compactionRangeCount == 1) {
+        AppendDataBlob(
+            std::move(blobContent),
+            std::move(blocks),
+            std::move(checksums));
+        return;
+    }
+
+    const auto& dataRefs = blobContent.GetBlocks();
+    Y_DEBUG_ABORT_UNLESS((dataRefs.size() == blocks.size()) || (!dataRefs));
+
+    for (const auto& [start, end]: blocksByRanges) {
+        TVector<TBlock> pieceBlocks(
+            blocks.begin() + start,
+            blocks.begin() + end);
+
+        TBlockBuffer pieceBuf{TProfilingAllocator::Instance()};
+        if (dataRefs) {
+            for (size_t i = start; i < end; ++i) {
+                pieceBuf.AddBlock(dataRefs[i]);
+            }
+        }
+
+        TVector<ui32> pieceChecksums;
+        if (checksums) {
+            size_t checksumsStart = Min(start, checksums.size());
+            size_t checksumsEnd = Min(end, checksums.size());
+
+            pieceChecksums = TVector<ui32>(
+                checksums.begin() + checksumsStart,
+                checksums.begin() + checksumsEnd);
+        }
+
+        AppendDataBlob(
+            std::move(pieceBuf),
+            std::move(pieceBlocks),
+            std::move(pieceChecksums));
+    }
 }
 
 ui32 TFlushBlocksVisitor::GetBlobRangeSize(

@@ -29,6 +29,8 @@ private:
     const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
     const TCompactionMap& CompactionMap;
     const bool ReadBlockMaskOnCompactionOptimizationEnabled;
+    const ui64 SplitByCompactionRangeMaxBlobCount;
+    const ui64 TabletId;
 
     TVector<TBlob>& Blobs;
 
@@ -47,6 +49,8 @@ public:
         ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
         const TCompactionMap& compactionMap,
         bool readBlockMaskOnCompactionOptimizationEnabled,
+        ui64 splitByCompactionRangeMaxBlobCount,
+        ui64 tabletId,
         TVector<TBlob>& blobs);
 
     bool Visit(const TFreshBlock& block) override;
@@ -57,9 +61,20 @@ private:
     [[nodiscard]] ui8 CalculateCompactionRangeCount(
         const TVector<TBlock>& blocks) const;
 
+    void AppendDataBlob(
+        TBlockBuffer blobContent,
+        TVector<TBlock> blocks,
+        TVector<ui32> checksums);
+
     void FlushZeroBlob(TVector<TBlock> blocks);
 
     void FlushBlob(
+        TBlockBuffer blobContent,
+        TVector<TBlock> blocks,
+        TVector<ui32> checksums);
+
+    template <typename TTmpContainerType>
+    void FlushBlobImpl(
         TBlockBuffer blobContent,
         TVector<TBlock> blocks,
         TVector<ui32> checksums);

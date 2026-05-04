@@ -566,6 +566,8 @@ void TPartitionActor::HandleFlush(
             Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
             State->GetCompactionMap(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
+            Config->GetSplitByCompactionRangeMaxBlobCount(),
+            TabletID(),
             blobs);
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
