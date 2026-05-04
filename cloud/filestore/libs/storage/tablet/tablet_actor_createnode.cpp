@@ -104,7 +104,7 @@ private:
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
     bool NodeAlreadyExists = false;
-    ui32 CreateNodeRetriesCount = 0;
+    ui32 CreateNodeRetryCount = 0;
 
 public:
     TCreateNodeInShardActor(
@@ -271,7 +271,7 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (HasError(msg->GetError())) {
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
-            ++CreateNodeRetriesCount;
+            ++CreateNodeRetryCount;
 
             LOG_WARN(
                 ctx,
@@ -411,7 +411,7 @@ void TCreateNodeInShardActor::ReplyAndDie(
         std::move(Result),
         std::move(ProfileLogRequest),
         NodeAlreadyExists,
-        CreateNodeRetriesCount));
+        CreateNodeRetryCount));
 
     Die(ctx);
 }
@@ -955,8 +955,12 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
 
     EndNodeCreateInShard(msg->NodeName);
 
-    Metrics.NodeExistsWhileCreatingInShardCount += msg->NodeAlreadyExists;
-    Metrics.CreateNodeInShardRetriesCount += msg->CreateNodeRetriesCount;
+    Metrics.NodeExistsWhileCreatingInShardCount.fetch_add(
+        msg->NodeAlreadyExists,
+        std::memory_order_relaxed);
+    Metrics.CreateNodeInShardRetryCount.fetch_add(
+        msg->CreateNodeRetryCount,
+        std::memory_order_relaxed);
 
     NProto::TError error;
     if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {

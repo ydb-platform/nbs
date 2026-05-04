@@ -139,7 +139,7 @@ struct TTabletMetrics
     std::atomic<i64> UsedLocksCount{0};
 
     std::atomic<i64> NodeExistsWhileCreatingInShardCount{0};
-    std::atomic<i64> CreateNodeInShardRetriesCount{0};
+    std::atomic<i64> CreateNodeInShardRetryCount{0};
     std::atomic<i64> ReplayedCreateNodeInShardRequestsCount{0};
 
     std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
