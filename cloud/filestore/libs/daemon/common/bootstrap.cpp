@@ -225,6 +225,8 @@ void TBootstrapCommon::InitDiagnostics()
         Metrics->SetupCounters(Monitoring->GetCounters());
     }
 
+    ProfileLog->RegisterCounters(*Monitoring->GetCounters());
+
     FilestoreCounters = FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters());
 
     FsCountersProvider = CreateFsCountersProvider(

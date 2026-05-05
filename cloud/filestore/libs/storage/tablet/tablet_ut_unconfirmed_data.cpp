@@ -41,6 +41,11 @@ public:
         UNIT_ASSERT(record.Request.HasRequestType());
         Requests[record.Request.GetRequestType()].push_back(std::move(record));
     }
+
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

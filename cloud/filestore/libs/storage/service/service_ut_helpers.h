@@ -20,6 +20,8 @@ public:
     void Stop() override;
 
     void Write(TRecord record) override;
+
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override;
 };
 
 TString GenerateValidateData(ui32 size, ui32 seed = 0);

@@ -6,6 +6,7 @@
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
 #include <library/cpp/eventlog/eventlog.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
@@ -86,7 +87,7 @@ struct TEventProcessor
     {
         Y_UNUSED(out);
 
-        auto message =
+        const auto* message =
             dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
         if (message) {
             DiscardedMessageCount += message->GetDiscardedRequestCount();
@@ -120,6 +121,8 @@ struct TEventProcessor
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using namespace NMonitoring;
+
 struct TEnv
     : public NUnitTest::TBaseFixture
 {
@@ -130,6 +133,7 @@ struct TEnv
     std::shared_ptr<TTestScheduler> Scheduler;
     TProfileLogSettings Settings;
     IProfileLogPtr ProfileLog;
+    TDynamicCountersPtr Counters;
     TEventProcessor EventProcessor;
 
     TEnv()
@@ -137,6 +141,7 @@ struct TEnv
         , Scheduler(new TTestScheduler())
         , Settings{ProfilePath.c_str(), TDuration::Seconds(1), 0, 0}
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
+        , Counters(MakeIntrusive<TDynamicCounters>())
     {}
 
     TEnv(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
@@ -148,10 +153,12 @@ struct TEnv
               maxFlushRecords,
               maxFrameFlushRecords)
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
+        , Counters(MakeIntrusive<TDynamicCounters>())
     {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
+        ProfileLog->RegisterCounters(*Counters);
         ProfileLog->Start();
     }
 
@@ -183,7 +190,7 @@ struct TEnvWithLimits
         ProfileLog->Start();
     }
 
-    ~TEnvWithLimits()
+    ~TEnvWithLimits() override
     {
         ProfileLog->Stop();
         ProfilePath.DeleteIfExists();
@@ -368,7 +375,6 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                 .Build()
         });
 
-
         ProcessLog();
 
         UNIT_ASSERT_VALUES_EQUAL(5, EventProcessor.FlatMessages.size());
@@ -428,6 +434,21 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "fs3\t9000000\t4\t100000\t0",
             EventProcessor.FlatMessages[6]);
+
+        // Testing counters
+        auto pg = Counters->GetSubgroup("component", "profile_log");
+        auto requests = pg->FindCounter("Count");
+        auto bytes = pg->FindCounter("RequestBytes");
+        auto flushes = pg->FindCounter("FlushCount");
+        auto discards = pg->FindCounter("DiscardCount");
+        UNIT_ASSERT(requests);
+        UNIT_ASSERT_VALUES_EQUAL(7, requests->Val());
+        UNIT_ASSERT(bytes);
+        UNIT_ASSERT_VALUES_EQUAL(177, bytes->Val());
+        UNIT_ASSERT(flushes);
+        UNIT_ASSERT_VALUES_EQUAL(3, flushes->Val());
+        UNIT_ASSERT(discards);
+        UNIT_ASSERT_VALUES_EQUAL(0, discards->Val());
     }
 
     Y_UNIT_TEST(TestRecordLimits)
