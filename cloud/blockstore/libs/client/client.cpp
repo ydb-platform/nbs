@@ -653,8 +653,8 @@ public:
     void Stop() override {
         TClientBase::Stop();
         with_lock (EndpointLock) {
-            for (auto& [_, ptr]: Cache) {
-                ptr.reset();
+            for (auto& [key, endpoint]: Cache) {
+                endpoint.reset();
             }
         }
     };
