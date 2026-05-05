@@ -317,6 +317,7 @@ public:
 
     // called from CM thread
     void CreateQP();
+    void SetupQP();
     void Start() noexcept;
     void Stop() noexcept;
     void Flush() noexcept;
@@ -501,6 +502,41 @@ TServerSession::~TServerSession()
 
     SendQueue.Clear();
     RecvQueue.Clear();
+}
+
+void TServerSession::SetupQP()
+{
+    ibv_qp_attr qpAttr{};
+    int mask = 0;
+    if (Config->RetryCount > 0) {
+        qpAttr.retry_cnt = Config->RetryCount;
+        mask |= IBV_QP_RETRY_CNT;
+    }
+    if (Config->RnrRetry > 0) {
+        qpAttr.rnr_retry = Config->RnrRetry;
+        mask |= IBV_QP_RNR_RETRY;
+    }
+    if (Config->Timeout > 0) {
+        qpAttr.timeout = Config->Timeout;
+        mask |= IBV_QP_TIMEOUT;
+    }
+    if (Config->MinRnrTimer > 0) {
+        qpAttr.min_rnr_timer = Config->MinRnrTimer;
+        mask |= IBV_QP_MIN_RNR_TIMER;
+    }
+    if (mask != 0) {
+        Verbs->ModifyQP(Connection->qp, &qpAttr, mask);
+    }
+
+    if (Config->RateLimit.RateLimit > 0 || Config->RateLimit.MaxBurstSz > 0 ||
+        Config->RateLimit.TypicalPktSz > 0)
+    {
+        ibv_qp_rate_limit_attr rateLimitAttr{};
+        rateLimitAttr.rate_limit = Config->RateLimit.RateLimit;
+        rateLimitAttr.max_burst_sz = Config->RateLimit.MaxBurstSz;
+        rateLimitAttr.typical_pkt_sz = Config->RateLimit.TypicalPktSz;
+        Verbs->RateLimitQP(Connection->qp, &rateLimitAttr);
+    }
 }
 
 void TServerSession::Start() noexcept
@@ -1905,8 +1941,8 @@ void TServer::Accept(
             .responder_resources = RDMA_MAX_RESP_RES,
             .initiator_depth = RDMA_MAX_INIT_DEPTH,
             .flow_control = 1,
-            .retry_count = 7,
-            .rnr_retry_count = 7,
+            .retry_count = Config->RetryCount,
+            .rnr_retry_count = Config->RnrRetry,
         };
 
         RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
@@ -1925,6 +1961,7 @@ void TServer::Accept(
 void TServer::HandleConnected(TServerSession* session) noexcept
 {
     try {
+        session->SetupQP();
         session->Start();
         session->CompletionPoller->Attach(session);
         RDMA_INFO(session->Log, "connected");

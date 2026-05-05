@@ -395,6 +395,14 @@ struct TVerbs
             RDMA_THROW_ERROR("ibv_modify_qp");
         }
     }
+
+    void RateLimitQP(ibv_qp* qp, ibv_qp_rate_limit_attr* attr) override
+    {
+        int res = ibv_modify_qp_rate_limit(qp, attr);
+        if (res < 0) {
+            RDMA_THROW_ERROR("ibv_modify_qp_rate_limit");
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

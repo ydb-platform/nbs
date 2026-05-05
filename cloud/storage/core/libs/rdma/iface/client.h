@@ -3,9 +3,10 @@
 #include "public.h"
 
 #include "buffer.h"
+#include "rate_limit.h"
 
-#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -42,6 +43,13 @@ struct TClientConfig
     TBufferPoolConfig BufferPool;
     ui32 SendQueueSize = 0;
     ui32 RecvQueueSize = 0;
+    TDuration ResolveTimeout = TDuration::Seconds(10);
+    TDuration FlushTimeout = TDuration::Seconds(10);
+    ui8 RetryCount = 7;
+    ui8 RnrRetry = 7;
+    ui8 Timeout = 0;
+    ui8 MinRnrTimer = 0;
+    TRateLimit RateLimit;
 
     TClientConfig();
 

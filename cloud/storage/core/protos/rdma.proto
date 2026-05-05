@@ -27,6 +27,15 @@ message TBufferPool
     uint64 MaxFreeChunks = 3;
 }
 
+message TRateLimit
+{
+    uint32 RateLimit = 1;
+
+    uint32 MaxBurstSz = 2;
+
+    uint32 TypicalPktSz = 3;
+}
+
 message TRdmaServer
 {
     uint32 Backlog = 1;
@@ -53,6 +62,13 @@ message TRdmaServer
     uint32 SendQueueSize = 15;
     uint32 RecvQueueSize = 16;
     bool StrictValidation = 17;
+
+    uint32 RetryCount = 18;
+    uint32 RnrRetry = 19;
+    uint32 Timeout = 20;
+    uint32 MinRnrTimer = 21;
+
+    TRateLimit RateLimit = 22;
 }
 
 message TRdmaClient
@@ -80,4 +96,14 @@ message TRdmaClient
 
     uint32 SendQueueSize = 14;
     uint32 RecvQueueSize = 15;
+
+    uint64 ResolveTimeout = 16;  // in milliseconds
+    uint64 FlushTimeout = 17;    // in milliseconds
+
+    uint32 RetryCount = 18;
+    uint32 RnrRetry = 19;
+    uint32 Timeout = 20;
+    uint32 MinRnrTimer = 21;
+
+    TRateLimit RateLimit = 22;
 }

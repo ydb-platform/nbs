@@ -52,9 +52,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
-constexpr TDuration RESOLVE_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
-constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
 
@@ -521,6 +519,7 @@ public:
 
     // called from CM thread
     void CreateQP();
+    void SetupQP();
     void DestroyQP() noexcept;
     void StartReceive() noexcept;
     void SetConnection(NVerbs::TConnectionPtr connection) noexcept;
@@ -739,6 +738,41 @@ void TClientEndpoint::CreateQP()
 
         RecvQueue.Push(&wr);
         responseMsg += sizeof(TResponseMessage);
+    }
+}
+
+void TClientEndpoint::SetupQP()
+{
+    ibv_qp_attr qpAttr{};
+    int mask = 0;
+    if (Config.RetryCount > 0) {
+        qpAttr.retry_cnt = Config.RetryCount;
+        mask |= IBV_QP_RETRY_CNT;
+    }
+    if (Config.RnrRetry > 0) {
+        qpAttr.rnr_retry = Config.RnrRetry;
+        mask |= IBV_QP_RNR_RETRY;
+    }
+    if (Config.Timeout > 0) {
+        qpAttr.timeout = Config.Timeout;
+        mask |= IBV_QP_TIMEOUT;
+    }
+    if (Config.MinRnrTimer > 0) {
+        qpAttr.min_rnr_timer = Config.MinRnrTimer;
+        mask |= IBV_QP_MIN_RNR_TIMER;
+    }
+    if (mask != 0) {
+        Verbs->ModifyQP(Connection->qp, &qpAttr, mask);
+    }
+
+    if (Config.RateLimit.RateLimit > 0 || Config.RateLimit.MaxBurstSz > 0 ||
+        Config.RateLimit.TypicalPktSz > 0)
+    {
+        ibv_qp_rate_limit_attr rateLimitAttr{};
+        rateLimitAttr.rate_limit = Config.RateLimit.RateLimit;
+        rateLimitAttr.max_burst_sz = Config.RateLimit.MaxBurstSz;
+        rateLimitAttr.typical_pkt_sz = Config.RateLimit.TypicalPktSz;
+        Verbs->RateLimitQP(Connection->qp, &rateLimitAttr);
     }
 }
 
@@ -1362,7 +1396,7 @@ bool TClientEndpoint::FlushHanging() const
 {
     auto start = FlushStartCycles.load();
     return start &&
-           CyclesToDurationSafe(GetCycleCount() - start) >= FLUSH_TIMEOUT;
+           CyclesToDurationSafe(GetCycleCount() - start) >= Config.FlushTimeout;
 }
 
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
@@ -2177,7 +2211,7 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
         RDMA_DEBUG(endpoint->Log, "resolve address");
 
         Verbs->ResolveAddress(endpoint->Connection.get(), addrinfo->ai_src_addr,
-            addrinfo->ai_dst_addr, RESOLVE_TIMEOUT);
+            addrinfo->ai_dst_addr, Config->ResolveTimeout);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
@@ -2195,7 +2229,7 @@ void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
         EEndpointState::ResolvingRoute);
 
     try {
-        Verbs->ResolveRoute(endpoint->Connection.get(), RESOLVE_TIMEOUT);
+        Verbs->ResolveRoute(endpoint->Connection.get(), Config->ResolveTimeout);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
@@ -2232,8 +2266,8 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .responder_resources = RDMA_MAX_RESP_RES,
             .initiator_depth = RDMA_MAX_INIT_DEPTH,
             .flow_control = 1,
-            .retry_count = 7,
-            .rnr_retry_count = 7,
+            .retry_count = Config->RetryCount,
+            .rnr_retry_count = Config->RnrRetry,
         };
 
         Verbs->Connect(endpoint->Connection.get(), &param);
@@ -2277,6 +2311,14 @@ void TClient::HandleConnected(
         EEndpointState::Connected);
 
     endpoint->Reconnect.Cancel();
+    try {
+        endpoint->SetupQP();
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(endpoint->Log, e.what());
+        Counters->Error();
+        endpoint->Disconnect();
+        return;
+    }
     endpoint->StartReceive();
 
     RDMA_INFO(endpoint->Log, "connected");

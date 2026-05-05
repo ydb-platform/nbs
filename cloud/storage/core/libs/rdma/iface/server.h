@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "buffer.h"
+#include "rate_limit.h"
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
@@ -34,6 +35,11 @@ struct TServerConfig
     TBufferPoolConfig BufferPool;
     ui32 SendQueueSize = 0;
     ui32 RecvQueueSize = 0;
+    ui8 RetryCount = 7;
+    ui8 RnrRetry = 7;
+    ui8 Timeout = 0;
+    ui8 MinRnrTimer = 0;
+    TRateLimit RateLimit;
 
     TServerConfig();
 

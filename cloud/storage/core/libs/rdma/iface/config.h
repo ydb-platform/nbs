@@ -60,6 +60,16 @@ inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
     SET(VerbsQP);
     SET(SendQueueSize);
     SET(RecvQueueSize);
+    SET(ResolveTimeout, TDuration::MilliSeconds);
+    SET(FlushTimeout, TDuration::MilliSeconds);
+    SET(RetryCount);
+    SET(RnrRetry);
+    SET(Timeout);
+    SET(MinRnrTimer);
+
+    SET_NESTED(RateLimit, RateLimit);
+    SET_NESTED(RateLimit, MaxBurstSz);
+    SET_NESTED(RateLimit, TypicalPktSz);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);
@@ -115,6 +125,14 @@ inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
     SET(SendQueueSize);
     SET(RecvQueueSize);
     SET(StrictValidation);
+    SET(RetryCount);
+    SET(RnrRetry);
+    SET(Timeout);
+    SET(MinRnrTimer);
+
+    SET_NESTED(RateLimit, RateLimit);
+    SET_NESTED(RateLimit, MaxBurstSz);
+    SET_NESTED(RateLimit, TypicalPktSz);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);
