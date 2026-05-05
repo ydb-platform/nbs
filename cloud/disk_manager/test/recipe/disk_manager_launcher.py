@@ -444,6 +444,12 @@ FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
             ListNodesMaxBytes: {list_nodes_max_bytes}
 {regular_scrubbing_config}
         >
+        SnapshotConfig: <
+            TraversalConfig: <
+                TraversalWorkersCount: 100
+            >
+            ListNodesMaxBytes: {list_nodes_max_bytes}
+        >
     >
 """
 
