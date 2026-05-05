@@ -315,6 +315,7 @@ void TTestEnv::SetupLogging()
         NKikimrServices::TX_MEDIATOR,
         NKikimrServices::TX_PROXY,
         NKikimrServices::TX_PROXY_SCHEME_CACHE,
+        NKikimrServices::NODE_BROKER,
     };
 
     for (ui32 i: kikimrServices) {
