@@ -652,6 +652,11 @@ public:
 
     void Stop() override {
         TClientBase::Stop();
+        with_lock (EndpointLock) {
+            for (auto& [_, ptr]: Cache) {
+                ptr.reset();
+            }
+        }
     };
 
     IBlockStorePtr CreateEndpoint(
