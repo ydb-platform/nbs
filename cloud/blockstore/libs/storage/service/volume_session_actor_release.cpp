@@ -10,7 +10,7 @@ using namespace NKikimr;
 
 void TVolumeSessionActor::HandleReleaseVolumeToHiveRequest(
     const TEvServicePrivate::TEvReleaseVolumeToHiveRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     const auto& diskId = VolumeInfo->DiskId;
 
@@ -37,7 +37,7 @@ void TVolumeSessionActor::HandleReleaseVolumeToHiveRequest(
                 MakeError(
                     E_INVALID_STATE,
                     TStringBuilder()
-                        << "Volume " << diskId << " is not is running state"));
+                        << "Volume " << diskId << " is not in running state"));
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,

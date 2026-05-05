@@ -171,7 +171,7 @@ public:
 private:
     void SendRequest(
         const TActorContext& ctx,
-        TDuration delay = TDuration::Seconds(0));
+        TDuration delay = TDuration::Zero());
 
     void HandleIntermediateOperationResponse(
         const TActorContext& ctx,
@@ -229,7 +229,9 @@ void TGentlePreemptionActor::Bootstrap(const TActorContext& ctx)
 
     SendRequest(ctx);
 
-    ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+    if (Timeout > TDuration::Zero()) {
+        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+    }
 }
 
 void TGentlePreemptionActor::SendRequest(
@@ -290,8 +292,9 @@ void TGentlePreemptionActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    LOG_ERROR_S(
+    LOG_LOG_S(
         ctx,
+        HasError(error) ? NActors::NLog::PRI_ERROR : NActors::NLog::PRI_INFO,
         TBlockStoreComponents::SERVICE,
         LogTitle.GetWithTime()
             << " Gentle preemption finished: " << FormatError(error).c_str()
