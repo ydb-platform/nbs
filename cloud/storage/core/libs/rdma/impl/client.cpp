@@ -495,7 +495,7 @@ private:
 
     std::atomic<ui64> ReqIdPool{0};
 
-    int NegotiatedProtocolVersion = RDMA_PROTO_CURR_VERSION;
+    int NegotiatedProtocolVersion = RDMA_PROTO_VERSION;
 
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
@@ -1237,8 +1237,7 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
     if (version != NegotiatedProtocolVersion) {
         RDMA_ERROR(
             recv << " incompatible protocol version " << version
-                 << ", expected "
-                 << static_cast<int>(NegotiatedProtocolVersion));
+                 << ", expected " << NegotiatedProtocolVersion);
         Counters->RecvResponseCompleted();
         Counters->Error();
         RecvResponse(recv);
@@ -2281,7 +2280,7 @@ void TClient::HandleConnected(
     }
 
     const int version = ParseMessageHeader(param->private_data);
-    if (version < RDMA_PROTO_PREV_VERSION || version > RDMA_PROTO_CURR_VERSION)
+    if (version < RDMA_PROTO_PREV_VERSION || version > RDMA_PROTO_VERSION)
     {
         RDMA_ERROR(
             endpoint->Log,
@@ -2491,7 +2490,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
     out << "SEND " << TWorkRequestId(send->wr.wr_id);
     if (auto msg = send->Message()) {
         if (auto ver = ParseMessageHeader(msg);
-            ver == RDMA_PROTO_CURR_VERSION || ver == RDMA_PROTO_PREV_VERSION)
+            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
             out << " [request=" << msg->ReqId << "]";
         }
@@ -2504,7 +2503,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
         if (auto ver = ParseMessageHeader(msg);
-            ver == RDMA_PROTO_CURR_VERSION || ver == RDMA_PROTO_PREV_VERSION)
+            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
             out << " [request=" << msg->ReqId << "]";
         }

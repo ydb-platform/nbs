@@ -471,7 +471,7 @@ struct TTestVerbs
             .RecvQueueSize = SafeCast<ui16>(connect->RecvQueueSize),
             .MaxBufferSize = connect->MaxBufferSize,
         };
-        InitMessageHeader(&reject, RDMA_PROTO_CURR_VERSION);
+        InitMessageHeader(&reject, RDMA_PROTO_VERSION);
 
         auto param2 = *param;
         param2.private_data = &reject;
@@ -591,7 +591,7 @@ void CreateConnection(
     ui32 maxBufferSize)
 {
     TConnectMessage message = {};
-    InitMessageHeader(&message, RDMA_PROTO_CURR_VERSION);
+    InitMessageHeader(&message, RDMA_PROTO_VERSION);
     message.SendQueueSize = sendQueueSize;
     message.RecvQueueSize = recvQueueSize;
     message.MaxBufferSize = maxBufferSize;

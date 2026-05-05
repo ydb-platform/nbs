@@ -333,7 +333,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                         auto* responseMsg = reinterpret_cast<TResponseMessage*>(
                             re->sg_list[0].addr);
                         Zero(*responseMsg);
-                        InitMessageHeader(responseMsg, RDMA_PROTO_CURR_VERSION);
+                        InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
                         responseMsg->ReqId = testContext.ReqIds.front();
 
                         testContext.ReqIds.pop_front();
@@ -784,7 +784,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
                     auto* responseMsg = reinterpret_cast<TResponseMessage*>(
                         re->sg_list[0].addr);
                     Zero(*responseMsg);
-                    InitMessageHeader(responseMsg, RDMA_PROTO_CURR_VERSION);
+                    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
                     responseMsg->ReqId = testContext->ReqIds.front();
 
                     testContext->ReqIds.pop_front();
@@ -907,7 +907,7 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
                 // good id and opcode, success status, good message, but unknown request
                 if (wc->wr_id == recv[1]->wr_id) {
                     auto* msg = reinterpret_cast<TResponseMessage*>(recv[1]->sg_list[0].addr);
-                    InitMessageHeader(msg, RDMA_PROTO_CURR_VERSION);
+                    InitMessageHeader(msg, RDMA_PROTO_VERSION);
                     return;
                 }
                 // bad id, good opcode
@@ -980,7 +980,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
     ASSERT_TRUE(endpoint);
 
     // first connect attempt is sent with the current protocol version
-    ASSERT_EQ(RDMA_PROTO_CURR_VERSION, acceptedConnectVersion.load());
+    ASSERT_EQ(RDMA_PROTO_VERSION, acceptedConnectVersion.load());
 
     // after a successful connect, the request message must be encoded with
     // the negotiated (previous) protocol version
@@ -1040,7 +1040,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
         // accept message with an unsupported protocol version (newer than
         // the current one)
         TAcceptMessage acceptMsg{};
-        InitMessageHeader(&acceptMsg, RDMA_PROTO_CURR_VERSION + 1);
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION + 1);
         NVerbs::EnqueueAcceptEvent(
             testContext,
             id,
@@ -1122,7 +1122,7 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
     auto endpoint = client->StartEndpoint("::", 10020).GetValue(15s);
     ASSERT_TRUE(endpoint);
 
-    ASSERT_EQ(RDMA_PROTO_CURR_VERSION, firstConnectVersion.load());
+    ASSERT_EQ(RDMA_PROTO_VERSION, firstConnectVersion.load());
     ASSERT_EQ(RDMA_PROTO_PREV_VERSION, secondConnectVersion.load());
 }
 
@@ -1189,7 +1189,7 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
         }
 
         TAcceptMessage acceptMsg{};
-        InitMessageHeader(&acceptMsg, RDMA_PROTO_CURR_VERSION);
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
         NVerbs::EnqueueAcceptEvent(
             testContext,
             id,
@@ -1245,7 +1245,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
         // synthesize a reject message with a totally unknown version that
         // doesn't match any switch branch in HandleRejected
         TRejectMessage2 rejectMsg{};
-        InitMessageHeader(&rejectMsg, RDMA_PROTO_CURR_VERSION + 5);
+        InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION + 5);
         NVerbs::EnqueueRejectEvent(
             testContext,
             id,
