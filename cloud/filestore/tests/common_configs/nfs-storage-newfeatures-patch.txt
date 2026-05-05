@@ -31,3 +31,4 @@ DirectoryHandlesStorageEnabled: true
 DirectoryHandlesTableSize: 1200
 GidPropagationEnabled: true
 NodeRefsNoAutoPrecharge: true
+UseCustomReadDataResponseParser: true
