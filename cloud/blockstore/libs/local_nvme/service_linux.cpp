@@ -541,7 +541,7 @@ auto TLocalNVMeService::ListDevices(TCont* c) const
     TVector<NProto::TNVMeDevice> devices;
     devices.reserve(Devices.size());
 
-    for (auto& [_, device]: Devices) {
+    for (const auto& [_, device]: Devices) {
         devices.push_back(device);
     }
 
