@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include "rope_utils.h"
+#include "protobuf_utils.h"
 #include "verify.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -18,6 +19,8 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <contrib/libs/protobuf/src/google/protobuf/io/coded_stream.h>
 
 #include <memory>
 
@@ -703,6 +706,53 @@ void TReadDataActor::HandleReadDataResponse(
     const TEvService::TEvReadDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (!ReadRequest.GetIovecs().empty()) {
+        auto buffer = ev->GetChainBuffer();
+
+        TRope::TConstIterator iter = buffer->GetBeginIter();
+        ui64 size = buffer->GetSize();
+        TRopeStream stream(iter, size);
+        google::protobuf::io::CodedInputStream inputStream(&stream);
+
+        auto response = std::make_unique<TEvService::TEvReadDataResponse>();
+        if (const auto& info = buffer->GetSerializationInfo();
+            !info.IsExtendedFormat)
+        {
+            if (ParseReadDataResponse(
+                    inputStream,
+                    response->Record,
+                    ReadRequest.GetIovecs()))
+            {
+                HandleServiceTraceInfo(
+                    "ReadData",
+                    ctx,
+                    TraceSerializer,
+                    MainInFlightRequest->CallContext,
+                    response->Record);
+
+                if (FAILED(response->Record.GetError().GetCode())) {
+                    HandleError(ctx, response->Record.GetError());
+                    return;
+                }
+            }
+
+            const auto& backendInfo =
+                response->Record.GetHeaders().GetBackendInfo();
+            ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
+
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "ReadData succeeded %lu data, backend-info: %s",
+                response->Record.GetBuffer().size(),
+                backendInfo.ShortUtf8DebugString().Quote().c_str());
+
+            SendResponseAndDie(ctx, std::move(response));
+            return;
+        }
+        Y_VERIFY(false);
+    }
+
     auto* msg = ev->Get();
     HandleServiceTraceInfo(
         "ReadData",

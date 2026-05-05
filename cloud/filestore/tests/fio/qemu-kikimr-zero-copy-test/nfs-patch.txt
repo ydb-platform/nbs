@@ -3,4 +3,4 @@ ThreeStageWriteEnabled: true
 UnalignedThreeStageWriteEnabled: true
 
 ZeroCopyReadEnabled: true
-TwoStageReadEnabled: true
+TwoStageReadEnabled: false
