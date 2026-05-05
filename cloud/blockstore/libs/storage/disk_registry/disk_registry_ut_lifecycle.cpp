@@ -938,6 +938,84 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL("uuid-4", cleanDevices[1]);
     }
 
+    Y_UNIT_TEST(ShouldHandleCoolDownBeforeSecureErase)
+    {
+        auto config = CreateDefaultStorageConfig();
+        config.SetCoolDownTimeoutBeforeSecureErase(TDuration::Seconds(30).MilliSeconds());
+
+        const auto agentConfig1 = CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            Device("dev-2", "uuid-2", "rack-1", 10_GB)
+        });
+
+        auto runtime = TTestRuntimeBuilder()
+            .With(config)
+            .WithAgents({  CreateTestDiskAgent(agentConfig1) })
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, { agentConfig1,  }));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+
+        // secure erase
+
+        TVector<TString> cleanDevices;
+
+        runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
+                    auto& msg = *event->Get<TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>();
+                    cleanDevices = msg.Devices;
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        TVector<NProto::TDeviceConfig> devices;
+
+        {
+            auto& device = devices.emplace_back();
+            device.SetNodeId(runtime->GetNodeId(0));
+            device.SetDeviceUUID("uuid-1");
+        }
+
+        {
+            auto& device = devices.emplace_back();
+            device.SetNodeId(runtime->GetNodeId(0));
+            device.SetDeviceUUID("uuid-2");
+        }
+
+        // Should not get secure erases during cool down timeout.
+        runtime->AdvanceCurrentTime(28s);
+        runtime->DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, cleanDevices.size());
+
+        // Will get secure erases after cool down timeout passed.
+        runtime->AdvanceCurrentTime(1s);
+        {
+            TDispatchOptions options;
+            options.FinalEvents = {
+                TDispatchOptions::TFinalEventCondition(
+                    TEvDiskRegistryPrivate::EvCleanupDevicesResponse)
+            };
+
+            runtime->DispatchEvents(options);
+        }
+
+        Sort(cleanDevices);
+        UNIT_ASSERT_VALUES_EQUAL(2, cleanDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", cleanDevices[0]);
+        UNIT_ASSERT_VALUES_EQUAL("uuid-2", cleanDevices[1]);
+    }
+
     Y_UNIT_TEST(ShouldUpdateNodeId)
     {
         auto agent = CreateAgentConfig("agent-1", {
