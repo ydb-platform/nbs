@@ -180,6 +180,15 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
         FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvService)
     #undef FILESTORE_HANDLE_REQUEST_RESPONSE
 
+        HFunc(TEvIndexTablet::TEvUnsafeCreateNodeRequest,    HandleUnsafeCreateNode);
+        HFunc(TEvIndexTablet::TEvUnsafeCreateNodeResponse,   HandleUnsafeCreateNodeResponse);
+        HFunc(TEvIndexTablet::TEvUnsafeDeleteNodeRequest,    HandleUnsafeDeleteNode);
+        HFunc(TEvIndexTablet::TEvUnsafeDeleteNodeResponse,   HandleUnsafeDeleteNodeResponse);
+        HFunc(TEvIndexTablet::TEvUnsafeCreateNodeRefRequest, HandleUnsafeCreateNodeRef);
+        HFunc(TEvIndexTablet::TEvUnsafeCreateNodeRefResponse,HandleUnsafeCreateNodeRefResponse);
+        HFunc(TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest, HandleUnsafeDeleteNodeRef);
+        HFunc(TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse,HandleUnsafeDeleteNodeRefResponse);
+
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
         HFunc(TEvService::TEvRegisterLocalFileStoreRequest, HandleRegisterLocalFileStore);

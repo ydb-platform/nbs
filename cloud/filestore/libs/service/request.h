@@ -158,6 +158,10 @@ enum class EFileStoreRequest
     WriteBlob,
     ConfirmAddData,
     CancelAddData,
+    UnsafeCreateNode,
+    UnsafeDeleteNode,
+    UnsafeCreateNodeRef,
+    UnsafeDeleteNodeRef,
     MAX
 };
 

@@ -11,6 +11,7 @@ import "cloud/filestore/public/api/protos/node.proto";
 import "cloud/filestore/public/api/protos/ping.proto";
 import "cloud/filestore/public/api/protos/server.proto";
 import "cloud/filestore/public/api/protos/session.proto";
+import "cloud/filestore/private/api/unsafe_protos/unsafe.proto";
 
 import "google/api/annotations.proto";
 
@@ -393,6 +394,20 @@ service TFileStoreService
     rpc ExecuteAction(TExecuteActionRequest) returns (TExecuteActionResponse) {
         option (google.api.http) = {
             post: "/execute_action"
+            body: "*"
+        };
+    }
+
+    rpc UnsafeCreateNode(NCloud.NFileStore.NProtoPrivate.TUnsafeCreateNodeRequest) returns (NCloud.NFileStore.NProtoPrivate.TUnsafeCreateNodeResponse) {
+        option (google.api.http) = {
+            post: "/unsafe_create_node"
+            body: "*"
+        };
+    }
+
+    rpc UnsafeCreateNodeRef(NCloud.NFileStore.NProtoPrivate.TUnsafeCreateNodeRefRequest) returns (NCloud.NFileStore.NProtoPrivate.TUnsafeCreateNodeRefResponse) {
+        option (google.api.http) = {
+            post: "/unsafe_create_node_ref"
             body: "*"
         };
     }
