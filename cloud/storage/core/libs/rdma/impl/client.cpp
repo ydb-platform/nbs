@@ -2346,7 +2346,7 @@ void TClient::HandleRejected(
                 bool changed = false;
                 if (endpoint->Config.SendQueueSize > msg->RecvQueueSize) {
                     endpoint->Config.SendQueueSize =
-                        std::max<ui16>(1, msg->RecvQueueSize / 2);
+                        std::max(1, msg->RecvQueueSize / 2);
                     changed = true;
 
                     RDMA_WARN(
@@ -2356,7 +2356,9 @@ void TClient::HandleRejected(
                                              << endpoint->Host);
                 }
                 if (msg->SendQueueSize > endpoint->Config.RecvQueueSize) {
-                    endpoint->Config.RecvQueueSize = std::min<ui16>(std::numeric_limits<ui16>::max(), msg->SendQueueSize * 2);
+                    endpoint->Config.RecvQueueSize = std::min<ui32>(
+                        std::numeric_limits<ui16>::max(),
+                        msg->SendQueueSize * 2);
                     changed = true;
 
                     RDMA_WARN(
