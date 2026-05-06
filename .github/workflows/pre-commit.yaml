@@ -18,8 +18,41 @@ on:
       - 'reopened'
       - 'labeled'
 
+permissions:
+  contents: read
+
 jobs:
+  check-trigger-label:
+    uses: ./.github/workflows/check-test-launch-label.yaml
+
+  check-running-allowed:
+    needs:
+      - check-trigger-label
+    if: needs.check-trigger-label.outputs.allowed == 'true'
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    outputs:
+      result: ${{ steps.check-ownership-membership.outputs.result }}
+    steps:
+    - name: checkout workflow scripts
+      uses: actions/checkout@v6
+      with:
+        submodules: false
+        sparse-checkout: '.github'
+        clean: true
+        ref: ${{ github.event.pull_request.base.sha }}
+    - name: Check if running pre-commit is allowed
+      id: check-ownership-membership
+      uses: actions/github-script@v9
+      with:
+        github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        script: |
+          const checkOwnershipMembership = require('./.github/scripts/check-ownership-membership.js');
+          return await checkOwnershipMembership({ github, context, core });
+
   pre-commit:
+    needs:
+      - check-running-allowed
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
     - uses: actions/checkout@v6
