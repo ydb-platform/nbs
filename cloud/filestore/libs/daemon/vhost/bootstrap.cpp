@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/diagnostics/tcmalloc_stats.h>
 #include <cloud/filestore/libs/endpoint/endpoint_manager.h>
 #include <cloud/filestore/libs/endpoint/listener.h>
 #include <cloud/filestore/libs/endpoint/service_auth.h>
@@ -290,6 +291,22 @@ void TBootstrapVhost::InitComponents()
         BackgroundScheduler,
         ModuleStatsRegistry);
 
+    const auto* localServiceConfigProto =
+        Configs->VhostServiceConfig->GetLocalServiceConfig();
+    // Need tcmalloc metrics wrapper for local service since these are usually
+    // provided as part of actor system
+    if (Configs->Options->Service == NDaemon::EServiceKind::Local &&
+        localServiceConfigProto)
+    {
+        TLocalFileStoreConfig localServiceConfig(*localServiceConfigProto);
+        if (localServiceConfig.GetEnableTcMallocMetrics()) {
+            TcMallocStatsUpdater = CreateStatsUpdater(
+                Timer,
+                BackgroundScheduler,
+                CreateTcMallocStatsHandler(Monitoring->GetCounters()));
+        }
+    }
+
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
         case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
@@ -497,6 +514,7 @@ void TBootstrapVhost::InitLWTrace()
 void TBootstrapVhost::StartComponents()
 {
     FILESTORE_LOG_START_COMPONENT(ModuleStatsUpdater);
+    FILESTORE_LOG_START_COMPONENT(TcMallocStatsUpdater);
 
     NVhost::StartServer();
 
@@ -523,6 +541,7 @@ void TBootstrapVhost::StopComponents()
 
     NVhost::StopServer();
 
+    FILESTORE_LOG_STOP_COMPONENT(TcMallocStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ModuleStatsUpdater);
 }
 
