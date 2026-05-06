@@ -700,31 +700,6 @@ public:
         return e.GetData();
     }
 
-    TStringBuf Back() const
-    {
-        if (Empty()) {
-            return {};
-        }
-
-        if (Header()->WritePos < Header()->LastEntrySize) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
-        auto pos = Header()->WritePos - Header()->LastEntrySize;
-        const auto e = GetEntry(pos);
-
-        if (!e.HasValue() || e.ActualPos != pos ||
-            e.GetNextEntryPos() != Header()->WritePos)
-        {
-            // corruption
-            // TODO: report?
-            return {};
-        }
-
-        return e.GetData();
-    }
-
     void PopFront()
     {
         auto cur = GetFrontEntry();
@@ -901,11 +876,6 @@ bool TFileRingBuffer::Free(const void* ptr)
 TStringBuf TFileRingBuffer::Front() const
 {
     return Impl->Front();
-}
-
-TStringBuf TFileRingBuffer::Back() const
-{
-    return Impl->Back();
 }
 
 void TFileRingBuffer::PopFront()

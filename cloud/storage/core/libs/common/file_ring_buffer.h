@@ -69,10 +69,6 @@ public:
     bool Free(const void* ptr);
 
     TStringBuf Front() const;
-
-    // Note: this method doesn't take into consideration Skip flag
-    TStringBuf Back() const;
-
     void PopFront();
     ui64 Size() const;
     bool Empty() const;

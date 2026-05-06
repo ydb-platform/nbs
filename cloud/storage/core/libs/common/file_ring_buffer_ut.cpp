@@ -149,15 +149,6 @@ struct TReferenceImplementation
         return Q.front();
     }
 
-    TStringBuf Back() const
-    {
-        if (!Q) {
-            return {};
-        }
-
-        return Q.back();
-    }
-
     void PopFront()
     {
         if (!Q) {
@@ -199,6 +190,18 @@ struct TReferenceImplementation
     }
 };
 
+TString Dump(const TReferenceImplementation& ri)
+{
+    TStringBuilder sb;
+    for (const auto& entry: ri.Q) {
+        if (!sb.empty()) {
+            sb << ", ";
+        }
+        sb << entry;
+    }
+    return sb;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -224,14 +227,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!rb.PushBack(""));              // empty
 
         UNIT_ASSERT(rb.PushBack("vasya"));
-        UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Back());
-
         UNIT_ASSERT(rb.PushBack("petya"));
-        UNIT_ASSERT_VALUES_EQUAL("petya", rb.Back());
-
         UNIT_ASSERT(rb.PushBack("vasya2"));
-        UNIT_ASSERT_VALUES_EQUAL("vasya2", rb.Back());
-
         UNIT_ASSERT(rb.PushBack("petya2"));
         UNIT_ASSERT(!rb.PushBack("vasya3"));        // out of space
 
@@ -403,7 +400,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                                         "GetMaxAllocationBytesCount "
                                      << maxAllocationSize
                                      << " for a successful PushBack");
-                    UNIT_ASSERT_VALUES_EQUAL(ri.Back(), rb->Back());
+                    UNIT_ASSERT_VALUES_EQUAL(Dump(ri), Dump(*rb));
                     remainingBytes -= entrySize;
                     // Cerr << "PUSH\t" << data << Endl;
                 } else {
@@ -416,8 +413,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                                      << " for a unsuccessful PushBack");
                 }
             } else {
-                UNIT_ASSERT_VALUES_EQUAL(ri.Back(), rb->Back());
-                UNIT_ASSERT_VALUES_EQUAL(ri.Front(), rb->Front());
+                UNIT_ASSERT_VALUES_EQUAL(Dump(ri), Dump(*rb));
                 // Cerr << "POP\t" << ri.Front() << Endl;
                 ri.PopFront();
                 rb->PopFront();
