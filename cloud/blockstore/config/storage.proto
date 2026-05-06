@@ -1554,4 +1554,7 @@ message TStorageServiceConfig
 
     // Max skipped blobs during range compaction for HDD disks.
     optional uint32 MaxSkippedBlobsDuringCompactionHDD = 493;
+
+    // Cool down timeout before secure erase devices (in milliseconds).
+    optional uint32 CoolDownTimeoutBeforeSecureErase = 494;
 }

@@ -546,6 +546,7 @@ public:
 
     TDuration GetNonReplicatedVolumeNotificationTimeout() const;
 
+    TDuration GetCoolDownTimeoutBeforeSecureErase() const;
     TDuration GetNonReplicatedSecureEraseTimeout() const;
     ui32 GetMaxDevicesToErasePerDeviceNameForDefaultPoolKind() const;
     ui32 GetMaxDevicesToErasePerDeviceNameForLocalPoolKind() const;
