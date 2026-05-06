@@ -78,6 +78,10 @@ void TCellManager::Start()
 
 void TCellManager::Stop()
 {
+    for (auto& cell: Cells) {
+        cell.second->Stop();
+    }
+
     Bootstrap.GrpcClient->Stop();
 }
 
