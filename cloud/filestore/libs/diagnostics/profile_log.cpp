@@ -131,6 +131,14 @@ void TProfileLog::Flush()
     if (Settings.MaxFlushRecords && records.size() > Settings.MaxFlushRecords) {
         discardedRequestCount = records.size() - Settings.MaxFlushRecords;
         records.resize(Settings.MaxFlushRecords);
+
+        if (CountersRegistered) {
+            Counters.Discards->Add(static_cast<i64>(discardedRequestCount));
+        }
+    }
+
+    if (CountersRegistered) {
+        Counters.Flushes->Inc();
     }
 
     auto recordsRef = MakeArrayRef(records);
@@ -147,7 +155,7 @@ void TProfileLog::Flush()
         TSelfFlushLogFrame logFrame(EventLog);
         THashMap<TString, TVector<ui32>> fsId2records;
 
-        for (ui64 i = 0; i < frameRecords.size(); ++i) {
+        for (ui32 i = 0; i < frameRecords.size(); ++i) {
             fsId2records[frameRecords[i].FileSystemId].push_back(i);
         }
 
@@ -169,11 +177,6 @@ void TProfileLog::Flush()
         }
 
         frameRecordsOffset += frameRecords.size();
-    }
-
-    if (CountersRegistered) {
-        Counters.Flushes->Inc();
-        Counters.Discards->Add(static_cast<i64>(discardedRequestCount));
     }
 
     EventLog.Flush();

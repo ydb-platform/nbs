@@ -142,7 +142,9 @@ struct TEnv
         , Settings{ProfilePath.c_str(), TDuration::Seconds(1), 0, 0}
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
         , Counters(MakeIntrusive<TDynamicCounters>())
-    {}
+    {
+        ProfileLog->RegisterCounters(*Counters);
+    }
 
     TEnv(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
         : Timer(CreateWallClockTimer())
@@ -154,11 +156,12 @@ struct TEnv
               maxFrameFlushRecords)
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
         , Counters(MakeIntrusive<TDynamicCounters>())
-    {}
+    {
+        ProfileLog->RegisterCounters(*Counters);
+    }
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
-        ProfileLog->RegisterCounters(*Counters);
         ProfileLog->Start();
     }
 
@@ -494,6 +497,23 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                 maxFrameFlushRecords,
                 env.EventProcessor.MessageCountByRecord[i]);
         }
+
+        // Testing counters
+        auto pg = env.Counters->GetSubgroup("component", "profile_log");
+        auto requests = pg->FindCounter("Count");
+        auto bytes = pg->FindCounter("RequestBytes");
+        auto flushes = pg->FindCounter("FlushCount");
+        auto discards = pg->FindCounter("DiscardCount");
+        UNIT_ASSERT(requests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxFlushRecords + extraDiscardedRecords,
+            requests->Val());
+        UNIT_ASSERT(bytes);
+        UNIT_ASSERT_VALUES_EQUAL(578, bytes->Val());
+        UNIT_ASSERT(flushes);
+        UNIT_ASSERT_VALUES_EQUAL(1, flushes->Val());
+        UNIT_ASSERT(discards);
+        UNIT_ASSERT_VALUES_EQUAL(extraDiscardedRecords, discards->Val());
     }
 }
 
