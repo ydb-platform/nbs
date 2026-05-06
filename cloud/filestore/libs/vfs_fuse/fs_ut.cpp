@@ -304,6 +304,7 @@ struct TBootstrap
         auto stop = StopAsync();
         StopTriggered.TrySetValue();
 
+        // Scheduled tasks are not run automatically when TTestScheduler is used
         auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
         if (testScheduler) {
             testScheduler->RunAllScheduledTasks();
@@ -4861,6 +4862,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 return counter->GetAtomic() > 0;
             }));
 
+        // WriteData completion should be done in a Scheduler thread, otherwise
+        // the deadlock won't reproduce
         bootstrap.Scheduler->Schedule(
             TInstant::Zero(),
             [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
