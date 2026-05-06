@@ -60,7 +60,9 @@ void TIndexTabletActor::SendPendingConfirmAddDataResponse(
     auto pending = std::move(pendingIt->second);
     PendingConfirmation.erase(pendingIt);
 
-    Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
+    if (!HasError(error)) {
+        Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
+    }
 
     SendDeferredConfirmAddDataResponse(ctx, std::move(pending), error);
 }
