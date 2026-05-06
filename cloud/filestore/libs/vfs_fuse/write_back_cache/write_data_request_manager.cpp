@@ -256,7 +256,6 @@ void TWriteDataRequestManager::Evict(
     std::unique_ptr<TCachedWriteDataRequest> request)
 {
     FlushedRequestsRemove(request.get());
-
     PersistentStorage->Free(request->GetAllocationPtr());
 }
 
