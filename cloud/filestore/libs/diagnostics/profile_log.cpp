@@ -4,6 +4,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/eventlog/eventlog.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/array_ref.h>
@@ -16,15 +17,28 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using namespace NMonitoring;
+
 class TProfileLog final
     : public IProfileLog
     , public std::enable_shared_from_this<TProfileLog>
 {
 private:
+    struct TCounters
+    {
+        TDynamicCounters::TCounterPtr Requests;
+        TDynamicCounters::TCounterPtr Bytes;
+        TDynamicCounters::TCounterPtr Flushes;
+        TDynamicCounters::TCounterPtr Discards;
+    };
+
+private:
     TEventLog EventLog;
     TProfileLogSettings Settings;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
+    TCounters Counters;
+    bool CountersRegistered = false;
 
     TLockFreeStack<TRecord> Records;
 
@@ -49,6 +63,7 @@ public:
     void Stop() override;
 
     void Write(TRecord record) override;
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override;
 
 private:
     void ScheduleFlush();
@@ -72,7 +87,22 @@ void TProfileLog::Stop()
 
 void TProfileLog::Write(TRecord record)
 {
+    if (CountersRegistered) {
+        Counters.Requests->Inc();
+        Counters.Bytes->Add(static_cast<i64>(record.Request.ByteSizeLong()));
+    }
+
     Records.Enqueue(std::move(record));
+}
+
+void TProfileLog::RegisterCounters(NMonitoring::TDynamicCounters& root)
+{
+    auto pg = root.GetSubgroup("component", "profile_log");
+    Counters.Requests = pg->GetCounter("Count", true);
+    Counters.Bytes = pg->GetCounter("RequestBytes", true);
+    Counters.Flushes = pg->GetCounter("FlushCount", true);
+    Counters.Discards = pg->GetCounter("DiscardCount", true);
+    CountersRegistered = true;
 }
 
 void TProfileLog::ScheduleFlush()
@@ -101,6 +131,14 @@ void TProfileLog::Flush()
     if (Settings.MaxFlushRecords && records.size() > Settings.MaxFlushRecords) {
         discardedRequestCount = records.size() - Settings.MaxFlushRecords;
         records.resize(Settings.MaxFlushRecords);
+
+        if (CountersRegistered) {
+            Counters.Discards->Add(static_cast<i64>(discardedRequestCount));
+        }
+    }
+
+    if (CountersRegistered) {
+        Counters.Flushes->Inc();
     }
 
     auto recordsRef = MakeArrayRef(records);
@@ -161,6 +199,11 @@ public:
     void Write(TRecord record) override
     {
         Y_UNUSED(record);
+    }
+
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
     }
 };
 

@@ -36,6 +36,11 @@ struct TTestProfileLog
     {
         Record = std::move(record);
     }
+
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
+    }
 };
 
 }   // namespace
