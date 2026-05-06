@@ -81,8 +81,6 @@ void TVolumeBalancerState::UpdateVolumeStats(
             info.SufferCount = perfIt->second;
         }
 
-        info.Cost = {};
-
         if (info.IsLocal) {
             TYdbDiskLoadCounters currentLoadCounters{
                 v.GetReadBlobCount(),
@@ -91,14 +89,12 @@ void TVolumeBalancerState::UpdateVolumeStats(
                 v.GetWriteBlobBytes(),
             };
 
-            if (info.LoadCountersUpdateTs) {
-                info.Cost = CalculateCost(info, currentLoadCounters);
-            }
+            info.Cost = CalculateCost(info, currentLoadCounters);
+
             info.LoadCounters = currentLoadCounters;
-            info.LoadCountersUpdateTs = now;
         } else {
-            info.LoadCounters = {};
-            info.LoadCountersUpdateTs = {};
+            info.Cost = MakeError(E_FAIL, "Volume is preempted");
+            info.LoadCounters = std::nullopt;
         }
 
         knownDisks.erase(v.GetDiskId());
@@ -141,20 +137,23 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                     TABLEH() { out << "IO Cost"; }
                 }
             }
-            for (const auto& v: Volumes) {
-                if (v.second.IsLocal) {
+            for (const auto& [diskId, info]: Volumes) {
+                if (info.IsLocal) {
                     TABLER() {
-                        TABLED() { out << v.first; }
+                        TABLED() { out << diskId; }
                         TABLED() {
                             const bool enabled =
-                                IsVolumePreemptible(v.first, v.second);
+                                IsVolumePreemptible(diskId, info);
                             out << (enabled ? "Yes" : "No");
                         }
                         TABLED() {
-                            out << v.second.SufferCount;
+                            out <<info.SufferCount;
                         }
                         TABLED() {
-                            out << v.second.Cost;
+                            out
+                                << (HasError(info.Cost.GetError())
+                                        ? info.Cost.GetError().GetMessage()
+                                        : info.Cost.GetResult().ToString());
                         }
                     }
                 }
@@ -324,14 +323,33 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         !VolumesInProgress.count(diskId);
 }
 
-TDuration TVolumeBalancerState::CalculateCost(
+TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
         const TVolumeInfo& info,
         const TYdbDiskLoadCounters& currentLoad) const
 {
-    const auto& last = info.LoadCounters;
+    if (!info.LoadCounters.has_value()) {
+        // Unable to calculate cost: No counters from previous iteration
+        return MakeError(E_FAIL, "No counters from previous iteration");
+    }
+
+    const auto& last = info.LoadCounters.value();
+
+    if (currentLoad.WriteBlobBytes < last.WriteBlobBytes ||
+        currentLoad.WriteBlobCount < last.WriteBlobCount ||
+        currentLoad.ReadBlobBytes < last.ReadBlobBytes ||
+        currentLoad.WriteBlobCount < last.WriteBlobCount)
+    {
+        // Unable to calculate cost: Negative counters diff
+        return MakeError(E_FAIL, "Negative counters diff");
+    }
 
     const auto perfSettings =
         GetPerfSettings(*DiagnosticsConfig, info.MediaKind);
+
+    if (!perfSettings.WriteIops || !perfSettings.ReadIops) {
+        // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
+        return MakeError(E_FAIL, "Perf settings not configured");
+    }
 
     const ui32 expectedParallelism =
         DiagnosticsConfig->GetExpectedIoParallelism();
