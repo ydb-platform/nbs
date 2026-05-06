@@ -22,18 +22,21 @@ constexpr size_t MaxDeviceCountToPrintInLog = 100;
 TString MakeDevicesNamesString(const TVector<NProto::TDeviceConfig>& devices)
 {
     TStringBuilder sb;
+    sb << "[";
 
     size_t count = 0;
     for (const auto& device: devices) {
-        if (count++ > MaxDeviceCountToPrintInLog) {
+        if (count++ >= MaxDeviceCountToPrintInLog) {
             sb << "...";
             break;
         }
-        if (!sb.empty()) {
+        if (count > 1) {
             sb << ", ";
         }
         sb << device.GetDeviceUUID();
     }
+
+    sb << "](" << devices.size() << ")";
     return sb;
 }
 
@@ -408,7 +411,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "%s Scheduled secure erase for pool: %s, devices: [%s], after: %s",
+                "%s Scheduled secure erase for pool: %s, devices: %s, after: %s",
                 LogTitle.GetWithTime().c_str(),
                 poolName.Quote().c_str(),
                 MakeDevicesNamesString(request->DirtyDevices).c_str(),
@@ -421,7 +424,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "%s Sending secure erase request for pool: %s, devices: [%s]",
+                "%s Sending secure erase request for pool: %s, devices: %s",
                 LogTitle.GetWithTime().c_str(),
                 poolName.Quote().c_str(),
                 MakeDevicesNamesString(request->DirtyDevices).c_str());
@@ -444,10 +447,9 @@ void TDiskRegistryActor::HandleSecureErase(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received SecureErase request: DirtyDevices=%s %lu",
+        "%s Received SecureErase request. DirtyDevices: %s",
         LogTitle.GetWithTime().c_str(),
-        MakeDevicesNamesString(msg->DirtyDevices).c_str(),
-        msg->DirtyDevices.size());
+        MakeDevicesNamesString(msg->DirtyDevices).c_str());
 
     auto actor = NCloud::Register<TSecureEraseActor>(
         ctx,

@@ -979,20 +979,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
-        TVector<NProto::TDeviceConfig> devices;
-
-        {
-            auto& device = devices.emplace_back();
-            device.SetNodeId(runtime->GetNodeId(0));
-            device.SetDeviceUUID("uuid-1");
-        }
-
-        {
-            auto& device = devices.emplace_back();
-            device.SetNodeId(runtime->GetNodeId(0));
-            device.SetDeviceUUID("uuid-2");
-        }
-
         // Should not get secure erases during cool down timeout.
         runtime->AdvanceCurrentTime(28s);
         runtime->DispatchEvents({}, 100ms);
