@@ -1213,7 +1213,8 @@ public:
              TTabletTypes::TestShard,
              TTabletTypes::BlobDepot,
              TTabletTypes::ColumnShard,
-             TTabletTypes::FileStore}) {
+             TTabletTypes::FileStore,
+        }) {
             const TVector<i64>& allowedMetrics = Self->GetTabletTypeAllowedMetricIds(tabletType);
             out << "<tr>"
                    "<td>" << GetTabletTypeShortName(tabletType) << "</td>";
