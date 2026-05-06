@@ -5,6 +5,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 #include <util/stream/mem.h>
+#include <util/string/builder.h>
 #include <util/system/align.h>
 #include <util/system/compiler.h>
 #include <util/system/filemap.h>
@@ -51,8 +52,8 @@ static_assert(sizeof(THeader) <= HeaderReserveSize);
 struct Y_PACKED TEntryHeader
 {
 private:
-    static constexpr ui32 SkipFlagMask = 1U << 31U;
-    static constexpr ui32 SizeMask = SkipFlagMask - 1;
+    static constexpr ui32 FreeFlagMask = 1U << 31U;
+    static constexpr ui32 SizeMask = FreeFlagMask - 1;
 
     ui32 DataSize = 0;
     ui32 Checksum = 0;
@@ -70,17 +71,17 @@ public:
         DataSize = (DataSize & ~SizeMask) | (value & SizeMask);
     }
 
-    bool GetSkipFlag() const
+    bool GetFreeFlag() const
     {
-        return (DataSize & SkipFlagMask) != 0;
+        return (DataSize & FreeFlagMask) != 0;
     }
 
-    void SetSkipFlag(bool value)
+    void SetFreeFlag(bool value)
     {
         if (value) {
-            DataSize |= SkipFlagMask;
+            DataSize |= FreeFlagMask;
         } else {
-            DataSize &= ~SkipFlagMask;
+            DataSize &= ~FreeFlagMask;
         }
     }
 
@@ -214,9 +215,9 @@ struct TEntryInfo
         return ActualPos == INVALID_POS;
     }
 
-    bool GetSkipFlag() const
+    bool GetFreeFlag() const
     {
-        return Header->GetSkipFlag();
+        return Header->GetFreeFlag();
     }
 
     TStringBuf GetData() const
@@ -287,7 +288,7 @@ private:
 
     TEntryHeader* CurrentAllocation = nullptr;
 
-    // Map of non-skipped entries: data ptr -> pos
+    // Map of non-free entries: data ptr -> pos
     THashMap<const void*, ui64> EntryMap;
 
 private:
@@ -440,10 +441,10 @@ private:
 
     void Migrate()
     {
-        // In the new version, the highest bit of the entry size is used as a
-        // skip flag - need to ensure that nobody use it
+        // In the new version, the highest bit of the entry size is treated as a
+        // free flag - need to ensure that nobody use it
         VisitEntries([](const TEntryInfo& e)
-                     { Y_ABORT_UNLESS(!e.GetSkipFlag()); });
+                     { Y_ABORT_UNLESS(!e.GetFreeFlag()); });
 
         Header()->Version = VERSION;
     }
@@ -509,16 +510,17 @@ private:
         }
     }
 
-    void PopFrontSkippedEntries()
+    void EraseFreeEntriesFromFront()
     {
         auto front = GetFrontEntry();
-        while (front.HasValue() && front.GetSkipFlag()) {
+        while (front.HasValue() && front.GetFreeFlag()) {
             front = GetNextEntry(front);
         }
 
         if (front.HasValue()) {
             Header()->ReadPos = front.ActualPos;
         } else {
+            // All entries deleted, ring buffer should be emptied
             Header()->ReadPos = 0;
             Header()->WritePos = 0;
         }
@@ -556,12 +558,12 @@ public:
         VisitEntries(
             [&](const TEntryInfo& e)
             {
-                if (!e.GetSkipFlag()) {
+                if (!e.GetFreeFlag()) {
                     EntryMap[e.Data] = e.ActualPos;
                 }
             });
 
-        PopFrontSkippedEntries();
+        EraseFreeEntriesFromFront();
     }
 
     bool PushBack(TStringBuf data)
@@ -597,11 +599,20 @@ public:
         }
 
         if (size > TEntryHeader::MaxDataSize) {
-            return nullptr;
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Allocation data size (" << size
+                                 << ") exceeds maximum allowed size ("
+                                 << TEntryHeader::MaxDataSize << ")");
         }
 
         const auto sz = size + sizeof(TEntryHeader);
         if (sz > Header()->DataCapacity) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Allocation entry size (" << sz
+                                 << ") exceeds DataCapacity ("
+                                 << Header()->DataCapacity << ")");
             return nullptr;
         }
         auto writePos = Header()->WritePos;
@@ -637,7 +648,7 @@ public:
 
         CurrentAllocation = Data.GetEntryHeader(writePos);
         CurrentAllocation->SetDataSize(size);
-        CurrentAllocation->SetSkipFlag(false);
+        CurrentAllocation->SetFreeFlag(false);
 
         char* ptr = Data.GetEntryData(CurrentAllocation);
         Y_ABORT_UNLESS(ptr != nullptr);
@@ -679,10 +690,10 @@ public:
         }
 
         auto* eh = Data.GetEntryHeader(it->second);
-        eh->SetSkipFlag(true);
+        eh->SetFreeFlag(true);
         EntryMap.erase(it);
 
-        PopFrontSkippedEntries();
+        EraseFreeEntriesFromFront();
 
         return true;
     }
@@ -744,7 +755,7 @@ public:
         VisitEntries(
             [&](const TEntryInfo& e)
             {
-                if (!e.GetSkipFlag()) {
+                if (!e.GetFreeFlag()) {
                     visitor(e.Header->GetChecksum(), e.GetData());
                 }
             });

@@ -103,18 +103,18 @@ public:
         return Storage.Alloc(size);
     }
 
-    bool Commit() override
+    void Commit() override
     {
-        auto res = Storage.Commit();
+        bool success = Storage.Commit();
+        Y_ENSURE(success, "Failed to commit allocation");
         SetCounters();
-        return res;
     }
 
-    bool Free(const void* ptr) override
+    void Free(const void* ptr) override
     {
-        bool removed = Storage.Free(ptr);
+        bool success = Storage.Free(ptr);
+        Y_ENSURE(success, "Failed to free pointer " << ptr);
         SetCounters();
-        return removed;
     }
 
     void UpdateStats() const override

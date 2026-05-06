@@ -72,12 +72,14 @@ struct TBootstrap
     const char* Alloc(const TString& data) const
     {
         auto allocationResult = Storage->Alloc(data.size());
-        UNIT_ASSERT(!HasError(allocationResult));
+        if (HasError(allocationResult)) {
+            return nullptr;
+        }
 
         char* ptr = allocationResult.GetResult();
         if (ptr != nullptr) {
             data.copy(ptr, data.size());
-            UNIT_ASSERT(Storage->Commit());
+            Storage->Commit();
         }
         return ptr;
     }
@@ -88,9 +90,9 @@ struct TBootstrap
         return HasError(allocationResult);
     }
 
-    bool Free(const void* ptr) const
+    void Free(const void* ptr) const
     {
-        return Storage->Free(ptr);
+        Storage->Free(ptr);
     }
 
     TString Dump() const
@@ -155,7 +157,7 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
     }
 
-    Y_UNIT_TEST(ShouldNotAllowDoubleFree)
+    Y_UNIT_TEST(ShouldThrowOnDoubleFree)
     {
         TBootstrap b;
 
@@ -168,11 +170,11 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         const auto* ptr2 = b.Alloc("567890");
         UNIT_ASSERT(ptr2);
 
-        UNIT_ASSERT(b.Free(ptr2));
-        UNIT_ASSERT(!b.Free(ptr2));
+        b.Free(ptr2);
+        UNIT_ASSERT_EXCEPTION(b.Free(ptr2), yexception);
 
         b.Free(ptr1);
-        UNIT_ASSERT(!b.Free(ptr1));
+        UNIT_ASSERT_EXCEPTION(b.Free(ptr1), yexception);
     }
 
     Y_UNIT_TEST(ShouldValidateAllocationSize)

@@ -43,23 +43,17 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
     return res;
 }
 
-bool TTestStorage::Commit()
-{
-    return true;
-}
+void TTestStorage::Commit()
+{}
 
-bool TTestStorage::Free(const void* ptr)
+void TTestStorage::Free(const void* ptr)
 {
     auto it = Data.find(ptr);
-    if (it == Data.end()) {
-        return false;
-    }
+    Y_ENSURE(it != Data.end(), "Double free detected");
 
     Data.erase(it);
 
     SetStats();
-
-    return true;
 }
 
 void TTestStorage::UpdateStats() const

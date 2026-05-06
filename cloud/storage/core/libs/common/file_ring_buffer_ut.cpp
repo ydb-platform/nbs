@@ -953,8 +953,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer rb(f.GetName(), len);
 
         auto alloc1 = rb.Alloc(128);
-        UNIT_ASSERT(!HasError(alloc1));
-        UNIT_ASSERT(alloc1.GetResult() == nullptr);
+        UNIT_ASSERT(HasError(alloc1));
 
         auto alloc2 = rb.Alloc(0);
         UNIT_ASSERT(HasError(alloc2));

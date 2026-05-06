@@ -54,10 +54,10 @@ struct IPersistentStorage
      * Returns true if the commit was successful.
      * Returns false if Alloc was not called.
      */
-    [[nodiscard]] virtual bool Commit() = 0;
+    virtual void Commit() = 0;
 
     // Frees a previously allocated buffer.
-    [[nodiscard]] virtual bool Free(const void* ptr) = 0;
+    virtual void Free(const void* ptr) = 0;
 
     virtual void UpdateStats() const = 0;
 };
