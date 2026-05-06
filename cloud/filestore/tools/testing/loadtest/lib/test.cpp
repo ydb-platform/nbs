@@ -560,8 +560,11 @@ private:
                 break;
             case NProto::TLoadTest::kDatashardLikeLoadSpec: {
                 const auto& spec = Config.GetDatashardLikeLoadSpec();
-                if (!spec.GetSharedMemoryFilePath().empty()) {
+                if (!spec.GetSharedMemoryBaseDir().empty() &&
+                    !spec.GetSharedMemoryFilePath().empty())
+                {
                     ShmClient = CreateSharedMemoryClient(
+                        spec.GetSharedMemoryBaseDir(),
                         spec.GetSharedMemoryFilePath(),
                         spec.GetSharedMemorySizeBytes(),
                         Max(static_cast<ui64>(spec.GetReadBytes()),
