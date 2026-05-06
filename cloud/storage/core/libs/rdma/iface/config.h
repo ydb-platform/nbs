@@ -114,6 +114,7 @@ inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
     SET(VerbsQP);
     SET(SendQueueSize);
     SET(RecvQueueSize);
+    SET(StrictValidation);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);

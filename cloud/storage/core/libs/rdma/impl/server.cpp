@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
 #include "list.h"
@@ -8,16 +9,14 @@
 #include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
-#include "adaptive_wait.h"
-
-#include <cloud/storage/core/libs/rdma/iface/log.h>
-#include <cloud/storage/core/libs/rdma/iface/probes.h>
-#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/rdma/iface/log.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -29,6 +28,8 @@
 #include <util/stream/format.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
+
+#include <variant>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -260,6 +261,7 @@ private:
     TServerConfigPtr Config;
     TEndpointCountersPtr Counters;
     TLog Log;
+    const int NegotiatedProtocolVersion;
     size_t MaxInflightBytes;
 
     struct {
@@ -302,15 +304,16 @@ public:
     }
 
     TServerSession(
-        NVerbs::IVerbsPtr Verbs,
+        NVerbs::IVerbsPtr verbs,
         NVerbs::TConnectionPtr connection,
         TCompletionPoller* completionPoller,
         IServerHandlerPtr handler,
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
-        TLog log);
+        TLog log,
+        int protocolVersion);
 
-    ~TServerSession();
+    ~TServerSession() override;
 
     // called from CM thread
     void CreateQP();
@@ -357,14 +360,16 @@ TServerSession::TServerSession(
         IServerHandlerPtr handler,
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
-        TLog log)
+        TLog log,
+        int protocolVersion)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
     , CompletionPoller(completionPoller)
     , Handler(std::move(handler))
     , Config(std::move(config))
     , Counters(std::move(stats))
-    , Log(log)
+    , Log(std::move(log))
+    , NegotiatedProtocolVersion(protocolVersion)
     , MaxInflightBytes(Config->MaxInflightBytes)
     , SendBuffers(Config->BufferPool)
     , RecvBuffers(Config->BufferPool)
@@ -788,10 +793,10 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
     const auto* msg = recv->Message();
     const int version = ParseMessageHeader(msg);
 
-    if (version != RDMA_PROTO_VERSION) {
+    if (version != NegotiatedProtocolVersion) {
         RDMA_ERROR(
             recv << " incompatible protocol version " << version
-                 << ", expected " << static_cast<int>(RDMA_PROTO_VERSION));
+                 << ", expected " << static_cast<int>(NegotiatedProtocolVersion));
 
         Counters->RecvRequestCompleted();
         Counters->Error();
@@ -1060,7 +1065,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
     auto* responseMsg = send->Message();
     Zero(*responseMsg);
 
-    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
+    InitMessageHeader(responseMsg, NegotiatedProtocolVersion);
 
     responseMsg->ReqId = req->ReqId;
     responseMsg->Status = req->Status;
@@ -1529,10 +1534,13 @@ private:
     void HandleConnectionEvent(rdma_cm_event* event) noexcept override;
     void HandleConnectRequest(
         TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
-    void Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
+    void Accept(
+        TServerEndpoint* endpoint,
+        rdma_cm_event* event,
+        int protocolVersion) noexcept;
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
-    void Reject(rdma_cm_id* id, int status) noexcept;
+    void Reject(rdma_cm_id* id, int status, int protocolVersion) noexcept;
     TCompletionPoller* PickPoller() noexcept;
 };
 
@@ -1817,10 +1825,18 @@ void TServer::HandleConnectRequest(
     RDMA_DEBUG("validate " << Verbs->GetPeer(event->id));
 
     if (connectParams->private_data == nullptr ||
-        connectParams->private_data_len < sizeof(TConnectMessage) ||
-        ParseMessageHeader(connectParams->private_data) < RDMA_PROTO_VERSION)
+        connectParams->private_data_len < sizeof(TConnectMessage))
     {
-        return Reject(event->id, RDMA_PROTO_INVALID_REQUEST);
+        Reject(event->id, RDMA_PROTO_INVALID_REQUEST, RDMA_PROTO_VERSION);
+        return;
+    }
+
+    const int protocolVersion = ParseMessageHeader(connectParams->private_data);
+    if (protocolVersion < RDMA_PROTO_PREV_VERSION ||
+        protocolVersion > RDMA_PROTO_VERSION)
+    {
+        Reject(event->id, RDMA_PROTO_INVALID_REQUEST, RDMA_PROTO_VERSION);
+        return;
     }
 
     const auto* connectMsg = static_cast<const TConnectMessage*>(
@@ -1833,7 +1849,8 @@ void TServer::HandleConnectRequest(
                 << connectMsg->SendQueueSize
                 << " is greater than server's recv queue size "
                 << Config->RecvQueueSize);
-            return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
+            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH, protocolVersion);
+            return;
         }
         if (Config->SendQueueSize > connectMsg->RecvQueueSize) {
             RDMA_ERROR(
@@ -1841,7 +1858,8 @@ void TServer::HandleConnectRequest(
                 << connectMsg->RecvQueueSize
                 << " is less than server's send queue size "
                 << Config->SendQueueSize);
-            return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
+            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH, protocolVersion);
+            return;
         }
         if (connectMsg->MaxBufferSize > Config->MaxBufferSize) {
             RDMA_ERROR(
@@ -1849,14 +1867,18 @@ void TServer::HandleConnectRequest(
                 << connectMsg->MaxBufferSize
                 << " is greater than server's max buffer size "
                 << Config->MaxBufferSize);
-            return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
+            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH, protocolVersion);
+            return;
         }
     }
 
-    Accept(endpoint, event);
+    Accept(endpoint, event, protocolVersion);
 }
 
-void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
+void TServer::Accept(
+    TServerEndpoint* endpoint,
+    rdma_cm_event* event,
+    int protocolVersion) noexcept
 {
     auto session = std::make_shared<TServerSession>(
         Verbs,
@@ -1865,15 +1887,17 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
         endpoint->Handler,
         Config,
         Counters,
-        Log);
+        Log,
+        protocolVersion);
 
     try {
         session->CreateQP();
 
         TAcceptMessage acceptMsg = {
-            .KeepAliveTimeout = SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
+            .KeepAliveTimeout =
+                SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
         };
-        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
+        InitMessageHeader(&acceptMsg, protocolVersion);
 
         rdma_conn_param acceptParams = {
             .private_data = &acceptMsg,
@@ -1894,7 +1918,7 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
     } catch (const TServiceError& e) {
         RDMA_ERROR(e.what())
         Counters->Error();
-        Reject(event->id, RDMA_PROTO_FAIL);
+        Reject(event->id, RDMA_PROTO_FAIL, protocolVersion);
     }
 }
 
@@ -1920,20 +1944,35 @@ void TServer::HandleDisconnected(TServerSession* session) noexcept
     session->Flush();
 }
 
-void TServer::Reject(rdma_cm_id* id, int status) noexcept
+void TServer::Reject(rdma_cm_id* id, int status, int protocolVersion) noexcept
 {
     RDMA_INFO("reject " << Verbs->GetPeer(id) << " with status " << status);
 
-    TRejectMessage rejectMsg = {
-        .Status = SafeCast<ui16>(status),
-        .QueueSize =
-            SafeCast<ui16>(Config->SendQueueSize + Config->RecvQueueSize),
-        .MaxBufferSize = SafeCast<ui32>(Config->MaxBufferSize),
-    };
-    InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);
+    std::variant<TRejectMessage, TRejectMessage2> rejectMsg;
+    void* rejectMsgPtr = nullptr;
+    size_t rejectMsgSize = 0;
+    if (protocolVersion == RDMA_PROTO_PREV_VERSION) {
+        rejectMsg = TRejectMessage{
+            .Status = SafeCast<ui16>(status),
+            .QueueSize = SafeCast<ui16>(Config->SendQueueSize),
+            .MaxBufferSize = SafeCast<ui32>(Config->MaxBufferSize),
+        };
+        rejectMsgPtr = &std::get<TRejectMessage>(rejectMsg);
+        rejectMsgSize = sizeof(TRejectMessage);
+    } else {
+        rejectMsg = TRejectMessage2{
+            .Status = SafeCast<ui16>(status),
+            .SendQueueSize = SafeCast<ui16>(Config->SendQueueSize),
+            .RecvQueueSize = SafeCast<ui16>(Config->RecvQueueSize),
+            .MaxBufferSize = SafeCast<ui32>(Config->MaxBufferSize),
+        };
+        rejectMsgPtr = &std::get<TRejectMessage2>(rejectMsg);
+        rejectMsgSize = sizeof(TRejectMessage2);
+    }
+    InitMessageHeader(rejectMsgPtr, protocolVersion);
 
     try {
-        Verbs->Reject(id, &rejectMsg, sizeof(TRejectMessage));
+        Verbs->Reject(id, rejectMsgPtr, rejectMsgSize);
 
     } catch (const TServiceError& e) {
         Counters->Error();
@@ -1964,7 +2003,9 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 {
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
-        if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
+        if (auto ver = ParseMessageHeader(msg);
+            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
+        {
             out << " [request=" << msg->ReqId << "]";
         }
     }

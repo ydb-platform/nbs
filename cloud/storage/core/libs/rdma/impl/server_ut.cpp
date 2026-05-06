@@ -375,19 +375,21 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
     auto monitoring = CreateMonitoringServiceStub();
     auto serverConfig = std::make_shared<TServerConfig>();
     serverConfig->StrictValidation = true;
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 20;
+    serverConfig->RecvQueueSize = 40;
 
     context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size)
     {
         Y_UNUSED(id);
 
-        EXPECT_EQ(sizeof(TRejectMessage), size);
+        EXPECT_EQ(sizeof(TRejectMessage2), size);
 
-        const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
+        const auto* rejectMsg = static_cast<const TRejectMessage2*>(data);
         EXPECT_EQ(RDMA_PROTO_VERSION, ParseMessageHeader(rejectMsg));
         EXPECT_EQ(RDMA_PROTO_CONFIG_MISMATCH, rejectMsg->Status);
-        EXPECT_EQ(
-            serverConfig->SendQueueSize + serverConfig->RecvQueueSize,
-            rejectMsg->QueueSize);
+        EXPECT_EQ(serverConfig->SendQueueSize, rejectMsg->SendQueueSize);
+        EXPECT_EQ(serverConfig->RecvQueueSize, rejectMsg->RecvQueueSize);
         EXPECT_EQ(serverConfig->MaxBufferSize, rejectMsg->MaxBufferSize);
 
         if (++rejectCount == 3) {
@@ -414,14 +416,14 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
 
     NVerbs::CreateConnection(
         context,
-        static_cast<ui16>(serverConfig->SendQueueSize + 1),
+        static_cast<ui16>(serverConfig->RecvQueueSize + 1),
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
     NVerbs::CreateConnection(
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
-        static_cast<ui16>(serverConfig->RecvQueueSize - 1),
+        static_cast<ui16>(serverConfig->SendQueueSize - 1),
         serverConfig->MaxBufferSize);
 
     NVerbs::CreateConnection(

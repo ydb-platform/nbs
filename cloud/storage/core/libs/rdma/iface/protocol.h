@@ -27,7 +27,9 @@ constexpr size_t RDMA_MAX_DATA_LEN = Max<ui32>();
 enum {
     RDMA_PROTO_VERSION_0        = 0,
     RDMA_PROTO_VERSION_1        = 1,
-    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_1,
+    RDMA_PROTO_VERSION_2        = 2,
+    RDMA_PROTO_PREV_VERSION     = RDMA_PROTO_VERSION_1,
+    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_2,
 };
 
 enum {
@@ -128,17 +130,40 @@ static_assert(sizeof(TAcceptMessage) == RDMA_PRIVATE_SIZE);
 struct Y_PACKED TRejectMessage
 {
     union {
-        struct {
+        struct
+        {
             TMessageHeader Header;
             ui32 Status : 16;
             ui32 QueueSize : 16;
             ui32 MaxBufferSize;
         };
+
         ui8 Padding[RDMA_PRIVATE_SIZE];
     };
 };
 
 static_assert(sizeof(TRejectMessage) == RDMA_PRIVATE_SIZE);
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct Y_PACKED TRejectMessage2
+{
+    union {
+        struct
+        {
+            TMessageHeader Header;
+            ui32 Status : 16;
+            ui32 Unused : 16;   // padding
+            ui32 SendQueueSize : 16;
+            ui32 RecvQueueSize : 16;
+            ui32 MaxBufferSize;
+        };
+
+        ui8 Padding[RDMA_PRIVATE_SIZE];
+    };
+};
+
+static_assert(sizeof(TRejectMessage2) == RDMA_PRIVATE_SIZE);
 
 ////////////////////////////////////////////////////////////////////////////////
 
