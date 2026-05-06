@@ -212,6 +212,8 @@ struct TTabletMetrics
     std::atomic<i64> CompactionBackpressureThreshold{0};
     std::atomic<i64> CleanupBackpressureValue{0};
     std::atomic<i64> CleanupBackpressureThreshold{0};
+    std::atomic<i64> CollectGarbageBackpressureValue{0};
+    std::atomic<i64> CollectGarbageBackpressureThreshold{0};
 
     // Throttling
     std::atomic<i64> MaxReadBandwidth{0};

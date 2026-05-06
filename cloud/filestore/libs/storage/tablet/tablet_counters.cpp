@@ -272,6 +272,10 @@ void TTabletMetrics::Register(
     REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CleanupBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CollectGarbageBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(
+        CollectGarbageBackpressureThreshold,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);

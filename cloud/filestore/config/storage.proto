@@ -759,4 +759,7 @@ message TStorageConfig
 
     // Use ListNodesInternal API for internal ListNodes calls.
     optional bool UseListNodesInternal = 494;
+
+    // Thresholds which enable backpressure - part 2.
+    optional uint64 CollectGarbageThresholdForBackpressure = 495;
 }
