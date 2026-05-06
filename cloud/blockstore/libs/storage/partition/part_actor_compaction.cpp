@@ -1934,10 +1934,10 @@ void PrepareRangeCompaction(
         const bool blobOnlyInOneCompactRange =
             kv.second.CompactionRangeCount == 1;
 
-        const bool holeBlobAvailableForCompaction =
+        const bool wholeBlobAvailableForCompaction =
             kv.second.MaxCommitId <= commitId && kv.second.MaxCommitId != 0;
 
-        if (!(blobOnlyInOneCompactRange && holeBlobAvailableForCompaction) ||
+        if (!(blobOnlyInOneCompactRange && wholeBlobAvailableForCompaction) ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             state.IncrementBlockMaskReadDuringCompaction();
