@@ -113,9 +113,9 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
             args.CommitId,
             FormatError(args.Error).c_str());
 
+        SendPendingConfirmAddDataResponse(ctx, args.CommitId, args.Error);
         if (!deletionInProgress) {
             TABLET_VERIFY(TryReleaseCollectBarrier(args.CommitId));
-            SendPendingConfirmAddDataResponse(ctx, args.CommitId, args.Error);
         }
     } else {
         LOG_TRACE(
@@ -126,8 +126,9 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
             args.CommitId,
             args.NodeId);
 
-        // Keep deferred reply until DeleteUnconfirmedData completion if
-        // deletion in progress
+        // If deletion in progress, do nothing. Deferred reply will be triggered
+        // in DeleteUnconfirmedData completion. At this point we could already
+        // pass ExecuteTx for DeleteUnconfirmed.
         if (!deletionInProgress) {
             UnconfirmedData.emplace(
                 args.CommitId,

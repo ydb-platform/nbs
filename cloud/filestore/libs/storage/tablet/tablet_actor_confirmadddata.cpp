@@ -411,6 +411,15 @@ void TIndexTabletActor::DeleteUnconfirmedDataForSession(
     enqueueCommitIdsToDelete(UnconfirmedDataInProgress);
 
     if (!commitIdsToDelete.empty()) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Deleting unconfirmed data: sessionId=%s, "
+            "deleteNow=%zu",
+            LogTag.c_str(),
+            sessionId.Quote().c_str(),
+            commitIdsToDelete.size());
+
         // Session cleanup has the same ordering requirement as CancelAddData:
         // once commitIds are placed into DeletionQueue, DeleteUnconfirmedData
         // must be executed before any later AddBlob execute. For that reason it
@@ -422,15 +431,6 @@ void TIndexTabletActor::DeleteUnconfirmedDataForSession(
                 0 /* cookie */,
                 MakeIntrusive<TCallContext>()),
             std::move(commitIdsToDelete));
-
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s Deleting unconfirmed data: sessionId=%s, "
-            "deleteNow=%zu",
-            LogTag.c_str(),
-            sessionId.Quote().c_str(),
-            commitIdsToDelete.size());
     }
 }
 
@@ -478,18 +478,9 @@ void TIndexTabletActor::CompleteTx_DeleteUnconfirmedData(
 {
     for (ui64 commitId: args.CommitIds) {
         DeletionQueue.erase(commitId);
-
-        auto pendingIt = PendingConfirmation.find(commitId);
-        if (pendingIt == PendingConfirmation.end()) {
-            continue;
-        }
-
-        auto pending = std::move(pendingIt->second);
-        PendingConfirmation.erase(pendingIt);
-
-        SendDeferredConfirmAddDataResponse(
+        SendPendingConfirmAddDataResponse(
             ctx,
-            std::move(pending),
+            commitId,
             ErrorUnconfirmedDataDeleted());
     }
 
