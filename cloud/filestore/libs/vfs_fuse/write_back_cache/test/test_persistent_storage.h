@@ -32,7 +32,7 @@ public:
     ui64 GetMaxSupportedAllocationByteCount() const override;
     TResultOrError<char*> Alloc(size_t size) override;
     bool Commit() override;
-    void Free(const void* ptr) override;
+    bool Free(const void* ptr) override;
     void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);

@@ -21,7 +21,6 @@ class TFileRingBufferStorage: public IPersistentStorage
 private:
     const IPersistentStorageStatsPtr Stats;
     TFileRingBuffer Storage;
-    THashSet<const void*> DeletedEntries;
     const TPersistentStorageConfig Config;
     const TLog Log;
     const TString LogTag;
@@ -85,12 +84,10 @@ public:
     void Visit(const TVisitor& visitor) override
     {
         Storage.Visit(
-            [this, &visitor](ui32 checksum, TStringBuf entry)
+            [&visitor](ui32 checksum, TStringBuf entry)
             {
                 Y_UNUSED(checksum);
-                if (!DeletedEntries.contains(entry.data())) {
-                    visitor({entry.data(), entry.size()});
-                }
+                visitor({entry.data(), entry.size()});
             });
 
         SetCounters();
@@ -113,27 +110,11 @@ public:
         return res;
     }
 
-    void Free(const void* ptr) override
+    bool Free(const void* ptr) override
     {
-        auto [it, inserted] = DeletedEntries.insert(ptr);
-        Y_ENSURE(inserted, "Double free detected");
-
-        while (!Storage.Empty()) {
-            const char* front = Storage.Front().data();
-            if (DeletedEntries.erase(front) != 0) {
-                Storage.PopFront();
-            } else {
-                break;
-            }
-        }
-
-        if (Storage.Empty()) {
-            Y_ENSURE(
-                DeletedEntries.empty(),
-                "Orphaned deleted entries detected");
-        }
-
+        bool removed = Storage.Free(ptr);
         SetCounters();
+        return removed;
     }
 
     void UpdateStats() const override
@@ -147,7 +128,7 @@ private:
         Stats->SetPersistentStorageCounters(
             /* rawCapacityBytesCount = */ Storage.GetRawCapacity(),
             /* rawUsedBytesCount = */ Storage.GetRawUsedBytesCount(),
-            /* entryCount = */ Storage.Size() - DeletedEntries.size(),
+            /* entryCount = */ Storage.Size(),
             /* isCorrupted = */ Storage.IsCorrupted());
     }
 };

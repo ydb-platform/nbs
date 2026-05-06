@@ -805,13 +805,6 @@ struct TStatsCalculator
 
     void Flush(ui32 nodeId)
     {
-        for (auto& stats: Queue) {
-            if (stats.NodeId != nodeId || stats.Flushed) {
-                continue;
-            }
-            stats.Flushed = true;
-        }
-
         auto it = UnflushedRequestCount.find(nodeId);
         if (it != UnflushedRequestCount.end()) {
             WriteDataFlushCount += it->second;
@@ -819,9 +812,9 @@ struct TStatsCalculator
             UnflushedRequestCount.erase(it);
         }
 
-        while (!Queue.empty() && Queue.front().Flushed) {
-            Queue.pop_front();
-        }
+        EraseIf(
+            Queue,
+            [nodeId](const auto& stats) { return stats.NodeId == nodeId; });
     }
 
     void FlushAll()
@@ -833,16 +826,6 @@ struct TStatsCalculator
 
         Queue.clear();
         UnflushedRequestCount.clear();
-    }
-
-    void Unflush()
-    {
-        for (auto& stats: Queue) {
-            if (stats.Flushed) {
-                stats.Flushed = false;
-                UnflushedRequestCount[stats.NodeId]++;
-            }
-        }
     }
 
     ui64 GetUnflushedQueueRequestCount() const
@@ -1131,7 +1114,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             if (args.WithCacheRecreation && RandomNumber(20u) == 0) {
                 b.RecreateCache();
-                stats.Unflush();
                 // Stats are reset on cache recreation
                 stats.FlushCount = 0;
             }

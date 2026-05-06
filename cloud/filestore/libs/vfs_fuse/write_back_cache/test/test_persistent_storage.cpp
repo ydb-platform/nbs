@@ -48,14 +48,18 @@ bool TTestStorage::Commit()
     return true;
 }
 
-void TTestStorage::Free(const void* ptr)
+bool TTestStorage::Free(const void* ptr)
 {
     auto it = Data.find(ptr);
-    Y_ENSURE(it != Data.end(), "Double free detected");
+    if (it == Data.end()) {
+        return false;
+    }
 
     Data.erase(it);
 
     SetStats();
+
+    return true;
 }
 
 void TTestStorage::UpdateStats() const

@@ -69,7 +69,11 @@ std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInPersistentStorage(
         memoryOutput.Exhausted(),
         "Buffer is expected to be written completely");
 
-    storage.Commit();
+    bool committed = storage.Commit();
+
+    Y_ABORT_UNLESS(
+        committed,
+        "Failed to commit allocation in the persistent storage");
 
     return std::make_unique<TCachedWriteDataRequest>(
         sequenceId,
@@ -256,7 +260,12 @@ void TWriteDataRequestManager::Evict(
     std::unique_ptr<TCachedWriteDataRequest> request)
 {
     FlushedRequestsRemove(request.get());
-    PersistentStorage->Free(request->GetAllocationPtr());
+
+    bool success = PersistentStorage->Free(request->GetAllocationPtr());
+
+    Y_ABORT_UNLESS(
+        success,
+        "Failed to free allocation in the persistent storage");
 }
 
 void TWriteDataRequestManager::UpdateStats() const

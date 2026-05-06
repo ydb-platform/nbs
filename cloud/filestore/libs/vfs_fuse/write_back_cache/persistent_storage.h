@@ -43,7 +43,7 @@ struct IPersistentStorage
      *
      * Returns an error if allocation is not possible due to other reasons.
      */
-    virtual TResultOrError<char*> Alloc(size_t size) = 0;
+    [[nodiscard]] virtual TResultOrError<char*> Alloc(size_t size) = 0;
 
     /**
      * Commits previous memory allocation
@@ -54,10 +54,10 @@ struct IPersistentStorage
      * Returns true if the commit was successful.
      * Returns false if Alloc was not called.
      */
-    virtual bool Commit() = 0;
+    [[nodiscard]] virtual bool Commit() = 0;
 
     // Frees a previously allocated buffer.
-    virtual void Free(const void* ptr) = 0;
+    [[nodiscard]] virtual bool Free(const void* ptr) = 0;
 
     virtual void UpdateStats() const = 0;
 };
