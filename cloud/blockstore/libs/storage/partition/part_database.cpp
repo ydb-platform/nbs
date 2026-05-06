@@ -322,9 +322,8 @@ bool TPartitionDatabase::FindMixedBlocks(
                         blobCommitId ? blobCommitId : commitId,
                         it.GetValue<TTable::BlobId>());
 
-                    ui32 blobOffsetRaw =
+                    ui16 blobOffset =
                         it.GetValue<TTable::BlobOffset>();
-                    ui16 blobOffset = blobOffsetRaw & Max<ui16>();
                     auto additionalFields = it.GetValue<TTable::AdditionalFields>();
                     ui32 compactionRangeCount = additionalFields.GetCompactionRangeCount();
                     ui64 blockMaxCommitId = additionalFields.GetMaxCommitId();
