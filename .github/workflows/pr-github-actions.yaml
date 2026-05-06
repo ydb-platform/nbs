@@ -419,7 +419,7 @@ jobs:
         run: |
           set -x
           export TMP_OUT=$(mktemp)
-          find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read path; do echo Checking $path; action-validator --verbose $path; done > $TMP_OUT
+          find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read -r path; do echo Checking $path; action-validator --verbose $path; done > $TMP_OUT
 
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
