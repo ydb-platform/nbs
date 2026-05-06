@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc"
 
 	api "github.com/ydb-platform/nbs/cloud/filestore/public/api/grpc"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 )
 
@@ -471,9 +472,91 @@ func (client *grpcClient) ExecuteAction(
 	return resp.(*protos.TExecuteActionResponse), err
 }
 
-////////////////////////////////////////////////////////////////////////////////
+func (client *grpcClient) UnsafeCreateNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRequest,
+) (*private_protos.TUnsafeCreateNodeResponse, error) {
 
-type grpcEndpointClient struct {
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeCreateNode(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeCreateNodeResponse), nil
+}
+
+func (client *grpcClient) UnsafeDeleteNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRequest,
+) (*private_protos.TUnsafeDeleteNodeResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeDeleteNode(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeDeleteNodeResponse), nil
+}
+
+func (client *grpcClient) UnsafeCreateNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRefRequest,
+) (*private_protos.TUnsafeCreateNodeRefResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeCreateNodeRef(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeCreateNodeRefResponse), nil
+}
+
+func (client *grpcClient) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRefRequest,
+) (*private_protos.TUnsafeDeleteNodeRefResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeDeleteNodeRef(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeDeleteNodeRefResponse), nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
 	logger   Logger
 	impl     api.TEndpointManagerServiceClient
 	conn     *grpc.ClientConn

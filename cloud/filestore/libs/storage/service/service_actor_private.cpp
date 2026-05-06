@@ -48,12 +48,6 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
         ctx.Send(event.release());                                             \
     }                                                                          \
                                                                                \
-    void TStorageServiceActor::Handle##name##Response(                         \
-        const TEvIndexTablet::TEv##name##Response::TPtr& ev,                   \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        CompleteRequest<TEvIndexTablet::T##name##Method>(ctx, ev);             \
-    }                                                                          \
 // FILESTORE_IMPLEMENT_PRIVATE_REQUEST
 
 FILESTORE_IMPLEMENT_PRIVATE_REQUEST(UnsafeCreateNode)
@@ -62,28 +56,5 @@ FILESTORE_IMPLEMENT_PRIVATE_REQUEST(UnsafeCreateNodeRef)
 FILESTORE_IMPLEMENT_PRIVATE_REQUEST(UnsafeDeleteNodeRef)
 
 #undef FILESTORE_IMPLEMENT_PRIVATE_REQUEST
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Explicit instantiations of CompleteRequest for the private tablet methods.
-template void TStorageServiceActor::CompleteRequest<
-    TEvIndexTablet::TUnsafeCreateNodeMethod>(
-    const TActorContext& ctx,
-    const TEvIndexTablet::TEvUnsafeCreateNodeResponse::TPtr& ev);
-
-template void TStorageServiceActor::CompleteRequest<
-    TEvIndexTablet::TUnsafeDeleteNodeMethod>(
-    const TActorContext& ctx,
-    const TEvIndexTablet::TEvUnsafeDeleteNodeResponse::TPtr& ev);
-
-template void TStorageServiceActor::CompleteRequest<
-    TEvIndexTablet::TUnsafeCreateNodeRefMethod>(
-    const TActorContext& ctx,
-    const TEvIndexTablet::TEvUnsafeCreateNodeRefResponse::TPtr& ev);
-
-template void TStorageServiceActor::CompleteRequest<
-    TEvIndexTablet::TUnsafeDeleteNodeRefMethod>(
-    const TActorContext& ctx,
-    const TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse::TPtr& ev);
 
 }   // namespace NCloud::NFileStore::NStorage

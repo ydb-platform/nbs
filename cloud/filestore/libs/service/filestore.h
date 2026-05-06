@@ -14,6 +14,7 @@
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/server.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scoped_handle.h>
@@ -123,6 +124,26 @@ struct IFileStoreService
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) = 0;
+
+    virtual NThreading::TFuture<NProtoPrivate::TUnsafeCreateNodeResponse>
+    UnsafeCreateNode(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeCreateNodeRequest> request) = 0;
+
+    virtual NThreading::TFuture<NProtoPrivate::TUnsafeDeleteNodeResponse>
+    UnsafeDeleteNode(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeDeleteNodeRequest> request) = 0;
+
+    virtual NThreading::TFuture<NProtoPrivate::TUnsafeCreateNodeRefResponse>
+    UnsafeCreateNodeRef(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeCreateNodeRefRequest> request) = 0;
+
+    virtual NThreading::TFuture<NProtoPrivate::TUnsafeDeleteNodeRefResponse>
+    UnsafeDeleteNodeRef(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeDeleteNodeRefRequest> request) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

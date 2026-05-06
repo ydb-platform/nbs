@@ -412,6 +412,20 @@ service TFileStoreService
         };
     }
 
+    rpc UnsafeDeleteNode(NCloud.NFileStore.NProtoPrivate.TUnsafeDeleteNodeRequest) returns (NCloud.NFileStore.NProtoPrivate.TUnsafeDeleteNodeResponse) {
+        option (google.api.http) = {
+            post: "/unsafe_delete_node"
+            body: "*"
+        };
+    }
+
+    rpc UnsafeDeleteNodeRef(NCloud.NFileStore.NProtoPrivate.TUnsafeDeleteNodeRefRequest) returns (NCloud.NFileStore.NProtoPrivate.TUnsafeDeleteNodeRefResponse) {
+        option (google.api.http) = {
+            post: "/unsafe_delete_node_ref"
+            body: "*"
+        };
+    }
+
     //
     // Shared memory transport (server-only).
     //

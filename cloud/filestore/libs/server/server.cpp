@@ -16,6 +16,7 @@
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/grpc/service.grpc.pb.h>
 #include <cloud/filestore/public/api/protos/server.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -126,6 +127,39 @@ FILESTORE_DECLARE_METHOD_STREAM(GetSessionEvents)
 #undef FILESTORE_DECLARE_METHOD_FS
 #undef FILESTORE_DECLARE_METHOD_VHOST
 #undef FILESTORE_DECLARE_METHOD_STREAM
+
+////////////////////////////////////////////////////////////////////////////////
+// Method structs for the private tablet API (NProtoPrivate-based).
+
+#define FILESTORE_DECLARE_PRIVATE_METHOD(name)                                 \
+    struct T##name##FsMethod                                                   \
+    {                                                                          \
+        static constexpr auto RequestName = TStringBuf(#name);                 \
+        static constexpr auto RequestType = EFileStoreRequest::name;           \
+                                                                               \
+        using TRequest = NProtoPrivate::T##name##Request;                      \
+        using TResponse = NProtoPrivate::T##name##Response;                    \
+                                                                               \
+        template <typename T, typename ...TArgs>                               \
+        static auto Prepare(T& service, TArgs&& ...args)                       \
+        {                                                                      \
+            return service.Request##name(std::forward<TArgs>(args)...);        \
+        }                                                                      \
+                                                                               \
+        template <typename T, typename ...TArgs>                               \
+        static auto Execute(T& service, TArgs&& ...args)                       \
+        {                                                                      \
+            return service.name(std::forward<TArgs>(args)...);                 \
+        }                                                                      \
+    };                                                                         \
+// FILESTORE_DECLARE_PRIVATE_METHOD
+
+FILESTORE_DECLARE_PRIVATE_METHOD(UnsafeCreateNode)
+FILESTORE_DECLARE_PRIVATE_METHOD(UnsafeDeleteNode)
+FILESTORE_DECLARE_PRIVATE_METHOD(UnsafeCreateNodeRef)
+FILESTORE_DECLARE_PRIVATE_METHOD(UnsafeDeleteNodeRef)
+
+#undef FILESTORE_DECLARE_PRIVATE_METHOD
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1488,6 +1522,11 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
     FILESTORE_SERVICE(FILESTORE_START_REQUEST)
 
 #undef FILESTORE_START_REQUEST
+
+    TFileStoreHandler<TUnsafeCreateNodeFsMethod>::Start(execCtx, appCtx);
+    TFileStoreHandler<TUnsafeDeleteNodeFsMethod>::Start(execCtx, appCtx);
+    TFileStoreHandler<TUnsafeCreateNodeRefFsMethod>::Start(execCtx, appCtx);
+    TFileStoreHandler<TUnsafeDeleteNodeRefFsMethod>::Start(execCtx, appCtx);
 
     TFileStoreStreamHandler<TGetSessionEventsStreamMethod>::Start(execCtx, appCtx);
 
