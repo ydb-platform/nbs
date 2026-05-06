@@ -148,7 +148,10 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                             }
                         }
                         TABLED() {
-                            out << v.second.Cost;
+                            out
+                                << (HasError(info.Cost.GetError())
+                                        ? info.Cost.GetError().GetMessage()
+                                        : info.Cost.GetResult().ToString());
                         }
                     }
                 }
@@ -361,14 +364,33 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
     return writeCost + readCost;
 }
 
-TDuration TVolumeBalancerState::CalculateCost(
+TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
         const TVolumeInfo& info,
         const TYdbDiskLoadCounters& currentLoad) const
 {
-    const auto& last = info.LoadCounters;
+    if (!info.LoadCounters.has_value()) {
+        // Unable to calculate cost: No counters from previous iteration
+        return MakeError(E_FAIL, "No counters from previous iteration");
+    }
+
+    const auto& last = info.LoadCounters.value();
+
+    if (currentLoad.WriteBlobBytes < last.WriteBlobBytes ||
+        currentLoad.WriteBlobCount < last.WriteBlobCount ||
+        currentLoad.ReadBlobBytes < last.ReadBlobBytes ||
+        currentLoad.WriteBlobCount < last.WriteBlobCount)
+    {
+        // Unable to calculate cost: Negative counters diff
+        return MakeError(E_FAIL, "Negative counters diff");
+    }
 
     const auto perfSettings =
         GetPerfSettings(*DiagnosticsConfig, info.MediaKind);
+
+    if (!perfSettings.WriteIops || !perfSettings.ReadIops) {
+        // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
+        return MakeError(E_FAIL, "Perf settings not configured");
+    }
 
     const ui32 expectedParallelism =
         DiagnosticsConfig->GetExpectedIoParallelism();
