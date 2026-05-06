@@ -562,7 +562,7 @@ public:
         const TPartialBlobId& blobId,
         const TVector<ui32>& blockIndices,
         ui32 compactionRangeCount,
-        ui64 maxCommitId = 0);
+        ui64 maxCommitId);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,

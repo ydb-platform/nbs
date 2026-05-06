@@ -225,6 +225,6 @@ message TCheckpointMeta
 
 message TMixedIndexAdditionalFields
 {
-    uint32 CompactionRangeCount = 1;
-    uint64 MaxCommitId = 2;
+    fixed32 CompactionRangeCount = 1;
+    fixed64 MaxCommitId = 2;
 }

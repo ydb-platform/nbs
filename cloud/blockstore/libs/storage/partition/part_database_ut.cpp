@@ -202,15 +202,33 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
-            { db.WriteMixedBlocks(executor.MakeBlobId(), {0, 1, 2}, 12); });
+            {
+                db.WriteMixedBlocks(
+                    executor.MakeBlobId(),
+                    {0, 1, 2},
+                    12,
+                    0);   // MaxCommitId not verified by this test
+            });
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
-            { db.WriteMixedBlocks(executor.MakeBlobId(), {4, 5, 6}, 13); });
+            {
+                db.WriteMixedBlocks(
+                    executor.MakeBlobId(),
+                    {4, 5, 6},
+                    13,
+                    0);   // MaxCommitId not verified by this test
+            });
 
         ui64 maxCommitId = executor.WriteTx(
             [&](TPartitionDatabase db)
-            { db.WriteMixedBlocks(executor.MakeBlobId(), {2, 3, 4}, 14); });
+            {
+                db.WriteMixedBlocks(
+                    executor.MakeBlobId(),
+                    {2, 3, 4},
+                    14,
+                    0);   // MaxCommitId not verified by this test
+            });
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
@@ -218,7 +236,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 db.WriteMixedBlocks(
                     executor.MakeBlobId(),
                     {0, 1, 2, 3, 4, 5, 6},
-                    15);
+                    15,
+                    0);   // MaxCommitId not verified by this test
             });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
@@ -303,25 +322,33 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {0, 1, 2}, 12);
+                {0, 1, 2},
+                12,
+                0);   // MaxCommitId not verified by this test
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {4, 5, 6}, 13);
+                {4, 5, 6},
+                13,
+                0);   // MaxCommitId not verified by this test
         });
 
         ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {2, 3, 4}, 14);
+                {2, 3, 4},
+                14,
+                0);   // MaxCommitId not verified by this test
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {0, 1, 2, 3, 4, 5, 6}, 15);
+                {0, 1, 2, 3, 4, 5, 6},
+                15,
+                0);   // MaxCommitId not verified by this test
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {

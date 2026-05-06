@@ -654,6 +654,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             mergedBlobs.emplace_back(blobId, range, skipMask, blockChecksums);
             mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else if (channelDataKind == EChannelDataKind::Mixed) {
+            // TODO: add index data to the merged index instead of mixed.
             TVector<ui32> blockIndices(Reserve(range.Size()));
             for (auto blockIndex = range.Start; blockIndex <= range.End;
                  ++blockIndex)
@@ -666,7 +667,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blobId,
                 std::move(blockIndices),
                 blockChecksums,
-                0);   // unknown blob alignment
+                1,                    // compaction range count
+                blobId.CommitId());   // max commit id
             mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else {
             LOG_ERROR(
@@ -1137,8 +1139,19 @@ public:
         }
 
         auto& ab = Args.AffectedBlobs[blobId];
+
+        Y_ABORT_UNLESS(
+            ab.CompactionRangeCount == 0 ||
+                ab.CompactionRangeCount == compactionRangeCount,
+            "Compaction range count mismatch, BlobId: %s",
+            ToString(blobId).c_str());
+        Y_ABORT_UNLESS(
+            ab.MaxCommitId == 0 || ab.MaxCommitId == maxCommitId,
+            "Max commit id mismatch, BlobId: %s",
+            ToString(blobId).c_str());
+
         ab.CompactionRangeCount = compactionRangeCount;
-        ab.MaxCommitId = Max(ab.MaxCommitId, maxCommitId);
+        ab.MaxCommitId = maxCommitId;
 
         Args.MarkBlock(
             blockIndex,

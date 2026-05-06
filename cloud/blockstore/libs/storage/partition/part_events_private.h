@@ -59,7 +59,7 @@ struct TAddMixedBlob
             TVector<ui32> blocks,
             TVector<ui32> checksums,
             ui32 compactionRangeCount,
-            ui64 maxCommitId = 0)
+            ui64 maxCommitId)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
@@ -104,7 +104,7 @@ struct TAddFreshBlob
             TVector<TBlock> blocks,
             TVector<ui32> checksums,
             ui32 compactionRangeCount,
-            ui64 maxCommitId = 0)
+            ui64 maxCommitId)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))

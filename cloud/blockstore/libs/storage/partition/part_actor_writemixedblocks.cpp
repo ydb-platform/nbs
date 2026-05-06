@@ -286,7 +286,8 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(blocks),
             std::move(req.Checksums),
-            0);   // unknown blob alignment
+            0,   // unknown compaction range count
+            0);  // unknown max commit id
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
