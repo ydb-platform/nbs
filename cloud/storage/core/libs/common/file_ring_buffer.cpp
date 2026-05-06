@@ -613,7 +613,6 @@ public:
                 TStringBuilder() << "Allocation entry size (" << sz
                                  << ") exceeds DataCapacity ("
                                  << Header()->DataCapacity << ")");
-            return nullptr;
         }
         auto writePos = Header()->WritePos;
 
