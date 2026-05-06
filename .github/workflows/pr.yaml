@@ -27,7 +27,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-trigger-label:
+    uses: ./.github/workflows/check-test-launch-label.yaml
+
   check-running-allowed:
+    needs:
+      - check-trigger-label
+    if: needs.check-trigger-label.outputs.allowed == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
