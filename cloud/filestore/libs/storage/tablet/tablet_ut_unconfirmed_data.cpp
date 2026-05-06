@@ -511,6 +511,91 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
+    Y_UNIT_TEST(ShouldUpdateNodeAttrBeforeConfirmAddDataReply)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(2);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 initialCommitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+        tablet.ConfirmAddData(initialCommitId);
+        WaitForTabletCommit(env);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(
+            block,
+            tablet.GetNodeAttr(id)->Record.GetNode().GetSize());
+
+        const ui64 commitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, block, block, 'b');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        TAutoPtr<IEventHandle> addBlobCommitResult;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult &&
+                    !addBlobCommitResult)
+                {
+                    addBlobCommitResult = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !!addBlobCommitResult; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            addBlobCommitResult,
+            "Expected AddBlob commit result to be held by the test");
+
+        // ConfirmAddData must not report success until the updated node size
+        // is observable.
+        tablet.AssertConfirmAddDataResponse(S_OK);
+
+        // Failing reproducer: current code replies early, so size is still
+        // stale here.
+        UNIT_ASSERT_VALUES_EQUAL(
+            1 * block,
+            tablet.GetNodeAttr(id)->Record.GetNode().GetSize());
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(addBlobCommitResult.Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * block,
+            tablet.GetNodeAttr(id)->Record.GetNode().GetSize());
+        AssertStorageStats(tablet, 0, 0);
+    }
+
     Y_UNIT_TEST(ShouldRejectConfirmAddDataForUnknownCommit)
     {
         const auto profileLog = std::make_shared<TTestProfileLog>();
