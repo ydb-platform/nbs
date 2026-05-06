@@ -191,9 +191,11 @@ private:
 
         Execute_AddBlob_Write(ctx, db, args);
 
-        if (args.CommitId == InvalidCommitId) {
-            return;
-        }
+        TABLET_VERIFY(args.WriteRanges.size() == 1);
+
+        Tablet.ActivateInMemoryIndexStateROCacheBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId);
 
         if (HasError(args.Error)) {
             return;
@@ -576,6 +578,10 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     // For ConfirmedData we already Released barrier and Answered to the client,
     // nothing left to do and we can skip event
     if (args.ConfirmedDataRefCommitId != InvalidCommitId) {
+        TABLET_VERIFY(args.WriteRanges.size() == 1);
+        CompleteInMemoryIndexStateROCacheBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId);
         EnqueueCollectGarbageIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
         return;

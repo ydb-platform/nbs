@@ -267,7 +267,7 @@ protected:
     bool UnconfirmedRecoveryReady = false;
 
 public:
-    TIndexTabletState();
+    explicit TIndexTabletState(bool cacheBypassEnabled);
     ~TIndexTabletState();
 
     void UpdateLogTag(TString tag);
@@ -988,6 +988,9 @@ public:
     bool HasDataOverlapWithUnconfirmed(
         ui64 nodeId,
         const TByteRange& requestRange) const;
+
+    void ActivateInMemoryIndexStateROCacheBypass(ui64 nodeId, ui64 commitId);
+    void CompleteInMemoryIndexStateROCacheBypass(ui64 nodeId, ui64 commitId);
 
     //
     // FreshBytes

@@ -580,14 +580,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         // is observable.
         tablet.AssertConfirmAddDataResponse(S_OK);
 
-        // Failing reproducer: current code replies early, so size is still
-        // stale here.
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        runtime.Send(addBlobCommitResult.Release(), nodeIdx);
         UNIT_ASSERT_VALUES_EQUAL(
-            1 * block,
+            2 * block,
             tablet.GetNodeAttr(id)->Record.GetNode().GetSize());
 
-        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
-        runtime.Send(addBlobCommitResult.Release(), nodeIdx);
         runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
 
         UNIT_ASSERT_VALUES_EQUAL(

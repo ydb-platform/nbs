@@ -421,6 +421,24 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
     return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
 }
 
+void TIndexTabletState::ActivateInMemoryIndexStateROCacheBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    Impl->InMemoryIndexState.ActivateInMemoryIndexStateROCacheBypass(
+        nodeId,
+        commitId);
+}
+
+void TIndexTabletState::CompleteInMemoryIndexStateROCacheBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    Impl->InMemoryIndexState.CompleteInMemoryIndexStateROCacheBypass(
+        nodeId,
+        commitId);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FreshBytes
 

@@ -45,6 +45,7 @@ TIndexTabletActor::TIndexTabletActor(
         NMetrics::IMetricsRegistryPtr metricsRegistry)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
+    , TIndexTabletState(config->GetAddingUnconfirmedDataEnabled())
     , Metrics{std::move(metricsRegistry)}
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))

@@ -75,8 +75,8 @@ ui64 CalculateInMemoryIndexCacheCapacity(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TIndexTabletState::TIndexTabletState()
-    : Impl(new TImpl(AllocatorRegistry))
+TIndexTabletState::TIndexTabletState(bool cacheBypassEnabled)
+    : Impl(new TImpl(AllocatorRegistry, cacheBypassEnabled))
 {}
 
 TIndexTabletState::~TIndexTabletState() = default;

@@ -2,12 +2,19 @@
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <util/system/yassert.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
-    : Nodes(0), NodeAttrs(0), NodeRefs(allocator)
+TInMemoryIndexState::TInMemoryIndexState(
+        IAllocator* allocator,
+        bool cacheBypassEnabled)
+    : Nodes(0)
+    , NodeAttrs(0)
+    , NodeRefs(allocator)
+    , CacheBypassEnabled(cacheBypassEnabled)
 {
 }
 
@@ -63,6 +70,50 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
         .IsNodeRefsExhaustive = NodeRefsExhaustivenessInfo.IsExhaustive()};
 }
 
+void TInMemoryIndexState::ActivateInMemoryIndexStateROCacheBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    if (!CacheBypassEnabled) {
+        return;
+    }
+
+    ROCacheBypassCommitIdsByNodeId[nodeId].push_back(commitId);
+}
+
+void TInMemoryIndexState::CompleteInMemoryIndexStateROCacheBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    if (!CacheBypassEnabled) {
+        return;
+    }
+
+    auto nodeIt = ROCacheBypassCommitIdsByNodeId.find(nodeId);
+    Y_ABORT_UNLESS(nodeIt != ROCacheBypassCommitIdsByNodeId.end());
+    Y_ABORT_UNLESS(!nodeIt->second.empty());
+    Y_ABORT_UNLESS(nodeIt->second.front() == commitId);
+
+    nodeIt->second.pop_front();
+    if (nodeIt->second.empty()) {
+        ROCacheBypassCommitIdsByNodeId.erase(nodeIt);
+    }
+}
+
+bool TInMemoryIndexState::ShouldBypassCacheRead(
+    ui64 nodeId,
+    ui64 commitId) const
+{
+    if (!CacheBypassEnabled) {
+        return false;
+    }
+
+    const auto it = ROCacheBypassCommitIdsByNodeId.find(nodeId);
+    return it != ROCacheBypassCommitIdsByNodeId.end() &&
+        !it->second.empty() &&
+        it->second.front() <= commitId;
+}
+
 //
 // Nodes
 //
@@ -72,6 +123,10 @@ bool TInMemoryIndexState::ReadNode(
     ui64 commitId,
     TMaybe<TNode>& node)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     auto it = Nodes.Find(nodeId);
     if (it == Nodes.End()) {
         return false;
@@ -127,6 +182,10 @@ bool TInMemoryIndexState::ReadNodeVer(
     ui64 commitId,
     TMaybe<TNode>& node)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     Y_UNUSED(nodeId, commitId, node);
     // TODO(#1146): _Ver tables not supported yet
     return false;
@@ -142,6 +201,10 @@ bool TInMemoryIndexState::ReadNodeAttr(
     const TString& name,
     TMaybe<TNodeAttr>& attr)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     auto it = NodeAttrs.Find(TNodeAttrsKey(nodeId, name));
     if (it == NodeAttrs.End()) {
         return false;
@@ -170,6 +233,10 @@ bool TInMemoryIndexState::ReadNodeAttrs(
     ui64 commitId,
     TVector<TNodeAttr>& attrs)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     // TInMemoryIndexState is a preemptive cache, thus it is impossible to
     // determine, whether the set of stored attributes is complete.
     Y_UNUSED(nodeId, commitId, attrs);
@@ -205,6 +272,10 @@ bool TInMemoryIndexState::ReadNodeAttrVer(
     const TString& name,
     TMaybe<TNodeAttr>& attr)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     Y_UNUSED(nodeId, commitId, name, attr);
     // TODO(#1146): _Ver tables not supported yet
     return false;
@@ -215,6 +286,10 @@ bool TInMemoryIndexState::ReadNodeAttrVers(
     ui64 commitId,
     TVector<TNodeAttr>& attrs)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     // TInMemoryIndexState is a preemptive cache, thus it is impossible to
     // determine, whether the set of stored attributes is complete.
     Y_UNUSED(nodeId, commitId, attrs);
@@ -231,6 +306,10 @@ bool TInMemoryIndexState::ReadNodeRef(
     const TString& name,
     TMaybe<TNodeRef>& ref)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     auto* v = NodeRefs.FindInIndex(TNodeRefsKey(nodeId, name));
     if (!v) {
         // If the cache is exhaustive for the node and we did not find the
@@ -271,6 +350,10 @@ bool TInMemoryIndexState::ReadNodeRefs(
     bool noAutoPrecharge,
     NProto::EListNodesSizeMode sizeMode)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
@@ -392,6 +475,10 @@ bool TInMemoryIndexState::ReadNodeRefVer(
     const TString& name,
     TMaybe<TNodeRef>& ref)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     Y_UNUSED(nodeId, commitId, name, ref);
     // TODO(#1146): _Ver tables not supported yet
     return false;
@@ -402,6 +489,10 @@ bool TInMemoryIndexState::ReadNodeRefVers(
     ui64 commitId,
     TVector<TNodeRef>& refs)
 {
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     // TInMemoryIndexState is a preemptive cache, thus it is impossible to
     // determine, whether the set of stored references is complete.
     Y_UNUSED(nodeId, commitId, refs);

@@ -89,7 +89,9 @@ struct TIndexTabletState::TImpl
     IShardBalancerPtr ShardBalancer;
     IShardBalancerPtr FileShardBalancer;
 
-    explicit TImpl(const TFileStoreAllocRegistry& registry)
+    TImpl(
+        const TFileStoreAllocRegistry& registry,
+        bool cacheBypassEnabled)
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))
         , FreshBlocks(registry.GetAllocator(EAllocatorTag::FreshBlocks))
         , MixedBlocks(registry.GetAllocator(EAllocatorTag::BlobMetaMap))
@@ -97,7 +99,9 @@ struct TIndexTabletState::TImpl
         , CompactionMap(registry.GetAllocator(EAllocatorTag::CompactionMap))
         , GarbageQueue(registry.GetAllocator(EAllocatorTag::GarbageQueue))
         , ReadAheadCache(registry.GetAllocator(EAllocatorTag::ReadAheadCache))
-        , InMemoryIndexState(registry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache))
+        , InMemoryIndexState(
+            registry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache),
+            cacheBypassEnabled)
         , ThrottlingPolicy(TThrottlerConfig())
     {}
 };
