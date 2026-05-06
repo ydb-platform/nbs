@@ -75,8 +75,8 @@ ui64 CalculateInMemoryIndexCacheCapacity(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TIndexTabletState::TIndexTabletState()
-    : Impl(new TImpl(AllocatorRegistry))
+TIndexTabletState::TIndexTabletState(bool cacheBypassEnabled)
+    : Impl(new TImpl(AllocatorRegistry, cacheBypassEnabled))
 {}
 
 TIndexTabletState::~TIndexTabletState() = default;
@@ -84,6 +84,7 @@ TIndexTabletState::~TIndexTabletState() = default;
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
     Impl->FreshBytes.UpdateLogTag(tag);
+    Impl->InMemoryIndexState.UpdateLogTag(tag);
     LogTag = std::move(tag);
 }
 

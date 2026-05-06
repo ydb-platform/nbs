@@ -23,7 +23,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     //
     Y_UNIT_TEST(ShouldPopulateNodes)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(1, 0, 0, 0);
 
         TMaybe<IIndexTabletDatabase::TNode> node;
@@ -56,7 +56,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldEvictNodes)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(1, 0, 0, 0);
 
         state.UpdateState(
@@ -81,7 +81,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldDeleteNodes)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(1, 0, 0, 0);
 
         state.UpdateState({TInMemoryIndexState::TWriteNodeRequest{
@@ -103,6 +103,59 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT(node.Empty());
     }
 
+    Y_UNIT_TEST(ShouldBypassCacheReads)
+    {
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), true);
+        state.Reset(1, 0, 0, 0);
+
+        state.UpdateState({TInMemoryIndexState::TWriteNodeRequest{
+            .NodeId = nodeId1,
+            .Row = {
+                .CommitId = commitId1,
+                .Node = nodeAttrs1,
+            }}});
+
+        TMaybe<IIndexTabletDatabase::TNode> node;
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
+        UNIT_ASSERT(node.Defined());
+
+        state.ActivateInMemoryIndexStateBypass(nodeId1, commitId2);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
+        UNIT_ASSERT(node.Defined());
+
+        node.Clear();
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Empty());
+
+        state.DeactivateInMemoryIndexStateBypass(nodeId1, commitId2);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Defined());
+
+        state.ActivateInMemoryIndexStateBypass(
+            nodeId1,
+            InvalidCommitId);
+
+        node.Clear();
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId1, node));
+        UNIT_ASSERT(node.Empty());
+
+        node.Clear();
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Empty());
+
+        state.DeactivateInMemoryIndexStateBypass(
+            nodeId1,
+            InvalidCommitId);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Defined());
+    }
+
     const TString attrName1 = "name1";
     const TString attrName2 = "name2";
 
@@ -117,7 +170,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     //
     Y_UNIT_TEST(ShouldPopulateNodeAttrs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(0, 1, 0, 0);
 
         TMaybe<IIndexTabletDatabase::TNodeAttr> attr;
@@ -153,7 +206,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldEvictNodeAttrs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(0, 1, 0, 0);
 
         state.UpdateState(
@@ -173,7 +226,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldDeleteNodeAttrs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(0, 1, 0, 0);
 
         state.UpdateState({TInMemoryIndexState::TWriteNodeAttrsRequest{
@@ -254,7 +307,7 @@ namespace {
     //
     Y_UNIT_TEST(ShouldPopulateNodeRefs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(0, 0, 1, 0);
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
@@ -304,7 +357,7 @@ namespace {
 
     Y_UNIT_TEST(ShouldEvictNodeRefs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(0, 0, 3, 0);
 
         const TVector<TInMemoryIndexState::TWriteNodeRefsRequest> requests = {
@@ -415,7 +468,7 @@ namespace {
 
     Y_UNIT_TEST(ShouldDeleteNodeRefs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
         state.Reset(0, 0, 1, 0);
 
         TInMemoryIndexState::TWriteNodeRefsRequest request = {

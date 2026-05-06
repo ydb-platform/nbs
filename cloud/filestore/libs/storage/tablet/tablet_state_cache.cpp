@@ -1,15 +1,21 @@
 #include "tablet_state_cache.h"
 
+#include "model/verify.h"
+
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
-    : Nodes(0), NodeAttrs(0), NodeRefs(allocator)
-{
-}
+TInMemoryIndexState::TInMemoryIndexState(
+    IAllocator* allocator,
+    bool cacheBypassEnabled)
+    : CacheBypassEnabled(cacheBypassEnabled)
+    , Nodes(0)
+    , NodeAttrs(0)
+    , NodeRefs(allocator)
+{}
 
 void TInMemoryIndexState::Reset(
     ui64 nodesCapacity,
@@ -48,6 +54,11 @@ void TInMemoryIndexState::MarkNodeRefsExhaustive(ui64 nodeId)
     NodeRefsExhaustivenessInfo.MarkNodeRefsExhaustive(nodeId);
 }
 
+void TInMemoryIndexState::UpdateLogTag(TString logTag)
+{
+    LogTag = std::move(logTag);
+}
+
 TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
 {
     return TInMemoryIndexStateStats{
@@ -63,6 +74,51 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
         .IsNodeRefsExhaustive = NodeRefsExhaustivenessInfo.IsExhaustive()};
 }
 
+void TInMemoryIndexState::ActivateInMemoryIndexStateBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    if (!CacheBypassEnabled) {
+        return;
+    }
+
+    CacheBypassCommitIdsByNodeId[nodeId].push_back(commitId);
+}
+
+void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    if (!CacheBypassEnabled) {
+        return;
+    }
+
+    auto nodeIt = CacheBypassCommitIdsByNodeId.find(nodeId);
+    TABLET_VERIFY(
+        nodeIt != CacheBypassCommitIdsByNodeId.end() &&
+        !nodeIt->second.empty() && nodeIt->second.front() == commitId);
+
+    nodeIt->second.pop_front();
+    if (nodeIt->second.empty()) {
+        CacheBypassCommitIdsByNodeId.erase(nodeIt);
+    }
+}
+
+bool TInMemoryIndexState::ShouldBypassCacheRead(
+    ui64 nodeId,
+    ui64 commitId) const
+{
+    if (!CacheBypassEnabled) {
+        return false;
+    }
+
+    const auto it = CacheBypassCommitIdsByNodeId.find(nodeId);
+    return it != CacheBypassCommitIdsByNodeId.end() && !it->second.empty() &&
+           // Commit id overflow case
+           (it->second.front() == InvalidCommitId ||
+            it->second.front() <= commitId);
+}
+
 //
 // Nodes
 //
@@ -72,6 +128,11 @@ bool TInMemoryIndexState::ReadNode(
     ui64 commitId,
     TMaybe<TNode>& node)
 {
+    // TODO (#5912) use waiting queue instead of going full TX flow
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     auto it = Nodes.Find(nodeId);
     if (it == Nodes.End()) {
         return false;
@@ -142,6 +203,11 @@ bool TInMemoryIndexState::ReadNodeAttr(
     const TString& name,
     TMaybe<TNodeAttr>& attr)
 {
+    // TODO (#5912) use waiting queue instead of going full TX flow
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     auto it = NodeAttrs.Find(TNodeAttrsKey(nodeId, name));
     if (it == NodeAttrs.End()) {
         return false;

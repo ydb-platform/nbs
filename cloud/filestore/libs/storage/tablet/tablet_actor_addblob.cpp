@@ -183,21 +183,19 @@ private:
         TIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
+        Execute_AddBlob_Write(ctx, db, args);
+
         // TODO(#5353) Support immediate response before Tx
         Tablet.UnconfirmedAddBlobSafePointReached(
             ctx,
             args.ConfirmedDataRefCommitId,
             args.Error);
 
-        Execute_AddBlob_Write(ctx, db, args);
+        TABLET_VERIFY(args.WriteRanges.size() == 1);
 
-        if (args.CommitId == InvalidCommitId) {
-            return;
-        }
-
-        if (HasError(args.Error)) {
-            return;
-        }
+        Tablet.ActivateInMemoryIndexStateBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId);
 
         Tablet.ConfirmedDataAdded(db, args.ConfirmedDataRefCommitId);
     }
@@ -573,9 +571,12 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         args.RequestInfo->CallContext,
         "AddBlob");
 
-    // For ConfirmedData we already Released barrier and Answered to the client,
-    // nothing left to do and we can skip event
-    if (args.ConfirmedDataRefCommitId != InvalidCommitId) {
+    // For unconfirmed data we already released the barrier and answered to
+    // the client, nothing left to do and we can skip event.
+    if (args.Mode == EAddBlobMode::WriteUnconfirmed) {
+        DeactivateInMemoryIndexStateBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId);
         EnqueueCollectGarbageIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
         return;

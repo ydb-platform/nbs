@@ -8,6 +8,10 @@
 
 #include <cloud/storage/core/libs/common/lru_cache.h>
 
+#include <util/generic/hash.h>
+
+#include <deque>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,7 +38,9 @@ struct TInMemoryIndexStateStats
 class TInMemoryIndexState : public IIndexTabletDatabase
 {
 public:
-    explicit TInMemoryIndexState(IAllocator* allocator);
+    explicit TInMemoryIndexState(
+        IAllocator* allocator,
+        bool cacheBypassEnabled);
 
     void Reset(
         ui64 nodesCapacity,
@@ -50,10 +56,31 @@ public:
 
     [[nodiscard]] TInMemoryIndexStateStats GetStats() const;
 
+    void UpdateLogTag(TString logTag);
+
+private:
+    TString LogTag;
+
+    //
+    // Cache bypass
+    //
+
+public:
+    void ActivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
+
+    void DeactivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
+
+private:
+    bool ShouldBypassCacheRead(ui64 nodeId, ui64 commitId) const;
+
+    const bool CacheBypassEnabled;
+    THashMap<ui64, std::deque<ui64>> CacheBypassCommitIdsByNodeId;
+
     //
     // Nodes
     //
 
+public:
     bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
