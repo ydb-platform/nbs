@@ -106,9 +106,14 @@ struct TPartitionSchema
         {
         };
 
-        struct BlobOffsetAndCompactionRangeCount
+        struct BlobOffset
             : public Column<5, NKikimr::NScheme::NTypeIds::Uint32>
         {
+        };
+
+        struct AdditionalFields: public Column<6, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TMixedIndexAdditionalFields;
         };
 
         using TKey = TableKey<BlockIndex, CommitId>;
@@ -117,7 +122,8 @@ struct TPartitionSchema
             CommitId,
             BlobCommitId,
             BlobId,
-            BlobOffsetAndCompactionRangeCount>;
+            BlobOffset,
+            AdditionalFields>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;

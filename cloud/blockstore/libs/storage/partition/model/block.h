@@ -102,7 +102,8 @@ struct IMixedBlocksIndexVisitor
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui8 compactionRangeCount) = 0;
+        ui32 compactionRangeCount,
+        ui64 maxCommitId) = 0;
 };
 
 struct IExtendedBlocksIndexVisitor

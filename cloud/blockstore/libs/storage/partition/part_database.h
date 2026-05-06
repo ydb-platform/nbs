@@ -72,7 +72,8 @@ public:
     void WriteMixedBlocks(
         const TPartialBlobId& blobId,
         const TVector<ui32>& blocks,
-        ui8 compactionRangeCount);
+        ui32 compactionRangeCount,
+        ui64 maxCommitId = 0);
 
     void DeleteMixedBlock(ui32 blockIndex, ui64 commitId);
 

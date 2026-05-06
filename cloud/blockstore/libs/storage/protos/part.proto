@@ -220,3 +220,11 @@ message TCheckpointMeta
     TPartitionStats Stats = 5;
     uint64 DateDeleted = 6;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TMixedIndexAdditionalFields
+{
+    uint32 CompactionRangeCount = 1;
+    uint64 MaxCommitId = 2;
+}

@@ -61,19 +61,6 @@ ui16 ProcessCompactionCounter(ui32 value)
     return value > Max<ui16>() ? Max<ui16>() : value;
 }
 
-ui32 UnifyBlobOffsetAndCompactionRangeCount(
-    ui16 blobOffset,
-    ui8 compactionRangeCount)
-{
-    return ui32{compactionRangeCount} << 16 | blobOffset;
-}
-
-std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCount(
-    ui32 value)
-{
-    return {value & Max<ui16>(), value >> 16};
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -174,52 +161,48 @@ void TPartitionDatabase::WriteMixedBlock(TMixedBlock block)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
-    const ui32 blobOffsetAndCompactionRangeCount =
-        UnifyBlobOffsetAndCompactionRangeCount(
-            block.BlobOffset,
-            block.CompactionRangeCount);
+    NProto::TMixedIndexAdditionalFields additionalFields;
+    additionalFields.SetCompactionRangeCount(block.CompactionRangeCount);
+    additionalFields.SetMaxCommitId(block.MaxCommitId);
 
     if (block.CommitId == block.BlobId.CommitId()) {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<
-                    TTable::BlobOffsetAndCompactionRangeCount>(
-                    blobOffsetAndCompactionRangeCount));
+                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
+                NIceDb::TUpdate<TTable::AdditionalFields>(additionalFields));
     } else {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobCommitId>(block.BlobId.CommitId()),
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<
-                    TTable::BlobOffsetAndCompactionRangeCount>(
-                    blobOffsetAndCompactionRangeCount));
+                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
+                NIceDb::TUpdate<TTable::AdditionalFields>(additionalFields));
     }
 }
 
 void TPartitionDatabase::WriteMixedBlocks(
     const TPartialBlobId& blobId,
     const TVector<ui32>& blocks,
-    ui8 compactionRangeCount)
+    ui32 compactionRangeCount,
+    ui64 maxCommitId)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
+    NProto::TMixedIndexAdditionalFields additionalFields;
+    additionalFields.SetCompactionRangeCount(compactionRangeCount);
+    additionalFields.SetMaxCommitId(maxCommitId);
+
     ui16 blobOffset = 0;
     for (ui32 blockIndex: blocks) {
-        const ui32 blobOffsetAndCompactionRangeCount =
-            UnifyBlobOffsetAndCompactionRangeCount(
-                blobOffset,
-                compactionRangeCount);
-
         Table<TTable>()
             .Key(blockIndex, ReverseCommitId(blobId.CommitId()))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()),
-                NIceDb::TUpdate<
-                    TTable::BlobOffsetAndCompactionRangeCount>(
-                    blobOffsetAndCompactionRangeCount));
+                NIceDb::TUpdate<TTable::BlobOffset>(blobOffset),
+                NIceDb::TUpdate<TTable::AdditionalFields>(additionalFields));
         ++blobOffset;
     }
 }
@@ -272,18 +255,19 @@ bool TPartitionDatabase::FindMixedBlocks(
                 blobCommitId ? blobCommitId : commitId,
                 it.GetValue<TTable::BlobId>());
 
-            ui32 blobOffsetAndCompactionRangeCount = it.GetValue<
-                TTable::BlobOffsetAndCompactionRangeCount>();
-            auto [blobOffset, compactionRangeCount] =
-                SplitBlobOffsetAndCompactionRangeCount(
-                    blobOffsetAndCompactionRangeCount);
+            ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
+
+            auto additionalFields = it.GetValue<TTable::AdditionalFields>();
+            ui32 compactionRangeCount = additionalFields.GetCompactionRangeCount();
+            ui64 blobMaxCommitId = additionalFields.GetMaxCommitId();
 
             if (!visitor.VisitBlock(
                     blockIndex,
                     commitId,
                     blobId,
                     blobOffset,
-                    compactionRangeCount))
+                    compactionRangeCount,
+                    blobMaxCommitId))
             {
                 return true;   // interrupted
             }
@@ -338,20 +322,20 @@ bool TPartitionDatabase::FindMixedBlocks(
                         blobCommitId ? blobCommitId : commitId,
                         it.GetValue<TTable::BlobId>());
 
-                    ui32 blobOffsetAndCompactionRangeCount =
-                        it.GetValue<
-                            TTable::
-                                BlobOffsetAndCompactionRangeCount>();
-                    auto [blobOffset, compactionRangeCount] =
-                        SplitBlobOffsetAndCompactionRangeCount(
-                            blobOffsetAndCompactionRangeCount);
+                    ui32 blobOffsetRaw =
+                        it.GetValue<TTable::BlobOffset>();
+                    ui16 blobOffset = blobOffsetRaw & Max<ui16>();
+                    auto additionalFields = it.GetValue<TTable::AdditionalFields>();
+                    ui32 compactionRangeCount = additionalFields.GetCompactionRangeCount();
+                    ui64 blockMaxCommitId = additionalFields.GetMaxCommitId();
 
                     if (!visitor.VisitBlock(
                             blockIndex,
                             commitId,
                             blobId,
                             blobOffset,
-                            compactionRangeCount))
+                            compactionRangeCount,
+                            blockMaxCommitId))
                     {
                         return true;    // interrupted
                     }

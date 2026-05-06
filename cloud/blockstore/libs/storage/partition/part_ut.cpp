@@ -351,8 +351,8 @@ auto InitTestActorRuntime(
 void InitLogSettings(TTestActorRuntime& runtime)
 {
     for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        runtime.SetLogPriority(i, NLog::PRI_INFO);
-        // runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+        // runtime.SetLogPriority(i, NLog::PRI_INFO);
+        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     }
     // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
@@ -13762,6 +13762,75 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
     }
-}
 
+    Y_UNIT_TEST(ReadBlockMaskDataLoss)
+    {
+        auto config = DefaultConfig();
+        config.SetReadBlockMaskOnCompactionOptimizationEnabled(true);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 'A');
+
+        partition.WriteBlocks(0, '0');
+
+        std::unique_ptr<IEventHandle> writeBlobRequest;
+
+        bool interceptWriteBlobRequest = true;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvWriteBlobRequest &&
+                    interceptWriteBlobRequest)
+                {
+                    writeBlobRequest.reset(event.Release());
+
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendWriteBlocksRequest(1, '1');
+
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(writeBlobRequest);
+        interceptWriteBlobRequest = false;
+
+        partition.SendCompactionRequest();
+
+        runtime->DispatchEvents({}, 10ms);
+
+        partition.WriteBlocks(2, '2');
+
+        partition.Flush();
+        partition.TrimFreshLog();
+
+        runtime->SendAsync(writeBlobRequest.release());
+
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), S_OK);
+
+        partition.Cleanup();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('0'),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('1'),
+            GetBlockContent(partition.ReadBlocks(1)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('2'),
+            GetBlockContent(partition.ReadBlocks(2)));
+    }
+}
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

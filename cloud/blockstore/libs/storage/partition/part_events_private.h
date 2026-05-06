@@ -51,17 +51,20 @@ struct TAddMixedBlob
     const TPartialBlobId BlobId;
     const TVector<ui32> Blocks;
     const TVector<ui32> Checksums;
-    const ui8 CompactionRangeCount = 0;
+    const ui32 CompactionRangeCount = 0;
+    const ui64 MaxCommitId = 0;
 
     TAddMixedBlob(
             const TPartialBlobId& blobId,
             TVector<ui32> blocks,
             TVector<ui32> checksums,
-            ui8 compactionRangeCount)
+            ui32 compactionRangeCount,
+            ui64 maxCommitId = 0)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
         , CompactionRangeCount(compactionRangeCount)
+        , MaxCommitId(maxCommitId)
     {}
 };
 
@@ -93,17 +96,20 @@ struct TAddFreshBlob
     const TPartialBlobId BlobId;
     const TVector<TBlock> Blocks;
     const TVector<ui32> Checksums;
-    const ui8 CompactionRangeCount = 0;
+    const ui32 CompactionRangeCount = 0;
+    const ui64 MaxCommitId = 0;
 
     TAddFreshBlob(
             const TPartialBlobId& blobId,
             TVector<TBlock> blocks,
             TVector<ui32> checksums,
-            ui8 compactionRangeCount)
+            ui32 compactionRangeCount,
+            ui64 maxCommitId = 0)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
         , CompactionRangeCount(compactionRangeCount)
+        , MaxCommitId(maxCommitId)
     {}
 };
 
@@ -124,7 +130,8 @@ struct TWriteFreshBlocksRequest
 
 struct TAffectedBlob
 {
-    ui8 CompactionRangeCount = 0;
+    ui32 CompactionRangeCount = 0;
+    ui64 MaxCommitId = 0;
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
     TVector<ui32> AffectedBlockIndices;

@@ -363,11 +363,11 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         constexpr ui32 rangeIdx = 0;
         TVector<TMixedBlock> blocks = {
-            { {1, 1}, 1, 1, 1, 1},
-            { {2, 2}, 2, 2, 2, 2},
-            { {3, 3}, 3, 3, 3, 3},
-            { {4, 4}, 4, 4, 4, 4},
-            { {5, 5}, 5, 5, 5, 5}
+            { {1, 1}, 1, 1, 1, 1, 1},
+            { {2, 2}, 2, 2, 2, 2, 2},
+            { {3, 3}, 3, 3, 3, 3, 3},
+            { {4, 4}, 4, 4, 4, 4, 4},
+            { {5, 5}, 5, 5, 5, 5, 5}
         };
 
         auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs) {
@@ -398,14 +398,16 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 ui64 commitId,
                 const TPartialBlobId& blobId,
                 ui16 blobOffset,
-                ui8 compactionRangeCount) override
+                ui32 compactionRangeCount,
+                ui64 maxCommitId) override
             {
                 Blocks.emplace_back(
                     blobId,
                     commitId,
                     blockIndex,
                     blobOffset,
-                    compactionRangeCount);
+                    compactionRangeCount,
+                    maxCommitId);
                 return true;
             }
 

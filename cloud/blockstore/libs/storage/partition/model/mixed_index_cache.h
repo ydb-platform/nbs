@@ -18,40 +18,34 @@ struct TMixedBlock
     ui64 CommitId;
     ui32 BlockIndex;
     ui16 BlobOffset;
-    ui8 CompactionRangeCount;
+    ui32 CompactionRangeCount;
+    ui64 MaxCommitId;
 
     TMixedBlock(
             TPartialBlobId blobId,
             ui64 commitId,
             ui32 blockIndex,
             ui16 blobOffset,
-            ui8 compactionRangeCount)
+            ui32 compactionRangeCount,
+            ui64 maxCommitId)
         : BlobId(blobId)
         , CommitId(commitId)
         , BlockIndex(blockIndex)
         , BlobOffset(blobOffset)
         , CompactionRangeCount(compactionRangeCount)
+        , MaxCommitId(maxCommitId)
     {}
 
     bool operator==(const TMixedBlock& other) const
     {
         return BlockIndex == other.BlockIndex && CommitId == other.CommitId &&
                BlobId == other.BlobId && BlobOffset == other.BlobOffset &&
-               CompactionRangeCount ==
-                   other.CompactionRangeCount;
+               CompactionRangeCount == other.CompactionRangeCount &&
+               MaxCommitId == other.MaxCommitId;
     }
 };
 
-static_assert(sizeof(TMixedBlock) == 32);
-
-// BlobOffset and CompactionRangeCount are stored in a single 32-bit
-// integer in the local database.
-static_assert(sizeof(TMixedBlock::BlobOffset) == 2);
-static_assert(sizeof(TMixedBlock::CompactionRangeCount) == 1);
-static_assert(
-    sizeof(TMixedBlock::CompactionRangeCount) +
-        sizeof(TMixedBlock::BlobOffset) <=
-    4);
+static_assert(sizeof(TMixedBlock) == 48);
 
 ////////////////////////////////////////////////////////////////////////////////
 

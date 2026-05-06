@@ -818,9 +818,11 @@ public:
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui8 compactionRangeCount) override
+        ui32 compactionRangeCount,
+        ui64 maxCommitId) override
     {
         Y_UNUSED(compactionRangeCount);
+        Y_UNUSED(maxCommitId);
 
         return Visit(blockIndex, commitId, blobId, blobOffset);
     }

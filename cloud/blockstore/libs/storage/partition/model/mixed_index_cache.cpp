@@ -241,7 +241,8 @@ bool TMixedIndexCache::TImpl::VisitBlocksIfHot(
                 b.CommitId,
                 b.BlobId,
                 b.BlobOffset,
-                b.CompactionRangeCount))
+                b.CompactionRangeCount,
+                b.MaxCommitId))
         {
             // interrupted
             return true;

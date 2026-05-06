@@ -226,7 +226,8 @@ private:
             db,
             blob.BlobId,
             blob.Blocks,
-            blob.CompactionRangeCount);
+            blob.CompactionRangeCount,
+            blob.MaxCommitId);
 
         // update counters
         State.IncrementMixedBlobsCount(1);
@@ -382,7 +383,8 @@ private:
                  block.CommitId,
                  block.BlockIndex,
                  blobOffset++,
-                 blob.CompactionRangeCount});
+                 blob.CompactionRangeCount,
+                 blob.MaxCommitId});
 
             if (block.IsStoredInDb) {
                 State.DeleteFreshBlockFromDb(

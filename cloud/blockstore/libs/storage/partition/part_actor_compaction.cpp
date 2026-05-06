@@ -1129,7 +1129,8 @@ public:
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset,
-        ui8 compactionRangeCount) override
+        ui32 compactionRangeCount,
+        ui64 maxCommitId) override
     {
         if (commitId > MaxCommitId) {
             return true;
@@ -1137,6 +1138,7 @@ public:
 
         auto& ab = Args.AffectedBlobs[blobId];
         ab.CompactionRangeCount = compactionRangeCount;
+        ab.MaxCommitId = Max(ab.MaxCommitId, maxCommitId);
 
         Args.MarkBlock(
             blockIndex,
@@ -1152,6 +1154,7 @@ public:
         auto& ab = Args.AffectedBlobs[blobId];
         ab.CompactionRangeCount = CompactionMap.GetRangeIndex(blockRange.End) -
             CompactionMap.GetRangeIndex(blockRange.Start) + 1;
+        ab.MaxCommitId = blobId.CommitId();
         return true;
     }
 };
@@ -1931,7 +1934,10 @@ void PrepareRangeCompaction(
         const bool blobOnlyInOneCompactRange =
             kv.second.CompactionRangeCount == 1;
 
-        if (!blobOnlyInOneCompactRange ||
+        const bool holeBlobAvailableForCompaction =
+            kv.second.MaxCommitId <= commitId && kv.second.MaxCommitId != 0;
+
+        if (!(blobOnlyInOneCompactRange && holeBlobAvailableForCompaction) ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             state.IncrementBlockMaskReadDuringCompaction();

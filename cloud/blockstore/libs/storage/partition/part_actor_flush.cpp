@@ -37,19 +37,22 @@ public:
         TGuardedBuffer<TBlockBuffer> BlobContent;
         TVector<TBlock> Blocks;
         TVector<ui32> Checksums;
-        ui8 CompactionRangeCount = 0;
+        ui32 CompactionRangeCount = 0;
+        ui64 MaxCommitId = 0;
 
         TRequest(
                 const TPartialBlobId& blobId,
                 TBlockBuffer blobContent,
                 TVector<TBlock> blocks,
                 TVector<ui32> checksums,
-                ui8 compactionRangeCount)
+                ui32 compactionRangeCount,
+                ui64 maxCommitId)
             : BlobId(blobId)
             , BlobContent(std::move(blobContent))
             , Blocks(std::move(blocks))
             , Checksums(std::move(checksums))
             , CompactionRangeCount(compactionRangeCount)
+            , MaxCommitId(maxCommitId)
         {}
     };
 
@@ -238,7 +241,8 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(req.Blocks),
             std::move(req.Checksums),
-            req.CompactionRangeCount);
+            req.CompactionRangeCount,
+            req.MaxCommitId);
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -404,17 +408,20 @@ struct TBlob
     TBlockBuffer BlobContent;
     TVector<TBlock> Blocks;
     TVector<ui32> Checksums;
-    ui8 CompactionRangeCount;
+    ui32 CompactionRangeCount;
+    ui64 MaxCommitId;
 
     TBlob(
             TBlockBuffer blobContent,
             TVector<TBlock> blocks,
             TVector<ui32> checksums,
-            ui8 compactionRangeCount)
+            ui32 compactionRangeCount,
+            ui64 maxCommitId)
         : BlobContent(std::move(blobContent))
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
         , CompactionRangeCount(compactionRangeCount)
+        , MaxCommitId(maxCommitId)
     {}
 };
 
@@ -431,7 +438,6 @@ private:
     const ui32 MaxBlocksInBlob;
     const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
     const TCompactionMap& CompactionMap;
-    const bool ReadBlockMaskOnCompactionOptimizationEnabled;
 
     TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
 
@@ -447,8 +453,7 @@ public:
             ui32 maxBlobRangeSize,
             ui32 maxBlocksInBlob,
             ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
-            const TCompactionMap& compactionMap,
-            bool readBlockMaskOnCompactionOptimizationEnabled)
+            const TCompactionMap& compactionMap)
         : Blobs(blobs)
         , BlockSize(blockSize)
         , FlushBlobSizeThreshold(flushBlobSizeThreshold)
@@ -457,8 +462,6 @@ public:
         , DiskPrefixLengthWithBlockChecksumsInBlobs(
               diskPrefixLengthWithBlockChecksumsInBlobs)
         , CompactionMap(compactionMap)
-        , ReadBlockMaskOnCompactionOptimizationEnabled(
-              readBlockMaskOnCompactionOptimizationEnabled)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -548,17 +551,21 @@ private:
             CompactionMap.GetRangeIndex(blocks.back().BlockIndex) -
             CompactionMap.GetRangeIndex(blocks.front().BlockIndex) + 1;
 
-        const ui8 compactionRangeCountInOneByte =
-            compactionRangeCount <= Max<ui8>() &&
-                    ReadBlockMaskOnCompactionOptimizationEnabled
-                ? compactionRangeCount
-                : 0;
+        const ui64 maxCommitId = std::accumulate(
+            blocks.begin(),
+            blocks.end(),
+            ui64{0},
+            [](ui64 maxCommitId, const TBlock& block)
+            {
+                return Max(maxCommitId, block.CommitId);
+            });
 
         Blobs.emplace_back(
             std::move(blobContent),
             std::move(blocks),
             std::move(checksums),
-            compactionRangeCountInOneByte);
+            compactionRangeCount,
+            maxCommitId);
     }
 
     static ui32 GetBlobRangeSize(const TVector<TBlock>& blocks, ui32 blockIndex)
@@ -738,8 +745,7 @@ void TPartitionActor::HandleFlush(
             Config->GetMaxBlobRangeSize(),
             State->GetMaxBlocksInBlob(),
             Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
-            State->GetCompactionMap(),
-            IsReadBlockMaskOnCompactionOptimizationEnabled());
+            State->GetCompactionMap());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
@@ -776,7 +782,8 @@ void TPartitionActor::HandleFlush(
             std::move(blob.BlobContent),
             std::move(blob.Blocks),
             std::move(blob.Checksums),
-            blob.CompactionRangeCount);
+            blob.CompactionRangeCount,
+            blob.MaxCommitId);
     }
 
     Y_ABORT_UNLESS(requests);
