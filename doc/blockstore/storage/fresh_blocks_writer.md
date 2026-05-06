@@ -44,7 +44,7 @@ In the `StartFreshWrite` method we do the following under one lock:
 2. Acquire Trim Barrier
 3. Acquire Commit Barrier
 
-Generating a new commit ID and acquiring the trim barrier should be done atomically to prevent trimming in-flight requests. If these operations happen not atomically, such a situation is possible:
+Generating a new commit ID and acquiring the trim barrier should be done atomically to prevent trimming in-flight requests. If these operations do not happen atomically, such a situation is possible:
 
 1. FBW: Generate new commit ID: commit-id-2
 2. Partition: Get TrimFreshLogToCommitId: commit-id-2
@@ -53,7 +53,7 @@ Generating a new commit ID and acquiring the trim barrier should be done atomica
 
 So if restart is happening after it, we will lose data.
 
-Generating a new commit ID and acquiring the commit barrier should be done atomically too, to prevent overwriting fresh writes with a compaction blob. If these operations happen not atomically, such a situation is possible:
+Generating a new commit ID and acquiring the commit barrier should be done atomically too, to prevent overwriting fresh writes with a compaction blob. If these operations do not happen atomically, such a situation is possible:
 
 1. fbw: gen commit-id-1
 2. part: run compaction
@@ -65,3 +65,8 @@ Generating a new commit ID and acquiring the commit barrier should be done atomi
 
 On finishing a fresh write we should release all trim and commit barriers and then process the checkpoint and commit queue. During compaction or checkpoint creation we should wait for all in-flight commits to complete, so after finishing a fresh write we execute all waiting transactions.
 
+### Performance
+
+We measured performance for a regular disk and for a disk with Fresh Blocks Writer enabled. With the same compaction score, the IOPS curve is much smoother. FBW disk latency is 20-40 percent lower across all percentiles. The measurement was taken on a small cluster, so the load from one disk could affect the load on another disk. For example, when there is no load on the regular disk, we see about ~1.35 ms on p50, ~6.45 ms on p90, and ~16-17 ms on p99.
+
+![Performance Comparison: Regular Disk vs Fresh Blocks Writer](media/fbw-perf.png)
