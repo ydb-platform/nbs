@@ -1169,7 +1169,7 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
             firstRecvQueueSize = SafeCast<ui16>(connectMsg->RecvQueueSize);
 
             TRejectMessage2 rejectMsg{};
-            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_2);
+            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);
             rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_CONFIG_MISMATCH);
             rejectMsg.SendQueueSize = ServerSendQueueSize;
             rejectMsg.RecvQueueSize = ServerRecvQueueSize;

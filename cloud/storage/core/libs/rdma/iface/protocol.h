@@ -130,12 +130,14 @@ static_assert(sizeof(TAcceptMessage) == RDMA_PRIVATE_SIZE);
 struct Y_PACKED TRejectMessage
 {
     union {
-        struct {
+        struct
+        {
             TMessageHeader Header;
             ui32 Status : 16;
             ui32 QueueSize : 16;
             ui32 MaxBufferSize;
         };
+
         ui8 Padding[RDMA_PRIVATE_SIZE];
     };
 };
@@ -147,13 +149,16 @@ static_assert(sizeof(TRejectMessage) == RDMA_PRIVATE_SIZE);
 struct Y_PACKED TRejectMessage2
 {
     union {
-        struct {
+        struct
+        {
             TMessageHeader Header;
             ui32 Status : 16;
+            ui32 Unused : 16;   // padding
             ui32 SendQueueSize : 16;
             ui32 RecvQueueSize : 16;
             ui32 MaxBufferSize;
         };
+
         ui8 Padding[RDMA_PRIVATE_SIZE];
     };
 };

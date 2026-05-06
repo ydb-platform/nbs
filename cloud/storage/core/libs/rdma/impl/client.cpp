@@ -2326,6 +2326,9 @@ void TClient::HandleRejected(
         case RDMA_PROTO_PREV_VERSION: {
             const auto* msg =
                 static_cast<const TRejectMessage*>(param->private_data);
+            // NOTE: Previous version of the server can't reply with
+            // "RDMA_PROTO_CONFIG_MISMATCH", since "StrictValidation" couldn't
+            // be enabled before.
             if (msg->Status == RDMA_PROTO_INVALID_REQUEST &&
                 endpoint->GetNegotiatedProtocolVersion() !=
                     RDMA_PROTO_PREV_VERSION)
@@ -2338,7 +2341,7 @@ void TClient::HandleRejected(
             }
             break;
         }
-        case RDMA_PROTO_VERSION_2: {
+        case RDMA_PROTO_VERSION: {
             const auto* msg =
                 static_cast<const TRejectMessage2*>(param->private_data);
             if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
