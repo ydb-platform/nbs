@@ -51,6 +51,7 @@ namespace {
     xxx(GuestPosixAclEnabled,           bool,       false                     )\
     xxx(SnapshotsDirEnabled,            bool,       false                     )\
     xxx(SnapshotsDirRefreshInterval,    TDuration,  TDuration::Seconds(5)     )\
+    xxx(EnableTcMallocMetrics,          bool,       false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \

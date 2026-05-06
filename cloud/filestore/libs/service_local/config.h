@@ -176,6 +176,8 @@ public:
         const TString& fsId) const;
 
     TDuration GetSnapshotsDirRefreshInterval() const;
+
+    bool GetEnableTcMallocMetrics() const;
 };
 
 }   // namespace NCloud::NFileStore

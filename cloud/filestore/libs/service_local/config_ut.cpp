@@ -195,6 +195,24 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         const TFileIOConfig fileIO = config.GetFileIOConfig();
         UNIT_ASSERT(std::holds_alternative<TAioConfig>(fileIO));
     }
+
+    Y_UNIT_TEST(ShouldConfigureTcMallocMetrics)
+    {
+        {
+            TLocalFileStoreConfig config;
+
+            UNIT_ASSERT(!config.GetEnableTcMallocMetrics());
+        }
+
+        {
+            NProto::TLocalServiceConfig proto;
+            proto.SetEnableTcMallocMetrics(true);
+
+            TLocalFileStoreConfig config(proto);
+
+            UNIT_ASSERT(config.GetEnableTcMallocMetrics());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore
