@@ -16,6 +16,7 @@
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/protos/media.pb.h>
 #include <cloud/storage/core/protos/request_source.pb.h>
@@ -118,6 +119,34 @@ FILESTORE_PROTO_REQUESTS(FILESTORE_DECLARE_REQUEST)
     struct TFileStoreRequest<NProto::TWriteDataLocalRequest>
     {
         static constexpr EFileStoreRequest Request = EFileStoreRequest::WriteData;
+    };
+
+    template <>
+    struct TFileStoreRequest<NProtoPrivate::TUnsafeCreateNodeRequest>
+    {
+        static constexpr EFileStoreRequest Request =
+            EFileStoreRequest::UnsafeCreateNode;
+    };
+
+    template <>
+    struct TFileStoreRequest<NProtoPrivate::TUnsafeDeleteNodeRequest>
+    {
+        static constexpr EFileStoreRequest Request =
+            EFileStoreRequest::UnsafeDeleteNode;
+    };
+
+    template <>
+    struct TFileStoreRequest<NProtoPrivate::TUnsafeCreateNodeRefRequest>
+    {
+        static constexpr EFileStoreRequest Request =
+            EFileStoreRequest::UnsafeCreateNodeRef;
+    };
+
+    template <>
+    struct TFileStoreRequest<NProtoPrivate::TUnsafeDeleteNodeRefRequest>
+    {
+        static constexpr EFileStoreRequest Request =
+            EFileStoreRequest::UnsafeDeleteNodeRef;
     };
 
 }    // namespace NImpl
