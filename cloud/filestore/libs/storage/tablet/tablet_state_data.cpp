@@ -312,6 +312,12 @@ bool TIndexTabletState::IsWriteAllowed(
         return false;
     }
 
+    if (values.CollectGarbage >= thresholds.CollectGarbage) {
+        *message =
+            TStringBuilder() << "collectGarbage: " << values.CollectGarbage;
+        return false;
+    }
+
     return true;
 }
 

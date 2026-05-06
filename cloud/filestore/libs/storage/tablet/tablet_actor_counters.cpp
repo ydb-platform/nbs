@@ -377,6 +377,12 @@ void TIndexTabletActor::UpdateMetrics(
     Store(
         Metrics.CleanupBackpressureThreshold,
         backpressureThresholds.CleanupScore);
+    Store(
+        Metrics.CollectGarbageBackpressureValue,
+        backpressureValues.CollectGarbage);
+    Store(
+        Metrics.CollectGarbageBackpressureThreshold,
+        backpressureThresholds.CollectGarbage);
 
     Store(Metrics.MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(Metrics.MaxWriteIops, performanceProfile.GetMaxWriteIops());

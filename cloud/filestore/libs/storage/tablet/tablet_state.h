@@ -186,6 +186,7 @@ struct TBackgroundOpsBackpressureStatus
     const EBackgroundOpBackpressureStatus FlushBytesItemCount;
     const EBackgroundOpBackpressureStatus Compaction;
     const EBackgroundOpBackpressureStatus Cleanup;
+    const EBackgroundOpBackpressureStatus CollectGarbage;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -964,6 +965,7 @@ public:
         const ui64 FlushBytesItemCount;
         const ui64 CompactionScore;
         const ui64 CleanupScore;
+        const ui64 CollectGarbage;
     };
 
     using TBackpressureValues = TBackpressureThresholds;
