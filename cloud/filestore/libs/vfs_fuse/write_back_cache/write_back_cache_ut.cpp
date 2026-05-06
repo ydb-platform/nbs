@@ -787,19 +787,10 @@ struct TStatsCalculator
 {
     ui64 WriteDataFlushCount = 0;
     ui64 FlushCount = 0;
-
-    struct TState
-    {
-        ui32 NodeId = 0;
-        bool Flushed = false;
-    };
-
-    TDeque<TState> Queue;
     THashMap<ui32, ui64> UnflushedRequestCount;
 
     void Write(ui32 nodeId)
     {
-        Queue.push_back({.NodeId = nodeId, .Flushed = false});
         UnflushedRequestCount[nodeId]++;
     }
 
@@ -811,10 +802,6 @@ struct TStatsCalculator
             FlushCount++;
             UnflushedRequestCount.erase(it);
         }
-
-        EraseIf(
-            Queue,
-            [nodeId](const auto& stats) { return stats.NodeId == nodeId; });
     }
 
     void FlushAll()
@@ -824,17 +811,14 @@ struct TStatsCalculator
             WriteDataFlushCount += pair.second;
         }
 
-        Queue.clear();
         UnflushedRequestCount.clear();
     }
 
     ui64 GetUnflushedQueueRequestCount() const
     {
         ui64 res = 0;
-        for (const auto& stats: Queue) {
-            if (!stats.Flushed) {
-                res++;
-            }
+        for (auto [nodeId, count]: UnflushedRequestCount) {
+            res += count;
         }
         return res;
     }

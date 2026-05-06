@@ -144,7 +144,7 @@ private:
         Y_ABORT_UNLESS(eh->GetDataSize() != 0);
 
         ui64 pos = GetEntryPos(eh);
-        return GetPtr(pos + sizeof(eh), eh->GetDataSize());
+        return GetPtr(pos + sizeof(TEntryHeader), eh->GetDataSize());
     }
 
 public:
@@ -442,11 +442,8 @@ private:
     {
         // In the new version, the highest bit of the entry size is used as a
         // skip flag - need to ensure that nobody use it
-        Visit([](auto checksum, auto data)
-        {
-            Y_UNUSED(checksum);
-            Y_ABORT_UNLESS(data.size() <= TEntryHeader::MaxDataSize);
-        });
+        VisitEntries([](const TEntryInfo& e)
+                     { Y_ABORT_UNLESS(!e.GetSkipFlag()); });
 
         Header()->Version = VERSION;
     }
@@ -498,14 +495,12 @@ private:
         Header()->MetadataCapacity = newMetadataCapacity;
     }
 
-    void VisitNonSkippedEntries(auto visitor)
+    void VisitEntries(auto&& visitor)
     {
         auto e = GetFrontEntry();
 
         while (e.HasValue()) {
-            if (!e.GetSkipFlag()) {
-                visitor(e);
-            }
+            visitor(e);
             e = GetNextEntry(e);
         }
 
@@ -558,8 +553,13 @@ public:
 
         ValidateDataStructure();
 
-        VisitNonSkippedEntries([&](const TEntryInfo& e)
-                               { EntryMap[e.Data] = e.ActualPos; });
+        VisitEntries(
+            [&](const TEntryInfo& e)
+            {
+                if (!e.GetSkipFlag()) {
+                    EntryMap[e.Data] = e.ActualPos;
+                }
+            });
 
         PopFrontSkippedEntries();
     }
@@ -766,9 +766,13 @@ public:
 
     void Visit(const TVisitor& visitor)
     {
-        VisitNonSkippedEntries(
+        VisitEntries(
             [&](const TEntryInfo& e)
-            { visitor(e.Header->GetChecksum(), e.GetData()); });
+            {
+                if (!e.GetSkipFlag()) {
+                    visitor(e.Header->GetChecksum(), e.GetData());
+                }
+            });
     }
 
     bool IsCorrupted() const
