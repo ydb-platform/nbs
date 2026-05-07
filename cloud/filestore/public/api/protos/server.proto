@@ -29,6 +29,9 @@ message TMmapRegionInfo
 
     // Timestamp of the latest ping activity (in microseconds since epoch)
     optional int64 LatestActivityTimestamp = 4;
+
+    // size of the iovec in read/write requests with shared memory
+    optional uint32 PageSize = 5;
 }
 
 message TListMmapRegionsResponse
@@ -53,6 +56,16 @@ message TMmapRequest
 
     // Size of the mmap region in bytes
     optional uint64 Size = 3;
+
+    // If PageSize is non-zero, the following constraints apply to
+    // read/write requests with shared memory:
+    // - Each iovec must have a length equal to PageSize.
+    // - The last iovec in a request may have a length smaller than PageSize.
+    // - The iovec offset must be aligned to PageSize.
+    // - Concurrent requests with iovecs referencing overlapping memory ranges
+    // will be rejected.
+    // If PageSize is 0, these constraints are disabled.
+    optional uint32 PageSize = 4;
 }
 
 message TMmapResponse

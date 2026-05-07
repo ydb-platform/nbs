@@ -38,6 +38,7 @@ private:
     const TString FullPath;
     const ui64 ShmSize;
     const ui64 SlotSize;
+    const ui32 PageSize;
 
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
@@ -57,6 +58,7 @@ public:
             TString fullPath,
             ui64 shmSize,
             ui64 slotSize,
+            ui32 pageSize,
             IShmControlPtr shmControl,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
@@ -64,6 +66,7 @@ public:
         : FullPath(std::move(fullPath))
         , ShmSize(shmSize)
         , SlotSize(slotSize)
+        , PageSize(pageSize)
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , ShmControl(std::move(shmControl))
@@ -156,6 +159,7 @@ private:
         auto req = std::make_shared<NProto::TMmapRequest>();
         req->SetFilePath(TFsPath(FullPath).GetName());
         req->SetSize(ShmSize);
+        req->SetPageSize(PageSize);
 
         auto response = ShmControl->Mmap(std::move(ctx), std::move(req)).GetValueSync();
         if (HasError(response)) {
@@ -235,6 +239,7 @@ IShmDataClientPtr CreateSharedMemoryClient(
     TString fullFilePath,
     ui64 shmSize,
     ui64 slotSize,
+    ui32 pageSize,
     IShmControlPtr shmControl,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
@@ -244,6 +249,7 @@ IShmDataClientPtr CreateSharedMemoryClient(
         std::move(fullFilePath),
         shmSize,
         slotSize,
+        pageSize,
         std::move(shmControl),
         std::move(scheduler),
         std::move(timer),

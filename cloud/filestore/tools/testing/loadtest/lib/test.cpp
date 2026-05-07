@@ -566,6 +566,7 @@ private:
                         spec.GetSharedMemorySizeBytes(),
                         Max(static_cast<ui64>(spec.GetReadBytes()),
                             static_cast<ui64>(spec.GetWriteBytes())),
+                        spec.GetSharedMemoryPageSize(),
                         ClientFactory->CreateShmControl(),
                         Scheduler,
                         Timer,
