@@ -28,18 +28,15 @@ constexpr ui64 HeaderReserveSize = 256;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THeaderPrev
+struct THeader
 {
     ui32 Version = 0;
     ui32 HeaderSize = 0;
     ui64 DataCapacity = 0;
     ui64 ReadPos = 0;
     ui64 WritePos = 0;
-    ui64 LastEntrySize = 0;
-};
-
-struct THeader: THeaderPrev
-{
+    // Previously was: LastEntrySize
+    ui64 Unused = 0;
     ui64 DataOffset = 0;
     ui64 MetadataCapacity = 0;
     ui64 MetadataOffset = 0;
@@ -106,7 +103,6 @@ public:
 //    - ReadPos != WritePos
 //    - ReadPos points to the first byte of the first valid entry
 //    - WritePos points to the first byte right after the last valid entry
-//    - LastEntrySize is the size of the last valid entry
 //
 //  3. Valid entry:
 //    - Size > 0
@@ -400,17 +396,11 @@ private:
 
         if (front.HasValue()) {
             Y_ABORT_UNLESS(back.HasValue());
-
             Header()->ReadPos = front.ActualPos;
             Header()->WritePos = back.GetNextEntryPos();
-            // Updating WritePos and LastEntrySize is not performed atomically
-            // It may happen that only one field was updated before crash - need
-            // to correct the value.
-            Header()->LastEntrySize = back.GetNextEntryPos() - back.ActualPos;
         } else {
             Header()->ReadPos = 0;
             Header()->WritePos = 0;
-            Header()->LastEntrySize = 0;
         }
     }
 
@@ -446,6 +436,7 @@ private:
                      { Y_ABORT_UNLESS(!e.GetFreeFlag()); });
 
         Header()->Version = VERSION;
+        Header()->Unused = 0;
     }
 
     void ResizeMetadata(ui64 desiredMetadataCapacity)
@@ -673,7 +664,6 @@ public:
         auto sz = sizeof(TEntryHeader) + CurrentAllocation->GetDataSize();
 
         Header()->WritePos = writePos + sz;
-        Header()->LastEntrySize = sz;
         EntryMap[ptr] = writePos;
 
         CurrentAllocation = nullptr;
