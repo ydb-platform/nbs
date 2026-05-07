@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import tarfile
 import yatest.common as common
 
@@ -84,9 +85,17 @@ def _unpack_qemu_bindir(bindir):
         tf.extractall(bindir)
 
 
+def is_arm():
+    return platform.machine().lower() in ("aarch64", "arm64")
+
+
 def get_qemu_kvm():
     bindir = _get_qemu_bindir()
-    qemu_kvm = os.path.join(bindir, "usr", "bin", "qemu-system-x86_64")
+    qemu_system_bin = "qemu-system-x86_64"
+    if is_arm():
+        qemu_system_bin = "qemu-system-aarch64"
+
+    qemu_kvm = os.path.join(bindir, "usr", "bin", qemu_system_bin)
     if not os.path.exists(qemu_kvm):
         _unpack_qemu_bindir(bindir)
 

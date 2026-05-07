@@ -86,7 +86,8 @@ class Qemu:
                  inst_index=0,
                  shared_nic_port=0,
                  use_virtiofs_server=False,
-                 num_request_queues=1):
+                 num_request_queues=1,
+                 is_arm=False):
 
         self.ssh_port = 0
         self.qmp = None
@@ -111,6 +112,7 @@ class Qemu:
         self.inst_index = inst_index
         self.shared_nic_port = shared_nic_port
         self.use_virtiofs_server = use_virtiofs_server
+        self.is_arm = is_arm
 
     def prepare_mount_paths(self, ssh):
         for tag, path, _ in self.mount_paths:
@@ -239,6 +241,9 @@ class Qemu:
             "-L", self.qemu_firmware,
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),
         ]
+
+        if self.is_arm:
+            cmd += ["-machine", "virt"]
 
         if self.shared_nic_port:
             nic_mac = "52:54:00:12:56:{:02x}".format(self.inst_index)

@@ -2,7 +2,7 @@ import logging
 import yatest.common as common
 import time
 
-from .common import get_mount_paths, get_qemu_kvm, get_qemu_firmware
+from .common import get_mount_paths, get_qemu_kvm, get_qemu_firmware, is_arm
 from .qemu import Qemu
 
 EMU_NET = "10.0.2.0/24"
@@ -26,7 +26,8 @@ class QemuWithMigration:
             qemu_options=[],
             vhost_socket="",
             enable_kvm=True,
-            use_virtiofs_server=True)
+            use_virtiofs_server=True,
+            is_arm=is_arm())
 
         self.socket_generator = socket_generator
 
