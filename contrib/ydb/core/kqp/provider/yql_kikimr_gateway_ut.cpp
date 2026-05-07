@@ -1,5 +1,4 @@
 #include <contrib/ydb/core/client/minikql_compile/mkql_compile_service.h>
-#include <contrib/ydb/core/client/minikql_result_lib/converter.h>
 #include <contrib/ydb/core/kqp/gateway/actors/kqp_ic_gateway_actors.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_metadata_loader.h>
@@ -12,7 +11,6 @@ namespace NYql {
 using namespace NKikimr;
 using namespace NKikimr::NKqp;
 using namespace NMiniKQL;
-using namespace NResultLib;
 using namespace NYdb::NTable;
 
 namespace {
@@ -298,14 +296,18 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestCreateExternalTable) {
-        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false));
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false).SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         TestCreateExternalDataSource(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_data_source");
         TestCreateExternalTable(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_table");
     }
 
     Y_UNIT_TEST(TestCreateSameExternalTable) {
-        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false));
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false).SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         TestCreateExternalDataSource(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_data_source");
         TestCreateExternalTable(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_table");
@@ -313,7 +315,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestDropExternalTable) {
-        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false));
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false).SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         TestCreateExternalDataSource(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_data_source");
         TestCreateExternalTable(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_table");
@@ -321,14 +325,18 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestDropExternalDataSource) {
-        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false));
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false).SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         TestCreateExternalDataSource(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_data_source");
         TestDropExternalDataSource(*kikimr.GetTestServer().GetRuntime(), GetIcGateway(kikimr.GetTestServer()), "/Root/f1/f2/external_data_source");
     }
 
     Y_UNIT_TEST(TestLoadExternalTable) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -368,7 +376,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestLoadServiceAccountSecretValueFromExternalDataSourceMetadata) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -406,7 +416,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestLoadBasicSecretValueFromExternalDataSourceMetadata) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("PostgreSQL");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -422,6 +434,7 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
                 LOCATION="my-bucket",
                 AUTH_METHOD="BASIC",
                 LOGIN="mylogin",
+                DATABASE_NAME="postgres",
                 PASSWORD_SECRET_NAME=")" << secretId << R"("
             );)";
         auto result = session.ExecuteSchemeQuery(query).GetValueSync();
@@ -436,7 +449,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestLoadMdbBasicSecretValueFromExternalDataSourceMetadata) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("PostgreSQL");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -458,6 +473,7 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
                 SERVICE_ACCOUNT_ID="mysa",
                 SERVICE_ACCOUNT_SECRET_NAME=")" << secretSaId << R"(",
                 LOGIN="mylogin",
+                DATABASE_NAME="postgres",
                 PASSWORD_SECRET_NAME=")" << secretPasswordId << R"("
             );)";
         auto result = session.ExecuteSchemeQuery(query).GetValueSync();
@@ -473,7 +489,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
      Y_UNIT_TEST(TestLoadAwsSecretValueFromExternalDataSourceMetadata) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -510,7 +528,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestLoadDataSourceProperties) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("PostgreSQL");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -558,7 +578,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestLoadTokenSecretValueFromExternalDataSourceMetadata) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("YT");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -588,7 +610,9 @@ Y_UNIT_TEST_SUITE(KikimrIcGateway) {
     }
 
     Y_UNIT_TEST(TestSecretsExistingValidation) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appCfg;
+        appCfg.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appCfg));
         kikimr.GetTestServer().GetRuntime()->GetAppData(0).FeatureFlags.SetEnableExternalDataSources(true);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();

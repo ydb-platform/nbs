@@ -2,7 +2,7 @@
 #include "kqp_opt_phy_effects_impl.h"
 #include "kqp_opt_phy_uniq_helper.h"
 
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
+#include <yql/essentials/providers/common/provider/yql_provider.h>
 
 namespace NKikimr::NKqp::NOpt {
 
@@ -153,18 +153,6 @@ TExprBase MakeUpsertIndexRows(TKqpPhyUpsertIndexMode mode, const TDqPhyPrecomput
     const TVector<TStringBuf>& indexColumns, const TKikimrTableDescription& table, TPositionHandle pos,
     TExprContext& ctx, bool opt)
 {
-    // Check if we can update index table from just input data
-    bool allColumnFromInput = true; // - indicate all data from input
-    for (const auto& column : indexColumns) {
-        allColumnFromInput = allColumnFromInput && inputColumns.contains(column);
-    }
-
-    if (allColumnFromInput) {
-        return mode == TKqpPhyUpsertIndexMode::UpdateOn
-            ? MakeNonexistingRowsFilter(inputRows, lookupDict, table.Metadata->KeyColumnNames, pos, ctx)
-            : TExprBase(inputRows);
-    }
-
     auto inputRowsArg = TCoArgument(ctx.NewArgument(pos, "input_rows"));
     auto inputRowArg = TCoArgument(ctx.NewArgument(pos, "input_row"));
     auto lookupDictArg = TCoArgument(ctx.NewArgument(pos, "lookup_dict"));
@@ -670,6 +658,7 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
         .Input(tableUpsertRows)
         .Columns(inputColumns)
         .ReturningColumns(returningColumns)
+        .IsBatch(ctx.NewAtom(pos, "false"))
         .Settings(settings)
         .Done();
 
@@ -882,6 +871,7 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                 .Table(tableNode)
                 .Input(deleteIndexKeys)
                 .ReturningColumns<TCoAtomList>().Build()
+                .IsBatch(ctx.NewAtom(pos, "false"))
                 .Done();
 
             effects.emplace_back(indexDelete);
@@ -904,6 +894,7 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                 .Input(upsertIndexRows)
                 .Columns(BuildColumnsList(indexTableColumns, pos, ctx))
                 .ReturningColumns<TCoAtomList>().Build()
+                .IsBatch(ctx.NewAtom(pos, "false"))
                 .Done();
 
             effects.emplace_back(indexUpsert);

@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/persqueue/pq_database.h>
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <ydb-cpp-sdk/client/result/result.h>
 
 namespace NKikimr {
 namespace NGRpcProxy {
@@ -43,7 +43,7 @@ void TClustersUpdater::Handle(NNetClassifier::TEvNetClassifier::TEvClassifierUpd
 
 
 void TClustersUpdater::Handle(NKqp::TEvKqp::TEvQueryResponse::TPtr &ev, const TActorContext &ctx) {
-    auto& record = ev->Get()->Record.GetRef();
+    auto& record = ev->Get()->Record;
 
     if (record.GetYdbStatus() == Ydb::StatusIds::SUCCESS) {
         bool local = false;

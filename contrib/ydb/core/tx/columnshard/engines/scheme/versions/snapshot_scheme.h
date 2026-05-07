@@ -2,29 +2,38 @@
 
 #include "abstract_scheme.h"
 
-#include <contrib/ydb/core/tx/columnshard/engines/index_info.h>
+#include <contrib/ydb/core/tx/columnshard/engines/scheme/index_info.h>
+
+#include <contrib/ydb/core/tx/columnshard/engines/scheme/abstract/schema_version.h>
 
 namespace NKikimr::NOlap {
 
 class TSnapshotSchema: public ISnapshotSchema {
 private:
-    TIndexInfo IndexInfo;
+    TObjectCache<TSchemaVersionId, TIndexInfo>::TEntryGuard IndexInfo;
     std::shared_ptr<NArrow::TSchemaLite> Schema;
     TSnapshot Snapshot;
 protected:
     virtual TString DoDebugString() const override {
         return TStringBuilder() << "("
-            "schema=" << Schema->ToString() << ";" <<
-            "snapshot=" << Snapshot.DebugString() << ";" <<
-            "index_info=" << IndexInfo.DebugString() << ";" <<
-            ")"
-            ;
+                                   "schema="
+                                << Schema->ToString() << ";" << "snapshot=" << Snapshot.DebugString() << ";"
+                                << "index_info=" << IndexInfo->DebugString() << ";" << ")";
     }
-public:
-    TSnapshotSchema(TIndexInfo&& indexInfo, const TSnapshot& snapshot);
 
-    virtual const std::vector<ui32>& GetColumnIds() const override {
-        return IndexInfo.GetColumnIds();
+    virtual NJson::TJsonValue DoDebugJson() const override {
+        NJson::TJsonValue result = NJson::JSON_MAP;
+        result.InsertValue("schema", Schema->ToString());
+        result.InsertValue("snapshot", Snapshot.DebugString());
+        result.InsertValue("index_info", IndexInfo->DebugString());
+        return result;
+    }
+
+public:
+    TSnapshotSchema(TObjectCache<TSchemaVersionId, TIndexInfo>::TEntryGuard&& indexInfo, const TSnapshot& snapshot);
+
+    virtual TColumnIdsView GetColumnIds() const override {
+        return IndexInfo->GetColumnIds();
     }
 
     TColumnSaver GetColumnSaver(const ui32 columnId) const override;

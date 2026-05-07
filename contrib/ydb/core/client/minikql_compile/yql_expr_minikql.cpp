@@ -4,7 +4,6 @@
 #include "db_key_resolver.h"
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/domain.h>
@@ -12,23 +11,23 @@
 #include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
 #include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
 
-#include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_printer.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
-#include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
-#include <contrib/ydb/library/yql/minikql/mkql_type_builder.h>
-#include <contrib/ydb/library/yql/minikql/mkql_utils.h>
-#include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>
+#include <yql/essentials/minikql/invoke_builtins/mkql_builtins.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_node_cast.h>
+#include <yql/essentials/minikql/mkql_node_printer.h>
+#include <yql/essentials/minikql/mkql_node_serialization.h>
+#include <yql/essentials/minikql/mkql_program_builder.h>
+#include <yql/essentials/minikql/mkql_type_builder.h>
+#include <yql/essentials/minikql/mkql_utils.h>
+#include <yql/essentials/minikql/mkql_type_ops.h>
 
-#include <contrib/ydb/library/yql/core/type_ann/type_ann_expr.h>
-#include <contrib/ydb/library/yql/core/type_ann/type_ann_impl.h>
-#include <contrib/ydb/library/yql/core/type_ann/type_ann_list.h>
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
-#include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
-#include <contrib/ydb/library/yql/providers/common/mkql/yql_type_mkql.h>
-#include <contrib/ydb/library/yql/providers/common/mkql/yql_provider_mkql.h>
+#include <yql/essentials/core/type_ann/type_ann_expr.h>
+#include <yql/essentials/core/type_ann/type_ann_impl.h>
+#include <yql/essentials/core/type_ann/type_ann_list.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
+#include <yql/essentials/core/yql_expr_type_annotation.h>
+#include <yql/essentials/providers/common/mkql/yql_type_mkql.h>
+#include <yql/essentials/providers/common/mkql/yql_provider_mkql.h>
 
 #include <library/cpp/threading/future/async.h>
 
@@ -397,7 +396,7 @@ private:
 
                 switch (column->Type.GetTypeId()) {
                 case NScheme::NTypeIds::Pg: {
-                    // TODO: support pg types
+                    // no need to support pg types in the deprecated minikql engine
                     YQL_ENSURE(false, "pg types are not supported");
                     break;
                 }
@@ -1608,7 +1607,7 @@ private:
     }
 
     void SendResponseAndDie(const TMiniKQLCompileResult& result, THashMap<TString, ui64> &&resolveCookies, const TActorContext& ctx) {
-        ctx.ExecutorThread.Send(
+        ctx.Send(
             new IEventHandle(
                 ResponseTo,
                 ctx.SelfID,

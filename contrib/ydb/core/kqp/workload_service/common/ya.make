@@ -15,7 +15,7 @@ PEERDIR(
 
     contrib/ydb/library/actors/core
 
-    contrib/ydb/public/sdk/cpp/client/ydb_types
+    contrib/ydb/public/sdk/cpp/src/client/types
 
     library/cpp/retry
 )

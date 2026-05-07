@@ -4,11 +4,9 @@
 #include "viewer.h"
 #include "viewer_helper.h"
 #include "viewer_tabletinfo.h"
-#include <library/cpp/protobuf/json/proto2json.h>
 
 namespace NKikimr::NViewer {
 
-using namespace NProtobufJson;
 using namespace NActors;
 using namespace NNodeWhiteboard;
 
@@ -108,8 +106,8 @@ public:
     void Bootstrap() override {
         NodesInfoResponse = MakeRequest<TEvInterconnect::TEvNodesInfo>(GetNameserviceActorId(), new TEvInterconnect::TEvListNodes());
         NodeStateResponse = MakeWhiteboardRequest(TActivationContext::ActorSystem()->NodeId, new TEvWhiteboard::TEvNodeStateRequest());
-        PDisksResponse = RequestBSControllerPDisks();
-        StorageStatsResponse = RequestBSControllerStorageStats();
+        PDisksResponse = MakeCachedRequestBSControllerPDisks();
+        StorageStatsResponse = MakeCachedRequestBSControllerStorageStats();
         ListTenantsResponse = MakeRequestConsoleListTenants();
         if (AppData()->DomainsInfo && AppData()->DomainsInfo->Domain) {
             TIntrusivePtr<TDomainsInfo> domains = AppData()->DomainsInfo;
@@ -343,8 +341,12 @@ private:
 
     void InitSystemWhiteboardRequest(NKikimrWhiteboard::TEvSystemStateRequest* request) {
         request->MutableFieldsRequired()->CopyFrom(GetDefaultWhiteboardFields<NKikimrWhiteboard::TSystemStateInfo>());
+        request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kMemoryStatsFieldNumber);
         request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kCoresUsedFieldNumber);
         request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kCoresTotalFieldNumber);
+        request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kNetworkUtilizationFieldNumber);
+        request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kNetworkWriteThroughputFieldNumber);
+        request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kRealNumberOfCpusFieldNumber);
     }
 
     void InitTabletWhiteboardRequest(NKikimrWhiteboard::TEvTabletStateRequest* request) {
@@ -463,7 +465,14 @@ private:
             }
         }
 
+        struct TMemoryStats {
+            ui64 Total = 0;
+            ui64 Limit = 0;
+        };
+
         std::unordered_set<TString> hostPassed;
+        std::unordered_map<TString, TMemoryStats> memoryStats;
+        int nodesWithNetworkUtilization = 0;
 
         for (TNode& node : NodeData) {
             const NKikimrWhiteboard::TSystemStateInfo& systemState = node.SystemState;
@@ -481,7 +490,16 @@ private:
                 ClusterInfo.SetName(systemState.GetClusterName());
             }
             ClusterInfo.SetMemoryUsed(ClusterInfo.GetMemoryUsed() + systemState.GetMemoryUsed());
-            ClusterInfo.SetMemoryTotal(ClusterInfo.GetMemoryTotal() + systemState.GetMemoryLimit());
+            if (systemState.HasMemoryStats()) {
+                TMemoryStats& stats = memoryStats[systemState.GetHost()];
+                if (systemState.GetMemoryLimit() > 0) {
+                    stats.Limit += systemState.GetMemoryLimit();
+                } else {
+                    stats.Total = systemState.GetMemoryStats().GetMemTotal();
+                }
+            } else {
+                ClusterInfo.SetMemoryTotal(ClusterInfo.GetMemoryTotal() + systemState.GetMemoryLimit());
+            }
             if (!node.Disconnected && node.SystemState.HasSystemState()) {
                 ClusterInfo.SetNodesAlive(ClusterInfo.GetNodesAlive() + 1);
             }
@@ -521,6 +539,25 @@ private:
             if (systemState.GetCoresTotal() != 0) {
                 ClusterInfo.SetCoresUsed(ClusterInfo.GetCoresUsed() + systemState.GetCoresUsed());
                 ClusterInfo.SetCoresTotal(ClusterInfo.GetCoresTotal() + systemState.GetCoresTotal());
+            }
+            if (systemState.HasNetworkUtilization()) {
+                ClusterInfo.SetNetworkUtilization(ClusterInfo.GetNetworkUtilization() + systemState.GetNetworkUtilization());
+                ++nodesWithNetworkUtilization;
+            }
+            if (systemState.HasNetworkWriteThroughput()) {
+                ClusterInfo.SetNetworkWriteThroughput(ClusterInfo.GetNetworkWriteThroughput() + systemState.GetNetworkWriteThroughput());
+            }
+        }
+
+        if (nodesWithNetworkUtilization != 0) {
+            ClusterInfo.SetNetworkUtilization(ClusterInfo.GetNetworkUtilization() / nodesWithNetworkUtilization);
+        }
+
+        for (const auto& memStats : memoryStats) {
+            if (memStats.second.Total > 0) {
+                ClusterInfo.SetMemoryTotal(ClusterInfo.GetMemoryTotal() + memStats.second.Total);
+            } else {
+                ClusterInfo.SetMemoryTotal(ClusterInfo.GetMemoryTotal() + memStats.second.Limit);
             }
         }
 
@@ -797,6 +834,9 @@ private:
         for (const auto& [type, size] : ClusterInfo.GetMapStorageUsed()) {
             ClusterInfo.SetStorageUsed(ClusterInfo.GetStorageUsed() + size);
         }
+        if (CachedDataMaxAge) {
+            ClusterInfo.SetCachedDataMaxAge(CachedDataMaxAge.MilliSeconds());
+        }
         NKikimrWhiteboard::EFlag worstState = NKikimrWhiteboard::EFlag::Grey;
         ui64 worstNodes = 0;
         for (NKikimrWhiteboard::EFlag flag = NKikimrWhiteboard::EFlag::Grey; flag <= NKikimrWhiteboard::EFlag::Red; flag = NKikimrWhiteboard::EFlag(flag + 1)) {
@@ -811,14 +851,7 @@ private:
             worstNodes += nodes;
         }
         ClusterInfo.SetOverall(GetViewerFlag(worstState));
-        TStringStream out;
-        Proto2Json(ClusterInfo, out, {
-            .EnumMode = TProto2JsonConfig::EnumValueMode::EnumName,
-            .MapAsObject = true,
-            .StringifyNumbers = TProto2JsonConfig::EStringifyNumbersMode::StringifyInt64Always,
-            .WriteNanAsString = true,
-        });
-        TBase::ReplyAndPassAway(GetHTTPOKJSON(out.Str()));
+        TBase::ReplyAndPassAway(GetHTTPOKJSON(ClusterInfo));
     }
 
 public:

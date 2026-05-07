@@ -34,8 +34,9 @@ class TDescribeTableRPC : public TRpcSchemeRequestActor<TDescribeTableRPC, TEvDe
         if (AppData()->AllowPrivateTableDescribeForTest) {
            return true;
         }
-        
-        if (path.EndsWith("/indexImplTable")) {
+
+        auto pathElements = ::NKikimr::SplitPath(path);
+        if (pathElements.size() != 0 && NTableIndex::IsImplTable(pathElements.back())) {
             return true;
         }
 

@@ -6,6 +6,8 @@ LICENSE(Apache-2.0)
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
+VERSION(20250127.0)
+
 PEERDIR(
     contrib/restricted/abseil-cpp/absl/base
     contrib/restricted/abseil-cpp/absl/container
@@ -46,6 +48,7 @@ SRCS(
     internal/log_sink_set.cc
     internal/nullguard.cc
     internal/proto.cc
+    internal/structured_proto.cc
     internal/vlog_config.cc
     log_entry.cc
     log_sink.cc

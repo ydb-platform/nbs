@@ -1,7 +1,11 @@
 UNITTEST()
 
-TIMEOUT(600)
-SIZE(MEDIUM)
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
 DEPENDS(
     contrib/ydb/apps/ydb
@@ -17,12 +21,12 @@ SRCS(
     supported_codecs.cpp
     supported_codecs_fixture.cpp
     ydb-dump.cpp
-    ydb-mkql.cpp
 )
 
 PEERDIR(
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/lib/ydb_cli/commands/topic_workload
 )
 
 INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)

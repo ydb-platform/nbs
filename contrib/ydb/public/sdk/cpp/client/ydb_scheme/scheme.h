@@ -6,10 +6,12 @@ namespace Ydb {
     class VirtualTimestamp;
     namespace Scheme {
         class Entry;
+        class ModifyPermissionsRequest;
+        class Permissions;
     }
 }
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 namespace NScheme {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -22,8 +24,12 @@ struct TPermissions {
         : Subject(subject)
         , PermissionNames(names)
     {}
+    TPermissions(const ::Ydb::Scheme::Permissions& proto);
+
     TString Subject;
     TVector<TString> PermissionNames;
+
+    void SerializeTo(::Ydb::Scheme::Permissions& proto) const;
 };
 
 enum class ESchemeEntryType : i32 {
@@ -43,7 +49,7 @@ enum class ESchemeEntryType : i32 {
     ExternalTable = 18,
     ExternalDataSource = 19,
     View = 20,
-    ResourcePool = 21
+    ResourcePool = 21,
 };
 
 struct TVirtualTimestamp {
@@ -78,6 +84,9 @@ struct TSchemeEntry {
     TSchemeEntry(const ::Ydb::Scheme::Entry& proto);
 
     void Out(IOutputStream& out) const;
+
+    // Fills ModifyPermissionsRequest proto from this entry
+    void SerializeTo(::Ydb::Scheme::ModifyPermissionsRequest& request) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,9 +101,7 @@ using TAsyncListDirectoryResult = NThreading::TFuture<TListDirectoryResult>;
 
 struct TMakeDirectorySettings : public TOperationRequestSettings<TMakeDirectorySettings> {};
 
-struct TRemoveDirectorySettings : public TOperationRequestSettings<TRemoveDirectorySettings> {
-    FLUENT_SETTING_DEFAULT(bool, NotExistsIsOk, false);
-};
+struct TRemoveDirectorySettings : public TOperationRequestSettings<TRemoveDirectorySettings> {};
 
 struct TDescribePathSettings : public TOperationRequestSettings<TDescribePathSettings> {};
 
@@ -129,11 +136,22 @@ struct TModifyPermissionsSettings : public TOperationRequestSettings<TModifyPerm
         return *this;
     }
 
+    TModifyPermissionsSettings& AddInterruptInheritance(bool value) {
+        SetInterruptInheritance_ = true;
+        InterruptInheritanceValue_ = value;
+        return *this;
+    }
+
     TVector<std::pair<EModifyPermissionsAction, TPermissions>> Actions_;
     bool ClearAcl_ = false;
+    bool SetInterruptInheritance_ = false;
+    bool InterruptInheritanceValue_ = false;
     void AddAction(EModifyPermissionsAction action, const TPermissions& permissions) {
         Actions_.emplace_back(std::pair<EModifyPermissionsAction, TPermissions>{action, permissions});
     }
+
+    TModifyPermissionsSettings() = default;
+    explicit TModifyPermissionsSettings(const ::Ydb::Scheme::ModifyPermissionsRequest& request);
 };
 
 class TSchemeClient {

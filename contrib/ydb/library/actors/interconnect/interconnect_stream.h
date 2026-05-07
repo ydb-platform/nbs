@@ -6,9 +6,8 @@
 #include <util/network/init.h>
 #include <util/system/defaults.h>
 
-#include "poller.h"
-
-#include "interconnect_address.h"
+#include <contrib/ydb/library/actors/interconnect/address/interconnect_address.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller.h>
 
 #include <memory>
 
@@ -16,6 +15,7 @@
 
 namespace NActors {
     class TPollerToken;
+    struct TInterconnectProxyCommon;
 }
 
 namespace NInterconnect {
@@ -44,6 +44,7 @@ namespace NInterconnect {
         int Bind(const TAddress& addr) const;
         int Shutdown(int how) const;
         int GetConnectStatus() const;
+        std::variant<TAddress, int> GetSockName() const noexcept;
     };
 
     class TStreamSocket: public TSocket {
@@ -87,8 +88,7 @@ namespace NInterconnect {
         friend class TSecureSocket;
 
     public:
-        TSecureSocketContext(const TString& certificate, const TString& privateKey, const TString& caFilePath,
-            const TString& ciphers);
+        TSecureSocketContext(TIntrusivePtr<NActors::TInterconnectProxyCommon> common);
         ~TSecureSocketContext();
 
     public:
@@ -126,6 +126,7 @@ namespace NInterconnect {
         int GetCipherBits() const;
         TString GetProtocolName() const;
         TString GetPeerCommonName() const;
+        TString GetSignatureAlgorithm() const;
 
         bool WantRead() const;
         bool WantWrite() const;

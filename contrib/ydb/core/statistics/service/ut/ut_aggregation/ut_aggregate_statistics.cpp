@@ -55,7 +55,7 @@ std::unique_ptr<TEvStatistics::TEvAggregateStatistics> CreateStatisticsRequest(c
     auto& record = ev->Record;
     record.SetRound(data.Round);
 
-    PathIdFromPathId(data.PathId, record.MutablePathId());
+    data.PathId.ToProto(record.MutablePathId());
 
     auto columnTags = record.MutableColumnTags();
     for (auto tag : data.ColumnTags) {
@@ -100,7 +100,7 @@ std::unique_ptr<TEvStatistics::TEvAggregateStatisticsResponse> CreateAggregateSt
         }
 
         auto buf = sketch->AsStringBuf();
-        statistics->SetData(buf.Data(), buf.Size());
+        statistics->SetData(buf.data(), buf.size());
     }
 
     return std::move(ev);
@@ -125,7 +125,7 @@ std::unique_ptr<TEvStatistics::TEvStatisticsResponse> CreateStatisticsResponse(c
         }
 
         auto buf = sketch->AsStringBuf();
-        statistics->SetData(buf.Data(), buf.Size());
+        statistics->SetData(buf.data(), buf.size());
     }
 
     return std::move(ev);
@@ -260,7 +260,7 @@ Y_UNIT_TEST_SUITE(AggregateStatistics) {
 
             for (auto& statistic : column.GetStatistics()) {
                 if (statistic.GetType() == NKikimr::NStat::COUNT_MIN_SKETCH) {
-                    auto data = statistic.GetData().Data();
+                    auto data = statistic.GetData().data();
                     auto sketch = reinterpret_cast<const TCountMinSketch*>(data);
 
                     const auto& cells = expected[tag];

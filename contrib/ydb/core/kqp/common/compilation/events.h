@@ -1,9 +1,10 @@
 #pragma once
 #include "result.h"
 
+#include <library/cpp/lwtrace/shuttle.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/aclib/aclib.h>
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
+#include <yql/essentials/ast/yql_expr.h>
 #include <contrib/ydb/core/kqp/common/simple/temp_tables.h>
 #include <contrib/ydb/core/kqp/common/simple/kqp_event_ids.h>
 #include <contrib/ydb/core/kqp/common/simple/query_id.h>
@@ -19,7 +20,7 @@ struct TEvCompileRequest: public TEventLocal<TEvCompileRequest, TKqpEvents::EvCo
         TKqpDbCountersPtr dbCounters, const TGUCSettings::TPtr& gUCSettings, const TMaybe<TString>& applicationName,
         std::shared_ptr<std::atomic<bool>> intrestedInResult, const TIntrusivePtr<TUserRequestContext>& userRequestContext, NLWTrace::TOrbit orbit = {},
         TKqpTempTablesState::TConstPtr tempTablesState = nullptr, bool collectDiagnostics = false, TMaybe<TQueryAst> queryAst = Nothing(),
-        bool split = false, NYql::TExprContext* splitCtx = nullptr, NYql::TExprNode::TPtr splitExpr = nullptr)
+        bool split = false, std::shared_ptr<NYql::TExprContext> splitCtx = nullptr, NYql::TExprNode::TPtr splitExpr = nullptr)
         : UserToken(userToken)
         , ClientAddress(clientAddress)
         , Uid(uid)
@@ -38,8 +39,8 @@ struct TEvCompileRequest: public TEventLocal<TEvCompileRequest, TKqpEvents::EvCo
         , CollectDiagnostics(collectDiagnostics)
         , QueryAst(queryAst)
         , Split(split)
-        , SplitCtx(splitCtx)
-        , SplitExpr(splitExpr)
+        , SplitCtx(std::move(splitCtx))
+        , SplitExpr(std::move(splitExpr))
     {
         Y_ENSURE(Uid.Defined() != Query.Defined());
     }
@@ -69,7 +70,7 @@ struct TEvCompileRequest: public TEventLocal<TEvCompileRequest, TKqpEvents::EvCo
     TMaybe<TQueryAst> QueryAst;
     bool Split = false;
 
-    NYql::TExprContext* SplitCtx = nullptr;
+    std::shared_ptr<NYql::TExprContext> SplitCtx = nullptr;
     NYql::TExprNode::TPtr SplitExpr = nullptr;
 };
 
@@ -79,7 +80,7 @@ struct TEvRecompileRequest: public TEventLocal<TEvRecompileRequest, TKqpEvents::
         TKqpDbCountersPtr dbCounters, const TGUCSettings::TPtr& gUCSettings, const TMaybe<TString>& applicationName,
         std::shared_ptr<std::atomic<bool>> intrestedInResult, const TIntrusivePtr<TUserRequestContext>& userRequestContext,
         NLWTrace::TOrbit orbit = {}, TKqpTempTablesState::TConstPtr tempTablesState = nullptr, TMaybe<TQueryAst> queryAst = Nothing(),
-        bool split = false, NYql::TExprContext* splitCtx = nullptr, NYql::TExprNode::TPtr splitExpr = nullptr)
+        bool split = false, std::shared_ptr<NYql::TExprContext> splitCtx = nullptr, NYql::TExprNode::TPtr splitExpr = nullptr)
         : UserToken(userToken)
         , ClientAddress(clientAddress)
         , Uid(uid)
@@ -95,8 +96,8 @@ struct TEvRecompileRequest: public TEventLocal<TEvRecompileRequest, TKqpEvents::
         , IntrestedInResult(std::move(intrestedInResult))
         , QueryAst(queryAst)
         , Split(split)
-        , SplitCtx(splitCtx)
-        , SplitExpr(splitExpr)
+        , SplitCtx(std::move(splitCtx))
+        , SplitExpr(std::move(splitExpr))
     {
     }
 
@@ -120,21 +121,19 @@ struct TEvRecompileRequest: public TEventLocal<TEvRecompileRequest, TKqpEvents::
     TMaybe<TQueryAst> QueryAst;
     bool Split = false;
 
-    NYql::TExprContext* SplitCtx = nullptr;
+    std::shared_ptr<NYql::TExprContext> SplitCtx = nullptr;
     NYql::TExprNode::TPtr SplitExpr = nullptr;
 };
 
 struct TEvCompileResponse: public TEventLocal<TEvCompileResponse, TKqpEvents::EvCompileResponse> {
-    TEvCompileResponse(const TKqpCompileResult::TConstPtr& compileResult, NLWTrace::TOrbit orbit = {}, const std::optional<TString>& replayMessage = std::nullopt)
+    TEvCompileResponse(const TKqpCompileResult::TConstPtr& compileResult, NLWTrace::TOrbit orbit = {})
         : CompileResult(compileResult)
-        , ReplayMessage(replayMessage)
         , Orbit(std::move(orbit)) {
     }
 
     TKqpCompileResult::TConstPtr CompileResult;
     TKqpStatsCompile Stats;
     std::optional<TString> ReplayMessage;
-    std::optional<TString> ReplayMessageUserView;
 
     NLWTrace::TOrbit Orbit;
 };
@@ -151,14 +150,25 @@ struct TEvParseResponse: public TEventLocal<TEvParseResponse, TKqpEvents::EvPars
 };
 
 struct TEvSplitResponse: public TEventLocal<TEvSplitResponse, TKqpEvents::EvSplitResponse> {
-    TEvSplitResponse(const TKqpQueryId& query, TVector<NYql::TExprNode::TPtr> exprs, NYql::TExprNode::TPtr world, THolder<NYql::TExprContext> ctx)
-        : Query(query)
+    TEvSplitResponse(
+            Ydb::StatusIds::StatusCode status,
+            const NYql::TIssues& issues,
+            const TKqpQueryId& query,
+            TVector<NYql::TExprNode::TPtr> exprs,
+            NYql::TExprNode::TPtr world,
+            std::shared_ptr<NYql::TExprContext> ctx)
+        : Status(status)
+        , Issues(issues)
+        , Query(query)
         , Ctx(std::move(ctx))
         , Exprs(std::move(exprs))
         , World(std::move(world)) {}
 
+    Ydb::StatusIds::StatusCode Status;
+    NYql::TIssues Issues;
+
     TKqpQueryId Query;
-    THolder<NYql::TExprContext> Ctx;
+    std::shared_ptr<NYql::TExprContext> Ctx;
     TVector<NYql::TExprNode::TPtr> Exprs;
     NYql::TExprNode::TPtr World;
 };

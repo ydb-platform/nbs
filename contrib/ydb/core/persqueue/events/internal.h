@@ -5,10 +5,12 @@
 #include <contrib/ydb/core/base/row_version.h>
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
 #include <contrib/ydb/core/persqueue/blob.h>
-#include <contrib/ydb/core/persqueue/percentile_counter.h>
+#include <contrib/ydb/core/persqueue/blob_refcounter.h>
 #include <contrib/ydb/core/persqueue/key.h>
-#include <contrib/ydb/core/persqueue/sourceid_info.h>
 #include <contrib/ydb/core/persqueue/metering_sink.h>
+#include <contrib/ydb/core/persqueue/partition_key_range/partition_key_range.h>
+#include <contrib/ydb/core/persqueue/percentile_counter.h>
+#include <contrib/ydb/core/persqueue/sourceid_info.h>
 #include <contrib/ydb/core/persqueue/write_id.h>
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
@@ -20,7 +22,7 @@
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
 #include <util/generic/maybe.h>
 
-namespace NYdb {
+namespace NYdb::inline V3 {
     class ICredentialsProviderFactory;
 }
 
@@ -72,9 +74,10 @@ namespace NPQ {
 
     struct TDataKey {
         TKey Key;
-        ui32 Size;
+        ui32 Size = 0;
         TInstant Timestamp;
-        ui64 CumulativeSize;
+        ui64 CumulativeSize = 0;
+        TBlobKeyTokenPtr BlobKeyToken = nullptr;
     };
 
     struct TErrorInfo {
@@ -196,6 +199,9 @@ struct TEvPQ {
         EvDeletePartitionDone,
         EvTransactionCompleted,
         EvListAllTopicsResponse,
+        EvAcquireExclusiveLock,
+        EvExclusiveLockAcquired,
+        EvReleaseExclusiveLock,
         EvEnd
     };
 
@@ -227,6 +233,10 @@ struct TEvPQ {
             bool IgnoreQuotaDeadline;
             // If specified, Data will contain heartbeat's data
             std::optional<TRowVersion> HeartbeatVersion;
+
+            // For Kafka deduplication:
+            bool EnableKafkaDeduplication = false;
+            TMaybe<i16> ProducerEpoch;
         };
 
         TEvWrite(const ui64 cookie, const ui64 messageNo, const TString& ownerCookie, const TMaybe<ui64> offset, TVector<TMsg> &&msgs, bool isDirectWrite, std::optional<ui64> initialSeqNo)
@@ -276,6 +286,7 @@ struct TEvPQ {
             , ExternalOperation(externalOperation)
             , PipeClient(pipeClient)
             , LastOffset(lastOffset)
+            , IsInternal(false)
         {}
 
         ui64 Cookie;
@@ -292,7 +303,16 @@ struct TEvPQ {
         bool ExternalOperation;
         TActorId PipeClient;
         ui64 LastOffset;
+        bool IsInternal;
     };
+
+    struct TMessageGroup {
+        ui64 SeqNo;
+        NPQ::TPartitionKeyRange KeyRange;
+    };
+
+    using TMessageGroups = std::unordered_map<TString, TMessageGroup>;
+    using TMessageGroupsPtr = std::shared_ptr<TMessageGroups>;
 
     struct TEvDirectReadBase {
         TEvDirectReadBase(ui64 cookie, const NPQ::TDirectReadKey& readKey, const TActorId& pipeClient)
@@ -351,7 +371,8 @@ struct TEvPQ {
 
         TEvSetClientInfo(const ui64 cookie, const TString& clientId, const ui64 offset, const TString& sessionId, const ui64 partitionSessionId,
                             const ui32 generation, const ui32 step, const TActorId& pipeClient,
-                            ESetClientInfoType type = ESCI_OFFSET, ui64 readRuleGeneration = 0, bool strict = false)
+                            ESetClientInfoType type = ESCI_OFFSET, ui64 readRuleGeneration = 0, bool strict = false,
+                            const std::optional<TString>& сommittedMetadata = std::nullopt)
         : Cookie(cookie)
         , ClientId(clientId)
         , Offset(offset)
@@ -363,6 +384,7 @@ struct TEvPQ {
         , ReadRuleGeneration(readRuleGeneration)
         , Strict(strict)
         , PipeClient(pipeClient)
+        , CommittedMetadata(сommittedMetadata)
         {
         }
 
@@ -377,6 +399,8 @@ struct TEvPQ {
         ui64 ReadRuleGeneration;
         bool Strict;
         TActorId PipeClient;
+        std::optional<TString> CommittedMetadata;
+        bool IsInternal = false;
     };
 
 
@@ -452,11 +476,13 @@ struct TEvPQ {
 
 
     struct TEvProxyResponse : public TEventLocal<TEvProxyResponse, EvProxyResponse> {
-        TEvProxyResponse(ui64 cookie)
+        TEvProxyResponse(ui64 cookie, bool isInternal)
             : Cookie(cookie)
+            , IsInternal(isInternal)
             , Response(std::make_shared<NKikimrClient::TResponse>())
         {}
         ui64 Cookie;
+        bool IsInternal;
         std::shared_ptr<NKikimrClient::TResponse> Response;
     };
 
@@ -469,31 +495,31 @@ struct TEvPQ {
     };
 
     struct TEvError : public TEventLocal<TEvError, EvError> {
-        TEvError(const NPersQueue::NErrorCode::EErrorCode errorCode, const TString& error, ui64 cookie)
+        TEvError(const NPersQueue::NErrorCode::EErrorCode errorCode, const TString& error, ui64 cookie, bool internal = false)
         : ErrorCode(errorCode)
         , Error(error)
         , Cookie(cookie)
+        , IsInternal(internal)
         {}
 
         NPersQueue::NErrorCode::EErrorCode ErrorCode;
         TString Error;
         ui64 Cookie;
+        bool IsInternal = false;
     };
 
     struct TEvBlobRequest : public TEventLocal<TEvBlobRequest, EvBlobRequest> {
-        TEvBlobRequest(const TString& user, const ui64 cookie, const NPQ::TPartitionId& partition, const ui64 readOffset,
+        TEvBlobRequest(const TString& user, const ui64 cookie, const NPQ::TPartitionId& partition,
                        TVector<NPQ::TRequestedBlob>&& blobs)
         : User(user)
         , Cookie(cookie)
         , Partition(partition)
-        , ReadOffset(readOffset)
         , Blobs(std::move(blobs))
         {}
 
         TString User;
         ui64 Cookie;
         NPQ::TPartitionId Partition;
-        ui64 ReadOffset;
         TVector<NPQ::TRequestedBlob> Blobs;
     };
 
@@ -574,15 +600,13 @@ struct TEvPQ {
     };
 
     struct TEvChangePartitionConfig : public TEventLocal<TEvChangePartitionConfig, EvChangePartitionConfig> {
-        TEvChangePartitionConfig(const NPersQueue::TTopicConverterPtr& topicConverter, const NKikimrPQ::TPQTabletConfig& config, const NKikimrPQ::TBootstrapConfig& bootstrapConfig)
+        TEvChangePartitionConfig(const NPersQueue::TTopicConverterPtr& topicConverter, const NKikimrPQ::TPQTabletConfig& config)
             : TopicConverter(topicConverter)
             , Config(config)
-            , BootstrapConfig(bootstrapConfig)
         {}
 
         NPersQueue::TTopicConverterPtr TopicConverter;
         NKikimrPQ::TPQTabletConfig Config;
-        NKikimrPQ::TBootstrapConfig BootstrapConfig;
     };
 
     struct TEvPartitionConfigChanged : public TEventLocal<TEvPartitionConfigChanged, EvPartitionConfigChanged> {
@@ -804,11 +828,25 @@ struct TEvPQ {
         {
         }
 
-        void AddOperation(TString consumer, ui64 begin, ui64 end) {
+        void AddOperation(TString consumer, ui64 begin, ui64 end, bool forceCommit = false, bool killReadSession = false, bool onlyCheckCommitedToFinish = false, TString readSessionId = {}) {
             NKikimrPQ::TPartitionOperation operation;
-            operation.SetBegin(begin);
-            operation.SetEnd(end);
+            operation.SetCommitOffsetsBegin(begin);
+            operation.SetCommitOffsetsEnd(end);
             operation.SetConsumer(std::move(consumer));
+            operation.SetForceCommit(forceCommit);
+            operation.SetKillReadSession(killReadSession);
+            operation.SetOnlyCheckCommitedToFinish(onlyCheckCommitedToFinish);
+            operation.SetReadSessionId(readSessionId);
+
+            Operations.push_back(std::move(operation));
+        }
+
+        void AddKafkaOffsetCommitOperation(TString consumer, ui64 offset) {
+            NKikimrPQ::TPartitionOperation operation;
+            operation.SetConsumer(std::move(consumer));
+            operation.SetKafkaTransaction(true);
+            operation.SetCommitOffsetsEnd(offset);
+            operation.SetForceCommit(true);
 
             Operations.push_back(std::move(operation));
         }
@@ -817,15 +855,19 @@ struct TEvPQ {
         ui64 TxId;
         TVector<NKikimrPQ::TPartitionOperation> Operations;
         TActorId SupportivePartitionActor;
-        bool ForceFalse = false;
+        bool ForcePredicateFalse = false;
+
+        NWilson::TSpan Span;
     };
 
     struct TEvTxCalcPredicateResult : public TEventLocal<TEvTxCalcPredicateResult, EvTxCalcPredicateResult> {
-        TEvTxCalcPredicateResult(ui64 step, ui64 txId, const NPQ::TPartitionId& partition, TMaybe<bool> predicate) :
+        TEvTxCalcPredicateResult(ui64 step, ui64 txId, const NPQ::TPartitionId& partition, TMaybe<bool> predicate,
+                                 const TString& issueMsg) :
             Step(step),
             TxId(txId),
             Partition(partition),
-            Predicate(predicate)
+            Predicate(predicate),
+            IssueMsg(issueMsg)
         {
         }
 
@@ -833,6 +875,7 @@ struct TEvPQ {
         ui64 TxId;
         NPQ::TPartitionId Partition;
         TMaybe<bool> Predicate;
+        TString IssueMsg;
     };
 
     struct TEvProposePartitionConfig : public TEventLocal<TEvProposePartitionConfig, EvProposePartitionConfig> {
@@ -846,7 +889,6 @@ struct TEvPQ {
         ui64 TxId;
         NPersQueue::TTopicConverterPtr TopicConverter;
         NKikimrPQ::TPQTabletConfig Config;
-        NKikimrPQ::TBootstrapConfig BootstrapConfig;
     };
 
     struct TEvProposePartitionConfigResult : public TEventLocal<TEvProposePartitionConfigResult, EvProposePartitionConfigResult> {
@@ -860,17 +902,24 @@ struct TEvPQ {
         ui64 Step;
         ui64 TxId;
         NPQ::TPartitionId Partition;
+
+        NKikimrPQ::TPartitions::TPartitionInfo Data;
     };
 
     struct TEvTxCommit : public TEventLocal<TEvTxCommit, EvTxCommit> {
-        TEvTxCommit(ui64 step, ui64 txId) :
-            Step(step),
-            TxId(txId)
+        TEvTxCommit(ui64 step, ui64 txId, TMessageGroupsPtr explicitMessageGroups = nullptr)
+            : Step(step)
+            , TxId(txId)
+            , ExplicitMessageGroups(std::move(explicitMessageGroups))
         {
         }
 
         ui64 Step;
         ui64 TxId;
+
+        TMessageGroupsPtr ExplicitMessageGroups;
+
+        NWilson::TSpan Span;
     };
 
     struct TEvTxCommitDone : public TEventLocal<TEvTxCommitDone, EvTxCommitDone> {
@@ -884,6 +933,8 @@ struct TEvPQ {
         ui64 Step;
         ui64 TxId;
         NPQ::TPartitionId Partition;
+
+        NWilson::TSpan Span;
     };
 
     struct TEvTxRollback : public TEventLocal<TEvTxRollback, EvTxRollback> {
@@ -895,6 +946,8 @@ struct TEvPQ {
 
         ui64 Step;
         ui64 TxId;
+
+        NWilson::TSpan Span;
     };
 
     struct TEvSubDomainStatus : public TEventPB<TEvSubDomainStatus, NKikimrPQ::TEvSubDomainStatus, EvSubDomainStatus> {
@@ -1059,6 +1112,8 @@ struct TEvPQ {
 
     struct TEvGetWriteInfoRequest : public TEventLocal<TEvGetWriteInfoRequest, EvGetWriteInfoRequest> {
         TActorId OriginalPartition;
+
+        NWilson::TSpan Span;
     };
 
     struct TEvGetWriteInfoResponse : public TEventLocal<TEvGetWriteInfoResponse, EvGetWriteInfoResponse> {
@@ -1181,6 +1236,15 @@ struct TEvPQ {
         bool HaveMoreTopics = false;
         Ydb::StatusIds::StatusCode Status = Ydb::StatusIds::SUCCESS;
         TString Error;
+    };
+
+    struct TEvAcquireExclusiveLock : public TEventLocal<TEvAcquireExclusiveLock, EvAcquireExclusiveLock> {
+    };
+
+    struct TEvExclusiveLockAcquired : public TEventLocal<TEvExclusiveLockAcquired, EvExclusiveLockAcquired> {
+    };
+
+    struct TEvReleaseExclusiveLock : public TEventLocal<TEvReleaseExclusiveLock, EvReleaseExclusiveLock> {
     };
 };
 

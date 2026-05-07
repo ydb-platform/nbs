@@ -1,12 +1,9 @@
 LIBRARY()
 
 SRCS(
-    async_http_mon.cpp
-    async_http_mon.h
+    mon_events.h
     mon.cpp
     mon.h
-    sync_http_mon.cpp
-    sync_http_mon.h
     crossref.cpp
     crossref.h
 )
@@ -23,8 +20,9 @@ PEERDIR(
     contrib/ydb/library/aclib
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/http
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/public/sdk/cpp/client/ydb_types/status
+    yql/essentials/public/issue
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/types/status
 )
 
 END()

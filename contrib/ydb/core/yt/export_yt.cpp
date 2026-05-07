@@ -3,11 +3,12 @@
 #include "export_yt.h"
 #include "yt_wrapper.h"
 
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #if __has_include("ydb/core/protos/flat_scheme_op.deps.pb.h")
     #include <contrib/ydb/core/protos/flat_scheme_op.deps.pb.h> // Y_IGNORE
 #endif
 #include <contrib/ydb/library/services/services.pb.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_state.h>
 #include <contrib/ydb/core/tx/datashard/export_common.h>
 #include <contrib/ydb/core/tx/datashard/type_serialization.h>
@@ -15,8 +16,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <contrib/ydb/library/binary_json/read.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
+#include <yql/essentials/types/binary_json/read.h>
+#include <yql/essentials/parser/pg_wrapper/interface/type_desc.h>
 
 #include <yt/yt/client/table_client/config.h>
 #include <yt/yt/client/table_client/name_table.h>
@@ -687,7 +688,9 @@ IBuffer* TYtExport::CreateBuffer() const {
     const auto& settings = Task.GetYTSettings();
     const auto& scanSettings = Task.GetScanSettings();
     const ui64 maxRows = scanSettings.GetRowsBatchSize() ? scanSettings.GetRowsBatchSize() : Max<ui64>();
-    const ui64 maxBytes = scanSettings.GetBytesBatchSize();
+
+    const ui64 configMaxBytes = AppData()->DataShardConfig.GetBackupBytesBatchSize();
+    const ui64 maxBytes = scanSettings.HasBytesBatchSize() ? scanSettings.GetBytesBatchSize() : configMaxBytes;
 
     return new TYtBuffer(Columns, maxRows, maxBytes, settings.GetUseTypeV3());
 }

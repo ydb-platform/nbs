@@ -18,6 +18,8 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
+
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/base/hive.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>

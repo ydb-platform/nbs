@@ -4,12 +4,10 @@ TEST_SRCS(
     test_ttl.py
 )
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
-TIMEOUT(600)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
 SIZE(MEDIUM)
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(

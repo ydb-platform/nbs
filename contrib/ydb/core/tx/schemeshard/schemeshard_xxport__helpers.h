@@ -1,5 +1,4 @@
 #pragma once
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_identificators.h>
 
 #include <util/generic/string.h>
@@ -13,6 +12,10 @@ namespace NKikimr::NSchemeShard {
 class TSchemeShard;
 struct TExportInfo;
 struct TImportInfo;
+
+namespace TEvSchemeShard {
+struct TEvModifySchemeTransaction;
+}
 
 TString GetUid(const Ydb::Operations::OperationParams& operationParams);
 

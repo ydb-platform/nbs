@@ -17,11 +17,11 @@
 #include <contrib/ydb/library/yql/dq/actors/protos/dq_events.pb.h>
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
 #include <contrib/ydb/library/yql/dq/proto/dq_tasks.pb.h>
-#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/minikql/comp_nodes/mkql_saveload.h>
-#include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/core/issue/yql_issue.h>
+#include <yql/essentials/minikql/comp_nodes/mkql_saveload.h>
+#include <yql/essentials/minikql/mkql_program_builder.h>
+#include <yql/essentials/minikql/mkql_node_serialization.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/yql/dq/actors/dq.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_request_context.h>
 
@@ -98,6 +98,26 @@ class TDqComputeActorBase : public NActors::TActorBootstrapped<TDerived>
                           , public TSinkCallbacks
                           , public TOutputTransformCallbacks
 {
+private:
+    struct TEvPrivate {
+        enum EEv : ui32 {
+            EvAsyncOutputError = EventSpaceBegin(NActors::TEvents::ES_PRIVATE),
+            EvEnd
+        };
+
+        static_assert(EvEnd < EventSpaceEnd(NActors::TEvents::ES_PRIVATE), "expect EvEnd < EventSpaceEnd(TEvents::ES_PRIVATE)");
+
+        struct TEvAsyncOutputError : public NActors::TEventLocal<TEvAsyncOutputError, EvAsyncOutputError> {
+            TEvAsyncOutputError(NYql::NDqProto::StatusIds::StatusCode statusCode, const TIssues& issues)
+                : StatusCode(statusCode)
+                , Issues(issues)
+            {}
+
+            NYql::NDqProto::StatusIds::StatusCode StatusCode;
+            NYql::TIssues Issues;
+        };
+    };
+
 protected:
     enum EEvWakeupTag : ui64 {
         TimeoutTag = 1,
@@ -109,14 +129,8 @@ protected:
 public:
     void Bootstrap() {
         try {
-            {
-                TStringBuilder prefixBuilder;
-                prefixBuilder << "SelfId: " << this->SelfId() << ", TxId: " << TxId << ", task: " << Task.GetId() << ". ";
-                if (RequestContext) {
-                    prefixBuilder << "Ctx: " << *RequestContext << ". ";
-                }
-                LogPrefix = prefixBuilder;
-            }
+            StartTime = TInstant::Now();
+            InitializeLogPrefix(); // re-initialize with SelfId
             CA_LOG_D("Start compute actor " << this->SelfId() << ", task: " << Task.GetId());
 
             Channels = new TDqComputeActorChannels(this->SelfId(), TxId, Task, !RuntimeSettings.FailOnUndelivery,
@@ -175,7 +189,7 @@ protected:
         , FunctionRegistry(functionRegistry)
         , CheckpointingMode(GetTaskCheckpointingMode(Task))
         , State(Task.GetCreateSuspended() ? NDqProto::COMPUTE_STATE_UNKNOWN : NDqProto::COMPUTE_STATE_EXECUTING)
-        , WatermarksTracker(this->SelfId(), TxId, Task.GetId())
+        , WatermarksTracker(LogPrefix)
         , TaskCounters(taskCounters)
         , MetricsReporter(taskCounters)
         , ComputeActorSpan(NKikimr::TWilsonKqp::ComputeActor, std::move(traceId), "ComputeActor")
@@ -188,6 +202,12 @@ protected:
                     true,
                     false
         );
+
+        if (ComputeActorSpan) {
+            ComputeActorSpan.Attribute("stageLevel", static_cast<int>(Task.GetProgram().GetSettings().GetStageLevel()));
+            ComputeActorSpan.Attribute("stageId", static_cast<int>(Task.GetStageId()));
+        }
+
         Alloc->SetGUCSettings(GUCSettings);
         InitMonCounters(taskCounters);
         if (ownMemoryQuota) {
@@ -195,18 +215,60 @@ protected:
         }
     }
 
+    ~TDqComputeActorBase() override {
+        if (Terminated) {
+            return;
+        }
+        Free();
+    }
+
+    void Free() {
+        auto guard = BindAllocator();
+        if (!guard) {
+            return;
+        }
+#define CLEANUP(what) decltype(what) what##_; what.swap(what##_);
+        CLEANUP(InputChannelsMap);
+        CLEANUP(SourcesMap);
+        CLEANUP(InputTransformsMap);
+        CLEANUP(OutputChannelsMap);
+        CLEANUP(SinksMap);
+        CLEANUP(OutputTransformsMap);
+#undef CLEANUP
+    }
+
     void InitMonCounters(const ::NMonitoring::TDynamicCounterPtr& taskCounters) {
         if (taskCounters) {
             MkqlMemoryQuota = taskCounters->GetCounter("MkqlMemoryQuota");
             OutputChannelSize = taskCounters->GetCounter("OutputChannelSize");
             SourceCpuTimeMs = taskCounters->GetCounter("SourceCpuTimeMs", true);
+            InputTransformCpuTimeMs = taskCounters->GetCounter("InputTransformCpuTimeMs", true);
+        }
+    }
+
+    void InitializeLogPrefix() {
+        TStringBuilder prefixBuilder;
+        prefixBuilder << "SelfId: " << this->SelfId() << ", TxId: " << TxId << ", task: " << Task.GetId() << ". ";
+        if (RequestContext) {
+            prefixBuilder << "Ctx: " << *RequestContext << ". ";
+        }
+        LogPrefix = std::move(prefixBuilder);
+
+        WatermarksTracker.SetLogPrefix(LogPrefix);
+        for (auto& [_, info]: InputTransformsMap) {
+            info.SetLogPrefix(LogPrefix);
+        }
+        for (auto& [_, info]: SourcesMap) {
+            info.SetLogPrefix(LogPrefix);
+        }
+        for (auto& [_, info]: InputChannelsMap) {
+            info.SetLogPrefix(LogPrefix);
         }
     }
 
     void ReportEventElapsedTime() {
         if (RuntimeSettings.CollectBasic()) {
-            ui64 elapsedMicros = NActors::TlsActivationContext->GetCurrentEventTicksAsSeconds() * 1'000'000ull;
-            CpuTime += TDuration::MicroSeconds(elapsedMicros);
+            ComputeActorElapsedTicks += NActors::TlsActivationContext->GetCurrentEventTicks();
         }
     }
 
@@ -254,6 +316,7 @@ protected:
             hFunc(NActors::TEvInterconnect::TEvNodeConnected, HandleExecuteBase);
             hFunc(IDqComputeActorAsyncInput::TEvNewAsyncInputDataArrived, OnNewAsyncInputDataArrived);
             hFunc(IDqComputeActorAsyncInput::TEvAsyncInputError, OnAsyncInputError);
+            hFunc(TEvPrivate::TEvAsyncOutputError, HandleAsyncOutputError);
             default: {
                 CA_LOG_C("TDqComputeActorBase, unexpected event: " << ev->GetTypeRewrite() << " (" << GetEventTypeString(ev) << ")");
                 InternalError(NYql::NDqProto::StatusIds::INTERNAL_ERROR, TIssuesIds::DEFAULT_ERROR, TStringBuilder() << "Unexpected event: " << ev->GetTypeRewrite() << " (" << GetEventTypeString(ev) << ")");
@@ -296,17 +359,19 @@ protected:
                 MemoryQuota->TryShrinkMemory(alloc);
             }
 
-            ReportStats(TInstant::Now(), ESendStats::IfPossible);
+            ReportStats();
         }
         if (Terminated) {
             DoTerminateImpl();
-            MemoryQuota.Reset();
-            MemoryLimits.MemoryQuotaManager.reset();
         }
     }
 
     virtual void DoExecuteImpl() = 0;
-    virtual void DoTerminateImpl() {}
+
+    virtual void DoTerminateImpl() {
+            MemoryQuota.Reset();
+            MemoryLimits.MemoryQuotaManager.reset();
+    }
 
     virtual bool DoHandleChannelsAfterFinishImpl() = 0;
 
@@ -325,12 +390,12 @@ protected:
     }
 
     void ProcessOutputsImpl(ERunStatus status) {
-        ProcessOutputsState.LastRunStatus = status;
-
         CA_LOG_T("ProcessOutputsState.Inflight: " << ProcessOutputsState.Inflight);
         if (ProcessOutputsState.Inflight == 0) {
             ProcessOutputsState = TProcessOutputsState();
         }
+
+        ProcessOutputsState.LastRunStatus = status;
 
         for (auto& entry : OutputChannelsMap) {
             const ui64 channelId = entry.first;
@@ -394,6 +459,14 @@ protected:
             // but idk what is the logic behind this
             ContinueExecute(EResumeSource::CAPendingInput);
             return;
+        }
+
+        if (status != ERunStatus::Finished) {
+            for (auto& [id, inputTransform] : InputTransformsMap) {
+                if (!inputTransform.Buffer->Empty()) {
+                    ContinueExecute(EResumeSource::CAPendingInput);
+                }
+            }
         }
 
         if (status != ERunStatus::Finished) {
@@ -496,19 +569,8 @@ protected:
                 }
             }
 
-            {
-                if (guard) {
-                    // free MKQL memory then destroy TaskRunner and Allocator
-#define CLEANUP(what) decltype(what) what##_; what.swap(what##_);
-                    CLEANUP(InputChannelsMap);
-                    CLEANUP(SourcesMap);
-                    CLEANUP(InputTransformsMap);
-                    CLEANUP(OutputChannelsMap);
-                    CLEANUP(SinksMap);
-                    CLEANUP(OutputTransformsMap);
-#undef CLEANUP
-                }
-            }
+            // free MKQL memory then destroy TaskRunner and Allocator
+            Free();
         }
 
         if (RuntimeSettings.TerminateHandler) {
@@ -593,8 +655,11 @@ protected:
         Terminate(State == NDqProto::COMPUTE_STATE_FINISHED, NDqProto::EComputeState_Name(State));
     }
 
-    void InternalError(TIssuesIds::EIssueCode issueCode, const TString& message) {
-        InternalError(NYql::NDqProto::StatusIds::PRECONDITION_FAILED, issueCode, message);
+    void ErrorFromIssue(TIssuesIds::EIssueCode issueCode, const TString& message) {
+        TIssue issue(message);
+        SetIssueCode(issueCode, issue);
+        const auto statusCode = GetDqStatus(issue).GetOrElse(NYql::NDqProto::StatusIds::PRECONDITION_FAILED);
+        InternalError(statusCode, std::move(issue));
     }
 
     void InternalError(NYql::NDqProto::StatusIds::StatusCode statusCode, TIssuesIds::EIssueCode issueCode, const TString& message) {
@@ -769,7 +834,7 @@ protected:
 
 protected:
     struct TInputChannelInfo {
-        const TString LogPrefix;
+        TString LogPrefix;
         ui64 ChannelId;
         ui32 SrcStageId;
         IDqInputChannel::TPtr Channel;
@@ -828,6 +893,10 @@ protected:
             if (Channel) {  // async actor doesn't hold channels, so channel is resumed in task runner actor
                 Channel->Resume();
             }
+        }
+
+        void SetLogPrefix(const TString& logPrefix) {
+            LogPrefix = logPrefix;
         }
     };
 
@@ -1025,6 +1094,9 @@ protected:
 
                 Channels->SetOutputChannelPeer(channelUpdate.GetId(), peer);
                 outputChannel->HasPeer = true;
+                if (outputChannel->Channel) {
+                    outputChannel->Channel->UpdateSettings({.IsLocalChannel = peer.NodeId() == this->SelfId().NodeId()});
+                }
 
                 continue;
             }
@@ -1049,15 +1121,22 @@ protected:
                     );
                 }
 
+                TStringBuilder reason = TStringBuilder() << "Task execution timeout ";
+                if (RuntimeSettings.Timeout) {
+                    reason << RuntimeSettings.Timeout->MilliSeconds() << "ms ";
+                }
+                reason << "exceeded, terminating after " << (TInstant::Now() - StartTime).MilliSeconds() << "ms";
+
                 State = NDqProto::COMPUTE_STATE_FAILURE;
-                ReportStateAndMaybeDie(NYql::NDqProto::StatusIds::TIMEOUT, {TIssue("timeout exceeded")}, true);
+                ReportStateAndMaybeDie(NYql::NDqProto::StatusIds::TIMEOUT, {TIssue(reason)}, true);
+                DoTerminateImpl();
                 break;
             }
             case EEvWakeupTag::PeriodicStatsTag: {
-                const auto maxInterval = RuntimeSettings.ReportStatsSettings->MaxInterval;
-                this->Schedule(maxInterval, new NActors::TEvents::TEvWakeup(EEvWakeupTag::PeriodicStatsTag));
-
-                ReportStats(NActors::TActivationContext::Now(), ESendStats::IfRequired);
+                if (Running && State == NDqProto::COMPUTE_STATE_EXECUTING) {
+                    ReportStats();
+                    this->Schedule(RuntimeSettings.ReportStatsSettings->MaxInterval, new NActors::TEvents::TEvWakeup(EEvWakeupTag::PeriodicStatsTag));
+                }
                 break;
             }
             default:
@@ -1077,6 +1156,7 @@ protected:
 
                 TerminateSources("executer lost", false);
                 Terminate(false, "executer lost"); // Executer lost - no need to report state
+                DoTerminateImpl();
                 break;
             }
             default: {
@@ -1120,6 +1200,7 @@ protected:
         if (ev->Get()->Record.GetStatusCode() == NYql::NDqProto::StatusIds::INTERNAL_ERROR) {
             Y_ABORT_UNLESS(ev->Get()->GetIssues().Size() == 1);
             InternalError(NYql::NDqProto::StatusIds::INTERNAL_ERROR, *ev->Get()->GetIssues().begin());
+            DoTerminateImpl();
             return;
         }
 
@@ -1143,6 +1224,7 @@ protected:
         }
 
         ReportStateAndMaybeDie(ev->Get()->Record.GetStatusCode(), issues, true);
+        DoTerminateImpl();
     }
 
     void HandleExecuteBase(NActors::TEvInterconnect::TEvNodeDisconnected::TPtr& ev) {
@@ -1327,6 +1409,7 @@ protected:
                         .SecureParams = secureParams,
                         .TaskParams = taskParams,
                         .ComputeActorId = this->SelfId(),
+                        .TaskCounters = TaskCounters,
                         .TypeEnv = typeEnv,
                         .HolderFactory = holderFactory,
                         .Alloc = Alloc,
@@ -1348,6 +1431,7 @@ protected:
                         .OutputIndex = outputIndex,
                         .StatsLevel = collectStatsLevel,
                         .TxId = TxId,
+                        .TaskId = Task.GetId(),
                         .TransformOutput = transform.OutputBuffer,
                         .Callback = static_cast<TOutputTransformCallbacks*>(this),
                         .SecureParams = secureParams,
@@ -1373,6 +1457,7 @@ protected:
                         .OutputIndex = outputIndex,
                         .StatsLevel = collectStatsLevel,
                         .TxId = TxId,
+                        .TaskId = Task.GetId(),
                         .Callback = static_cast<TSinkCallbacks*>(this),
                         .SecureParams = secureParams,
                         .TaskParams = taskParams,
@@ -1390,8 +1475,20 @@ protected:
     }
 
     void PollAsyncInput() {
+        if (!Running) {
+            CA_LOG_T("Skip polling inputs and sources because not running");
+            return;
+        }
+
+        CA_LOG_T("Poll inputs");
+        for (auto& [inputIndex, transform] : InputTransformsMap) {
+            if (auto resume = transform.PollAsyncInput(MetricsReporter, WatermarksTracker, RuntimeSettings.AsyncInputPushLimit)) {
+                ContinueExecute(*resume);
+            }
+        }
+
         // Don't produce any input from sources if we're about to save checkpoint.
-        if (!Running || (Checkpoints && Checkpoints->HasPendingCheckpoint() && !Checkpoints->ComputeActorStateSaved())) {
+        if ((Checkpoints && Checkpoints->HasPendingCheckpoint() && !Checkpoints->ComputeActorStateSaved())) {
             CA_LOG_T("Skip polling sources because of pending checkpoint");
             return;
         }
@@ -1402,22 +1499,24 @@ protected:
                 ContinueExecute(*resume);
             }
         }
-
-        CA_LOG_T("Poll inputs");
-        for (auto& [inputIndex, transform] : InputTransformsMap) {
-            if (auto resume = transform.PollAsyncInput(MetricsReporter, WatermarksTracker, RuntimeSettings.AsyncInputPushLimit)) {
-                ContinueExecute(*resume);
-            }
-        }
     }
 
     void OnNewAsyncInputDataArrived(const IDqComputeActorAsyncInput::TEvNewAsyncInputDataArrived::TPtr& ev) {
         Y_ABORT_UNLESS(SourcesMap.FindPtr(ev->Get()->InputIndex) || InputTransformsMap.FindPtr(ev->Get()->InputIndex));
-        auto cpuTimeDelta = TakeSourceCpuTimeDelta();
-        if (SourceCpuTimeMs) {
-            SourceCpuTimeMs->Add(cpuTimeDelta.MilliSeconds());
+        {
+            auto cpuTimeDelta = TakeSourceCpuTimeDelta();
+            if (SourceCpuTimeMs) {
+                SourceCpuTimeMs->Add(cpuTimeDelta.MilliSeconds());
+            }
+            CpuTimeSpent += cpuTimeDelta;
         }
-        CpuTimeSpent += cpuTimeDelta;
+        {
+            auto cpuTimeDelta = TakeInputTransformCpuTimeDelta();
+            if (InputTransformCpuTimeMs) {
+                InputTransformCpuTimeMs->Add(cpuTimeDelta.MilliSeconds());
+            }
+            CpuTimeSpent += cpuTimeDelta;
+        }
         ContinueExecute(EResumeSource::CANewAsyncInput);
     }
 
@@ -1458,7 +1557,7 @@ protected:
         }
 
         CA_LOG_E("Sink[" << outputIndex << "] fatal error: " << issues.ToOneLineString());
-        InternalError(fatalCode, issues);
+        this->Send(this->SelfId(), new TEvPrivate::TEvAsyncOutputError(fatalCode, issues));
     }
 
     void OnOutputTransformError(ui64 outputIndex, const TIssues& issues, NYql::NDqProto::StatusIds::StatusCode fatalCode) override final {
@@ -1468,7 +1567,11 @@ protected:
         }
 
         CA_LOG_E("OutputTransform[" << outputIndex << "] fatal error: " << issues.ToOneLineString());
-        InternalError(fatalCode, issues);
+        this->Send(this->SelfId(), new TEvPrivate::TEvAsyncOutputError(fatalCode, issues));
+    }
+
+    void HandleAsyncOutputError(const TEvPrivate::TEvAsyncOutputError::TPtr& ev) {
+        InternalError(ev->Get()->StatusCode, ev->Get()->Issues);
     }
 
     bool AllAsyncOutputsFinished() const {
@@ -1567,6 +1670,7 @@ protected:
         RequestContext = MakeIntrusive<NYql::NDq::TRequestContext>(Task.GetRequestContext());
 
         InitializeWatermarks();
+        InitializeLogPrefix(); // note: SelfId is not initialized here
     }
 
 private:
@@ -1590,7 +1694,7 @@ private:
         }
     }
 
-    virtual const NYql::NDq::TTaskRunnerStatsBase* GetTaskRunnerStats() = 0;
+    virtual const NYql::NDq::TDqTaskRunnerStats* GetTaskRunnerStats() = 0;
     virtual const NYql::NDq::TDqMeteringStats* GetMeteringStats() = 0;
 
     virtual const IDqAsyncOutputBuffer* GetSink(ui64 outputIdx, const TAsyncOutputInfoBase& sinkInfo) const = 0;
@@ -1612,6 +1716,21 @@ public:
         return result;
     }
 
+    TDuration GetInputTransformCpuTime() const {
+        auto result = TDuration::Zero();
+        for (auto& [inputIndex, sourceInfo] : InputTransformsMap) {
+            result += sourceInfo.AsyncInput->GetCpuTime();
+        }
+        return result;
+    }
+
+    TDuration TakeInputTransformCpuTimeDelta() {
+        auto newInputTransformCpuTime = GetInputTransformCpuTime();
+        auto result = newInputTransformCpuTime - InputTransformCpuTime;
+        InputTransformCpuTime = newInputTransformCpuTime;
+        return result;
+    }
+
     void FillStats(NDqProto::TDqComputeActorStats* dst, bool last) {
         if (RuntimeSettings.CollectNone()) {
             return;
@@ -1621,7 +1740,8 @@ public:
             ReportEventElapsedTime();
         }
 
-        dst->SetCpuTimeUs(CpuTime.MicroSeconds());
+        ui64 computeActorElapsedUs = NHPTimer::GetSeconds(ComputeActorElapsedTicks) * 1'000'000ull;
+        dst->SetCpuTimeUs(computeActorElapsedUs + SourceCpuTime.MicroSeconds() + InputTransformCpuTime.MicroSeconds());
         dst->SetMaxMemoryUsage(MemoryLimits.MemoryQuotaManager->GetMaxMemorySize());
 
         if (auto memProfileStats = GetMemoryProfileStats(); memProfileStats) {
@@ -1649,19 +1769,34 @@ public:
 
             for (auto& [inputIndex, sourceInfo] : SourcesMap) {
                 if (auto* source = sourceInfo.AsyncInput) {
-                    source->FillExtraStats(protoTask, last, GetMeteringStats());
+                    source->FillExtraStats(protoTask, RuntimeSettings.WithProgressStats || last, GetMeteringStats());
                 }
             }
-            FillTaskRunnerStats(Task.GetId(), Task.GetStageId(), *taskStats, protoTask, RuntimeSettings.GetCollectStatsLevel());
 
-            // More accurate cpu time counter:
-            if (TDerived::HasAsyncTaskRunner) {
-                protoTask->SetCpuTimeUs(CpuTime.MicroSeconds() + taskStats->ComputeCpuTime.MicroSeconds() + taskStats->BuildCpuTime.MicroSeconds());
+            FillTaskRunnerStats(Task.GetId(), Task.GetStageId(), *taskStats, protoTask, RuntimeSettings.GetCollectStatsLevel());
+            // when TR finished, use channels to detect output back pressure
+            if (taskStats->FinishTs && State != NDqProto::COMPUTE_STATE_FINISHED) {
+                auto lastOutputTime = Channels->GetLastOutputMessageTime();
+                if (lastOutputTime) {
+                    protoTask->SetCurrentWaitOutputTimeUs((TInstant::Now() - lastOutputTime).MicroSeconds());
+                }
             }
+
+            auto cpuTimeUs = taskStats->ComputeCpuTime.MicroSeconds() + taskStats->BuildCpuTime.MicroSeconds();
+            if (TDerived::HasAsyncTaskRunner) {
+                // Async TR is another actor, summarize CPU usage
+                cpuTimeUs = NHPTimer::GetSeconds(ComputeActorElapsedTicks + TaskRunnerActorElapsedTicks) * 1'000'000ull;
+            }
+            // cpuTimeUs does include SourceCpuTime
+            protoTask->SetCpuTimeUs(cpuTimeUs + SourceCpuTime.MicroSeconds() + InputTransformCpuTime.MicroSeconds());
             protoTask->SetSourceCpuTimeUs(SourceCpuTime.MicroSeconds());
 
             ui64 ingressBytes = 0;
             ui64 ingressRows = 0;
+            ui64 filteredBytes = 0;
+            ui64 filteredRows = 0;
+            ui64 queuedBytes = 0;
+            ui64 queuedRows = 0;
             ui64 ingressDecompressedBytes = 0;
             auto startTimeMs = protoTask->GetStartTimeMs();
 
@@ -1671,6 +1806,9 @@ public:
                     auto inputIndex = protoSource.GetInputIndex();
                     if (auto* sourceInfoPtr = SourcesMap.FindPtr(inputIndex)) {
                         auto& sourceInfo = *sourceInfoPtr;
+                        if (!sourceInfo.AsyncInput)
+                            continue;
+
                         protoSource.SetIngressName(sourceInfo.Type);
                         const auto& ingressStats = sourceInfo.AsyncInput->GetIngressStats();
                         FillAsyncStats(*protoSource.MutableIngress(), ingressStats);
@@ -1684,6 +1822,10 @@ public:
                                 startTimeMs = firstMessageMs;
                             }
                         }
+                        filteredBytes += ingressStats.FilteredBytes;
+                        filteredRows += ingressStats.FilteredRows;
+                        queuedBytes += ingressStats.QueuedBytes;
+                        queuedRows += ingressStats.QueuedRows;
                     }
                 }
             } else {
@@ -1697,6 +1839,10 @@ public:
                     // ingress rows are usually not reported, so we count rows in task runner input
                     ingressRows += ingressStats.Rows ? ingressStats.Rows : taskStats->Sources.at(inputIndex)->GetPopStats().Rows;
                     ingressDecompressedBytes += ingressStats.DecompressedBytes;
+                    filteredBytes += ingressStats.FilteredBytes;
+                    filteredRows += ingressStats.FilteredRows;
+                    queuedBytes += ingressStats.QueuedBytes;
+                    queuedRows += ingressStats.QueuedRows;
                 }
             }
 
@@ -1707,6 +1853,10 @@ public:
             protoTask->SetIngressBytes(ingressBytes);
             protoTask->SetIngressRows(ingressRows);
             protoTask->SetIngressDecompressedBytes(ingressDecompressedBytes);
+            protoTask->SetIngressFilteredBytes(filteredBytes);
+            protoTask->SetIngressFilteredRows(filteredRows);
+            protoTask->SetIngressQueuedBytes(queuedBytes);
+            protoTask->SetIngressQueuedRows(queuedRows);
 
             ui64 egressBytes = 0;
             ui64 egressRows = 0;
@@ -1741,6 +1891,10 @@ public:
                     egressRows += egressStats.Rows ? egressStats.Rows : pushStats.Rows;
                     // p.s. sink == sinkInfo.Buffer
                 }
+
+                if (auto* source = sinkInfo.AsyncOutput) {
+                    source->FillExtraStats(protoTask, RuntimeSettings.WithProgressStats || last, GetMeteringStats());
+                }
             }
 
             protoTask->SetFinishTimeMs(finishTimeMs);
@@ -1764,7 +1918,7 @@ public:
                 }
 
                 if (auto* transform = transformInfo.AsyncInput) {
-                    transform->FillExtraStats(protoTask, last, GetMeteringStats());
+                    transform->FillExtraStats(protoTask, RuntimeSettings.WithProgressStats || last, GetMeteringStats());
                 }
             }
 
@@ -1827,7 +1981,7 @@ public:
             // TODO: what should happen in this case?
         }
 
-        static_cast<TDerived*>(this)->FillExtraStats(dst, last);
+        static_cast<TDerived*>(this)->FillExtraStats(dst, RuntimeSettings.WithProgressStats || last);
 
         if (last && MemoryQuota) {
             MemoryQuota->ResetProfileStats();
@@ -1835,25 +1989,10 @@ public:
     }
 
 protected:
-    enum class ESendStats {
-        IfPossible,
-        IfRequired
-    };
-    void ReportStats(TInstant now, ESendStats condition) {
-        if (!RuntimeSettings.ReportStatsSettings) {
+    void ReportStats() {
+        auto now = TInstant::Now();
+        if (State != NDqProto::COMPUTE_STATE_EXECUTING || !RuntimeSettings.ReportStatsSettings || now - LastSendStatsTime < RuntimeSettings.ReportStatsSettings->MinInterval) {
             return;
-        }
-        auto dT = now - LastSendStatsTime;
-        switch(condition) {
-            case ESendStats::IfPossible:
-                if (dT < RuntimeSettings.ReportStatsSettings->MinInterval) {
-                    return;
-                }
-                break;
-            case ESendStats::IfRequired:
-                if (dT < RuntimeSettings.ReportStatsSettings->MaxInterval) {
-                    return;
-                }
         }
         auto evState = std::make_unique<TEvDqCompute::TEvState>();
         evState->Record.SetState(NDqProto::COMPUTE_STATE_EXECUTING);
@@ -1906,7 +2045,8 @@ protected:
     bool ResumeEventScheduled = false;
     NDqProto::EComputeState State;
     TIntrusivePtr<NYql::NDq::TRequestContext> RequestContext;
-    TDuration CpuTime;
+    ui64 ComputeActorElapsedTicks = 0;
+    ui64 TaskRunnerActorElapsedTicks = 0;
 
     struct TProcessOutputsState {
         int Inflight = 0;
@@ -1925,7 +2065,9 @@ protected:
     TDqComputeActorMetrics MetricsReporter;
     NWilson::TSpan ComputeActorSpan;
     TDuration SourceCpuTime;
+    TDuration InputTransformCpuTime;
 private:
+    TInstant StartTime;
     bool Running = true;
     TInstant LastSendStatsTime;
     bool PassExceptions = false;
@@ -1934,6 +2076,7 @@ protected:
     ::NMonitoring::TDynamicCounters::TCounterPtr MkqlMemoryQuota;
     ::NMonitoring::TDynamicCounters::TCounterPtr OutputChannelSize;
     ::NMonitoring::TDynamicCounters::TCounterPtr SourceCpuTimeMs;
+    ::NMonitoring::TDynamicCounters::TCounterPtr InputTransformCpuTimeMs;
     THolder<NYql::TCounters> Stat;
     TDuration CpuTimeSpent;
 };

@@ -1,5 +1,6 @@
 #include "query_readbatch.h"
 #include <contrib/ydb/core/blobstorage/base/vdisk_priorities.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 #include <contrib/ydb/library/wilson_ids/wilson.h>
 #include <contrib/ydb/library/actors/wilson/wilson_span.h>
 #include <util/generic/algorithm.h>
@@ -29,8 +30,10 @@ namespace NKikimr {
             Y_DEBUG_ABORT_UNLESS(!Result->GlueReads.empty());
 
             TReplQuoter::TPtr quoter;
+            NMonitoring::TDynamicCounters::TCounterPtr quoterThrottledCounter;
             if (IsRepl) {
                 quoter = Ctx->VCtx->ReplPDiskReadQuoter;
+                quoterThrottledCounter = Ctx->ReplMonGroup.ReplPDiskReadThrottledMicrosecondsPtr();
             }
 
             // make read requests
@@ -48,7 +51,7 @@ namespace NKikimr {
 
                 // send request
                 TReplQuoter::QuoteMessage(quoter, std::make_unique<IEventHandle>(Ctx->PDiskCtx->PDiskId, SelfId(),
-                    msg.release(), 0, 0, nullptr, Span.GetTraceId()), it->Part.Size);
+                    msg.release(), 0, 0, nullptr, Span.GetTraceId()), it->Part.Size, 0, quoterThrottledCounter);
 
                 Counter++;
             }

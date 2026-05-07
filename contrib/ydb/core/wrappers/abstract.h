@@ -1,12 +1,25 @@
 #pragma once
-#include <contrib/ydb/core/base/events.h>
+
+#include <contrib/ydb/core/base/appdata_fwd.h>
+
+#include <contrib/ydb/core/protos/s3_settings.pb.h>
 #include <contrib/ydb/core/wrappers/events/abstract.h>
 #include <contrib/ydb/core/wrappers/events/common.h>
-#include <contrib/ydb/core/wrappers/events/delete_objects.h>
-#include <contrib/ydb/core/wrappers/events/list_objects.h>
-#include <contrib/ydb/core/wrappers/events/object_exists.h>
 #include <contrib/ydb/core/wrappers/events/get_object.h>
-#include <util/generic/ptr.h>
+#include <contrib/ydb/core/wrappers/events/object_exists.h>
+
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/log.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
+#include <util/system/mutex.h>
+
+#include <memory>
+
+namespace NKikimrConfig {
+    class TAwsClientConfig;
+};
 
 namespace NKikimr::NWrappers {
 
@@ -151,7 +164,7 @@ public:
     using TPtr = std::shared_ptr<IExternalStorageConfig>;
     virtual ~IExternalStorageConfig() = default;
     IExternalStorageOperator::TPtr ConstructStorageOperator(bool verbose = true) const;
-    static IExternalStorageConfig::TPtr Construct(const NKikimrSchemeOp::TS3Settings& settings);
+    static IExternalStorageConfig::TPtr Construct(const NKikimrConfig::TAwsClientConfig& defaultAwsClientSettings, const NKikimrSchemeOp::TS3Settings& settings, NMonitoring::TDynamicCounterPtr rootCounters = AppData()->Counters);
 };
 } // NExternalStorage
 

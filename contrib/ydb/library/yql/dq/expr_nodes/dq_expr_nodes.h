@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.gen.h>
 
-#include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
+#include <yql/essentials/core/expr_nodes/yql_expr_nodes.h>
 
 namespace NYql::NNodes {
 

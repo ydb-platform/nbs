@@ -8,14 +8,14 @@
 #include <contrib/ydb/core/protos/table_service_config.pb.h>
 #include <contrib/ydb/library/naming_conventions/naming_conventions.h>
 
-#include <contrib/ydb/library/yql/core/peephole_opt/yql_opt_peephole_physical.h>
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
-#include <contrib/ydb/library/yql/core/yql_join.h>
-#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
+#include <yql/essentials/core/peephole_opt/yql_opt_peephole_physical.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
+#include <yql/essentials/core/yql_join.h>
+#include <yql/essentials/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_peephole.h>
 #include <contrib/ydb/library/yql/dq/type_ann/dq_type_ann.h>
-#include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
+#include <yql/essentials/core/services/yql_transform_pipeline.h>
+#include <yql/essentials/providers/common/transform/yql_optimize.h>
 
 #include <util/generic/size_literals.h>
 #include <util/string/cast.h>
@@ -293,10 +293,8 @@ bool CanPropagateWideBlockThroughChannel(
         return false;
     }
 
-    // Ensure that stage has blocks on top level (i.e. FromFlow(WideFromBlocks(...)))
-    if (!program.Lambda().Body().Maybe<TCoFromFlow>() ||
-        !program.Lambda().Body().Cast<TCoFromFlow>().Input().Maybe<TCoWideFromBlocks>())
-    {
+    // Ensure that stage has blocks on top level (i.e. (WideFromBlocks(...))).
+    if (!program.Lambda().Body().Maybe<TCoWideFromBlocks>()) {
         return false;
     }
 
@@ -362,36 +360,42 @@ TMaybeNode<TKqpPhysicalTx> PeepholeOptimize(const TKqpPhysicalTx& tx, TExprConte
 
             YQL_ENSURE(stage.Inputs().Size() == stage.Program().Args().Size());
 
+            // TODO(#23895): workaround for https://github.com/ydb-platform/ydb/issues/20440
+            //      do not mix scalar and block HashShuffle connections,
+            //      if we find any scalar connection then don't propagate blocks through other connections.
+            ui32 scalarHashShuffleCount = 0;
+            for (size_t i = 0; i < stage.Inputs().Size(); ++i) {
+                auto connection = stage.Inputs().Item(i).Maybe<TDqCnHashShuffle>();
+                if (connection && connection.Cast().HashFunc().IsValid()) {
+                    auto hashFuncType = FromString<NDq::EHashShuffleFuncType>(connection.Cast().HashFunc().Cast().StringValue());
+                    scalarHashShuffleCount += (hashFuncType == NDq::EHashShuffleFuncType::HashV1);
+                }
+            }
+
             for (size_t i = 0; i < stage.Inputs().Size(); ++i) {
                 auto oldArg = stage.Program().Args().Arg(i);
                 auto newArg = TCoArgument(ctx.NewArgument(oldArg.Pos(), oldArg.Name()));
                 newArg.MutableRef().SetTypeAnn(oldArg.Ref().GetTypeAnn());
                 newArgs.emplace_back(newArg);
 
-                if (auto connection = stage.Inputs().Item(i).Maybe<TDqConnection>(); connection &&
+                if (auto connection = stage.Inputs().Item(i).Maybe<TDqConnection>(); scalarHashShuffleCount <= 1 && connection &&
                     CanPropagateWideBlockThroughChannel(connection.Cast().Output(), programs, TDqStageSettings::Parse(stage), ctx, typesCtx))
                 {
                     TExprNode::TPtr newArgNode = ctx.Builder(oldArg.Pos())
-                        .Callable("FromFlow")
-                            .Callable(0, "WideFromBlocks")
-                                .Callable(0, "ToFlow")
-                                    .Add(0, newArg.Ptr())
-                                .Seal()
-                            .Seal()
+                        .Callable("WideFromBlocks")
+                            .Add(0, newArg.Ptr())
                         .Seal()
                         .Build();
+
                     argsMap.emplace(oldArg.Raw(), newArgNode);
 
                     auto stageUid = connection.Cast().Output().Stage().Ref().UniqueId();
 
-                    // Update input program with: FromFlow(WideFromBlocks($1)) → FromFlow($1)
-                    if (const auto& inputProgram = programs.at(stageUid); inputProgram.Lambda().Body().Maybe<TCoFromFlow>() &&
-                        inputProgram.Lambda().Body().Cast<TCoFromFlow>().Input().Maybe<TCoWideFromBlocks>())
-                    {
-                        auto newBody = Build<TCoFromFlow>(ctx, inputProgram.Lambda().Body().Cast<TCoFromFlow>().Pos())
-                            .Input(inputProgram.Lambda().Body().Cast<TCoFromFlow>().Input().Cast<TCoWideFromBlocks>().Input())
-                            .Done();
-
+                    const auto& inputProgram = programs.at(stageUid);
+                    const auto& body = inputProgram.Lambda().Body();
+                    // Update input program with (WideFromBlocks($1)) -> ($1).
+                    if (body.Maybe<TCoWideFromBlocks>()) {
+                        auto newBody = body.Cast<TCoWideFromBlocks>().Input();
                         auto newInputProgram = Build<TKqpProgram>(ctx, inputProgram.Pos())
                             .Lambda()
                                 .Args(inputProgram.Lambda().Args())

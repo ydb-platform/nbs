@@ -12,7 +12,7 @@
 
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/http/http.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 #include <library/cpp/http/server/http.h>
 #include <library/cpp/json/json_value.h>
 #include <library/cpp/json/json_reader.h>
@@ -57,7 +57,7 @@ struct THttpResponseData {
     NJson::TJsonValue Body;
     TString ErrorText{"OK"};
     TString YmqStatusCode;
-    ui32 YmqHttpCode;
+    ui32 YmqHttpCode = 500;
     bool YmqIsFifo = false;
     THashMap<TString, TString> QueueTags;
 

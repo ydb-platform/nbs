@@ -29,7 +29,7 @@ struct TDistributedTransaction {
                               ui64 extractTabletId);
     void OnPlanStep(ui64 step);
     void OnTxCalcPredicateResult(const TEvPQ::TEvTxCalcPredicateResult& event);
-    void OnProposePartitionConfigResult(const TEvPQ::TEvProposePartitionConfigResult& event);
+    void OnProposePartitionConfigResult(TEvPQ::TEvProposePartitionConfigResult& event);
     void OnReadSet(const NKikimrTx::TEvReadSet& event,
                    const TActorId& sender,
                    std::unique_ptr<TEvTxProcessing::TEvReadSetAck> ack);
@@ -67,6 +67,7 @@ struct TDistributedTransaction {
     NKikimrPQ::TPQTabletConfig TabletConfig;
     NKikimrPQ::TBootstrapConfig BootstrapConfig;
     NPersQueue::TTopicConverterPtr TopicConverter;
+    NKikimrPQ::TPartitions PartitionsData;
 
     bool WriteInProgress = false;
 
@@ -107,6 +108,32 @@ struct TDistributedTransaction {
     size_t PredicateAcksCount = 0;
 
     bool Pending = false;
+
+    TMaybe<NKikimrPQ::TError> Error;
+
+    void SetExecuteSpan(NWilson::TSpan&& span);
+    void EndExecuteSpan();
+    NWilson::TSpan CreatePlanStepSpan(ui64 tabletId, ui64 step);
+    void BeginWaitRSSpan(ui64 tabletId);
+    void SetLastTabletSentByRS(ui64 tabletId);
+    void EndWaitRSSpan();
+    void BeginWaitRSAcksSpan(ui64 tabletId);
+    void EndWaitRSAcksSpan();
+    void BeginPersistSpan(ui64 tabletId, EState state, const NWilson::TTraceId& traceId);
+    void EndPersistSpan();
+    void BeginDeleteSpan(ui64 tabletId, const NWilson::TTraceId& traceId);
+    void EndDeleteSpan();
+
+    NWilson::TTraceId GetExecuteSpanTraceId();
+
+private:
+    NWilson::TSpan CreateSpan(const char* name, ui64 tabletId);
+
+    NWilson::TSpan ExecuteSpan;
+    NWilson::TSpan PersistSpan;
+    NWilson::TSpan WaitRSSpan;
+    NWilson::TSpan WaitRSAcksSpan;
+    NWilson::TSpan DeleteSpan;
 };
 
 }

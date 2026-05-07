@@ -10,9 +10,9 @@
 #include <contrib/ydb/core/util/wilson.h>
 
 #include <contrib/ydb/library/wilson_ids/wilson.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/public/sdk/cpp/client/resources/ydb_resources.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <ydb-cpp-sdk/client/resources/ydb_resources.h>
 
 #include <contrib/ydb/public/api/protos/ydb_query.pb.h>
 

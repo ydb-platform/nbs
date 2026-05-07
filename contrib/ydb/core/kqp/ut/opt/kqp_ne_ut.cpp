@@ -1,6 +1,6 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <ydb-cpp-sdk/client/proto/accessor.h>
 #include <contrib/ydb/core/kqp/runtime/kqp_read_actor.h>
 #include <contrib/ydb/core/kqp/runtime/kqp_read_iterator_common.h>
 #include <contrib/ydb/core/tx/datashard/datashard_impl.h>
@@ -135,7 +135,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
     Y_UNIT_TEST(ContainerRegistryCombiner) {
         TKikimrSettings settings = TKikimrSettings().SetWithSampleTables(false);
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(true);
         appConfig.MutableTableServiceConfig()->SetEnableKqpScanQuerySourceRead(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
@@ -245,13 +244,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
 
         auto explainResult = session.ExplainDataQuery(query).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(explainResult.GetStatus(), EStatus::SUCCESS, explainResult.GetIssues().ToString());
-
-        if (settings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQuerySourceRead()) {
-            UNIT_ASSERT_C(explainResult.GetAst().Contains("KqpReadRangesSource"), explainResult.GetAst());
-        } else {
-            UNIT_ASSERT_C(explainResult.GetAst().Contains("KqpLookupTable"), explainResult.GetAst());
-            UNIT_ASSERT_C(!explainResult.GetAst().Contains("Take"), explainResult.GetAst());
-        }
+        UNIT_ASSERT_C(explainResult.GetAst().contains("KqpReadRangesSource"), explainResult.GetAst());
 
         auto params = kikimr.GetTableClient().GetParamsBuilder()
             .AddParam("$key").Uint64(302).Build()
@@ -269,10 +262,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases().size()); // no LiteralExecuter phase
         UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases()[0].table_access().size());
         UNIT_ASSERT_VALUES_EQUAL("/Root/EightShard", stats.query_phases()[0].table_access()[0].name());
-        if (!settings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQueryStreamLookup()) {
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases()[0].affected_shards());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases()[0].table_access()[0].partitions_count());
-        }
 
         params = kikimr.GetTableClient().GetParamsBuilder()
             .AddParam("$key").Uint64(330).Build()
@@ -287,10 +276,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases().size()); // no LiteralExecuter phase
         UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases()[0].table_access().size());
         UNIT_ASSERT_VALUES_EQUAL("/Root/EightShard", stats.query_phases()[0].table_access()[0].name());
-        if (!settings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQueryStreamLookup()) {
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases()[0].affected_shards());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.query_phases()[0].table_access()[0].partitions_count());
-        }
     }
 
     Y_UNIT_TEST(PkSelect2) {
@@ -1313,10 +1298,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         }
 
         UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(phase).table_access().size(), 1);
-        if (!settings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQueryStreamLookup()) {
-            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(phase).affected_shards(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(phase).table_access(0).partitions_count(), 2);
-        }
         UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(phase).table_access(0).name(), "/Root/EightShard");
         UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(phase).table_access(0).reads().rows(), 2);
         UNIT_ASSERT(stats.query_phases(phase).table_access(0).reads().bytes() > 0);
@@ -1362,8 +1343,10 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT(stats.query_phases(index).duration_us() > 0);
     }
 
-    Y_UNIT_TEST(PruneWritePartitions) {
-        auto kikimr = DefaultKikimrRunner();
+    Y_UNIT_TEST_TWIN(PruneWritePartitions, UseSink) {
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        auto kikimr = DefaultKikimrRunner({}, app);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
@@ -1383,17 +1366,28 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         AssertSuccessResult(result);
 
         auto& stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).affected_shards(), 0);
-        UNIT_ASSERT(stats.query_phases(0).table_access().size() == 0);
+        if (UseSink) {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 1);
+    
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).affected_shards(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).partitions_count(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).updates().rows(), 1);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).affected_shards(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).partitions_count(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).updates().rows(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).affected_shards(), 0);
+            UNIT_ASSERT(stats.query_phases(0).table_access().size() == 0);
+
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).affected_shards(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).partitions_count(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).updates().rows(), 1);
+        }
 
         result = session.ExecuteDataQuery(R"(
             SELECT * FROM `/Root/TwoShard` WHERE Value2 <= -10 ORDER BY Key;
@@ -1581,21 +1575,12 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
                 }
             }
         } else {
-            if (settings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQueryStreamLookup()) {
-                UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
-            } else {
-                UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 3);
-            }
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
             UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
             UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/Join1");
 
             ui32 index = 1;
-            if (!settings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQueryStreamLookup()) {
-                UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 0);
-                index = 2;
-            }
-
             UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(index).table_access().size(), 1);
             UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(index).table_access(0).name(), "/Root/Join2");
             UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(index).table_access(0).reads().rows(), 4);
@@ -1785,8 +1770,10 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         ])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
-    Y_UNIT_TEST(Update) {
-        auto kikimr = DefaultKikimrRunner();
+    Y_UNIT_TEST_TWIN(Update, UseSink) {
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        auto kikimr = DefaultKikimrRunner({}, app);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
@@ -1802,17 +1789,28 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         auto& stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).updates().rows(), 0);
+        if (UseSink) {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 1);
+    
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).updates().rows(), 2);
+            UNIT_ASSERT(stats.query_phases(0).table_access(0).updates().bytes() > 0);
+            UNIT_ASSERT(stats.query_phases(0).duration_us() > 0); 
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).updates().rows(), 2);
-        UNIT_ASSERT(stats.query_phases(1).table_access(0).updates().bytes() > 0);
-        UNIT_ASSERT(stats.query_phases(1).duration_us() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).updates().rows(), 0);
+
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).updates().rows(), 2);
+            UNIT_ASSERT(stats.query_phases(1).table_access(0).updates().bytes() > 0);
+            UNIT_ASSERT(stats.query_phases(1).duration_us() > 0);
+        }
 
         result = session.ExecuteDataQuery(R"(
             SELECT * FROM `/Root/TwoShard` ORDER BY Key;
@@ -1829,8 +1827,10 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         ])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
-    Y_UNIT_TEST(Delete) {
-        auto kikimr = DefaultKikimrRunner();
+    Y_UNIT_TEST_TWIN(Delete, UseSink) {
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        auto kikimr = DefaultKikimrRunner({}, app);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
@@ -1845,19 +1845,30 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         auto& stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
+        if (UseSink) {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 1);
 
-        // Phase reading rows to delete
-        UNIT_ASSERT(stats.query_phases(0).duration_us() > 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 6);
+            // Phase reading rows to delete
+            UNIT_ASSERT(stats.query_phases(0).duration_us() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 6);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).deletes().rows(), 2);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
-        // Phase deleting rows
-        UNIT_ASSERT(stats.query_phases(1).duration_us() > 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).deletes().rows(), 2);
+            // Phase reading rows to delete
+            UNIT_ASSERT(stats.query_phases(0).duration_us() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 6);
+
+            // Phase deleting rows
+            UNIT_ASSERT(stats.query_phases(1).duration_us() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).deletes().rows(), 2);
+        }
 
         result = session.ExecuteDataQuery(R"(
 
@@ -1873,8 +1884,10 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         ])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
-    Y_UNIT_TEST(DeleteOn) {
-        auto kikimr = DefaultKikimrRunner();
+    Y_UNIT_TEST_TWIN(DeleteOn, UseSink) {
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        auto kikimr = DefaultKikimrRunner({}, app);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
@@ -1889,19 +1902,29 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         auto& stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
+        if (UseSink) {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 1);
 
-        // Phase reading rows to delete
-        UNIT_ASSERT(stats.query_phases(0).duration_us() > 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 6);
+            // Phase reading rows to delete
+            UNIT_ASSERT(stats.query_phases(0).duration_us() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 6);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
-        // Phase deleting rows
-        UNIT_ASSERT(stats.query_phases(1).duration_us() > 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).deletes().rows(), 2);
+            // Phase reading rows to delete
+            UNIT_ASSERT(stats.query_phases(0).duration_us() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 6);
+
+            // Phase deleting rows
+            UNIT_ASSERT(stats.query_phases(1).duration_us() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/TwoShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).deletes().rows(), 2);
+        }
 
         result = session.ExecuteDataQuery(R"(
 
@@ -1997,8 +2020,11 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
             ])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
-    Y_UNIT_TEST(PruneEffectPartitions) {
+    Y_UNIT_TEST_TWIN(PruneEffectPartitions, UseSink) {
         TKikimrSettings serverSettings;
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        serverSettings.SetAppConfig(app);
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -2024,23 +2050,29 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_C(it.IsSuccess(), it.GetIssues().ToString());
 
         auto& stats = NYdb::TProtoAccessor::GetProto(*it.GetStats());
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
+        if (UseSink) {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 1);
 
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
-        if (!serverSettings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQueryStreamLookup()) {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
             UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).affected_shards(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).partitions_count(), 1);
-        }
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/EightShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).updates().rows(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/EightShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).updates().rows(), 1);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
 
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).affected_shards(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).partitions_count(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/EightShard");
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).reads().rows(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).updates().rows(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).name(), "/Root/EightShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).reads().rows(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(0).table_access(0).updates().rows(), 0);
+
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access().size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).affected_shards(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).partitions_count(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).name(), "/Root/EightShard");
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).reads().rows(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.query_phases(1).table_access(0).updates().rows(), 1);
+        }
 
         it = session.ExecuteDataQuery(R"(
 
@@ -2206,7 +2238,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
                     auto result = session.ExplainDataQuery(query).GetValueSync();
                     UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS,
                         TStringBuilder() << query << Endl << "Failed with: " << result.GetIssues().ToString());
-                    UNIT_ASSERT_C(result.GetAst().Contains("('('\"ItemsLimit\""),
+                    UNIT_ASSERT_C(result.GetAst().contains("('('\"ItemsLimit\""),
                         TStringBuilder() << query << Endl << "Failed with AST: " << result.GetAst());
 
                     NJson::TJsonValue plan;
@@ -2301,92 +2333,75 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         }
     }
 
-    Y_UNIT_TEST(StaleRO) {
-        auto kikimr = DefaultKikimrRunner();
-        auto db = kikimr.GetTableClient();
-        auto session = db.CreateSession().GetValueSync().GetSession();
+    Y_UNIT_TEST_TWIN(StaleRO, EnableFollowers) {
+        auto settings = TKikimrSettings()
+            .SetEnableForceFollowers(EnableFollowers)
+            .SetWithSampleTables(false);
 
-        AssertSuccessResult(session.ExecuteSchemeQuery(R"(
-            --!syntax_v1
-            CREATE TABLE `FollowersKv` (
+        TKikimrRunner kikimr(settings);
+        auto tableClient = kikimr.GetTableClient();
+        auto queryClient = kikimr.GetQueryClient();
+        auto session = tableClient.CreateSession().GetValueSync().GetSession();
+
+        AssertSuccessResult(session.ExecuteSchemeQuery(Sprintf(Q_(R"(
+            CREATE TABLE `Table` (
                 Key Uint64,
                 Value String,
                 PRIMARY KEY (Key)
             )
             WITH (
-                PARTITION_AT_KEYS = (10, 20, 30),
-                READ_REPLICAS_SETTINGS = "ANY_AZ:1"
+                PARTITION_AT_KEYS = (10, 20, 30)
+                %s
             );
-        )").GetValueSync());
+        )").c_str(), EnableFollowers ? ", READ_REPLICAS_SETTINGS = \"ANY_AZ:3\"" : "")
+        ).GetValueSync());
 
-        AssertSuccessResult(session.ExecuteDataQuery(R"(
-            --!syntax_v1
-
-            REPLACE INTO `FollowersKv` (Key, Value) VALUES
+        AssertSuccessResult(session.ExecuteDataQuery(Q_(R"(
+            UPSERT INTO `Table` (Key, Value) VALUES
                 (1u, "One"),
                 (11u, "Two"),
                 (21u, "Three"),
                 (31u, "Four");
-        )", TTxControl::BeginTx().CommitTx()).GetValueSync());
+         )"), TTxControl::BeginTx().CommitTx()).GetValueSync());
 
-        kikimr.GetTestServer().GetRuntime()->SetLogPriority(NKikimrServices::KQP_EXECUTER, NActors::NLog::PRI_INFO);
-        kikimr.GetTestServer().GetRuntime()->SetLogPriority(NKikimrServices::PIPE_CLIENT, NActors::NLog::PRI_DEBUG);
-        //kikimr.GetTestServer().GetRuntime()->SetLogPriority(NKikimrServices::PIPE_SERVER, NActors::NLog::PRI_DEBUG);
 
-        // Followers immediate
-        auto result = session.ExecuteDataQuery(R"(
-            --!syntax_v1
-            SELECT * FROM FollowersKv WHERE Key = 21;
-        )", TTxControl::BeginTx(TTxSettings::StaleRO()).CommitTx()).ExtractValueSync();
-        AssertSuccessResult(result);
+        auto checkRead = [&](const TString& query, const TString& expectedResult, const TString& tablePath) {
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx(TTxSettings::StaleRO()).CommitTx()).ExtractValueSync();
+            AssertSuccessResult(result);
+            CompareYson(expectedResult, FormatResultSetYson(result.GetResultSet(0)));
 
-        CompareYson(R"(
+            if (EnableFollowers) {
+                // from master - should NOT read
+                CheckTableReads(session, tablePath, false, false);
+                // from followers - should read
+                CheckTableReads(session, tablePath, true, true);
+            } else {
+                // from master - should read
+                CheckTableReads(session, tablePath, false, true);
+                // from followers - should NOT read
+                CheckTableReads(session, tablePath, true, false); 
+            }
+        };
+
+        // immediate
+        checkRead(Q_(R"(
+            SELECT * FROM Table WHERE Key = 21;
+        )"), R"(
             [
                 [[21u];["Three"]];
             ]
-        )", FormatResultSetYson(result.GetResultSet(0)));
+        )", "/Root/Table");
 
-        // Followers distributed
-        result = session.ExecuteDataQuery(R"(
-            --!syntax_v1
-            SELECT * FROM FollowersKv WHERE Value != "One" ORDER BY Key;
-        )", TTxControl::BeginTx(TTxSettings::StaleRO()).CommitTx()).ExtractValueSync();
-        AssertSuccessResult(result);
-
-        CompareYson(R"(
+        // distributed
+        checkRead(Q_(R"(
+            SELECT * FROM Table WHERE Value != "One" ORDER BY Key;
+        )"), R"(
             [
                 [[11u];["Two"]];
                 [[21u];["Three"]];
                 [[31u];["Four"]];
             ]
-        )", FormatResultSetYson(result.GetResultSet(0)));
-
-        // No followers immediate
-        result = session.ExecuteDataQuery(R"(
-            --!syntax_v1
-            SELECT * FROM TwoShard WHERE Key = 2;
-        )", TTxControl::BeginTx(TTxSettings::StaleRO()).CommitTx()).ExtractValueSync();
-        AssertSuccessResult(result);
-
-        CompareYson(R"(
-            [
-                [[2u];["Two"];[0]];
-            ]
-        )", FormatResultSetYson(result.GetResultSet(0)));
-
-        // No followers distributed
-        result = session.ExecuteDataQuery(R"(
-            --!syntax_v1
-            SELECT * FROM TwoShard WHERE Value2 < 0 ORDER BY Key;
-        )", TTxControl::BeginTx(TTxSettings::StaleRO()).CommitTx()).ExtractValueSync();
-        AssertSuccessResult(result);
-
-        CompareYson(R"(
-            [
-                [[1u];["One"];[-1]];
-                [[4000000001u];["BigOne"];[-1]]
-            ]
-        )", FormatResultSetYson(result.GetResultSet(0)));
+        )", "/Root/Table");
     }
 
     Y_UNIT_TEST(StaleRO_Immediate) {
@@ -2409,6 +2424,70 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
                 [["One"];[-1];[1u]]
             ]
         )", FormatResultSetYson(result.GetResultSet(0)));
+    }
+
+    Y_UNIT_TEST_TWIN(StaleRO_IndexFollowers, EnableFollowers) {
+        auto settings = TKikimrSettings()
+            .SetEnableForceFollowers(EnableFollowers)
+            .SetWithSampleTables(false);
+        TKikimrRunner kikimr(settings);
+        auto db = kikimr.GetTableClient();
+        auto session = db.CreateSession().GetValueSync().GetSession();
+
+        AssertSuccessResult(session.ExecuteSchemeQuery(Q_(R"(
+            CREATE TABLE Table (
+                Key Uint64,
+                Subkey Uint64,
+                Value String,
+                Order Uint32,
+                PRIMARY KEY (Key, Subkey)
+            );
+
+            ALTER TABLE Table ADD INDEX idx GLOBAL SYNC ON (Key, Order) COVER (Value);
+        )")).GetValueSync());
+
+        if constexpr (EnableFollowers) {
+            AssertSuccessResult(session.ExecuteSchemeQuery(Q_(R"(
+                ALTER TABLE Table ALTER INDEX idx SET READ_REPLICAS_SETTINGS "ANY_AZ:1";
+            )")).GetValueSync());
+        }
+
+        AssertSuccessResult(session.ExecuteDataQuery(Q_(R"(
+            UPSERT INTO Table (Key, Subkey, Value, Order) VALUES
+                (1u, 2u, "One", 7u),
+                (1u, 3u, "Two", 4u),
+                (21u, 8u, "Three", 1u),
+                (31u, 0u, "Four", 8u);
+        )"), TTxControl::BeginTx().CommitTx()).GetValueSync());
+
+        auto result = session.ExecuteDataQuery(Q_(R"(
+            SELECT Key, Value FROM Table VIEW idx WHERE Key = 1 ORDER BY Order;
+        )"), TTxControl::BeginTx(TTxSettings::StaleRO()).CommitTx()).ExtractValueSync();
+        AssertSuccessResult(result);
+
+        CompareYson(R"(
+            [
+                [[1u];["Two"]];
+                [[1u];["One"]];
+            ]
+        )", FormatResultSetYson(result.GetResultSet(0)));
+
+        // from main master - should NOT read
+        CheckTableReads(session, "/Root/Table", false, false);
+        // from main followers - should NOT read
+        CheckTableReads(session, "/Root/Table", true, false);
+
+        if constexpr (EnableFollowers) {
+            // from index master - should NOT read
+            CheckTableReads(session, "/Root/Table/idx/indexImplTable", false, false);
+            // from index followers - should read
+            CheckTableReads(session, "/Root/Table/idx/indexImplTable", true, true);
+        } else {
+            // from index master - should read
+            CheckTableReads(session, "/Root/Table/idx/indexImplTable", false, true);
+            // from index followers - should NOT read
+            CheckTableReads(session, "/Root/Table/idx/indexImplTable", true, false);
+        }
     }
 
     Y_UNIT_TEST(ReadRangeWithParams) {
@@ -2627,7 +2706,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
                 TTxControl::BeginTx(TTxSettings::OnlineRO()).CommitTx()).ExtractValueSync();
             AssertSuccessResult(result);
             auto resultYson = FormatResultSetYson(result.GetResultSet(0));
-            CompareYson(item.second, resultYson);
+            CompareYson(item.second, TString{resultYson});
         }
 
         for (auto& item: testData) {
@@ -2638,8 +2717,10 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         }
     }
 
-    Y_UNIT_TEST(DeleteWithBuiltin) {
-        auto kikimr = DefaultKikimrRunner();
+    Y_UNIT_TEST_TWIN(DeleteWithBuiltin, UseSink) {
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        auto kikimr = DefaultKikimrRunner({}, app);;
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
@@ -2652,7 +2733,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         auto& stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
-        UNIT_ASSERT_EQUAL(stats.query_phases().size(), 2);
+        UNIT_ASSERT_EQUAL(stats.query_phases().size(), UseSink ? 1 : 2);
     }
 
     Y_UNIT_TEST(MultiEffectsOnSameTable) {
@@ -3066,8 +3147,10 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         ])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
-    Y_UNIT_TEST(DeleteWithInputMultiConsumption) {
-        auto kikimr = DefaultKikimrRunner();
+    Y_UNIT_TEST_TWIN(DeleteWithInputMultiConsumption, UseSink) {
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        auto kikimr = DefaultKikimrRunner({}, app);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
@@ -3087,7 +3170,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         AssertTableStats(result, "/Root/Join1", {
-            .ExpectedReads = 9,
+            .ExpectedReads = UseSink ? 18 : 9, // without sink: precompute
         });
 
         AssertTableStats(result, "/Root/Join2", {
@@ -3110,8 +3193,10 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         ])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
-    Y_UNIT_TEST(DeleteWithInputMultiConsumptionLimit) {
-        TKikimrRunner kikimr;
+    Y_UNIT_TEST_TWIN(DeleteWithInputMultiConsumptionLimit, UseSink) {
+        NKikimrConfig::TAppConfig app;
+        app.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+        auto kikimr = DefaultKikimrRunner({}, app);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
@@ -3138,7 +3223,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         AssertTableStats(result, "/Root/Test", {
-            .ExpectedReads = 1,
+            .ExpectedReads = UseSink ? 2 : 1, // without sink: precompute
             .ExpectedDeletes = 2,
         });
 
@@ -3420,9 +3505,8 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         CompareYson(R"([[["Value1"]]])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
-    Y_UNIT_TEST_TWIN(PagingNoPredicateExtract, SourceRead) {
+    Y_UNIT_TEST(PagingNoPredicateExtract) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(SourceRead);
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig);
 
@@ -3465,10 +3549,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         // Cerr << result.GetPlan() << Endl;
-
-        if (SourceRead) {
-            return;
-        }
 
         NJson::TJsonValue plan;
         NJson::ReadJsonTree(result.GetPlan(), &plan, true);
@@ -3643,7 +3723,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
 
     Y_UNIT_TEST_TWIN(StreamLookupForDataQuery, StreamLookupJoin) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(true);
         appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamIdxLookupJoin(StreamLookupJoin);
         TKikimrRunner kikimr(TKikimrSettings().SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
@@ -3809,7 +3888,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
     Y_UNIT_TEST(DqSourceCount) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -3838,7 +3916,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
     Y_UNIT_TEST(DqSource) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -3858,7 +3935,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
     Y_UNIT_TEST(DqSourceLiteralRange) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -3889,7 +3965,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
     Y_UNIT_TEST(DqSourceLimit) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -3916,7 +3991,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
     Y_UNIT_TEST(DqSourceSequentialLimit) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(true);
         settings.SetAppConfig(appConfig);
 
         TKikimrRunner kikimr(settings);
@@ -3951,7 +4025,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
     Y_UNIT_TEST(DqSourceLocksEffects) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -3988,73 +4061,6 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
 
         CompareYson(R"([[[1u];["NewValue2"]]])",
             FormatResultSetYson(result.GetResultSet(0)));
-    }
-
-    Y_UNIT_TEST(OddSkipNullKeys) {
-        TKikimrSettings settings;
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetPredicateExtract20(false);
-        settings.SetAppConfig(appConfig);
-
-        TKikimrRunner kikimr(settings);
-        auto db = kikimr.GetTableClient();
-
-        {
-            auto session = db.CreateSession().GetValueSync().GetSession();
-            AssertSuccessResult(session.ExecuteSchemeQuery(R"(
-                --!syntax_v1
-
-                CREATE TABLE `/Root/tickets` (
-                    entity_id	Utf8,
-                    updated_at_desc	Uint64,
-                    state	Utf8,
-                    access_type	Utf8,
-                    entity_type	Utf8,
-                    id	Utf8,
-                    iam_user_id	Utf8,
-                    PRIMARY KEY (id, entity_type, access_type, state, updated_at_desc, entity_id, iam_user_id)
-                );
-
-            )").GetValueSync());
-
-            AssertSuccessResult(session.ExecuteDataQuery(R"(
-                REPLACE INTO `/Root/tickets` (entity_id, updated_at_desc, state, access_type, entity_type, id, iam_user_id) VALUES
-                    (null, 0, "state", "access", "type", "id", "iam_id");
-            )", TTxControl::BeginTx(TTxSettings::SerializableRW()).CommitTx()).GetValueSync());
-
-        }
-
-        auto params =
-            TParamsBuilder()
-                .AddParam("$id_6").OptionalUtf8("id").Build()
-                .AddParam("$iam_user_id_3").OptionalUtf8("iam_id").Build()
-                .AddParam("$state_3").OptionalUtf8("state").Build()
-                .AddParam("$updated_at_desc_2").OptionalUint64(0).Build()
-                .AddParam("$access_type_2").OptionalUtf8("access").Build()
-                .AddParam("$entity_type_0").OptionalUtf8("type").Build()
-                .Build();
-
-        auto session = db.CreateSession().GetValueSync().GetSession();
-        auto result = session.ExecuteDataQuery(R"(
-            --!syntax_v1
-            DECLARE $access_type_2 AS Optional<Utf8>;
-            DECLARE $entity_type_0 AS Optional<Utf8>;
-            DECLARE $iam_user_id_3 AS Optional<Utf8>;
-            DECLARE $id_6 AS Optional<Utf8>;
-            DECLARE $state_3 AS Optional<Utf8>;
-            DECLARE $updated_at_desc_2 AS Optional<Uint64>;
-
-            SELECT id FROM `/Root/tickets`
-            WHERE access_type = $access_type_2
-                AND entity_id IS NULL
-                AND entity_type = $entity_type_0
-                AND iam_user_id = $iam_user_id_3
-                AND id = $id_6
-                AND state = $state_3
-                AND updated_at_desc = $updated_at_desc_2;
-        )", TTxControl::BeginTx(TTxSettings::SerializableRW()).CommitTx(), params).GetValueSync();
-
-        CompareYson(R"([[["id"]]])", FormatResultSetYson(result.GetResultSet(0)));
     }
 
     Y_UNIT_TEST(PrimaryView) {
@@ -4247,7 +4253,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
                 create table demo_ref2(id text, code text, some text, primary key(id), index ix_code global on (code));
             )").GetValueSync());
         }
-        
+
         auto query = R"(
             select ba_0.id, ba_0.some,
               r_1.id, r_1.some, r_1.code,
@@ -4275,10 +4281,9 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
 
     }
 
-    Y_UNIT_TEST_TWIN(ComplexLookupLimit, NewPredicateExtract) {
+    Y_UNIT_TEST(ComplexLookupLimit) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetPredicateExtract20(NewPredicateExtract);
         settings.SetAppConfig(appConfig);
 
         TKikimrRunner kikimr(settings);
@@ -4343,10 +4348,9 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         )", TTxControl::BeginTx(TTxSettings::SerializableRW()).CommitTx(), params, querySettings).GetValueSync();
 
         AssertSuccessResult(result);
-        AssertTableReads(result, "/Root/Sample", NewPredicateExtract ? 2 : 4);
+        AssertTableReads(result, "/Root/Sample", 2);
         CompareYson(R"([[[1u];[2u]];[[2u];[2u]]])", FormatResultSetYson(result.GetResultSet(0)));
     }
-
 
     Y_UNIT_TEST(FullScanCount) {
         TKikimrSettings settings;
@@ -4387,7 +4391,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
                 SELECT Key FROM `/Root/EightShard` where Key in $items;
             )";
 
-            auto params1 = TParamsBuilder() 
+            auto params1 = TParamsBuilder()
                 .AddParam("$items")
                 .BeginList()
                     .AddListItem().Uint64(0)
@@ -4401,7 +4405,7 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
             AssertSuccessResult(result);
             UNIT_ASSERT_EQUAL(counters.FullScansExecuted->GetAtomic(), before);
 
-            auto params2 = TParamsBuilder() 
+            auto params2 = TParamsBuilder()
                 .AddParam("$items")
                 .BeginList()
                     .AddListItem().Uint64(0)
@@ -4430,9 +4434,9 @@ Y_UNIT_TEST_SUITE(KqpNewEngine) {
         querySettings.CollectQueryStats(ECollectQueryStatsMode::Profile);
 
         TString query = R"(
-            SELECT Key, Data FROM `/Root/EightShard` 
-                WHERE Text = "Value1" 
-                ORDER BY Key 
+            SELECT Key, Data FROM `/Root/EightShard`
+                WHERE Text = "Value1"
+                ORDER BY Key
                 LIMIT 1;
         )";
 

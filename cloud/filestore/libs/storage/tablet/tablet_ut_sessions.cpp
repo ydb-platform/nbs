@@ -550,9 +550,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
     Y_UNIT_TEST(ChangeCacheTest)
     {
-        NKikimr::NFake::TCaches cachesConfig;
-        cachesConfig.Shared = 1;
-        TTestEnv env({}, {}, std::move(cachesConfig));
+        NKikimr::NSharedCache::TSharedCacheConfig sharedCacheConfig;
+        sharedCacheConfig.SetMemoryLimit(0);
+        TTestEnv env({}, {}, &sharedCacheConfig);
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);

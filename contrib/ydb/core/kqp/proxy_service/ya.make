@@ -31,14 +31,14 @@ PEERDIR(
     contrib/ydb/library/query_actor
     contrib/ydb/library/table_creator
     contrib/ydb/library/yql/providers/common/http_gateway
-    contrib/ydb/library/yql/providers/common/proto
+    yql/essentials/providers/common/proto
     contrib/ydb/library/yql/providers/s3/actors_factory
-    contrib/ydb/library/yql/public/issue
+    yql/essentials/public/issue
     contrib/ydb/library/yql/dq/actors/spilling
     contrib/ydb/public/api/protos
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
     contrib/ydb/public/lib/scheme_types
-    contrib/ydb/public/sdk/cpp/client/ydb_params
+    contrib/ydb/public/sdk/cpp/src/client/params
 )
 
 YQL_LAST_ABI_VERSION()

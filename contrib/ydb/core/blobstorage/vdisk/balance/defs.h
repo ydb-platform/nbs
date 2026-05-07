@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_context.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_pdiskctx.h>
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_mongroups.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/hull_ds_all_snap.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_hugeblobctx.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_hulllogctx.h>
@@ -36,13 +37,14 @@ namespace NKikimr {
         THugeBlobCtxPtr HugeBlobCtx;
         TActorId SkeletonId;
         NMonGroup::TBalancingGroup MonGroup;
+        NMonGroup::TReplGroup ReplMonGroup;
 
         NKikimr::THullDsSnap Snap;
 
         TIntrusivePtr<TVDiskConfig> VDiskCfg;
         TIntrusivePtr<TBlobStorageGroupInfo> GInfo;
 
-        ui32 MinREALHugeBlobInBytes;
+        ui32 MinHugeBlobInBytes;
 
         TBalancingCtx(
             const TBalancingCfg& cfg,
@@ -53,7 +55,7 @@ namespace NKikimr {
             NKikimr::THullDsSnap snap,
             TIntrusivePtr<TVDiskConfig> vDiskCfg,
             TIntrusivePtr<TBlobStorageGroupInfo> gInfo,
-            ui32 minREALHugeBlobInBytes
+            ui32 minHugeBlobInBytes
         )
             : Cfg(cfg)
             , VCtx(std::move(vCtx))
@@ -61,10 +63,11 @@ namespace NKikimr {
             , HugeBlobCtx(std::move(hugeBlobCtx))
             , SkeletonId(skeletonId)
             , MonGroup(VCtx->VDiskCounters, "subsystem", "balancing")
+            , ReplMonGroup(VCtx->VDiskCounters, "subsystem", "repl")
             , Snap(std::move(snap))
             , VDiskCfg(std::move(vDiskCfg))
             , GInfo(std::move(gInfo))
-            , MinREALHugeBlobInBytes(minREALHugeBlobInBytes)
+            , MinHugeBlobInBytes(minHugeBlobInBytes)
         {
         }
     };

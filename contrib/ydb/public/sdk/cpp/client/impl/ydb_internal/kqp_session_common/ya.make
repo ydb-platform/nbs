@@ -6,7 +6,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/threading/future
-    contrib/ydb/public/lib/operation_id/protos
+    contrib/ydb/public/lib/operation_id
     contrib/ydb/public/sdk/cpp/client/impl/ydb_endpoints
 )
 

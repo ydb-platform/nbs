@@ -14,13 +14,13 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/library/aclib
     contrib/ydb/library/persqueue/tests
-    contrib/ydb/public/sdk/cpp/client/ydb_discovery
-    contrib/ydb/public/sdk/cpp/client/ydb_types
+    contrib/ydb/public/sdk/cpp/src/client/discovery
+    contrib/ydb/public/sdk/cpp/src/client/types
     contrib/ydb/services/ydb
 )
 
 SRCS(
-    ../http_proxy_ut.cpp
+    ../kinesis_ut.cpp
     ../ymq_ut.cpp
     inside_ydb_ut.cpp
 )

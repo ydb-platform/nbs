@@ -18,7 +18,7 @@
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
-#include <contrib/ydb/library/minsketch/count_min_sketch.h>
+#include <yql/essentials/core/minsketch/count_min_sketch.h>
 #include <contrib/ydb/core/util/intrusive_heap.h>
 
 #include <util/generic/intrlist.h>
@@ -169,6 +169,8 @@ private:
     void ScheduleNextTraversal(NIceDb::TNiceDb& db);
     void StartTraversal(NIceDb::TNiceDb& db);
     void FinishTraversal(NIceDb::TNiceDb& db);
+
+    void ReportBaseStatisticsCounters();
 
     std::optional<bool> IsColumnTable(const TPathId& pathId) const;
 
@@ -344,7 +346,7 @@ private:
     bool LastTraversalWasForce = false;
 
 private: // stored in local db
-    
+
     TString ForceTraversalOperationId;
 
     TPathId TraversalPathId;
@@ -352,11 +354,11 @@ private: // stored in local db
     TSerializedCellVec TraversalStartKey;
     TInstant TraversalStartTime;
 
-    size_t GlobalTraversalRound = 1; 
+    size_t GlobalTraversalRound = 1;
 
-    std::unordered_map<ui32, std::unique_ptr<TCountMinSketch>> CountMinSketches;   
+    std::unordered_map<ui32, std::unique_ptr<TCountMinSketch>> CountMinSketches;
 
-    std::unordered_map<TPathId, TScheduleTraversal> ScheduleTraversals; 
+    std::unordered_map<TPathId, TScheduleTraversal> ScheduleTraversals;
     std::unordered_map<ui64, std::unordered_set<TPathId>> ScheduleTraversalsBySchemeShard;
     typedef TIntrusiveHeap<TScheduleTraversal, TScheduleTraversal::THeapIndexByTime, TScheduleTraversal::TLessByTime>
         TTraversalsByTime;

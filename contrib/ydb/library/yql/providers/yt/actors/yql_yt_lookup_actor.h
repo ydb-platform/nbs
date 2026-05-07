@@ -1,11 +1,11 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.h>
-#include <contrib/ydb/library/yql/providers/yt/proto/source.pb.h>
+#include <yt/yql/providers/yt/gateway/file/yql_yt_file_services.h>
+#include <yt/yql/providers/yt/proto/source.pb.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io.h>
 #include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/yql/minikql/mkql_alloc.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
+#include <yql/essentials/minikql/mkql_alloc.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node_holders.h>
 
 namespace NYql::NDq {
 

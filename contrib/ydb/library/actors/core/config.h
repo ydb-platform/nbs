@@ -32,6 +32,12 @@ namespace NActors {
         EASProfile ActorSystemProfile = EASProfile::Default;
         bool HasSharedThread = false;
         bool UseRingQueue = false;
+        ui16 MinLocalQueueSize = 0;
+        ui16 MaxLocalQueueSize = 0;
+
+        // tiny-ydb configs
+        std::vector<i16> AdjacentPools;
+        i16 ForcedForeignSlotCount = 0;
     };
 
     struct TSharedExecutorPoolConfig {
@@ -40,7 +46,7 @@ namespace NActors {
         TCpuMask Affinity; // Executor thread affinity
         TDuration TimePerMailbox = TBasicExecutorPoolConfig::DEFAULT_TIME_PER_MAILBOX;
         ui32 EventsPerMailbox = TBasicExecutorPoolConfig::DEFAULT_EVENTS_PER_MAILBOX;
-        i16 SoftProcessingDurationTs = Us2Ts(500);
+        i16 SoftProcessingDurationTs = Us2Ts(10'000);
     };
 
     struct TIOExecutorPoolConfig {

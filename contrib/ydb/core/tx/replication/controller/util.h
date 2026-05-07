@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status/status.h>
+#include <ydb-cpp-sdk/client/types/status/status.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/size_literals.h>
@@ -37,7 +37,20 @@ inline auto DefaultRetryableErrors() {
 }
 
 inline bool IsRetryableError(const NYdb::TStatus status, const TVector<NYdb::EStatus>& retryable) {
-    return status.IsTransportError() || Find(retryable, status.GetStatus()) != retryable.end();
+    switch (status.GetStatus()) {
+    case NYdb::EStatus::CLIENT_UNAUTHENTICATED:
+    case NYdb::EStatus::CLIENT_CALL_UNIMPLEMENTED:
+        return false;
+    case NYdb::EStatus::TRANSPORT_UNAVAILABLE:
+        for (const auto& issue : status.GetIssues()) {
+            if (issue.GetMessage().contains("Misformatted domain name") || issue.GetMessage().contains("Domain name not found") || issue.GetMessage().contains("DNS resolution failed")) {
+                return false;
+            }
+        }
+        return true;
+    default:
+        return status.IsTransportError() || Find(retryable, status.GetStatus()) != retryable.end();
+    }
 }
 
 inline bool IsRetryableError(const NYdb::TStatus status) {

@@ -14,7 +14,7 @@
 #include <contrib/ydb/core/protos/follower_group.pb.h>
 #include <contrib/ydb/core/protos/msgbus_kv.pb.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
 
 #include <functional>
 
@@ -68,6 +68,18 @@ namespace NSchemeShardUT_Private {
         OPTION(std::optional<bool>, EnableChangefeedsOnIndexTables, std::nullopt);
         OPTION(std::optional<bool>, EnableTieringInColumnShard, std::nullopt);
         OPTION(std::optional<bool>, EnableParameterizedDecimal, std::nullopt);
+        OPTION(std::optional<bool>, EnableTopicAutopartitioningForCDC, std::nullopt);
+        OPTION(std::optional<bool>, EnableBackupService, std::nullopt);
+        OPTION(std::optional<bool>, EnableTopicTransfer, std::nullopt);
+        OPTION(bool, SetupKqpProxy, false);
+        OPTION(bool, EnableStrictAclCheck, false);
+        OPTION(std::optional<bool>, EnableStrictUserManagement, std::nullopt);
+        OPTION(std::optional<bool>, EnableDatabaseAdmin, std::nullopt);
+        OPTION(std::optional<bool>, EnablePermissionsExport, std::nullopt);
+        OPTION(std::optional<bool>, EnableChecksumsExport, std::nullopt);
+        OPTION(std::optional<bool>, EnableLocalDBBtreeIndex, std::nullopt);
+        OPTION(TVector<TIntrusivePtr<NFake::TProxyDS>>, DSProxies, {});
+        OPTION(std::optional<ui32>, DataShardStatsReportIntervalSeconds, std::nullopt);
 
         #undef OPTION
     };
@@ -86,6 +98,9 @@ namespace NSchemeShardUT_Private {
         ui32 ChannelsCount;
         TActorId MeteringFake;
         THolder<NYdb::TDriver> YdbDriver;
+
+        TTestActorRuntime::TEventObserverHolder ExtSubdomainCleanupObserver;
+        THashSet<TPathId> ExtSubdomainCleanupComplete;
 
     public:
         static bool ENABLE_SCHEMESHARD_LOG;
@@ -123,6 +138,9 @@ namespace NSchemeShardUT_Private {
         void TestWaitShardDeletion(TTestActorRuntime& runtime, ui64 schemeShard, TSet<ui64> localIds);
         void TestWaitShardDeletion(TTestActorRuntime& runtime, ui64 schemeShard, TSet<TShardIdx> shardIds);
 
+        void AddExtSubdomainCleanupObserver(NActors::TTestActorRuntime& runtime, const TPathId& subdomainPathId);
+        void WaitForExtSubdomainCleanup(NActors::TTestActorRuntime& runtime, const TPathId& subdomainPathId);
+
         void SimulateSleep(TTestActorRuntime& runtime, TDuration duration);
 
         void TestServerlessComputeResourcesModeInHive(TTestActorRuntime& runtime, const TString& path,
@@ -140,10 +158,15 @@ namespace NSchemeShardUT_Private {
 
         void BootSchemeShard(TTestActorRuntime& runtime, ui64 schemeRoot);
         void BootTxAllocator(TTestActorRuntime& runtime, ui64 tabletId);
+        NKikimrConfig::TAppConfig GetAppConfig() const;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // A wrapper to run test scenarios with reboots of schemeshard, hive and coordinator
+    // The idea is to run the same test scenario multiple times and on each run restart a tablet **once**
+    // on receiving a non-filtered event. A given tablet is restarted when it receives an event for which
+    // PassUserRequests() doesn't return true. On the first run, it is restarted on the first such event,
+    // on the second run - on the second event and so on.
     class TTestWithReboots {
     protected:
         struct TDatashardLogBatchingSwitch {
@@ -155,6 +178,7 @@ namespace NSchemeShardUT_Private {
 
     public:
         TVector<ui64> TabletIds;
+        TSet<ui32> NoRebootEventTypes;
         THolder<TTestActorRuntime> Runtime;
         TTestEnvOptions EnvOpts;
         THolder<TTestEnv> TestEnv;
@@ -188,7 +212,7 @@ namespace NSchemeShardUT_Private {
     private:
         virtual TTestEnv* CreateTestEnv();
         // Make sure that user requests are not dropped
-        static bool PassUserRequests(TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event);
+        bool PassUserRequests(TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event);
 
     private:
         struct TFinalizer;

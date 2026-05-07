@@ -2,6 +2,8 @@
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/interconnect/logging/logging.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_tcp.h>
 #include <contrib/ydb/library/actors/util/datetime.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
@@ -9,11 +11,13 @@
 #include <util/generic/set.h>
 #include <util/system/datetime.h>
 
-#include "poller_tcp.h"
-#include "logging.h"
 #include "event_filter.h"
 
 #include <atomic>
+
+namespace NInterconnect::NRdma {
+    class IMemPool;
+}
 
 namespace NActors {
     enum class EEncryptionMode {
@@ -35,6 +39,7 @@ namespace NActors {
         ui64 OutputBuffersTotalSizeLimitInMB = 0;
         ui32 TotalInflightAmountOfData = 0;
         bool MergePerPeerCounters = false;
+        bool MergePerHostCounters = false;
         bool MergePerDataCenterCounters = false;
         ui32 TCPSocketBufferSize = 0;
         TDuration PingPeriod = TDuration::Seconds(3);
@@ -48,12 +53,21 @@ namespace NActors {
         TString PrivateKey; // private key for the certificate in PEM format
         TString CaFilePath; // path to certificate authority file
         TString CipherList; // encryption algorithms
+        THashSet<TString> ForbiddenSignatureAlgorithms;
         TDuration MessagePendingTimeout = TDuration::Seconds(1); // timeout for which messages are queued while in PendingConnection state
         ui64 MessagePendingSize = Max<ui64>(); // size of the queue
         ui32 MaxSerializedEventSize = NActors::EventMaxByteSize;
         ui32 PreallocatedBufferSize = 8 << 10; // 8 KB
         ui32 NumPreallocatedBuffers = 16;
-        bool EnableExternalDataChannel = false;
+        bool EnableExternalDataChannel = true;
+        bool EnableKernelLiveness = false;
+        TDuration KernelKeepAliveIdle = TDuration::Seconds(5);
+        TDuration KernelKeepAliveInterval = TDuration::Seconds(1);
+        ui32 KernelKeepAliveProbes = 5;
+        TDuration KernelUserTimeout = TDuration::Seconds(10);
+        // Period for user-space ping/clock probes that keep clock-skew metrics up to date
+        // when kernel keepalive mode disables user-space dead-peer logic.
+        TDuration ClockSkewPingTimeout = TDuration::Minutes(1);
         bool ValidateIncomingPeerViaDirectLookup = false;
         ui32 SocketBacklogSize = 0; // SOMAXCONN if zero
         TDuration FirstErrorSleep = TDuration::MilliSeconds(10);
@@ -61,6 +75,7 @@ namespace NActors {
         double ErrorSleepRetryMultiplier = 4.0;
         TDuration EventDelay = TDuration::Zero();
         ESocketSendOptimization SocketSendOptimization = ESocketSendOptimization::DISABLED;
+        bool RdmaChecksum = true;
     };
 
     struct TWhiteboardSessionStatus {
@@ -82,7 +97,7 @@ namespace NActors {
         // }
         EFlag ConnectStatus;
         i64 ClockSkewUs;
-        bool ReportClockSkew;
+        bool SameScope;
         ui64 PingTimeUs;
         NActors::TScopeId ScopeId;
         double Utilization;
@@ -126,6 +141,17 @@ namespace NActors {
         TString Cookie; // unique random identifier of a node instance (generated randomly at every start)
         std::unordered_map<ui16, TString> ChannelName;
         std::optional<ui32> OutgoingHandshakeInflightLimit;
+        std::vector<TActorId> ConnectionCheckerActorIds; // a list of actors used for checking connection params
+
+        std::atomic_uint64_t NumSessionsWithDataInQueue = 0;
+        std::atomic_uint64_t CyclesOnLastSwitch = 0;
+        std::atomic_uint64_t CyclesWithNonzeroSessions = 0;
+        std::atomic_uint64_t CyclesWithZeroSessions = 0;
+
+        double CalculateNetworkUtilization();
+        void AddSessionWithDataInQueue();
+        void RemoveSessionWithDataInQueue();
+        TActorId HostMetricsAggregatorId;
 
         struct TVersionInfo {
             TString Tag; // version tag for this node
@@ -138,6 +164,8 @@ namespace NActors {
         std::optional<TString> CompatibilityInfo;
         std::function<bool(const TString&, TString&)> ValidateCompatibilityInfo;
         std::function<bool(const TInterconnectProxyCommon::TVersionInfo&, TString&)> ValidateCompatibilityOldFormat;
+
+        std::shared_ptr<NInterconnect::NRdma::IMemPool> RdmaMemPool;
 
         using TPtr = TIntrusivePtr<TInterconnectProxyCommon>;
     };

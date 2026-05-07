@@ -91,6 +91,7 @@ public:
     NKikimrHive::TNodeStatistics Statistics;
     bool DeletionScheduled = false;
     TString Name;
+    ui64 DrainSeqNo = 0;
 
     TNodeInfo(TNodeId nodeId, THive& hive);
     TNodeInfo(const TNodeInfo&) = delete;
@@ -106,7 +107,7 @@ public:
 
     void ChangeVolatileState(EVolatileState state);
     bool OnTabletChangeVolatileState(TTabletInfo* tablet, TTabletInfo::EVolatileState newState);
-    void UpdateResourceValues(const TTabletInfo* tablet, const NKikimrTabletBase::TMetrics& before, const NKikimrTabletBase::TMetrics& after);
+    void UpdateResourceValues(const TTabletInfo* tablet, const TMetrics& before, const TMetrics& after);
 
     ui32 GetTabletsScheduled() const {
         auto it = Tablets.find(TTabletInfo::EVolatileState::TABLET_VOLATILE_STATE_STARTING);
@@ -159,7 +160,7 @@ public:
     bool IsAllowedToRunTablet(TTabletDebugState* debugState = nullptr) const;
     bool IsAllowedToRunTablet(const TTabletInfo& tablet, TTabletDebugState* debugState = nullptr) const;
     bool IsAbleToRunTablet(const TTabletInfo& tablet, TTabletDebugState* debugState = nullptr) const;
-    i32 GetPriorityForTablet(const TTabletInfo& tablet) const;
+    i32 GetPriorityForTablet(const TTabletInfo& tablet, TDataCenterPriority& dcPriority) const;
     ui64 GetMaxTabletsScheduled() const;
     ui64 GetMaxCountForTabletType(TTabletTypes::EType tabletType) const;
 
@@ -271,7 +272,7 @@ public:
 
     void UpdateResourceTotalUsage(const NKikimrHive::TEvTabletMetrics& metrics);
     void ActualizeNodeStatistics(TInstant now);
-    ui64 GetRestartsPerPeriod(TInstant barrier) const;
+    ui64 GetRestartsPerPeriod(TInstant barrier = {}) const;
 
     TDataCenterId GetDataCenter() const {
         return Location.GetDataCenterId();

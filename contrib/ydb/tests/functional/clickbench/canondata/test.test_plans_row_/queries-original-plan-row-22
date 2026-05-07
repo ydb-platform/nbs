@@ -35,22 +35,32 @@
                                         "PlanNodeType": "Connection",
                                         "Plans": [
                                             {
-                                                "Node Type": "TopSort",
+                                                "Node Type": "TopSort-Aggregate",
                                                 "Operators": [
+                                                    {
+                                                        "Inputs": [
+                                                            {
+                                                                "InternalOperatorId": 1
+                                                            }
+                                                        ],
+                                                        "Limit": "10",
+                                                        "Name": "TopSort",
+                                                        "TopSortBy": "argument.Count0"
+                                                    },
                                                     {
                                                         "Inputs": [
                                                             {
                                                                 "ExternalPlanNodeId": 8
                                                             }
                                                         ],
-                                                        "Limit": "10",
-                                                        "Name": "TopSort",
-                                                        "TopSortBy": "argument.Count0"
+                                                        "Name": "Aggregate",
+                                                        "Phase": "Final"
                                                     }
                                                 ],
                                                 "PlanNodeId": 9,
                                                 "Plans": [
                                                     {
+                                                        "HashFunc": "HashV1",
                                                         "KeyColumns": [
                                                             "SearchPhrase"
                                                         ],
@@ -84,14 +94,15 @@
                                                                                 "Node Type": "Aggregate-Filter-TableFullScan",
                                                                                 "Operators": [
                                                                                     {
-                                                                                        "Aggregation": "{_yql_agg_0: SUM(state._yql_agg_0,1),_yql_agg_2: MIN(item.URL,state._yql_agg_2),_yql_agg_3: MIN(item.Title,state._yql_agg_3)}",
+                                                                                        "Aggregation": "{SUM(1),MIN(item.URL),MIN(item.Title)}",
                                                                                         "GroupBy": "item.SearchPhrase",
                                                                                         "Inputs": [
                                                                                             {
                                                                                                 "InternalOperatorId": 1
                                                                                             }
                                                                                         ],
-                                                                                        "Name": "Aggregate"
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Intermediate"
                                                                                     },
                                                                                     {
                                                                                         "Inputs": [
@@ -100,11 +111,12 @@
                                                                                             }
                                                                                         ],
                                                                                         "Name": "Filter",
-                                                                                        "Predicate": "item.Title StringContains \"Google\" And Not item.URL StringContains \".google.\" And item.SearchPhrase != \"\""
+                                                                                        "Predicate": "item.Title StringContains \"Google\" AND NOT item.URL StringContains \".google.\" AND item.SearchPhrase != \"\""
                                                                                     },
                                                                                     {
                                                                                         "Inputs": [],
                                                                                         "Name": "TableFullScan",
+                                                                                        "Path": "/local/clickbench/plans/row/hits",
                                                                                         "ReadColumns": [
                                                                                             "SearchPhrase",
                                                                                             "Title",
@@ -135,22 +147,33 @@
                                                                         "PlanNodeType": "Connection",
                                                                         "Plans": [
                                                                             {
-                                                                                "Node Type": "Aggregate",
+                                                                                "Node Type": "Aggregate-Aggregate",
                                                                                 "Operators": [
                                                                                     {
-                                                                                        "Aggregation": "{_yql_agg_1: COUNT(item.UserID,state._yql_agg_1)}",
+                                                                                        "Aggregation": "{COUNT(item.UserID)}",
                                                                                         "GroupBy": "item.SearchPhrase",
+                                                                                        "Inputs": [
+                                                                                            {
+                                                                                                "InternalOperatorId": 1
+                                                                                            }
+                                                                                        ],
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Intermediate"
+                                                                                    },
+                                                                                    {
                                                                                         "Inputs": [
                                                                                             {
                                                                                                 "ExternalPlanNodeId": 2
                                                                                             }
                                                                                         ],
-                                                                                        "Name": "Aggregate"
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Final"
                                                                                     }
                                                                                 ],
                                                                                 "PlanNodeId": 3,
                                                                                 "Plans": [
                                                                                     {
+                                                                                        "HashFunc": "HashV1",
                                                                                         "KeyColumns": [
                                                                                             "SearchPhrase",
                                                                                             "UserID"
@@ -164,7 +187,7 @@
                                                                                                 "Operators": [
                                                                                                     {
                                                                                                         "Aggregation": "state",
-                                                                                                        "GroupBy": "",
+                                                                                                        "GroupBy": "[item.SearchPhrase,item.UserID]",
                                                                                                         "Inputs": [
                                                                                                             {
                                                                                                                 "InternalOperatorId": 1
@@ -173,7 +196,8 @@
                                                                                                                 "InternalOperatorId": 1
                                                                                                             }
                                                                                                         ],
-                                                                                                        "Name": "Aggregate"
+                                                                                                        "Name": "Aggregate",
+                                                                                                        "Phase": "Intermediate"
                                                                                                     },
                                                                                                     {
                                                                                                         "Inputs": [
@@ -182,11 +206,12 @@
                                                                                                             }
                                                                                                         ],
                                                                                                         "Name": "Filter",
-                                                                                                        "Predicate": "item.Title StringContains \"Google\" And Not item.URL StringContains \".google.\" And item.SearchPhrase != \"\""
+                                                                                                        "Predicate": "item.Title StringContains \"Google\" AND NOT item.URL StringContains \".google.\" AND item.SearchPhrase != \"\""
                                                                                                     },
                                                                                                     {
                                                                                                         "Inputs": [],
                                                                                                         "Name": "TableFullScan",
+                                                                                                        "Path": "/local/clickbench/plans/row/hits",
                                                                                                         "ReadColumns": [
                                                                                                             "SearchPhrase",
                                                                                                             "Title",
@@ -230,7 +255,10 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
             },
             "tables": [
                 {

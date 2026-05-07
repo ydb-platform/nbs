@@ -4,6 +4,7 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
+    contrib/ydb/core/persqueue/writer
     contrib/ydb/library/aclib
 )
 

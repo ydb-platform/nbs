@@ -1,7 +1,7 @@
 #include "dq_opt_stat.h"
 
-#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <yql/essentials/core/yql_opt_utils.h>
+#include <yql/essentials/utils/log/log.h>
 
 using namespace NYql;
 using namespace NYql::NNodes;
@@ -17,9 +17,9 @@ namespace {
      * Check if a callable is an attribute of some table
      * Currently just return a boolean and cover only basic cases
      */
-    TMaybe<TCoMember> IsAttribute(const TExprBase& input) {
+    std::optional<TString> IsAttribute(const TExprBase& input) {
         if (auto member = input.Maybe<TCoMember>()) {
-            return member.Cast();
+            return TString(member.Cast().Name());
         } else if (auto cast = input.Maybe<TCoSafeCast>()) {
             return IsAttribute(cast.Cast().Value());
         } else if (auto ifPresent = input.Maybe<TCoIfPresent>()) {
@@ -35,8 +35,37 @@ namespace {
         } else if (auto exists = input.Maybe<TCoExists>()) {
             auto child = TExprBase(input.Ptr()->ChildRef(0));
             return IsAttribute(child);
+        } else if (auto argument = input.Maybe<TCoArgument>()) {
+            TString argumentName = TString(argument.Cast().Name());
+            TStringBuf olapApplyMemberPrefix = "members_";
+            if (argumentName.StartsWith(olapApplyMemberPrefix)) {
+                return argumentName.substr(olapApplyMemberPrefix.length(), argumentName.size() - olapApplyMemberPrefix.length());
+            } else {
+                return argumentName;
+            }
         }
+        return std::nullopt;
+    }
 
+    TMaybe<TCoMember> IsMember(const TExprBase& input) {
+        if (auto member = input.Maybe<TCoMember>()) {
+            return member.Cast();
+        } else if (auto cast = input.Maybe<TCoSafeCast>()) {
+            return IsMember(cast.Cast().Value());
+        } else if (auto ifPresent = input.Maybe<TCoIfPresent>()) {
+            return IsMember(ifPresent.Cast().Optional());
+        } else if (auto just = input.Maybe<TCoJust>()) {
+            return IsMember(just.Cast().Input());
+        } else if (input.Ptr()->IsCallable("PgCast")) {
+            auto child = TExprBase(input.Ptr()->ChildRef(0));
+            return IsMember(child);
+        } else if (input.Ptr()->IsCallable("FromPg")) {
+            auto child = TExprBase(input.Ptr()->ChildRef(0));
+            return IsMember(child);
+        } else if (auto exists = input.Maybe<TCoExists>()) {
+            auto child = TExprBase(input.Ptr()->ChildRef(0));
+            return IsMember(child);
+        }
         return Nothing();
     }
 
@@ -51,7 +80,7 @@ namespace {
             if (stats->Nrows > 1) {
                 return 0.1;
             }
-                
+
             return 1.0;
         }
     }
@@ -99,7 +128,7 @@ namespace {
                 ui32 v = FromString<ui32>(value);
                 return countMinSketch->Probe(reinterpret_cast<const char*>(&v), sizeof(v));
             } else if (columnType == "Utf8" || columnType == "String" || columnType == "Yson" || columnType == "Json") {
-                return countMinSketch->Probe(value.Data(), value.Size());
+                return countMinSketch->Probe(value.data(), value.size());
             } else if (columnType == "Interval" || columnType == "Timestamp64" || columnType == "Interval64") {
                 i64 v = FromString<i64>(value);
                 return countMinSketch->Probe(reinterpret_cast<const char*>(&v), sizeof(v));
@@ -107,7 +136,7 @@ namespace {
                 ui64 v = FromString<ui64>(value);
                 return countMinSketch->Probe(reinterpret_cast<const char*>(&v), sizeof(v));
             } else if (columnType == "Uuid") {
-                const ui64* uuidData = reinterpret_cast<const ui64*>(value.Data());
+                const ui64* uuidData = reinterpret_cast<const ui64*>(value.data());
                 std::pair<ui64, ui64> v{};
                 v.first = uuidData[0]; // low128
                 v.second = uuidData[1]; // high128
@@ -143,27 +172,36 @@ double NYql::NDq::TPredicateSelectivityComputer::ComputeEqualitySelectivity(cons
         return ComputeEqualitySelectivity(right, left);
     }
 
-    if (auto maybeMember = IsAttribute(left)) {
+    if (auto attribute = IsAttribute(left)) {
         // In case both arguments refer to an attribute, return 0.2
         if (IsAttribute(right)) {
+            if (CollectMemberEqualities) {
+                auto maybeMember = IsMember(left);
+                auto maybeAnotherMember = IsMember(right);
+                if (maybeMember && maybeAnotherMember) {
+                    MemberEqualities.Add(*maybeMember.Get(), *maybeAnotherMember.Get());
+                }
+            }
             return 0.3;
         }
         // In case the right side is a constant that can be extracted, compute the selectivity using statistics
         // Currently, with the basic statistics we just return 1/nRows
 
         else if (IsConstantExprWithParams(right.Ptr())) {
-            TString attributeName = maybeMember.Get()->Name().StringValue();
+            TString attributeName = attribute.value();
             if (!IsConstantExpr(right.Ptr())) {
                 return DefaultSelectivity(Stats, attributeName);
             }
 
             if (Stats == nullptr || Stats->ColumnStatistics == nullptr) {
                 if (CollectColumnsStatUsedMembers) {
-                    ColumnStatsUsedMembers.AddEquality(*maybeMember.Get());
+                    if (auto maybeMember = IsMember(left)) {
+                        ColumnStatsUsedMembers.AddEquality(*maybeMember.Get());
+                    }
                 }
                 return DefaultSelectivity(Stats, attributeName);
             }
-            
+
             if (auto countMinSketch = Stats->ColumnStatistics->Data[attributeName].CountMinSketch; countMinSketch != nullptr) {
                 auto columnType = Stats->ColumnStatistics->Data[attributeName].Type;
                 std::optional<ui32> countMinEstimation = EstimateCountMin(right, columnType,  countMinSketch);
@@ -172,7 +210,7 @@ double NYql::NDq::TPredicateSelectivityComputer::ComputeEqualitySelectivity(cons
                 }
                 return countMinEstimation.value() / Stats->Nrows;
             }
-            
+
             return DefaultSelectivity(Stats, attributeName);
         }
     }
@@ -330,7 +368,7 @@ double TPredicateSelectivityComputer::Compute(
 
     else if (auto maybeIfExpr = input.Maybe<TCoIf>()) {
         auto ifExpr = maybeIfExpr.Cast();
-        
+
         // attr in ('a', 'b', 'c' ...)
         if (ifExpr.Predicate().Maybe<TCoExists>() && ifExpr.ThenValue().Maybe<TCoJust>() && ifExpr.ElseValue().Maybe<TCoNothing>()) {
             auto list = FindNode<TExprList>(ifExpr.ThenValue());

@@ -1,6 +1,6 @@
 #include "keyvalue_storage_read_request.h"
 
-#include <contrib/ydb/core/util/testactorsys.h>
+#include <contrib/ydb/core/util/actorsys_test/testactorsys.h>
 #include <contrib/ydb/core/base/blobstorage_common.h>
 #include <library/cpp/testing/unittest/registar.h>
 

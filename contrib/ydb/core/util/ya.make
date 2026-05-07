@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     activeactors.h
     address_classifier.cpp
+    aws.cpp
     backoff.cpp
     cache.cpp
     cache.h
@@ -13,6 +14,8 @@ SRCS(
     console.cpp
     console.h
     counted_leaky_bucket.h
+    cpuinfo.cpp
+    cpuinfo.h
     defs.h
     event_priority_queue.h
     failure_injection.cpp
@@ -41,14 +44,11 @@ SRCS(
     proto_duration.h
     queue_inplace.h
     queue_oneone_inplace.h
+    random.cpp
     simple_cache.h
-    single_thread_ic_mock.cpp
-    single_thread_ic_mock.h
+    source_location.cpp
     stlog.cpp
     stlog.h
-    templates.h
-    testactorsys.cpp
-    testactorsys.h
     text.cpp
     text.h
     token_bucket.h
@@ -77,9 +77,21 @@ PEERDIR(
     library/cpp/random_provider
     contrib/ydb/core/base
     contrib/ydb/core/protos
+    contrib/ydb/core/mon
     library/cpp/deprecated/atomic
     contrib/ydb/library/yverify_stream
 )
+
+IF (OS_WINDOWS)
+    CFLAGS(
+        -DKIKIMR_DISABLE_S3_OPS
+    )
+ELSE()
+    PEERDIR(
+        contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core
+        contrib/libs/curl
+    )
+ENDIF()
 
 END()
 

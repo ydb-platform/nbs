@@ -53,11 +53,13 @@ SRCS(
     tx__delete_tablet.cpp
     tx__delete_tablet_result.cpp
     tx__disconnect_node.cpp
+    tx__generate_data_ut.cpp
     tx__init_scheme.cpp
     tx__kill_node.cpp
     tx__load_everything.cpp
     tx__lock_tablet.cpp
     tx__process_boot_queue.cpp
+    tx__process_metrics.cpp
     tx__process_pending_operations.cpp
     tx__reassign_groups.cpp
     tx__reassign_groups_on_decommit.cpp

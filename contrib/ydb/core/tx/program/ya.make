@@ -3,6 +3,8 @@ LIBRARY()
 SRCS(
     registry.cpp
     program.cpp
+    builder.cpp
+    resolver.cpp
 )
 
 PEERDIR(
@@ -10,8 +12,9 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/library/formats/arrow/protos
     contrib/ydb/core/tablet_flat
-    contrib/ydb/library/yql/minikql/comp_nodes
-    contrib/ydb/library/yql/core/arrow_kernels/registry
+    yql/essentials/minikql/comp_nodes
+    yql/essentials/core/arrow_kernels/registry
+    contrib/ydb/core/formats/arrow/program
 )
 
 YQL_LAST_ABI_VERSION()

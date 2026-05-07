@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/db_async_resolver_impl.h>
 #include <contrib/ydb/core/fq/libs/shared_resources/shared_resources.h>
 #include <contrib/ydb/core/fq/libs/signer/signer.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
 #include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
 #include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
 #include <contrib/ydb/library/yql/providers/pq/cm_client/client.h>

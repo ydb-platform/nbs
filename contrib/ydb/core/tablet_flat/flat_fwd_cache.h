@@ -161,7 +161,7 @@ namespace NFwd {
             }
         }
 
-        void Fill(NPageCollection::TLoadedPage& page, EPage type) noexcept override
+        void Fill(NPageCollection::TLoadedPage& page, NSharedCache::TSharedPageRef sharedPageRef, EPage type) noexcept override
         {
             Stat.Saved += page.Data.size();
             
@@ -170,7 +170,7 @@ namespace NFwd {
                 Y_ABORT_UNLESS(page.PageId == IndexPage.PageId);
                 Index.emplace(page.Data);
                 Iter = Index->LookupRow(BeginRowId);
-                IndexPage.Settle(page);
+                IndexPage.Settle(page, std::move(sharedPageRef));
                 return;
             }
 
@@ -181,7 +181,7 @@ namespace NFwd {
             
             Y_ABORT_UNLESS(page.Data.size() <= OnFetch, "Forward cache ahead counters is out of sync");
             OnFetch -= page.Data.size();
-            OnHold += it->Settle(page); // settle of a dropped page returns 0 and releases its data
+            OnHold += it->Settle(page, std::move(sharedPageRef)); // settle of a dropped page returns 0 and releases its data
 
             ShrinkPages();
         }
@@ -360,7 +360,7 @@ namespace NFwd {
             }
         }
 
-        void Fill(NPageCollection::TLoadedPage& page, EPage type) noexcept override
+        void Fill(NPageCollection::TLoadedPage& page, NSharedCache::TSharedPageRef sharedPageRef, EPage type) noexcept override
         {
             Stat.Saved += page.Data.size();
               
@@ -382,7 +382,7 @@ namespace NFwd {
                 }
             }
             
-            it->Settle(page); // settle of a dropped page releases its data
+            it->Settle(page, std::move(sharedPageRef)); // settle of a dropped page releases its data
 
             AdvancePending(levelId);
             ShrinkPages(level);

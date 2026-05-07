@@ -3,8 +3,6 @@
 #include "scheme/abstract/index_info.h"
 
 #include <contrib/ydb/core/formats/arrow/arrow_helpers.h>
-#include <contrib/ydb/core/formats/arrow/custom_registry.h>
-#include <contrib/ydb/core/formats/arrow/program.h>
 
 namespace NKikimr::NOlap {
 

@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/common/http_gateway)
 
-TAG(ya:manual)
-
 FORK_SUBTESTS()
 
 SRCS(

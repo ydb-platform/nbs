@@ -1,6 +1,8 @@
 #pragma once
-#include "common/owner.h"
-#include "common/histogram.h"
+
+#include "common_data.h"
+#include <contrib/ydb/library/signals/owner.h>
+#include <contrib/ydb/library/signals/histogram.h>
 #include <contrib/ydb/core/tx/columnshard/common/portion.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <util/string/builder.h>
@@ -8,6 +10,7 @@
 
 namespace NKikimr::NOlap {
 class TPortionInfo;
+class TColumnEngineForLogs;
 }
 
 namespace NKikimr::NColumnShard {
@@ -37,10 +40,10 @@ public:
     }
 
     TString DebugString() const {
-        return TStringBuilder() << 
-            "columns_size:" << ColumnPortionsSize << 
-            ";total_size:" << TotalPortionsSize << 
-            ";count:" << PortionsCount << 
+        return TStringBuilder() <<
+            "columns_size:" << ColumnPortionsSize <<
+            ";total_size:" << TotalPortionsSize <<
+            ";count:" << PortionsCount <<
             ";metadata_portions_size:" << MetadataMemoryPortionsSize <<
             ";records_count:" << RecordsCount <<
             ";";
@@ -223,22 +226,28 @@ private:
 
     NMonitoring::TDynamicCounters::TCounterPtr IndexMetadataUsageBytes;
 
+    NMonitoring::TDynamicCounters::TCounterPtr BadPortionsCount;
+
     TAgentGranuleDataCounters GranuleDataAgent;
     std::vector<std::shared_ptr<TIncrementalHistogram>> BlobSizeDistribution;
     std::vector<std::shared_ptr<TIncrementalHistogram>> PortionSizeDistribution;
     std::vector<std::shared_ptr<TIncrementalHistogram>> PortionRecordsDistribution;
 
 public:
+    friend class NKikimr::NOlap::TColumnEngineForLogs;
 
     class TPortionsInfoGuard {
     private:
         std::vector<std::shared_ptr<TIncrementalHistogram::TGuard>> BlobGuards;
         std::vector<std::shared_ptr<TIncrementalHistogram::TGuard>> PortionRecordCountGuards;
         std::vector<std::shared_ptr<TIncrementalHistogram::TGuard>> PortionSizeGuards;
+        NMonitoring::TDynamicCounters::TCounterPtr BadPortionsCount;
+
     public:
         TPortionsInfoGuard(const std::vector<std::shared_ptr<TIncrementalHistogram>>& distrBlobs,
             const std::vector<std::shared_ptr<TIncrementalHistogram>>& distrPortionSize,
-            const std::vector<std::shared_ptr<TIncrementalHistogram>>& distrRecordsCount)
+            const std::vector<std::shared_ptr<TIncrementalHistogram>>& distrRecordsCount,
+            NMonitoring::TDynamicCounters::TCounterPtr badPortionsCount)
         {
             for (auto&& i : distrBlobs) {
                 BlobGuards.emplace_back(i->BuildGuard());
@@ -249,6 +258,7 @@ public:
             for (auto&& i : distrRecordsCount) {
                 PortionRecordCountGuards.emplace_back(i->BuildGuard());
             }
+            BadPortionsCount = badPortionsCount;
         }
 
 
@@ -260,7 +270,7 @@ public:
     void OnActualizationTask(const ui32 evictCount, const ui32 removeCount) const;
 
     TPortionsInfoGuard BuildPortionBlobsGuard() const {
-        return TPortionsInfoGuard(BlobSizeDistribution, PortionSizeDistribution, PortionRecordsDistribution);
+        return TPortionsInfoGuard(BlobSizeDistribution, PortionSizeDistribution, PortionRecordsDistribution, BadPortionsCount);
     }
 
     TGranuleDataCounters RegisterGranuleDataCounters() const {

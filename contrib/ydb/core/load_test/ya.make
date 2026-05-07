@@ -20,8 +20,8 @@ PEERDIR(
     contrib/ydb/library/workload/kv
     contrib/ydb/library/workload/stock
     contrib/ydb/public/lib/base
-    contrib/ydb/public/lib/operation_id
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/proto
     contrib/ydb/services/kesus
     contrib/ydb/services/metadata
     contrib/ydb/services/persqueue_cluster_discovery
@@ -62,5 +62,6 @@ GENERATE_ENUM_SERIALIZATION(percentile.h)
 END()
 
 RECURSE_FOR_TESTS(
+    ut
     ut_ycsb
 )

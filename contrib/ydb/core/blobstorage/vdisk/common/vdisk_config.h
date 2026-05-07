@@ -1,14 +1,15 @@
 #pragma once
 #include "defs.h"
 
-#include "vdisk_performance_params.h"
 #include "vdisk_events_quoter.h"
+#include "vdisk_performance_params.h"
 
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>
 #include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_vdisk_config.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 
 namespace NKikimr {
 
@@ -119,7 +120,6 @@ namespace NKikimr {
         ui32 HullSstSizeInChunksLevel;
         ui32 HugeBlobsFreeChunkReservation;
         ui32 MinHugeBlobInBytes;
-        ui32 OldMinHugeBlobInBytes;
         ui32 MilestoneHugeBlobInBytes;
         ui32 HugeBlobOverhead;
         ui32 HullCompLevel0MaxSstsAtOnce;
@@ -127,11 +127,13 @@ namespace NKikimr {
         double HullCompLevelRateThreshold;
         double HullCompFreeSpaceThreshold;
         TControlWrapper FreshCompMaxInFlightWrites;
+        TControlWrapper FreshCompMaxInFlightReads;
         TControlWrapper HullCompMaxInFlightWrites;
         TControlWrapper HullCompMaxInFlightReads;
         TControlWrapper HullCompFullCompPeriodSec;
         TControlWrapper HullCompThrottlerBytesRate;
         TControlWrapper DefragThrottlerBytesRate;
+        TControlWrapper MaxActiveCompactionsPerPDisk;
         double HullCompReadBatchEfficiencyThreshold;
         ui64 AnubisOsirisMaxInFly;
         bool AddHeader;
@@ -218,19 +220,19 @@ namespace NKikimr {
         ui32 MaxResponseSize;
         TDuration DskTrackerInterval;
         bool BarrierValidation;
-        TDuration WhiteboardUpdateInterval;
+        TDuration StatsUpdateInterval;
         bool EnableVDiskCooldownTimeout;
         TControlWrapper EnableVPatch = true;
         bool UseActorSystemTimeInBSQueue = false;
 
         ///////////// BALANCING SETTINGS ////////////////////
-        bool BalancingEnableSend;
-        bool BalancingEnableDelete;
+        bool BalancingEnableSend = false;
+        bool BalancingEnableDelete = false;
         TDuration BalancingJobGranularity;
-        bool BalancingBalanceOnlyHugeBlobs;
-        ui64 BalancingBatchSize;
-        ui64 BalancingMaxToSendPerEpoch;
-        ui64 BalancingMaxToDeletePerEpoch;
+        bool BalancingBalanceOnlyHugeBlobs = false;
+        ui64 BalancingBatchSize = 0;
+        ui64 BalancingMaxToSendPerEpoch = 0;
+        ui64 BalancingMaxToDeletePerEpoch = 0;
         TDuration BalancingReadBatchTimeout;
         TDuration BalancingSendBatchTimeout;
         TDuration BalancingRequestBlobsOnMainTimeout;
@@ -242,12 +244,30 @@ namespace NKikimr {
         TControlWrapper DefaultHugeGarbagePerMille = 300;
         TControlWrapper HugeDefragFreeSpaceBorderPerMille = 260;
         TControlWrapper MaxChunksToDefragInflight = 10;
-        TControlWrapper EnableExplicitCompactionAfterDefrag = 1;
         TControlWrapper GarbageThresholdToRunFullCompactionPerMille = 0;
 
         ///////////// COST METRICS SETTINGS ////////////////
         bool UseCostTracker = true;
         TCostMetricsParametersByMedia CostMetricsParametersByMedia;
+
+        ///////////// THROTTLING SETTINGS //////////////////
+        TControlWrapper ThrottlingDryRun;
+        TControlWrapper ThrottlingMinLevel0SstCount;
+        TControlWrapper ThrottlingMaxLevel0SstCount;
+        TControlWrapper ThrottlingMinInplacedSizeHDD;
+        TControlWrapper ThrottlingMaxInplacedSizeHDD;
+        TControlWrapper ThrottlingMinInplacedSizeSSD;
+        TControlWrapper ThrottlingMaxInplacedSizeSSD;
+        TControlWrapper ThrottlingMinOccupancyPerMille;
+        TControlWrapper ThrottlingMaxOccupancyPerMille;
+        TControlWrapper ThrottlingMinLogChunkCount;
+        TControlWrapper ThrottlingMaxLogChunkCount;
+
+        ///////////// DEEP SCRUBBING ////////////////////////
+        TControlWrapper EnableDeepScrubbing;
+
+        ///////////// SYNC SETTINGS //////////////////
+        TControlWrapper MaxInProgressSyncCount;
 
         ///////////// FEATURE FLAGS ////////////////////////
         NKikimrConfig::TFeatureFlags FeatureFlags;

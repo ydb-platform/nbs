@@ -3,9 +3,9 @@
 #include <contrib/ydb/core/tx/columnshard/test_helper/columnshard_ut_common.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <ydb-cpp-sdk/client/proto/accessor.h>
+#include <ydb-cpp-sdk/client/scheme/scheme.h>
+#include <ydb-cpp-sdk/client/topic/client.h>
 #include <contrib/ydb/core/testlib/cs_helper.h>
 #include <contrib/ydb/core/testlib/common_helper.h>
 
@@ -31,33 +31,8 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
         return pqConfig;
     }
 
-    Y_UNIT_TEST(CreateTableSerialTypeForbidden) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        auto serverSettings = TKikimrSettings().SetAppConfig(appConfig);
-        TKikimrRunner kikimr(serverSettings);
-        auto db = kikimr.GetTableClient();
-        auto session = db.CreateSession().GetValueSync().GetSession();
-
-        {
-            auto query = R"(
-                --!syntax_v1
-                CREATE TABLE `/Root/SerialTableDisabled` (
-                    Key Serial,
-                    Value String,
-                    PRIMARY KEY (Key)
-                );
-            )";
-
-            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::GENERIC_ERROR,
-                                       result.GetIssues().ToString());
-        }
-    }
-
     Y_UNIT_TEST(AddSerialColumnForbidden) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
         auto serverSettings = TKikimrSettings().SetAppConfig(appConfig);
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -90,35 +65,8 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
         }
     }
 
-    Y_UNIT_TEST(CreateTableWithDefaultForbidden) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(false);
-        auto serverSettings = TKikimrSettings().SetAppConfig(appConfig);
-        TKikimrRunner kikimr(serverSettings);
-        auto db = kikimr.GetTableClient();
-        auto session = db.CreateSession().GetValueSync().GetSession();
-
-        {
-            auto query = R"(
-                --!syntax_v1
-                CREATE TABLE `/Root/CreateAndAlterDefaultsDisabled` (
-                    Key Int32,
-                    Value String Default "empty",
-                    PRIMARY KEY (Key)
-                );
-            )";
-
-            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::GENERIC_ERROR,
-                                       result.GetIssues().ToString());
-        }
-    }
-
     Y_UNIT_TEST(AddColumnWithDefaultForbidden) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(false);
         auto serverSettings = TKikimrSettings().SetAppConfig(appConfig);
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -153,7 +101,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
 
     Y_UNIT_TEST(SerialTypeNegative1) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -174,9 +121,8 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
         }
     }
 
-    Y_UNIT_TEST(SerialTypeNegative2) {
+    Y_UNIT_TEST(SerialTypeForNonKeyColumn) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -184,7 +130,7 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
         {
             auto query = R"(
                 --!syntax_v1
-                CREATE TABLE `/Root/SerialTableNeg2` (
+                CREATE TABLE `/Root/SerialTable` (
                     Key Uint32,
                     Value Serial,
                     PRIMARY KEY (Key)
@@ -192,15 +138,79 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
             )";
 
             auto result = session.ExecuteSchemeQuery(query).GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::BAD_REQUEST,
+            UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), EStatus::SUCCESS);
+        }
+
+        {
+            TString query = R"(
+                UPSERT INTO `/Root/SerialTable` (Key) VALUES (1);
+            )";
+
+            NYdb::NTable::TExecDataQuerySettings execSettings;
+            execSettings.KeepInQueryCache(true);
+            execSettings.CollectQueryStats(ECollectQueryStatsMode::Basic);
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx(), execSettings)
+                    .ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS,
                                        result.GetIssues().ToString());
+        }
+
+        {
+            TString query = R"(
+                SELECT * FROM `/Root/SerialTable`;
+            )";
+
+            NYdb::NTable::TExecDataQuerySettings execSettings;
+            execSettings.KeepInQueryCache(true);
+            execSettings.CollectQueryStats(ECollectQueryStatsMode::Basic);
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx(), execSettings)
+                    .ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS,
+                                       result.GetIssues().ToString());
+
+            CompareYson(R"([[[1u];1]])", NYdb::FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            TString query = R"(
+                ALTER TABLE `/Root/SerialTable` DROP COLUMN Value;
+            )";
+
+            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), EStatus::BAD_REQUEST);
+        }
+
+        {
+            TString query = R"(
+                ALTER TABLE `/Root/SerialTable` ALTER COLUMN Value DROP NOT NULL;
+            )";
+
+            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), EStatus::BAD_REQUEST);
+        }
+
+        {
+            TString query = R"(
+                ALTER TABLE `/Root/SerialTable`
+                ADD FAMILY Family2 (
+                     DATA = "test",
+                     COMPRESSION = "off"
+                ),
+                ALTER COLUMN Value SET FAMILY Family2;
+            )";
+
+            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), EStatus::BAD_REQUEST);
         }
     }
 
 
     void TestSerialType(TString serialType) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -288,10 +298,116 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
         TestSerialType("serial8");
     }
 
+    Y_UNIT_TEST(DropCreateSerial) {
+        NKikimrConfig::TAppConfig appConfig;
+        TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
+        auto db = kikimr.GetTableClient();
+        auto session = db.CreateSession().GetValueSync().GetSession();
+
+        {
+            auto query = R"(
+                --!syntax_v1
+                CREATE TABLE `/Root/SerialTable` (
+                    Key Serial,
+                    Value String,
+                    PRIMARY KEY (Key)
+                );
+            )";
+
+            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            TString query = R"(
+                UPSERT INTO `/Root/SerialTable` (Value) VALUES ("New");
+            )";
+
+            NYdb::NTable::TExecDataQuerySettings execSettings;
+            execSettings.KeepInQueryCache(true);
+            execSettings.CollectQueryStats(ECollectQueryStatsMode::Basic);
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx(), execSettings)
+                    .ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS,
+                                       result.GetIssues().ToString());
+        }
+        {
+            TString query = R"(
+                SELECT * FROM `/Root/SerialTable`;
+            )";
+
+            NYdb::NTable::TExecDataQuerySettings execSettings;
+            execSettings.KeepInQueryCache(true);
+            execSettings.CollectQueryStats(ECollectQueryStatsMode::Basic);
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx(), execSettings)
+                    .ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS,
+                                       result.GetIssues().ToString());
+        }
+
+        {
+            auto query = R"(
+                --!syntax_v1
+                DROP TABLE `/Root/SerialTable`;
+            )";
+
+            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            auto query = R"(
+                --!syntax_v1
+                CREATE TABLE `/Root/SerialTable` (
+                    Key Serial,
+                    Value String,
+                    PRIMARY KEY (Key)
+                );
+            )";
+
+            auto result = session.ExecuteSchemeQuery(query).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            TString query = R"(
+                UPSERT INTO `/Root/SerialTable` (Value) VALUES ("New");
+            )";
+
+            NYdb::NTable::TExecDataQuerySettings execSettings;
+            execSettings.KeepInQueryCache(true);
+            execSettings.CollectQueryStats(ECollectQueryStatsMode::Basic);
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx(), execSettings)
+                    .ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS,
+                                       result.GetIssues().ToString());
+        }
+        {
+            TString query = Sprintf(R"(
+                SELECT * FROM `/Root/SerialTable`;
+            )");
+
+            NYdb::NTable::TExecDataQuerySettings execSettings;
+            execSettings.KeepInQueryCache(true);
+            execSettings.CollectQueryStats(ECollectQueryStatsMode::Basic);
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx(), execSettings)
+                    .ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS,
+                                       result.GetIssues().ToString());
+            CompareYson(R"([[1;["New"]]])", NYdb::FormatResultSetYson(result.GetResultSet(0)));
+        }
+    }
+
     Y_UNIT_TEST(DefaultsAndDeleteAndUpdate) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         auto serverSettings = TKikimrSettings().SetAppConfig(appConfig);
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -383,7 +499,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
 
     Y_UNIT_TEST(AlterTableAddColumnWithDefaultValue) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
         appConfig.MutableFeatureFlags()->SetEnableAddColumsWithDefaults(true);
         auto serverSettings = TKikimrSettings().SetAppConfig(appConfig);
         TKikimrRunner kikimr(serverSettings);
@@ -419,8 +534,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
 
     Y_UNIT_TEST(DefaultValuesForTable) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -486,8 +599,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
 
     Y_UNIT_TEST(DefaultValuesForTableNegative2) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -510,8 +621,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
 
     Y_UNIT_TEST(DefaultValuesForTableNegative3) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -536,9 +645,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
     Y_UNIT_TEST(DefaultValuesForTableNegative4) {
 
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
-
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -562,9 +668,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
     Y_UNIT_TEST(IndexedTableAndNotNullColumn) {
 
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
-
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -791,8 +894,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
     Y_UNIT_TEST(AddNonColumnDoesnotReturnInternalError) {
 
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         appConfig.MutableFeatureFlags()->SetEnableAddColumsWithDefaults(true);
 
         TKikimrRunner kikimr(TKikimrSettings().SetUseRealThreads(false).SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
@@ -966,8 +1067,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
     Y_UNIT_TEST(IndexedTableAndNotNullColumnAddNotNullColumn) {
 
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         appConfig.MutableFeatureFlags()->SetEnableAddColumsWithDefaults(true);
         appConfig.MutableFeatureFlags()->SetEnableParameterizedDecimal(true);
 
@@ -1264,8 +1363,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
     Y_UNIT_TEST(Utf8AndDefault) {
 
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         appConfig.MutableFeatureFlags()->SetEnableAddColumsWithDefaults(true);
 
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));
@@ -1349,9 +1446,6 @@ Y_UNIT_TEST_SUITE(KqpConstraints) {
     Y_UNIT_TEST(AlterTableAddNotNullWithDefault) {
 
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableSequences(false);
-        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
-
         appConfig.MutableFeatureFlags()->SetEnableAddColumsWithDefaults(true);
 
         TKikimrRunner kikimr(TKikimrSettings().SetPQConfig(DefaultPQConfig()).SetAppConfig(appConfig));

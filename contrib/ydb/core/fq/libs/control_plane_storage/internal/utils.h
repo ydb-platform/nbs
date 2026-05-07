@@ -2,13 +2,13 @@
 
 #include <tuple>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <ydb-cpp-sdk/client/value/value.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <contrib/ydb/core/fq/libs/config/protos/issue_id.pb.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/ydb_control_plane_storage_impl.h>
-#include <contrib/ydb/core/fq/libs/exceptions/exceptions.h>
+#include <yql/essentials/utils/exceptions.h>
 
 namespace NFq {
 

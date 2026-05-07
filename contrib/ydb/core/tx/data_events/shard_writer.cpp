@@ -1,4 +1,5 @@
 #include "shard_writer.h"
+#include "common/error_codes.h"
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
@@ -7,10 +8,9 @@
 
 namespace NKikimr::NEvWrite {
 
-    TWritersController::TWritersController(const ui32 writesCount, const NActors::TActorIdentity& longTxActorId, const NLongTxService::TLongTxId& longTxId, const bool immediateWrite)
+    TWritersController::TWritersController(const ui32 writesCount, const NActors::TActorIdentity& longTxActorId, const NLongTxService::TLongTxId& longTxId)
         : WritesCount(writesCount)
         , LongTxActorId(longTxActorId)
-        , ImmediateWrite(immediateWrite)
         , LongTxId(longTxId)
     {
         Y_ABORT_UNLESS(writesCount);
@@ -28,12 +28,10 @@ namespace NKikimr::NEvWrite {
     void TWritersController::OnFail(const Ydb::StatusIds::StatusCode code, const TString& message) {
         Counters->OnCSFailed(code);
         FailsCount.Inc();
-        if (!Code) {
-            TGuard<TMutex> g(Mutex);
-            if (!Code) {
-                Issues.AddIssue(message);
-                Code = code;
-            }
+        if (AtomicCas(&HasCodeFail, 1, 0)) {
+            AFL_VERIFY(!Code);
+            Issues.AddIssue(message);
+            Code = code;
         }
         if (!WritesCount.Dec()) {
             SendReply();
@@ -41,7 +39,8 @@ namespace NKikimr::NEvWrite {
     }
 
     TShardWriter::TShardWriter(const ui64 shardId, const ui64 tableId, const ui64 schemaVersion, const TString& dedupId, const IShardInfo::TPtr& data,
-        const NWilson::TProfileSpan& parentSpan, TWritersController::TPtr externalController, const ui32 writePartIdx, const EModificationType mType, const bool immediateWrite)
+        const NWilson::TProfileSpan& parentSpan, TWritersController::TPtr externalController, const ui32 writePartIdx,
+        const std::optional<TDuration> timeout)
         : ShardId(shardId)
         , WritePartIdx(writePartIdx)
         , TableId(tableId)
@@ -51,25 +50,27 @@ namespace NKikimr::NEvWrite {
         , ExternalController(externalController)
         , LeaderPipeCache(MakePipePerNodeCacheID(false))
         , ActorSpan(parentSpan.BuildChildrenSpan("ShardWriter"))
-        , ModificationType(mType)
-        , ImmediateWrite(immediateWrite)
-    {
+        , Timeout(timeout)
+        , RetryBySubscription(AppData()->FeatureFlags.GetEnableCsOverloadsSubscriptionRetries()) {
     }
 
     void TShardWriter::SendWriteRequest() {
-        if (ImmediateWrite) {
-            auto ev = MakeHolder<NEvents::TDataEvents::TEvWrite>(NKikimrDataEvents::TEvWrite::MODE_IMMEDIATE);
-            DataForShard->Serialize(*ev, TableId, SchemaVersion);
-            SendToTablet(std::move(ev));
-        } else {
-            auto ev = MakeHolder<TEvColumnShard::TEvWrite>(SelfId(), ExternalController->GetLongTxId(), TableId, DedupId, "", WritePartIdx, ModificationType);
-            DataForShard->Serialize(*ev);
-            SendToTablet(std::move(ev));
+        auto ev = MakeHolder<NEvents::TDataEvents::TEvWrite>(NKikimrDataEvents::TEvWrite::MODE_IMMEDIATE);
+        DataForShard->Serialize(*ev, TableId, SchemaVersion);
+        if (Timeout) {
+            ev->Record.SetTimeoutSeconds(Timeout->Seconds());
         }
+        if (RetryBySubscription) {
+            ev->Record.SetOverloadSubscribe(++LastOverloadSeqNo);
+        }
+        SendToTablet(std::move(ev));
     }
 
     void TShardWriter::Bootstrap() {
         SendWriteRequest();
+        if (Timeout) {
+            Schedule(*Timeout, new TEvents::TEvWakeup(1));
+        }
         Become(&TShardWriter::StateMain);
     }
 
@@ -79,42 +80,47 @@ namespace NKikimr::NEvWrite {
 
         const auto ydbStatus = msg->GetStatus();
         if (ydbStatus == NKikimrDataEvents::TEvWriteResult::STATUS_OVERLOADED) {
-            if (RetryWriteRequest(true)) {
+            if (RetryBySubscription) {
+                if (msg->Record.HasOverloadSubscribed() && msg->Record.GetOverloadSubscribed() == LastOverloadSeqNo && !IsMaxRetriesReached()) {
+                    return;
+                }
+            } else if (RetryWriteRequest(true)) {
                 return;
             }
         }
 
         auto gPassAway = PassAwayGuard();
         if (ydbStatus != NKikimrDataEvents::TEvWriteResult::STATUS_COMPLETED) {
-            ExternalController->OnFail(Ydb::StatusIds::GENERIC_ERROR,
-                TStringBuilder() << "Cannot write data into shard " << ShardId << " in longTx " <<
-                ExternalController->GetLongTxId().ToString());
+            auto statusInfo = NEvWrite::NErrorCodes::TOperator::GetStatusInfo(ydbStatus).DetachResult();
+            const auto issues = msg->Record.GetIssues();
+            const TString issueString = issues.empty() ? "unspecified error" : issues[0].message();
+            ExternalController->OnFail(statusInfo.GetYdbStatusCode(),
+                TStringBuilder() << "Cannot write data into shard(" << statusInfo.GetIssueGeneralText() << ": " << issueString << ") " << ShardId
+                                 << " in longTx " << ExternalController->GetLongTxId().ToString());
             return;
         }
 
+        if (RetryBySubscription) {
+            LastOverloadSeqNo = 0;
+        }
         ExternalController->OnSuccess(ShardId, 0, WritePartIdx);
     }
 
-    void TShardWriter::Handle(TEvColumnShard::TEvWriteResult::TPtr& ev) {
-        const auto* msg = ev->Get();
-        Y_ABORT_UNLESS(msg->Record.GetOrigin() == ShardId);
+    void TShardWriter::Handle(TEvColumnShard::TEvOverloadReady::TPtr& ev) {
+        const auto& record = ev->Get()->Record;
 
-        const auto ydbStatus = msg->GetYdbStatus();
-        if (ydbStatus == Ydb::StatusIds::OVERLOADED) {
-            if (RetryWriteRequest(true)) {
-                return;
-            }
+        AFL_VERIFY(RetryBySubscription);
+        AFL_VERIFY(record.GetSeqNo() == LastOverloadSeqNo)("event_seq_no", record.GetSeqNo())("last_overload_seq_no", LastOverloadSeqNo);
+        AFL_VERIFY(record.GetTabletID() == ShardId)("ev_tablet_id", record.GetTabletID())("shard_id", ShardId);
+
+        if (!RetryWriteRequest(false)) {
+            auto gPassAway = PassAwayGuard();
+            const TString errMsg = TStringBuilder() << "Shard " << ShardId << " is still overloaded after " << NumRetries << " retries";
+            ExternalController->OnFail(Ydb::StatusIds::OVERLOADED, errMsg);
+            ExternalController->GetCounters()->OnRetryBySubscribeOnOverloadLimitExceeded();
+        } else {
+            ExternalController->GetCounters()->OnRetryBySubscribeOnOverload();
         }
-
-        auto gPassAway = PassAwayGuard();
-        if (ydbStatus != Ydb::StatusIds::SUCCESS) {
-            ExternalController->OnFail(ydbStatus,
-                TStringBuilder() << "Cannot write data into shard " << ShardId << " in longTx " <<
-                ExternalController->GetLongTxId().ToString());
-            return;
-        }
-
-        ExternalController->OnSuccess(ShardId, msg->Record.GetWriteId(), WritePartIdx);
     }
 
     void TShardWriter::Handle(TEvPipeCache::TEvDeliveryProblem::TPtr& ev) {
@@ -135,17 +141,26 @@ namespace NKikimr::NEvWrite {
             ExternalController->OnFail(Ydb::StatusIds::UNDETERMINED, errMsg);
         }
     }
-    
-    void TShardWriter::HandleTimeout(const TActorContext& /*ctx*/) {
-        RetryWriteRequest(false);
+
+    void TShardWriter::Handle(NActors::TEvents::TEvWakeup::TPtr& ev) {
+        if (ev->Get()->Tag) {
+            auto gPassAway = PassAwayGuard();
+            ExternalController->OnFail(Ydb::StatusIds::TIMEOUT, TStringBuilder()
+                                                                    << "Cannot write data (TIMEOUT) into shard " << ShardId << " in longTx "
+                                                                    << ExternalController->GetLongTxId().ToString());
+            ExternalController->GetCounters()->OnGlobalTimeout();
+        } else {
+            ExternalController->GetCounters()->OnRetryTimeout();
+            RetryWriteRequest(false);
+        }
     }
 
     bool TShardWriter::RetryWriteRequest(const bool delayed) {
-        if (NumRetries >= MaxRetriesPerShard) {
+        if (IsMaxRetriesReached()) {
             return false;
         }
         if (delayed) {
-            Schedule(OverloadTimeout(), new TEvents::TEvWakeup());
+            Schedule(OverloadTimeout(), new TEvents::TEvWakeup(0));
         } else {
             ++NumRetries;
             SendWriteRequest();
@@ -153,4 +168,29 @@ namespace NKikimr::NEvWrite {
         return true;
     }
 
+    bool TShardWriter::IsMaxRetriesReached() const {
+        return NumRetries >= MaxRetriesPerShard;
+    }
+
+    void TShardWriter::Die(const NActors::TActorContext& ctx) {
+        if (RetryBySubscription && LastOverloadSeqNo) {
+            SendToTablet(MakeHolder<TEvColumnShard::TEvOverloadUnsubscribe>(LastOverloadSeqNo));
+            LastOverloadSeqNo = 0;
+        }
+
+        Send(LeaderPipeCache, new TEvPipeCache::TEvUnlink(0));
+
+        TBase::Die(ctx);
+    }
+
+    void TShardWriter::PassAway() {
+        if (RetryBySubscription && LastOverloadSeqNo) {
+            SendToTablet(MakeHolder<TEvColumnShard::TEvOverloadUnsubscribe>(LastOverloadSeqNo));
+            LastOverloadSeqNo = 0;
+        }
+
+        Send(LeaderPipeCache, new TEvPipeCache::TEvUnlink(0));
+
+        TBase::PassAway();
+    }
 }

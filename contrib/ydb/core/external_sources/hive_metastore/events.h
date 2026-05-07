@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/yql/providers/generic/connector/api/service/protos/connector.pb.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 #include <contrib/ydb/public/api/protos/ydb_value.pb.h>
 
 #include <library/cpp/threading/future/core/future.h>

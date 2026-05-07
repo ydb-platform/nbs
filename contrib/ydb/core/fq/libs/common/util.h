@@ -4,9 +4,9 @@
 #include <array>
 
 #include <google/protobuf/repeated_field.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 #include <contrib/ydb/public/api/protos/draft/fq.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status/status.h>
+#include <ydb-cpp-sdk/client/types/status/status.h>
 
 #include <library/cpp/iterator/mapped.h>
 #include <util/generic/string.h>
