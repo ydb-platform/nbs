@@ -378,7 +378,7 @@ TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
     if (currentLoad.WriteBlobBytes < last.WriteBlobBytes ||
         currentLoad.WriteBlobCount < last.WriteBlobCount ||
         currentLoad.ReadBlobBytes < last.ReadBlobBytes ||
-        currentLoad.WriteBlobCount < last.WriteBlobCount)
+        currentLoad.ReadBlobCount < last.ReadBlobCount)
     {
         // Unable to calculate cost: Negative counters diff
         return MakeError(E_FAIL, "Negative counters diff");
@@ -409,7 +409,7 @@ TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
             perfSettings.ReadIops,
             perfSettings.ReadBandwidth,
             currentLoad.ReadBlobBytes - last.ReadBlobBytes,
-            currentLoad.WriteBlobCount - last.WriteBlobCount);
+            currentLoad.ReadBlobCount - last.ReadBlobCount);
 
     return writeCost + readCost;
 }
