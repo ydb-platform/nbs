@@ -116,6 +116,13 @@ bool TInMemoryIndexState::ShouldBypassCacheRead(
         return true;
     }
 
+    // No records at all. The map is always empty after the recovery phase if
+    // unconfirmed data is disabled, as it is the only client of this API for
+    // now.
+    if (CacheBypassCommitIdsByNodeId.empty()) {
+        return false;
+    }
+
     // If there are no records for the given node, we can read from the cache.
     const auto it = CacheBypassCommitIdsByNodeId.find(nodeId);
     if (it == CacheBypassCommitIdsByNodeId.end() || it->second.empty()) {
@@ -125,7 +132,7 @@ bool TInMemoryIndexState::ShouldBypassCacheRead(
     // Otherwise, ensure that all writes with commit ids up to the current
     // commit are already in the cache.
     const ui64 frontCommitId = it->second.front();
-    // InvalidCommitId comparios is needed for CommitIdOverflow case
+    // The InvalidCommitId comparison handles the CommitIdOverflow case.
     return frontCommitId == InvalidCommitId || frontCommitId <= commitId;
 }
 
