@@ -125,6 +125,7 @@ bool TInMemoryIndexState::ShouldBypassCacheRead(
     // Otherwise, ensure that all writes with commit ids up to the current
     // commit are already in the cache.
     const ui64 frontCommitId = it->second.front();
+    // InvalidCommitId comparios is needed for CommitIdOverflow case
     return frontCommitId == InvalidCommitId || frontCommitId <= commitId;
 }
 
