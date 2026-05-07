@@ -1,6 +1,5 @@
 #include "volume_session_actor.h"
 
-#include "cloud/storage/core/libs/common/backoff_delay_provider.h"
 #include "service_actor.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -12,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -145,10 +145,23 @@ void SendInternalMountVolumeResponse(
 class TGentlePreemptionActor final
     : public TActorBootstrapped<TGentlePreemptionActor>
 {
+public:
+    enum class EAction
+    {
+        Push,
+        Pull
+    };
+
 private:
+    enum class EWakeupTag : ui64
+    {
+        TimeoutExceeded = 1,
+        RetryIntermediateOperation,
+    };
+
     const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
-    const NProto::EVolumeBinding TargetBindingType;
+    const EAction Action;
     const NProto::EPreemptionSource PreemptionSource;
     const ui64 VolumeTabletId;
     const TActorId VolumeSessionActorId;
@@ -160,7 +173,7 @@ public:
     TGentlePreemptionActor(
         TChildLogTitle logTitle,
         TRequestInfoPtr requestInfo,
-        NProto::EVolumeBinding targetBindingType,
+        EAction action,
         NProto::EPreemptionSource preemptionSource,
         ui64 volumeTabletId,
         TActorId volumeSessionActorId,
@@ -169,15 +182,20 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void SendRequest(
-        const TActorContext& ctx,
-        TDuration delay = TDuration::Zero());
+    void SendIntermediateOperationRequest(const TActorContext& ctx) const;
 
     void HandleIntermediateOperationResponse(
         const TActorContext& ctx,
         const NProto::TError& error);
 
     void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
+
+    IEventBasePtr CreateRequest() const;
+
+    static const char* GetActionName(EAction action);
+
+    void
+    ScheduleWakeup(const TActorContext& ctx, TDuration delay, EWakeupTag tag);
 
 private:
     STFUNC(StateWork);
@@ -198,14 +216,14 @@ private:
 TGentlePreemptionActor::TGentlePreemptionActor(
     TChildLogTitle logTitle,
     TRequestInfoPtr requestInfo,
-    const NProto::EVolumeBinding targetBindingType,
+    EAction action,
     const NProto::EPreemptionSource preemptionSource,
     const ui64 volumeTabletId,
     TActorId volumeSessionActorId,
     TDuration timeout)
     : LogTitle(std::move(logTitle))
     , RequestInfo(std::move(requestInfo))
-    , TargetBindingType(targetBindingType)
+    , Action(action)
     , PreemptionSource(preemptionSource)
     , VolumeTabletId(volumeTabletId)
     , VolumeSessionActorId(std::move(volumeSessionActorId))
@@ -223,58 +241,20 @@ void TGentlePreemptionActor::Bootstrap(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::SERVICE,
         LogTitle.GetWithTime()
-            << " Start gentle preemption with binding: "
-            << NProto::EVolumeBinding_Name(TargetBindingType)
+            << " Start gentle preemption with action: " << GetActionName(Action)
             << " source: " << NProto::EPreemptionSource_Name(PreemptionSource));
 
-    SendRequest(ctx);
+    SendIntermediateOperationRequest(ctx);
 
     if (Timeout > TDuration::Zero()) {
-        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+        ScheduleWakeup(ctx, Timeout, EWakeupTag::TimeoutExceeded);
     }
 }
 
-void TGentlePreemptionActor::SendRequest(
-    const TActorContext& ctx,
-    TDuration delay)
+void TGentlePreemptionActor::SendIntermediateOperationRequest(
+    const TActorContext& ctx) const
 {
-    IEventBasePtr request;
-
-    switch (TargetBindingType) {
-        case NProto::BINDING_LOCAL:
-            request =
-                std::make_unique<TEvServicePrivate::TEvStartVolumeRequest>(
-                    VolumeTabletId);
-            break;
-        case NProto::BINDING_REMOTE:
-            request = std::make_unique<
-                TEvServicePrivate::TEvReleaseVolumeToHiveRequest>();
-            break;
-        default:
-            request = {};
-            break;
-    }
-
-    if (!request) {
-        ReportInvalidGentlePreemptionBinding(
-            "GentlePreemption requested with unsupported binding",
-            {{"binding", TargetBindingType}, {"source", PreemptionSource}});
-        ReplyAndDie(
-            ctx,
-            MakeError(E_ARGUMENT, "Invalid binding for gentle preemption"));
-        return;
-    }
-
-    if (delay) {
-        ctx.Schedule(
-            delay,
-            std::make_unique<IEventHandle>(
-                VolumeSessionActorId,
-                ctx.SelfID,
-                request.release()));
-    } else {
-        NCloud::Send(ctx, VolumeSessionActorId, std::move(request));
-    }
+    NCloud::Send(ctx, VolumeSessionActorId, CreateRequest());
 }
 
 void TGentlePreemptionActor::HandleIntermediateOperationResponse(
@@ -282,7 +262,10 @@ void TGentlePreemptionActor::HandleIntermediateOperationResponse(
     const NProto::TError& error)
 {
     if (HasError(error)) {
-        SendRequest(ctx, RetryBackoff.GetDelayAndIncrease());
+        ScheduleWakeup(
+            ctx,
+            RetryBackoff.GetDelayAndIncrease(),
+            EWakeupTag::RetryIntermediateOperation);
         return;
     }
     ReplyAndDie(ctx, error);
@@ -298,7 +281,7 @@ void TGentlePreemptionActor::ReplyAndDie(
         TBlockStoreComponents::SERVICE,
         LogTitle.GetWithTime()
             << " Gentle preemption finished: " << FormatError(error).c_str()
-            << " binding: " << NProto::EVolumeBinding_Name(TargetBindingType)
+            << " action: " << GetActionName(Action)
             << " source: " << NProto::EPreemptionSource_Name(PreemptionSource));
 
     NCloud::Reply(
@@ -310,15 +293,52 @@ void TGentlePreemptionActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TGentlePreemptionActor::HandleWakeup(
-    const NActors::TEvents::TEvWakeup::TPtr& ev,
-    const NActors::TActorContext& ctx)
+IEventBasePtr TGentlePreemptionActor::CreateRequest() const
 {
-    Y_UNUSED(ev);
+    switch (Action) {
+        case EAction::Push:
+            return std::make_unique<
+                TEvServicePrivate::TEvReleaseVolumeToHiveRequest>();
+        case EAction::Pull:
+            return std::make_unique<TEvServicePrivate::TEvStartVolumeRequest>(
+                VolumeTabletId);
+    }
+}
 
-    ReplyAndDie(
-        ctx,
-        MakeError(E_TIMEOUT, "Gentle preemption didn't complete in time"));
+const char* TGentlePreemptionActor::GetActionName(const EAction action)
+{
+    switch (action) {
+        case EAction::Push:
+            return "Push";
+        case EAction::Pull:
+            return "Pull";
+    }
+}
+
+void TGentlePreemptionActor::ScheduleWakeup(
+    const TActorContext& ctx,
+    const TDuration delay,
+    const EWakeupTag tag)
+{
+    ctx.Schedule(delay, new TEvents::TEvWakeup(static_cast<ui64>(tag)));
+}
+
+void TGentlePreemptionActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    switch (static_cast<EWakeupTag>(ev->Get()->Tag)) {
+        case EWakeupTag::TimeoutExceeded:
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_TIMEOUT,
+                    "Gentle preemption didn't complete in time"));
+            break;
+        case EWakeupTag::RetryIntermediateOperation:
+            SendIntermediateOperationRequest(ctx);
+            break;
+    }
 }
 
 void TGentlePreemptionActor::HandleStartVolumeResponse(
@@ -857,7 +877,7 @@ void TMountRequestActor::GentlyReleaseVolume(const TActorContext& ctx)
             SelfId(),
             RequestInfo->Cookie,
             RequestInfo->CallContext),
-        NProto::EVolumeBinding::BINDING_REMOTE,
+        TGentlePreemptionActor::EAction::Push,
         Params.PreemptionSource,
         VolumeTabletId,
         Params.SessionActorId,
@@ -875,7 +895,7 @@ void TMountRequestActor::GentlyPullVolume(const TActorContext& ctx)
             SelfId(),
             RequestInfo->Cookie,
             RequestInfo->CallContext),
-        NProto::EVolumeBinding::BINDING_LOCAL,
+        TGentlePreemptionActor::EAction::Pull,
         Params.PreemptionSource,
         VolumeTabletId,
         Params.SessionActorId,
@@ -1053,13 +1073,25 @@ void TMountRequestActor::HandleUnlockTabletResponse(
 
 void TMountRequestActor::HandleGentlePreemptionRequestProcessed(
     const TEvServicePrivate::TEvGentlePreemptionRequestProcessed::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
-    if (!ShouldWaitVolumeAfterGentlePreemption) {
-        Error = ev->Get()->GetError();
+    const auto& error = ev->Get()->GetError();
+
+    if (HasError(error))
+    {
+        Error = error;
+        VolumeSessionRestartRequired = true;
         NotifyAndDie(ctx);
         return;
     }
+
+    if (!ShouldWaitVolumeAfterGentlePreemption)
+    {
+        Error = error;
+        NotifyAndDie(ctx);
+        return;
+    }
+
     WaitForVolume(ctx, Config->GetLocalStartAddClientTimeout());
     ShouldWaitVolumeAfterGentlePreemption = false;
 }
