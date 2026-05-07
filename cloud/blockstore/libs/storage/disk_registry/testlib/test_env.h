@@ -1232,6 +1232,18 @@ public:
         return request;
     }
 
+    auto CreateQueryKnownStorageRequest(const TVector<TString>& agentIds)
+    {
+        auto request =
+            std::make_unique<TEvService::TEvQueryKnownStorageRequest>();
+
+        request->Record.MutableAgentIds()->Assign(
+            agentIds.begin(),
+            agentIds.end());
+
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

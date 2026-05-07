@@ -680,3 +680,20 @@ func (client *safeClient) QueryAgentsInfo(
 	resp, err := client.Impl.QueryAgentsInfo(ctx, req)
 	return resp, err
 }
+
+func (client *safeClient) QueryKnownStorage(
+	ctx context.Context,
+	agentIds []string,
+) ([]*protos.TKnownStorageInfos, error) {
+
+	req := &protos.TQueryKnownStorageRequest{
+		AgentIds: agentIds,
+	}
+
+	resp, err := client.Impl.QueryKnownStorage(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetKnownStorage(), nil
+}

@@ -36,6 +36,7 @@ SRCS(
     ping.cpp
     query_agents_info.cpp
     query_available_storage.cpp
+    query_known_storage.cpp
     read_blocks.cpp
     refresh_endpoint.cpp
     resize_volume.cpp

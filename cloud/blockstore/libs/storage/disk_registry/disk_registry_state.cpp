@@ -7464,6 +7464,33 @@ auto TDiskRegistryState::QueryAvailableStorage(
     return infos;
 }
 
+TResultOrError<TVector<TAgentKnownDeviceInfo>>
+TDiskRegistryState::QueryKnownStorage(const TString& agentId) const
+{
+    TVector<TAgentKnownDeviceInfo> result;
+    THashSet<TString> insertedDevices;
+    const auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder{} << "agent " << agentId.Quote() << " not found");
+    }
+
+    for (const auto& device: agent->GetDevices()) {
+        if (insertedDevices.find(device.GetDeviceName()) !=
+            insertedDevices.end())
+        {
+            continue;
+        }
+        result.push_back(
+            {.Path = device.GetDeviceName(),
+             .PoolName = device.GetPoolName(),
+             .PoolKind = device.GetPoolKind()});
+        insertedDevices.emplace(device.GetDeviceName());
+    }
+    return result;
+}
+
 NProto::TError TDiskRegistryState::AllocateDiskReplicas(
     TInstant now,
     TDiskRegistryDatabase& db,
