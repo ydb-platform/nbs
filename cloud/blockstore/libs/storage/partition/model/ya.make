@@ -17,6 +17,7 @@ SRCS(
     commit_queue.cpp
     compaction_map_load_state.cpp
     fresh_blob.cpp
+    flush_blocks_visitor.cpp
     garbage_queue.cpp
     group_downtimes.cpp
     mixed_index_cache.cpp
@@ -27,6 +28,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
 
