@@ -8690,22 +8690,16 @@ NProto::TError TDiskRegistryState::UpdateVolumeHealth(
             E_NOT_FOUND,
             TStringBuilder() << "disk " << diskId.Quote() << " not found");
     }
-    if (volumeHealthSeqNo > 0) {
-        if (volumeHealthSeqNo <= disk->VolumeHealthSeqNo) {
-            return MakeError(E_ABORTED);
-        }
-        disk->VolumeHealthSeqNo = volumeHealthSeqNo;
+    if (volumeHealthSeqNo <= disk->VolumeHealthSeqNo) {
+        return MakeError(E_ABORTED);
     }
-    if (disk->VolumeHealth == volumeHealth) {
-        // Health unchanged but seqno advanced — persist to avoid seqno rollback
-        // on restart.
-        if (volumeHealthSeqNo > 0) {
-            db.UpdateDisk(BuildDiskConfig(diskId, *disk));
-        }
-        return MakeError(S_ALREADY);
-    }
+    const bool healthUnchanged = disk->VolumeHealth == volumeHealth;
+    disk->VolumeHealthSeqNo = volumeHealthSeqNo;
     disk->VolumeHealth = volumeHealth;
     db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+    if (healthUnchanged) {
+        return MakeError(S_ALREADY);
+    }
     TryUpdateDiskStateImpl(db, diskId, *disk, now);
     return {};
 }

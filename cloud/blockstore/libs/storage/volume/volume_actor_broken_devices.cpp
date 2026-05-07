@@ -30,34 +30,27 @@ bool ShouldSkipVolumeHealthNotification(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::SendVolumeHealthNotification(const TActorContext& ctx)
+void TVolumeActor::SendVolumeHealthNotification(
+    const TActorContext& ctx,
+    NProto::EVolumeHealth volumeHealth)
 {
-    const ui64 seqNo = VolumeHealthRequestId.GetValue();
+    VolumeHealth = volumeHealth;
+    const ui64 seqNo = VolumeHealthRequestId.Advance();
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Notifying DiskRegistry: volume health = %s "
         "(volumeRequestId=%" PRIu64 ")",
         LogTitle.GetWithTime().c_str(),
-        VolumeHealth == NProto::VOLUME_HEALTH_HEALTHY ? "healthy"
-                                                             : "unhealthy",
+        volumeHealth == NProto::VOLUME_HEALTH_HEALTHY ? "healthy" : "unhealthy",
         seqNo);
 
     auto request =
         std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
     request->Record.SetDiskId(State->GetDiskId());
-    request->Record.SetVolumeHealth(VolumeHealth);
+    request->Record.SetVolumeHealth(volumeHealth);
     request->Record.MutableHeaders()->SetVolumeRequestId(seqNo);
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
-}
-
-void TVolumeActor::NotifyVolumeHealth(
-    const TActorContext& ctx,
-    NProto::EVolumeHealth health)
-{
-    VolumeHealth = health;
-    VolumeHealthRequestId.Advance();
-    SendVolumeHealthNotification(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,7 +84,7 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, ts, /*add=*/true);
 
     if (wasEmpty) {
-        NotifyVolumeHealth(ctx, NProto::VOLUME_HEALTH_UNHEALTHY);
+        SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_UNHEALTHY);
     }
 }
 
@@ -121,7 +114,7 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
     ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, TInstant::Zero(), /*add=*/false);
 
     if (DeviceUUIDToBrokenAt.empty()) {
-        NotifyVolumeHealth(ctx, NProto::VOLUME_HEALTH_HEALTHY);
+        SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
     }
 }
 
@@ -168,7 +161,7 @@ void TVolumeActor::CompleteUpdateBrokenDevice(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::HandleUpdateVolumeHealthResponse(
+void TVolumeActor::HandleVolumeHealthResponse(
     const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -181,7 +174,7 @@ void TVolumeActor::HandleUpdateVolumeHealthResponse(
                 "%s UpdateVolumeHealth response error: %s, will retry",
                 LogTitle.GetWithTime().c_str(),
                 FormatError(error).c_str());
-            SendVolumeHealthNotification(ctx);
+            SendVolumeHealthNotification(ctx, VolumeHealth);
             return;
         }
         LOG_ERROR(
@@ -221,7 +214,7 @@ void TVolumeActor::CleanupStaleBrokenDevices(const TActorContext& ctx)
     }
 
     if (DeviceUUIDToBrokenAt.empty()) {
-        NotifyVolumeHealth(ctx, NProto::VOLUME_HEALTH_HEALTHY);
+        SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
     }
 }
 

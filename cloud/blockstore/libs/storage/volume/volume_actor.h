@@ -1282,17 +1282,15 @@ private:
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleUpdateVolumeHealthResponse(
+    void HandleVolumeHealthResponse(
         const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CleanupStaleBrokenDevices(const NActors::TActorContext& ctx);
 
-    void SendVolumeHealthNotification(const NActors::TActorContext& ctx);
-
-    void NotifyVolumeHealth(
+    void SendVolumeHealthNotification(
         const NActors::TActorContext& ctx,
-        NProto::EVolumeHealth health);
+        NProto::EVolumeHealth volumeHealth);
 
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,

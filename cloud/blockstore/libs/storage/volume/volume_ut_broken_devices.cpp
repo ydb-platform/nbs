@@ -212,7 +212,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
     }
 
-    Y_UNIT_TEST(ShouldSerializeNotifications)
+    Y_UNIT_TEST(ShouldSendNotificationOnEachHealthChange)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(
@@ -222,15 +222,9 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);
 
-        SendBrokenDeviceNotification(
-            volume,
-            "uuid-1");   // → UNHEALTHY (in-flight, mock replies immediately)
-        SendRecoveredDeviceNotification(
-            volume,
-            "uuid-1");   // → HEALTHY (in-flight, previous ack already received)
-        SendBrokenDeviceNotification(
-            volume,
-            "uuid-1");   // → UNHEALTHY (pending, overwrites nothing)
+        SendBrokenDeviceNotification(volume, "uuid-1");      // → UNHEALTHY
+        SendRecoveredDeviceNotification(volume, "uuid-1");   // → HEALTHY
+        SendBrokenDeviceNotification(volume, "uuid-1");      // → UNHEALTHY
 
         runtime->DispatchEvents({}, 1s);
 

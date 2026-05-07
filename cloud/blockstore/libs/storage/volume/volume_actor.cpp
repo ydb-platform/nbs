@@ -1192,7 +1192,7 @@ STFUNC(TVolumeActor::StateWork)
             HandleDeviceRecoveredNotification);
         HFunc(
             TEvDiskRegistry::TEvUpdateVolumeHealthResponse,
-            HandleUpdateVolumeHealthResponse);
+            HandleVolumeHealthResponse);
         HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
