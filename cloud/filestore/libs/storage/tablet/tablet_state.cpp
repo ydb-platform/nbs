@@ -87,6 +87,44 @@ void TIndexTabletState::UpdateLogTag(TString tag)
     LogTag = std::move(tag);
 }
 
+void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
+{
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    TVector<TString> balancerShardIds;
+
+    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    if (fileShardIds.size()) {
+        Impl->FileShardBalancer = CreateShardBalancer(
+            config.GetShardBalancerPolicy(),
+            GetBlockSize(),
+            config.GetShardBalancerPrecisionBytes(),
+            config.GetMaxFileBlocks(),
+            config.GetShardBalancerDesiredFreeSpaceReserve(),
+            config.GetShardBalancerMinFreeSpaceReserve(),
+            TVector<TString>(fileShardIds.begin(), fileShardIds.end()));
+
+        THashSet<TString> fileShardIdSet(
+            fileShardIds.begin(),
+            fileShardIds.end());
+        for (const auto& shardId: shardIds) {
+            if (!fileShardIdSet.contains(shardId)) {
+                balancerShardIds.push_back(shardId);
+            }
+        }
+    } else {
+        balancerShardIds.assign(shardIds.begin(), shardIds.end());
+    }
+
+    Impl->ShardBalancer = CreateShardBalancer(
+        config.GetShardBalancerPolicy(),
+        GetBlockSize(),
+        config.GetShardBalancerPrecisionBytes(),
+        config.GetMaxFileBlocks(),
+        config.GetShardBalancerDesiredFreeSpaceReserve(),
+        config.GetShardBalancerMinFreeSpaceReserve(),
+        std::move(balancerShardIds));
+}
+
 void TIndexTabletState::LoadState(
     ui32 generation,
     const TStorageConfig& config,
@@ -95,6 +133,7 @@ void TIndexTabletState::LoadState(
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
     const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TVector<ui64>& orphanNodeIds,
+    const TVector<NProto::TOpLogEntry>& opLog,
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
@@ -170,19 +209,15 @@ void TIndexTabletState::LoadState(
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
 
+    for (const auto& entry: opLog) {
+        Impl->OpLogEntryIds.insert(entry.GetEntryId());
+    }
+
     for (const auto& entry: responseLog) {
         CommitResponseLogEntry(entry);
     }
 
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer = CreateShardBalancer(
-        config.GetShardBalancerPolicy(),
-        GetBlockSize(),
-        config.GetShardBalancerPrecisionBytes(),
-        config.GetMaxFileBlocks(),
-        config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve(),
-        TVector<TString>(shardIds.begin(), shardIds.end()));
+    InitShardBalancer(config);
 }
 
 void TIndexTabletState::UpdateConfig(
@@ -199,15 +234,7 @@ void TIndexTabletState::UpdateConfig(
     Impl->RangeIdHasher = CreateHasher(fileSystem);
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
 
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer = CreateShardBalancer(
-        config.GetShardBalancerPolicy(),
-        GetBlockSize(),
-        config.GetShardBalancerPrecisionBytes(),
-        config.GetMaxFileBlocks(),
-        config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve(),
-        TVector<TString>(shardIds.begin(), shardIds.end()));
+    InitShardBalancer(config);
 }
 
 void TIndexTabletState::SetFrozen(TIndexTabletDatabase& db, bool frozen)
@@ -273,6 +300,27 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
     }
 
     return Max(currentShardCount, autoShardCount);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletState::WriteOpLogEntry(
+    TIndexTabletDatabase& db,
+    const NProto::TOpLogEntry& e)
+{
+    db.WriteOpLogEntry(e);
+    Impl->OpLogEntryIds.insert(e.GetEntryId());
+}
+
+void TIndexTabletState::DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId)
+{
+    db.DeleteOpLogEntry(entryId);
+    Impl->OpLogEntryIds.erase(entryId);
+}
+
+ui64 TIndexTabletState::GetOpLogEntryCount() const
+{
+    return Impl->OpLogEntryIds.size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

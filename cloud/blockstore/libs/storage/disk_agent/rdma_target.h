@@ -1,12 +1,12 @@
 #pragma once
 
 #include <cloud/blockstore/config/disk.pb.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -67,7 +67,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     TRdmaTargetConfigPtr rdmaTargetConfig,
     TOldRequestCounters oldRequestCounters,
     ILoggingServicePtr logging,
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
     TVector<TString> devices);

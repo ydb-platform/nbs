@@ -57,7 +57,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TMigrations migrations,
         TVector<TDevices> replicas,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         TActorId volumeActorId,
         TActorId statActorId,

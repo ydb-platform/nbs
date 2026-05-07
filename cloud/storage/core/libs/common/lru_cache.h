@@ -25,13 +25,31 @@ concept HasReserve = requires(T t) {
 template <
     typename TKey,
     typename TValue,
+    bool UseIndexLookup = false,
     typename THashFunc = THash<TKey>,
     typename TBase =
         THashMap<TKey, TValue, THashFunc, TEqualTo<TKey>, TStlAllocator>>
-class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
+class TLRUCache
+    : public TMapOps<TLRUCache<TKey, TValue, UseIndexLookup, THashFunc, TBase>>
 {
-    using TOrderList = TList<TKey, TStlAllocator>;
-    using TOrderPositions = THashMap<
+    template <bool WithValue>
+    struct TOrderListEntry;
+
+    template <>
+    struct TOrderListEntry<true>
+    {
+        TKey Key;
+        TValue* Value;
+    };
+
+    template <>
+    struct TOrderListEntry<false>
+    {
+        TKey Key;
+    };
+
+    using TOrderList = TList<TOrderListEntry<UseIndexLookup>, TStlAllocator>;
+    using TIndex = THashMap<
         TKey,
         typename TOrderList::iterator,
         THashFunc,
@@ -45,18 +63,42 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
     TOrderList OrderList;
     // Contains the position of each key in OrderList, needed to quickly find
     // and update the order when accessing a key
-    TOrderPositions OrderPositions;
+    TIndex Index;
 
     IAllocator* Alloc;
 
     size_t MaxSize = 0;
 
-    inline void RemoveFromOrder(const TKey& key)
+private:
+    void Touch(TIndex::iterator indexIt)
     {
-        auto it = OrderPositions.find(key);
-        if (it != OrderPositions.end()) {
-            OrderList.erase(it->second);
-            OrderPositions.erase(it);
+        OrderList.splice(OrderList.begin(), OrderList, indexIt->second);
+    }
+
+    void UpdateIndex(TBase::iterator it)
+    {
+        typename TIndex::insert_ctx ctx;
+        auto indexIt = Index.find(it->first, ctx);
+        if (indexIt != Index.end()) {
+            Touch(indexIt);
+            return;
+        }
+
+        if constexpr (UseIndexLookup) {
+            OrderList.emplace_front(it->first, &it->second);
+        } else {
+            OrderList.emplace_front(it->first);
+        }
+
+        Index.emplace_direct(ctx, it->first, OrderList.begin());
+    }
+
+    void RemoveFromIndex(const TKey& key)
+    {
+        auto indexIt = Index.find(key);
+        if (indexIt != Index.end()) {
+            OrderList.erase(indexIt->second);
+            Index.erase(indexIt);
         }
     }
 
@@ -74,10 +116,10 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
             evictedKeys.reserve(Base.size() - MaxSize);
         }
         while (Base.size() > MaxSize) {
-            auto& key = OrderList.back();
-            Base.erase(key);
-            OrderPositions.erase(key);
-            evictedKeys.emplace_back(key);
+            auto& ole = OrderList.back();
+            Index.erase(ole.Key);
+            Base.erase(ole.Key);
+            evictedKeys.emplace_back(ole.Key);
             OrderList.pop_back();
         }
         return evictedKeys;
@@ -89,7 +131,7 @@ public:
     explicit TLRUCache(IAllocator* alloc)
         : Base(alloc)
         , OrderList(alloc)
-        , OrderPositions(alloc)
+        , Index(alloc)
         , Alloc(alloc)
     {}
 
@@ -112,20 +154,19 @@ public:
         if constexpr (HasReserve<TBase>) {
             Base.reserve(hint);
         }
-        OrderPositions.reserve(hint);
+        Index.reserve(hint);
     }
 
     // Moves the key to the front of the order list; used upon any access
-    void TouchKey(const TKey& key)
+    bool TouchKey(const TKey& key)
     {
-        auto it = OrderPositions.find(key);
-        if (it != OrderPositions.end()) {
-            OrderList.splice(OrderList.begin(), OrderList, it->second);
-        } else {
-            OrderPositions.emplace(
-                key,
-                OrderList.insert(OrderList.begin(), key));
+        auto it = Index.find(key);
+        if (it != Index.end()) {
+            Touch(it);
+            return true;
         }
+
+        return false;
     }
 
     iterator begin()
@@ -138,18 +179,30 @@ public:
         return Base.end();
     }
 
+    TValue* FindInIndex(const TKey& key)
+    {
+        auto indexIt = Index.find(key);
+        if (indexIt != Index.end()) {
+            Touch(indexIt);
+            return indexIt->second->Value;
+        }
+
+        return nullptr;
+    }
+
     iterator find(const TKey& key)
     {
         auto result = Base.find(key);
         if (result != Base.end()) {
-            TouchKey(key);
+            const bool touched = TouchKey(key);
+            Y_DEBUG_ABORT_UNLESS(touched);
         }
         return result;
     }
 
     void erase(iterator it)
     {
-        RemoveFromOrder(it->first);
+        RemoveFromIndex(it->first);
         Base.erase(it);
     }
 
@@ -157,7 +210,7 @@ public:
     {
         auto it = Base.find(key);
         if (it != Base.end()) {
-            RemoveFromOrder(it->first);
+            RemoveFromIndex(it->first);
             Base.erase(it);
         }
     }
@@ -186,7 +239,7 @@ public:
             return {Base.end(), false, std::nullopt};
         }
         auto result = Base.emplace(std::forward<Args>(args)...);
-        TouchKey(result.first->first);
+        UpdateIndex(result.first);
         auto excessKey = CleanupIfNeeded();
         // There should always be at most one excess key
         Y_DEBUG_ABORT_UNLESS(excessKey.size() <= 1);
@@ -199,7 +252,8 @@ public:
     TValue& at(const TKey& key)
     {
         auto& result = Base.at(key);
-        TouchKey(key);
+        const bool touched = TouchKey(key);
+        Y_DEBUG_ABORT_UNLESS(touched);
         return result;
     }
 

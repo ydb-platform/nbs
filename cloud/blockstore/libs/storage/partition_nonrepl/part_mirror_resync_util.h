@@ -33,7 +33,7 @@ struct TReplicaDescriptor
 
 // TODO: increase x4?
 // Keep the value less than MaxBufferSize in
-// cloud/blockstore/libs/rdma/iface/client.h
+// cloud/storage/core/libs/rdma/iface/client.h
 constexpr ui64 ResyncRangeSize = 4_MB;
 
 ////////////////////////////////////////////////////////////////////////////////

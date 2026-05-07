@@ -3,13 +3,13 @@
 #include "private.h"
 
 #include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <library/cpp/lwtrace/shuttle.h>
 #include <library/cpp/threading/future/future.h>
@@ -63,7 +63,7 @@ IStoragePtr CreateLocalURingStorage(
     ui32 blocksCount);
 
 IStoragePtr CreateRdmaStorage(
-    NRdma::IClientPtr client,
+    NCloud::NStorage::NRdma::IClientPtr client,
     ITaskQueuePtr taskQueue,
     const TString& address,
     ui32 port,

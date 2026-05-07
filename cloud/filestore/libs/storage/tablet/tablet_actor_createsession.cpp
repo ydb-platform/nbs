@@ -107,6 +107,8 @@ void FillFeatures(
 
     features->SetUnconfirmedFlowEnabled(
         config.GetAddingUnconfirmedDataEnabled());
+
+    features->SetUseListNodesInternal(config.GetUseListNodesInternal());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

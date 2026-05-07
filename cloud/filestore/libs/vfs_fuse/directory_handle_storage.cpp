@@ -13,15 +13,18 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
-    ui64 initialDataCompactionBufferSize)
+    ui64 maxDataAreaStepSize,
+    ui64 initialDataMoveBufferSize)
     : Log(log)
 {
     Table = std::make_unique<TDirectoryHandleTable>(
         filePath,
-        recordsCount,
-        initialDataAreaSize,
-        initialDataCompactionBufferSize,
-        30);
+        TDynamicPersistentTableConfig{
+            .MaxRecords = recordsCount,
+            .InitialDataAreaSize = initialDataAreaSize,
+            .MaxDataAreaStepSize = maxDataAreaStepSize,
+            .InitialDataMoveBufferSize = initialDataMoveBufferSize,
+        });
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -90,6 +93,7 @@ void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
         }
     }
     HandleIdToIndices.erase(handleId);
+    Table->TryDeallocateMemory();
 }
 
 void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
@@ -272,14 +276,16 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
-    ui64 initialDataCompactionBufferSize)
+    ui64 maxDataAreaStepSize,
+    ui64 initialDataMoveBufferSize)
 {
     return std::make_unique<TDirectoryHandleStorage>(
         log,
         filePath,
         recordsCount,
         initialDataAreaSize,
-        initialDataCompactionBufferSize);
+        maxDataAreaStepSize,
+        initialDataMoveBufferSize);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

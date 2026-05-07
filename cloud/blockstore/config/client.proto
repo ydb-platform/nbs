@@ -250,18 +250,12 @@ message TMonitoringConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TAuthConfig
-{
-    optional string IamTokenFile = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 message TClientAppConfig
 {
+    reserved 4;
+
     optional TClientConfig ClientConfig = 1;
     optional TLogConfig LogConfig = 2;
     optional TMonitoringConfig MonitoringConfig = 3;
-    optional TAuthConfig AuthConfig = 4;
     optional NCloud.NProto.TIamClientConfig IamConfig = 5;
 }

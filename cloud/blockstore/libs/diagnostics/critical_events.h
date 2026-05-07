@@ -54,8 +54,6 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \
     xxx(DiskRegistryBackupFailed)                                              \
-    xxx(FailedToParseRdmaError)                                                \
-    xxx(FailedToSerializeRdmaError)                                            \
     xxx(RegisterAgentWithEmptyRackName)                                        \
     xxx(AddConfirmedBlobsError)                                                \
     xxx(ConfirmBlobsError)                                                     \
@@ -92,6 +90,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
     xxx(AcquiredDiskEraseAttempt)                                              \
     xxx(DiskAgentConfigMismatch)                                               \
+    xxx(DiskAgentDeviceSymlinkMismatch)                                        \
     xxx(DiskAgentIoDuringSecureErase)                                          \
     xxx(DiskAgentSecureEraseDuringIo)                                          \
     xxx(DiskAgentSessionCacheRestoreError)                                     \

@@ -249,7 +249,13 @@ func createServices(
 	require.NoError(t, err)
 
 	return taskScheduler,
-		filesystem.NewService(taskScheduler, filesystemConfig, nfsFactory)
+		filesystem.NewService(
+			taskScheduler,
+			filesystemConfig,
+			nfsFactory,
+			resourceStorage,
+			nil, // cellSelector
+		)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

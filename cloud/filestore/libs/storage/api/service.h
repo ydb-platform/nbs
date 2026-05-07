@@ -72,6 +72,26 @@ namespace NCloud::NFileStore::NStorage {
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx,   __VA_ARGS__)      \
 // FILESTORE_SERVICE_REQUESTS
 
+#define FILESTORE_SERVICE_ADAPTER_REQUESTS(xxx, ...)                           \
+    xxx(AccessNode,                         __VA_ARGS__)                       \
+    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
+    xxx(UnlinkNode,                         __VA_ARGS__)                       \
+    xxx(DestroyHandle,                      __VA_ARGS__)                       \
+    xxx(AllocateData,                       __VA_ARGS__)                       \
+    xxx(AcquireLock,                        __VA_ARGS__)                       \
+    xxx(ReleaseLock,                        __VA_ARGS__)                       \
+    xxx(TestLock,                           __VA_ARGS__)                       \
+    xxx(WriteData,                          __VA_ARGS__)                       \
+    xxx(ReadData,                           __VA_ARGS__)                       \
+    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(CreateNode,                         __VA_ARGS__)                       \
+    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+// FILESTORE_SERVICE_ADAPTER_REQUESTS
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEvService

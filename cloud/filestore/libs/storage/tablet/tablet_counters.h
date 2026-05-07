@@ -138,6 +138,10 @@ struct TTabletMetrics
     std::atomic<i64> SevenBytesHandlesCount{0};
     std::atomic<i64> UsedLocksCount{0};
 
+    std::atomic<i64> NodeExistsWhileCreatingInShardCount{0};
+    std::atomic<i64> CreateNodeInShardRetryCount{0};
+    std::atomic<i64> ReplayedCreateNodeInShardRequestsCount{0};
+
     std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
     std::atomic<i64> DirectoryCreationInShardsEnabled{0};
 
@@ -286,7 +290,12 @@ struct TTabletMetrics
     std::atomic<i64> CPUUsageMicros{0};
     i64 CPUUsageRate = 0;
 
+    std::atomic<i64> OpLogEntryCount{0};
     std::atomic<i64> ResponseLogEntryCount{0};
+
+    std::atomic<i64> RenameNotSupportedErrorCount{0};
+
+    std::atomic<i64> ShardBalancerUpdateErrorCount{0};
 
     const NMetrics::IMetricsRegistryPtr StorageRegistry;
     const NMetrics::IMetricsRegistryPtr StorageFsRegistry;

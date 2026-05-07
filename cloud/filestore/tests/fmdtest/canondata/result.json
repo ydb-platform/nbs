@@ -4,5 +4,8 @@
     },
     "test.test_create_unlink_steal": {
         "uri": "file://test.test_create_unlink_steal/create_unlink_steal_results.txt"
+    },
+    "test.test_create_unlink_steal_list_nodes_internal": {
+        "uri": "file://test.test_create_unlink_steal_list_nodes_internal/create_unlink_steal_results.txt"
     }
 }

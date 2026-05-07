@@ -10,9 +10,11 @@ namespace NCloud {
 
 Y_UNIT_TEST_SUITE(TLRUCache)
 {
-    Y_UNIT_TEST(ShouldEnforceCapacity)
+    template <bool UseIndexLookup>
+    void DoTestShouldEnforceCapacity()
     {
-        TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
+        TLRUCache<TString, TString, UseIndexLookup> hashMap(
+            TDefaultAllocator::Instance());
         hashMap.SetMaxSize(2);
 
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
@@ -25,6 +27,15 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
         UNIT_ASSERT_VALUES_EQUAL("value2", hashMap.find("key2")->second);
 
+        if constexpr (UseIndexLookup) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                "value1",
+                *hashMap.FindInIndex("key1"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "value2",
+                *hashMap.FindInIndex("key2"));
+        }
+
         auto [_, inserted, evicted] =
             hashMap.emplace("key3", "value3");   // Should evict "key1"
         UNIT_ASSERT_VALUES_EQUAL(true, inserted);
@@ -34,32 +45,79 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
         UNIT_ASSERT_VALUES_EQUAL("value2", hashMap.find("key2")->second);
         UNIT_ASSERT_VALUES_EQUAL("value3", hashMap.find("key3")->second);
+
+        if constexpr (UseIndexLookup) {
+            UNIT_ASSERT(!hashMap.FindInIndex("key1"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "value2",
+                *hashMap.FindInIndex("key2"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "value3",
+                *hashMap.FindInIndex("key3"));
+        }
     }
 
-    Y_UNIT_TEST(ShouldHandleAccessOrder)
+    Y_UNIT_TEST(ShouldEnforceCapacity)
     {
-        TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
+        DoTestShouldEnforceCapacity<false>();
+    }
+
+    Y_UNIT_TEST(ShouldEnforceCapacityWithIndexLookup)
+    {
+        DoTestShouldEnforceCapacity<true>();
+    }
+
+    template <bool UseIndexLookup>
+    void DoTestShouldHandleAccessOrder()
+    {
+        TLRUCache<TString, TString, UseIndexLookup> hashMap(
+            TDefaultAllocator::Instance());
         hashMap.SetMaxSize(3);
 
         hashMap.emplace("key1", "value1");
         hashMap.emplace("key2", "value2");
         hashMap.emplace("key3", "value3");
 
-        // Access key2 to make it most recently used
-        hashMap.find("key2");
+        if constexpr (UseIndexLookup) {
+            // Access key2 to make it most recently used
+            hashMap.FindInIndex("key2");
 
-        // Insert a new key, evicting the least recently used (key1)
-        hashMap.emplace("key4", "value4");
+            // Insert a new key, evicting the least recently used (key1)
+            hashMap.emplace("key4", "value4");
 
-        UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
-        UNIT_ASSERT_VALUES_EQUAL("value2", hashMap.find("key2")->second);
-        UNIT_ASSERT_VALUES_EQUAL("value3", hashMap.find("key3")->second);
-        UNIT_ASSERT_VALUES_EQUAL("value4", hashMap.find("key4")->second);
+            UNIT_ASSERT(!hashMap.FindInIndex("key1"));
+            UNIT_ASSERT_VALUES_EQUAL("value2", *hashMap.FindInIndex("key2"));
+            UNIT_ASSERT_VALUES_EQUAL("value3", *hashMap.FindInIndex("key3"));
+            UNIT_ASSERT_VALUES_EQUAL("value4", *hashMap.FindInIndex("key4"));
+        } else {
+            // Access key2 to make it most recently used
+            hashMap.find("key2");
+
+            // Insert a new key, evicting the least recently used (key1)
+            hashMap.emplace("key4", "value4");
+
+            UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
+            UNIT_ASSERT_VALUES_EQUAL("value2", hashMap.find("key2")->second);
+            UNIT_ASSERT_VALUES_EQUAL("value3", hashMap.find("key3")->second);
+            UNIT_ASSERT_VALUES_EQUAL("value4", hashMap.find("key4")->second);
+        }
     }
 
-    Y_UNIT_TEST(ShouldHandleErase)
+    Y_UNIT_TEST(ShouldHandleAccessOrder)
     {
-        TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
+        DoTestShouldHandleAccessOrder<false>();
+    }
+
+    Y_UNIT_TEST(ShouldHandleAccessOrderWithIndexLookup)
+    {
+        DoTestShouldHandleAccessOrder<true>();
+    }
+
+    template <bool UseIndexLookup>
+    void DoTestShouldHandleErase()
+    {
+        TLRUCache<TString, TString, UseIndexLookup> hashMap(
+            TDefaultAllocator::Instance());
         hashMap.SetMaxSize(3);
 
         hashMap.emplace("key1", "value1");
@@ -72,6 +130,11 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         hashMap.erase(hashMap.find("key2"));
 
         UNIT_ASSERT_VALUES_EQUAL(2, hashMap.size());
+        if constexpr (UseIndexLookup) {
+            UNIT_ASSERT(!hashMap.FindInIndex("key2"));
+            UNIT_ASSERT_VALUES_EQUAL("value1", *hashMap.FindInIndex("key1"));
+            UNIT_ASSERT_VALUES_EQUAL("value3", *hashMap.FindInIndex("key3"));
+        }
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key2"));
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
         UNIT_ASSERT_VALUES_EQUAL("value3", hashMap.find("key3")->second);
@@ -83,6 +146,20 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key3"));
+        if constexpr (UseIndexLookup) {
+            UNIT_ASSERT(!hashMap.FindInIndex("key1"));
+            UNIT_ASSERT(!hashMap.FindInIndex("key3"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleErase)
+    {
+        DoTestShouldHandleErase<false>();
+    }
+
+    Y_UNIT_TEST(ShouldHandleEraseWithIndexLookup)
+    {
+        DoTestShouldHandleErase<true>();
     }
 
     Y_UNIT_TEST(ShouldThrowOnAtForNonExistentKey)
@@ -97,9 +174,11 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_EXCEPTION(hashMap.at("key2"), yexception);
     }
 
-    Y_UNIT_TEST(ShouldHandleEdgeCases)
+    template <bool UseIndexLookup>
+    void DoTestShouldHandleEdgeCases()
     {
-        TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
+        TLRUCache<TString, TString, UseIndexLookup> hashMap(
+            TDefaultAllocator::Instance());
         hashMap.SetMaxSize(0);
 
         // Test capacity 0
@@ -108,6 +187,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT(!evicted.has_value());
         UNIT_ASSERT_EQUAL(hashMap.end(), it);
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
+        if constexpr (UseIndexLookup) {
+            UNIT_ASSERT(!hashMap.FindInIndex("key1"));
+        }
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
 
         hashMap.SetMaxSize(2);
@@ -124,6 +206,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT(!evicted3.has_value());
 
         UNIT_ASSERT_VALUES_EQUAL(1, hashMap.size());
+        if constexpr (UseIndexLookup) {
+            UNIT_ASSERT_VALUES_EQUAL("value1", *hashMap.FindInIndex("key1"));
+        }
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
 
         // Test downsizing capacity
@@ -132,16 +217,35 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         hashMap.emplace("key1", "value1");
         hashMap.emplace("key2", "value2");
         hashMap.emplace("key3", "value3");
-        hashMap.find("key1");
+        if constexpr (UseIndexLookup) {
+            hashMap.FindInIndex("key1");
+        } else {
+            hashMap.find("key1");
+        }
         // Now the order is key1, key3, key2
         auto evicted4 = hashMap.SetMaxSize(2);
         UNIT_ASSERT_VALUES_EQUAL(1, evicted4.size());
         UNIT_ASSERT_VALUES_EQUAL("key2", evicted4[0]);
         // Should evict key2
+        if constexpr (UseIndexLookup) {
+            UNIT_ASSERT(!hashMap.FindInIndex("key2"));
+            UNIT_ASSERT_VALUES_EQUAL("value1", *hashMap.FindInIndex("key1"));
+            UNIT_ASSERT_VALUES_EQUAL("value3", *hashMap.FindInIndex("key3"));
+        }
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key2"));
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
         UNIT_ASSERT_VALUES_EQUAL("value3", hashMap.find("key3")->second);
         UNIT_ASSERT_VALUES_EQUAL(2, hashMap.size());
+    }
+
+    Y_UNIT_TEST(ShouldHandleEdgeCases)
+    {
+        DoTestShouldHandleEdgeCases<false>();
+    }
+
+    Y_UNIT_TEST(ShouldHandleEdgeCasesWithIndexLookup)
+    {
+        DoTestShouldHandleEdgeCases<true>();
     }
 
     Y_UNIT_TEST(ShouldUseOrderedMap)
@@ -149,6 +253,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         NCloud::TLRUCache<
             TString,
             TString,
+            false,
             THash<TString>,
             TMap<TString, TString, TLess<TString>, TStlAllocator>>
         hashMap(TDefaultAllocator::Instance());

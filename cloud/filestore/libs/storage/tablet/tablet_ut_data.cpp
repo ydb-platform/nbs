@@ -54,6 +54,11 @@ public:
         Requests[record.Request.GetRequestType()].push_back(std::move(record));
     }
 
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
+    }
+
     const auto* GetRecords(EFileStoreSystemRequest requestType) const
     {
         return Requests.FindPtr(static_cast<ui32>(requestType));
@@ -2208,7 +2213,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         TTestEnv env({}, std::move(storageConfig));
         auto registry = env.GetRegistry();
-
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);

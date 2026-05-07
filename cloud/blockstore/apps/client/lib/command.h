@@ -81,8 +81,6 @@ protected:
     // Use protobuf syntax for request/response
     bool Proto = false;
 
-    TString IamTokenFile;
-
     TString ClientPerformanceProfile;
 
     TString InputFile;

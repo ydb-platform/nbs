@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -25,7 +25,7 @@ struct TBlockStoreProtocol
         ChecksumDeviceBlocksResponse = 8,
     };
 
-    static NRdma::TProtoMessageSerializer* Serializer();
+    static NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

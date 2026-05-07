@@ -134,6 +134,13 @@ message TDatashardLikeLoadSpec
     uint32 WriteBytes = 3;
     uint64 InitialFileSize = 4;
     repeated TAction Actions = 5;
+
+    // If set, use shared-memory transport for data IO.
+    // Full path to the shared memory file (must be accessible to the server).
+    string SharedMemoryFilePath = 6;
+
+    // Size of the shared memory region in bytes (used when SharedMemoryFilePath is set).
+    uint64 SharedMemorySizeBytes = 7;
 }
 
 message TMigrationSpec

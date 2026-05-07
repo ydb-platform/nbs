@@ -275,54 +275,6 @@ ui32 TTestEnv::AddDynamicNode()
         hiveProxyId,
         nodeIdx);
 
-    // we need node-local proxies as well
-    auto localTabletProxy = CreateIndexTabletProxy(StorageConfig);
-    auto localTabletProxyId = Runtime.Register(
-        localTabletProxy.release(),
-        0,
-        appData.UserPoolId,
-        TMailboxType::Simple,
-        0);
-    Runtime.EnableScheduleForActor(localTabletProxyId);
-    Runtime.RegisterService(
-        MakeIndexTabletProxyServiceId(),
-        localTabletProxyId,
-        0);
-
-    auto localSsProxy = CreateSSProxy(StorageConfig);
-    auto localSsProxyId = Runtime.Register(
-        localSsProxy.release(),
-        0,
-        appData.UserPoolId,
-        TMailboxType::Simple,
-        0);
-    Runtime.EnableScheduleForActor(localSsProxyId);
-    Runtime.RegisterService(
-        MakeSSProxyServiceId(),
-        localSsProxyId,
-        0);
-
-    auto localHiveProxy = CreateHiveProxy({
-        StorageConfig->GetPipeClientRetryCount(),
-        StorageConfig->GetPipeClientMinRetryTime(),
-        TDuration::Seconds(1),  // HiveLockExpireTimeout - does not matter
-        TFileStoreComponents::HIVE_PROXY,
-        /*TabletBootInfoBackupFilePath=*/"",
-        /*UseBinaryFormatForTabletBootInfoBackup=*/false,
-        /*FallbackMode=*/false,
-    });
-    auto localHiveProxyId = Runtime.Register(
-        localHiveProxy.release(),
-        0,
-        appData.UserPoolId,
-        TMailboxType::Simple,
-        0);
-    Runtime.EnableScheduleForActor(localHiveProxyId);
-    Runtime.RegisterService(
-        MakeHiveProxyServiceId(),
-        localHiveProxyId,
-        0);
-
     return nodeIdx;
 }
 
@@ -363,6 +315,7 @@ void TTestEnv::SetupLogging()
         NKikimrServices::TX_MEDIATOR,
         NKikimrServices::TX_PROXY,
         NKikimrServices::TX_PROXY_SCHEME_CACHE,
+        NKikimrServices::NODE_BROKER,
     };
 
     for (ui32 i: kikimrServices) {

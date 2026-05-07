@@ -216,7 +216,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {});
 
         NProto::TStorageConfig patch;
-        patch.SetMultiTabletForwardingEnabled(true);
+        patch.SetThrottlingEnabled(true);
         tablet.ChangeStorageConfig(std::move(patch));
 
         tablet.RebootTablet();
@@ -224,7 +224,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         auto response = tablet.GetStorageConfig();
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            response->Record.GetStorageConfig().GetMultiTabletForwardingEnabled());
+            response->Record.GetStorageConfig().GetThrottlingEnabled());
     }
 
     Y_UNIT_TEST(ShouldNotifyServiceWhenFileSystemConfigChanged)

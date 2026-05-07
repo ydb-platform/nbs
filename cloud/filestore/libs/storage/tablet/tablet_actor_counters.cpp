@@ -623,6 +623,7 @@ void TIndexTabletActor::HandleUpdateCounters(
     CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 
+    Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
     Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
 
     UpdateCountersScheduled = false;
@@ -852,14 +853,27 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
-        UpdateShardBalancer(CachedShardStats);
 
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s Updated shard balancer: %s",
-            LogTag.c_str(),
-            DescribeShardList(MakeOrderedShardList()).c_str());
+        auto error = UpdateShardBalancer(CachedShardStats);
+        if (HasError(error)) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s Failed to updated shard balancer: %s",
+                LogTag.c_str(),
+                FormatError(error).Quote().c_str());
+
+            Metrics.ShardBalancerUpdateErrorCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
+        } else {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s Updated shard balancer: %s",
+                LogTag.c_str(),
+                DescribeShardList(MakeOrderedShardList()).c_str());
+        }
 
         Store(
             Metrics.AggregateUsedBytesCount,

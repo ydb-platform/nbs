@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -85,7 +86,9 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    SharedState = std::make_shared<TPartitionThreadSafeState>(TabletID());
+    SharedState = std::make_shared<TPartitionThreadSafeState>(
+        PartitionConfig.GetDiskId(),
+        TabletID());
 }
 
 TPartitionActor::~TPartitionActor()
@@ -630,14 +633,16 @@ bool TPartitionActor::InitChangedBlocksRange(
         (range->Size() <= Config->GetMaxChangedBlocksRangeBlocksCount());
 }
 
-void TPartitionActor::UpdateChannelPermissions(
+bool TPartitionActor::UpdateChannelPermissions(
     const TActorContext& ctx,
     ui32 channel,
     EChannelPermissions permissions)
 {
-    if (State->UpdatePermissions(channel, permissions)) {
+    bool res = State->UpdatePermissions(channel, permissions);
+    if (res) {
         SendBackpressureReport(ctx);
     }
+    return res;
 }
 
 void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
@@ -757,6 +762,7 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
 {
     const auto* msg = ev->Get();
 
+    bool anyFreshChannelPermissionsUpdated = false;
     bool anyChannelYellow = false;
     for (const auto& channel: Info()->Channels) {
         bool diskSpaceYellowMove = false;
@@ -775,7 +781,11 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
         if (!diskSpaceYellowStop) {
             permissions |= EChannelPermission::UserWritesAllowed;
         }
-        UpdateChannelPermissions(ctx, channel.Channel, permissions);
+        bool updated =
+            UpdateChannelPermissions(ctx, channel.Channel, permissions);
+        anyFreshChannelPermissionsUpdated |=
+            updated && State->GetChannelDataKind(channel.Channel) ==
+                           EChannelDataKind::Fresh;
 
         anyChannelYellow |= diskSpaceYellowMove;
     }
@@ -783,6 +793,10 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
     if (anyChannelYellow) {
         ScheduleYellowStateUpdate(ctx);
         ReassignChannelsIfNeeded(ctx);
+    }
+
+    if (FreshBlocksWriter && anyFreshChannelPermissionsUpdated) {
+        ForwardMessageToActor(ev, ctx, FreshBlocksWriter);
     }
 }
 
@@ -857,14 +871,16 @@ void TPartitionActor::HandleDrain(
     const TEvPartition::TEvDrainRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    DrainActorCompanion.HandleDrain(ev, ctx);
+    SharedState->AccessDrainActorCompanion()->HandleDrain(ev, ctx);
 }
 
 void TPartitionActor::HandleWaitForInFlightWrites(
     const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+    SharedState->AccessDrainActorCompanion()->HandleWaitForInFlightWrites(
+        ev,
+        ctx);
 }
 
 void TPartitionActor::HandleLockAndDrainRange(
@@ -1159,6 +1175,14 @@ STFUNC(TPartitionActor::StateWork)
             TEvPartitionCommonPrivate::TEvExecuteTransactions,
             HandleExecuteTransactions);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags,
+            HandleProcessStorageStatusFlags);
+
+        HFunc(
+            TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded,
+            HandleReassignChannelsIfNeeded);
+
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
@@ -1234,7 +1258,12 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -1385,6 +1414,87 @@ void TPartitionActor::HandleExecuteTransactions(
     for (auto& tx: msg.Transactions) {
         ExecuteTx(ctx, std::move(tx));
     }
+}
+
+void TPartitionActor::ProcessStorageStatusFlags(
+    const NActors::TActorContext& ctx,
+    NKikimr::TStorageStatusFlags flags,
+    ui32 channel,
+    ui32 generation,
+    double approximateFreeSpaceShare,
+    bool notifyFreshBlocksWriter)
+{
+    const ui32 groupId = Info()->GroupFor(channel, generation);
+
+    if (!IsValid(flags)) {
+        return;
+    }
+
+    const auto permissions = StorageStatusFlags2ChannelPermissions(flags);
+    auto channelPermissionsUpdated =
+        UpdateChannelPermissions(ctx, channel, permissions);
+    State->UpdateChannelFreeSpaceShare(channel, approximateFreeSpaceShare);
+
+    const bool isYellowStop = HasYellowStop(flags);
+    const bool isYellowMove = HasYellowMove(flags);
+
+    if (isYellowStop) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Yellow stop flag received for channel %u and group %u",
+            LogTitle.GetWithTime().c_str(),
+            channel,
+            groupId);
+
+        ScheduleYellowStateUpdate(ctx);
+        ReassignChannelsIfNeeded(ctx);
+    } else if (isYellowMove) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Yellow move flag received for channel %u and group %u",
+            LogTitle.GetWithTime().c_str(),
+            channel,
+            groupId);
+
+        State->RegisterReassignRequestFromBlobStorage(channel);
+        ReassignChannelsIfNeeded(ctx);
+    }
+
+    if (notifyFreshBlocksWriter && FreshBlocksWriter &&
+        State->GetChannelDataKind(channel) == EChannelDataKind::Fresh &&
+        (isYellowMove || isYellowStop || channelPermissionsUpdated))
+    {
+        auto request = std::make_unique<
+            TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags>(
+            flags,
+            channel,
+            generation,
+            approximateFreeSpaceShare);
+        NCloud::Send(ctx, FreshBlocksWriter, std::move(request));
+    }
+}
+
+void TPartitionActor::HandleProcessStorageStatusFlags(
+    const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ProcessStorageStatusFlags(
+        ctx,
+        ev->Get()->Flags,
+        ev->Get()->Channel,
+        ev->Get()->Generation,
+        ev->Get()->ApproximateFreeSpaceShare,
+        false);   // without notifying FreshBlocksWriter
+}
+
+void TPartitionActor::HandleReassignChannelsIfNeeded(
+    const TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReassignChannelsIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

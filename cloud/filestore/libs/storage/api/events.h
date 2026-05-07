@@ -216,8 +216,18 @@ struct TProtoResponseEvent
     }                                                                          \
 // FILESTORE_IMPLEMENT_REQUEST
 
+#define FILESTORE_IMPLEMENT_ADAPTER_REQUEST(name, ns)                          \
+    void HandleAdapter##name(                                                  \
+        const ns::TEv##name##Request::TPtr& ev,                                \
+        const NActors::TActorContext& ctx);                                    \
+// FILESTORE_IMPLEMENT_ADAPTER_REQUEST
+
 #define FILESTORE_HANDLE_REQUEST(name, ns)                                     \
     HFunc(ns::TEv##name##Request, Handle##name);                               \
+// FILESTORE_HANDLE_REQUEST
+
+#define FILESTORE_HANDLE_ADAPTER_REQUEST(name, ns)                             \
+    HFunc(ns::TEv##name##Request, HandleAdapter##name);                        \
 // FILESTORE_HANDLE_REQUEST
 
 #define FILESTORE_HANDLE_RESPONSE(name, ns)                                    \

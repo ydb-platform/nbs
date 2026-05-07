@@ -272,41 +272,6 @@ STFUNC(TPatchBlobActor::StateWork)
     }
 }
 
-EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ssf)
-{
-    /*
-    YellowStop: Tablets switch to read-only mode. Only system writes are allowed.
-
-    LightOrange: Alert: "Tablets have not stopped". Compaction writes are not
-    allowed if this flag is received.
-
-    PreOrange: VDisk switches to read-only mode.
-
-    Orange: All VDisks in the group switch to read-only mode.
-
-    Red: PDisk stops issuing chunks.
-
-    Black: Reserved for recovery.
-    */
-
-    const auto outOfSpaceMask = static_cast<NKikimrBlobStorage::EStatusFlags>(
-        NKikimrBlobStorage::StatusDiskSpaceBlack
-        | NKikimrBlobStorage::StatusDiskSpaceRed
-        | NKikimrBlobStorage::StatusDiskSpaceOrange
-        | NKikimrBlobStorage::StatusDiskSpacePreOrange
-        | NKikimrBlobStorage::StatusDiskSpaceLightOrange
-    );
-    if (ssf.Check(outOfSpaceMask)) {
-        return {};
-    }
-
-    if (ssf.Check(NKikimrBlobStorage::StatusDiskSpaceYellowStop)) {
-        return EChannelPermission::SystemWritesAllowed;
-    }
-
-    return EChannelPermission::SystemWritesAllowed | EChannelPermission::UserWritesAllowed;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -377,31 +342,12 @@ void TIOCompanion::HandlePatchBlobCompleted(
         patchedChannel,
         msg->PatchedBlobId.Generation());
 
-    const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
-    const auto yellowMoveFlag =
-        NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceLightYellowMove;
-
-    if (msg->StorageStatusFlags.Check(isValidFlag)) {
-        const auto permissions = StorageStatusFlags2ChannelPermissions(
-            msg->StorageStatusFlags);
-        Client.UpdateChannelPermissions(ctx, patchedChannel, permissions);
-        ChannelsState.UpdateChannelFreeSpaceShare(
-            patchedChannel,
-            msg->ApproximateFreeSpaceShare);
-
-        if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Yellow move flag received for channel %u and group %u",
-                LogTitle.GetWithTime().c_str(),
-                patchedChannel,
-                patchedGroup);
-
-            Client.ScheduleYellowStateUpdate(ctx);
-            Client.ReassignChannelsIfNeeded(ctx);
-        }
-    }
+    Client.ProcessStorageStatusFlags(
+        ctx,
+        msg->StorageStatusFlags,
+        patchedChannel,
+        msg->PatchedBlobId.Generation(),
+        msg->ApproximateFreeSpaceShare);
 
     if (FAILED(msg->GetStatus())) {
         ReportTabletBSFailure(

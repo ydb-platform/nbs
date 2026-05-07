@@ -16,9 +16,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_local.h>
@@ -56,6 +54,8 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/version/version.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -210,9 +210,10 @@ public:
     }
 };
 
-NRdma::TServerConfigPtr CreateRdmaServerConfig(NRdma::TRdmaConfig& config)
+NCloud::NStorage::NRdma::TServerConfigPtr CreateRdmaServerConfig(
+    NRdma::TRdmaConfig& config)
 {
-    return std::make_shared<NRdma::TServerConfig>(config.GetServer());
+    return NCloud::NStorage::NRdma::CreateServerConfigPtr(config.GetServer());
 }
 
 }   // namespace
@@ -583,7 +584,7 @@ void TBootstrap::InitLWTrace()
     probes.AddProbesList(LWTRACE_GET_PROBES(LWTRACE_INTERNAL_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
-    probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
+    probes.AddProbesList(LWTRACE_GET_PROBES(STORAGE_RDMA_PROVIDER));
 
     if (Configs->DiskAgentConfig->GetEnabled()) {
         probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_DISK_AGENT_PROVIDER));

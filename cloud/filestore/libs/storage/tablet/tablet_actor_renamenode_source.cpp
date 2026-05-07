@@ -134,7 +134,8 @@ void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
         if (msg->GetError().GetCode() == E_FS_ISDIR
                 || msg->GetError().GetCode() == E_FS_NOTEMPTY
                 || msg->GetError().GetCode() == E_FS_NOENT
-                || msg->GetError().GetCode() == E_FS_EXIST)
+                || msg->GetError().GetCode() == E_FS_EXIST
+                || msg->GetError().GetCode() == E_FS_XDEV)
         {
             //
             // These errors may happen during normal operation.
@@ -460,6 +461,10 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
 
     if (!args.ChildRef->IsExternal()) {
         if (GetFileSystem().GetForceDirectoryCreationInShards()) {
+            Metrics.RenameNotSupportedErrorCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
+
             args.Error = ErrorRenameNotSupported(
                 args.ParentNodeId,
                 args.Request.GetNewParentId());
@@ -507,7 +512,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
             args.ChildRef->ShardNodeName,
             args.NewParentShardId);
 
-    db.WriteOpLogEntry(args.OpLogEntry);
+    WriteOpLogEntry(db, args.OpLogEntry);
 
     // update old parent timestamps
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
@@ -781,7 +786,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
         }
     }
 
-    db.DeleteOpLogEntry(args.OpLogEntryId);
+    DeleteOpLogEntry(db, args.OpLogEntryId);
 }
 
 void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(

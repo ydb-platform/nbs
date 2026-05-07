@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -67,7 +67,7 @@ private:
     const ILocalNVMeServicePtr LocalNVMeService;
 
     ILoggingServicePtr Logging;
-    NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
 
     NNvme::INvmeManagerPtr NvmeManager;
 
@@ -117,7 +117,7 @@ public:
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
-        NRdma::IServerPtr rdmaServer,
+        NCloud::NStorage::NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         ITaskQueuePtr backgroundThreadPool,
         ILocalNVMeServicePtr localNVMeService);

@@ -10,6 +10,11 @@ namespace NCloud {
 ////////////////////////////////////////////////////////////////////////////////
 
 void HandleUnexpectedEvent(
+    const NActors::IEventHandle& ev,
+    int component,
+    const TString& location);
+
+void HandleUnexpectedEvent(
     const TAutoPtr<NActors::IEventHandle>& ev,
     int component,
     const TString& location);

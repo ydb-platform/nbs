@@ -1,43 +1,12 @@
 import argparse
 import boto3
 import logging
-import re
-from urllib.parse import urlparse
 from botocore.exceptions import ClientError
 
-
-def set_logging_level(verbosity):
-    level = max(10, 40 - 10 * verbosity)
-    logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s")
-
-
-def ttl_to_days(ttl_str):
-    seconds = ttl_to_seconds(ttl_str)
-    return max(1, (seconds + 86399) // 86400)
-
-
-def ttl_to_seconds(ttl_str):
-    pattern = (
-        r"((?P<days>\d+)d)?((?P<hours>\d+)h)?((?P<minutes>\d+)m)?((?P<seconds>\d+)s)?"
-    )
-    matches = re.match(pattern, ttl_str)
-    time_parts = {
-        name: int(value) for name, value in matches.groupdict(default="0").items()
-    }
-    total_seconds = (
-        time_parts["days"] * 86400  # noqa: W503
-        + time_parts["hours"] * 3600  # noqa: W503
-        + time_parts["minutes"] * 60  # noqa: W503
-        + time_parts["seconds"]  # noqa: W503
-    )
-    return total_seconds
-
-
-def parse_s3_path(s3_path):
-    parsed_url = urlparse(s3_path)
-    if parsed_url.scheme != "s3" or not parsed_url.netloc:
-        raise ValueError("URL must be an S3 URL (s3://bucket[/prefix])")
-    return parsed_url.netloc, parsed_url.path.lstrip("/")
+try:
+    from .helpers import parse_s3_path, set_logging_level, ttl_to_days
+except ImportError:
+    from helpers import parse_s3_path, set_logging_level, ttl_to_days
 
 
 def find_target_directories(

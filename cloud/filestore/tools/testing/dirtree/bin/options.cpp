@@ -27,10 +27,15 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(4)
         .StoreResult(&ProducerThreads);
 
-    opts.AddLongOption("children-count", "children per dir")
+    opts.AddLongOption("children-count", "file and subdir children per dir")
         .RequiredArgument("NUM")
         .DefaultValue(10)
         .StoreResult(&ChildrenCount);
+
+    opts.AddLongOption("symlink-children-count", "symlink children per dir")
+        .RequiredArgument("NUM")
+        .DefaultValue(2)
+        .StoreResult(&SymlinkChildrenCount);
 
     opts.AddLongOption(
             "subdir-probability",

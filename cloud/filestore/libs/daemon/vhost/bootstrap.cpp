@@ -40,6 +40,7 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/daemon/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -433,7 +434,8 @@ void TBootstrapVhost::InitEndpoints()
             ProfileLog),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-            .MaxQueueSize = Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
+            .MaxQueueSize =
+                Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
         },
         TWriteBackCacheConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
@@ -442,9 +444,8 @@ void TBootstrapVhost::InitEndpoints()
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod(),
-            .FlushRetryPeriod =
-                Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushRetryPeriod(),
+            .FlushRetryPeriod = Configs->VhostServiceConfig
+                                    ->GetWriteBackCacheFlushRetryPeriod(),
             .FlushMaxWriteRequestSize =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheFlushMaxWriteRequestSize(),
@@ -453,14 +454,15 @@ void TBootstrapVhost::InitEndpoints()
                     ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
             .FlushMaxSumWriteRequestsSize =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
-        },
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()},
         TDirectoryHandleStorageConfig{
-            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
-            .InitialDataSize =
-                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
-        }
-    );
+            .PathPrefix =
+                Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .InitialDataSize = Configs->VhostServiceConfig
+                                   ->GetDirectoryHandlesInitialDataSize(),
+            .MaxDataAreaStepSize =
+                Configs->VhostServiceConfig
+                    ->GetDirectoryHandlesMaxDataAreaStepSize()});
 
     EndpointManager = CreateEndpointManager(
         Logging,
@@ -527,6 +529,16 @@ void TBootstrapVhost::StopComponents()
 
 void TBootstrapVhost::Drain()
 {
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr &&
+        GetShouldContinue().PollState() != TProgramShouldContinue::Continue)
+    {
+        const int code = GetShouldContinue().GetReturnCode();
+        if (code == NodeLeaseExpirationExitCode) {
+            ythrow TAppShouldExitWithoutShutdownException()
+                << "Node lease is expired";
+        }
+    }
+
     if (EndpointManager) {
         EndpointManager->Drain();
     }

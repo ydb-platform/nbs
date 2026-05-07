@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +31,23 @@ type FilesystemModel struct {
 	ChannelsCount      uint32
 	Kind               types.FilesystemKind
 	PerformanceProfile FilesystemPerformanceProfile
+}
+
+type ConfigureAsShardParams struct {
+	ShardNo                                uint32
+	ShardFileSystemIDs                     []string
+	MainFileSystemID                       string
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	ForceDirectoryCreationInShards         bool
+}
+
+type ConfigureShardsParams struct {
+	ShardFileSystemIDs                     []string
+	Force                                  bool
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	ForceDirectoryCreationInShards         bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,6 +96,10 @@ type Session interface {
 		unlinkDirectory bool,
 	) error
 
+	SetSession(nfsSession nfs_client.Session)
+
+	GetID() string
+
 	Close(ctx context.Context) error
 }
 
@@ -123,6 +145,42 @@ type Client interface {
 		checkpointID string,
 		readonly bool,
 	) (Session, error)
+
+	CreateSessionWithClientID(
+		ctx context.Context,
+		fileSystemID string,
+		clientID string,
+		checkpointID string,
+		readonly bool,
+	) (Session, error)
+
+	UnsafeCreateNode(
+		ctx context.Context,
+		filesystemID string,
+		node Node,
+	) error
+
+	UnsafeCreateNodeRef(
+		ctx context.Context,
+		filesystemID string,
+		parentID uint64,
+		name string,
+		childID uint64,
+		shardID string,
+		shardNodeName string,
+	) error
+
+	ConfigureAsShard(
+		ctx context.Context,
+		filesystemID string,
+		params ConfigureAsShardParams,
+	) error
+
+	ConfigureShards(
+		ctx context.Context,
+		filesystemID string,
+		params ConfigureShardsParams,
+	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////

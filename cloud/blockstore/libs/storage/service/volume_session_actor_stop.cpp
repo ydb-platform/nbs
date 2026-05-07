@@ -45,6 +45,8 @@ void TVolumeSessionActor::HandleStopVolumeRequest(
 
     VolumeInfo->State = TVolumeInfo::STOPPING;
     CurrentRequest = STOP_REQUEST;
+    VolumeRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
     NCloud::Send<TEvents::TEvPoisonPill>(ctx, StartVolumeActor);
 }
 
@@ -65,18 +67,21 @@ void TVolumeSessionActor::HandleStartVolumeActorStopped(
     VolumeInfo->State = TVolumeInfo::INITIAL;
     VolumeInfo->Error.Clear();
 
-    if (MountRequestActor) {
+    if (VolumeRequestInfo) {
         if (CurrentRequest == START_REQUEST) {
-            auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
-                msg->Error);
-            NCloud::Send(ctx, MountRequestActor, std::move(response));
+            NCloud::Reply(
+                ctx,
+                *VolumeRequestInfo,
+                std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
+                    msg->Error));
         } else {
-            auto response = std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>();
-            NCloud::Send(ctx, MountRequestActor, std::move(response));
+            NCloud::Reply(
+                ctx,
+                *VolumeRequestInfo,
+                std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>());
         }
-    } else if (UnmountRequestActor) {
-        auto response = std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>();
-        NCloud::Send(ctx, UnmountRequestActor, std::move(response));
+        CurrentRequest = NONE;
+        VolumeRequestInfo = {};
     }
 }
 

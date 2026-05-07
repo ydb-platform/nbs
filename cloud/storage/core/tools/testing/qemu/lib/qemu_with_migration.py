@@ -1,11 +1,8 @@
-import os
 import logging
-import platform
 import yatest.common as common
 import time
-import tarfile
 
-from .common import get_mount_paths
+from .common import get_mount_paths, get_qemu_kvm, get_qemu_firmware
 from .qemu import Qemu
 
 EMU_NET = "10.0.2.0/24"
@@ -14,47 +11,11 @@ QEMU_HOST = "10.0.2.2"
 logger = logging.getLogger(__name__)
 
 
-def _get_bindir():
-    return common.build_path(
-        "cloud/storage/core/tools/testing/qemu/bin")
-
-
-def _unpack_qemu_bin(bindir):
-    with tarfile.open(os.path.join(bindir, "qemu-bin.tar.gz")) as tf:
-        tf.extractall(bindir)
-
-
-def _get_qemu_system_bin():
-    machine = platform.machine().lower()
-    if machine in ("aarch64", "arm64"):
-        return "qemu-system-aarch64"
-
-    return "qemu-system-x86_64"
-
-
-def _get_qemu_kvm():
-    bindir = _get_bindir()
-    qemu_kvm = os.path.join(bindir, "usr", "bin", _get_qemu_system_bin())
-    if not os.path.exists(qemu_kvm):
-        _unpack_qemu_bin(bindir)
-
-    return qemu_kvm
-
-
-def _get_qemu_firmware():
-    bindir = _get_bindir()
-    qemu_firmware = os.path.join(bindir, "usr", "share", "qemu")
-    if not os.path.exists(qemu_firmware):
-        _unpack_qemu_bin(bindir)
-
-    return qemu_firmware
-
-
 class QemuWithMigration:
     def __init__(self, socket_generator):
         self.qemu = Qemu(
-            qemu_kvm=_get_qemu_kvm(),
-            qemu_firmware=_get_qemu_firmware(),
+            qemu_kvm=get_qemu_kvm(),
+            qemu_firmware=get_qemu_firmware(),
             rootfs=common.build_path("cloud/storage/core/tools/testing/qemu/image/rootfs.img"),
             kernel=None,
             kcmdline=None,

@@ -12,7 +12,6 @@
 #include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
@@ -22,6 +21,7 @@
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
 
@@ -76,13 +76,13 @@ protected:
     IStorageProviderPtr LocalStorageProvider;
     IEndpointManagerPtr EndpointManager;
     IEndpointEventProxyPtr EndpointEventHandler;
-    NRdma::IServerPtr RdmaServer;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     ITaskQueuePtr RdmaThreadPool;
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
-    NRdma::IServerPtr RdmaRequestServer;
+    NCloud::NStorage::NRdma::IServerPtr RdmaRequestServer;
     IStartablePtr RdmaTarget;
     ILocalNVMeDeviceProviderPtr LocalNVMeDeviceProvider;
     ILocalNVMeServicePtr LocalNVMeService;

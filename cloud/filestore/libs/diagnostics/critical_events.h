@@ -37,6 +37,7 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheCreatingOrDeletingError)                                 \
     xxx(WriteBackCacheCorruptionError)                                         \
     xxx(WriteBackCacheDataLossError)                                           \
+    xxx(WriteBackCacheWritingNotAllowedInDrainingMode)                         \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
     xxx(CalculateChecksumsBufferOverflow)                                      \
@@ -54,6 +55,7 @@ namespace NCloud::NFileStore{
     xxx(NodeCacheInvalidNode)                                                  \
     xxx(ConfirmBlobsFailed)                                                    \
     xxx(UnconfirmedFlowProxyRetryThresholdReached)                             \
+    xxx(HardLinkFromShardDirToMainTabletNode)                                  \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
@@ -87,6 +89,7 @@ namespace NCloud::NFileStore{
     xxx(BrokenProfileLogRequest)                                               \
     xxx(UnconfirmedDataNotInProgress)                                          \
     xxx(InvalidCommitIdInUnconfirmedAddBlobSafePoint)                          \
+    xxx(ListNodesInternalFailedToAddNodeRef)                                   \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

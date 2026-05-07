@@ -568,7 +568,7 @@ message TStorageServiceConfig
     // The desired byte count read/written by a compaction run.
     optional uint64 TargetCompactionBytesPerOp = 165;
 
-    // Max skipped blobs during range compaction.
+    // Max skipped blobs during range compaction for SSD disks.
     optional uint32 MaxSkippedBlobsDuringCompaction = 166;
 
     // MaxBlobsPerRange overrides for partition v2.
@@ -1551,4 +1551,10 @@ message TStorageServiceConfig
     // It is preferable to enable splitting via EnableRequestSplitter in the
     // Server config.
     optional ERequestSplitterPolicy RequestSplitterPolicy = 492;
+
+    // Max skipped blobs during range compaction for HDD disks.
+    optional uint32 MaxSkippedBlobsDuringCompactionHDD = 493;
+
+    // Cool down timeout before secure erase devices (in milliseconds).
+    optional uint32 CoolDownTimeoutBeforeSecureErase = 494;
 }

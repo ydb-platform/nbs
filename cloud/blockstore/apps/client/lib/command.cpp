@@ -18,7 +18,9 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -29,22 +31,17 @@
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
-#include <util/folder/dirut.h>
 #include <util/generic/guid.h>
 #include <util/stream/file.h>
 #include <util/string/ascii.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
-#include <util/string/strip.h>
 #include <util/string/subst.h>
 #include <util/system/env.h>
 #include <util/system/fs.h>
-#include <util/system/hostname.h>
-#include <util/system/sysstat.h>
 
 namespace NCloud::NBlockStore::NClient {
 
@@ -54,48 +51,6 @@ namespace {
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nbs-server/cfg/nbs-iam.txt";
-const TString DefaultIamTokenFile = "~/.nbs-client/iam-token";
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ResolvePath(const TString& path)
-{
-    if (path.StartsWith('~')) {
-        return TStringBuilder() << GetHomeDir() << path.substr(1);
-    }
-
-    return path;
-}
-
-TString GetIamTokenFromFile(const TString& iamTokenFile)
-{
-    auto filename = ResolvePath(iamTokenFile);
-    TFile file;
-    try {
-        file = TFile(filename, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-    } catch (...) {
-        return {};
-    }
-
-#ifdef _unix_
-    struct stat buf;
-    auto code = stat(filename.c_str(), &buf);
-    Y_ENSURE(
-        code == 0,
-        TStringBuilder() << "failed to stat file " << filename
-            << ", code=" << code);
-
-    Y_ENSURE(
-        (buf.st_mode & (S_IROTH | S_IWOTH | S_IXOTH)) == 0,
-        TStringBuilder() << "bad st_mode: " << buf.st_mode);
-#endif
-
-    if (!file.IsOpen()) {
-        return {};
-    }
-
-    return Strip(TFileInput(file).ReadAll());
-}
 
 }   // namespace
 
@@ -191,10 +146,6 @@ TCommand::TCommand(IBlockStorePtr client)
 
     Opts.AddLongOption("grpc-trace", "turn on grpc tracing")
         .StoreTrue(&EnableGrpcTracing);
-
-    Opts.AddLongOption("iam-token-file", "path to iam token")
-        .RequiredArgument("STR")
-        .StoreResult(&IamTokenFile);
 
     Opts.AddLongOption(
         "client-performance-profile",
@@ -608,8 +559,15 @@ void TCommand::InitClientConfig()
     if (clientConfig.GetHost() == "localhost" &&
         clientConfig.GetSecurePort() != 0)
     {
-        // With TLS on transform localhost into fully qualified domain name.
-        clientConfig.SetHost(FQDNHostName());
+        // With TLS, we must use a fully qualified domain name instead of
+        // localhost - otherwise, the certificate hostname check will fail
+        clientConfig.SetHost(
+            GetFqdnHostNameWithRetries(
+                [this] (const yexception&) {
+                    GetErrorStream()
+                        << "FQDNHostName failed: " << CurrentExceptionMessage()
+                        << "\n";
+                }));
     }
     if (SkipCertVerification) {
         clientConfig.SetSkipCertVerification(SkipCertVerification);
@@ -649,21 +607,9 @@ void TCommand::InitClientConfig()
         logConfig.SetLogLevel(*level);
     }
 
-    if (!IamTokenFile) {
-        auto& authConfig = appConfig.GetAuthConfig();
-        if (authConfig.HasIamTokenFile()) {
-            IamTokenFile = authConfig.GetIamTokenFile();
-        } else {
-            IamTokenFile = DefaultIamTokenFile;
-        }
-    }
-
     // Do not send token via insecure channel.
     if (clientConfig.GetSecurePort() != 0) {
         auto iamToken = GetEnv("IAM_TOKEN");
-        if (!iamToken) {
-            iamToken = GetIamTokenFromFile(IamTokenFile);
-        }
         if (!iamToken) {
             iamToken = GetIamTokenFromClient();
         }

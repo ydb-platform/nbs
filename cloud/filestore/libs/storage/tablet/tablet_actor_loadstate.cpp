@@ -199,6 +199,84 @@ void TIndexTabletActor::ExecuteTx_LoadState(
         LogTag << " Completed preparing tablet state");
 }
 
+void TIndexTabletActor::CompleteAdapterLoadState(
+    const TActorContext& ctx,
+    TTxIndexTablet::TLoadState& args)
+{
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Activating tablet");
+
+    // allow pipes to connect
+    SignalTabletActive(ctx);
+
+    // resend pending WaitReady requests
+    while (WaitReadyRequests) {
+        ctx.Send(WaitReadyRequests.front().release());
+        WaitReadyRequests.pop_front();
+    }
+
+    FastShard = NFastShard::CreateFileSystemShardStub();
+
+    TThrottlerConfig config;
+    Convert(args.FileSystem.GetPerformanceProfile(), config);
+
+    LoadState(
+        Executor()->Generation(),
+        *Config,
+        args.FileSystem,
+        args.FileSystemStats,
+        args.TabletStorageInfo,
+        args.LargeDeletionMarkers,
+        args.OrphanNodeIds,
+        args.OpLog,
+        args.ResponseLog,
+        config);
+    UpdateLogTag();
+
+    NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
+    NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Loading tablet sessions");
+    auto idleSessionDeadline = ctx.Now() + Config->GetIdleSessionTimeout();
+
+    auto sessionOptions = TSession::CreateSessionOptions(Config);
+
+    LoadSessions(
+        idleSessionDeadline,
+        args.Sessions,
+        args.Handles,
+        args.Locks,
+        args.DupCache,
+        args.SessionHistory,
+        sessionOptions);
+
+    ScheduleSyncSessions(ctx);
+    ScheduleCleanupSessions(ctx);
+
+    RegisterFileStore(ctx);
+    RegisterStatCounters(ctx.Now());
+    ResetThrottlingPolicy();
+
+    RunRegularTasks(ctx);
+
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Setting CloudId=" << GetCloudId() << ", FolderId="
+               << GetFolderId() << ", EntityId=" << GetFileSystemId()
+               << " for the storage config features overrides");
+    Config->SetCloudFolderEntity(
+        GetCloudId(),
+        GetFolderId(),
+        GetFileSystemId());
+
+    CompleteStateLoad();
+
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Load state completed");
+}
+
 void TIndexTabletActor::CompleteTx_LoadState(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadState& args)
@@ -227,6 +305,12 @@ void TIndexTabletActor::CompleteTx_LoadState(
             WaitReadyRequests.pop_front();
         }
 
+        return;
+    }
+
+    if (args.FileSystem.GetIsFastShard()) {
+        BecomeAux(ctx, STATE_ADAPTER);
+        CompleteAdapterLoadState(ctx, args);
         return;
     }
 
@@ -267,10 +351,12 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.OpLog,
         args.ResponseLog,
         config);
     UpdateLogTag();
 
+    NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,

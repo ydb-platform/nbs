@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/iface/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
@@ -17,6 +16,7 @@
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
@@ -69,15 +69,15 @@ struct TServerModuleFactories
 
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 
-    std::function<NRdma::IServerPtr(
+    std::function<NCloud::NStorage::NRdma::IServerPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)> RdmaServerFactory;
+        NCloud::NStorage::NRdma::TServerConfigPtr config)> RdmaServerFactory;
 
-    std::function<NRdma::IClientPtr(
+    std::function<NCloud::NStorage::NRdma::IClientPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TClientConfigPtr config)> RdmaClientFactory;
+        NCloud::NStorage::NRdma::TClientConfigPtr config)> RdmaClientFactory;
 
     std::function<NNotify::IServicePtr(
         NNotify::TNotifyConfigPtr config,

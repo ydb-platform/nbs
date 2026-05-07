@@ -55,28 +55,28 @@ E_NOT_FOUND ss error: SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, 
         "Links": 1,
         "Size": 9,
         "Name": "xxx4",
-        "Id": 72057594037927941
+        "Id": 144115188075855874
     },
     {
         "Type": 1,
         "Links": 1,
         "Size": 9,
         "Name": "xxx5",
-        "Id": 72057594037927942
+        "Id": 216172782113783810
     },
     {
         "Type": 1,
         "Links": 1,
         "Size": 9,
         "Name": "xxx6",
-        "Id": 72057594037927943
+        "Id": 72057594037927941
     },
     {
         "Type": 1,
         "Links": 1,
         "Size": 9,
         "Name": "xxx7",
-        "Id": 72057594037927944
+        "Id": 144115188075855875
     }
 ][
     {
@@ -92,11 +92,11 @@ E_NOT_FOUND ss error: SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, 
         "Name": "xxx3"
     },
     {
-        "ShardFileSystemId": "fs0_s1",
+        "ShardFileSystemId": "fs0_s2",
         "Name": "xxx4"
     },
     {
-        "ShardFileSystemId": "fs0_s1",
+        "ShardFileSystemId": "fs0_s3",
         "Name": "xxx5"
     },
     {
@@ -104,7 +104,7 @@ E_NOT_FOUND ss error: SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, 
         "Name": "xxx6"
     },
     {
-        "ShardFileSystemId": "fs0_s1",
+        "ShardFileSystemId": "fs0_s2",
         "Name": "xxx7"
     }
 ]{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}

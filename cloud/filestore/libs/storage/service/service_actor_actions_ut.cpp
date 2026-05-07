@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/features/features_config.h>
 
@@ -232,22 +233,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetMultiTabletForwardingEnabled(true);
+            newConfig.SetThrottlingEnabled(true);
             const auto response = ExecuteChangeStorageConfig(
                 "fs0",
                 std::move(newConfig),
                 service);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetMultiTabletForwardingEnabled(),
+                response.GetStorageConfig().GetThrottlingEnabled(),
                 true);
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetMultiTabletForwardingEnabled(),
-                true);
+            UNIT_ASSERT_VALUES_EQUAL(response.GetThrottlingEnabled(), true);
         }
     }
 
@@ -271,24 +270,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetMultiTabletForwardingEnabled(true);
+            newConfig.SetThrottlingEnabled(true);
             ExecuteChangeStorageConfig("fs0", std::move(newConfig), service);
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service, false);
             UNIT_ASSERT_VALUES_EQUAL(42, response.GetReadAheadCacheMaxNodes());
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetMultiTabletForwardingEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(true, response.GetThrottlingEnabled());
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service, true);
             UNIT_ASSERT(!response.HasReadAheadCacheMaxNodes());
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetMultiTabletForwardingEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(true, response.GetThrottlingEnabled());
         }
     }
 
@@ -461,8 +456,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldPerformUnsafeNodeRefManipulations)
     {
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -473,6 +466,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession("test", "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         const ui64 parentId = RootNodeId;
         const TString name1 = "file1";
@@ -663,8 +658,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldPerformResponseLogEntryManipulations)
     {
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -678,6 +671,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession("test", "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         {
             NProtoPrivate::TWriteResponseLogEntryRequest request;
@@ -763,8 +758,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         //
 
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -793,6 +786,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession(fsId, "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         const ui64 nodeId = service.CreateNode(
             headers,
@@ -1005,7 +1000,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(1_GB);
         storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
-        storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
 
@@ -1197,7 +1192,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(2_GB);
         storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
-        storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
 

@@ -44,7 +44,11 @@ func (t *resizeFilesystemTask) Run(
 	}
 	defer client.Close()
 
-	return client.Resize(ctx, t.request.Filesystem.FilesystemId, t.request.Size)
+	return client.Resize(
+		ctx,
+		t.request.Filesystem.FilesystemId,
+		t.request.Size,
+	)
 }
 
 func (t *resizeFilesystemTask) Cancel(

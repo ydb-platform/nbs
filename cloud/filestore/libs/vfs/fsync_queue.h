@@ -24,7 +24,7 @@ using THandle = TScopedHandle<ui64, InvalidHandle, struct THandleTag>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFSyncCache
+class IFSyncQueue
 {
 public:
     using TRequestId = ui64;
@@ -35,6 +35,37 @@ public:
         TNodeId NodeId;
         THandle Handle;
     };
+
+    virtual ~IFSyncQueue() = default;
+
+    virtual void Enqueue(
+        TRequestId reqId,
+        TNodeId nodeId,
+        THandle handle = {}) = 0;
+    virtual void Dequeue(
+        TRequestId reqId,
+        const NProto::TError& error,
+        TNodeId nodeId,
+        THandle handle = {}) = 0;
+
+    // Meta requests.
+    virtual NThreading::TFuture<NProto::TError> WaitForRequests(
+        TRequestId reqId,
+        TNodeId nodeId = {}) = 0;
+
+    // Data requests.
+    virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) = 0;
+    virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(
+        TRequestId reqId,
+        TNodeId nodeId,
+        THandle handle) = 0;
+};
+
+class TFSyncCache
+{
+public:
+    using TRequestId = IFSyncQueue::TRequestId;
+    using TRequest = IFSyncQueue::TRequest;
 
 private:
     struct TItem
@@ -77,42 +108,9 @@ private:
     bool IsFSync(const TItem& item) const;
 };
 
-struct IFSyncQueue
-{
-    using TRequestId = TFSyncCache::TRequestId;
-    using TRequest = TFSyncCache::TRequest;
-
-    virtual ~IFSyncQueue() = default;
-
-    virtual void Enqueue(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle = {}) = 0;
-    virtual void Dequeue(
-        TRequestId reqId,
-        const NProto::TError& error,
-        TNodeId nodeId,
-        THandle handle = {}) = 0;
-
-    // Meta requests.
-    virtual NThreading::TFuture<NProto::TError> WaitForRequests(
-        TRequestId reqId,
-        TNodeId nodeId = {}) = 0;
-
-    // Data requests.
-    virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) = 0;
-    virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle) = 0;
-};
-
 class TFSyncQueue final
     : public IFSyncQueue
 {
-    using TRequestId = TFSyncCache::TRequestId;
-    using TRequest = TFSyncCache::TRequest;
-
 private:
     const TString LogTag;
     const ILoggingServicePtr Logging;
@@ -150,9 +148,6 @@ public:
 class TFSyncQueueStub final
     : public IFSyncQueue
 {
-    using TRequestId = TFSyncCache::TRequestId;
-    using TRequest = TFSyncCache::TRequest;
-
 public:
     void Enqueue(
         TRequestId reqId,

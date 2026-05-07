@@ -51,11 +51,16 @@ public:
 
     virtual ~IShardBalancer() = default;
 
-    virtual void Update(
+    virtual NProto::TError Update(
         const TVector<TShardStats>& stats,
         std::optional<ui64> desiredFreeSpaceReserve,
         std::optional<ui64> minFreeSpaceReserve) = 0;
     virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
+
+    NProto::TError Update(const TVector<TShardStats>& stats)
+    {
+        return Update(stats, {}, {});
+    }
 
     /**
      * @brief Builds and returns the shard list ordered from best to worst.
@@ -109,10 +114,12 @@ protected:
         ui64 fileSize) const;
 
 public:
-    void Update(
+    using IShardBalancer::Update;
+
+    NProto::TError Update(
         const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve = {},
-        std::optional<ui64> minFreeSpaceReserve = {}) override;
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) override;
 
     [[nodiscard]] TVector<TShardDescr> MakeOrderedShardList() const override;
 };
@@ -159,10 +166,15 @@ public:
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
-    void Update(
+
+public:
+    using IShardBalancer::Update;
+
+    NProto::TError Update(
         const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve = {},
-        std::optional<ui64> minFreeSpaceReserve = {}) final;
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) final;
+
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
 

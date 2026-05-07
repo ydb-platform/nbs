@@ -102,7 +102,8 @@ public:
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
     ui64 GetTargetCompactionBytesPerOp() const;
-    ui32 GetMaxSkippedBlobsDuringCompaction() const;
+    [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
+    [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompactionHDD() const;
     bool GetIncrementalCompactionEnabled() const;
     ui32 GetCompactionCountPerRunIncreasingThreshold() const;
     ui32 GetCompactionCountPerRunDecreasingThreshold() const;
@@ -545,6 +546,7 @@ public:
 
     TDuration GetNonReplicatedVolumeNotificationTimeout() const;
 
+    TDuration GetCoolDownTimeoutBeforeSecureErase() const;
     TDuration GetNonReplicatedSecureEraseTimeout() const;
     ui32 GetMaxDevicesToErasePerDeviceNameForDefaultPoolKind() const;
     ui32 GetMaxDevicesToErasePerDeviceNameForLocalPoolKind() const;

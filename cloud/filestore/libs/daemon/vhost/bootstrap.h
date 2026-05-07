@@ -18,6 +18,11 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// NodeBroker lease expiration exit code
+constexpr int NodeLeaseExpirationExitCode = 2;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TVhostModuleFactories
 {
     std::function<NVFS::IFileSystemLoopFactoryPtr(

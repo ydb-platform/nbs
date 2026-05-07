@@ -244,10 +244,12 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             auto shardId = args.RequestShardId;
             if (!behaveAsShard
-                    && !GetFileSystem().GetShardFileSystemIds().empty()
-                    && Config->GetShardIdSelectionInLeaderEnabled())
+                    && !GetFileSystem().GetShardFileSystemIds().empty())
             {
-                args.Error = SelectShard(0 /*fileSize*/, &shardId);
+                args.Error = SelectShard(
+                    NProto::E_REGULAR_NODE,
+                    0 /*fileSize*/,
+                    &shardId);
                 if (HasError(args.Error)) {
                     return true;
                 }
@@ -474,7 +476,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 << args.OpLogEntry.ShortUtf8DebugString().Quote());
         }
 
-        db.WriteOpLogEntry(args.OpLogEntry);
+        WriteOpLogEntry(db, args.OpLogEntry);
     }
 
     AddDupCacheEntry(

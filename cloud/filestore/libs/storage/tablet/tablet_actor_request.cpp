@@ -166,6 +166,7 @@ FILESTORE_GENERATE_IMPL(GetNodeAttrBatch, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(RenameNodeInDestination, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(PrepareUnlinkDirectoryNodeInShard, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(AbortUnlinkDirectoryNodeInShard, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(ListNodesInternal, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL
 

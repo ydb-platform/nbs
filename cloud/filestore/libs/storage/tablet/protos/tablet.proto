@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "cloud/filestore/private/api/protos/tablet.proto";
+import "cloud/filestore/private/api/unsafe_protos/unsafe.proto";
 import "cloud/filestore/public/api/protos/data.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/locks.proto";
@@ -54,6 +55,11 @@ message TFileSystem
     bool StrictFileSystemSizeEnforcementEnabled = 19;
     bool Frozen = 20;
     bool ForceDirectoryCreationInShards = 21;
+
+    repeated string FileShardFileSystemIds = 22;
+
+    bool IsFastShard = 23;
+    NProtoPrivate.TFastShardConfig FastShardConfig = 24;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

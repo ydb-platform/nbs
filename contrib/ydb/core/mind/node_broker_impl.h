@@ -56,7 +56,7 @@ public:
         struct TEvUpdateEpoch : public TEventLocal<TEvUpdateEpoch, EvUpdateEpoch> {};
 
         struct TEvResolvedRegistrationRequest : public TEventLocal<TEvResolvedRegistrationRequest, EvResolvedRegistrationRequest> {
-            
+
             TEvResolvedRegistrationRequest(
                     TEvNodeBroker::TEvRegistrationRequest::TPtr request,
                     NActors::TScopeId scopeId,
@@ -75,7 +75,10 @@ public:
 private:
     using TActorBase = TActor<TNodeBroker>;
 
-    static constexpr TDuration MIN_LEASE_DURATION = TDuration::Minutes(5);
+    // See issue #5356 or ask Mikhail Montsev (@svartmetal) for details.
+    // MIN_LEASE_DURATION reduced from 300 to 30 seconds for better testing
+    // (see cloud/filestore/tests/lease_expiration test)
+    static constexpr TDuration MIN_LEASE_DURATION = TDuration::Seconds(30);
 
     enum EConfigKey {
         ConfigKeyConfig = 1,

@@ -25,6 +25,12 @@ message TNVMeDevice
 
     // Model of NVMe.
     string Model = 6;
+
+    // vfio device name.
+    optional string VfioDevName = 7;
+
+    // NUMA node.
+    optional uint32 NumaNode = 8;
 }
 
 // List of NVMe devices.

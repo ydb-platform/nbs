@@ -36,6 +36,7 @@ private:
     std::atomic<ui32> Depth = 0;
     std::atomic<ui64> FileCount = 0;
     std::atomic<ui64> DirCount = 0;
+    std::atomic<ui64> SymlinkCount = 0;
     std::atomic<bool> Done = false;
     std::atomic<bool>& ShouldStop;
 
@@ -66,14 +67,25 @@ public:
         while (dirs.size() && !ShouldStop.load()) {
             TVector<TFsPath> newDirs;
             for (const auto& dir: dirs) {
+                TVector<TFsPath> children;
                 for (ui32 i = 0; i < Options.ChildrenCount; ++i) {
                     if (Rng.GenRandReal2() < p) {
-                        newDirs.push_back(CreateDir(dir));
+                        auto child = CreateDir(dir);
+                        newDirs.push_back(child);
+                        children.push_back(std::move(child));
                         DirCount.fetch_add(1, std::memory_order_relaxed);
                     } else {
-                        CreateFile(dir);
+                        auto child = CreateFile(dir);
+                        children.push_back(std::move(child));
                         FileCount.fetch_add(1, std::memory_order_relaxed);
                     }
+                }
+
+                for (ui32 i = 0; i < Options.SymlinkChildrenCount; ++i) {
+                    CreateSymlink(
+                        dir,
+                        children[i % children.size()].Basename());
+                    SymlinkCount.fetch_add(1, std::memory_order_relaxed);
                 }
             }
 
@@ -106,6 +118,11 @@ public:
         return DirCount.load(std::memory_order_relaxed);
     }
 
+    ui64 GetSymlinkCount() const
+    {
+        return SymlinkCount.load(std::memory_order_relaxed);
+    }
+
     bool IsDone() const
     {
         return Done.load();
@@ -122,7 +139,7 @@ private:
         return dirPath;
     }
 
-    void CreateFile(const TFsPath& parent)
+    TFsPath CreateFile(const TFsPath& parent)
     {
         TString fileName =
             TStringBuilder() << "file_" << ThreadId << "_" << NodeNo;
@@ -131,6 +148,21 @@ private:
 
         static constexpr EOpenMode OpenMode = CreateAlways | WrOnly | Seq;
         TFile f(filePath, OpenMode);
+        return filePath;
+    }
+
+    void CreateSymlink(const TFsPath& parent, const TFsPath& target)
+    {
+        TString fileName =
+            TStringBuilder() << "link_" << ThreadId << "_" << NodeNo;
+        ++NodeNo;
+        TFsPath filePath = parent / fileName;
+
+        const bool created = NFs::SymLink(target, filePath);
+        if (!created) {
+            STORAGE_ERROR("Producer " << DirPath << " at depth " << GetDepth()
+                << " failed to create link: " << filePath << " -> " << target);
+        }
     }
 };
 
@@ -181,8 +213,10 @@ public:
             bool done = true;
             for (auto& p: ProducerThreads) {
                 STORAGE_INFO("Producer " << p->GetDirPath() << " at depth "
-                    << p->GetDepth() << ", created " << p->GetFileCount()
-                    << " files, " << p->GetDirCount() << " dirs");
+                    << p->GetDepth()
+                    << ", created " << p->GetFileCount() << " files"
+                    << ", " << p->GetSymlinkCount() << " symlinks"
+                    << ", " << p->GetDirCount() << " dirs");
 
                 if (!p->IsDone()) {
                     done = false;
@@ -200,6 +234,7 @@ public:
             p->Join();
             Cout << "Producer " << i << " depth=" << p->GetDepth()
                 << ", files=" << p->GetFileCount()
+                << ", symlinks=" << p->GetSymlinkCount()
                 << ", dirs=" << p->GetDirCount()
                 << Endl;
         }

@@ -14,9 +14,9 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/server
-    cloud/blockstore/libs/rdma/iface
 
     cloud/storage/core/libs/aio
+    cloud/storage/core/libs/rdma/iface
 )
 
 END()

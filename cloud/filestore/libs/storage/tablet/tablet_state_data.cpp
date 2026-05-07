@@ -1535,9 +1535,17 @@ TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 ////////////////////////////////////////////////////////////////////////////////
 // Balancing
 
-NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
+NProto::TError TIndexTabletState::SelectShard(
+    NProto::ENodeType nodeType,
+    ui64 fileSize,
+    TString* shardId)
 {
-    auto e = Impl->ShardBalancer->SelectShard(fileSize, shardId);
+    auto* balancer = Impl->ShardBalancer.get();
+    if (nodeType == NProto::E_REGULAR_NODE && Impl->FileShardBalancer) {
+        balancer = Impl->FileShardBalancer.get();
+    }
+
+    auto e = balancer->SelectShard(fileSize, shardId);
     if (HasError(e)) {
         return e;
     }
@@ -1545,7 +1553,8 @@ NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
     return e;
 }
 
-void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
+NProto::TError TIndexTabletState::UpdateShardBalancer(
+    const TVector<TShardStats>& stats)
 {
     std::optional<ui64> desiredFreeSpaceReserve;
     std::optional<ui64> minFreeSpaceReserve;
@@ -1557,7 +1566,7 @@ void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
         minFreeSpaceReserve = 0;
     }
 
-    Impl->ShardBalancer->Update(
+    return Impl->ShardBalancer->Update(
         stats,
         desiredFreeSpaceReserve,
         minFreeSpaceReserve);

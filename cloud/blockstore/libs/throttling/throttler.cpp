@@ -219,9 +219,8 @@ private:
         ThrottlerTracker->TrackAdvancedRequest(                                \
             *concreteState->CallContext,                                       \
             *concreteState->Request);                                          \
+        concreteState->CallContext->Advance(cycles);                           \
         ThrottlerLogger->LogAdvancedRequest(                                   \
-            cycles,                                                            \
-            *concreteState->CallContext,                                       \
             concreteState->VolumeInfo.get(),                                   \
             *concreteState->Request);                                          \
         ExecuteRequest<TMethod>(*concreteState);                               \
@@ -361,6 +360,11 @@ private:
                     bytes,
                     std::move(volumeInfo)
                 );
+                // Publish the postponed timestamp under the lock before the
+                // request becomes visible to the advance path, but keep tracker
+                // and logger work outside the lock to avoid extending lock hold
+                // time with callbacks and diagnostics.
+                state->CallContext->Postpone(cycles);
                 PostponedRequests.push_back(state);
             }
         }
@@ -370,8 +374,6 @@ private:
                 *state->CallContext,
                 *state->Request);
             ThrottlerLogger->LogPostponedRequest(
-                cycles,
-                *state->CallContext,
                 state->VolumeInfo.get(),
                 *state->Request,
                 delay);

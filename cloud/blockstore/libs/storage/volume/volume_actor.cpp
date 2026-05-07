@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
@@ -92,7 +93,7 @@ TVolumeActor::TVolumeActor(
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode,
@@ -217,8 +218,11 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
 
 void TVolumeActor::ScheduleRegularUpdates(const TActorContext& ctx)
 {
-    if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+    if (!UpdateCountersScheduled &&
+        !Config->GetUsePullSchemeForVolumeStatistics())
+    {
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvVolumePrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
@@ -280,14 +284,12 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
 
 void TVolumeActor::UpdateCounters(const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     if (!State) {
         return;
     }
 
     if (Config->GetUsePullSchemeForVolumeStatistics()) {
-        SendStatsToServiceStatisticsCollectorActor(ctx);
+        ReplyToServiceStatisticsCollectorActor(ctx);
         return;
     }
 
@@ -443,11 +445,11 @@ TVolumeActor::EStatus TVolumeActor::GetVolumeStatus() const
     return TVolumeActor::STATUS_OFFLINE;
 }
 
-NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
+NCloud::NStorage::NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
 {
     return (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma())
                ? RdmaClient
-               : NRdma::IClientPtr{};
+               : NCloud::NStorage::NRdma::IClientPtr{};
 }
 
 ui64 TVolumeActor::GetBlocksCount() const
@@ -627,8 +629,15 @@ bool TVolumeActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
         .Contains(range);
 }
 
-bool TVolumeActor::IsFreshBlocksWriterEnabled() const
+bool TVolumeActor::IsFreshBlocksWriterEnabled(ui64 partTabletId) const
 {
+    const auto* part = State->GetPartition(partTabletId);
+    if (!part ||
+        part->StorageInfo->TabletType != TTabletTypes::BlockStorePartition)
+    {
+        return false;
+    }
+
     return Config->GetFreshBlocksWriterEnabled() ||
            Config->IsFreshBlocksWriterFeatureEnabled(
                State->GetConfig().GetCloudId(),
@@ -710,23 +719,24 @@ void TVolumeActor::HandleUpdateCounters(
 {
     UpdateCountersScheduled = false;
 
-    // Under these conditions, the counters are updated at the request of the
-    // service.
-    if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
-        GetVolumeStatus() != EStatus::STATUS_INACTIVE)
-    {
+    if (Config->GetUsePullSchemeForVolumeStatistics()) {
+        // The counters are updated at the request of the service.
         return;
     }
 
     UpdateCounters(ctx);
     ScheduleRegularUpdates(ctx);
-    CleanupHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
+    CleanupHistory(
+        ctx,
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
 }
 
 void TVolumeActor::HandleGetServiceStatistics(
     const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(Config->GetUsePullSchemeForVolumeStatistics());
+
     if (StatisticRequestInfo) {
         NCloud::Reply(
             ctx,
@@ -761,7 +771,7 @@ void TVolumeActor::HandleGetServiceStatistics(
 
     State->IsDiskRegistryMediaKind()
         ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
-        : SendStatisticRequests(ctx);
+        : SendStatisticRequestsForYDBBasedPartitions(ctx);
 }
 
 void TVolumeActor::RejectGetServiceStatistics(
@@ -1118,7 +1128,6 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandleDiskRegistryBasedPartCounters);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
-        HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
         HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
         HFunc(
             TEvVolumePrivate::TEvWriteOrZeroCompleted,
@@ -1242,6 +1251,7 @@ STFUNC(TVolumeActor::StateWork)
             TEvService::TEvSetVhostDiscardFlagResponse,
             HandleSetVhostDiscardFlagResponse);
 
+        IgnoreFunc(TEvVolumePrivate::TEvPartStatsSaved);
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:

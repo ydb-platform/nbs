@@ -81,12 +81,15 @@ message TVhostServiceConfig
     // (and a subdirectory with session id as name) if not present.
     optional string DirectoryHandlesStoragePath = 19;
 
-    // Initial data area size for DirectoryHandles persistent table.
+    // Initial data area size for DirectoryHandles persistent table. Should be power of 2
     optional uint64 DirectoryHandlesInitialDataSize = 20;
 
     // If nonzero, multiple permanent THandler actors will be used instead of
     // one TRequestActor per each request.
     optional uint32 PermanentActorCount = 21;
+
+    // Max single growth step for DirectoryHandles persistent table data area.
+    optional uint64 DirectoryHandlesMaxDataAreaStepSize = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -127,15 +127,17 @@ TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
 
 TTabletStorageInfoPtr GetTabletStorageInfo(
     TTestActorRuntime& runtime,
-    ui64 tabletId)
+    ui64 tabletId,
+    ui32 nodeIdx)
 {
     using TEvHiveProxy = NCloud::NStorage::TEvHiveProxy;
 
-    auto sender = runtime.AllocateEdgeActor();
+    auto sender = runtime.AllocateEdgeActor(nodeIdx);
     runtime.Send(new IEventHandle(
         NCloud::NStorage::MakeHiveProxyServiceId(),
         sender,
-        new TEvHiveProxy::TEvGetStorageInfoRequest(tabletId)));
+        new TEvHiveProxy::TEvGetStorageInfoRequest(tabletId)),
+        nodeIdx);
 
     TAutoPtr<IEventHandle> handle;
     auto* event =
@@ -2659,7 +2661,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TVector<ui32> channelsToReassign = {1, 4};
         TVector<ui32> groupsToReassign;
 
-        auto storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        auto storageInfo = GetTabletStorageInfo(runtime, tabletId, nodeIdx);
         UNIT_ASSERT(storageInfo->Channels.size() > channelsToReassign.size());
 
         // Find which groups correspond to the channels being reassigned
@@ -2742,7 +2744,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         ui32 reassignedToGroupId = 0;
 
-        storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        storageInfo = GetTabletStorageInfo(runtime, tabletId, nodeIdx);
         UNIT_ASSERT(storageInfo->Channels.size() > reassignedChannels.size());
 
         // Ensure that the reassign did happen
@@ -2782,7 +2784,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT(event == nullptr);
         }
 
-        storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        storageInfo = GetTabletStorageInfo(runtime, tabletId, nodeIdx);
         UNIT_ASSERT(storageInfo->Channels.size() > reassignedChannels.size());
         {
             auto channel = storageInfo->Channels[reassignedToChannel];

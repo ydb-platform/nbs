@@ -66,6 +66,12 @@ namespace NCloud::NFileStore::NStorage {
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx,  __VA_ARGS__)                  \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
+#define FILESTORE_TABLET_ADAPTER_REQUESTS_PRIVATE(xxx, ...)                    \
+    xxx(SyncSessions,                           __VA_ARGS__)                   \
+    xxx(CleanupSessions,                        __VA_ARGS__)                   \
+    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
+// FILESTORE_TABLET_REQUESTS_PRIVATE
+
 #define FILESTORE_DECLARE_PRIVATE_EVENT_IDS(name, ...)                         \
     FILESTORE_DECLARE_EVENT_IDS(name, __VA_ARGS__)                             \
     Ev##name##Completed,                                                       \
@@ -657,6 +663,8 @@ struct TEvIndexTabletPrivate
         const TString NodeName;
         TCreateNodeInShardResult Result;
         NProto::TProfileLogRequestInfo ProfileLogRequest;
+        const bool NodeAlreadyExists;
+        const ui32 CreateNodeRetryCount;
 
         TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
@@ -665,7 +673,9 @@ struct TEvIndexTabletPrivate
                 ui64 opLogEntryId,
                 TString nodeName,
                 TCreateNodeInShardResult result,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                bool nodeAlreadyExists,
+                ui32 createNodeRetryCount)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -673,6 +683,8 @@ struct TEvIndexTabletPrivate
             , NodeName(std::move(nodeName))
             , Result(std::move(result))
             , ProfileLogRequest(std::move(profileLogRequest))
+            , NodeAlreadyExists(nodeAlreadyExists)
+            , CreateNodeRetryCount(createNodeRetryCount)
         {
         }
     };

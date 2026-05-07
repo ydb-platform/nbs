@@ -33,7 +33,6 @@ class NfsLauncher:
         )
         storage_config = TStorageConfig()
         storage_config.AllowFileStoreForceDestroy = allow_filestore_force_destroy
-        storage_config.MultiTabletForwardingEnabled = True
         storage_config.AutomaticShardCreationEnabled = True
         storage_config.ShardIdSelectionInLeaderEnabled = True
         self.__nfs_configurator = FilestoreServerConfigGenerator(

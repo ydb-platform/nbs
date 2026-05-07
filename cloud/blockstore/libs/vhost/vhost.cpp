@@ -56,7 +56,8 @@ public:
             ui64 from,
             ui64 length,
             TSgList sgList,
-            void* cookie)
+            void* cookie,
+            bool isDiscardRequest)
         : VhdIo(vhdIo)
     {
         Type = type;
@@ -64,6 +65,7 @@ public:
         Length = length;
         SgList.SetSgList(std::move(sgList));
         Cookie = cookie;
+        IsDiscardRequest = isDiscardRequest;
     }
 
     void Complete(EResult result) override
@@ -303,6 +305,7 @@ private:
         auto* vhdBdevIo = vhd_get_bdev_io(vhdRequest.io);
 
         EBlockStoreRequest type;
+        bool isDiscardRequest = false;
         switch (vhdBdevIo->type)
         {
             case VHD_BDEV_READ:
@@ -312,6 +315,9 @@ private:
                 type = EBlockStoreRequest::WriteBlocks;
                 break;
             case VHD_BDEV_DISCARD:
+                type = EBlockStoreRequest::ZeroBlocks;
+                isDiscardRequest = true;
+                break;
             case VHD_BDEV_WRITE_ZEROES:
                 type = EBlockStoreRequest::ZeroBlocks;
                 break;
@@ -327,7 +333,8 @@ private:
             vhdBdevIo->first_sector * VHD_SECTOR_SIZE,
             vhdBdevIo->total_sectors * VHD_SECTOR_SIZE,
             ConvertVhdSgList(vhdBdevIo->sglist),
-            cookie);
+            cookie,
+            isDiscardRequest);
     }
 
     static TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)

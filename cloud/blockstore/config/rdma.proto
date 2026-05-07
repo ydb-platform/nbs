@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+import "cloud/storage/core/protos/rdma.proto";
 import "cloud/blockstore/public/api/protos/rdma.proto";
 
 package NCloud.NBlockStore.NProto;
@@ -8,95 +9,20 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum EWaitMode
-{
-    WAIT_MODE_POLL = 0;
-    WAIT_MODE_BUSY_WAIT = 1;
-    WAIT_MODE_ADAPTIVE_WAIT = 2;
-}
-
-message TBufferPool
-{
-    // Memory chunks of this size will be kept for reuse. Buffers smaller or
-    // equal to the ChunkSize will be backed by one of the available chunks
-    uint64 ChunkSize = 1;
-
-    // Maximum buffer size that will be backed by a chunk. Anything bigger will
-    // spawn a custom chunk that won't be reused
-    uint64 MaxChunkAlloc = 2;
-
-    // Number of unused chunks to be kept to speed up allocations
-    uint64 MaxFreeChunks = 3;
-}
-
-message TRdmaServer
-{
-    uint32 Backlog = 1;
-    // Deprecated, use SendQueueSize and RecvQueueSize instead.
-    uint32 QueueSize = 2;
-    uint32 MaxBufferSize = 3;
-    uint64 KeepAliveTimeout = 4;            // in milliseconds
-    EWaitMode WaitMode = 5;
-    uint32 PollerThreads = 6;
-    uint32 MaxInflightBytes = 7;            // per client
-    uint64 AdaptiveWaitSleepDelay = 8;      // in microseconds
-    uint64 AdaptiveWaitSleepDuration = 9;   // in microseconds
-    bool AlignedDataEnabled = 10;
-    uint32 IpTypeOfService = 11;
-
-    // bind to the first non local address of this interface
-    string SourceInterface = 12;
-
-    // use ibv_create_qp instead of rdma_create_qp
-    bool VerbsQP = 13;
-
-    TBufferPool BufferPool = 14;
-
-    uint32 SendQueueSize = 15;
-    uint32 RecvQueueSize = 16;
-}
-
-message TRdmaClient
-{
-    // Deprecated, use SendQueueSize and RecvQueueSize instead.
-    uint32 QueueSize = 1;
-    uint32 MaxBufferSize = 2;
-    uint32 PollerThreads = 3;
-    EWaitMode WaitMode = 4;
-    uint64 AdaptiveWaitSleepDelay = 5;      // in microseconds
-    uint64 AdaptiveWaitSleepDuration = 6;   // in microseconds
-    bool AlignedDataEnabled = 7;
-    uint32 IpTypeOfService = 8;
-
-    // bind to the first non local address of this interface
-    string SourceInterface = 9;
-
-    // use ibv_create_qp instead of rdma_create_qp
-    bool VerbsQP = 10;
-
-    uint64 MaxReconnectDelay = 11;  // in milliseconds
-    uint64 MaxResponseDelay = 12;   // in milliseconds
-
-    TBufferPool BufferPool = 13;
-
-    uint32 SendQueueSize = 14;
-    uint32 RecvQueueSize = 15;
-}
-
 message TRdmaTarget
 {
     TRdmaEndpoint Endpoint = 1;
-    TRdmaServer Server = 2;                 // deprecated
+    NCloud.NProto.TRdmaServer Server = 2;   // deprecated
     uint32 WorkerThreads = 3;
 }
 
 message TRdmaConfig
 {
     bool ClientEnabled = 1;
-    TRdmaClient Client = 2;
+    NCloud.NProto.TRdmaClient Client = 2;
 
     bool ServerEnabled = 3;
-    TRdmaServer Server = 4;
+    NCloud.NProto.TRdmaServer Server = 4;
 
     bool DiskAgentTargetEnabled = 5;
     TRdmaTarget DiskAgentTarget = 6;
