@@ -511,7 +511,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
-    Y_UNIT_TEST(ShouldBlockGetNodeAttrUntilConfirmDataCommits)
+    Y_UNIT_TEST(ShouldBlockGetNodeAttrUntilAddBlobUnconfirmedCommits)
     {
         constexpr ui32 block = 4_KB;
 
