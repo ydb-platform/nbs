@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
 #include <cloud/storage/core/libs/common/media.h>
-#include "cloud/storage/core/libs/throttling/helpers.h"
+#include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -147,7 +147,7 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                             out << (enabled ? "Yes" : "No");
                         }
                         TABLED() {
-                            out <<info.SufferCount;
+                            out << info.SufferCount;
                         }
                         TABLED() {
                             out
@@ -337,7 +337,7 @@ TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
     if (currentLoad.WriteBlobBytes < last.WriteBlobBytes ||
         currentLoad.WriteBlobCount < last.WriteBlobCount ||
         currentLoad.ReadBlobBytes < last.ReadBlobBytes ||
-        currentLoad.WriteBlobCount < last.WriteBlobCount)
+        currentLoad.ReadBlobCount < last.ReadBlobCount)
     {
         // Unable to calculate cost: Negative counters diff
         return MakeError(E_FAIL, "Negative counters diff");
@@ -368,7 +368,7 @@ TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
             perfSettings.ReadIops,
             perfSettings.ReadBandwidth,
             currentLoad.ReadBlobBytes - last.ReadBlobBytes,
-            currentLoad.WriteBlobCount - last.WriteBlobCount);
+            currentLoad.ReadBlobCount - last.ReadBlobCount);
 
     return writeCost + readCost;
 }
