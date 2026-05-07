@@ -616,7 +616,7 @@ func (g *ConfigGenerator) constructCfgOverride(
 		"lookup": func(key string, defaultValue string) string {
 			return g.lookupCustomKey(ctx, key, defaultValue, cluster, zone, seed)
 		},
-		"target": func() string {return target},
+		"target": func() string { return target },
 	}
 	return override
 }
