@@ -80,7 +80,7 @@ def start_instance(args, inst_index):
 
     use_virtiofs_server = _get_vm_use_virtiofs_server(args)
 
-    qemu = Qemu(qemu_kmv=_get_qemu_kvm(args),
+    qemu = Qemu(qemu_kvm=_get_qemu_kvm(args),
                 qemu_firmware=_get_qemu_firmware(args),
                 rootfs=_get_rootfs(args),
                 kernel=_get_kernel(args),

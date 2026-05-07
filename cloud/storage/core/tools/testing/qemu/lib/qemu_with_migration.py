@@ -1,5 +1,6 @@
 import os
 import logging
+import platform
 import yatest.common as common
 import time
 import tarfile
@@ -23,9 +24,17 @@ def _unpack_qemu_bin(bindir):
         tf.extractall(bindir)
 
 
+def _get_qemu_system_bin():
+    machine = platform.machine().lower()
+    if machine in ("aarch64", "arm64"):
+        return "qemu-system-aarch64"
+
+    return "qemu-system-x86_64"
+
+
 def _get_qemu_kvm():
     bindir = _get_bindir()
-    qemu_kvm = os.path.join(bindir, "usr", "bin", "qemu-system-x86_64")
+    qemu_kvm = os.path.join(bindir, "usr", "bin", _get_qemu_system_bin())
     if not os.path.exists(qemu_kvm):
         _unpack_qemu_bin(bindir)
 
@@ -44,7 +53,7 @@ def _get_qemu_firmware():
 class QemuWithMigration:
     def __init__(self, socket_generator):
         self.qemu = Qemu(
-            qemu_kmv=_get_qemu_kvm(),
+            qemu_kvm=_get_qemu_kvm(),
             qemu_firmware=_get_qemu_firmware(),
             rootfs=common.build_path("cloud/storage/core/tools/testing/qemu/image/rootfs.img"),
             kernel=None,
