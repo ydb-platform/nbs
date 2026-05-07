@@ -9,7 +9,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 namespace {
 
-constexpr size_t StandardCompactionRangeCountPerBlob = 32;
+constexpr size_t MaxOnStackTmpVectorSize = 128;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -185,13 +185,12 @@ void TFlushBlocksVisitor::FlushBlob(
     TVector<TBlock> blocks,
     TVector<ui32> checksums)
 {
-    size_t maxCompactionRangeCountPerBlob =
+    const size_t maxCompactionRangeCountPerBlob =
         MaxBlobRangeSize / CompactionMap.GetRangeSize();
 
-    if (maxCompactionRangeCountPerBlob < StandardCompactionRangeCountPerBlob) {
-        FlushBlobImpl<TStackVec<
-            std::pair<size_t, size_t>,
-            StandardCompactionRangeCountPerBlob>>(
+    if (Y_LIKELY(maxCompactionRangeCountPerBlob <= MaxOnStackTmpVectorSize)) {
+        FlushBlobImpl<
+            TStackVec<std::pair<size_t, size_t>, MaxOnStackTmpVectorSize>>(
             std::move(blobContent),
             std::move(blocks),
             std::move(checksums));
