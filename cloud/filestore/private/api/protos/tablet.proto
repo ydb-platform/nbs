@@ -51,6 +51,9 @@ message TCreateSessionRequest
     bool ReadOnly = 5;
 
     uint64 MountSeqNumber = 6;
+
+    // Don't return FileStore in the response.
+    bool NoFileStoreInfo = 7;
 }
 
 message TCreateSessionResponse
