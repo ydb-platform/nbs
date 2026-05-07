@@ -177,7 +177,7 @@ func (g *ConfigGenerator) loadAllOverrides(
 		zone,
 		target)
 
-	cfgOverride := g.constructCfgOverride(ctx, cluster, zone, seed)
+	cfgOverride := g.constructCfgOverride(ctx, cluster, zone, seed, target)
 	err := g.loadOverrides(
 		ctx,
 		target,
@@ -290,7 +290,7 @@ func (g *ConfigGenerator) dumpConfigs(
 			)
 		}
 
-		cfgOverride := g.constructCfgOverride(ctx, cluster, zone, seed)
+		cfgOverride := g.constructCfgOverride(ctx, cluster, zone, seed, target)
 		configOverrided, err := g.applyOverrides(
 			ctx,
 			cfgFile,
@@ -569,6 +569,7 @@ func (g *ConfigGenerator) constructCfgOverride(
 	cluster string,
 	zone string,
 	seed bool,
+	target string,
 ) CfgFileOverride {
 
 	// default cfg file overrides for all clusters
@@ -615,6 +616,7 @@ func (g *ConfigGenerator) constructCfgOverride(
 		"lookup": func(key string, defaultValue string) string {
 			return g.lookupCustomKey(ctx, key, defaultValue, cluster, zone, seed)
 		},
+		"target": func() string {return target},
 	}
 	return override
 }
