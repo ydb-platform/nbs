@@ -807,8 +807,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto requestDuration = TDuration::MilliSeconds(400) +
             diagConfig->GetExpectedIoParallelism() * CostPerIO(
-                diagConfig->GetSsdPerfSettings().WriteIops,
-                diagConfig->GetSsdPerfSettings().WriteBandwidth,
+                diagConfig->GetSsdPerfSettings().Write.Iops,
+                diagConfig->GetSsdPerfSettings().Write.Bandwidth,
                 1_MB);
         auto durationInCycles = DurationToCyclesSafe(requestDuration);
         auto now = GetCycleCount();

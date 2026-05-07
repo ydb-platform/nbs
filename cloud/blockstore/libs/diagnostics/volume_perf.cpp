@@ -14,9 +14,26 @@
 #include <util/generic/hash.h>
 #include <util/system/rwlock.h>
 
+#include <limits>
+#include <type_traits>
+
 namespace NCloud::NBlockStore {
 
 using namespace NMonitoring;
+
+namespace {
+
+template <typename T>
+    requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
+[[nodiscard]] T SafeMultiply(T a, double m)
+{
+    if (m >= 1.0 && static_cast<T>(std::numeric_limits<T>::max() / m) <= a) {
+        return std::numeric_limits<T>::max();
+    }
+    return a * m;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -68,29 +85,40 @@ TVolumePerformanceCalculator::TVolumePerformanceCalculator(
 void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
 {
     const auto old = *PerfSettings.AtomicLoad();
-    if (old.IsValid()) {
-        const auto& profile = volume.GetPerformanceProfile();
-        TVolumePerfSettings clientSettings(
-            Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
-            Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
-            Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-            Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
-            ConfigSettings.CriticalFactor);
-
-        TIntrusivePtr<TVolumePerfSettings> newSettings;
-
-        if (clientSettings.IsValid() && old != clientSettings) {
-            newSettings = new TVolumePerfSettings(
-                Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
-                Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
-                Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-                Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
-                ConfigSettings.CriticalFactor);
-
-            PerfSettings.AtomicStore(newSettings);
-        }
-        IsEnabled = true;
+    if (!old.IsValid()) {
+        return;
     }
+
+    const auto& profile = volume.GetPerformanceProfile();
+    TVolumePerfSettings clientSettings(
+        Max(Min(ConfigSettings.Read.Iops,
+                SafeMultiply(
+                    profile.GetMaxReadIops(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinRead.Iops),
+        Max(Min(ConfigSettings.Read.Bandwidth,
+                SafeMultiply(
+                    profile.GetMaxReadBandwidth(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinRead.Bandwidth),
+        Max(Min(ConfigSettings.Write.Iops,
+                SafeMultiply(
+                    profile.GetMaxWriteIops(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinWrite.Iops),
+        Max(Min(ConfigSettings.Write.Bandwidth,
+                SafeMultiply(
+                    profile.GetMaxWriteBandwidth(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinWrite.Bandwidth),
+        ConfigSettings.CriticalFactor,
+        ConfigSettings.ThrottlerOvercommit);
+
+    if (clientSettings.IsValid() && old != clientSettings) {
+        PerfSettings.AtomicStore(new TVolumePerfSettings(clientSettings));
+    }
+
+    IsEnabled = true;
 }
 
 void TVolumePerformanceCalculator::Register(
@@ -258,8 +286,8 @@ TDuration TVolumePerformanceCalculator::GetExpectedReadCost(
 {
     auto perf = PerfSettings.AtomicLoad();
     return ExpectedIoParallelism * CostPerIO(
-        perf->ReadIops,
-        perf->ReadBandwidth,
+        perf->Read.Iops,
+        perf->Read.Bandwidth,
         requestBytes);
 }
 
@@ -268,8 +296,8 @@ TDuration TVolumePerformanceCalculator::GetExpectedWriteCost(
 {
     auto perf = PerfSettings.AtomicLoad();
     return ExpectedIoParallelism * CostPerIO(
-        perf->WriteIops,
-        perf->WriteBandwidth,
+        perf->Write.Iops,
+        perf->Write.Bandwidth,
         requestBytes);
 }
 
@@ -282,6 +310,5 @@ TDuration TVolumePerformanceCalculator::GetCurrentCost() const
 {
     return TDuration::MicroSeconds(AtomicGet(CurrentScore));
 }
-
 
 }   // namespace NCloud::NBlockStore

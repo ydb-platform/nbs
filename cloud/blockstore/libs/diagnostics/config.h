@@ -15,56 +15,72 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumePerfSettings:
-    public TAtomicRefCount<TVolumePerfSettings>
+struct TVolumePerfSettings: public TAtomicRefCount<TVolumePerfSettings>
 {
-    ui32 ReadIops = 0;
-    ui64 ReadBandwidth = 0;
+    struct TPerformanceProfile {
+        ui32 Iops = 0;
+        ui64 Bandwidth = 0;
 
-    ui32 WriteIops = 0;
-    ui64 WriteBandwidth = 0;
+        bool operator==(const TPerformanceProfile& rhs) const = default;
+
+        [[nodiscard]] bool IsValid() const
+        {
+            return Iops != 0 && Bandwidth != 0;
+        }
+    };
+
+    TPerformanceProfile Read;
+    TPerformanceProfile Write;
 
     ui32 CriticalFactor = 0;
+    double ThrottlerOvercommit = 1.0;
+
+    TPerformanceProfile MinRead;
+    TPerformanceProfile MinWrite;
 
     TVolumePerfSettings() = default;
     TVolumePerfSettings(const TVolumePerfSettings& rhs) = default;
 
     TVolumePerfSettings(
-            ui32 readIops,
-            ui64 readBandwidth,
-            ui32 writeIops,
-            ui64 writeBandwidth,
-            ui32 criticalFactor)
-        : ReadIops(readIops)
-        , ReadBandwidth(readBandwidth)
-        , WriteIops(writeIops)
-        , WriteBandwidth(writeBandwidth)
+        ui32 readIops,
+        ui64 readBandwidth,
+        ui32 writeIops,
+        ui64 writeBandwidth,
+        ui32 criticalFactor,
+        double throttlerOvercommit)
+        : Read(readIops, readBandwidth)
+        , Write(writeIops, writeBandwidth)
         , CriticalFactor(criticalFactor)
+        , ThrottlerOvercommit(throttlerOvercommit)
     {}
 
     TVolumePerfSettings(const NProto::TVolumePerfSettings& settings)
-        : ReadIops(settings.GetRead().GetIops())
-        , ReadBandwidth(settings.GetRead().GetBandwidth())
-        , WriteIops(settings.GetWrite().GetIops())
-        , WriteBandwidth(settings.GetWrite().GetBandwidth())
+        : Read(settings.GetRead().GetIops(), settings.GetRead().GetBandwidth())
+        , Write(
+              settings.GetWrite().GetIops(),
+              settings.GetWrite().GetBandwidth())
         , CriticalFactor(settings.GetCriticalFactor())
+        , ThrottlerOvercommit(
+              settings.HasThrottlerOvercommit()
+                  ? settings.GetThrottlerOvercommit()
+                  : 1.0)
+        , MinRead(
+              settings.GetMinRead().GetIops(),
+              settings.GetMinRead().GetBandwidth())
+        , MinWrite(
+              settings.GetMinWrite().GetIops(),
+              settings.GetMinWrite().GetBandwidth())
     {}
 
     bool IsValid() const
     {
-        return ReadIops != 0
-            && ReadBandwidth != 0
-            && WriteIops != 0
-            && WriteBandwidth != 0;
+        return Read.IsValid() && Write.IsValid();
     }
 
-    bool operator == (const TVolumePerfSettings& rhs) const
+    bool operator==(const TVolumePerfSettings& rhs) const
     {
-        return ReadIops == rhs.ReadIops
-            && ReadBandwidth == rhs.ReadBandwidth
-            && WriteIops == rhs.WriteIops
-            && WriteBandwidth == rhs.WriteBandwidth
-            && CriticalFactor == rhs.CriticalFactor;
+        return Read == rhs.Read && Write == rhs.Write &&
+               CriticalFactor == rhs.CriticalFactor;
     }
 
     bool operator != (const TVolumePerfSettings& rhs) const = default;
