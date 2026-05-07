@@ -49,6 +49,8 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(VerbsQP, VerbsQP);
                 ENTRY(SendQueueSize, SendQueueSize);
                 ENTRY(RecvQueueSize, RecvQueueSize);
+                ENTRY(ResolveTimeout, ResolveTimeout.ToString());
+                ENTRY(FlushTimeout, FlushTimeout.ToString());
                 ENTRY(BufferPool.ChunkSize, BufferPool.ChunkSize);
                 ENTRY(BufferPool.MaxChunkAlloc, BufferPool.MaxChunkAlloc);
                 ENTRY(BufferPool.MaxFreeChunks, BufferPool.MaxFreeChunks);

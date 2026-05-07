@@ -130,6 +130,7 @@ struct IVerbs
     virtual ibv_qp* CreateQP(ibv_pd* pd, ibv_qp_init_attr* attr) = 0;
     virtual void DestroyQP(ibv_qp* qp) = 0;
     virtual void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) = 0;
+    virtual void RateLimitQP(ibv_qp* qp, ibv_qp_rate_limit_attr* attr) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -570,6 +570,12 @@ struct TTestVerbs
             TestContext->ModifyQP(qp, attr, mask);
         }
     }
+
+    void RateLimitQP(ibv_qp* qp, ibv_qp_rate_limit_attr* attr) override
+    {
+        Y_UNUSED(qp);
+        Y_UNUSED(attr);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

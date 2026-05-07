@@ -152,6 +152,11 @@ public:
         ModifyQP,
         (ibv_qp * qp, ibv_qp_attr* attr, int mask),
         (override));
+    MOCK_METHOD(
+        void,
+        RateLimitQP,
+        (ibv_qp * qp, ibv_qp_rate_limit_attr* attr),
+        (override));
 };
 
 class TBufferPoolTest: public ::testing::Test

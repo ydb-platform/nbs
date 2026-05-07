@@ -4,11 +4,12 @@ SRCS(
     buffer.cpp
     client.cpp
     config.cpp
+    log.cpp
     probes.cpp
     protobuf.cpp
     protocol.cpp
+    rate_limit.cpp
     server.cpp
-    log.cpp
 )
 
 PEERDIR(
