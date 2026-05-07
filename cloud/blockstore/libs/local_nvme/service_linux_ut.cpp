@@ -136,6 +136,13 @@ public:
         return TString();
     }
 
+    auto GetDeviceModel(const TString& path) -> TResultOrError<TString> final
+    {
+        Y_UNUSED(path);
+
+        return TString();
+    }
+
     NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
     {
         Y_UNUSED(ctrlPath);

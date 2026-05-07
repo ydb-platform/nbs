@@ -60,6 +60,13 @@ public:
         return TString {};
     }
 
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        Y_UNUSED(path);
+
+        return TString{};
+    }
+
     TResultOrError<bool> IsSsd(const TString& path) override
     {
         Y_UNUSED(path);
