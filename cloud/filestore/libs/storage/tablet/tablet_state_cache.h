@@ -38,9 +38,7 @@ struct TInMemoryIndexStateStats
 class TInMemoryIndexState : public IIndexTabletDatabase
 {
 public:
-    explicit TInMemoryIndexState(
-        IAllocator* allocator,
-        bool cacheBypassEnabled);
+    explicit TInMemoryIndexState(IAllocator* allocator);
 
     void Reset(
         ui64 nodesCapacity,
@@ -70,12 +68,11 @@ public:
 
     void DeactivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
 
-    void SetUnconfirmedRecoveryReady(bool value);
+    void SetUnconfirmedRecoveryReady(bool unconfirmedRecoveryReady);
 
 private:
     bool ShouldBypassCacheRead(ui64 nodeId, ui64 commitId) const;
 
-    const bool CacheBypassEnabled;
     bool UnconfirmedRecoveryReady = false;
     THashMap<ui64, std::deque<ui64>> CacheBypassCommitIdsByNodeId;
 

@@ -270,7 +270,7 @@ protected:
     void SetUnconfirmedRecoveryReady(bool value);
 
 public:
-    explicit TIndexTabletState(bool cacheBypassEnabled);
+    TIndexTabletState();
     ~TIndexTabletState();
 
     void UpdateLogTag(TString tag);

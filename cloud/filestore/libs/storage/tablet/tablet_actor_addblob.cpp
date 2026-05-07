@@ -1,7 +1,5 @@
 #include "tablet_actor.h"
 
-#include "model/verify.h"
-
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/group_by.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
@@ -193,9 +191,14 @@ private:
 
         Execute_AddBlob_Write(ctx, db, args);
 
-        TABLET_VERIFY(args.WriteRanges.size() == 1);
+        TABLET_VERIFY_C(
+            args.WriteRanges.size() == 1,
+            "WriteRanges.size(): " << args.WriteRanges.size());
+
         // We shouldn't have errors other than CommitIdOverflow at this place
-        TABLET_VERIFY(!HasError(args.Error) || args.CommitIdOverflow);
+        TABLET_VERIFY_C(
+            !HasError(args.Error) || args.CommitIdOverflow,
+            "Error: " << FormatError(args.Error));
 
         Tablet.ActivateInMemoryIndexStateBypass(
             args.WriteRanges.front().NodeId,

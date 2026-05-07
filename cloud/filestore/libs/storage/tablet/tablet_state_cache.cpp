@@ -1,6 +1,6 @@
 #include "tablet_state_cache.h"
 
-#include "model/verify.h"
+#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
@@ -8,11 +8,8 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TInMemoryIndexState::TInMemoryIndexState(
-    IAllocator* allocator,
-    bool cacheBypassEnabled)
-    : CacheBypassEnabled(cacheBypassEnabled)
-    , Nodes(0)
+TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
+    : Nodes(0)
     , NodeAttrs(0)
     , NodeRefs(allocator)
 {}
@@ -86,9 +83,17 @@ void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
     ui64 commitId)
 {
     auto nodeIt = CacheBypassCommitIdsByNodeId.find(nodeId);
-    TABLET_VERIFY(
-        nodeIt != CacheBypassCommitIdsByNodeId.end() &&
-        !nodeIt->second.empty() && nodeIt->second.front() == commitId);
+    TABLET_VERIFY_C(
+        nodeIt != CacheBypassCommitIdsByNodeId.end(),
+        "nodeId: " << nodeId << ", commitId: " << commitId);
+    TABLET_VERIFY_C(
+        !nodeIt->second.empty(),
+        "nodeId: " << nodeId << ", commitId: " << commitId);
+    TABLET_VERIFY_C(
+        nodeIt->second.front() == commitId,
+        "nodeId: " << nodeId << ", expected commitId: " << commitId
+                   << ", actual commitId: " << nodeIt->second.front()
+                   << ", queue size: " << nodeIt->second.size());
 
     nodeIt->second.pop_front();
     if (nodeIt->second.empty()) {
@@ -96,24 +101,31 @@ void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
     }
 }
 
-void TInMemoryIndexState::SetUnconfirmedRecoveryReady(bool value)
+void TInMemoryIndexState::SetUnconfirmedRecoveryReady(
+    bool unconfirmedRecoveryReady)
 {
-    UnconfirmedRecoveryReady = value;
+    UnconfirmedRecoveryReady = unconfirmedRecoveryReady;
 }
 
 bool TInMemoryIndexState::ShouldBypassCacheRead(
     ui64 nodeId,
     ui64 commitId) const
 {
-    if (!CacheBypassEnabled && UnconfirmedRecoveryReady) {
+    // If recovery is in progress, reading from the cache is not possible.
+    if (!UnconfirmedRecoveryReady) {
+        return true;
+    }
+
+    // If there are no records for the given node, we can read from the cache.
+    const auto it = CacheBypassCommitIdsByNodeId.find(nodeId);
+    if (it == CacheBypassCommitIdsByNodeId.end() || it->second.empty()) {
         return false;
     }
 
-    const auto it = CacheBypassCommitIdsByNodeId.find(nodeId);
-    return it != CacheBypassCommitIdsByNodeId.end() && !it->second.empty() &&
-           // Commit id overflow case
-           (it->second.front() == InvalidCommitId ||
-            it->second.front() <= commitId);
+    // Otherwise, ensure that all writes with commit ids up to the current
+    // commit are already in the cache.
+    const ui64 frontCommitId = it->second.front();
+    return frontCommitId == InvalidCommitId || frontCommitId <= commitId;
 }
 
 //

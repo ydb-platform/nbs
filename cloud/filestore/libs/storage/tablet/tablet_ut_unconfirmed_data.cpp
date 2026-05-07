@@ -511,7 +511,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
-    Y_UNIT_TEST(ShouldUpdateNodeAttrBeforeConfirmAddDataReply)
+    Y_UNIT_TEST(ShouldBlockGetNodeAttrUntilConfirmDataCommits)
     {
         constexpr ui32 block = 4_KB;
 
@@ -586,7 +586,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
         tablet.SendGetNodeAttrRequest(id);
 
-        // With cache bypass we will not recive response until release of Commit
+        // With cache bypass we will not receive response until release of Commit
         // event
         tablet.AssertGetNodeAttrNoResponse();
 
