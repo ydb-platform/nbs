@@ -221,6 +221,9 @@ message TLocalServiceConfig
 
     // Enable FUSE_POSIX_ACL on guest (FUSE client)
     optional bool GuestPosixAclEnabled = 40;
+
+    // Enable publishing of tcmalloc metrics
+    optional bool EnableTcMallocMetrics = 41;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
