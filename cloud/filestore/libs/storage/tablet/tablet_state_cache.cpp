@@ -78,10 +78,6 @@ void TInMemoryIndexState::ActivateInMemoryIndexStateBypass(
     ui64 nodeId,
     ui64 commitId)
 {
-    if (!CacheBypassEnabled) {
-        return;
-    }
-
     CacheBypassCommitIdsByNodeId[nodeId].push_back(commitId);
 }
 
@@ -89,10 +85,6 @@ void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
     ui64 nodeId,
     ui64 commitId)
 {
-    if (!CacheBypassEnabled) {
-        return;
-    }
-
     auto nodeIt = CacheBypassCommitIdsByNodeId.find(nodeId);
     TABLET_VERIFY(
         nodeIt != CacheBypassCommitIdsByNodeId.end() &&
@@ -104,11 +96,16 @@ void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
     }
 }
 
+void TInMemoryIndexState::SetUnconfirmedRecoveryReady(bool value)
+{
+    UnconfirmedRecoveryReady = value;
+}
+
 bool TInMemoryIndexState::ShouldBypassCacheRead(
     ui64 nodeId,
     ui64 commitId) const
 {
-    if (!CacheBypassEnabled) {
+    if (!CacheBypassEnabled && UnconfirmedRecoveryReady) {
         return false;
     }
 

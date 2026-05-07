@@ -333,7 +333,7 @@ void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
         "%s ConfirmBlobs: recovery confirmation completed",
         LogTag.c_str());
 
-    UnconfirmedRecoveryReady = true;
+    SetUnconfirmedRecoveryReady(true);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

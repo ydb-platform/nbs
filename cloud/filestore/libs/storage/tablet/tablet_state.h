@@ -266,6 +266,9 @@ protected:
     // has completed recovery confirmation.
     bool UnconfirmedRecoveryReady = false;
 
+protected:
+    void SetUnconfirmedRecoveryReady(bool value);
+
 public:
     explicit TIndexTabletState(bool cacheBypassEnabled);
     ~TIndexTabletState();

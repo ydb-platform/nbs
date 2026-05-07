@@ -1,5 +1,7 @@
 #include "tablet_actor.h"
 
+#include "model/verify.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/group_by.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
@@ -183,19 +185,25 @@ private:
         TIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
-        Execute_AddBlob_Write(ctx, db, args);
-
         // TODO(#5353) Support immediate response before Tx
         Tablet.UnconfirmedAddBlobSafePointReached(
             ctx,
             args.ConfirmedDataRefCommitId,
             args.Error);
 
+        Execute_AddBlob_Write(ctx, db, args);
+
         TABLET_VERIFY(args.WriteRanges.size() == 1);
+        // We shouldn't have errors other than CommitIdOverflow at this place
+        TABLET_VERIFY(!HasError(args.Error) || args.CommitIdOverflow);
 
         Tablet.ActivateInMemoryIndexStateBypass(
             args.WriteRanges.front().NodeId,
             args.CommitId);
+
+        if (HasError(args.Error)) {
+            return;
+        }
 
         Tablet.ConfirmedDataAdded(db, args.ConfirmedDataRefCommitId);
     }

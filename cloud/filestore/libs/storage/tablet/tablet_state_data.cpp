@@ -439,6 +439,12 @@ void TIndexTabletState::DeactivateInMemoryIndexStateBypass(
         commitId);
 }
 
+void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
+{
+    UnconfirmedRecoveryReady = value;
+    Impl->InMemoryIndexState.SetUnconfirmedRecoveryReady(value);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FreshBytes
 

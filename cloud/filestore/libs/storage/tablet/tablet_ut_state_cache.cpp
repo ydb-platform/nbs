@@ -156,6 +156,33 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT(node.Defined());
     }
 
+    Y_UNIT_TEST(ShouldBypassCacheReadsUntilUnconfirmedRecoveryReady)
+    {
+        TInMemoryIndexState state(TDefaultAllocator::Instance(), false);
+        state.Reset(1, 0, 0, 0);
+
+        state.UpdateState({TInMemoryIndexState::TWriteNodeRequest{
+            .NodeId = nodeId1,
+            .Row = {
+                .CommitId = commitId1,
+                .Node = nodeAttrs1,
+            }}});
+
+        state.ActivateInMemoryIndexStateBypass(nodeId1, commitId2);
+
+        TMaybe<IIndexTabletDatabase::TNode> node;
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Empty());
+
+        state.SetUnconfirmedRecoveryReady(true);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Defined());
+
+        state.DeactivateInMemoryIndexStateBypass(nodeId1, commitId2);
+    }
+
     const TString attrName1 = "name1";
     const TString attrName2 = "name2";
 

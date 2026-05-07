@@ -70,10 +70,13 @@ public:
 
     void DeactivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
 
+    void SetUnconfirmedRecoveryReady(bool value);
+
 private:
     bool ShouldBypassCacheRead(ui64 nodeId, ui64 commitId) const;
 
     const bool CacheBypassEnabled;
+    bool UnconfirmedRecoveryReady = false;
     THashMap<ui64, std::deque<ui64>> CacheBypassCommitIdsByNodeId;
 
     //
