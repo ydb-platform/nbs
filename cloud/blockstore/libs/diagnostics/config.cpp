@@ -276,6 +276,38 @@ TDuration GetDowntimeThreshold(
     }
 }
 
+TVolumePerfSettings GetPerfSettings(
+    const TDiagnosticsConfig& config,
+    const NCloud::NProto::EStorageMediaKind kind)
+{
+    switch (kind) {
+        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
+            return config.GetNonreplPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            return config.GetHddNonreplPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
+            return config.GetMirror2PerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
+            return config.GetMirror3PerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
+            return config.GetLocalSSDPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
+            return config.GetLocalHDDPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD: {
+            return config.GetSsdPerfSettings();
+        }
+        default: {
+            return config.GetHddPerfSettings();
+        }
+    }
+}
+
 }   // namespace NCloud::NBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////

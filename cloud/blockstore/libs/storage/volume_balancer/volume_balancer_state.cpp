@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -25,8 +26,11 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
     , LastSuccessfulPull(TInstant::Now())
 {}
 
-TVolumeBalancerState::TVolumeBalancerState(TStorageConfigPtr storageConfig)
+TVolumeBalancerState::TVolumeBalancerState(
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig)
     : StorageConfig(std::move(storageConfig))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , InitialVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , OverridenVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
@@ -76,6 +80,23 @@ void TVolumeBalancerState::UpdateVolumeStats(
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
             info.SufferCount = perfIt->second;
         }
+
+        if (info.IsLocal) {
+            TYdbDiskLoadCounters currentLoadCounters{
+                v.GetReadBlobCount(),
+                v.GetWriteBlobCount(),
+                v.GetReadBlobBytes(),
+                v.GetWriteBlobBytes(),
+            };
+
+            info.Cost = CalculateCost(info, currentLoadCounters);
+
+            info.LoadCounters = currentLoadCounters;
+        } else {
+            info.Cost = MakeError(E_FAIL, "Volume is preempted");
+            info.LoadCounters = std::nullopt;
+        }
+
         knownDisks.erase(v.GetDiskId());
     }
 
@@ -113,19 +134,26 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                     TABLEH() { out << "Volume"; }
                     TABLEH() { out << "Preemption allowed"; }
                     TABLEH() { out << "Suffer Count"; }
+                    TABLEH() { out << "IO Cost"; }
                 }
             }
-            for (const auto& v: Volumes) {
-                if (v.second.IsLocal) {
+            for (const auto& [diskId, info]: Volumes) {
+                if (info.IsLocal) {
                     TABLER() {
-                        TABLED() { out << v.first; }
+                        TABLED() { out << diskId; }
                         TABLED() {
                             const bool enabled =
-                                IsVolumePreemptible(v.first, v.second);
+                                IsVolumePreemptible(diskId, info);
                             out << (enabled ? "Yes" : "No");
                         }
                         TABLED() {
-                            out << v.second.SufferCount;
+                            out << info.SufferCount;
+                        }
+                        TABLED() {
+                            out
+                                << (HasError(info.Cost.GetError())
+                                        ? info.Cost.GetError().GetMessage()
+                                        : info.Cost.GetResult().ToString());
                         }
                     }
                 }
@@ -293,6 +321,56 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         balancerEnabled &&
         isSuitableMediaKind &&
         !VolumesInProgress.count(diskId);
+}
+
+TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
+        const TVolumeInfo& info,
+        const TYdbDiskLoadCounters& currentLoad) const
+{
+    if (!info.LoadCounters.has_value()) {
+        // Unable to calculate cost: No counters from previous iteration
+        return MakeError(E_FAIL, "No counters from previous iteration");
+    }
+
+    const auto& last = info.LoadCounters.value();
+
+    if (currentLoad.WriteBlobBytes < last.WriteBlobBytes ||
+        currentLoad.WriteBlobCount < last.WriteBlobCount ||
+        currentLoad.ReadBlobBytes < last.ReadBlobBytes ||
+        currentLoad.ReadBlobCount < last.ReadBlobCount)
+    {
+        // Unable to calculate cost: Negative counters diff
+        return MakeError(E_FAIL, "Negative counters diff");
+    }
+
+    const auto perfSettings =
+        GetPerfSettings(*DiagnosticsConfig, info.MediaKind);
+
+    if (!perfSettings.WriteIops || !perfSettings.ReadIops) {
+        // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
+        return MakeError(E_FAIL, "Perf settings not configured");
+    }
+
+    const ui32 expectedParallelism =
+        DiagnosticsConfig->GetExpectedIoParallelism();
+
+    const TDuration writeCost =
+        expectedParallelism *
+        CostPerIO(
+            perfSettings.WriteIops,
+            perfSettings.WriteBandwidth,
+            currentLoad.WriteBlobBytes - last.WriteBlobBytes,
+            currentLoad.WriteBlobCount - last.WriteBlobCount);
+
+    const TDuration readCost =
+        expectedParallelism *
+        CostPerIO(
+            perfSettings.ReadIops,
+            perfSettings.ReadBandwidth,
+            currentLoad.ReadBlobBytes - last.ReadBlobBytes,
+            currentLoad.ReadBlobCount - last.ReadBlobCount);
+
+    return writeCost + readCost;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

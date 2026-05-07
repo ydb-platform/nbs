@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -22,6 +23,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TVolumeBalancerState
 {
+    struct TYdbDiskLoadCounters
+    {
+        ui64 ReadBlobCount = 0;
+        ui64 WriteBlobCount = 0;
+        ui64 ReadBlobBytes = 0;
+        ui64 WriteBlobBytes = 0;
+    };
+
     struct TVolumeInfo
     {
         TString CloudId;
@@ -39,6 +48,10 @@ class TVolumeBalancerState
 
         ui32 SufferCount = 0;
 
+        std::optional<TYdbDiskLoadCounters> LoadCounters = {};
+
+        TResultOrError<TDuration> Cost = MakeError(E_ABORTED, "Uninitialized");
+
         TVolumeInfo(TDuration pullInterval);
     };
 
@@ -47,6 +60,7 @@ public:
 
 private:
     TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
 
     ui64 CpuLack = 0;
 
@@ -66,7 +80,9 @@ private:
     TDuration PullDelayResetTimespan;
 
 public:
-    TVolumeBalancerState(TStorageConfigPtr storageConfig);
+    TVolumeBalancerState(
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;
@@ -133,6 +149,10 @@ private:
     bool IsVolumePreemptible(
         const TString& diskId,
         const TVolumeInfo& volume) const;
+
+    TResultOrError<TDuration> CalculateCost(
+        const TVolumeInfo& info,
+        const TYdbDiskLoadCounters& currentLoad) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

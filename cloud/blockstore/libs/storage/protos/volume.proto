@@ -468,6 +468,11 @@ message TVolumeBalancerDiskStats
     string FolderId = 11;
 
     NCloud.NProto.EStorageMediaKind StorageMediaKind = 12;
+
+    uint64 ReadBlobCount = 13;
+    uint64 WriteBlobCount = 14;
+    uint64 ReadBlobBytes = 15;
+    uint64 WriteBlobBytes = 16;
 }
 
 message TGetVolumeLoadInfoRequest
