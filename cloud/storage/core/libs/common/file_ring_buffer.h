@@ -61,8 +61,13 @@ public:
     // and advance the write pointer.
     bool Commit();
 
+    // Free memory block previously allocated with Alloc.
+    // It is possible to free memory blocks in any order.
+    // Otherwise, it will be marked for deletion and removed later.
+    // Returns true if the pointer was correct and hasn't been freed yet.
+    bool Free(const void* ptr);
+
     TStringBuf Front() const;
-    TStringBuf Back() const;
     void PopFront();
     ui64 Size() const;
     bool Empty() const;

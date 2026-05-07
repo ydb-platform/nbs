@@ -72,12 +72,14 @@ struct TBootstrap
     const char* Alloc(const TString& data) const
     {
         auto allocationResult = Storage->Alloc(data.size());
-        UNIT_ASSERT(!HasError(allocationResult));
+        if (HasError(allocationResult)) {
+            return nullptr;
+        }
 
         char* ptr = allocationResult.GetResult();
         if (ptr != nullptr) {
             data.copy(ptr, data.size());
-            UNIT_ASSERT(Storage->Commit());
+            Storage->Commit();
         }
         return ptr;
     }
