@@ -536,7 +536,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.UpdateVolumeHealth(
             "nonrepl-vol",
-            NProto::VOLUME_HEALTH_UNHEALTHY);
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            1);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
@@ -554,7 +555,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.UpdateVolumeHealth(
             "nonrepl-vol",
-            NProto::VOLUME_HEALTH_HEALTHY);
+            NProto::VOLUME_HEALTH_HEALTHY,
+            2);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
