@@ -4789,6 +4789,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotDeadlockWhenFlushCompletionFiredInScheduler)
     {
+        // Deadlock previously happened when:
+        // - automatic flush was executed on a scheduler thread;
+        // - at the same time, Stop was requested and triggered FlushAllData;
+        // - FlushAllData continuation was called on the same scheduler thread;
+        // - Stop continuation was called on the same scheduler thread and tried
+        //   to stop scheduler.
+
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
 
@@ -4808,12 +4815,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Service->WriteDataHandler = [&](auto callContext, auto)
         {
-            // The callback is expected to be called in the scheduler thread
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             writeDataCalled.SetValue();
 
-            // Promise will be completed on a scheduler thread when FlushAll is
-            // triggered in session destroy handler
+            // Returns a pending future that will be completed manually on a
+            // scheduler thread after verifying FlushAll is in progress
             return writeDataPromise.GetFuture();
         };
 
