@@ -11,7 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MaxUnalignedRequestSize = 32_MB;
+constexpr ui32 MaxUnalignedRequestSize = 128_MB;
 
 TErrorResponse CreateErrorAcquireResponse()
 {
