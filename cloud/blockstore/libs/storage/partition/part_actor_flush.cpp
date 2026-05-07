@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
+#include <cloud/blockstore/libs/storage/partition/model/flush_blocks_visitor.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 
@@ -399,182 +400,8 @@ STFUNC(TFlushActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlob
-{
-    TBlockBuffer BlobContent;
-    TVector<TBlock> Blocks;
-    TVector<ui32> Checksums;
-    ui8 CompactionRangeCount;
-
-    TBlob(
-            TBlockBuffer blobContent,
-            TVector<TBlock> blocks,
-            TVector<ui32> checksums,
-            ui8 compactionRangeCount)
-        : BlobContent(std::move(blobContent))
-        , Blocks(std::move(blocks))
-        , Checksums(std::move(checksums))
-        , CompactionRangeCount(compactionRangeCount)
-    {}
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TFlushBlocksVisitor final
-    : public IFreshBlocksIndexVisitor
-{
-private:
-    TVector<TBlob>& Blobs;
-    const ui32 BlockSize;
-    const ui32 FlushBlobSizeThreshold;
-    const ui32 MaxBlobRangeSize;
-    const ui32 MaxBlocksInBlob;
-    const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
-    const TCompactionMap& CompactionMap;
-    const bool ReadBlockMaskOnCompactionOptimizationEnabled;
-
-    TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
-
-    TVector<TBlock> Blocks;
-    TVector<ui32> Checksums;
-    TVector<TBlock> ZeroBlocks;
-
-public:
-    TFlushBlocksVisitor(
-            TVector<TBlob>& blobs,
-            ui32 blockSize,
-            ui32 flushBlobSizeThreshold,
-            ui32 maxBlobRangeSize,
-            ui32 maxBlocksInBlob,
-            ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
-            const TCompactionMap& compactionMap,
-            bool readBlockMaskOnCompactionOptimizationEnabled)
-        : Blobs(blobs)
-        , BlockSize(blockSize)
-        , FlushBlobSizeThreshold(flushBlobSizeThreshold)
-        , MaxBlobRangeSize(maxBlobRangeSize)
-        , MaxBlocksInBlob(maxBlocksInBlob)
-        , DiskPrefixLengthWithBlockChecksumsInBlobs(
-              diskPrefixLengthWithBlockChecksumsInBlobs)
-        , CompactionMap(compactionMap)
-        , ReadBlockMaskOnCompactionOptimizationEnabled(
-              readBlockMaskOnCompactionOptimizationEnabled)
-    {}
-
-    bool Visit(const TFreshBlock& block) override
-    {
-        if (block.Content) {
-            // NBS-299: we do not want to mix blocks that are too far from each other
-            if (GetBlobRangeSize(Blocks, block.Meta.BlockIndex)
-                    > MaxBlobRangeSize / BlockSize)
-            {
-                FlushBlob(
-                    std::move(BlobContent),
-                    std::move(Blocks),
-                    std::move(Checksums));
-            }
-
-            BlobContent.AddBlock({block.Content.data(), block.Content.size()});
-            Blocks.emplace_back(
-                block.Meta.BlockIndex,
-                block.Meta.CommitId,
-                block.Meta.IsStoredInDb);
-
-            const ui32 checksumBoundary =
-                DiskPrefixLengthWithBlockChecksumsInBlobs / BlockSize;
-            const bool checksumsEnabled =
-                block.Meta.BlockIndex < checksumBoundary;
-
-            if (checksumsEnabled) {
-                Checksums.resize(Blocks.size());
-                Checksums[Blocks.size() - 1] =
-                    ComputeDefaultDigest(BlobContent.GetBlocks().back());
-            }
-
-            if (Blocks.size() == MaxBlocksInBlob) {
-                FlushBlob(
-                    std::move(BlobContent),
-                    std::move(Blocks),
-                    std::move(Checksums));
-            }
-        } else {
-            const auto blobRangeSize =
-                GetBlobRangeSize(ZeroBlocks, block.Meta.BlockIndex);
-            if (blobRangeSize > MaxBlobRangeSize / BlockSize) {
-                FlushBlob(
-                    TBlockBuffer(),
-                    std::move(ZeroBlocks),
-                    TVector<ui32>() /* checksums */);
-            }
-
-            ZeroBlocks.emplace_back(block.Meta.BlockIndex, block.Meta.CommitId, block.Meta.IsStoredInDb);
-
-            if (ZeroBlocks.size() == MaxBlocksInBlob) {
-                FlushBlob(
-                    TBlockBuffer(),
-                    std::move(ZeroBlocks),
-                    TVector<ui32>() /* checksums */);
-            }
-        }
-
-        return true;
-    }
-
-    void Finish()
-    {
-        const auto dataSize = Blocks.size() * BlockSize;
-        if (Blocks && (!Blobs || dataSize >= FlushBlobSizeThreshold)) {
-            FlushBlob(
-                std::move(BlobContent),
-                std::move(Blocks),
-                std::move(Checksums));
-        }
-
-        if (ZeroBlocks && (!Blobs || ZeroBlocks.size() >= FlushBlobSizeThreshold)) {
-            FlushBlob(
-                TBlockBuffer(),
-                std::move(ZeroBlocks),
-                TVector<ui32>() /* checksums */);
-        }
-    }
-
-private:
-    void FlushBlob(
-        TBlockBuffer blobContent,
-        TVector<TBlock> blocks,
-        TVector<ui32> checksums)
-    {
-        const ui32 compactionRangeCount =
-            CompactionMap.GetRangeIndex(blocks.back().BlockIndex) -
-            CompactionMap.GetRangeIndex(blocks.front().BlockIndex) + 1;
-
-        const ui8 compactionRangeCountInOneByte =
-            compactionRangeCount <= Max<ui8>() &&
-                    ReadBlockMaskOnCompactionOptimizationEnabled
-                ? compactionRangeCount
-                : 0;
-
-        Blobs.emplace_back(
-            std::move(blobContent),
-            std::move(blocks),
-            std::move(checksums),
-            compactionRangeCountInOneByte);
-    }
-
-    static ui32 GetBlobRangeSize(const TVector<TBlock>& blocks, ui32 blockIndex)
-    {
-        if (blocks) {
-            ui32 firstBlockIndex = blocks.front().BlockIndex;
-            Y_ABORT_UNLESS(firstBlockIndex <= blockIndex);
-            return blockIndex - firstBlockIndex;
-        }
-        return 0;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TFlushedCommitIds BuildFlushedCommitIdsFromChannel(const TVector<TBlob>& blobs)
+TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
+    const TVector<TFlushBlocksVisitor::TBlob>& blobs)
 {
     TFlushedCommitIds result;
     TVector<ui64> commitIds;
@@ -721,7 +548,7 @@ void TPartitionActor::HandleFlush(
 
     State->AccessFlushState().SetStatus(EOperationStatus::Started, ctx.Now());
 
-    TVector<TBlob> blobs;
+    TVector<TFlushBlocksVisitor::TBlob> blobs;
     {
         auto flushBlobSizeThreshold = Config->GetFlushBlobSizeThreshold();
         if (State->GetUnflushedFreshBlobCount() > 0) {
@@ -739,7 +566,9 @@ void TPartitionActor::HandleFlush(
             State->GetMaxBlocksInBlob(),
             Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
             State->GetCompactionMap(),
-            IsReadBlockMaskOnCompactionOptimizationEnabled());
+            IsReadBlockMaskOnCompactionOptimizationEnabled(),
+            Config->GetSplitByCompactionRangeMaxBlobCount(),
+            TabletID());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 

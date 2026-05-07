@@ -1557,4 +1557,10 @@ message TStorageServiceConfig
 
     // Cool down timeout before secure erase devices (in milliseconds).
     optional uint32 CoolDownTimeoutBeforeSecureErase = 494;
+
+    // When flushing fresh blocks into mixed blobs, if the number of distinct
+    // compaction ranges in a candidate blob does not exceed this value,
+    // the blob may be split at compaction range
+    // borders to eliminate reading block masks. Zero disables splitting.
+    optional uint64 SplitByCompactionRangeMaxBlobCount = 495;
 }
