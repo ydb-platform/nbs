@@ -507,8 +507,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
-    // We emulate sutuation, where under hight load, we received confirmation
-    // for previously triggerd AddDataUnconfirmed from GenerateBlobsIdRequest
+    // We emulate situation, where under high load, we received confirmation
+    // for previously triggered AddDataUnconfirmed from GenerateBlobsIdRequest
     // before ExecuteTx even started. Later during ExecuteTx we face some error
     // condition and should correctly report it back as ConfirmAddData response.
     Y_UNIT_TEST(ShouldReplyToPendingConfirmOnAddDataUnconfirmedValidationError)
@@ -587,8 +587,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
-    // We emulate sutuation, where under hight load, we received cancelation
-    // for previously triggerd AddDataUnconfirmed from GenerateBlobsIdRequest
+    // We emulate situation, where under high load, we received cancellation
+    // for previously triggered AddDataUnconfirmed from GenerateBlobsIdRequest
     // before ExecuteTx even started. For such cancel request we reply
     // immediately. Later during ExecuteTx we face some error condition and
     // check if deletion in progress. This test checks that we clean
@@ -667,7 +667,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
-    // We emulate sutuation, where we face some error condition during
+    // We emulate situation, where we face some error condition during
     // AddUnconfirmedData and check if we successfully clear the barrier if no
     // deletion in progress for that UnconfirmedData.
     Y_UNIT_TEST(ShouldReleaseCollectBarrierOnAddDataUnconfirmedValidationError)
