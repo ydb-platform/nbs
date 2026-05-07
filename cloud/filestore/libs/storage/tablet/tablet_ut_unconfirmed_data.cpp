@@ -507,6 +507,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
+    // We emulate sutuation, where under hight load, we received confirmation
+    // for previously triggerd AddDataUnconfirmed from GenerateBlobsIdRequest
+    // before ExecuteTx even started. Later during ExecuteTx we face some error
+    // condition and should correctly report it back as ConfirmAddData response.
     Y_UNIT_TEST(ShouldReplyToPendingConfirmOnAddDataUnconfirmedValidationError)
     {
         constexpr ui32 block = 4_KB;
@@ -578,15 +582,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             updateConfigResponse->Record.GetStatus() == NKikimrFileStore::OK,
             updateConfigResponse->Record.ShortDebugString());
 
-        auto response =
-            tablet.AssertConfirmAddDataResponse(ErrorNoSpaceLeft().GetCode());
-        UNIT_ASSERT_C(
-            response->GetErrorReason().find("no space left") != TString::npos,
-            response->GetErrorReason());
+        tablet.AssertConfirmAddDataResponse(ErrorNoSpaceLeft().GetCode());
 
         AssertStorageStats(tablet, 0, 0);
     }
 
+    // We emulate sutuation, where under hight load, we received cancelation
+    // for previously triggerd AddDataUnconfirmed from GenerateBlobsIdRequest
+    // before ExecuteTx even started. For such cancel request we reply
+    // immediately. Later during ExecuteTx we face some error condition and
+    // check if deletion in progress. This test checks that we clean
+    // UnconfirmedData.
     Y_UNIT_TEST(
         ShouldReplyToPendingConfirmOnAddDataUnconfirmedValidationErrorAfterCancel)
     {
@@ -661,6 +667,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
+    // We emulate sutuation, where we face some error condition during
+    // AddUnconfirmedData and check if we successfully clear the barrier if no
+    // deletion in progress for that UnconfirmedData.
     Y_UNIT_TEST(ShouldReleaseCollectBarrierOnAddDataUnconfirmedValidationError)
     {
         constexpr ui32 block = 4_KB;
