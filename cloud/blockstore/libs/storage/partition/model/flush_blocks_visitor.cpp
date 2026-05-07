@@ -188,6 +188,9 @@ void TFlushBlocksVisitor::FlushBlob(
     const size_t maxCompactionRangeCountPerBlob =
         MaxBlobRangeSize / CompactionMap.GetRangeSize();
 
+    // With standard compaction range size and max blob range size
+    // the number of compaction ranges per blob will not exceed
+    // MaxOnStackTmpVectorSize
     if (Y_LIKELY(maxCompactionRangeCountPerBlob <= MaxOnStackTmpVectorSize)) {
         FlushBlobImpl<
             TStackVec<std::pair<size_t, size_t>, MaxOnStackTmpVectorSize>>(
