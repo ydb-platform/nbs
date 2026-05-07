@@ -27,3 +27,8 @@ ServerConfig {
   EnableOverlappingRequestsGuard: true
   EnableRequestSplitter: true
 }
+
+KikimrServiceConfig {
+  HotPoolSize: 10
+  ColdPoolSize: 1
+}
