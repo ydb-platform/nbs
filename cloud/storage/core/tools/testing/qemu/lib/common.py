@@ -85,10 +85,14 @@ def _unpack_qemu_bindir(bindir):
         tf.extractall(bindir)
 
 
+def is_arm():
+    return platform.machine().lower() in ("aarch64", "arm64")
+
+
 def get_qemu_kvm():
     bindir = _get_qemu_bindir()
     qemu_system_bin = "qemu-system-x86_64"
-    if platform.machine().lower() in ("aarch64", "arm64"):
+    if is_arm():
         qemu_system_bin = "qemu-system-aarch64"
 
     qemu_kvm = os.path.join(bindir, "usr", "bin", qemu_system_bin)

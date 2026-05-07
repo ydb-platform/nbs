@@ -12,7 +12,14 @@ from library.python.retry import retry
 import library.python.testing.recipe
 
 from .qemu import Qemu
-from .common import SshToGuest, get_mount_paths, env_with_guest_index, get_qemu_kvm, get_qemu_firmware
+from .common import (
+    SshToGuest,
+    env_with_guest_index,
+    get_mount_paths,
+    get_qemu_firmware,
+    get_qemu_kvm,
+    is_arm,
+)
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,
@@ -94,7 +101,8 @@ def start_instance(args, inst_index):
                 inst_index=inst_index,
                 shared_nic_port=args.shared_nic_port,
                 use_virtiofs_server=use_virtiofs_server,
-                num_request_queues=_get_num_request_queues(args))
+                num_request_queues=_get_num_request_queues(args),
+                is_arm=is_arm())
 
     qemu.set_mount_paths(mount_paths)
     qemu.start()
