@@ -15,8 +15,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumePerfSettings:
-    public TAtomicRefCount<TVolumePerfSettings>
+struct TVolumePerfSettings: public TAtomicRefCount<TVolumePerfSettings>
 {
     ui32 ReadIops = 0;
     ui64 ReadBandwidth = 0;
@@ -25,21 +24,24 @@ struct TVolumePerfSettings:
     ui64 WriteBandwidth = 0;
 
     ui32 CriticalFactor = 0;
+    bool IgnorePerformanceProfileLimits = false;
 
     TVolumePerfSettings() = default;
     TVolumePerfSettings(const TVolumePerfSettings& rhs) = default;
 
     TVolumePerfSettings(
-            ui32 readIops,
-            ui64 readBandwidth,
-            ui32 writeIops,
-            ui64 writeBandwidth,
-            ui32 criticalFactor)
+        ui32 readIops,
+        ui64 readBandwidth,
+        ui32 writeIops,
+        ui64 writeBandwidth,
+        ui32 criticalFactor,
+        bool ignorePerformanceProfileLimits)
         : ReadIops(readIops)
         , ReadBandwidth(readBandwidth)
         , WriteIops(writeIops)
         , WriteBandwidth(writeBandwidth)
         , CriticalFactor(criticalFactor)
+        , IgnorePerformanceProfileLimits(ignorePerformanceProfileLimits)
     {}
 
     TVolumePerfSettings(const NProto::TVolumePerfSettings& settings)
@@ -48,23 +50,24 @@ struct TVolumePerfSettings:
         , WriteIops(settings.GetWrite().GetIops())
         , WriteBandwidth(settings.GetWrite().GetBandwidth())
         , CriticalFactor(settings.GetCriticalFactor())
+        , IgnorePerformanceProfileLimits(
+              settings.GetIgnorePerformanceProfileLimits())
     {}
 
     bool IsValid() const
     {
-        return ReadIops != 0
-            && ReadBandwidth != 0
-            && WriteIops != 0
-            && WriteBandwidth != 0;
+        return ReadIops != 0 && ReadBandwidth != 0 && WriteIops != 0 &&
+               WriteBandwidth != 0;
     }
 
-    bool operator == (const TVolumePerfSettings& rhs) const
+    bool operator==(const TVolumePerfSettings& rhs) const
     {
-        return ReadIops == rhs.ReadIops
-            && ReadBandwidth == rhs.ReadBandwidth
-            && WriteIops == rhs.WriteIops
-            && WriteBandwidth == rhs.WriteBandwidth
-            && CriticalFactor == rhs.CriticalFactor;
+        return ReadIops == rhs.ReadIops && ReadBandwidth == rhs.ReadBandwidth &&
+               WriteIops == rhs.WriteIops &&
+               WriteBandwidth == rhs.WriteBandwidth &&
+               CriticalFactor == rhs.CriticalFactor &&
+               IgnorePerformanceProfileLimits ==
+                   rhs.IgnorePerformanceProfileLimits;
     }
 
     bool operator != (const TVolumePerfSettings& rhs) const = default;
