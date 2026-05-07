@@ -780,6 +780,97 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             0);
     }
 
+    Y_UNIT_TEST(ShouldIgnorePerformanceProfileLimitsIfConfigured)
+    {
+        constexpr ui32 ConfigReadIops = 10000;
+        constexpr ui32 ConfigWriteIops = 10000;
+        constexpr ui32 ConfigReadBw = 300_MB;
+        constexpr ui32 ConfigWriteBw = 300_MB;
+
+        constexpr ui32 ProfileReadIops = 100;
+        constexpr ui32 ProfileWriteIops = 100;
+        constexpr ui32 ProfileReadBw = 1_MB;
+        constexpr ui32 ProfileWriteBw = 1_MB;
+
+        const auto config = CreatePerformanceSettings(
+            NProto::STORAGE_MEDIA_SSD,
+            ConfigReadIops,
+            ConfigReadBw,
+            ConfigWriteIops,
+            ConfigWriteBw);
+
+        auto ignoreConfig = config;
+        ignoreConfig.MutableSsdPerfSettings()
+            ->SetIgnorePerformanceProfileLimits(true);
+
+        constexpr ui32 RequestBytes = 1024 * 1024;
+
+        {
+            auto monitoring = CreateMonitoringServiceStub();
+            auto counters = monitoring->GetCounters();
+
+            auto volume = CreateVolume(
+                "test_clamped",
+                NProto::STORAGE_MEDIA_SSD,
+                ProfileReadIops,
+                ProfileReadBw,
+                ProfileWriteIops,
+                ProfileWriteBw);
+            auto volumeCounters =
+                CreateVolumeCounters(counters, volume.GetDiskId());
+
+            TVolumePerformanceCalculator calc(
+                volume,
+                std::make_shared<TDiagnosticsConfig>(config));
+            calc.Register(*volumeCounters, volume);
+
+            // Since config is clamped by profile limits, expectedScore becomes
+            // too large and DidSuffer() returns false even for "slow" requests.
+            TestSuffer(
+                calc,
+                volumeCounters,
+                TDuration::Seconds(15),
+                true,   // slowRequest
+                0,      // expected Suffer
+                0,      // expected SmoothSuffer
+                0);     // expected CriticalSuffer
+        }
+
+        {
+            auto monitoring = CreateMonitoringServiceStub();
+            auto counters = monitoring->GetCounters();
+
+            auto volume = CreateVolume(
+                "test_ignore",
+                NProto::STORAGE_MEDIA_SSD,
+                ProfileReadIops,
+                ProfileReadBw,
+                ProfileWriteIops,
+                ProfileWriteBw);
+            auto volumeCounters =
+                CreateVolumeCounters(counters, volume.GetDiskId());
+
+            TVolumePerformanceCalculator calc(
+                volume,
+                std::make_shared<TDiagnosticsConfig>(std::move(ignoreConfig)));
+
+            const auto before = calc.GetExpectedWriteCost(RequestBytes);
+            calc.Register(*volumeCounters, volume);
+            const auto after = calc.GetExpectedWriteCost(RequestBytes);
+
+            UNIT_ASSERT_VALUES_EQUAL(before, after);
+
+            TestSuffer(
+                calc,
+                volumeCounters,
+                TDuration::Seconds(15),
+                true,   // slowRequest
+                1,      // expected Suffer
+                1,      // expected SmoothSuffer
+                0);     // expected CriticalSuffer
+        }
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyUpdatePerformanceSettingsIfClientPerfSettingsIncreased)
     {
         auto monitoring = CreateMonitoringServiceStub();

@@ -299,6 +299,7 @@ void Out<NCloud::NBlockStore::TVolumePerfSettings>(
     v.MutableWrite()->SetIops(value.WriteIops);
     v.MutableWrite()->SetBandwidth(value.WriteBandwidth);
     v.SetCriticalFactor(value.CriticalFactor);
+    v.SetIgnorePerformanceProfileLimits(value.IgnorePerformanceProfileLimits);
 
     SerializeToTextFormat(v, out);
 }

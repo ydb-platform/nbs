@@ -68,29 +68,24 @@ TVolumePerformanceCalculator::TVolumePerformanceCalculator(
 void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
 {
     const auto old = *PerfSettings.AtomicLoad();
-    if (old.IsValid()) {
+    if (!old.IsValid()) {
+        return;
+    }
+    if (!ConfigSettings.IgnorePerformanceProfileLimits) {
         const auto& profile = volume.GetPerformanceProfile();
         TVolumePerfSettings clientSettings(
             Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
             Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
             Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
             Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
-            ConfigSettings.CriticalFactor);
-
-        TIntrusivePtr<TVolumePerfSettings> newSettings;
+            ConfigSettings.CriticalFactor,
+            ConfigSettings.IgnorePerformanceProfileLimits);
 
         if (clientSettings.IsValid() && old != clientSettings) {
-            newSettings = new TVolumePerfSettings(
-                Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
-                Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
-                Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-                Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
-                ConfigSettings.CriticalFactor);
-
-            PerfSettings.AtomicStore(newSettings);
+            PerfSettings.AtomicStore(new TVolumePerfSettings(clientSettings));
         }
-        IsEnabled = true;
     }
+    IsEnabled = true;
 }
 
 void TVolumePerformanceCalculator::Register(

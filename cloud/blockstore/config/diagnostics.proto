@@ -47,6 +47,10 @@ message TVolumePerfSettings
     optional NCloud.NProto.TPerformanceProfile Write = 1;
     optional NCloud.NProto.TPerformanceProfile Read = 2;
     optional uint32 CriticalFactor = 3;
+
+    // If true, do not clamp settings by volume performance profile limits
+    // (i.e. do not apply Min(config, profile) to iops/bandwidth).
+    optional bool IgnorePerformanceProfileLimits = 4;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
