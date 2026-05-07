@@ -37,6 +37,11 @@ void TDeviceStat::MarkBroken(TInstant now)
     }
     BrokenTransitionTs = now;
     DeviceStatus = EDeviceStatus::Broken;
+}
+
+void TDeviceStat::MarkBrokenAndNotify(TInstant now)
+{
+    MarkBroken(now);
     if (Observer) {
         Observer->OnDeviceBroken(DeviceUUID, now);
     }

@@ -119,6 +119,7 @@ TVolumeActor::TVolumeActor(
           TabletID(),
           [this](EVolumeThrottlingOpType opType, TDuration time)
           { UpdateDelayCounter(opType, time); })
+    , VolumeHealthRequestId(TCompositeId::FromGeneration(0))
     , TransactionTimeTracker(VolumeTransactions)
 {}
 
@@ -1190,6 +1191,9 @@ STFUNC(TVolumeActor::StateWork)
             TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification,
             HandleDeviceRecoveredNotification);
         HFunc(
+            TEvDiskRegistry::TEvUpdateVolumeHealthResponse,
+            HandleVolumeHealthResponse);
+        HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
         HFunc(
@@ -1283,6 +1287,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification);
+        IgnoreFunc(TEvDiskRegistry::TEvUpdateVolumeHealthResponse);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);

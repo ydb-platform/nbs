@@ -1557,4 +1557,9 @@ message TStorageServiceConfig
 
     // Cool down timeout before secure erase devices (in milliseconds).
     optional uint32 CoolDownTimeoutBeforeSecureErase = 494;
+
+    // If true, TVolumeActor notifies DiskRegistry about volume health changes
+    // (VOLUME_HEALTH_UNHEALTHY when all devices are broken, VOLUME_HEALTH_HEALTHY
+    // when recovered) for non-replicated disks.
+    optional bool VolumeHealthNotificationEnabled = 495;
 }
