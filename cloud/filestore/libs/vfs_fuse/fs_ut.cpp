@@ -3128,7 +3128,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotCrashWhileStoppingWhenForgetRequestIsInFlight)
     {
-        TBootstrap bootstrap(CreateWallClockTimer());
+        TBootstrap bootstrap;
 
         bootstrap.Start();
 
@@ -3154,6 +3154,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             // has already been destroyed by the time the request reaches the
             // virtio queue, causing a wait timeout in |TFuseVirtioClient|
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotHangIfForgetRequestReceivedBeforeInit)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.Start(/* sendInitRequest = */ false);
+
+        const ui64 nodeId = 123;
+        const ui64 refCount = 10;
+
+        auto forget = bootstrap.Fuse->SendRequest<TForgetRequest>(
+            nodeId,
+            refCount);
+        UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
     }
 
     Y_UNIT_TEST(ShouldRaiseCritEventWhenErrorWasSentToGuest)
