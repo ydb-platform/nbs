@@ -66,9 +66,10 @@ public:
         return DataSize & SizeMask;
     }
 
-    void SetDataSize(ui32 value)
+    void SetDataSize(size_t value)
     {
-        DataSize = (DataSize & ~SizeMask) | (value & SizeMask);
+        Y_ABORT_UNLESS(value <= MaxDataSize);
+        DataSize = (DataSize & ~SizeMask) | static_cast<ui32>(value);
     }
 
     bool GetFreeFlag() const
@@ -187,8 +188,6 @@ public:
         Y_ABORT_UNLESS(eh != nullptr);
 
         eh->SetDataSize(data.size());
-        Y_ABORT_UNLESS(eh->GetDataSize() == data.size());
-
         eh->SetChecksum(Crc32c(data.data(), data.size()));
 
         auto* dst = GetEntryData(eh);
