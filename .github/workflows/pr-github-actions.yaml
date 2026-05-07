@@ -238,13 +238,13 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
-          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704"
+          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503"
 
       - name: flake8 (act)
         if: ${{ env.ACT == 'true' }}
         run: |
           pip install flake8==7.3.0
-          flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400 .github/
+          flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503 .github/
 
       - name: black
         if: ${{ env.ACT != 'true' }}
@@ -513,3 +513,33 @@ jobs:
       cache_update_tests: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
+
+  finalize-build-and-test-comments:
+    needs: [check-running-allowed, create-build-and-test-target-var, build_and_test]
+    if: ${{ always() && needs.check-running-allowed.outputs.result == 'true' }}
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+      - name: set up dependencies
+        run: pip install -r .github/scripts/requirements.txt
+      - name: finalize workload comments
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_INCLUDE: ${{ needs.create-build-and-test-target-var.outputs.matrix_include }}
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+          platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
+          python3 -m scripts.tests.finalize_workload_comments \
+            --matrix-include "$MATRIX_INCLUDE" \
+            --platform-name "$platform_name" \
+            --workload-status completed
