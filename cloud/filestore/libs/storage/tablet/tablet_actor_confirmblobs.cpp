@@ -322,7 +322,7 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
 
     for (ui64 commitId: recoverableCommitIds) {
         // TODO(#5353) Support out of order insertion to unblock here
-        // imeadeately
+        // immediately
         ConfirmData(commitId, ctx);
     }
 }
