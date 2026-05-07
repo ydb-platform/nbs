@@ -410,6 +410,10 @@ int fuse_cancel_request(
     return 0;
 }
 
+// Override for cloud/contrib/virtiofsd/fuse_lowlevel.c:fuse_reply_none.
+// It is important to define it and call complete_request before the default
+// implementation (which only calls fuse_free_req), otherwise the Forget request
+// will hang
 void fuse_reply_none(fuse_req_t req)
 {
     // complete attached fuse virtio request
