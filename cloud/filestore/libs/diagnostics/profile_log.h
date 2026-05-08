@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <util/datetime/base.h>
 
@@ -23,6 +24,7 @@ struct IProfileLog
     };
 
     virtual void Write(TRecord record) = 0;
+    virtual void RegisterCounters(NMonitoring::TDynamicCounters& root) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -43,6 +43,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
+#include <util/system/file.h>
 
 #include <atomic>
 #include <fstream>
@@ -126,7 +127,7 @@ struct TBootstrap
 
     TPromise<void> StopTriggered = NewPromise<void>();
 
-    TString DirectoryHandlesStoragePath;
+    TString DirectoryHandleStoragePath;
 
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
@@ -134,7 +135,9 @@ struct TBootstrap
             const NProto::TFileStoreFeatures& featuresConfig = {},
             ui32 handleOpsQueueSize = 1000,
             ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheCapacity = WriteBackCacheCapacity)
+            ui64 writeBackCacheCapacity = WriteBackCacheCapacity,
+            ui64 directoryHandlesInitialDataSize = 0,
+            ui64 directoryHandlesMaxDataAreaStepSize = 0)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -211,7 +214,15 @@ struct TBootstrap
 
         if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
             proto.SetDirectoryHandlesStoragePath(TempDir.Path() / "DirectoryHandles");
-            DirectoryHandlesStoragePath = proto.GetDirectoryHandlesStoragePath();
+            DirectoryHandleStoragePath = proto.GetDirectoryHandlesStoragePath();
+            if (directoryHandlesInitialDataSize) {
+                proto.SetDirectoryHandlesInitialDataSize(
+                    directoryHandlesInitialDataSize);
+            }
+            if (directoryHandlesMaxDataAreaStepSize) {
+                proto.SetDirectoryHandlesMaxDataAreaStepSize(
+                    directoryHandlesMaxDataAreaStepSize);
+            }
         }
 
         // WriteBackCache should be configured even if it is disabled
@@ -234,7 +245,7 @@ struct TBootstrap
             Session);
     }
 
-    NMonitoring::TDynamicCountersPtr GetDirectoryHandlesCounters() const
+    NMonitoring::TDynamicCountersPtr GetDirectoryHandleCounters() const
     {
         return Counters
             ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
@@ -292,6 +303,13 @@ struct TBootstrap
     {
         auto stop = StopAsync();
         StopTriggered.TrySetValue();
+
+        // Scheduled tasks are not run automatically when TTestScheduler is used
+        auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
+        if (testScheduler) {
+            testScheduler->RunAllScheduledTasks();
+        }
+
         UNIT_ASSERT(stop.Wait(WaitTimeout));
 
         if (Scheduler) {
@@ -317,7 +335,7 @@ struct TBootstrap
         UNIT_ASSERT_NO_EXCEPTION(interrupt.GetValueSync());
     };
 
-    static TBootstrap CreateWithHandlesStorage() {
+    static TBootstrap CreateWithHandleStorage() {
         NProto::TFileStoreFeatures features;
         features.SetDirectoryHandlesStorageEnabled(true);
         return TBootstrap(CreateWallClockTimer(), CreateScheduler(), features);
@@ -601,15 +619,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
-        bool called = false;
-        auto promise = NewPromise<NProto::TCreateHandleResponse>();
-        bootstrap.Service->CreateHandleHandler = [&] (auto callContext, auto request) {
+        std::atomic<int> called = 0;
+        bootstrap.Service->CreateHandleHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
+            called++;
             NProto::TCreateHandleResponse result;
-            if (!called) {
-                called = true;
-                return promise.GetFuture();
+            if (!recovered) {
+                result =
+                    TErrorResponse(E_FS_INVALID_SESSION, "invalid session");
             } else if (GetSessionId(*request) != sessionId) {
                 result = TErrorResponse(E_ARGUMENT, "");
             } else {
@@ -626,19 +646,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future1 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
-        UNIT_ASSERT(!future1.HasValue());
+        auto future1 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
 
-        auto future2 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file2", RootNodeId);
-        UNIT_ASSERT(!future2.HasValue());
-
-        NProto::TCreateHandleResponse result;
-        result = TErrorResponse(E_FS_INVALID_SESSION, "invalid session");
-        promise.SetValue(result);
+        auto future2 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file2",
+            RootNodeId);
 
         UNIT_ASSERT(IsIn(expected, future1.GetValue(WaitTimeout)));
         UNIT_ASSERT(IsIn(expected, future2.GetValue(WaitTimeout)));
         UNIT_ASSERT(recovered);
+        UNIT_ASSERT_LT(2, called.load());
     }
 
     Y_UNIT_TEST(ShouldFailRequestIfFailedToRecoverSession)
@@ -935,7 +954,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldHandleReadDirLargeDataWithHandlesStoragePaging)
     {
-        auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+        auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
         std::atomic<ui32> numCalls = 0;
         bootstrap.Service->ListNodesHandler =
@@ -1028,7 +1047,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
 
-        auto moduleCounters = bootstrap.GetDirectoryHandlesCounters();
+        auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
 
         auto maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
         UNIT_ASSERT(maxCacheSize);
@@ -1214,7 +1233,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
 
-        auto moduleCounters = bootstrap.GetDirectoryHandlesCounters();
+        auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
         UNIT_ASSERT(moduleCounters);
 
         auto maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
@@ -1241,7 +1260,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(peakChunkCount, maxChunkCount->Val());
 
-        for (size_t i = 0; i < DirectoryHandlesMaxBucketCount; ++i) {
+        for (size_t i = 0; i < DirectoryHandleMaxBucketCount; ++i) {
             timer->AdvanceTime(TDuration::Seconds(1));
             bootstrap.ModuleStatsRegistry->UpdateStats(true);
         }
@@ -1253,6 +1272,84 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(0, maxChunkCount->Val());
+    }
+
+    Y_UNIT_TEST(ShouldDeallocateDirectoryHandleStorageAfterReleaseDir)
+    {
+        const TString sessionId = CreateGuidAsString();
+        const ui64 initialDataAreaSize = 4_KB;
+
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        TBootstrap bootstrap{
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,   // handleOpsQueueSize
+            1000,   // writeBackCacheAutomaticFlushPeriodMs
+            WriteBackCacheCapacity,
+            initialDataAreaSize,
+            initialDataAreaSize};
+
+        bootstrap.Service->CreateSessionHandler = [&](auto, auto)
+        {
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->ListNodesHandler = [&](auto callContext, auto)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            NProto::TListNodesResponse result;
+            for (ui32 i = 0; i < 1024; ++i) {
+                result.AddNames()->assign(
+                    "dir_entry_" + ToString(i) + "_" + TString(64, 'x'));
+                auto* node = result.AddNodes();
+                node->SetId(1000 + i);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        const TString pathToCache =
+            (TFsPath(bootstrap.DirectoryHandleStoragePath) / FileSystemId /
+             sessionId / "directory_handles_storage")
+                .GetPath();
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const ui64 handleId = handle.GetValue();
+
+        const ui64 sizeBeforeRead = TFile(pathToCache, RdOnly).GetLength();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(4096, read.GetValue());
+
+        const ui64 sizeAfterRead = TFile(pathToCache, RdOnly).GetLength();
+        UNIT_ASSERT_GT(sizeAfterRead, sizeBeforeRead);
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+
+        const ui64 sizeAfterRelease = TFile(pathToCache, RdOnly).GetLength();
+        UNIT_ASSERT_VALUES_EQUAL(sizeBeforeRead, sizeAfterRelease);
     }
 
     Y_UNIT_TEST(ShouldLoadDirectoryHandlesStorageWithoutErrors)
@@ -1279,7 +1376,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TString pathToCache;
 
         {
-            auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
             bootstrap.Service->CreateSessionHandler = createSessionHandler;
 
@@ -1325,7 +1422,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Stop();
             };
 
-            pathToCache = TFsPath(bootstrap.DirectoryHandlesStoragePath) /
+            pathToCache = TFsPath(bootstrap.DirectoryHandleStoragePath) /
                           FileSystemId / sessionId /
                           "directory_handles_storage";
 
@@ -1354,7 +1451,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
 
         {
-            auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
             tmpPathForCache.CopyTo(pathToCache, true);
 
@@ -3031,7 +3128,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotCrashWhileStoppingWhenForgetRequestIsInFlight)
     {
-        TBootstrap bootstrap(CreateWallClockTimer());
+        TBootstrap bootstrap;
 
         bootstrap.Start();
 
@@ -3057,6 +3154,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             // has already been destroyed by the time the request reaches the
             // virtio queue, causing a wait timeout in |TFuseVirtioClient|
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotHangIfForgetRequestReceivedBeforeInit)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.Start(/* sendInitRequest = */ false);
+
+        const ui64 nodeId = 123;
+        const ui64 refCount = 10;
+
+        auto forget = bootstrap.Fuse->SendRequest<TForgetRequest>(
+            nodeId,
+            refCount);
+        UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
     }
 
     Y_UNIT_TEST(ShouldRaiseCritEventWhenErrorWasSentToGuest)
@@ -3500,7 +3612,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Stop();
             };
 
-            UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled2.load());
+            // Drain triggers flush immediately
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
 
             auto flush =
                 bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
@@ -4691,6 +4804,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotDeadlockWhenFlushCompletionFiredInScheduler)
     {
+        // Deadlock previously happened when:
+        // - automatic flush was executed on a scheduler thread;
+        // - at the same time, Stop was requested and triggered FlushAllData;
+        // - FlushAllData continuation was called on the same scheduler thread;
+        // - Stop continuation was called on the same scheduler thread and tried
+        //   to stop scheduler.
+
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
 
@@ -4706,42 +4826,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handleId = 456;
 
         auto writeDataCalled = NewPromise();
+        auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
 
-        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
-            // The callback is expected to be called in the scheduler thread
+        bootstrap.Service->WriteDataHandler = [&](auto callContext, auto)
+        {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             writeDataCalled.SetValue();
 
-            auto counter = bootstrap.Counters
-                ->FindSubgroup("component", "fs_ut_fs")
-                ->FindSubgroup("host", "cluster")
-                ->FindSubgroup("filesystem", FileSystemId)
-                ->FindSubgroup("client", "")
-                ->FindSubgroup("cloud", "")
-                ->FindSubgroup("folder", "")
-                ->FindSubgroup("module", "WriteBackCache")
-                ->GetCounter("FlushAllRequests_InProgressCount");
-
-            // Automatic flush does not create a request internally
-            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
-
-            // Wait until Stop is called and FlushAll is triggered
-            // because of cache non-emptiness at session destroy
-            UNIT_ASSERT(WaitForCondition(
-                WaitTimeout,
-                [&]
-                {
-                    // We block scheduler thread so counters will not be updated
-                    // automatically - need to call UpdateStats manually
-                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                    return counter->GetAtomic() > 0;
-                }));
-
-            return MakeFuture<NProto::TWriteDataResponse>({});
+            // Returns a pending future that will be completed manually on a
+            // scheduler thread after verifying FlushAll is in progress
+            return writeDataPromise.GetFuture();
         };
 
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
         };
 
@@ -4758,6 +4857,39 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Wait until automatic flush is called
         UNIT_ASSERT_NO_EXCEPTION(
             writeDataCalled.GetFuture().GetValue(WaitTimeout));
+
+        auto counter = bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
+                           ->FindSubgroup("host", "cluster")
+                           ->FindSubgroup("filesystem", FileSystemId)
+                           ->FindSubgroup("client", "")
+                           ->FindSubgroup("cloud", "")
+                           ->FindSubgroup("folder", "")
+                           ->FindSubgroup("module", "WriteBackCache")
+                           ->GetCounter("FlushAllRequests_InProgressCount");
+
+        // Automatic flush does not create a request internally
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+        auto stopFuture = bootstrap.StopAsync();
+
+        // Wait until FlushAll is triggered in session destroy handler
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]
+            {
+                // Stats are updated automatically with 1-second interval
+                // Update it manually to speed up the test
+                bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                return counter->GetAtomic() > 0;
+            }));
+
+        // WriteData completion should be done in a Scheduler thread, otherwise
+        // the deadlock won't reproduce
+        bootstrap.Scheduler->Schedule(
+            TInstant::Zero(),
+            [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
+
+        UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 }
 

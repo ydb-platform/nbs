@@ -20,6 +20,9 @@ Tests {
             ReadBytes: 4096
             WriteBytes: 4096
             InitialFileSize: 4194304
+            SharedMemoryBaseDir: "{output_path}/shm"
+            SharedMemoryFilePath: "shm-loadtest.bin"
+            SharedMemorySizeBytes: 33554432
         }
         IODepth: 4
         TestDuration: 30

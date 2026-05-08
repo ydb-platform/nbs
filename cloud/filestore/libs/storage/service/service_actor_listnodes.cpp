@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -36,7 +37,8 @@ private:
     const TString LogTag;
 
     // Control flags
-    const bool MultiTabletForwardingEnabled;
+    const bool DisableMultiTabletForwarding;
+    const bool UseListNodesInternal;
     const bool Unsafe;
 
     // Response data
@@ -58,7 +60,8 @@ public:
     TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        bool multiTabletForwardingEnabled,
+        bool disableMultiTabletForwarding,
+        bool useListNodesInternal,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog);
 
@@ -72,6 +75,12 @@ private:
 
     void HandleListNodesResponse(
         const TEvService::TEvListNodesResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ListNodesInternal(const TActorContext& ctx);
+
+    void HandleListNodesInternalResponse(
+        const TEvIndexTablet::TEvListNodesInternalResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void GetNodeAttrsBatch(const TActorContext& ctx);
@@ -100,13 +109,15 @@ private:
 TListNodesActor::TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        bool multiTabletForwardingEnabled,
+        bool disableMultiTabletForwarding,
+        bool useListNodesInternal,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(ListNodesRequest.GetFileSystemId())
-    , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
+    , DisableMultiTabletForwarding(disableMultiTabletForwarding)
+    , UseListNodesInternal(useListNodesInternal)
     , Unsafe(ListNodesRequest.GetUnsafe())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
@@ -115,7 +126,12 @@ TListNodesActor::TListNodesActor(
 
 void TListNodesActor::Bootstrap(const TActorContext& ctx)
 {
-    ListNodes(ctx);
+    if (UseListNodesInternal) {
+        ListNodesInternal(ctx);
+    } else {
+        ListNodes(ctx);
+    }
+
     Become(&TThis::StateWork);
 }
 
@@ -135,11 +151,30 @@ void TListNodesActor::ListNodes(const TActorContext& ctx)
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
+void TListNodesActor::ListNodesInternal(const TActorContext& ctx)
+{
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Executing ListNodesInternal in leader for %lu",
+        LogTag.c_str(),
+        ListNodesRequest.GetNodeId());
+
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvListNodesInternalRequest>();
+    *request->Record.MutableOriginalRequest() = ListNodesRequest;
+    *request->Record.MutableHeaders() = ListNodesRequest.GetHeaders();
+    request->Record.SetFileSystemId(ListNodesRequest.GetFileSystemId());
+
+    // forward request through tablet proxy
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
 {
-    if (!MultiTabletForwardingEnabled) {
+    if (DisableMultiTabletForwarding) {
         GetNodeAttrResponses = Response.NodesSize();
         return;
     }
@@ -158,7 +193,10 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
         if (node.GetShardFileSystemId()) {
             auto& batch = batches[node.GetShardFileSystemId()];
             if (batch.Record.GetHeaders().GetSessionId().empty()) {
-                batch.Record.MutableHeaders()->CopyFrom(ListNodesRequest.GetHeaders());
+                batch.Record.MutableHeaders()->CopyFrom(
+                    ListNodesRequest.GetHeaders());
+                batch.Record.MutableHeaders()->SetBehaveAsDirectoryTablet(
+                    false);
                 batch.Record.SetFileSystemId(node.GetShardFileSystemId());
                 batch.Record.SetNodeId(RootNodeId);
             }
@@ -216,6 +254,39 @@ void TListNodesActor::HandleListNodesResponse(
     Response = std::move(msg->Record);
     GetNodeAttrsBatch(ctx);
 
+    if (GetNodeAttrResponses == Response.NodesSize()) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "No nodes at shards for parent %lu",
+            ListNodesRequest.GetNodeId());
+
+        ReplyAndDie(ctx);
+        return;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TListNodesActor::HandleListNodesInternalResponse(
+    const TEvIndexTablet::TEvListNodesInternalResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "ListNodesInternalResponse %s",
+        msg->Record.ShortUtf8DebugString().Quote().c_str());
+
+    Convert(msg->Record, Response);
+    if (HasError(Response.GetError())) {
+        HandleError(ctx, *Response.MutableError());
+        return;
+    }
+
+    GetNodeAttrsBatch(ctx);
 
     if (GetNodeAttrResponses == Response.NodesSize()) {
         LOG_DEBUG(
@@ -550,6 +621,9 @@ STFUNC(TListNodesActor::StateWork)
             TEvService::TEvListNodesResponse,
             HandleListNodesResponse);
         HFunc(
+            TEvIndexTablet::TEvListNodesInternalResponse,
+            HandleListNodesInternalResponse);
+        HFunc(
             TEvIndexTablet::TEvGetNodeAttrBatchResponse,
             HandleGetNodeAttrBatchResponse);
 
@@ -614,7 +688,7 @@ void TStorageServiceActor::HandleListNodes(
             ctx,
             sessionId,
             seqNo,
-            headers.GetDisableMultiTabletForwarding(),
+            false /* disableMultiTabletForwarding */,
             TEvService::TListNodesMethod::Name,
             msg->CallContext->RequestId,
             filestore,
@@ -639,13 +713,13 @@ void TStorageServiceActor::HandleListNodes(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-    const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
+    const bool disableMultiTabletForwarding =
+        msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     auto actor = std::make_unique<TListNodesActor>(
         std::move(requestInfo),
         std::move(msg->Record),
-        multiTabletForwardingEnabled,
+        disableMultiTabletForwarding,
+        filestore.GetFeatures().GetUseListNodesInternal(),
         session->RequestStats,
         ProfileLog);
 

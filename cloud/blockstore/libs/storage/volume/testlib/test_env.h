@@ -596,7 +596,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NProto::TStorageServiceConfig storageServiceConfig = {},
     TDiskRegistryStatePtr diskRegistryState = {},
     NProto::TFeaturesConfig featuresConfig = {},
-    NRdma::IClientPtr rdmaClient = {},
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient = {},
     TVector<TDiskAgentStatePtr> diskAgentStates = {},
     bool debugActorRegistration = false);
 

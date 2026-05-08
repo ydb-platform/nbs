@@ -6,6 +6,7 @@ ManuallyPreemptedVolumesFile: "backups.2/nbs-preempted-volumes.json"
 AllocationUnitMirror2SSD: 1
 AllocationUnitMirror3SSD: 1
 AllocationUnitNonReplicatedSSD: 1
+CoolDownTimeoutBeforeSecureErase: 30000
 EnableToChangeErrorStatesFromDiskRegistryMonpage: true
 EnableToChangeStatesFromDiskRegistryMonpage: true
 MirroredMigrationStartAllowed: true

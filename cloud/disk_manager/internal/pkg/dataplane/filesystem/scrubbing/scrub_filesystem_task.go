@@ -11,7 +11,7 @@ import (
 	scrubbing_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
 	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
-	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+	filesystem_traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -25,7 +25,7 @@ type OnScrubbedCallback func([]nfs.Node)
 type scrubFilesystemTask struct {
 	config   *scrubbing_config.FilesystemScrubbingConfig
 	factory  nfs.Factory
-	storage  filesystem_snapshot_storage.Storage
+	storage  filesystem_traversal_storage.Storage
 	request  *scrubbing_protos.ScrubFilesystemRequest
 	state    *scrubbing_protos.ScrubFilesystemTaskState
 	callback OnScrubbedCallback
@@ -112,7 +112,6 @@ func (t *scrubFilesystemTask) Cancel(
 	return t.storage.ClearDirectoryListingQueue(
 		ctx,
 		t.getSnapshotID(execCtx),
-		t.config.GetTraversalQueueDeletionLimit(),
 	)
 }
 

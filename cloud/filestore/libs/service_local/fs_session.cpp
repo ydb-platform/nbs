@@ -9,7 +9,7 @@ namespace NCloud::NFileStore {
 NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     const NProto::TCreateSessionRequest& request)
 {
-    STORAGE_INFO("CreateSession " << DumpMessage(request));
+    STORAGE_INFO("CreateSession " << ProtoMessagePrinter.ToString(request));
 
     const auto& clientId = GetClientId(request);
     const auto& sessionId = GetSessionId(request);
@@ -63,11 +63,11 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetXAttrCacheTimeout(
             Config->GetXAttrCacheTimeout(cloudId, folderId, fsId)
                 .MilliSeconds());
-        const bool directoryHandlesStorageEnabled =
+        const bool directoryHandleStorageEnabled =
             Config->GetDirectoryHandlesStorageEnabled(cloudId, folderId, fsId);
         features->SetDirectoryHandlesStorageEnabled(
-            directoryHandlesStorageEnabled);
-        if (directoryHandlesStorageEnabled) {
+            directoryHandleStorageEnabled);
+        if (directoryHandleStorageEnabled) {
             features->SetDirectoryHandlesTableSize(
                 Config->GetDirectoryHandlesTableSize());
         }
@@ -151,7 +151,7 @@ NProto::TPingSessionResponse TLocalFileSystem::PingSession(
 NProto::TDestroySessionResponse TLocalFileSystem::DestroySession(
     const NProto::TDestroySessionRequest& request)
 {
-    STORAGE_TRACE("DestroySession " << DumpMessage(request));
+    STORAGE_TRACE("DestroySession " << ProtoMessagePrinter.ToString(request));
 
     const auto& sessionId = request.GetHeaders().GetSessionId();
     const auto sessionSeqNo = request.GetHeaders().GetSessionSeqNo();
@@ -166,7 +166,7 @@ NProto::TDestroySessionResponse TLocalFileSystem::DestroySession(
 NProto::TResetSessionResponse TLocalFileSystem::ResetSession(
     const NProto::TResetSessionRequest& request)
 {
-    STORAGE_TRACE("ResetSession " << DumpMessage(request));
+    STORAGE_TRACE("ResetSession " << ProtoMessagePrinter.ToString(request));
 
     TWriteGuard guard(SessionsLock);
     auto session = GetSession(request);

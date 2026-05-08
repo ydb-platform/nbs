@@ -18,6 +18,11 @@ void TTestProfileLog::Write(TRecord record)
     Requests[record.Request.GetRequestType()].push_back(std::move(record));
 }
 
+void TTestProfileLog::RegisterCounters(NMonitoring::TDynamicCounters& root)
+{
+    Y_UNUSED(root);
+}
+
 TString GenerateValidateData(ui32 size, ui32 seed)
 {
     TString data(size, 0);

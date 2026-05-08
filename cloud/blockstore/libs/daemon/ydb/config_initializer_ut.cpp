@@ -225,9 +225,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
-    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInLogConfigAndNbsConfigs)
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsAndComponentsInStaticLogConfig)
     {
-        auto logConfigStr = R"(
+        auto configStr = R"(
             Entry {
                 Component: "BLOCKSTORE_SERVER"
                 Level: 6
@@ -242,44 +242,20 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             SysLogService: "NBS_SERVER"
         )";
 
-        auto nbsComponentConfigStr = R"(
-            NoSuchField: "x"
-        )";
-
         TTempDir dir;
-        auto logConfigPath = dir.Path() / "nbs-log.txt";
-        auto nbsComponentConfigPath = dir.Path() / "nbs-component.txt";
+        auto configPath = dir.Path() / "component.txt";
 
-        TOFStream(logConfigPath.GetPath()).Write(logConfigStr);
-        TOFStream(nbsComponentConfigPath.GetPath()).Write(nbsComponentConfigStr);
+        TOFStream(configPath.GetPath()).Write(configStr);
 
         auto options = CreateOptions();
-        options->LogConfig = logConfigPath.GetPath();
-        options->StatsUploadConfig = nbsComponentConfigPath.GetPath();
-        options->DiscoveryConfig = nbsComponentConfigPath.GetPath();
-        options->DiagnosticsConfig = nbsComponentConfigPath.GetPath();
-        options->StorageConfig = nbsComponentConfigPath.GetPath();
-        options->DiskRegistryProxyConfig = nbsComponentConfigPath.GetPath();
-        options->DiskAgentConfig = nbsComponentConfigPath.GetPath();
-        options->ServerConfig = nbsComponentConfigPath.GetPath();
-        options->EndpointConfig = nbsComponentConfigPath.GetPath();
-        options->FeaturesConfig = nbsComponentConfigPath.GetPath();
-        options->LogbrokerConfig = nbsComponentConfigPath.GetPath();
-        options->NotifyConfig = nbsComponentConfigPath.GetPath();
+
+        // - TConfigInitializerYdbBase
+        options->LogConfig = configPath.GetPath();
 
         auto ci = TConfigInitializerYdb(std::move(options));
-        ci.InitKikimrConfig();
-        ci.InitStatsUploadConfig();
-        ci.InitServerConfig();
-        ci.InitDiscoveryConfig();
-        ci.InitDiagnosticsConfig();
-        ci.InitStorageConfig();
-        ci.InitDiskRegistryProxyConfig();
-        ci.InitDiskAgentConfig();
-        ci.InitEndpointConfig();
-        ci.InitFeaturesConfig();
-        ci.InitLogbrokerConfig();
-        ci.InitNotifyConfig();
+
+        // - TConfigInitializerYdbBase
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitKikimrConfig());
 
         const auto& logConfig = ci.KikimrConfig->GetLogConfig();
         UNIT_ASSERT(logConfig.GetSysLog());
@@ -295,6 +271,213 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             "UNKNOWN_COMPONENT",
             logConfig.GetEntry(1).GetComponent());
         UNIT_ASSERT_VALUES_EQUAL(6, logConfig.GetEntry(1).GetLevel());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInStaticNbsConfigs)
+    {
+        auto configStr = R"(
+            NoSuchField: "x"
+        )";
+
+        TTempDir dir;
+        auto configPath = dir.Path() / "component.txt";
+
+        TOFStream(configPath.GetPath()).Write(configStr);
+
+        auto options = CreateOptions();
+
+        // clang-format off
+        // - TConfigInitializerCommon: TOptionsBase, TOptionsCommon
+        options->DiagnosticsConfig       =
+        options->DiscoveryConfig         =
+        options->DiskAgentConfig         =
+        options->DiskRegistryProxyConfig =
+        options->EndpointConfig          =
+        options->ServerConfig            =
+        options->RdmaConfig              =
+        options->CellsConfig             = configPath.GetPath();
+        // - TConfigInitializerYdb: TOptionsYdb
+        options->FeaturesConfig     =
+        options->LogbrokerConfig    =
+        options->NotifyConfig       =
+        options->StatsUploadConfig  =
+        options->StorageConfig      =
+        options->IamConfig          =
+        options->KmsConfig          =
+        options->RootKmsConfig      =
+        options->ComputeConfig      =
+        options->LocalNVMeConfig    = configPath.GetPath();
+        // clang-format on
+
+        auto ci = TConfigInitializerYdb(std::move(options));
+
+        // - TConfigInitializerCommon
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitServerConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiagnosticsConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiscoveryConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiskAgentConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiskRegistryProxyConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitEndpointConfig());
+        // InitHostPerformanceProfile() - not loaded from file
+        // InitSpdkEnvConfig()          - not loaded from file
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitRdmaConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitCellsConfig());
+        // - TConfigInitializerYdb
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitFeaturesConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitLogbrokerConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitNotifyConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitStatsUploadConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitStorageConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitIamClientConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitKmsClientConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitRootKmsConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitComputeClientConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitLocalNVMeConfig());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInCmsConfigs)
+    {
+        auto configStr = R"(
+             NoSuchField: "x"
+        )";
+
+        // clang-format off
+        // Elements ordered as in TConfigInitializerYdb::ApplyNamedConfigs()
+        const TVector<TString> configNames {
+            "ActorSystemConfig",
+            "AuthConfig",
+            "DiagnosticsConfig",
+            "DiscoveryServiceConfig",
+            "DiskAgentConfig",
+            "DiskRegistryProxyConfig",
+            "FeaturesConfig",
+            "InterconnectConfig",
+            "LogbrokerConfig",
+            "LogConfig",
+            "MonitoringConfig",
+            "NotifyConfig",
+            "ServerAppConfig",
+            "SpdkEnvConfig",
+            "StorageServiceConfig",
+            "YdbStatsConfig",
+            "IamClientConfig",
+            "KmsClientConfig",
+            "RootKmsConfig",
+            "ComputeClientConfig",
+            "LocalNVMeConfig",
+        };
+        // clang-format on
+
+        auto ci = TConfigInitializerYdb(CreateOptions());
+
+        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+        NKikimrConfig::TAppConfig appCfg;
+        auto& directFullNamedConfigs = *appCfg.MutableNamedConfigs();
+
+        for (const auto& configName: configNames) {
+            auto* namedConfig = directFullNamedConfigs.Add();
+            namedConfig->SetName("Cloud.NBS." + configName);
+            namedConfig->SetConfig(configStr);
+        }
+
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+    }
+
+    Y_UNIT_TEST(ShouldApplyCmsConfigsInAnyOrder)
+    {
+        auto configStr = "";
+
+        // clang-format off
+        // Elements ordered as in TConfigInitializerYdb::ApplyNamedConfigs()
+        const TVector<TString> configNames {
+            "ActorSystemConfig",
+            "AuthConfig",
+            "DiagnosticsConfig",
+            "DiscoveryServiceConfig",
+            "DiskAgentConfig",
+            "DiskRegistryProxyConfig",
+            "FeaturesConfig",
+            "InterconnectConfig",
+            "LogbrokerConfig",
+            "LogConfig",
+            "MonitoringConfig",
+            "NotifyConfig",
+            "ServerAppConfig",
+            "SpdkEnvConfig",
+            "StorageServiceConfig",
+            "YdbStatsConfig",
+            "IamClientConfig",
+            "KmsClientConfig",
+            "RootKmsConfig",
+            "ComputeClientConfig",
+            "LocalNVMeConfig",
+        };
+        // clang-format on
+
+        auto ci = TConfigInitializerYdb(CreateOptions());
+
+        // To detect possible mutual dependencies:
+        //  - one at time
+        //  - all at once, direct and reverse order
+
+        // 1. One at time
+        {
+            for (const auto& configName: configNames) {
+                ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+                NKikimrConfig::TAppConfig appCfg;
+                auto& namedConfigs = *appCfg.MutableNamedConfigs();
+
+                ::NKikimrConfig::TNamedConfig* namedConfig = nullptr;
+                for (auto i = 0; i < 3; i++) {
+                    // May be several NamedConfigs[] with same name
+                    namedConfig = namedConfigs.Add();
+                    namedConfig->SetName("Cloud.NBS." + configName);
+                    namedConfig->SetConfig(configStr);
+                }
+
+                Cerr << Endl << "Apply NamedConfigs['" << namedConfig->GetName()
+                     << "']" << Endl;
+                UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+            }
+        }
+
+        // 2. All at once, direct order, single entities
+        {
+            ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+            NKikimrConfig::TAppConfig appCfg;
+            auto& namedConfigs = *appCfg.MutableNamedConfigs();
+
+            for (const auto& configName: configNames) {
+                auto* namedConfig = namedConfigs.Add();
+                namedConfig->SetName("Cloud.NBS." + configName);
+                namedConfig->SetConfig(configStr);
+            }
+
+            Cerr << Endl << "Apply all NamedConfigs[] in direct order" << Endl;
+            UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+        }
+
+        // 3. All at once, reverse order, multiple entities
+        {
+            ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+            NKikimrConfig::TAppConfig appCfg;
+            auto& namedConfigs = *appCfg.MutableNamedConfigs();
+
+            for (auto i = 0; i < 3; i++) {
+                // May be several NamedConfigs[] with same name
+                for (auto configName = configNames.rbegin();
+                     configName != configNames.rend();
+                     configName++)
+                {
+                    auto* namedConfig = namedConfigs.Add();
+                    namedConfig->SetName("Cloud.NBS." + *configName);
+                    namedConfig->SetConfig(configStr);
+                }
+            }
+
+            Cerr << Endl << "Apply all NamedConfigs[] in reverse order" << Endl;
+            UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
+        }
     }
 
     Y_UNIT_TEST(ShouldInitHostPerformanceProfile)

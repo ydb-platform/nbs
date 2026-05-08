@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -128,7 +130,7 @@ func TestListNodesFileSystem(t *testing.T) {
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(false)
-	model.RequireNodesEqual(nodes)
+	model.RequireNodesEqual(nodes, false)
 	require.Equal(
 		t,
 		nfs_testing.StandardFilesystemExpectedNames,
@@ -171,7 +173,7 @@ func TestListNodesFileSystemUnsafe(t *testing.T) {
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(true)
-	model.RequireNodesEqual(nodes)
+	model.RequireNodesEqual(nodes, false)
 	require.Equal(
 		t,
 		nfs_testing.StandardFilesystemExpectedNames,
@@ -413,4 +415,323 @@ func TestCreateNodeIdempotent(t *testing.T) {
 	idempotentID, err := session.CreateNodeIdempotent(ctx, node)
 	require.NoError(t, err)
 	require.Equal(t, createdID, idempotentID)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCreateSessionIdempotent(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	clientID := t.Name()
+	session1, err := client.CreateSessionWithClientID(
+		ctx,
+		filesystemID,
+		clientID,
+		"",
+		false,
+	)
+	require.NoError(t, err)
+	defer session1.Close(ctx)
+
+	session2, err := client.CreateSessionWithClientID(
+		ctx,
+		filesystemID,
+		clientID,
+		"",
+		false,
+	)
+	require.NoError(t, err)
+	defer session2.Close(ctx)
+
+	require.Equal(t, session1.GetID(), session2.GetID())
+
+	session3, err := client.CreateSessionWithClientID(
+		ctx,
+		filesystemID,
+		clientID+"_different",
+		"",
+		false,
+	)
+	require.NoError(t, err)
+	defer session3.Close(ctx)
+
+	require.NotEqual(t, session1.GetID(), session3.GetID())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+var unsafeCreateNodeFilesystem = nfs_testing.Root(
+	nfs_testing.Dir("a",
+		nfs_testing.Dir("a",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+			nfs_testing.BlockDev("dev_1", 1),
+		),
+		nfs_testing.Dir("b",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+			nfs_testing.CharDev("dev_2", 1),
+			nfs_testing.CharDev("dev_5", 1),
+		),
+		nfs_testing.Dir("c",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+			nfs_testing.BlockDev("dev_3", 1),
+		),
+		nfs_testing.File("1"),
+		nfs_testing.File("2"),
+		nfs_testing.File("3"),
+	),
+	nfs_testing.Dir("b",
+		nfs_testing.Dir("a",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+		),
+		nfs_testing.Dir("b",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+		),
+		nfs_testing.Dir("c",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+		),
+		nfs_testing.File("1"),
+		nfs_testing.File("2"),
+		nfs_testing.File("3"),
+	),
+	nfs_testing.Dir("c",
+		nfs_testing.Dir("a",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+		),
+		nfs_testing.Dir("b",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+		),
+		nfs_testing.Dir("c",
+			nfs_testing.File("1"),
+			nfs_testing.File("2"),
+			nfs_testing.File("3"),
+		),
+		nfs_testing.File("1"),
+		nfs_testing.File("2"),
+		nfs_testing.File("3"),
+	),
+	nfs_testing.File("1"),
+	nfs_testing.File("2"),
+	nfs_testing.File("3"),
+	nfs_testing.BlockDev("dev", 1),
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+type inMemoryTestShardBackup struct {
+	t                 *testing.T
+	client            nfs.Client
+	shardFileSystemID string
+	nodesByParent     map[uint64][]nfs.Node
+	nodesInShard      []nfs.Node
+}
+
+func newInMemoryTestShardBackup(
+	t *testing.T,
+	client nfs.Client,
+	shardFileSystemID string,
+	nodes []nfs.Node,
+) inMemoryTestShardBackup {
+
+	backup := inMemoryTestShardBackup{
+		t:                 t,
+		client:            client,
+		shardFileSystemID: shardFileSystemID,
+		nodesByParent:     make(map[uint64][]nfs.Node),
+	}
+
+	for _, node := range nodes {
+		backup.nodesByParent[node.ParentID] = append(
+			backup.nodesByParent[node.ParentID],
+			node,
+		)
+
+		if node.ShardFileSystemID == shardFileSystemID {
+			backup.nodesInShard = append(backup.nodesInShard, node)
+		}
+	}
+
+	require.NotEmpty(t, backup.nodesInShard)
+	return backup
+}
+
+func (i inMemoryTestShardBackup) restore(ctx context.Context) {
+	for _, node := range i.nodesInShard {
+		i.restoreNode(ctx, node)
+	}
+
+	for _, node := range i.nodesInShard {
+		if !node.Type.IsDirectory() {
+			continue
+		}
+
+		for _, child := range i.nodesByParent[node.NodeID] {
+			i.createChildRef(ctx, node.NodeID, child)
+		}
+	}
+}
+
+func (i inMemoryTestShardBackup) restoreNode(ctx context.Context, node nfs.Node) {
+	err := i.client.UnsafeCreateNode(ctx, i.shardFileSystemID, node)
+	require.NoError(i.t, err)
+
+	err = i.client.UnsafeCreateNodeRef(
+		ctx,
+		i.shardFileSystemID,
+		nfs.RootNodeID,
+		node.ShardNodeName,
+		node.NodeID,
+		"",
+		"",
+	)
+	require.NoError(i.t, err)
+}
+
+func (i inMemoryTestShardBackup) createChildRef(
+	ctx context.Context,
+	parentID uint64,
+	child nfs.Node,
+) {
+
+	shardID := child.ShardFileSystemID
+	shardNodeName := child.ShardNodeName
+
+	// The child node is created in the shard, so the childID is 0
+	err := i.client.UnsafeCreateNodeRef(
+		ctx,
+		i.shardFileSystemID,
+		parentID,
+		child.Name,
+		uint64(0), // childID
+		shardID,
+		shardNodeName,
+	)
+	require.NoError(i.t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestUnsafeCreateNodeRestoreShardAfterDeletion(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	logger := logging.GetLogger(ctx)
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	shardCount := uint32(2)
+
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+		ShardCount:  shardCount,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, true /* force */)
+
+	err = client.EnableDirectoryCreationInShards(ctx, filesystemID, shardCount)
+	require.NoError(t, err)
+
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+
+	model := nfs_testing.NewFileSystemModel(
+		t,
+		ctx,
+		session,
+		unsafeCreateNodeFilesystem,
+	)
+	defer model.Close()
+	model.CreateAllNodesRecursively()
+	model.CollectStats()
+
+	initialNodes := model.ListAllNodesRecursively(true)
+	logger.Infof("initial listing has %d nodes", len(initialNodes))
+
+	// Backup shard 2 nodes and directory children before deleting the shard.
+	shard2FsID := fmt.Sprintf("%s_s2", filesystemID)
+	shard2Backup := newInMemoryTestShardBackup(
+		t,
+		client,
+		shard2FsID,
+		initialNodes,
+	)
+
+	shardIDs := make([]string, 0, shardCount)
+	for i := uint32(1); i <= shardCount; i++ {
+		shardIDs = append(shardIDs, fmt.Sprintf("%s_s%d", filesystemID, i))
+	}
+
+	// Filesystem deletion invokes deletion of all of its shards.
+	// To avoid that, configure empty shards list.
+	err = client.ConfigureShards(ctx, shard2FsID, nfs.ConfigureShardsParams{
+		ShardFileSystemIDs: []string{},
+		Force:              true,
+	})
+	require.NoError(t, err)
+
+	err = client.Delete(ctx, shard2FsID, true /* force */)
+	require.NoError(t, err)
+
+	err = client.Create(ctx, shard2FsID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+
+	err = client.ConfigureAsShard(ctx, shard2FsID, nfs.ConfigureAsShardParams{
+		ShardNo:                          2,
+		ShardFileSystemIDs:               shardIDs,
+		MainFileSystemID:                 filesystemID,
+		DirectoryCreationInShardsEnabled: true,
+	})
+	require.NoError(t, err)
+
+	err = session.Close(ctx)
+	require.NoError(t, err)
+
+	session, err = client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	model.SetSession(session)
+	// Verify that the listing got shorter but is not empty.
+	afterDeleteNodes := model.ListAllNodesRecursively(true)
+	require.Less(t, len(afterDeleteNodes), len(initialNodes))
+	require.NotEmpty(t, afterDeleteNodes)
+
+	shard2Backup.restore(ctx)
+
+	// Verify the restored listing matches the original.
+	restoredNodes := model.ListAllNodesRecursively(true)
+	model.RequireNodesEqual(restoredNodes, true)
 }

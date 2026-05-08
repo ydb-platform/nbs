@@ -10,10 +10,11 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/disk_agent
-    cloud/blockstore/libs/rdma/impl
+    cloud/blockstore/libs/rdma
     cloud/blockstore/libs/spdk/iface
 
     cloud/storage/core/libs/daemon
+    cloud/storage/core/libs/rdma/impl
 
     contrib/ydb/core/security
     contrib/ydb/library/keys

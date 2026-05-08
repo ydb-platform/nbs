@@ -2,9 +2,7 @@
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
+#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -16,6 +14,9 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -32,6 +33,7 @@ using namespace NActors;
 using namespace NStorage;
 using namespace NThreading;
 using namespace std::chrono_literals;
+using namespace NCloud::NStorage;
 
 using TEndpointId = ui64;
 
@@ -65,7 +67,7 @@ struct TEvFakeRdmaClient
         TClientRequestId ClientReqId = 0;
         TEndpointId EndpointId = 0;
         NRdma::TClientRequestPtr Request;
-        TCallContextPtr CallContext;
+        TCallContextBasePtr RdmaCallContext;
     };
 
     struct TUpdateNodeId
@@ -120,11 +122,11 @@ struct TClientRequest: public NRdma::TClientRequest
 
 public:
     TClientRequest(
-            const TActorId& rdmaActorId,
-            NRdma::IClientHandlerPtr handler,
-            std::unique_ptr<NRdma::TNullContext> context,
-            ui32 requestSize,
-            ui32 responseSize)
+        const TActorId& rdmaActorId,
+        NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NRdma::TNullContext> context,
+        ui32 requestSize,
+        ui32 responseSize)
         : NRdma::TClientRequest(std::move(handler), std::move(context))
         , RdmaActorId(rdmaActorId)
         , RequestStorage(std::make_unique<char[]>(requestSize))
@@ -175,7 +177,7 @@ public:
 
     ui64 SendRequest(
         NRdma::TClientRequestPtr req,
-        TCallContextPtr callContext) override;
+        TCallContextBasePtr callContext) override;
 
     void CancelRequest(ui64 reqId) override;
 
@@ -218,7 +220,7 @@ auto TClientEndpoint::AllocateRequest(
 
 ui64 TClientEndpoint::SendRequest(
     NRdma::TClientRequestPtr req,
-    TCallContextPtr callContext)
+    TCallContextBasePtr callContext)
 {
     auto request = std::make_unique<TEvFakeRdmaClient::TEvSendRequest>();
 
@@ -227,7 +229,7 @@ ui64 TClientEndpoint::SendRequest(
     request->ClientReqId = clientReqId;
     request->EndpointId = EndpointId;
     request->Request = std::move(req);
-    request->CallContext = std::move(callContext);
+    request->RdmaCallContext = std::move(callContext);
 
     ActorSystem->Send(RdmaActorId, std::move(request));
     return clientReqId;
@@ -272,12 +274,12 @@ private:
 
 public:
     TExecuteRequestActor(
-            TClientRequestId clientRequestId,
-            TEndpointId endpointId,
-            TActorId parent,
-            ui32 nodeId,
-            NRdma::TClientRequestPtr request,
-            TCallContextPtr callContext)
+        TClientRequestId clientRequestId,
+        TEndpointId endpointId,
+        TActorId parent,
+        ui32 nodeId,
+        NRdma::TClientRequestPtr request,
+        TCallContextPtr callContext)
         : ClientRequestId(clientRequestId)
         , EndpointId(endpointId)
         , Parent(parent)
@@ -985,7 +987,7 @@ private:
                 SelfId(),
                 ep->NodeId,
                 std::move(msg->Request),
-                std::move(msg->CallContext)));
+                ToBlockStoreCallContext(std::move(msg->RdmaCallContext))));
         Y_ABORT_UNLESS(inserted);
     }
 
@@ -1080,7 +1082,7 @@ public:
     void Start() override;
     void Stop() override;
 
-    // NRdma::IClient
+    // IClient
 
     auto StartEndpoint(TString host, ui32 port)
         -> TFuture<NRdma::IClientEndpointPtr> override;

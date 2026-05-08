@@ -1,6 +1,7 @@
 RECURSE(
     api
     core
+    fastshard
     init
     model
     perf

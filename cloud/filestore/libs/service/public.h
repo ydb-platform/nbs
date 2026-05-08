@@ -26,6 +26,9 @@ using IFileStoreServicePtr = std::shared_ptr<IFileStoreService>;
 struct IFileStoreEndpoints;
 using IFileStoreEndpointsPtr = std::shared_ptr<IFileStoreEndpoints>;
 
+struct IShmControl;
+using IShmControlPtr = std::shared_ptr<IShmControl>;
+
 struct IEndpointManager;
 using IEndpointManagerPtr = std::shared_ptr<IEndpointManager>;
 

@@ -54,6 +54,11 @@ public:
         Requests[record.Request.GetRequestType()].push_back(std::move(record));
     }
 
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
+    }
+
     const auto* GetRecords(EFileStoreSystemRequest requestType) const
     {
         return Requests.FindPtr(static_cast<ui32>(requestType));
@@ -2209,7 +2214,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TTestEnv env({}, std::move(storageConfig));
         auto registry = env.GetRegistry();
 
-
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -2599,14 +2603,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
         storageConfig.SetFlushThresholdForBackpressure(2 * block);
         storageConfig.SetCompactionThresholdForBackpressure(
             8 * DefaultBlockSize / block);
         storageConfig.SetCleanupThresholdForBackpressure(20);
         storageConfig.SetFlushBytesThresholdForBackpressure(block / 2);
         storageConfig.SetFlushBytesItemCountThresholdForBackpressure(10);
+        storageConfig.SetCollectGarbageThresholdForBackpressure(64 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2711,6 +2717,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
+        auto checkCollectGarbageBackpressureValues =
+            [&](i64 value, i64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "CollectGarbageBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "CollectGarbageBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
         checkIsWriteAllowed(true);
         checkFlushBackpressureValues(0, 2 * block);
 
@@ -2752,6 +2775,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
         tablet.Compaction(rangeId);
+        tablet.CollectGarbage();
 
         // no backpressure after Compaction
         tablet.WriteData(handle, 0, 2 * block, '0'); // 2 blobs, 1 fresh block, 19 markers
@@ -2759,6 +2783,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteData(handle, 0, block, '0'); // 2 blobs, 2 fresh blocks, 20 markers
         tablet.Flush(); // 3 blobs, 10 markers
         tablet.Compaction(rangeId); // 1 blob, 10 markers
+        tablet.CollectGarbage();
 
         // backpressure due to CleanupScoreThresholdForBackpressure
         tablet.SendWriteDataRequest(handle, 0, block, '0');
@@ -2770,6 +2795,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.Cleanup(rangeId); // 1 blob
+        tablet.CollectGarbage();
 
         // no backpressure after Cleanup
         tablet.WriteData(handle, 0, block / 4, '0'); // 1 blob, block / 4 fresh bytes
@@ -2785,6 +2811,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.FlushBytes(); // 2 blobs
+        tablet.CollectGarbage();
 
         for (ui32 i = 0; i < 10; i++) {
             tablet.WriteData(handle, i * 2, 1, '0');
@@ -2800,6 +2827,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.FlushBytes();
+        tablet.CollectGarbage();
 
         // no backpressure after FlushBytes
         tablet.WriteData(handle, 0, block / 4, '0'); // 2 blobs, block / 4 fresh bytes
@@ -2813,6 +2841,32 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
+
+        tablet.Cleanup(rangeId); // cleaning up our index
+        tablet.CollectGarbage(); // and flushing our garbage queue
+        const ui64 requestSize =
+            storageConfig.GetCollectGarbageThresholdForBackpressure();
+        tablet.WriteData(handle, 0, requestSize, '0'); // large blob
+        tablet.Cleanup(rangeId); // preventing Cleanup backpressure
+
+        // backpressure due to CollectGarbageThresholdForBackpressure
+        tablet.SendWriteDataRequest(handle, 100, 1, '0');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkIsWriteAllowed(false);
+            const ui64 garbageSize = 13 * block;
+            const ui64 newDataSize = requestSize;
+            checkCollectGarbageBackpressureValues(
+                garbageSize + newDataSize,
+                storageConfig.GetCollectGarbageThresholdForBackpressure());
+        }
+
+        tablet.CollectGarbage();
+        // no backpressure after CollectGarbage
+        checkIsWriteAllowed(true);
+        tablet.SendWriteDataRequest(handle, 100, 1, '0');
 
         tablet.DestroyHandle(handle);
     }

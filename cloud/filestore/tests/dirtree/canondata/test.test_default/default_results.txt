@@ -1,4 +1,4 @@
-Producer 0 depth=3, files=37, dirs=3
-Producer 1 depth=3, files=82, dirs=8
-Producer 2 depth=3, files=118, dirs=12
-Producer 3 depth=4, files=118, dirs=12
+Producer 0 depth=3, files=37, symlinks=8, dirs=3
+Producer 1 depth=3, files=82, symlinks=18, dirs=8
+Producer 2 depth=3, files=118, symlinks=26, dirs=12
+Producer 3 depth=4, files=118, symlinks=26, dirs=12

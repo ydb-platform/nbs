@@ -92,6 +92,7 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
     FILESTORE_DECLARE_METHOD(name##Stream, name, name##Stream, __VA_ARGS__)
 
 FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD_FS)
+FILESTORE_SHARED_MEMORY_METHODS(FILESTORE_DECLARE_METHOD_FS)
 FILESTORE_ENDPOINT_SERVICE(FILESTORE_DECLARE_METHOD_VHOST)
 FILESTORE_DECLARE_METHOD_STREAM(GetSessionEvents)
 
@@ -170,6 +171,8 @@ private:
         RequestCompleted = 2,
     };
     TAtomic RequestState = WaitingForRequest;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TRequestHandler(
@@ -293,7 +296,7 @@ private:
 
         STORAGE_TRACE(TMethod::RequestName
             << " #" << RequestId
-            << " send request: " << DumpMessage(*Request));
+            << " send request: " << ProtoMessagePrinter.ToString(*Request));
 
         FILESTORE_TRACK(
             SendRequest,
@@ -322,7 +325,8 @@ private:
 
         STORAGE_TRACE(TMethod::RequestName
             << " #" << RequestId
-            << " response received: " << DumpMessage(Response));
+            << " response received: "
+            << ProtoMessagePrinter.ToString(Response));
 
         FILESTORE_TRACK(
             ResponseReceived,
@@ -390,6 +394,8 @@ private:
         RequestCompleted = 4,
     };
     TAtomic RequestState = WaitingForRequest;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TStreamRequestHandler(
@@ -498,7 +504,7 @@ private:
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
-            << " send request: " << DumpMessage(*Request));
+            << " send request: " << ProtoMessagePrinter.ToString(*Request));
 
         Reader = TMethod::Execute(
             *AppCtx.Service,
@@ -534,7 +540,8 @@ private:
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
-            << " response received: " << DumpMessage(Response));
+            << " response received: "
+            << ProtoMessagePrinter.ToString(Response));
 
         try {
             ResponseHandler->HandleResponse(Response);
@@ -803,7 +810,8 @@ public:
 
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
-        TBase::AppCtx.Service = NProto::TFileStoreService::NewStub(std::move(channel));
+        TBase::AppCtx.Service =
+            NProto::TFileStoreService::NewStub(std::move(channel));
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -811,7 +819,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Fs##Method>(           \
+        return TBase::template ExecuteRequest<T##name##Fs##Method>(            \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -856,6 +864,44 @@ public:
 
 using TUdsFileStoreClient = TFileStoreClient<TUdsFileStoreClientBase>;
 using TTcpFileStoreClient = TFileStoreClient<TClientBase<TFileStoreContext, IFileStoreService>>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TBase>
+class TShmControlClient final
+    : public TBase
+{
+public:
+    using TBase::TBase;
+
+    void InitService(std::shared_ptr<::grpc::Channel> channel) override
+    {
+        TBase::AppCtx.Service =
+            NProto::TFileStoreService::NewStub(std::move(channel));
+    }
+
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        return TBase::template ExecuteRequest<T##name##Fs##Method>(            \
+            std::move(callContext),                                            \
+            std::move(request));                                               \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_METHOD
+
+    FILESTORE_SHARED_MEMORY_METHODS(FILESTORE_IMPLEMENT_METHOD)
+
+#undef FILESTORE_IMPLEMENT_METHOD
+};
+
+using TUdsShmControlClientBase = TUdsClient<
+    TClientBase<TFileStoreContext, IShmControl>
+    >;
+
+using TUdsShmControlClient = TShmControlClient<TUdsShmControlClientBase>;
+using TTcpShmControlClient = TShmControlClient<TClientBase<TFileStoreContext, IShmControl>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -921,6 +967,24 @@ IFileStoreServicePtr CreateFileStoreClient(
         return client;
     } else {
         return std::make_shared<TTcpFileStoreClient>(
+            std::move(config),
+            std::move(logging));
+    }
+}
+
+IShmControlPtr CreateShmControlClient(
+    TClientConfigPtr config,
+    ILoggingServicePtr logging)
+{
+    if (config->GetUnixSocketPath()) {
+        auto client = std::make_shared<TUdsShmControlClient>(
+            config->GetUnixSocketPath(),
+            std::move(config),
+            std::move(logging));
+        client->Connect();
+        return client;
+    } else {
+        return std::make_shared<TTcpShmControlClient>(
             std::move(config),
             std::move(logging));
     }

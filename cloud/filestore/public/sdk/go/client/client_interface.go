@@ -75,6 +75,7 @@ type ClientInterface interface {
 	CreateSession(
 		ctx context.Context,
 		fileSystemID string,
+		clientID string,
 		checkpointId string,
 		readonly bool,
 	) (Session, error)
@@ -119,6 +120,12 @@ type ClientInterface interface {
 		name string,
 		unlinkDirectory bool,
 	) error
+
+	ExecuteAction(
+		ctx context.Context,
+		action string,
+		input []byte,
+	) ([]byte, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

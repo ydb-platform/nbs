@@ -186,6 +186,7 @@ struct TBackgroundOpsBackpressureStatus
     const EBackgroundOpBackpressureStatus FlushBytesItemCount;
     const EBackgroundOpBackpressureStatus Compaction;
     const EBackgroundOpBackpressureStatus Cleanup;
+    const EBackgroundOpBackpressureStatus CollectGarbage;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -282,6 +283,7 @@ public:
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
         const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TVector<ui64>& orphanNodeIds,
+        const TVector<NProto::TOpLogEntry>& opLog,
         const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
         const TThrottlerConfig& throttlerConfig);
 
@@ -416,9 +418,14 @@ public:
 
     ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
 
-    NProto::TError SelectShard(ui64 fileSize, TString* shardId);
+    NProto::TError SelectShard(
+        NProto::ENodeType nodeType,
+        ui64 fileSize,
+        TString* shardId);
 
-    void UpdateShardBalancer(const TVector<TShardStats>& stats);
+    void InitShardBalancer(const TStorageConfig& config);
+
+    NProto::TError UpdateShardBalancer(const TVector<TShardStats>& stats);
 
     TVector<IShardBalancer::TShardDescr> MakeOrderedShardList() const;
 
@@ -907,6 +914,19 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
         ui64 requestId);
 
     //
+    // OpLog
+    //
+
+public:
+    void WriteOpLogEntry(
+        TIndexTabletDatabase& db,
+        const NProto::TOpLogEntry& e);
+
+    void DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId);
+
+    ui64 GetOpLogEntryCount() const;
+
+    //
     // ResponseLog
     //
 
@@ -952,6 +972,7 @@ public:
         const ui64 FlushBytesItemCount;
         const ui64 CompactionScore;
         const ui64 CleanupScore;
+        const ui64 CollectGarbage;
     };
 
     using TBackpressureValues = TBackpressureThresholds;

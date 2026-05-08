@@ -121,7 +121,7 @@ public:
     ui32 GetMaxWriteIops() const;
     TDuration GetMaxBurstTime() const;
     bool DeprecatedGetRdmaClientEnabled() const;
-    const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
+    const ::NCloud::NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
     bool GetUseFakeRdmaClient() const;
     bool GetDisableClientThrottlers() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
@@ -140,6 +140,7 @@ public:
     bool GetVhostDiscardEnabled() const;
     bool GetVhostDiscardOnlyEnabled() const;
     bool GetVhostWriteZeroesEnabled() const;
+    bool GetDropDiscardRequests() const;
     ui32 GetVhostOptimalIoSize() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;

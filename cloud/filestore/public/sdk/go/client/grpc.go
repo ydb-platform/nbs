@@ -35,7 +35,9 @@ type grpcClient struct {
 
 func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers := req.GetHeaders()
-	headers.ClientId = []byte(client.clientID)
+	if len(headers.GetClientId()) == 0 {
+		headers.ClientId = []byte(client.clientID)
+	}
 
 	if val := ctx.Value(IdempotenceIDHeaderKey); val != nil {
 		if idempotenceID, ok := val.([]byte); ok {
@@ -449,6 +451,24 @@ func (client *grpcClient) UnlinkNode(
 	)
 
 	return resp.(*protos.TUnlinkNodeResponse), err
+}
+
+func (client *grpcClient) ExecuteAction(
+	ctx context.Context,
+	req *protos.TExecuteActionRequest,
+) (*protos.TExecuteActionResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ExecuteAction(ctx, req)
+		})
+
+	return resp.(*protos.TExecuteActionResponse), err
 }
 
 ////////////////////////////////////////////////////////////////////////////////

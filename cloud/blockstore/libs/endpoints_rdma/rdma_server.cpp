@@ -4,8 +4,6 @@
 #include <cloud/blockstore/libs/client_rdma/protocol.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -13,6 +11,8 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
@@ -25,6 +25,7 @@ using namespace NMonitoring;
 using namespace NThreading;
 
 using namespace NCloud::NBlockStore::NClient;
+using namespace NCloud::NStorage;
 
 namespace {
 
@@ -51,7 +52,8 @@ private:
     NRdma::IServerEndpointPtr Endpoint;
     TLog Log;
 
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRdmaEndpoint(
@@ -73,9 +75,14 @@ public:
         Endpoint = std::move(endpoint);
     }
 
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return NCloud::NBlockStore::CreateCallContext();
+    }
+
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override;
 
@@ -114,14 +121,14 @@ using TRdmaEndpointPtr = std::shared_ptr<TRdmaEndpoint>;
 
 void TRdmaEndpoint::HandleRequest(
     void* context,
-    TCallContextPtr callContext,
+    TCallContextBasePtr callContext,
     TStringBuf in,
     TStringBuf out)
 {
     TaskQueue->ExecuteSimple(
         [self = weak_from_this(),
          context,
-         callContext = std::move(callContext),
+         callContext = ToBlockStoreCallContext(std::move(callContext)),
          in,
          out]() mutable
         {
@@ -238,13 +245,12 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
                         Y_ENSURE(guard);
 
                         const auto& sglist = guard.Get();
-                        size_t responseBytes =
-                            NRdma::TProtoMessageSerializer::SerializeWithData(
+                        size_t responseBytes = NCloud::NStorage::NRdma::
+                            TProtoMessageSerializer::SerializeWithData(
                                 out,
                                 TBlockStoreProtocol::ReadBlocksResponse,
                                 0,   // flags
-                                response,
-                                sglist);
+                                response, sglist);
 
                         p->Endpoint->SendResponse(context, responseBytes);
                     }
@@ -294,8 +300,8 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
                     Y_UNUSED(guardedSgList);
 
                     if (auto p = self.lock()) {
-                        size_t responseBytes =
-                            NRdma::TProtoMessageSerializer::Serialize(
+                        size_t responseBytes = NCloud::NStorage::NRdma::
+                            TProtoMessageSerializer::Serialize(
                                 out,
                                 TBlockStoreProtocol::WriteBlocksResponse,
                                 0,   // flags
@@ -331,7 +337,7 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
                 auto response = ExtractResponse(future);
 
                 size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                         out,
                         TBlockStoreProtocol::ZeroBlocksResponse,
                         0,   // flags
@@ -349,7 +355,7 @@ class TRdmaEndpointListener final
     : public IEndpointListener
 {
 private:
-    const NRdma::IServerPtr Server;
+    const NCloud::NStorage::NRdma::IServerPtr Server;
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const TExecutorPtr Executor;
@@ -360,7 +366,7 @@ private:
 
 public:
     TRdmaEndpointListener(
-            NRdma::IServerPtr server,
+            NCloud::NStorage::NRdma::IServerPtr server,
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
             TExecutorPtr executor,
@@ -483,7 +489,7 @@ NProto::TError TRdmaEndpointListener::DoStopEndpoint(const TString& socketPath)
 ////////////////////////////////////////////////////////////////////////////////
 
 IEndpointListenerPtr CreateRdmaEndpointListener(
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,

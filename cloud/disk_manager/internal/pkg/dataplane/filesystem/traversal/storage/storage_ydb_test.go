@@ -45,12 +45,13 @@ func newStorage(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	storageFolder string,
+	deletionLimit uint64,
 ) Storage {
 
 	err := schema.Create(ctx, storageFolder, db, false)
 	require.NoError(t, err)
 
-	storage := NewStorage(db, storageFolder)
+	storage := NewStorage(db, storageFolder, deletionLimit)
 	require.NotNil(t, storage)
 
 	return storage
@@ -94,7 +95,7 @@ func createFixture(t *testing.T) *fixture {
 		"filesystem_snapshot_storage_ydb_test/%v",
 		t.Name(),
 	)
-	storage := newStorage(t, ctx, db, storageFolder)
+	storage := newStorage(t, ctx, db, storageFolder, 1000)
 
 	return &fixture{
 		t:             t,
@@ -393,7 +394,7 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 	require.ElementsMatch(t, getNodeIDs(entries2), savedSnapshot2IDs)
 
 	// 8. Delete from snapshot2 using public method, require no elements remain.
-	err = f.storage.ClearDirectoryListingQueue(f.ctx, snapshot2, 2)
+	err = f.storage.ClearDirectoryListingQueue(f.ctx, snapshot2)
 	require.NoError(t, err)
 
 	entries2, err = f.storage.SelectNodesToList(

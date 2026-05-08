@@ -69,7 +69,7 @@ private:
     const IFileSystemLoopFactoryPtr LoopFactory;
     const THandleOpsQueueConfig HandleOpsQueueConfig;
     const TWriteBackCacheConfig WriteBackCacheConfig;
-    const TDirectoryHandlesStorageConfig DirectoryHandlesStorageConfig;
+    const TDirectoryHandleStorageConfig DirectoryHandleStorageConfig;
 
     TLog Log;
 
@@ -82,7 +82,7 @@ public:
             IFileSystemLoopFactoryPtr loopFactory,
             THandleOpsQueueConfig handleOpsQueueConfig,
             TWriteBackCacheConfig writeBackCacheConfig,
-            TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
+            TDirectoryHandleStorageConfig directoryHandleStorageConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -90,7 +90,8 @@ public:
         , LoopFactory(std::move(loopFactory))
         , HandleOpsQueueConfig(std::move(handleOpsQueueConfig))
         , WriteBackCacheConfig(std::move(writeBackCacheConfig))
-        , DirectoryHandlesStorageConfig(std::move(directoryHandlesStorageConfig))
+        , DirectoryHandleStorageConfig(
+              std::move(directoryHandleStorageConfig))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -139,8 +140,12 @@ public:
             WriteBackCacheConfig.FlushMaxWriteRequestsCount);
         protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
-        protoConfig.SetDirectoryHandlesStoragePath(DirectoryHandlesStorageConfig.PathPrefix);
-        protoConfig.SetDirectoryHandlesInitialDataSize(DirectoryHandlesStorageConfig.InitialDataSize);
+        protoConfig.SetDirectoryHandlesStoragePath(
+            DirectoryHandleStorageConfig.PathPrefix);
+        protoConfig.SetDirectoryHandlesInitialDataSize(
+            DirectoryHandleStorageConfig.InitialDataSize);
+        protoConfig.SetDirectoryHandlesMaxDataAreaStepSize(
+            DirectoryHandleStorageConfig.MaxDataAreaStepSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(
@@ -163,7 +168,7 @@ IEndpointListenerPtr CreateEndpointListener(
     IFileSystemLoopFactoryPtr loopFactory,
     THandleOpsQueueConfig handleOpsQueueConfig,
     TWriteBackCacheConfig writeBackCacheConfig,
-    TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
+    TDirectoryHandleStorageConfig directoryHandleStorageConfig)
 {
     return std::make_shared<TEndpointListener>(
         std::move(logging),
@@ -173,7 +178,7 @@ IEndpointListenerPtr CreateEndpointListener(
         std::move(loopFactory),
         std::move(handleOpsQueueConfig),
         std::move(writeBackCacheConfig),
-        std::move(directoryHandlesStorageConfig));
+        std::move(directoryHandleStorageConfig));
 }
 
 }   // namespace NCloud::NFileStore::NVhost

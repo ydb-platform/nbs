@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-import "cloud/blockstore/config/rdma.proto";
+import "cloud/storage/core/protos/rdma.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/endpoints.proto";
 import "cloud/storage/core/protos/media.proto";
@@ -180,7 +180,7 @@ message TServerConfig
 
     // RDMA client details.
     optional bool RdmaClientEnabled = 65;
-    optional TRdmaClient RdmaClientConfig = 66;
+    optional NCloud.NProto.TRdmaClient RdmaClientConfig = 66;
 
     // Throttling service details.
     optional bool ThrottlingEnabled = 100;
@@ -285,6 +285,9 @@ message TServerConfig
     // Enable WriteZeroes feature for vhost devices. Applies to
     // network-ssd and network-hdd disks.
     optional bool VhostWriteZeroesEnabled = 131;
+
+    // Drop all discard requests without processing them.
+    optional bool DropDiscardRequests = 132;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

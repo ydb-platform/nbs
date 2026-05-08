@@ -55,7 +55,7 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->GetCleanupState().SetStatus(EOperationStatus::Enqueued);
+    State->GetCleanupState().SetStatus(EOperationStatus::Enqueued, ctx.Now());
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCleanupRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
@@ -138,14 +138,18 @@ void TPartitionActor::HandleCleanup(
     if (State->IsMetadataRebuildStarted() &&
         State->GetMetadataRebuildType() == EMetadataRebuildType::BlockCount)
     {
-        State->GetCleanupState().SetStatus(EOperationStatus::Idle);
+        State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "Metadata rebuild is running");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_TRY_AGAIN,
+            "Metadata rebuild is running");
         return;
     }
 
     if (State->IsScanDiskStarted()) {
-        State->GetCleanupState().SetStatus(EOperationStatus::Idle);
+        State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "Scan disk is running");
         return;
@@ -155,11 +159,10 @@ void TPartitionActor::HandleCleanup(
 
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
         commitId,
-        Config->GetMaxBlobsToCleanup()
-    );
+        Config->GetMaxBlobsToCleanup());
 
     if (!cleanupQueue) {
-        State->GetCleanupState().SetStatus(EOperationStatus::Idle);
+        State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to cleanup");
         return;
@@ -173,7 +176,7 @@ void TPartitionActor::HandleCleanup(
         commitId,
         static_cast<ui32>(cleanupQueue.size()));
 
-    State->GetCleanupState().SetStatus(EOperationStatus::Started);
+    State->GetCleanupState().SetStatus(EOperationStatus::Started, ctx.Now());
 
     AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
 
@@ -323,7 +326,7 @@ void TPartitionActor::CompleteCleanup(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     RemoveTransaction(*args.RequestInfo);
 
-    State->GetCleanupState().SetStatus(EOperationStatus::Idle);
+    State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
     // Addition to GarbageQueue is postponed till CompleteCleanup
     // to avoid race between Cleanup and CollectGarbage (see NBS-239)

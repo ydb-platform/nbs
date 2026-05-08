@@ -122,6 +122,7 @@ struct TFsPathHash
 
 struct TValidationContext
 {
+    THashMap<ui64, TFileInfo> NodeId2FileInfo;
     THashSet<TFsPath, TFsPathHash> UnlinkedPaths;
     THashSet<TFsPath, TFsPathHash> StolenPaths;
 };
@@ -139,6 +140,7 @@ private:
 
     TFsPath DirPath;
     TVector<TFileInfo> Files;
+    TVector<TFileInfo> AllFiles;
     TVector<TString> UnlinkedFiles;
     TVector<TString> FailedToUnlinkFiles;
     ui64 FileNo = 0;
@@ -181,6 +183,11 @@ public:
         }
 
         return nullptr;
+    }
+
+    const auto& GetAllFiles() const
+    {
+        return AllFiles;
     }
 
     const auto& GetUnlinkedFiles() const
@@ -290,6 +297,13 @@ private:
             stat.Size,
             content
         });
+
+        AllFiles.push_back({
+            fileName,
+            stat.INode,
+            stat.Size,
+            content
+        });
     }
 
     void DeleteRandomFile()
@@ -388,30 +402,38 @@ public:
             }
         }
 
-        for (const auto& file: StolenFiles) {
+        for (auto& file: StolenFiles) {
             TFsPath filePath = DirPath / file.Name;
 
-            if (NFs::Exists(filePath)) {
-                TFileStat stat(filePath);
-                if (stat.INode != file.Ino) {
-                    STORAGE_ERROR("Inode mismatch for stolen file " << filePath
-                         << " expected: " << file.Ino
-                         << " got: " << stat.INode);
-                    ++errors;
-                }
-                if (stat.Size != file.Size) {
-                    STORAGE_ERROR("Size mismatch for stolen file " << filePath
-                         << " expected: " << file.Size
-                         << " got: " << stat.Size);
-                    ++errors;
-                }
+            TFileStat stat(filePath);
+            if (stat.INode != file.Ino) {
+                STORAGE_ERROR("Inode mismatch for stolen file " << filePath
+                        << " expected: " << file.Ino
+                        << " got: " << stat.INode);
+                ++errors;
+            }
 
-                TString content = TFileInput(filePath).ReadAll();
-                if (content != file.Content) {
-                    STORAGE_ERROR("Content mismatch for stolen file "
-                        << filePath);
-                    ++errors;
-                }
+            const auto* fileInfo = vc.NodeId2FileInfo.FindPtr(file.Ino);
+            if (!fileInfo) {
+                STORAGE_ERROR("Stolen file " << filePath << ", " << file.Ino
+                        << " not found in producer files");
+                ++errors;
+                continue;
+            }
+
+            file = *fileInfo;
+
+            if (stat.Size != file.Size) {
+                STORAGE_ERROR("Size mismatch for stolen file " << filePath
+                        << " expected: " << file.Size
+                        << " got: " << stat.Size);
+                ++errors;
+            }
+
+            TString content = TFileInput(filePath).ReadAll();
+            if (content != file.Content) {
+                STORAGE_ERROR("Content mismatch for stolen file " << filePath);
+                ++errors;
             }
         }
 
@@ -465,13 +487,11 @@ private:
             TFileStat stat(dstPath);
             Stats.Stat.Register(0 /* weight */, timer.Passed());
 
-            TString content = TFileInput(dstPath).ReadAll();
-
             StolenFiles.push_back({
                 newFileName,
                 stat.INode,
-                stat.Size,
-                content
+                0 /* Size */,
+                "" /* Content */,
             });
 
             StolenPaths.push_back(srcPath);
@@ -643,6 +663,10 @@ public:
         // Build validation context
         TValidationContext vc;
         for (const auto& p: ProducerThreads) {
+            for (const auto& fileInfo: p->GetAllFiles()) {
+                vc.NodeId2FileInfo[fileInfo.Ino] = fileInfo;
+            }
+
             for (const auto& fileName: p->GetUnlinkedFiles()) {
                 vc.UnlinkedPaths.insert(p->GetDirPath() / fileName);
             }

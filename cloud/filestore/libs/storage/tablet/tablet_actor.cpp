@@ -27,6 +27,7 @@ const TIndexTabletActor::TStateInfo TIndexTabletActor::States[STATE_MAX] = {
     { "Boot",   (IActor::TReceiveFunc)&TIndexTabletActor::StateBoot   },
     { "Init",   (IActor::TReceiveFunc)&TIndexTabletActor::StateInit   },
     { "Work",   (IActor::TReceiveFunc)&TIndexTabletActor::StateWork   },
+    { "Adapter",(IActor::TReceiveFunc)&TIndexTabletActor::StateAdapter},
     { "Zombie", (IActor::TReceiveFunc)&TIndexTabletActor::StateZombie },
     { "Broken", (IActor::TReceiveFunc)&TIndexTabletActor::StateBroken },
 };
@@ -307,18 +308,24 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
         .CompactionScore = ScaleCompactionThreshold(
             Config->GetCompactionThresholdForBackpressure()),
         .CleanupScore = Config->GetCleanupThresholdForBackpressure(),
+        .CollectGarbage = Config->GetCollectGarbageThresholdForBackpressure(),
     };
 }
 
 TIndexTabletState::TBackpressureValues
 TIndexTabletActor::GetBackpressureValues() const
 {
+    // explicitly checking this because CollectGarbageThresholdForBackpressure
+    // can be really big
+    static_assert(sizeof(GetGarbageQueueSize()) == sizeof(ui64));
+
     return {
         .Flush = GetFreshBlocksCount() * GetBlockSize(),
         .FlushBytes = GetFreshBytesCount(),
         .FlushBytesItemCount = GetFreshBytesItemCount(),
         .CompactionScore = GetRangeToCompact().Score,
         .CleanupScore = GetRangeToCleanup().Score,
+        .CollectGarbage = GetGarbageQueueSize(),
     };
 }
 
@@ -433,6 +440,10 @@ TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
 
 NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
 {
+    if (GetFileSystem().GetIsFastShard()) {
+        return {};
+    }
+
     if (!CompactionStateLoadStatus.Finished) {
         return MakeError(E_REJECTED, "compaction state not loaded yet");
     }
@@ -696,6 +707,9 @@ TBackgroundOpsBackpressureStatus
         .Cleanup = GetBackgroundOpBackpressureStatus(
             bpThresholds.CleanupScore,
             bpValues.CleanupScore),
+        .CollectGarbage = GetBackgroundOpBackpressureStatus(
+            bpThresholds.CollectGarbage,
+            bpValues.CollectGarbage),
     };
 }
 
@@ -1285,6 +1299,88 @@ STFUNC(TIndexTabletActor::StateWork)
 
         // ignoring errors - will resend reassign request after a timeout anyway
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        default:
+            if (!HandleDefaultEvents(ev, SelfId())) {
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
+            }
+            break;
+    }
+}
+
+bool TIndexTabletActor::HandleRequestsByAdapter(STFUNC_SIG)
+{
+    switch (ev->GetTypeRewrite()) {
+        FILESTORE_SERVICE_ADAPTER_REQUESTS(
+            FILESTORE_HANDLE_ADAPTER_REQUEST,
+            TEvService)
+
+        FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTablet)
+        FILESTORE_TABLET_ADAPTER_REQUESTS(
+            FILESTORE_HANDLE_ADAPTER_REQUEST,
+            TEvIndexTablet)
+        FILESTORE_TABLET_ADAPTER_REQUESTS_PRIVATE(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTabletPrivate)
+
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+STFUNC(TIndexTabletActor::StateAdapter)
+{
+    TCPUUsageTimerGuard t(CPUUsageTimer);
+
+    if (GetFileSystem().GetFrozen()) {
+        if (HandleRequestsByFrozenTablet(ev)) {
+            return;
+        }
+
+        if (RejectRequests(ev)) {
+            return;
+        }
+    } else if (HandleRequestsByAdapter(ev)) {
+        return;
+    }
+
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
+        HFunc(TEvIndexTabletPrivate::TEvRunRegularTasks, HandleRunRegularTasks);
+        HFunc(
+            TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters,
+            HandleUpdateLeakyBucketCounters);
+
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
+
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        IgnoreFunc(TEvTabletPipe::TEvServerConnected);
+        HFunc(
+            TEvTabletPipe::TEvServerDisconnected,
+            HandleSessionDisconnectedInWork);
+
+        HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
+        HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
 
         default:
             if (!HandleDefaultEvents(ev, SelfId())) {

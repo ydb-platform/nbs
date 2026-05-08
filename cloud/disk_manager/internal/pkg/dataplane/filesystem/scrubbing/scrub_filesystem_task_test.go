@@ -59,7 +59,7 @@ func newStorage(
 	err := filesystem_snapshot_schema.Create(ctx, storageFolder, db, false)
 	require.NoError(t, err)
 
-	storage := traversal_storage.NewStorage(db, storageFolder)
+	storage := traversal_storage.NewStorage(db, storageFolder, 1000)
 	require.NotNil(t, storage)
 
 	return storage

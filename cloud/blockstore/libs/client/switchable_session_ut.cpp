@@ -189,7 +189,11 @@ struct TTestSession
     ISessionPtr Session;
 };
 
-TTestSession CreateTestSession(const TString& diskId, const TString& sessionId)
+TTestSession CreateTestSession(
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    const TString& diskId,
+    const TString& sessionId)
 {
     //   Session
     //      |
@@ -202,15 +206,11 @@ TTestSession CreateTestSession(const TString& diskId, const TString& sessionId)
     //      v
     //  TTestService
 
-    auto timer = CreateCpuCycleTimer();
-    auto scheduler = CreateScheduler(timer);
     auto logging = CreateLoggingService("console");
     auto config = std::make_shared<TClientAppConfig>();
     auto requestStats = CreateRequestStatsStub();
     auto volumeStats = CreateVolumeStatsStub();
     auto retryPolicy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
-
-    scheduler->Start();
 
     auto client = std::make_shared<TTestService>();
     {
@@ -274,7 +274,7 @@ TTestSession CreateTestSession(const TString& diskId, const TString& sessionId)
     }
 
     return TTestSession{
-        .Scheduler = scheduler,
+        .Scheduler = std::move(scheduler),
         .DataClient = client,
         .SwitchableClient = switchableClient,
         .Session = session};
@@ -288,8 +288,14 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
 {
     Y_UNIT_TEST(ShouldForwardRequestsToPrimaryClient)
     {
-        TTestSession session1 = CreateTestSession("disk-1", "session-1");
-        TTestSession session2 = CreateTestSession("disk-2", "session-2");
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+
+        TTestSession session1 =
+            CreateTestSession(timer, scheduler, "disk-1", "session-1");
+        TTestSession session2 =
+            CreateTestSession(timer, scheduler, "disk-2", "session-2");
 
         auto switchableSession = CreateSwitchableSession(
             CreateLoggingService("console"),
@@ -333,8 +339,14 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
 
     Y_UNIT_TEST(ShouldForwardRequestsToSecondaryClientAfterSwitch)
     {
-        TTestSession session1 = CreateTestSession("disk-1", "session-1");
-        TTestSession session2 = CreateTestSession("disk-2", "session-2");
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+
+        TTestSession session1 =
+            CreateTestSession(timer, scheduler, "disk-1", "session-1");
+        TTestSession session2 =
+            CreateTestSession(timer, scheduler, "disk-2", "session-2");
 
         auto switchableSession = CreateSwitchableSession(
             CreateLoggingService("console"),
@@ -389,8 +401,14 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
 
     Y_UNIT_TEST(ShouldForwardRetriedRequestsToSecondaryClientAfterSwitch)
     {
-        TTestSession session1 = CreateTestSession("disk-1", "session-1");
-        TTestSession session2 = CreateTestSession("disk-2", "session-2");
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+
+        TTestSession session1 =
+            CreateTestSession(timer, scheduler, "disk-1", "session-1");
+        TTestSession session2 =
+            CreateTestSession(timer, scheduler, "disk-2", "session-2");
 
         auto switchableSession = CreateSwitchableSession(
             CreateLoggingService("console"),
@@ -486,9 +504,15 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
     {
         constexpr size_t SwitchCount = 10;
 
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+
         TString oldDiskId = "disk-0";
         TString oldSessionId = "session-0";
-        TTestSession oldSession = CreateTestSession(oldDiskId, oldSessionId);
+
+        TTestSession oldSession =
+            CreateTestSession(timer, scheduler, oldDiskId, oldSessionId);
 
         auto switchableSession = CreateSwitchableSession(
             CreateLoggingService("console"),
@@ -502,7 +526,7 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
             TString newSessionId = "session-" + ToString(i);
 
             TTestSession newSession =
-                CreateTestSession(newDiskId, newSessionId);
+                CreateTestSession(timer, scheduler, newDiskId, newSessionId);
 
             oldSession.SwitchableClient->BeforeSwitching();
             auto drainFuture = switchableSession->SwitchSession(

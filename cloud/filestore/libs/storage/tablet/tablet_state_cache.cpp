@@ -235,8 +235,8 @@ bool TInMemoryIndexState::ReadNodeRef(
 {
     Y_UNUSED(mode, mainFsId);
 
-    auto it = NodeRefs.find(TNodeRefsKey(nodeId, name));
-    if (it == NodeRefs.end()) {
+    auto* v = NodeRefs.FindInIndex(TNodeRefsKey(nodeId, name));
+    if (!v) {
         // If the cache is exhaustive for the node and we did not find the
         // entry, then we are sure that the entry does not exist and we can
         // return true, meaning that cache lookup was successful. But we do not
@@ -244,16 +244,16 @@ bool TInMemoryIndexState::ReadNodeRef(
         return NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId);
     }
 
-    ui64 minCommitId = it->second.CommitId;
+    ui64 minCommitId = v->CommitId;
     ui64 maxCommitId = InvalidCommitId;
 
     if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
         ref = TNodeRef{
             nodeId,
             name,
-            it->second.ChildId,
-            it->second.ShardId,
-            it->second.ShardNodeName,
+            v->ChildId,
+            v->ShardId,
+            v->ShardNodeName,
             minCommitId,
             maxCommitId};
     }
@@ -376,21 +376,21 @@ void TInMemoryIndexState::WriteNodeRef(
     const TString& shardNodeName)
 {
     const auto key = TNodeRefsKey(nodeId, name);
-    auto it = NodeRefs.find(key);
+    auto* v = NodeRefs.FindInIndex(key);
     TNodeRefsRow value{
         .CommitId = commitId,
         .ChildId = childNode,
         .ShardId = shardId,
         .ShardNodeName = shardNodeName};
 
-    if (it == NodeRefs.end()) {
+    if (!v) {
         const auto [_, inserted, evicted] = NodeRefs.emplace(key, value);
         if (evicted) {
             NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(
                 evicted->NodeId);
         }
     } else {
-        it->second = value;
+        *v = value;
     }
 }
 

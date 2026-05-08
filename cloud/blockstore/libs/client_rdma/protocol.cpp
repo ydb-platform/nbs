@@ -1,9 +1,10 @@
 #include "protocol.h"
 
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
+
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <util/generic/singleton.h>
 
@@ -11,9 +12,11 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
+using NCloud::NStorage::NRdma::TProtoMessageSerializer;
+
+TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
 {
-    struct TSerializer : NRdma::TProtoMessageSerializer
+    struct TSerializer: TProtoMessageSerializer
     {
         TSerializer()
         {
@@ -33,7 +36,8 @@ NRdma::TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
             RegisterProto<NProto::TMountVolumeResponse>(MountVolumeResponse);
 
             RegisterProto<NProto::TUnmountVolumeRequest>(UnmountVolumeRequest);
-            RegisterProto<NProto::TUnmountVolumeResponse>(UnmountVolumeResponse);
+            RegisterProto<NProto::TUnmountVolumeResponse>(
+                UnmountVolumeResponse);
         }
     };
 

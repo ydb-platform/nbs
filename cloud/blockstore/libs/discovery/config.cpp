@@ -108,6 +108,11 @@ TDiscoveryConfig::TDiscoveryConfig(NProto::TDiscoveryServiceConfig config)
 {
 }
 
+const NProto::TDiscoveryServiceConfig* TDiscoveryConfig::GetConfig() const
+{
+    return &Config;
+}
+
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TDiscoveryConfig::Get##name() const                                       \
 {                                                                              \

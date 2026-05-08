@@ -154,16 +154,12 @@ struct TTestEnvironment final
     {
 #define SET_HANDLER(name, ...)                                                 \
     Logger->name##LogPostponedRequestHandler = [] (                            \
-        ui64,                                                                  \
-        TCallContext&,                                                         \
         IVolumeInfo*,                                                          \
         const NProto::T##name##Request&,                                       \
         TDuration)                                                             \
     {};                                                                        \
                                                                                \
     Logger->name##LogAdvancedRequestHandler = [] (                             \
-        ui64,                                                                  \
-        TCallContext&,                                                         \
         IVolumeInfo*,                                                          \
         const NProto::T##name##Request&)                                       \
     {};                                                                        \

@@ -1,10 +1,10 @@
 #include "disk_agent_actor.h"
 
 #include <cloud/blockstore/libs/local_nvme/service.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -114,6 +114,8 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                     TABLEH() { out << "Model"; }
                     TABLEH() { out << "PCI"; }
                     TABLEH() { out << "IOMMU group"; }
+                    TABLEH() { out << "VFIO device"; }
+                    TABLEH() { out << "NUMA node"; }
                 }
 
                 for (const auto& d: devices) {
@@ -128,6 +130,16 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                         TABLED () {
                             if (d.HasIOMMUGroup()) {
                                 out << d.GetIOMMUGroup();
+                            }
+                        }
+                        TABLED () {
+                            if (d.HasVfioDevName()) {
+                                out << d.GetVfioDevName();
+                            }
+                        }
+                        TABLED () {
+                            if (d.HasNumaNode()) {
+                                out << d.GetNumaNode();
                             }
                         }
                     }

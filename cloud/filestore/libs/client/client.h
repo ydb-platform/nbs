@@ -14,6 +14,10 @@ IFileStoreServicePtr CreateFileStoreClient(
     TClientConfigPtr config,
     ILoggingServicePtr logging);
 
+IShmControlPtr CreateShmControlClient(
+    TClientConfigPtr config,
+    ILoggingServicePtr logging);
+
 IEndpointManagerPtr CreateEndpointManagerClient(
     TClientConfigPtr config,
     ILoggingServicePtr logging);

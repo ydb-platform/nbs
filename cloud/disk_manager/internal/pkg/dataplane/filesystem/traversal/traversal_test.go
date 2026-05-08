@@ -57,7 +57,7 @@ func newStorage(
 	err := schema.Create(ctx, storageFolder, db, false)
 	require.NoError(t, err)
 
-	storage := storage.NewStorage(db, storageFolder)
+	storage := storage.NewStorage(db, storageFolder, 1000)
 	require.NotNil(t, storage)
 
 	return storage

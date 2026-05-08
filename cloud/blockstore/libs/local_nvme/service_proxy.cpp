@@ -8,6 +8,8 @@ namespace NCloud::NBlockStore {
 
 namespace {
 
+using namespace NThreading;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalNVMeServiceProxy
@@ -41,7 +43,7 @@ public:
     }
 
     template <typename TMethod>
-    NThreading::TFuture<typename TMethod::TResponse> Execute(
+    TFuture<typename TMethod::TResponse> Execute(
         TCallContextPtr ctx,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
@@ -51,7 +53,7 @@ public:
             std::move(request));
     }
 
-    NThreading::TFuture<NProto::TListNVMeDevicesResponse> ListNVMeDevices(
+    TFuture<NProto::TListNVMeDevicesResponse> ListNVMeDevices(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TListNVMeDevicesRequest> request) override
     {
@@ -72,13 +74,19 @@ public:
                     if (src.HasIOMMUGroup()) {
                         dst->SetIOMMUGroup(src.GetIOMMUGroup());
                     }
+                    if (src.HasVfioDevName()) {
+                        dst->SetVfioDevName(src.GetVfioDevName());
+                    }
+                    if (src.HasNumaNode()) {
+                        dst->SetNumaNode(src.GetNumaNode());
+                    }
                 }
 
                 return response;
             });
     }
 
-    NThreading::TFuture<NProto::TAcquireNVMeDeviceResponse> AcquireNVMeDevice(
+    TFuture<NProto::TAcquireNVMeDeviceResponse> AcquireNVMeDevice(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TAcquireNVMeDeviceRequest> request) override
     {
@@ -94,7 +102,7 @@ public:
                 });
     }
 
-    NThreading::TFuture<NProto::TReleaseNVMeDeviceResponse> ReleaseNVMeDevice(
+    TFuture<NProto::TReleaseNVMeDeviceResponse> ReleaseNVMeDevice(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TReleaseNVMeDeviceRequest> request) override
     {

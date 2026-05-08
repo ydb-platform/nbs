@@ -19,6 +19,12 @@ message TNVMeDeviceDesc
 
     // IOMMU group number.
     optional uint32 IOMMUGroup = 3;
+
+    // vfio device name.
+    optional string VfioDevName = 4;
+
+    // NUMA node.
+    optional uint32 NumaNode = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

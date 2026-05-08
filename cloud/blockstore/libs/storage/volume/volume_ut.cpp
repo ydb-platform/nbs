@@ -1,6 +1,7 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
@@ -4477,6 +4478,77 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldExposeRealMaxWriteBandwidthAccordingToWriteCostMultiplier)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetThrottlingEnabled(true);
+        auto runtime = PrepareTestActorRuntime(storageServiceConfig);
+
+        bool receivedSelfCounters = false;
+        ui64 lastRealMaxWriteBandwidth = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient == MakeStorageStatsServiceId() &&
+                    event->GetTypeRewrite() ==
+                        TEvStatsService::EvVolumeSelfCounters)
+                {
+                    auto* msg =
+                        event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                    lastRealMaxWriteBandwidth =
+                        msg->VolumeSelfCounters->Simple.RealMaxWriteBandwidth
+                            .Value;
+                    receivedSelfCounters = true;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TVolumeClient volume(*runtime);
+
+        constexpr ui64 maxWriteBandwidth = 1'000'003;
+        volume.UpdateVolumeConfig(
+            maxWriteBandwidth,
+            100,
+            10,
+            DefaultBlockSize * 5,
+            true,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+        volume.WaitReady();
+
+        auto flushStats = [&]() -> ui64
+        {
+            receivedSelfCounters = false;
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_C(
+                receivedSelfCounters,
+                "Expected TEvVolumeSelfCounters after TEvUpdateCounters");
+            return lastRealMaxWriteBandwidth;
+        };
+
+        // Default write cost multiplier is 1 => RealMax equals configured max.
+        UNIT_ASSERT_VALUES_EQUAL(maxWriteBandwidth, flushStats());
+
+        // Backpressure raises WriteCostMultiplier; counter is MaxWriteBw / m
+        // (truncated toward zero).
+        volume.SendToPipe(volume.CreateBackpressureReport({4, 0, 0, 0}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui64>(static_cast<double>(maxWriteBandwidth) / 4),
+            flushStats());
+
+        // Clearing backpressure restores multiplier 1.
+        volume.SendToPipe(volume.CreateBackpressureReport({0, 0, 0, 0}));
+        UNIT_ASSERT_VALUES_EQUAL(maxWriteBandwidth, flushStats());
+
+        // Multiplier is capped by MaxWriteCostMultiplier (default 10).
+        volume.SendToPipe(volume.CreateBackpressureReport({100, 0, 0, 0}));
+        UNIT_ASSERT_VALUES_EQUAL(maxWriteBandwidth / 10, flushStats());
+    }
+
     Y_UNIT_TEST(ShouldMaintainRequestOrderWhenThrottling)
     {
         TThrottledVolumeTestEnv env(6);
@@ -7762,6 +7834,61 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->Send(
             new IEventHandle(partActorId, sender, new TEvents::TEvPoisonPill()));
         volume.WaitReady();
+    }
+
+    Y_UNIT_TEST(ShouldStartFreshBlocksWriterOnlyForPartitionTablet)
+    {
+        const auto runTest = [](TTabletTypes::EType tabletType)
+        {
+            NProto::TStorageServiceConfig config;
+            config.SetFreshBlocksWriterEnabled(true);
+
+            auto runtime = PrepareTestActorRuntime(config);
+            TVolumeClient volume(*runtime);
+
+            ui32 freshBlocksWriterWaitReadyRequests = 0;
+
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvHiveProxy::EvBootExternalResponse: {
+                            auto* msg = event->Get<
+                                TEvHiveProxy::TEvBootExternalResponse>();
+                            auto* storageInfo = const_cast<TTabletStorageInfo*>(
+                                msg->StorageInfo.Get());
+                            storageInfo->TabletType = tabletType;
+                            break;
+                        }
+                        case NFreshBlocksWriter::TEvFreshBlocksWriter::
+                            EvWaitReadyRequest: {
+                            ++freshBlocksWriterWaitReadyRequests;
+                            break;
+                        }
+                    }
+
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            volume.UpdateVolumeConfig();
+            volume.WaitReady();
+
+            return freshBlocksWriterWaitReadyRequests;
+        };
+
+        {
+            const auto freshWaitReadyRequests =
+                runTest(TTabletTypes::BlockStorePartition);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, freshWaitReadyRequests);
+        }
+
+        {
+            const auto freshWaitReadyRequests =
+                runTest(TTabletTypes::BlockStorePartition2);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, freshWaitReadyRequests);
+        }
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateDiskRegistryPartitionParameters)

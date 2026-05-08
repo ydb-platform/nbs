@@ -12,7 +12,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
@@ -40,6 +39,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
@@ -213,7 +213,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
@@ -476,7 +476,7 @@ public:
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode,
@@ -621,7 +621,7 @@ private:
     TString GetVolumeStatusString(EStatus status) const;
     EStatus GetVolumeStatus() const;
 
-    NRdma::IClientPtr GetRdmaClient() const;
+    NCloud::NStorage::NRdma::IClientPtr GetRdmaClient() const;
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
@@ -707,16 +707,14 @@ private:
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
 
-    void SendStatisticRequests(const NActors::TActorContext& ctx);
+    void SendStatisticRequestsForYDBBasedPartitions(const NActors::TActorContext& ctx);
 
     void SendStatisticRequestForDiskRegistryBasedPartition(
         const NActors::TActorContext& ctx);
 
     void CleanupHistory(
         const NActors::TActorContext& ctx,
-        const NActors::TActorId& sender,
-        ui64 cookie,
-        TCallContextPtr callContext);
+        TRequestInfoPtr requestInfo);
 
     void UpdateDiskRegistryBasedPartCounters(
         const NActors::TActorContext& ctx,
@@ -737,10 +735,10 @@ private:
     TEvStatsService::TVolumeSelfCounters GetVolumeSelfCounters(
         const NActors::TActorContext& ctx);
 
-    void SendStatsToServiceStatisticsCollectorActor(
+    void ReplyToServiceStatisticsCollectorActor(
         const NActors::TActorContext& ctx);
 
-    bool IsFreshBlocksWriterEnabled() const;
+    bool IsFreshBlocksWriterEnabled(ui64 partTabletId) const;
 
 private:
     STFUNC(StateBoot);
@@ -876,16 +874,12 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
+    std::optional<TVolumeDatabase::TPartStats> UpdatePartCounters(
         const NActors::TActorContext& ctx,
         TPartCountersData& partCountersData);
 
     void HandlePartCounters(
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandlePartStatsSaved(
-        const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleScrubberCounters(

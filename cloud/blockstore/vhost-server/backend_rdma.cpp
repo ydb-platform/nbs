@@ -8,8 +8,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/rdma/helper.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -23,6 +22,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -30,6 +30,8 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 using namespace NCloud::NBlockStore;
 using namespace NThreading;
+using NCloud::NStorage::NRdma::IClientPtr;
+using NCloud::NStorage::NRdma::TClientConfig;
 
 namespace {
 
@@ -122,7 +124,7 @@ class TRdmaBackend final: public IBackend
 private:
     const ILoggingServicePtr Logging;
     TLog Log;
-    NRdma::IClientPtr RdmaClient;
+    IClientPtr RdmaClient;
     IStorageProviderPtr StorageProvider;
     IBlockStorePtr DataClient;
     ISchedulerPtr Scheduler;
@@ -184,15 +186,15 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig = std::make_shared<NRdma::TClientConfig>();
+    auto rdmaClientConfig = std::make_shared<TClientConfig>();
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
-    RdmaClient = NRdma::CreateClient(
-        NRdma::NVerbs::CreateVerbs(),
+    auto monitoring = NCloud::CreateMonitoringServiceStub();
+    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
         Logging,
-        NCloud::CreateMonitoringServiceStub(),
+        std::move(monitoring),
         std::move(rdmaClientConfig));
 
     StorageProvider = NStorage::CreateRdmaStorageProvider(

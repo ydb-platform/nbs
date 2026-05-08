@@ -126,11 +126,12 @@ func (m *ClientInterfaceMock) DescribeFileStoreModel(
 func (m *ClientInterfaceMock) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
+	clientID string,
 	checkpointId string,
 	readonly bool,
 ) (nfs_client.Session, error) {
 
-	args := m.Called(ctx, fileSystemID, checkpointId, readonly)
+	args := m.Called(ctx, fileSystemID, clientID, checkpointId, readonly)
 	res, _ := args.Get(0).(nfs_client.Session)
 	return res, args.Error(1)
 }
@@ -201,6 +202,17 @@ func (m *ClientInterfaceMock) UnlinkNode(
 
 	args := m.Called(ctx, session, parentNodeID, name, unlinkDirectory)
 	return args.Error(0)
+}
+
+func (m *ClientInterfaceMock) ExecuteAction(
+	ctx context.Context,
+	action string,
+	input []byte,
+) ([]byte, error) {
+
+	args := m.Called(ctx, action, input)
+	res, _ := args.Get(0).([]byte)
+	return res, args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

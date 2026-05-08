@@ -314,6 +314,8 @@ struct TTestBootstrap
 
     THeaders Headers;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
     static constexpr pid_t DefaultPid = 123;
 
     TTestBootstrap(
@@ -842,7 +844,7 @@ struct TTestBootstrap
 
         UNIT_ASSERT_C(
             SUCCEEDED(response.GetError().GetCode()),
-            DumpMessage(response.GetError()) + "@" + dbg);
+            ProtoMessagePrinter.ToString(response.GetError()) + "@" + dbg);
 
         return response;
     }

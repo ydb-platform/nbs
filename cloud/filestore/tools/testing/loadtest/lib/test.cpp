@@ -3,6 +3,7 @@
 #include "client.h"
 #include "context.h"
 #include "request.h"
+#include "shm_client.h"
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
@@ -252,9 +253,11 @@ private:
     const TString TestTag;
 
     TLoadTestControllerCommandChannel& Controller;
+    const IClientFactoryPtr ClientFactory;
 
     TLog Log;
     IFileStoreServicePtr Client;
+    IShmDataClientPtr ShmClient;
     ISessionPtr Session;
 
     TString FileSystemId;
@@ -304,6 +307,7 @@ public:
         , TestInstanceId(std::move(testInstanceId))
         , TestTag(NLoadTest::MakeTestTag(Config.GetName()))
         , Controller(controller)
+        , ClientFactory(clientFactory)
         , Client(clientFactory->CreateClient())
         , ClientId(Config.GetClientId() ? Config.GetClientId() : "test-client")
     {
@@ -554,14 +558,32 @@ private:
                     FileSystemId,
                     headers);
                 break;
-            case NProto::TLoadTest::kDatashardLikeLoadSpec:
+            case NProto::TLoadTest::kDatashardLikeLoadSpec: {
+                const auto& spec = Config.GetDatashardLikeLoadSpec();
+                if (!spec.GetSharedMemoryBaseDir().empty() &&
+                    !spec.GetSharedMemoryFilePath().empty())
+                {
+                    ShmClient = CreateSharedMemoryClient(
+                        spec.GetSharedMemoryBaseDir(),
+                        spec.GetSharedMemoryFilePath(),
+                        spec.GetSharedMemorySizeBytes(),
+                        Max(static_cast<ui64>(spec.GetReadBytes()),
+                            static_cast<ui64>(spec.GetWriteBytes())),
+                        ClientFactory->CreateShmControl(),
+                        Scheduler,
+                        Timer,
+                        Logging);
+                    ShmClient->Start();
+                }
                 RequestGenerator = CreateDatashardLikeRequestGenerator(
-                    Config.GetDatashardLikeLoadSpec(),
+                    spec,
                     Logging,
                     Session,
+                    ShmClient,
                     FileSystemId,
                     headers);
                 break;
+            }
             default:
                 ythrow yexception()
                     << MakeTestTag()
@@ -742,6 +764,10 @@ private:
             }
         }
 
+        if (ShmClient) {
+            ShmClient->Stop();
+        }
+
         if (Client) {
             Client->Stop();
         }
@@ -823,6 +849,8 @@ private:
     ui64 SessionSeqNo = 0;
 
     IFileStoreServicePtr Client;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TLoadTestController(
@@ -1045,7 +1073,7 @@ public:
 
             STORAGE_INFO("%s create filestore: %s",
                 MakeTestTag().c_str(),
-                DumpMessage(*request).c_str());
+                ProtoMessagePrinter.ToString(*request).c_str());
 
             TCallContextPtr ctx = MakeIntrusive<TCallContext>();
             auto result = Client->CreateFileStore(ctx, request);

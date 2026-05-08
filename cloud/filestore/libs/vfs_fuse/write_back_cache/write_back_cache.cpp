@@ -15,6 +15,8 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/request.h>
 
+#include <atomic>
+
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NThreading;
@@ -65,6 +67,9 @@ private:
 
     IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
+
+    std::atomic<bool> DrainRequested = false;
+    std::atomic<bool> DrainCompleted = false;
 
 public:
     explicit TImpl(TWriteBackCacheArgs args)
@@ -153,6 +158,51 @@ public:
     {
         State.TriggerPeriodicFlushAll();
         ScheduleAutomaticFlushIfNeeded();
+    }
+
+    // Only transition Normal -> Draining -> Drained is possible
+    EWriteBackCacheMode GetMode()
+    {
+        // GetMode may lie in a hot path - we want to avoid unnecessary mutex
+        // acquisition and memory synchronization
+        //
+        // DrainRequested and DrainCompleted don't participate
+        // in data synchronization so relaxed memory ordering can be used
+        //
+        if (!DrainRequested.load(std::memory_order_relaxed)) {
+            return EWriteBackCacheMode::Normal;
+        }
+
+        return IsDrained() ? EWriteBackCacheMode::Drained
+                           : EWriteBackCacheMode::Draining;
+    }
+
+    NThreading::TFuture<NCloud::NProto::TError> Drain()
+    {
+        if (!DrainRequested.exchange(true)) {
+            STORAGE_INFO(LogTag << " Start WriteBackCache draining");
+        }
+
+        State.SetDrainingMode();
+        return State.AddFlushAllRequest();
+    }
+
+    bool IsDrained()
+    {
+        if (DrainCompleted.load(std::memory_order_relaxed)) {
+            return true;
+        }
+
+        // This call acquires mutex
+        if (!State.IsDrained()) {
+            return false;
+        }
+
+        if (!DrainCompleted.exchange(true)) {
+            STORAGE_INFO(LogTag << " Complete WriteBackCache draining");
+        }
+
+        return true;
     }
 
     TFuture<NProto::TReadDataResponse> ReadData(
@@ -324,11 +374,6 @@ public:
             nodeId,
             std::move(executor),
             std::move(callback));
-    }
-
-    bool IsEmpty() const
-    {
-        return !State.HasUnflushedRequests();
     }
 
     ui64 AcquireNodeStateRef()
@@ -543,6 +588,21 @@ TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
 
 TWriteBackCache::~TWriteBackCache() = default;
 
+EWriteBackCacheMode TWriteBackCache::GetMode() const
+{
+    return Impl->GetMode();
+}
+
+NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
+{
+    return Impl->Drain();
+}
+
+bool TWriteBackCache::IsDrained() const
+{
+    return Impl->IsDrained();
+}
+
 TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadData(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadDataRequest> request)
@@ -591,11 +651,6 @@ TFuture<NProto::TSetNodeAttrResponse> TWriteBackCache::SetNodeAttr(
     std::shared_ptr<NProto::TSetNodeAttrRequest> request)
 {
     return Impl->SetNodeAttr(std::move(callContext), std::move(request));
-}
-
-bool TWriteBackCache::IsEmpty() const
-{
-    return Impl->IsEmpty();
 }
 
 ui64 TWriteBackCache::AcquireNodeStateRef()

@@ -17,7 +17,7 @@
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
@@ -386,6 +386,7 @@ public:
     //
     // Commits
     //
+
 public:
 
     ui64 GetLastCommitId() const
@@ -559,7 +560,8 @@ public:
     void WriteMixedBlocks(
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
-        const TVector<ui32>& blockIndices);
+        const TVector<ui32>& blockIndices,
+        ui8 compactionRangeCount);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,
@@ -568,7 +570,7 @@ public:
 
     bool FindMixedBlocksForCompaction(
         TPartitionDatabase& db,
-        IBlocksIndexVisitor& visitor,
+        IMixedBlocksIndexVisitor& visitor,
         ui32 rangeIndex);
 
     void RaiseRangeTemperature(ui32 rangeIndex);
@@ -592,6 +594,8 @@ private:
     const ui32 MaxBlobsPerRange;
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
+    ui64 BlobsProcessedDuringCompaction = 0;
+    ui64 BlockMaskReadDuringCompaction = 0;
 
 public:
     TOperationState& GetCompactionState(ECompactionType type);
@@ -696,6 +700,26 @@ public:
     void SetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
+
+    void IncrementBlobsProcessedDuringCompaction()
+    {
+        ++BlobsProcessedDuringCompaction;
+    }
+
+    void IncrementBlockMaskReadDuringCompaction()
+    {
+        ++BlockMaskReadDuringCompaction;
+    }
+
+    ui64 GetBlobsProcessedDuringCompaction() const
+    {
+        return BlobsProcessedDuringCompaction;
+    }
+
+    ui64 GetBlockMaskReadDuringCompaction() const
+    {
+        return BlockMaskReadDuringCompaction;
+    }
 
 private:
     void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);
@@ -867,6 +891,11 @@ public:
         return CleanupQueue;
     }
 
+    const TCleanupQueue& GetCleanupQueue() const
+    {
+        return CleanupQueue;
+    }
+
     ui32 GetBlobCountToCleanup(ui64 commitId, ui32 maxBlobs) const
     {
         if (commitId < BlobCountToCleanupCommitId
@@ -924,7 +953,7 @@ public:
         return CleanupDelay;
     }
 
-    auto GetCheckpointsInFlight()
+    auto GetCheckpointsInFlight() const
     {
         return ThreadSafeState->GetCheckpointsInFlight();
     }

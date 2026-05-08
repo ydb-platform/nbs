@@ -51,7 +51,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const TString DiskId;
     const ui64 VolumeTabletId;
@@ -93,7 +93,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         TString diskId,
         ui64 volumeTabletId = 0);
@@ -188,7 +188,7 @@ TStartVolumeActor::TStartVolumeActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         TString diskId,
         ui64 volumeTabletId)
@@ -1102,6 +1102,9 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     const TActorContext& ctx)
 {
     const auto& diskId = VolumeInfo->DiskId;
+    CurrentRequest = START_REQUEST;
+    VolumeRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     if (!StartVolumeActor) {
         LOG_DEBUG(
@@ -1110,7 +1113,6 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
             "%s Starting volume locally",
             LogTitle.GetWithTime().c_str());
 
-        CurrentRequest = START_REQUEST;
         StartVolumeActor = NCloud::Register<TStartVolumeActor>(
             ctx,
             SelfId(),
@@ -1138,6 +1140,8 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
             LogTitle.GetWithTime().c_str(),
             FormatError(response->GetError()).c_str());
         NCloud::Reply(ctx, *ev, std::move(response));
+        CurrentRequest = NONE;
+        VolumeRequestInfo = {};
         return;
     }
 
@@ -1179,10 +1183,14 @@ void TVolumeSessionActor::HandleVolumeTabletStatus(
 
     VolumeInfo->SetStarted(msg->TabletId, msg->VolumeInfo, msg->VolumeActor);
 
-    if (MountRequestActor) {
-        auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
-            *VolumeInfo->VolumeInfo);
-        NCloud::Send(ctx, MountRequestActor, std::move(response));
+    if (VolumeRequestInfo && CurrentRequest == START_REQUEST) {
+        auto response =
+            std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
+                *VolumeInfo->VolumeInfo);
+        NCloud::Reply(ctx, *VolumeRequestInfo, std::move(response));
+
+        CurrentRequest = NONE;
+        VolumeRequestInfo = {};
     }
 }
 

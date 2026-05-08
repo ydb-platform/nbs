@@ -1,17 +1,29 @@
 package nfs
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 
+	"github.com/gofrs/uuid"
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getClientID() string {
+	return fmt.Sprintf("disk-manager-%v", uuid.Must(uuid.NewV4()))
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,6 +57,17 @@ func wrapError(err error) error {
 	}
 
 	return err
+}
+
+func isSessionInvalidError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_INVALID_SESSION {
+			return true
+		}
+	}
+
+	return false
 }
 
 func isAbortedError(err error) bool {
@@ -330,24 +353,230 @@ func (c *client) CreateSession(
 	fileSystemID string,
 	checkpointID string,
 	readonly bool,
+) (Session, error) {
+
+	return c.CreateSessionWithClientID(
+		ctx,
+		fileSystemID,
+		getClientID(),
+		checkpointID,
+		readonly,
+	)
+}
+
+func (c *client) CreateSessionWithClientID(
+	ctx context.Context,
+	fileSystemID string,
+	clientID string,
+	checkpointID string,
+	readonly bool,
 ) (_ Session, err error) {
 
 	defer c.metrics.StatRequest("CreateSession")(&err)
 
-	s, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
+	s, err := c.nfs.CreateSession(
+		ctx,
+		fileSystemID,
+		clientID,
+		checkpointID,
+		readonly,
+	)
 	if err != nil {
 		return nil, wrapError(err)
 	}
 
-	return &session{
-		nfs:     c.nfs,
-		session: s,
-		metrics: client_metrics.NewSessionMetrics(
-			c.sessionMetricsRegistry,
-			map[string]string{
-				"filesystem": fileSystemID,
-				"checkpoint": checkpointID,
+	metrics := client_metrics.NewSessionMetrics(
+		c.sessionMetricsRegistry,
+		map[string]string{
+			"filesystem": fileSystemID,
+			"checkpoint": checkpointID,
+		},
+	)
+
+	return NewSessionWithReEstablish(
+		&sessionWithMetrics{
+			nfs:     c.nfs,
+			session: s,
+			metrics: metrics,
+		},
+		c.nfs,
+		fileSystemID,
+		clientID,
+		checkpointID,
+		readonly,
+	), nil
+}
+
+func (c *client) executeAction(
+	ctx context.Context,
+	action string,
+	request proto.Message,
+	response proto.Message,
+) error {
+
+	input, err := new(jsonpb.Marshaler).MarshalToString(request)
+	if err != nil {
+		return errors.NewNonRetriableErrorf(
+			"failed to marshal request: %v",
+			err,
+		)
+	}
+
+	output, err := c.nfs.ExecuteAction(ctx, action, []byte(input))
+	if err != nil {
+		return wrapError(err)
+	}
+
+	err = new(jsonpb.Unmarshaler).Unmarshal(
+		bytes.NewReader(output),
+		response,
+	)
+	if err != nil {
+		return errors.NewNonRetriableErrorf(
+			"failed to unmarshal response: %v",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func checkActionError(errorProto *coreprotos.TError) error {
+	if errorProto != nil && errorProto.Code != 0 {
+		return wrapError(&nfs_client.ClientError{
+			Code:    uint32(errorProto.Code),
+			Message: errorProto.Message,
+		})
+	}
+
+	return nil
+}
+
+func (c *client) UnsafeCreateNode(
+	ctx context.Context,
+	filesystemID string,
+	node Node,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnsafeCreateNode")(&err)
+
+	response := &private_protos.TUnsafeCreateNodeResponse{}
+	err = c.executeAction(
+		ctx,
+		"unsafecreatenode",
+		&private_protos.TUnsafeCreateNodeRequest{
+			FileSystemId: filesystemID,
+			Node: &protos.TNodeAttr{
+				Id:    node.NodeID,
+				Type:  uint32(node.Type),
+				Mode:  node.Mode,
+				Uid:   uint32(node.UID),
+				Gid:   uint32(node.GID),
+				ATime: node.Atime,
+				MTime: node.Mtime,
+				CTime: node.Ctime,
+				Size:  node.Size,
+				Links: node.Links,
+				DevId: node.DevID,
 			},
-		),
-	}, nil
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) UnsafeCreateNodeRef(
+	ctx context.Context,
+	filesystemID string,
+	parentID uint64,
+	name string,
+	childID uint64,
+	shardID string,
+	shardNodeName string,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnsafeCreateNodeRef")(&err)
+
+	response := &private_protos.TUnsafeCreateNodeRefResponse{}
+	err = c.executeAction(
+		ctx,
+		"unsafecreatenoderef",
+		&private_protos.TUnsafeCreateNodeRefRequest{
+			FileSystemId:  filesystemID,
+			ParentId:      parentID,
+			Name:          []byte(name),
+			ChildId:       childID,
+			ShardId:       shardID,
+			ShardNodeName: shardNodeName,
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) ConfigureAsShard(
+	ctx context.Context,
+	filesystemID string,
+	params ConfigureAsShardParams,
+) (err error) {
+
+	defer c.metrics.StatRequest("ConfigureAsShard")(&err)
+
+	response := &private_protos.TConfigureAsShardResponse{}
+	err = c.executeAction(
+		ctx,
+		"configureasshard",
+		&private_protos.TConfigureAsShardRequest{
+			FileSystemId:                           filesystemID,
+			ShardNo:                                params.ShardNo,
+			ShardFileSystemIds:                     params.ShardFileSystemIDs,
+			MainFileSystemId:                       params.MainFileSystemID,
+			DirectoryCreationInShardsEnabled:       params.DirectoryCreationInShardsEnabled,
+			StrictFileSystemSizeEnforcementEnabled: params.StrictFileSystemSizeEnforcementEnabled,
+			ForceDirectoryCreationInShards:         params.ForceDirectoryCreationInShards,
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) ConfigureShards(
+	ctx context.Context,
+	filesystemID string,
+	params ConfigureShardsParams,
+) (err error) {
+
+	defer c.metrics.StatRequest("ConfigureShards")(&err)
+
+	response := &private_protos.TConfigureShardsResponse{}
+	err = c.executeAction(
+		ctx,
+		"configureshards",
+		&private_protos.TConfigureShardsRequest{
+			FileSystemId:                           filesystemID,
+			ShardFileSystemIds:                     params.ShardFileSystemIDs,
+			Force:                                  params.Force,
+			DirectoryCreationInShardsEnabled:       params.DirectoryCreationInShardsEnabled,
+			StrictFileSystemSizeEnforcementEnabled: params.StrictFileSystemSizeEnforcementEnabled,
+			ForceDirectoryCreationInShards:         params.ForceDirectoryCreationInShards,
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
 }

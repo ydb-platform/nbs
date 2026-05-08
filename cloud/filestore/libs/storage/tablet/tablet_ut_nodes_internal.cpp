@@ -343,7 +343,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 uuid2);
             response = tablet.RecvRenameNodeInDestinationResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
+                E_FS_NOTDIR,
                 response->GetStatus(),
                 FormatError(response->GetError()));
         } else {
@@ -357,7 +357,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             tablet.SendRenameNodeRequest(RootNodeId, name2, RootNodeId, name1);
             response = tablet.RecvRenameNodeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
+                E_FS_NOTDIR,
                 response->GetStatus(),
                 FormatError(response->GetError()));
         }
@@ -465,6 +465,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 response->GetStatus(),
                 FormatError(response->GetError()));
         }
+
+        //
+        // AbortUnlink OpLogEntry should be cleaned up.
+        //
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "OpLogEntryCount"},
+                {"filesystem", "test"}
+            }, 0},
+        });
+        // clang-format on
 
         DeleteRef(tablet, dir2, name3);
 
@@ -859,6 +878,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             UNIT_ASSERT_VALUES_EQUAL(shardId2, abortRequest.GetFileSystemId());
         }
 
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "OpLogEntryCount"},
+                {"filesystem", "test"}
+            }, 1},
+        });
+        // clang-format on
+
         //
         // Rebooting - Abort request should be re-sent upon tablet start.
         //
@@ -1070,6 +1104,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             "Expected at least 2 different generations due to tablet reboot, "
             "got "
                 << rebootTracker.GetGenerationCount());
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "ResponseLogEntryCount"},
+                {"filesystem", "test"}
+            }, static_cast<i64>(requestIds.size())},
+        });
+        // clang-format on
 
         UNIT_ASSERT_GT(failures, 0);
     }
@@ -2200,6 +2249,54 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             E_FS_NOENT,
             response->GetStatus(),
             FormatError(response->GetError()));
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldReturnErrorUponFileUnlinkWithUnlinkDirectoryFlag)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        auto nodeOpErrorFromShardCounter = counters->GetCounter(
+            "AppCriticalEvents/ReceivedNodeOpErrorFromShard",
+            true);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        tablet.SendUnlinkNodeRequest(
+            RootNodeId,
+            name1,
+            true /* unlinkDirectory */);
+        auto response = tablet.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOTDIR,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, nodeOpErrorFromShardCounter->Val());
     }
 }
 

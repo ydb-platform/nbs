@@ -2,6 +2,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/random/random.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -79,7 +80,7 @@ TShardBalancerBase::TShardBalancerBase(
     }
 }
 
-void TShardBalancerBase::Update(
+NProto::TError TShardBalancerBase::Update(
     const TVector<TShardStats>& stats,
     std::optional<ui64> desiredFreeSpaceReserve,
     std::optional<ui64> minFreeSpaceReserve)
@@ -91,11 +92,16 @@ void TShardBalancerBase::Update(
         MinFreeSpaceReserve = minFreeSpaceReserve.value();
     }
 
-    Y_ABORT_UNLESS(stats.size() == Metas.size());
+    if (stats.size() != Metas.size()) {
+        return MakeError(E_ARGUMENT, TStringBuilder() << "stats.size() "
+            << stats.size() << " != Metas.size() " << Metas.size());
+    }
+
     for (ui32 i = 0; i < stats.size(); ++i) {
         Metas[i] = TShardMeta(i, stats[i]);
     }
     Sort(Metas.begin(), Metas.end(), TShardMetaComp(PrecisionBytes, BlockSize));
+    return {};
 }
 
 size_t TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
@@ -189,16 +195,21 @@ void TShardBalancerWeightedRandom::UpdateWeightPrefixSums()
     }
 }
 
-void TShardBalancerWeightedRandom::Update(
+NProto::TError TShardBalancerWeightedRandom::Update(
     const TVector<TShardStats>& stats,
     std::optional<ui64> desiredFreeSpaceReserve,
     std::optional<ui64> minFreeSpaceReserve)
 {
-    TShardBalancerBase::Update(
+    auto e = TShardBalancerBase::Update(
         stats,
         desiredFreeSpaceReserve,
         minFreeSpaceReserve);
+    if (HasError(e)) {
+        return e;
+    }
+
     UpdateWeightPrefixSums();
+    return {};
 }
 
 NProto::TError TShardBalancerWeightedRandom::SelectShard(

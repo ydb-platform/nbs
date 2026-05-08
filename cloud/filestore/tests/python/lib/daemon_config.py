@@ -237,6 +237,7 @@ class FilestoreDaemonConfigGenerator:
         config = TDiagnosticsConfig()
 
         config.ProfileLogTimeThreshold = 100
+        config.MetricsUpdateInterval = 100
         config.DumpTracksInterval = 100
         config.SamplingRate = self.__trace_sampling_rate or 10000
         config.SlowRequestSamplingRate = 1000

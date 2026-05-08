@@ -29,7 +29,8 @@ public:
             ui64 from,
             ui64 length,
             TSgList sgList,
-            void* cookie)
+            void* cookie,
+            bool isDiscardRequest)
         : Promise(std::move(promise))
     {
         Type = type;
@@ -37,6 +38,7 @@ public:
         Length = length;
         SgList.SetSgList(std::move(sgList));
         Cookie = cookie;
+        IsDiscardRequest = isDiscardRequest;
     }
 
     void Complete(EResult result) override
@@ -117,7 +119,8 @@ public:
         EBlockStoreRequest type,
         ui64 from,
         ui64 length,
-        TSgList sgList) override
+        TSgList sgList,
+        bool isDiscardRequest = false) override
     {
         auto promise = NewPromise<TVhostRequest::EResult>();
         auto future = promise.GetFuture();
@@ -136,7 +139,8 @@ public:
             from,
             length,
             std::move(sgList),
-            Cookie);
+            Cookie,
+            isDiscardRequest);
         Requests.Enqueue(request.release());
         return future;
     }

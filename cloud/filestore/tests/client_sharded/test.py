@@ -4,6 +4,7 @@ import os
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.common import fetch_counters, filter_counters
 from cloud.filestore.tests.python.lib.fs import (
     FsItem,
     fill_fs,
@@ -345,6 +346,19 @@ def test_force_directory_creation_in_shards():
     with open(results_path, 'a') as results:
         results.write('locks():\n')
         results.write('{}\n'.format(result))
+
+    #
+    # Canonizing some counters.
+    #
+
+    counters = fetch_counters()
+    filtered_counters = filter_counters(
+        counters,
+        "fs0",
+        ["RenameNotSupportedErrorCount"])
+    with open(results_path, 'a') as results:
+        results.write('counters():\n')
+        results.write('{}\n'.format(json.dumps(filtered_counters)))
 
     #
     # Destroying the filesystem - important to do it after querying dirViewer.

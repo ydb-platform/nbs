@@ -334,10 +334,7 @@ message TStorageConfig
     // This numeric value is that x.
     optional uint32 PreferredBlockSizeMultiplier = 354;
 
-    // Enables request forwarding to shards in the StorageServiceActor.
-    // Forwarding is done based on the NodeId and Handle high bits.
-    // Disabling this thing shouldn't really be needed apart from tests.
-    optional bool MultiTabletForwardingEnabled = 355;
+    optional bool MultiTabletForwardingEnabled = 355 [deprecated = true];
 
     // Controls BlobIndexOps' priority over each other.
     optional EBlobIndexOpsPriority BlobIndexOpsPriority = 356;
@@ -527,7 +524,10 @@ message TStorageConfig
     // Enables ShardId selection in Leader for CreateNode and CreateHandle
     // requests. ShardIds selected in Leader have priority over ShardIds
     // selected at the StorageServiceActor level.
-    optional bool ShardIdSelectionInLeaderEnabled = 411;
+    //
+    // Obsolete.
+    // TODO(#5431): remove
+    optional bool ShardIdSelectionInLeaderEnabled = 411 [deprecated = true];
 
     // Shard balancer will prefer shards which have at least this amount of
     // free space in bytes.
@@ -770,7 +770,13 @@ message TStorageConfig
     // number in bytes.
     optional uint64 ShardBalancerPrecisionBytes = 493;
 
+    // Use ListNodesInternal API for internal ListNodes calls.
+    optional bool UseListNodesInternal = 494;
+
+    // Thresholds which enable backpressure - part 2.
+    optional uint64 CollectGarbageThresholdForBackpressure = 495;
+
     // The way we read and write compact ShardId and ShardNodeName from/to
     // NodeRefs table.
-    optional EShardIdCompressionMode ShardIdCompressionMode = 494;
+    optional EShardIdCompressionMode ShardIdCompressionMode = 496;
 }

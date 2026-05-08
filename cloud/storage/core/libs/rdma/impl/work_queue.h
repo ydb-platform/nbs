@@ -1,0 +1,139 @@
+#pragma once
+
+#include "public.h"
+
+#include <rdma/rdma_verbs.h>
+
+#include <util/generic/utility.h>
+#include <util/stream/output.h>
+#include <util/stream/printf.h>
+
+namespace NCloud::NStorage::NRdma {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr size_t RDMA_MAX_SEND_SGE = 1;
+constexpr size_t RDMA_MAX_RECV_SGE = 1;
+
+////////////////////////////////////////////////////////////////////////////////
+
+union TWorkRequestId
+{
+    ui64 Id;
+
+    struct {
+        ui32 Magic;
+        ui16 Generation;
+        ui16 Index;
+    };
+
+    TWorkRequestId(ui64 id)
+        : Id(id)
+    {}
+
+    TWorkRequestId(ui32 magic, ui16 generation, ui16 index)
+        : Magic(magic)
+        , Generation(generation)
+        , Index(index)
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline IOutputStream& operator<<(IOutputStream& out, const TWorkRequestId& id)
+{
+    Printf(out, "%08X.%X.%X", id.Magic, id.Generation, id.Index);
+    return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename M>
+struct TSendWrBase
+{
+    ibv_send_wr wr;
+    ibv_sge sg_list[RDMA_MAX_SEND_SGE];
+
+    void* context;
+
+    TSendWrBase()
+    {
+        Zero(*this);
+    }
+
+    M* Message()
+    {
+        return reinterpret_cast<M*>(wr.sg_list[0].addr);
+    }
+
+    template <typename C>
+    C Context()
+    {
+        return reinterpret_cast<C>(context);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename M>
+struct TRecvWrBase
+{
+    ibv_recv_wr wr;
+    ibv_sge sg_list[RDMA_MAX_RECV_SGE];
+
+    void* context;
+
+    TRecvWrBase()
+    {
+        Zero(*this);
+    }
+
+    M* Message()
+    {
+        return reinterpret_cast<M*>(wr.sg_list[0].addr);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+class TWorkQueue
+{
+private:
+    T* Head = nullptr;
+    size_t Size_ = 0;
+
+public:
+    void Push(T* wr)
+    {
+        Y_DEBUG_ABORT_UNLESS(wr);
+        wr->wr.next = Head ? &Head->wr : nullptr;
+        wr->context = nullptr;
+        Head = wr;
+        Size_++;
+    }
+
+    T* Pop()
+    {
+        auto* wr = Head;
+        if (wr) {
+            Head = reinterpret_cast<T*>(wr->wr.next);
+            wr->wr.next = nullptr;
+            Size_--;
+        }
+        return wr;
+    }
+
+    void Clear()
+    {
+        Head = nullptr;
+        Size_ = 0;
+    }
+
+    size_t Size() const
+    {
+        return Size_;
+    }
+};
+
+}   // namespace NCloud::NStorage::NRdma

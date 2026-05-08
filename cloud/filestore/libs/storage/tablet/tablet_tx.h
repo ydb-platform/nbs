@@ -20,6 +20,7 @@
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -507,12 +508,15 @@ struct TTxIndexTablet
     struct TConfigureAsShard: TTxIndexTabletBase
     {
         const TRequestInfoPtr RequestInfo;
+        const bool IsFastShard;
         NProtoPrivate::TConfigureAsShardRequest Request;
 
         TConfigureAsShard(
                 TRequestInfoPtr requestInfo,
+                bool isFastShard,
                 NProtoPrivate::TConfigureAsShardRequest request)
             : RequestInfo(std::move(requestInfo))
+            , IsFastShard(isFastShard)
             , Request(std::move(request))
         {}
 
@@ -1473,6 +1477,7 @@ struct TTxIndexTablet
         const TString Cookie;
         const ui32 MaxBytes;
         const ui32 MaxBytesMultiplier;
+        const bool ReplyInternal;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
@@ -1487,7 +1492,8 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 const NProto::TListNodesRequest& request,
                 ui32 maxBytes,
-                ui32 maxBytesMultiplier)
+                ui32 maxBytesMultiplier,
+                bool replyInternal)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1495,6 +1501,7 @@ struct TTxIndexTablet
             , Cookie(request.GetCookie())
             , MaxBytes(maxBytes)
             , MaxBytesMultiplier(maxBytesMultiplier)
+            , ReplyInternal(replyInternal)
             , BytesToPrecharge(MaxBytes)
         {}
 

@@ -143,6 +143,12 @@ TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> CreateSubRequests(
             srcSgList,
             (subRange.Start - request->GetStartIndex()) * request->BlockSize,
             subRange.Size() * request->BlockSize);
+
+        if (request->ChecksumsSize() > 0) {
+            subRequest->MutableChecksums()->Clear();
+            subRequest->MutableChecksums()->Add(CalculateChecksum(subSgList));
+        }
+
         subRequest->Sglist =
             request->Sglist.CreateDepender(std::move(subSgList));
 

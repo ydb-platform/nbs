@@ -73,6 +73,7 @@ struct TIndexTabletState::TImpl
     TSet<ui64> OrphanNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
     THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
+    THashSet<ui64> OpLogEntryIds;
     THashMap<
         TInternalRequestId,
         NProtoPrivate::TResponseLogEntry,
@@ -86,6 +87,7 @@ struct TIndexTabletState::TImpl
     TThrottlingPolicy ThrottlingPolicy;
 
     IShardBalancerPtr ShardBalancer;
+    IShardBalancerPtr FileShardBalancer;
 
     explicit TImpl(const TFileStoreAllocRegistry& registry)
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))

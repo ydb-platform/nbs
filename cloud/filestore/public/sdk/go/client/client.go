@@ -37,6 +37,7 @@ type Session struct {
 	SessionSeqNo uint64
 	FileSystemID string
 	CheckpointId string
+	ClientID     string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,6 +85,48 @@ type Node struct {
 	ShardFileSystemID string
 	ShardNodeName     string
 	DevID             uint64
+}
+
+func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
+	// On the filestore side, symlinks are represented as links
+	// and links are regular files with Links >= 2.
+	nodeType := NodeType(attr.GetType())
+	if nodeType == NODE_KIND_LINK {
+		nodeType = NODE_KIND_SYMLINK
+	}
+
+	return Node{
+		ParentID:          parentID,
+		NodeID:            attr.GetId(),
+		Name:              name,
+		Atime:             attr.GetATime(),
+		Mtime:             attr.GetMTime(),
+		Ctime:             attr.GetCTime(),
+		Size:              attr.GetSize(),
+		Mode:              attr.GetMode(),
+		UID:               uint64(attr.GetUid()),
+		GID:               uint64(attr.GetGid()),
+		Links:             attr.GetLinks(),
+		Type:              nodeType,
+		ShardFileSystemID: string(attr.GetShardFileSystemId()),
+		ShardNodeName:     string(attr.GetShardNodeName()),
+		DevID:             attr.GetDevId(),
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func headersForSession(session Session) *protos.THeaders {
+	headers := &protos.THeaders{
+		SessionSeqNo: session.SessionSeqNo,
+		SessionId:    []byte(session.SessionID),
+	}
+
+	if session.ClientID != "" {
+		headers.ClientId = []byte(session.ClientID)
+	}
+
+	return headers
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -231,10 +274,7 @@ func (client *Client) CreateCheckpoint(
 ) error {
 	req := &protos.TCreateCheckpointRequest{
 		FileSystemId: fileSystemID,
-		Headers: &protos.THeaders{
-			SessionSeqNo: session.SessionSeqNo,
-			SessionId:    []byte(session.SessionID),
-		},
+		Headers:      headersForSession(session),
 	}
 
 	if opts != nil {
@@ -284,6 +324,7 @@ func (client *Client) DescribeFileStoreModel(
 func (client *Client) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
+	clientID string,
 	checkpointId string,
 	readonly bool,
 ) (Session, error) {
@@ -292,7 +333,12 @@ func (client *Client) CreateSession(
 		FileSystemId:         fileSystemID,
 		ReadOnly:             readonly,
 		CheckpointId:         checkpointId,
-		RestoreClientSession: false,
+		RestoreClientSession: true,
+	}
+	if clientID != "" {
+		req.Headers = &protos.THeaders{
+			ClientId: []byte(clientID),
+		}
 	}
 	resp, err := client.Impl.CreateSession(ctx, req)
 	if err != nil {
@@ -305,6 +351,7 @@ func (client *Client) CreateSession(
 		SessionSeqNo: session.GetSessionSeqNo(),
 		FileSystemID: fileSystemID,
 		CheckpointId: checkpointId,
+		ClientID:     clientID,
 	}, nil
 }
 
@@ -315,10 +362,7 @@ func (client *Client) DestroySession(
 
 	req := &protos.TDestroySessionRequest{
 		FileSystemId: session.FileSystemID,
-		Headers: &protos.THeaders{
-			SessionSeqNo: session.SessionSeqNo,
-			SessionId:    []byte(session.SessionID),
-		},
+		Headers:      headersForSession(session),
 	}
 	_, err := client.Impl.DestroySession(ctx, req)
 	return err
@@ -337,12 +381,9 @@ func (client *Client) ListNodes(
 		FileSystemId: session.FileSystemID,
 		NodeId:       nodeID,
 		Cookie:       []byte(cookie),
-		Headers: &protos.THeaders{
-			SessionSeqNo: session.SessionSeqNo,
-			SessionId:    []byte(session.SessionID),
-		},
-		MaxBytes: maxBytes,
-		Unsafe:   unsafe,
+		Headers:      headersForSession(session),
+		MaxBytes:     maxBytes,
+		Unsafe:       unsafe,
 	}
 	resp, err := client.Impl.ListNodes(ctx, req)
 	if err != nil {
@@ -360,30 +401,7 @@ func (client *Client) ListNodes(
 	nodes := resp.GetNodes()
 	result := make([]Node, len(nodes))
 	for idx, name := range resp.GetNames() {
-		// On the filestore side, symlinks are represented as links
-		// and links are regular files with Links >= 2.
-		nodeType := NodeType(nodes[idx].GetType())
-		if nodeType == NODE_KIND_LINK {
-			nodeType = NODE_KIND_SYMLINK
-		}
-
-		result[idx] = Node{
-			ParentID:          nodeID,
-			NodeID:            nodes[idx].GetId(),
-			Name:              string(name),
-			Atime:             nodes[idx].GetATime(),
-			Mtime:             nodes[idx].GetMTime(),
-			Ctime:             nodes[idx].GetCTime(),
-			Size:              nodes[idx].GetSize(),
-			Mode:              nodes[idx].GetMode(),
-			UID:               uint64(nodes[idx].GetUid()),
-			GID:               uint64(nodes[idx].GetGid()),
-			Links:             nodes[idx].GetLinks(),
-			Type:              nodeType,
-			ShardFileSystemID: nodes[idx].GetShardFileSystemId(),
-			ShardNodeName:     nodes[idx].GetShardNodeName(),
-			DevID:             nodes[idx].GetDevId(),
-		}
+		result[idx] = nodeFromAttr(nodeID, string(name), nodes[idx])
 	}
 
 	return result, string(resp.GetCookie()), nil
@@ -401,10 +419,7 @@ func (client *Client) CreateNode(
 		FileSystemId: session.FileSystemID,
 		Uid:          node.UID,
 		Gid:          node.GID,
-		Headers: &protos.THeaders{
-			SessionSeqNo: session.SessionSeqNo,
-			SessionId:    []byte(session.SessionID),
-		},
+		Headers:      headersForSession(session),
 	}
 
 	switch node.Type {
@@ -484,10 +499,7 @@ func (client *Client) ReadLink(
 	req := &protos.TReadLinkRequest{
 		NodeId:       nodeID,
 		FileSystemId: session.FileSystemID,
-		Headers: &protos.THeaders{
-			SessionSeqNo: session.SessionSeqNo,
-			SessionId:    []byte(session.SessionID),
-		},
+		Headers:      headersForSession(session),
 	}
 
 	resp, err := client.Impl.ReadLink(ctx, req)
@@ -509,10 +521,7 @@ func (client *Client) GetNodeAttr(
 		FileSystemId: session.FileSystemID,
 		NodeId:       parentNodeID,
 		Name:         []byte(name),
-		Headers: &protos.THeaders{
-			SessionSeqNo: session.SessionSeqNo,
-			SessionId:    []byte(session.SessionID),
-		},
+		Headers:      headersForSession(session),
 	}
 
 	resp, err := client.Impl.GetNodeAttr(ctx, req)
@@ -520,22 +529,7 @@ func (client *Client) GetNodeAttr(
 		return Node{}, err
 	}
 
-	attr := resp.GetNode()
-	return Node{
-		ParentID: parentNodeID,
-		NodeID:   attr.GetId(),
-		Name:     name,
-		Atime:    attr.GetATime(),
-		Mtime:    attr.GetMTime(),
-		Ctime:    attr.GetCTime(),
-		Size:     attr.GetSize(),
-		Mode:     attr.GetMode(),
-		UID:      uint64(attr.GetUid()),
-		GID:      uint64(attr.GetGid()),
-		Links:    attr.GetLinks(),
-		Type:     NodeType(attr.GetType()),
-		DevID:    attr.GetDevId(),
-	}, nil
+	return nodeFromAttr(parentNodeID, name, resp.GetNode()), nil
 }
 
 func (client *Client) UnlinkNode(
@@ -551,14 +545,29 @@ func (client *Client) UnlinkNode(
 		NodeId:          parentNodeID,
 		Name:            []byte(name),
 		UnlinkDirectory: unlinkDirectory,
-		Headers: &protos.THeaders{
-			SessionSeqNo: session.SessionSeqNo,
-			SessionId:    []byte(session.SessionID),
-		},
+		Headers:         headersForSession(session),
 	}
 
 	_, err := client.Impl.UnlinkNode(ctx, req)
 	return err
+}
+
+func (client *Client) ExecuteAction(
+	ctx context.Context,
+	action string,
+	input []byte,
+) ([]byte, error) {
+
+	req := &protos.TExecuteActionRequest{
+		Action: action,
+		Input:  input,
+	}
+	resp, err := client.Impl.ExecuteAction(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetOutput(), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

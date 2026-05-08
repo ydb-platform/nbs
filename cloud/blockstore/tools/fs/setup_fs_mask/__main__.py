@@ -50,7 +50,7 @@ def parse_volume_info(stream):
     return info
 
 
-def mount_volume(disk_id, path, iam_token_file, mount_delay):
+def mount_volume(disk_id, path, mount_delay):
     logging.info(f'mount volume {disk_id} to {path} ...')
 
     args = [
@@ -64,12 +64,6 @@ def mount_volume(disk_id, path, iam_token_file, mount_delay):
         '--listen-path', f"/var/tmp/{disk_id}.nbd.socket",
         '--access-mode', 'ro'
     ]
-
-    if iam_token_file:
-        args += [
-            "--secure-port", "9768",
-            "--iam-token-file", iam_token_file
-        ]
 
     nbd = Popen(args, stderr=PIPE, text=True)
 
@@ -98,11 +92,10 @@ def mount_volume(disk_id, path, iam_token_file, mount_delay):
 
 class MountedVolume:
 
-    def __init__(self, disk_id, path, iam_token_file, delay_ms):
+    def __init__(self, disk_id, path, delay_ms):
         self.__disk_id = disk_id
         self.__path = path
         self.__process = None
-        self.__iam_token_file = iam_token_file
         self.__delay = delay_ms / 1000.0
 
     @property
@@ -113,7 +106,6 @@ class MountedVolume:
         self.__process = mount_volume(
             self.__disk_id,
             self.__path,
-            self.__iam_token_file,
             self.__delay)
 
         return self
@@ -189,9 +181,6 @@ class LoopDev:
 
 class NbsCli:
 
-    def __init__(self, iam_token_file):
-        self.__iam_token_file = iam_token_file
-
     def execute_action(self, action_name, input_bytes):
         logging.info(f'execute action {action_name} with {input_bytes}')
 
@@ -201,12 +190,6 @@ class NbsCli:
             '--verbose', 'error',
             '--input-bytes', json.dumps(input_bytes, separators=(',', ':')),
         ]
-
-        if self.__iam_token_file:
-            args += [
-                "--secure-port", "9768",
-                "--iam-token-file", self.__iam_token_file
-            ]
 
         run(args, check=True, text=True, stdout=sys.stdout, stderr=sys.stdout)
 
@@ -218,12 +201,6 @@ class NbsCli:
             '--disk-id', disk_id,
             '--verbose', 'error'
         ]
-
-        if self.__iam_token_file:
-            args += [
-                "--secure-port", "9768",
-                "--iam-token-file", self.__iam_token_file
-            ]
 
         p = run(args, check=True, text=True, stdout=PIPE, stderr=sys.stdout)
 
@@ -314,7 +291,7 @@ def generate_used_blocks(path):
 
 
 def reset_masks(args):
-    cli = NbsCli(args.iam_token_file)
+    cli = NbsCli()
 
     cli.disable_mask_unused_blocks(args.disk_id)
     cli.enable_track_used_blocks(args.disk_id)
@@ -380,7 +357,6 @@ def main():
 
     parser.add_argument("--device", type=str, default='/dev/nbd0', help='mount point for disk')
     parser.add_argument("--output-dir", type=str, default='./dumps', help='output folder')
-    parser.add_argument("--iam-token-file", type=str, help='IAM token file')
     parser.add_argument("--mask-unused", help="set 'mask-unused' tag", action='store_true', default=False)
     parser.add_argument("--always-track", help="alway set track-used flag", action='store_true', default=False)
     parser.add_argument("--reset-masks", help="remove used blocks mask from disk and 'mask-unused' 'track-used' tags", action='store_true', default=False)
@@ -400,7 +376,7 @@ def main():
 
     output_dir = os.path.join(args.output_dir, args.disk_id)
 
-    cli = NbsCli(args.iam_token_file)
+    cli = NbsCli()
 
     descr = cli.describe_volume(args.disk_id)
 
@@ -408,7 +384,7 @@ def main():
     cli.enable_read_only_mode(args.disk_id)
 
     try:
-        with MountedVolume(args.disk_id, args.device, args.iam_token_file, args.mount_delay_ms) as nbd:
+        with MountedVolume(args.disk_id, args.device, args.mount_delay_ms) as nbd:
             if args.device_offset:
                 with LoopDev(nbd.path, args.device_offset) as loop_dev:
                     dump_disk_info(loop_dev.path, descr["bs"], output_dir)

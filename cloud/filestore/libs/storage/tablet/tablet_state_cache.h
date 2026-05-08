@@ -305,6 +305,7 @@ private:
     NCloud::TLRUCache<
         TNodeRefsKey,
         TNodeRefsRow,
+        true /* UseIndexLookup */,
         TNodeRefsKeyHash,
         TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>>
         NodeRefs;

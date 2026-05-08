@@ -1,6 +1,6 @@
 [
     {
-        "ShardFileSystemId": "fs0_s2",
+        "ShardFileSystemId": "fs0_s3",
         "Name": ".something"
     },
     {
@@ -15,15 +15,15 @@
         "Name": "a1"
     },
     {
-        "ShardFileSystemId": "fs0_s3",
+        "ShardFileSystemId": "fs0_s1",
         "Name": "another.something"
     },
     {
-        "ShardFileSystemId": "fs0_s1",
+        "ShardFileSystemId": "fs0_s3",
         "Name": "f18.txt"
     },
     {
-        "ShardFileSystemId": "fs0_s1",
+        "ShardFileSystemId": "fs0_s2",
         "Name": "file.txt"
     }
 ][
@@ -32,42 +32,42 @@
         "Links": 1,
         "Name": "b1",
         "Mode": 511,
-        "Id": 72057594037927950
+        "Id": 72057594037927943
     },
     {
         "Type": 2,
         "Links": 1,
         "Name": "b2",
         "Mode": 511,
-        "Id": 144115188075855874
+        "Id": 144115188075855878
     },
     {
         "Type": 2,
         "Links": 1,
         "Name": "b3",
         "Mode": 511,
-        "Id": 216172782113783810
+        "Id": 72057594037927947
     },
     {
         "Type": 2,
         "Links": 1,
         "Name": "b5",
         "Mode": 511,
-        "Id": 72057594037927960
+        "Id": 144115188075855883
     },
     {
         "Type": 2,
         "Links": 1,
         "Name": "b6",
         "Mode": 511,
-        "Id": 72057594037927962
+        "Id": 72057594037927949
     }
 ]dirViewer(1):
 [
     {
         "name": ".something",
         "node": {
-            "shardId": "fs0_s2",
+            "shardId": "fs0_s3",
             "type": 1,
             "size": 0,
             "mode": 420
@@ -94,7 +94,7 @@
     {
         "name": "another.something",
         "node": {
-            "shardId": "fs0_s3",
+            "shardId": "fs0_s1",
             "type": 1,
             "size": 0,
             "mode": 420
@@ -103,7 +103,7 @@
     {
         "name": "f18.txt",
         "node": {
-            "shardId": "fs0_s1",
+            "shardId": "fs0_s3",
             "type": 1,
             "size": 62,
             "mode": 0
@@ -112,7 +112,7 @@
     {
         "name": "file.txt",
         "node": {
-            "shardId": "fs0_s1",
+            "shardId": "fs0_s2",
             "type": 1,
             "size": 0,
             "mode": 420
@@ -123,3 +123,5 @@ locks():
 {
     "locks": []
 }
+counters():
+[{"kind": "RATE", "labels": {"component": "storage_fs", "host": "cluster", "filesystem": "fs0", "cloud": "test_cloud", "folder": "test_folder", "sensor": "RenameNotSupportedErrorCount"}, "value": 1}]

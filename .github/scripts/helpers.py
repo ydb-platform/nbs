@@ -4,10 +4,11 @@ import json
 import logging
 import argparse
 import requests
+import re
 from dataclasses import dataclass
 import datetime
 from typing import List, Tuple
-
+from urllib.parse import urlparse
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -110,26 +111,91 @@ class MaskingFormatter(logging.Formatter):
         return self.mask_sensitive_data(original)
 
 
-def setup_logger(loglevel=logging.INFO):
-    formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(loglevel)
-    console_handler.setFormatter(formatter)
-
-    logger = logging.getLogger()
+def setup_logger(
+    loglevel=logging.INFO,
+    name: str | None = None,
+    fmt: str = "%(asctime)s: %(levelname)s: %(message)s",
+):
+    formatter = MaskingFormatter(fmt)
+    logger = logging.getLogger(name)
     logger.setLevel(loglevel)
-    logger.addHandler(console_handler)
+    logger.propagate = False
+
+    if not logger.handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(loglevel)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    else:
+        for handler in logger.handlers:
+            handler.setLevel(loglevel)
+            handler.setFormatter(formatter)
+
     return logger
+
+
+def set_logging_level(
+    verbosity: int, fmt: str = "%(asctime)s - %(levelname)s - %(message)s"
+):
+    level = max(10, 40 - 10 * verbosity)
+    return setup_logger(level, fmt=fmt)
+
+
+def write_to_file_from_env(
+    logger: logging.Logger,
+    key: str,
+    value: str,
+    env_var: str,
+    is_secret: bool = False,
+):
+    output_path = os.environ.get(env_var)
+    if output_path:
+        with open(output_path, "a") as fp:
+            fp.write(f"{key}={value}\n")
+    logger.info(
+        'echo "%s=%s" >> $%s',
+        key,
+        "******" if is_secret else value,
+        env_var,
+    )
 
 
 def github_output(
     logger: logging.Logger, key: str, value: str, is_secret: bool = False
 ):
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if output_path:
-        with open(output_path, "a") as fp:
-            fp.write(f"{key}={value}\n")
-    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if is_secret else value)
+    write_to_file_from_env(logger, key, value, "GITHUB_OUTPUT", is_secret)
+
+
+def github_env(logger: logging.Logger, key: str, value: str, is_secret: bool = False):
+    write_to_file_from_env(logger, key, value, "GITHUB_ENV", is_secret)
+
+
+def ttl_to_days(ttl_str: str) -> int:
+    seconds = ttl_to_seconds(ttl_str)
+    return max(1, (seconds + 86399) // 86400)
+
+
+def ttl_to_seconds(ttl_str: str) -> int:
+    pattern = (
+        r"((?P<days>\d+)d)?((?P<hours>\d+)h)?((?P<minutes>\d+)m)?((?P<seconds>\d+)s)?"
+    )
+    matches = re.match(pattern, ttl_str)
+    time_parts = {
+        name: int(value) for name, value in matches.groupdict(default="0").items()
+    }
+    return (
+        time_parts["days"] * 86400  # noqa: W503
+        + time_parts["hours"] * 3600  # noqa: W503
+        + time_parts["minutes"] * 60  # noqa: W503
+        + time_parts["seconds"]  # noqa: W503
+    )
+
+
+def parse_s3_path(s3_path: str) -> tuple[str, str]:
+    parsed_url = urlparse(s3_path)
+    if parsed_url.scheme != "s3" or not parsed_url.netloc:
+        raise ValueError("URL must be an S3 URL (s3://bucket[/prefix])")
+    return parsed_url.netloc, parsed_url.path.lstrip("/")
 
 
 def convert_size(size_bytes):

@@ -18,28 +18,40 @@ struct TMixedBlock
     ui64 CommitId;
     ui32 BlockIndex;
     ui16 BlobOffset;
+    ui8 CompactionRangeCount;
 
     TMixedBlock(
             TPartialBlobId blobId,
             ui64 commitId,
             ui32 blockIndex,
-            ui16 blobOffset)
-       : BlobId(blobId)
-       , CommitId(commitId)
-       , BlockIndex(blockIndex)
-       , BlobOffset(blobOffset)
+            ui16 blobOffset,
+            ui8 compactionRangeCount)
+        : BlobId(blobId)
+        , CommitId(commitId)
+        , BlockIndex(blockIndex)
+        , BlobOffset(blobOffset)
+        , CompactionRangeCount(compactionRangeCount)
     {}
 
     bool operator==(const TMixedBlock& other) const
     {
-        return BlockIndex == other.BlockIndex
-            && CommitId == other.CommitId
-            && BlobId == other.BlobId
-            && BlobOffset == other.BlobOffset;
+        return BlockIndex == other.BlockIndex && CommitId == other.CommitId &&
+               BlobId == other.BlobId && BlobOffset == other.BlobOffset &&
+               CompactionRangeCount ==
+                   other.CompactionRangeCount;
     }
 };
 
 static_assert(sizeof(TMixedBlock) == 32);
+
+// BlobOffset and CompactionRangeCount are stored in a single 32-bit
+// integer in the local database.
+static_assert(sizeof(TMixedBlock::BlobOffset) == 2);
+static_assert(sizeof(TMixedBlock::CompactionRangeCount) == 1);
+static_assert(
+    sizeof(TMixedBlock::CompactionRangeCount) +
+        sizeof(TMixedBlock::BlobOffset) <=
+    4);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -83,7 +95,7 @@ public:
     void InsertBlockIfHot(ui32 rangeIdx, TMixedBlock block);
     void EraseBlockIfHot(ui32 rangeIndex, TBlockKey key);
 
-    bool VisitBlocksIfHot(ui32 rangeIdx, IBlocksIndexVisitor& visitor);
+    bool VisitBlocksIfHot(ui32 rangeIdx, IMixedBlocksIndexVisitor& visitor);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

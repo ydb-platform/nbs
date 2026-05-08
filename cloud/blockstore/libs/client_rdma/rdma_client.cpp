@@ -2,9 +2,6 @@
 
 #include "protocol.h"
 
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -15,6 +12,9 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/buffer.h>
@@ -24,6 +24,7 @@
 namespace NCloud::NBlockStore::NClient {
 
 using namespace NThreading;
+using namespace NCloud::NStorage;
 
 namespace {
 
@@ -105,7 +106,8 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TReadBlocksHandler(
@@ -237,7 +239,8 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TWriteBlocksHandler(
@@ -351,7 +354,8 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TZeroBlocksHandler(
@@ -480,7 +484,8 @@ private:
     const ITraceSerializerPtr TraceSerializer;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TProtoMessageHandler(
@@ -816,13 +821,12 @@ IBlockStorePtr CreateRdmaEndpointClient(
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
-    auto endpoint =
-        TRdmaEndpoint::Create(
-            std::move(logging),
-            std::move(volumeClient),
-            std::move(traceSerializer),
-            std::move(taskQueue),
-            client->IsAlignedDataEnabled());
+    auto endpoint = TRdmaEndpoint::Create(
+        std::move(logging),
+        std::move(volumeClient),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
 
     auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
 
@@ -830,7 +834,8 @@ IBlockStorePtr CreateRdmaEndpointClient(
     return endpoint;
 }
 
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
+NThreading::TFuture<TResultOrError<IBlockStorePtr>>
+CreateRdmaEndpointClientAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
@@ -838,13 +843,12 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
-    auto endpoint =
-        TRdmaEndpoint::Create(
-            std::move(logging),
-            std::move(volumeClient),
-            std::move(traceSerializer),
-            std::move(taskQueue),
-            client->IsAlignedDataEnabled());
+    auto endpoint = TRdmaEndpoint::Create(
+        std::move(logging),
+        std::move(volumeClient),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
 
     auto future = client->StartEndpoint(config.Address, config.Port);
     return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {

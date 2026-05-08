@@ -76,7 +76,7 @@ bool TIndexTabletActor::AcceptRequestNoSession(
         "%s %s: %s",
         LogTag.c_str(),
         TMethod::Name,
-        DumpMessage(request).c_str());
+        ProtoMessagePrinter.ToString(request).c_str());
 
     NProto::TError error;
     if (validator) {
@@ -166,6 +166,7 @@ FILESTORE_GENERATE_IMPL(GetNodeAttrBatch, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(RenameNodeInDestination, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(PrepareUnlinkDirectoryNodeInShard, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(AbortUnlinkDirectoryNodeInShard, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(ListNodesInternal, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL
 

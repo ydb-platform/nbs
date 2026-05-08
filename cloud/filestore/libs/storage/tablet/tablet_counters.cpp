@@ -163,6 +163,15 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedDirectHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SevenBytesHandlesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        NodeExistsWhileCreatingInShardCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        CreateNodeInShardRetryCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        ReplayedCreateNodeInShardRequestsCount,
+        EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
@@ -263,6 +272,10 @@ void TTabletMetrics::Register(
     REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CleanupBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CollectGarbageBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(
+        CollectGarbageBackpressureThreshold,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -377,7 +390,16 @@ void TTabletMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(CPUUsageMicros, EMetricType::MT_DERIVATIVE);
 
+    REGISTER_LOCAL(OpLogEntryCount, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(ResponseLogEntryCount, EMetricType::MT_ABSOLUTE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        RenameNotSupportedErrorCount,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        ShardBalancerUpdateErrorCount,
+        EMetricType::MT_DERIVATIVE);
 
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM

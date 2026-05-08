@@ -10,6 +10,7 @@ SRCS(
     request_replay_fs.cpp
     request_replay_grpc.cpp
     request_replay.cpp
+    shm_client.cpp
     test.cpp
 )
 

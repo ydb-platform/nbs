@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include "config.h"
-#include "directory_handles_storage.h"
+#include "directory_handle_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
@@ -31,10 +31,6 @@
 
 namespace NCloud::NFileStore::NFuse {
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TDirectoryHandle;
-
 struct TRangeLock
 {
     ui64 Handle = -1;
@@ -58,19 +54,17 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EServerWriteBackCacheState
+enum class EWriteBackCacheRequestStrategy
 {
-    // WriteBackCache is turned off
-    Disabled,
+    // WriteBackCache should not be used, the requests should go directly to the
+    // session
+    DoNotUse,
 
-    // Requests should go to the WriteBackCache
-    Enabled,
+    // WriteBackCache should be used, with ReadData/WriteData
+    UseNonDirect,
 
-    // WriteBackCache is being turned off or a request with
-    // O_DIRECT/O_SYNC/O_DSYNC is made.
-    // Requests should wait until WriteBackCache is flushed and then go
-    // directly to the session
-    Draining
+    // WriteBackCache should be used, with ReadDataDirect/WriteDataDirect only
+    UseDirect
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,9 +89,7 @@ private:
 
     TNodeCache NodeCache;
 
-    THashMap<ui64, std::shared_ptr<TDirectoryHandle>> DirectoryHandles;
-    TMutex DirectoryHandlesLock;
-    TDirectoryHandlesStatsPtr DirectoryHandlesStats;
+    std::unique_ptr<TDirectoryHandleCache> DirectoryHandleCache;
 
     TXAttrCache XAttrCache;
     TMutex XAttrCacheLock;
@@ -105,14 +97,14 @@ private:
     THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
 
-    TDirectoryHandlesStoragePtr DirectoryHandlesStorage;
-
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
     TWriteBackCache WriteBackCache;
 
     std::atomic<ui64> GlobalAttrVersion = 1;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TFileSystem(
@@ -123,10 +115,10 @@ public:
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        TDirectoryHandlesStatsPtr directoryHandlesStats,
+        TDirectoryHandleStatsPtr directoryHandleStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        TDirectoryHandlesStoragePtr directoryHandlesStorage,
+        TDirectoryHandleStoragePtr directoryHandleStorage,
         TWriteBackCache writeBackCache);
 
     ~TFileSystem();
@@ -414,7 +406,7 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    EServerWriteBackCacheState GetServerWriteBackCacheState(
+    EWriteBackCacheRequestStrategy GetWriteBackCacheRequestStrategy(
         const fuse_file_info* fi) const;
 
     TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;

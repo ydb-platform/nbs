@@ -1285,6 +1285,92 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotCleanupHistoryOnUpdateCountersInPullScheme)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
+        storageServiceConfig.SetVolumeHistoryDuration(1000);
+        storageServiceConfig.SetVolumeHistoryCleanupItemCount(20);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto firstClientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(firstClientInfo);
+
+        for (ui32 i = 0; i < 39; ++i) {
+            auto clientInfo = CreateVolumeClientInfo(
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.SendAddClientRequest(clientInfo);
+            auto response = volume.RecvAddClientResponse();
+            UNIT_ASSERT_C(
+                FAILED(response->GetStatus()),
+                "Unexpected successful result");
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Minutes(1));
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()));
+        {
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(40, response->History.size());
+        }
+
+        // This should do nothing because the counters are updated at the
+        // request of the service.
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()));
+        {
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(40, response->History.size());
+        }
+
+        // Pull the statistics from the volume.
+        volume.SendToPipe(
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolumePrivate::EvPartStatsSaved);
+            runtime->DispatchEvents(options);
+        }
+
+        // The history should be truncated.
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()));
+        {
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(20, response->History.size());
+        }
+    }
+
     Y_UNIT_TEST(ShouldPullStatisticsFromPartitions)
     {
         NProto::TStorageServiceConfig storageServiceConfig;

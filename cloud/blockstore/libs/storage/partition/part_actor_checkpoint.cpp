@@ -14,18 +14,32 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError CheckCheckpointRequest(
+    const TPartitionState& state,
+    const TString& checkpointId)
+{
+    if (!checkpointId) {
+        return MakeError(E_ARGUMENT, "missing checkpoint identifier");
+    }
+
+    if (state.GetCheckpointsInFlight()->HasCheckpoint(checkpointId)) {
+        return MakeError(E_REJECTED, "checkpoint already in flight");
+    }
+
+    return {};
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::ProcessCheckpointQueue(const TActorContext& ctx)
 {
     SharedState->ProcessCheckpointQueue(ctx);
-}
-
-bool TPartitionActor::ProcessNextCheckpointRequest(
-    const TActorContext& ctx,
-    const TString& checkpointId)
-{
-    return SharedState->ProcessNextCheckpointRequest(ctx, checkpointId);
 }
 
 void TPartitionActor::HandleCreateCheckpoint(
@@ -46,9 +60,14 @@ void TPartitionActor::HandleCreateCheckpoint(
         requestInfo->CallContext->RequestId);
 
     const auto& checkpointId = msg->Record.GetCheckpointId();
-    if (!checkpointId) {
-        auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(
-            MakeError(E_ARGUMENT, "missing checkpoint identifier"));
+    const bool withoutData = msg->Record.GetCheckpointType() ==
+                             NProto::ECheckpointType::WITHOUT_DATA;
+
+    auto error = CheckCheckpointRequest(*State, checkpointId);
+
+    if (HasError(error)) {
+        auto response =
+            std::make_unique<TEvService::TEvCreateCheckpointResponse>(error);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -68,14 +87,8 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     auto tx = CreateTx<TCreateCheckpoint>(
         std::move(requestInfo),
-        TCheckpoint(
-            checkpointId,
-            commitId,
-            idempotenceId,
-            ctx.Now(),
-            {}),
-        msg->Record.GetCheckpointType()
-            == NProto::ECheckpointType::WITHOUT_DATA);
+        TCheckpoint(checkpointId, commitId, idempotenceId, ctx.Now(), {}),
+        withoutData);
 
     //
     // In-flight checkpoint CommitIds are used to determine whether block
@@ -160,9 +173,8 @@ void TPartitionActor::CompleteCreateCheckpoint(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     RemoveTransaction(*args.RequestInfo);
 
-    if (!ProcessNextCheckpointRequest(ctx, args.Checkpoint.CheckpointId)) {
-        ProcessCheckpointQueue(ctx);
-    }
+    State->AccessCheckpointsInFlight()->PopTx(args.Checkpoint.CheckpointId);
+    ProcessCheckpointQueue(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -217,8 +229,10 @@ void TPartitionActor::DeleteCheckpoint(
     };
 
     const auto& checkpointId = msg->Record.GetCheckpointId();
-    if (!checkpointId) {
-        reply(ctx, requestInfo, MakeError(E_ARGUMENT, "missing checkpoint identifier"));
+
+    auto error = CheckCheckpointRequest(*State, checkpointId);
+    if (HasError(error)) {
+        reply(ctx, std::move(requestInfo), error);
         return;
     }
 
@@ -290,7 +304,7 @@ void TPartitionActor::CompleteDeleteCheckpoint(
 
     RemoveTransaction(*args.RequestInfo);
 
-    ProcessNextCheckpointRequest(ctx, args.CheckpointId);
+    State->AccessCheckpointsInFlight()->PopTx(args.CheckpointId);
     EnqueueCleanupIfNeeded(ctx);
 }
 

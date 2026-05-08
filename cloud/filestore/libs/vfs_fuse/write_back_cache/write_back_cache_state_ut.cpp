@@ -411,7 +411,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         b.State->FlushSucceeded(1, 3);
         b.State->FlushSucceeded(2, 1);
-        UNIT_ASSERT(!b.State->HasUnflushedRequests());
+
+        b.State->SetDrainingMode();
+        UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             b.Metrics.WriteDataRequestDroppedCount->Get());
@@ -504,7 +506,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(c3.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(error, c3.GetValue());
 
-        UNIT_ASSERT(!b.State->HasUnflushedRequests());
+        b.State->SetDrainingMode();
+        UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             b.Metrics.WriteDataRequestDroppedCount->Get());

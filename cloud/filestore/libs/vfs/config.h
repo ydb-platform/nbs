@@ -53,6 +53,7 @@ public:
 
     TString GetDirectoryHandlesStoragePath() const;
     ui64 GetDirectoryHandlesInitialDataSize() const;
+    ui64 GetDirectoryHandlesMaxDataAreaStepSize() const;
 
     bool GetGuestKeepCacheAllowed() const;
 

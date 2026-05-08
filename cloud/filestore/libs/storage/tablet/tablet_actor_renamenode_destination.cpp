@@ -467,6 +467,22 @@ void TIndexTabletActor::HandleDoRenameNodeInDestination(
         auto response =
             std::make_unique<TMethod::TResponse>(std::move(msg->Error));
         NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+
+        //
+        // Cleaning up AbortUnlink OpLogEntry after the response is fine. We
+        // only need to make sure that this transaction completes before any
+        // other transactions. If it doesn't complete then it means that the
+        // tablet rebooted => the transactions that were issued after this one
+        // also haven't completed.
+        //
+
+        if (msg->OpLogEntryId) {
+            ExecuteTx<TDeleteOpLogEntry>(
+                ctx,
+                nullptr /* requestInfo */,
+                msg->OpLogEntryId);
+        }
+
         return;
     }
 
@@ -543,6 +559,10 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 
         if (!args.NewChildRef->IsExternal()) {
             if (GetFileSystem().GetForceDirectoryCreationInShards()) {
+                Metrics.RenameNotSupportedErrorCount.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+
                 args.Error = ErrorRenameNotSupported(
                     args.Request.GetOriginalRequest().GetNodeId(),
                     args.Request.GetNewParentId());
@@ -573,12 +593,11 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         }
 
         if (args.IsSecondPass) {
-            // oldpath directory: newpath must either not exist, or it must
-            // specify an empty directory.
-            if (args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE) {
-                if (args.SourceNodeAttr.GetType()
-                        != NProto::E_DIRECTORY_NODE)
-                {
+            const auto dirType = NProto::E_DIRECTORY_NODE;
+
+            // newpath directory: oldpath must be a directory as well
+            if (args.DestinationNodeAttr.GetType() == dirType) {
+                if (args.SourceNodeAttr.GetType() != dirType) {
                     args.Error =
                         ErrorIsDirectory(args.SourceNodeAttr.GetId());
                     return true;
@@ -587,6 +606,14 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
                 // we don't need a separate emptiness check here because
                 // emptiness is checked upon PrepareUnlinkDirectoryNodeInShard
                 // which happens after the first pass
+            }
+
+            // oldpath directory: newpath must be a directory as well
+            if (args.DestinationNodeAttr.GetType() != dirType
+                    && args.SourceNodeAttr.GetType() == dirType)
+            {
+                args.Error = ErrorIsNotDirectory(args.SourceNodeAttr.GetId());
+                return true;
             }
         } else {
             args.SecondPassRequired = true;
@@ -647,7 +674,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             return;
         } else {
             if (args.AbortUnlinkOpLogEntryId) {
-                db.DeleteOpLogEntry(args.AbortUnlinkOpLogEntryId);
+                DeleteOpLogEntry(db, args.AbortUnlinkOpLogEntryId);
             }
 
             // remove target ref
@@ -681,7 +708,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
                     << args.OpLogEntry.ShortUtf8DebugString().Quote());
             }
 
-            db.WriteOpLogEntry(args.OpLogEntry);
+            WriteOpLogEntry(db, args.OpLogEntry);
         }
     }
 

@@ -1,0 +1,21 @@
+name: Nightly Packer build
+run-name: |
+  ${{ github.event_name == 'workflow_dispatch'
+      && format('Nightly Packer build (manual)')
+      || format('Nightly Packer build (schedule)')
+    }}
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build VM Image using Packer (dispatch)
+    uses: ./.github/workflows/packer.yaml
+    secrets: inherit
+    with:
+      image_id: ""
+      build_image: true
+      check_vm_creation: true
+      update_pooled_image_ids: true

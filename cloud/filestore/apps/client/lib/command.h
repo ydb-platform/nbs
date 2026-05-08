@@ -57,7 +57,6 @@ protected:
     ui32 SecurePort = 0;
     TString ServerUnixSocketPath;
     bool SkipCertVerification = false;
-    TString IamTokenFile;
     TString ConfigFile;
 
     TClientConfigPtr ClientConfig;
@@ -72,6 +71,8 @@ protected:
     std::shared_ptr<TClientFactories> ClientFactories;
     TString IamConfigFile;
     NCloud::NIamClient::IIamTokenClientPtr IamClient;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TCommand();
