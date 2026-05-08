@@ -117,6 +117,13 @@ def storage_config_with_fresh_blocks_writer_enabled(enabled):
     return storage
 
 
+def storage_config_with_read_block_mask_on_compaction_optimization_enabled(enabled):
+    storage = default_storage_config()
+    storage.ReadBlockMaskOnCompactionOptimizationEnabled = enabled
+
+    return storage
+
+
 def storage_config_with_mixed_index_cache_enabled():
     storage = default_storage_config()
     storage.MixedIndexCacheV1Enabled = True
@@ -296,6 +303,19 @@ TESTS = [
             ordinary_prod_storage_config(),
             storage_config_with_compaction_merged_blob_threshold_hdd(),
             ordinary_prod_storage_config(),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-read-block-mask-on-compaction-optimization-enabled",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
+        [
+            storage_config_with_read_block_mask_on_compaction_optimization_enabled(
+                False
+            ),
+            storage_config_with_read_block_mask_on_compaction_optimization_enabled(
+                True
+            ),
         ],
         None,
     ),
