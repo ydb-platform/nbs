@@ -12,6 +12,27 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+auto GetDeviceDesc(const NProto::TNVMeDevice& device)
+{
+    NProto::TNVMeDeviceDesc desc;
+
+    desc.SetSerialNumber(device.GetSerialNumber());
+    desc.SetPCIAddress(device.GetPCIAddress());
+    if (device.HasIOMMUGroup()) {
+        desc.SetIOMMUGroup(device.GetIOMMUGroup());
+    }
+    if (device.HasVfioDevName()) {
+        desc.SetVfioDevName(device.GetVfioDevName());
+    }
+    if (device.HasNumaNode()) {
+        desc.SetNumaNode(device.GetNumaNode());
+    }
+
+    return desc;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TLocalNVMeServiceProxy
     : public TBlockStoreImpl<TLocalNVMeServiceProxy, IBlockStore>
 {
@@ -67,19 +88,8 @@ public:
 
                 NProto::TListNVMeDevicesResponse response;
                 response.MutableError()->CopyFrom(error);
-                for (const auto& src: devices) {
-                    auto* dst = response.AddDevices();
-                    dst->SetSerialNumber(src.GetSerialNumber());
-                    dst->SetPCIAddress(src.GetPCIAddress());
-                    if (src.HasIOMMUGroup()) {
-                        dst->SetIOMMUGroup(src.GetIOMMUGroup());
-                    }
-                    if (src.HasVfioDevName()) {
-                        dst->SetVfioDevName(src.GetVfioDevName());
-                    }
-                    if (src.HasNumaNode()) {
-                        dst->SetNumaNode(src.GetNumaNode());
-                    }
+                for (const auto& device: devices) {
+                    *response.AddDevices() = GetDeviceDesc(device);
                 }
 
                 return response;
@@ -101,7 +111,7 @@ public:
                     NProto::TAcquireNVMeDeviceResponse response;
                     response.MutableError()->CopyFrom(error);
                     if (!HasError(error)) {
-                        response.MutableDevice()->CopyFrom(device);
+                        *response.MutableDevice() = GetDeviceDesc(device);
                     }
                     return response;
                 });

@@ -202,6 +202,18 @@ struct TTestSysFs final: ISysFs
         Y_ENSURE(device);
         return *device;
     }
+
+    auto GetVfioDeviceForPCIDevice(const TString& pciAddr) -> TString final
+    {
+        Y_UNUSED(pciAddr);
+
+        return {};
+    }
+
+    [[nodiscard]] auto IsVfioDevSupported() const -> bool final
+    {
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -32,6 +32,8 @@ const TErrorResponse ServiceDestroyedError =
     MakeError(E_REJECTED, "Local NVMe service is destroyed");
 
 const TDuration SanitizeStatusProbeTimeout = TDuration::MilliSeconds(100);
+const TDuration VfioDeviceRetryDelay = TDuration::MilliSeconds(100);
+const ui32 VfioDeviceMaxRetries = 100;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -76,6 +78,7 @@ private:
 
     TLog Log;
     TFuture<NProto::TError> Ready;
+    bool IsVfioDevSupported = false;
 
     THashMap<TString, NProto::TNVMeDevice> Devices;
     THashSet<TString> AcquiredDevices;
@@ -124,6 +127,8 @@ private:
     auto BindDeviceToDriver(
         const NProto::TNVMeDevice& device,
         const TString& driverName) -> NProto::TError;
+    auto GetVfioDevName(TCont* c, const TString& pciAddress)
+        -> TResultOrError<TString>;
 
     // Spawn a coroutine with a name `name` to execute `fn`
     template <typename R, typename TSelf, typename F, typename... TArgs>
@@ -174,6 +179,15 @@ TLocalNVMeService::TLocalNVMeService(
 void TLocalNVMeService::Start()
 {
     Log = Logging->CreateLog("BLOCKSTORE_LOCAL_NVME");
+
+    auto [supported, error] = SafeExecute<TResultOrError<bool>>(
+        [&] { return SysFs->IsVfioDevSupported(); });
+    if (HasError(error)) {
+        STORAGE_ERROR(
+            "Failed to check for vfio-dev support: " << FormatError(error));
+    } else {
+        IsVfioDevSupported = supported;
+    }
 
     Ready = Executor->Execute(
         [weakSelf = weak_from_this()]() -> NProto::TError
@@ -414,8 +428,6 @@ auto TLocalNVMeService::BindDeviceToDriver(
 auto TLocalNVMeService::AcquireDevice(TCont* c, const TString& serialNumber)
     -> TResultOrError<NProto::TNVMeDevice>
 {
-    Y_UNUSED(c);
-
     const auto* device = Devices.FindPtr(serialNumber);
 
     if (!device) {
@@ -435,12 +447,58 @@ auto TLocalNVMeService::AcquireDevice(TCont* c, const TString& serialNumber)
 
     UpdateStateCache();
 
-    auto error = BindDeviceToDriver(*device, "vfio-pci");
-    if (HasError(error)) {
+    if (auto error = BindDeviceToDriver(*device, "vfio-pci"); HasError(error)) {
         return error;
     }
 
-    return *device;
+    NProto::TNVMeDevice r = *device;
+
+    if (!IsVfioDevSupported) {
+        return r;
+    }
+
+    auto [vfioDev, error] = GetVfioDevName(c, r.GetPCIAddress());
+    if (HasError(error)) {
+        STORAGE_ERROR(
+            "Failed to get vfio device for " << r << ": "
+                                             << FormatError(error));
+    } else {
+        r.SetVfioDevName(std::move(vfioDev));
+    }
+
+    return r;
+}
+
+auto TLocalNVMeService::GetVfioDevName(TCont* c, const TString& pciAddress)
+    -> TResultOrError<TString>
+{
+    // Binding to vfio-pci completes before the vfio-dev sysfs entry may
+    // appear.
+    // Retry to avoid racing with asynchronous vfio<N> creation.
+
+    for (ui32 attempt = 0;; ++attempt) {
+        auto [vfioDevice, error] = SafeExecute<TResultOrError<TString>>(
+            [&] { return SysFs->GetVfioDeviceForPCIDevice(pciAddress); });
+
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (!vfioDevice && attempt < VfioDeviceMaxRetries) {
+            c->SleepT(VfioDeviceRetryDelay);
+            continue;
+        }
+
+        if (!vfioDevice) {
+            return MakeError(
+                E_NOT_FOUND,
+                TStringBuilder() << "vfio device for PCI address " << pciAddress
+                                 << " was not found after "
+                                 << VfioDeviceMaxRetries << " retries");
+        }
+
+        return vfioDevice;
+    }
 }
 
 auto TLocalNVMeService::GetNVMeCtrlPath(const NProto::TNVMeDevice& device)
