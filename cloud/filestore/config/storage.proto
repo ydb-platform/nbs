@@ -53,7 +53,7 @@ enum EShardBalancerPolicy
 
 enum EShardIdCompressionMode
 {
-    // Only uncompressed ShartdId/ShardNodeName are read and written.
+    // Only uncompressed ShardId/ShardNodeName are read and written.
     SICM_NO_COMPRESSION = 0;
     // Both uncompressed and compressed forms are read.
     SICM_READ = 1;

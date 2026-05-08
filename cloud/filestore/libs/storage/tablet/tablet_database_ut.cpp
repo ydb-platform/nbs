@@ -1,5 +1,8 @@
 #include "tablet_database.h"
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/testlib/test_executor.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -996,14 +999,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         constexpr ui64 nodeId = 1;
 
         ui32 fileNum = 0;
-        const ui32 count = 32;
+        const ui32 fileCount = 16;
         const TString fnamePrefix = "file_";
-        const TString mainFsId = "computefilesystem-e00dabc99a5fjdpt7s";
+        const TString mainFsId = "abcdefgfilesystem-zyxwvutsrqponmlkjifed";
         const TVector<TString> shardId = {
             mainFsId,
             mainFsId + "_s1",
             mainFsId + "_s32",
             mainFsId + "_s475"};
+
+        auto cmpNodeRefs = [](const IIndexTabletDatabase::TNodeRef& ref1,
+                              const IIndexTabletDatabase::TNodeRef& ref2)
+        {
+            UNIT_ASSERT_EQUAL(ref1.NodeId, ref2.NodeId);
+            UNIT_ASSERT_EQUAL(ref1.Name, ref2.Name);
+            UNIT_ASSERT_EQUAL(ref1.ShardId, ref2.ShardId);
+            UNIT_ASSERT_EQUAL(ref1.ShardNodeName, ref2.ShardNodeName);
+            UNIT_ASSERT_EQUAL(ref1.ChildNodeId, ref2.ChildNodeId);
+        };
 
         // ShardId compression modes are ordered so that any ShardId written
         // using a given mode can be read using the same or further mode.
@@ -1020,10 +1033,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 compressionModes[writeModeNum];
             // Create refs that refernce nodes in shards
             TVector<IIndexTabletDatabase::TNodeRef> nodeRefs;
-            for (ui32 i = 0; i < count; ++i) {
+            for (ui32 i = 0; i < fileCount; ++i) {
                 IIndexTabletDatabase::TNodeRef nodeRef = {
                     .NodeId = nodeId,
-                    .Name = TStringBuilder() << "file_" << fileNum,
+                    .Name = Sprintf("file_%04u", fileNum),
                     .ChildNodeId = 0,
                     .ShardId = shardId[fileNum % shardId.size()],
                     .ShardNodeName = CreateGuidAsString(),
@@ -1033,12 +1046,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 fileNum++;
             }
             // Create refs that reference "local" nodes
-            for (ui32 i = 0; i < count; ++i) {
+            for (ui32 i = 0; i < fileCount; ++i) {
                 IIndexTabletDatabase::TNodeRef nodeRef = {
                     .NodeId = nodeId,
-                    .Name = TStringBuilder() << "file_" << fileNum,
+                    .Name = Sprintf("file_%04u", fileNum),
                     .ChildNodeId = fileNum,
                     .ShardId = "",
+                    .ShardNodeName = "",
                     .MinCommitId = commitId,
                     .MaxCommitId = commitId};
                 nodeRefs.push_back(nodeRef);
@@ -1070,6 +1084,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 const NProto::EShardIdCompressionMode readMode =
                     compressionModes[readModeNum];
 
+                // Read NodeRefs one by one.
                 for (const auto& nodeRef: nodeRefs) {
                     executor.ReadTx(
                         [&](TIndexTabletDatabase db)
@@ -1082,17 +1097,183 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                                 ref,
                                 readMode,
                                 mainFsId));
-                            UNIT_ASSERT_EQUAL(
-                                ref->ChildNodeId,
-                                nodeRef.ChildNodeId);
-                            UNIT_ASSERT_EQUAL(ref->ShardId, nodeRef.ShardId);
-                            UNIT_ASSERT_EQUAL(
-                                ref->ShardNodeName,
-                                nodeRef.ShardNodeName);
+                            cmpNodeRefs(nodeRef, ref.GetRef());
                         });
+                }
+
+                // Read node refs by calling two overloads
+                // IIndexTabletDatabase::ReadNodeRefs.
+                ui64 startNodeId = nodeRefs[0].NodeId;
+                TString startCookie = nodeRefs[0].Name;
+                ui64 nextNodeId = 0;
+                TString nextCookie;
+                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                while (true) {
+                    executor.ReadTx(
+                        [&](TIndexTabletDatabase db)
+                        {
+                            UNIT_ASSERT(db.ReadNodeRefs(
+                                startNodeId,
+                                startCookie,
+                                (fileCount + 1) / 2,
+                                refs,
+                                nextNodeId,
+                                nextCookie,
+                                readMode,
+                                mainFsId));
+                        });
+
+                    if (nextCookie == startCookie && nextNodeId == startNodeId)
+                    {
+                        break;
+                    }
+                    startCookie = nextCookie;
+                    startNodeId = nextNodeId;
+                }
+
+                UNIT_ASSERT_EQUAL(nodeRefs.size(), refs.size());
+
+                ui32 nodeRefsSize = 0;
+                for (size_t i = 0; i < nodeRefs.size(); ++i) {
+                    cmpNodeRefs(nodeRefs[i], refs[i]);
+                    nodeRefsSize += nodeRefs[i].CalculateByteSize();
+                }
+
+                startCookie = nodeRefs[0].Name;
+                refs.clear();
+                while (true) {
+                    executor.ReadTx(
+                        [&](TIndexTabletDatabase db)
+                        {
+                            UNIT_ASSERT(db.ReadNodeRefs(
+                                nodeId,
+                                commitId,
+                                startCookie,
+                                refs,
+                                (nodeRefsSize + 1) / 2,
+                                readMode,
+                                mainFsId,
+                                &nextCookie,
+                                nullptr,
+                                false /* noAutoPrecharge */,
+                                NProto::LNSM_FULL_ROW));
+                        });
+
+                    if (nextCookie == startCookie) {
+                        break;
+                    }
+                    startCookie = nextCookie;
+                }
+
+                UNIT_ASSERT_EQUAL(nodeRefs.size(), refs.size());
+                for (size_t i = 0; i < nodeRefs.size(); ++i) {
+                    cmpNodeRefs(nodeRefs[i], refs[i]);
                 }
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotReadAndWriteMalformedShardId)
+    {
+        using TDynamicCountersPtr =
+            TIntrusivePtr<NMonitoring::TDynamicCounters>;
+        TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto malformedShardNodeRefCounter = counters->GetCounter(
+            "AppCriticalEvents/MalformedShardNodeRef",
+            true);
+        auto malformedEncodedShardNodeRefCounter = counters->GetCounter(
+            "AppCriticalEvents/MalformedEncodedShardNodeRef",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, malformedShardNodeRefCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, malformedEncodedShardNodeRefCounter->Val());
+
+        TTestExecutor executor;
+
+        executor.WriteTx([&](TIndexTabletDatabase db) { db.InitSchema(); });
+
+        constexpr ui64 commitId = 1;
+        constexpr ui64 nodeId = 1;
+
+        TVector<std::pair<TString, TString>> malformedShardIds = {
+            {"abcd_sx", CreateGuidAsString()},
+            {"abcd_s", CreateGuidAsString()},
+            {"abcd_s0", CreateGuidAsString()},
+            {"abcd_s1235xx", CreateGuidAsString()},
+            {"abcd_s123456", CreateGuidAsString()},
+            {"abcd_s123", "not a guid"}};
+
+        for (ui32 i = 0; i < malformedShardIds.size(); ++i) {
+            const auto& shardId = malformedShardIds[i];
+            executor.WriteTx(
+                [&](TIndexTabletDatabase db)
+                {
+                    NProto::TNode attrs;
+                    db.WriteNodeRef(
+                        nodeId,
+                        commitId,
+                        TStringBuilder() << "file_" << i,
+                        i,
+                        shardId.first,
+                        shardId.second,
+                        false,
+                        NProto::EShardIdCompressionMode::SICM_READ_WRITE);
+                });
+        }
+
+        UNIT_ASSERT_EQUAL(
+            malformedShardIds.size(),
+            static_cast<size_t>(malformedShardNodeRefCounter->Val()));
+
+        malformedShardIds.clear();
+        const TString binaryGuid(sizeof(TGUID::dw), ' ');
+        const TString malformedGuid(sizeof(TGUID::dw) - 3, ' ');
+
+        malformedShardIds = {
+            {"\x03\x01\xFF", binaryGuid},
+            {"\x01\x01", binaryGuid},
+            {"\x01\x01\x02", malformedGuid}};
+
+        // Write malformed encoded ShardId amd ShardNodeName's as is.
+        for (size_t i = 0; i < malformedShardIds.size(); ++i) {
+            const auto& shardId = malformedShardIds[i];
+            executor.WriteTx(
+                [&](TIndexTabletDatabase db)
+                {
+                    NProto::TNode attrs;
+                    db.WriteNodeRef(
+                        nodeId,
+                        commitId,
+                        TStringBuilder() << "file_" << i,
+                        i,
+                        shardId.first,
+                        shardId.second,
+                        false,
+                        NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION);
+                });
+        }
+
+        // When we try to read and decode those malformed ShardId and
+        // ShardNodeName's, we should get
+        // AppCriticalEvents/MalformedEncodedShardNodeRef.
+        for (size_t i = 0; i < malformedShardIds.size(); ++i) {
+            executor.ReadTx(
+                [&](TIndexTabletDatabase db)
+                {
+                    TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+                    UNIT_ASSERT(db.ReadNodeRef(
+                        nodeId,
+                        commitId,
+                        TStringBuilder() << "file_" << i,
+                        ref,
+                        NProto::EShardIdCompressionMode::SICM_READ,
+                        "filesystem"));
+                });
+        }
+
+        UNIT_ASSERT_EQUAL(
+            malformedShardIds.size(),
+            static_cast<size_t>(malformedEncodedShardNodeRefCounter->Val()));
     }
 }
 

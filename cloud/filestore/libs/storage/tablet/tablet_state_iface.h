@@ -69,8 +69,8 @@ public:
             return !ShardId.empty() && !std::isprint(ShardId[0]);
         }
 
-        void EncodeShardId();
-        void DecodeShardId(const TString& mainFs);
+        bool TryToEncodeShardId();
+        bool TryToDecodeShardId(const TString& mainFs);
     };
 
     struct TNodeAttr

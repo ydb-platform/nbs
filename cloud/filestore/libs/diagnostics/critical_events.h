@@ -54,6 +54,8 @@ namespace NCloud::NFileStore{
     xxx(NodeCacheInvalidNode)                                                  \
     xxx(ConfirmBlobsFailed)                                                    \
     xxx(UnconfirmedFlowProxyRetryThresholdReached)                             \
+    xxx(MalformedShardNodeRef)                                                 \
+    xxx(MalformedEncodedShardNodeRef)                                          \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <util/generic/guid.h>
@@ -521,8 +523,12 @@ bool IsToEncodeShardId(const NProto::EShardIdCompressionMode mode)
         case NProto::SICM_NO_COMPRESSION:
         case NProto::SICM_READ:
             return false;
-        default:
+        case NProto::SICM_READ_WRITE:
+        case NProto::SICM_READ_WRITE_CONVERT:
             return true;
+        default:
+            Y_ABORT_UNLESS(false);
+            return false;
     }
 }
 
@@ -531,12 +537,29 @@ bool IsToDecodeShardId(const NProto::EShardIdCompressionMode mode)
     switch (mode) {
         case NProto::SICM_NO_COMPRESSION:
             return false;
-        default:
+        case NProto::SICM_READ:
+        case NProto::SICM_READ_WRITE:
+        case NProto::SICM_READ_WRITE_CONVERT:
             return true;
+        default:
+            Y_ABORT_UNLESS(false);
+            return false;
     }
-};
-
 }
+
+void ReportMalformedEncodedShardNodeRef(
+    const TString& mainFsId,
+    const IIndexTabletDatabase::TNodeRef& ref)
+{
+    NCloud::NFileStore::ReportMalformedEncodedShardNodeRef(
+        TStringBuilder()
+        << "Filesystem: " << mainFsId
+        << ", encoded ShardId: '" << ref.ShardId
+        << "', encoded ShardNodeName: '" << ref.ShardNodeName
+        << "'");
+}
+
+}   // namespace
 
 void TIndexTabletDatabase::WriteNodeRef(
     ui64 nodeId,
@@ -560,8 +583,11 @@ void TIndexTabletDatabase::WriteNodeRef(
         .MaxCommitId = InvalidCommitId
     };
 
-    if (IsToEncodeShardId(shardIdMode)) {
-        nodeRef.EncodeShardId();
+    if (IsToEncodeShardId(shardIdMode) && !nodeRef.TryToEncodeShardId()) {
+        ReportMalformedShardNodeRef(
+            TStringBuilder()
+            << "ShardId: " << shardId << ", ShardNodeName: " << shardNodeName);
+        return;
     }
 
     Table<TTable>()
@@ -606,7 +632,7 @@ bool TIndexTabletDatabase::ReadNodeRef(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            ref = TNodeRef {
+            ref.ConstructInPlace(
                 nodeId,
                 name,
                 it.GetValue<TTable::ChildId>(),
@@ -614,10 +640,13 @@ bool TIndexTabletDatabase::ReadNodeRef(
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
                 maxCommitId
-            };
+            );
 
-            if (IsToDecodeShardId(shardIdMode)) {
-                ref.GetRef().DecodeShardId(mainFsId);
+            if (IsToDecodeShardId(shardIdMode) &&
+                !ref.Get()->TryToDecodeShardId(mainFsId))
+            {
+                ReportMalformedEncodedShardNodeRef(mainFsId, ref.GetRef());
+                ref.Clear();
             }
         }
     }
@@ -655,15 +684,14 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            refs.emplace_back(TNodeRef {
+            refs.emplace_back(
                 nodeId,
                 it.template GetValue<TTableBase::Name>(),
                 it.template GetValue<TTableBase::ChildId>(),
                 it.template GetValue<TTableBase::ShardId>(),
                 it.template GetValue<TTableBase::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            });
+                maxCommitId);
 
             auto& ref = refs.back();
             // TODO(#5148): consider other size calculation modes
@@ -673,8 +701,12 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
                 bytes += ref.Name.size();
             }
 
-            if (IsToDecodeShardId(shardIdMode)) {
-                ref.DecodeShardId(mainFsId);
+            if (IsToDecodeShardId(shardIdMode) &&
+                !ref.TryToDecodeShardId(mainFsId))
+            {
+                ReportMalformedEncodedShardNodeRef(mainFsId, ref);
+                refs.resize(refs.size() - 1);
+                ++skipped;
             }
         } else {
             ++skipped;
@@ -773,10 +805,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     ui64& nextNodeId,
     TString& nextCookie,
     NProto::EShardIdCompressionMode shardIdMode,
-    const TString& fsId)
+    const TString& mainFsId)
 {
-    Y_UNUSED(shardIdMode, fsId);
-
     using TTable = TIndexTabletSchema::NodeRefs;
 
     if (!startNodeId && startCookie.empty()) {
@@ -790,15 +820,23 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     while (it.IsValid() && maxCount > 0) {
-        refs.emplace_back(TNodeRef{
+        refs.emplace_back(
             it.GetValue<TTable::NodeId>(),
             it.GetValue<TTable::Name>(),
             it.GetValue<TTable::ChildId>(),
             it.GetValue<TTable::ShardId>(),
             it.GetValue<TTable::ShardNodeName>(),
             it.GetValue<TTable::CommitId>(),
-            InvalidCommitId});
-        --maxCount;
+            InvalidCommitId);
+
+        auto& ref = refs.back();
+        if (IsToDecodeShardId(shardIdMode) && !ref.TryToDecodeShardId(mainFsId))
+        {
+            ReportMalformedEncodedShardNodeRef(mainFsId, ref);
+            refs.resize(refs.size() - 1);
+        } else {
+            --maxCount;
+        }
 
         if (!it.Next()) {
             return false;   // not ready

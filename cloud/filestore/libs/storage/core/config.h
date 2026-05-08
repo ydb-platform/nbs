@@ -401,7 +401,8 @@ public:
 
     [[nodiscard]] bool GetHideFileNamesInTabletDirectoryViewer() const;
 
-    NProto::EShardIdCompressionMode GetShardIdCompressionMode() const;
+    [[nodiscard]] NProto::EShardIdCompressionMode
+    GetShardIdCompressionMode() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

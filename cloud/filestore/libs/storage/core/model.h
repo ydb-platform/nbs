@@ -36,4 +36,6 @@ void SetupFileStorePerformanceAndChannels(
     NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile);
 
+constexpr TStringBuf ShardNumPrefix = "_s";
+
 }   // namespace NCloud::NFileStore::NStorage
