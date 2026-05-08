@@ -1077,16 +1077,14 @@ void TMountRequestActor::HandleGentlePreemptionRequestProcessed(
 {
     const auto& error = ev->Get()->GetError();
 
-    if (HasError(error))
-    {
+    if (HasError(error)) {
         Error = error;
         VolumeSessionRestartRequired = true;
         NotifyAndDie(ctx);
         return;
     }
 
-    if (!ShouldWaitVolumeAfterGentlePreemption)
-    {
+    if (!ShouldWaitVolumeAfterGentlePreemption) {
         Error = error;
         NotifyAndDie(ctx);
         return;
