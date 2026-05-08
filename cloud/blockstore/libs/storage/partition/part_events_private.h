@@ -125,6 +125,8 @@ struct TWriteFreshBlocksRequest
 struct TAffectedBlob
 {
     ui8 CompactionRangeCount = 0;
+    ui64 MaxCommitIdInCompactionRange = 0;
+    ui64 MinCommitIdInCompactionRange = Max<ui64>();
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
     TVector<ui32> AffectedBlockIndices;
