@@ -524,7 +524,7 @@ jobs:
 
   finalize-build-and-test-comments:
     needs: [check-running-allowed, create-build-and-test-target-var, build_and_test]
-    if: ${{ always() && needs.check-running-allowed.outputs.result == 'true' }}
+    if: ${{ always() && needs.check-running-allowed.outputs.result == 'true' && needs.create-build-and-test-target-var.outputs.matrix_include != '' }}
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
