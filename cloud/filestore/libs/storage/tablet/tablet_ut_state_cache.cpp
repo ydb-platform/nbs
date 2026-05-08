@@ -233,7 +233,9 @@ namespace {
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
-            ref));
+            ref,
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION,
+            ""));
         CheckNodeRef(request, *ref);
     }
 
@@ -257,9 +259,12 @@ namespace {
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 1, 0);
 
-        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+        constexpr NProto::EShardIdCompressionMode defaultShardMode =
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+
+            TMaybe<IIndexTabletDatabase::TNodeRef> ref;
         UNIT_ASSERT(
-            !state.ReadNodeRef(rootNodeIds[0], commitId1, nodeNames[0], ref));
+            !state.ReadNodeRef(rootNodeIds[0], commitId1, nodeNames[0], ref, defaultShardMode, ""));
 
         TInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
@@ -284,6 +289,8 @@ namespace {
             "",
             refs,
             Max<ui32>(),
+            defaultShardMode,
+            "",
             &next,
             nullptr,
             false));
@@ -298,7 +305,9 @@ namespace {
             request.NodeRefsKey.NodeId,
             commitId1,
             request.NodeRefsKey.Name,
-            ref));
+            ref,
+            defaultShardMode,
+            ""));
         UNIT_ASSERT(ref.Empty());
     }
 
@@ -306,6 +315,9 @@ namespace {
     {
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 3, 0);
+
+        constexpr NProto::EShardIdCompressionMode defaultShardMode =
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
 
         const TVector<TInMemoryIndexState::TWriteNodeRefsRequest> requests = {
             {
@@ -353,6 +365,8 @@ namespace {
             requests[0].NodeRefsKey.Name,
             refs,
             Max<ui32>(),
+            defaultShardMode,
+            "",
             &nextName,
             nullptr,
             false));
@@ -382,7 +396,9 @@ namespace {
             requests[0].NodeRefsKey.NodeId,
             requests[0].NodeRefsRow.CommitId,
             requests[0].NodeRefsKey.Name,
-            ref));
+            ref,
+            defaultShardMode,
+            ""));
         ReadAndCheckNodeRef(state, request3);
         ReadAndCheckNodeRef(state, requests[1]);
         ReadAndCheckNodeRef(state, requests[2]);
@@ -394,6 +410,8 @@ namespace {
             requests[0].NodeRefsKey.Name,
             refs,
             Max<ui32>(),
+            defaultShardMode,
+            "",
             &nextName,
             nullptr,
             false));
@@ -418,6 +436,9 @@ namespace {
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 1, 0);
 
+        constexpr NProto::EShardIdCompressionMode defaultShardMode =
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+
         TInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
             .NodeRefsRow = {
@@ -434,7 +455,9 @@ namespace {
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
-            ref));
+            ref,
+            defaultShardMode,
+            ""));
         UNIT_ASSERT(ref.Defined());
 
         state.MarkNodeRefsLoadComplete();
@@ -443,7 +466,9 @@ namespace {
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
-            ref));
+            ref,
+            defaultShardMode,
+            ""));
         UNIT_ASSERT(ref.Defined());
 
         state.UpdateState({TInMemoryIndexState::TDeleteNodeRefsRequest{
@@ -455,7 +480,9 @@ namespace {
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
-            ref));
+            ref,
+            defaultShardMode,
+            ""));
         UNIT_ASSERT(ref.Empty());
     }
 }

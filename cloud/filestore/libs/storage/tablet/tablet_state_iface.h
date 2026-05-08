@@ -63,6 +63,14 @@ public:
                    sizeof(MaxCommitId) + Name.size() + ShardId.size() +
                    ShardNodeName.size();
         }
+
+        bool IsEncoded() const
+        {
+            return !ShardId.empty() && !std::isprint(ShardId[0]);
+        }
+
+        bool TryToEncodeShardId();
+        bool TryToDecodeShardId(const TString& mainFs);
     };
 
     struct TNodeAttr
@@ -136,7 +144,9 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeRef>& ref) = 0;
+        TMaybe<TNodeRef>& ref,
+        NProto::EShardIdCompressionMode shardIdMode,
+        const TString& mainFsId) = 0;
 
     virtual bool ReadNodeRefs(
         ui64 nodeId,
@@ -144,6 +154,8 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
+        NProto::EShardIdCompressionMode shardIdMode,
+        const TString& fsId,
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
         bool noAutoPrecharge = false,
@@ -161,7 +173,9 @@ public:
         ui64 maxCount,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
-        TString& nextCookie) = 0;
+        TString& nextCookie,
+        NProto::EShardIdCompressionMode shardIdMode,
+        const TString& fsId) = 0;
 
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,

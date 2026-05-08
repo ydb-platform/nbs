@@ -5,7 +5,7 @@
 
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <util/string/printf.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -549,7 +549,8 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
                       fileStore.GetBlockSize();
         result.ShardConfigs[i].SetBlocksCount(shardBlockCount);
         result.ShardConfigs[i].SetFileSystemId(
-            Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
+            TStringBuilder()
+            << fileStore.GetFileSystemId() << ShardNumPrefix << i + 1);
         SetupFileStorePerformanceAndChannels(
             false, // allocateMixed0Channel
             config,

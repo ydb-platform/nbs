@@ -229,8 +229,12 @@ bool TInMemoryIndexState::ReadNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<TNodeRef>& ref)
+    TMaybe<TNodeRef>& ref,
+    NProto::EShardIdCompressionMode mode,
+    const TString& mainFsId)
 {
+    Y_UNUSED(mode, mainFsId);
+
     auto* v = NodeRefs.FindInIndex(TNodeRefsKey(nodeId, name));
     if (!v) {
         // If the cache is exhaustive for the node and we did not find the
@@ -266,12 +270,15 @@ bool TInMemoryIndexState::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& mainFsId,
     TString* next,
     ui32* skippedRefs,
     bool noAutoPrecharge,
     NProto::EListNodesSizeMode sizeMode)
 {
-    Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
+    // Not applicable to in-memory cache
+    Y_UNUSED(noAutoPrecharge, shardIdMode, mainFsId);
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
     }
@@ -331,9 +338,19 @@ bool TInMemoryIndexState::ReadNodeRefs(
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui64& nextNodeId,
-    TString& nextCookie)
+    TString& nextCookie,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& mainFsId)
 {
-    Y_UNUSED(startNodeId, startCookie, maxCount, refs, nextNodeId, nextCookie);
+    Y_UNUSED(
+        startNodeId,
+        startCookie,
+        maxCount,
+        refs,
+        shardIdMode,
+        mainFsId,
+        nextNodeId,
+        nextCookie);
     // This method is supposed to be called only upon tablet load in order to
     // populate the cache with data from localDb. Thus implementing in via
     // in-memory cache is unnecessary.

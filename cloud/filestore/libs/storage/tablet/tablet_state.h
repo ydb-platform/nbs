@@ -243,6 +243,9 @@ private:
 
     /*const*/ ui32 MaxTabletStep = Max<ui32>();
 
+    NProto::EShardIdCompressionMode ShardIdCompressionMode =
+        NProto::SICM_NO_COMPRESSION;
+
     bool StateLoaded = false;
 
 protected:
@@ -679,6 +682,8 @@ public:
         const TString& cookie,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
+        NProto::EShardIdCompressionMode shardIdMode,
+        const TString& fsId,
         TString* next = nullptr,
         bool noAutoPrecharge = false,
         NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY);
@@ -690,7 +695,9 @@ public:
         ui64 maxCount,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
-        TString& nextCookie);
+        TString& nextCookie,
+        NProto::EShardIdCompressionMode shardIdMode,
+        const TString& fsId);
 
     bool PrechargeNodeRefs(
         IIndexTabletDatabase& db,
