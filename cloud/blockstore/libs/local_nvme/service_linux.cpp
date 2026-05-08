@@ -485,6 +485,10 @@ auto TLocalNVMeService::GetVfioDevName(TCont* c, const TString& pciAddress)
         }
 
         if (!vfioDevice && attempt < VfioDeviceMaxRetries) {
+            STORAGE_DEBUG(
+                "vfio device for PCI address "
+                << pciAddress << " was not found, retry (attempts: "
+                << attempt + 1 << "/" << VfioDeviceMaxRetries << ")");
             c->SleepT(VfioDeviceRetryDelay);
             continue;
         }

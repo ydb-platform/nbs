@@ -178,6 +178,8 @@ struct TTestSysFs final: ISysFs
     THashMap<TString, TString> DeviceToCtrl;
     THashMap<TString, NProto::TNVMeDevice> AddrToDevice;
 
+    std::function<TString(const TString&)> GetVfioDeviceForPCIDeviceImpl;
+
     auto GetDriverForPCIDevice(const TString& pciAddr) -> TString final
     {
         return AddrToDriver.Value(pciAddr, TString());
@@ -205,14 +207,14 @@ struct TTestSysFs final: ISysFs
 
     auto GetVfioDeviceForPCIDevice(const TString& pciAddr) -> TString final
     {
-        Y_UNUSED(pciAddr);
-
-        return {};
+        return GetVfioDeviceForPCIDeviceImpl
+                   ? GetVfioDeviceForPCIDeviceImpl(pciAddr)
+                   : TString{};
     }
 
     [[nodiscard]] auto IsVfioDevSupported() const -> bool final
     {
-        return false;
+        return true;
     }
 };
 
@@ -280,7 +282,6 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
                 SerialNumber: "NVME_0"
                 PCIAddress: "0000:f1:00.0"
                 IOMMUGroup: 10
-                VfioDevName: "vfio0"
                 VendorId: 0x100
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
@@ -494,6 +495,47 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldRetryGetVfioDevName, TFixture)
+    {
+        SetProviderReady();
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const TString vfioDev = "vfio0";
+        const auto& device = Devices[0];
+
+        const ui32 successfulAttempt = 3;
+        std::atomic<ui32> attempts = 0;
+        SysFs->GetVfioDeviceForPCIDeviceImpl =
+            [&](const TString& pciAddr) mutable -> TString
+        {
+            if (device.GetPCIAddress() != pciAddr) {
+                return {};
+            }
+
+            if (attempts != successfulAttempt) {
+                ++attempts;
+                return {};
+            }
+
+            return vfioDev;
+        };
+
+        auto future = Service->AcquireNVMeDevice(device.GetSerialNumber());
+
+        const auto& [r, error] = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(device.GetSerialNumber(), r.GetSerialNumber());
+        UNIT_ASSERT_VALUES_EQUAL(vfioDev, r.GetVfioDevName());
+        UNIT_ASSERT_VALUES_EQUAL(successfulAttempt, attempts.load());
+    }
+
     Y_UNIT_TEST_F(ShouldAcquireAndReleaseDevice, TFixture)
     {
         const auto& device = Devices[0];
@@ -523,11 +565,15 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         SetProviderReady();
 
         {
-            auto [_, error] = ListNVMeDevices();
+            auto [devices, error] = ListNVMeDevices();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+
+            for (const auto& device: devices) {
+                UNIT_ASSERT_VALUES_EQUAL("", device.GetVfioDevName());
+            }
         }
 
         {
@@ -551,6 +597,17 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
 
         {
+            const TString vfioDev = "vfio0";
+
+            SysFs->GetVfioDeviceForPCIDeviceImpl =
+                [&](const TString& pciAddr) -> TString
+            {
+                if (pciAddr == device.GetPCIAddress()) {
+                    return vfioDev;
+                }
+                return {};
+            };
+
             auto future = Service->AcquireNVMeDevice(serialNumber);
             const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -559,6 +616,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
 
             UNIT_ASSERT_VALUES_EQUAL(serialNumber, device.GetSerialNumber());
+            UNIT_ASSERT_VALUES_EQUAL(vfioDev, device.GetVfioDevName());
         }
 
         const TString ctrlPath = "/dev/nvme0";
