@@ -694,16 +694,19 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
                 maxCommitId);
 
             auto& ref = refs.back();
-            // TODO(#5148): consider other size calculation modes
-            if (sizeMode == NProto::LNSM_FULL_ROW) {
-                bytes += ref.CalculateByteSize();
-            } else {
-                bytes += ref.Name.size();
-            }
 
-            if (IsToDecodeShardId(shardIdMode) &&
-                !ref.TryToDecodeShardId(mainFsId))
+            if (!IsToDecodeShardId(shardIdMode) ||
+                ref.TryToDecodeShardId(mainFsId))
             {
+                // TODO(#5148): consider other size calculation modes
+                if (sizeMode == NProto::LNSM_FULL_ROW) {
+                    bytes += ref.CalculateByteSize();
+                } else {
+                    bytes += ref.Name.size();
+                }
+            } else {
+                // This is a kind of impossible situation meaning that data in
+                // the table is corrupted
                 ReportMalformedEncodedShardNodeRef(mainFsId, ref);
                 refs.resize(refs.size() - 1);
                 ++skipped;

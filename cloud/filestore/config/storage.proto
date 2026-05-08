@@ -57,7 +57,7 @@ enum EShardIdCompressionMode
     SICM_NO_COMPRESSION = 0;
     // Both uncompressed and compressed forms are read.
     SICM_READ = 1;
-    // SICM_READ + new ShartdId/ShardNodeName are compressed.
+    // SICM_READ + new ShardId/ShardNodeName are compressed.
     SICM_READ_WRITE = 2;
     // SICM_READ_WRITE_COMPRESSED + conversion from uncompress to compressed
     // form is started when TIndexTabletActor tablet starts.

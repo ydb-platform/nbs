@@ -192,7 +192,7 @@ bool TCreateFileStoreActor::ValidateFileSystemId(
     const TString& fileSystemId)
 {
     for (const char ch: fileSystemId) {
-        if (!std::isprint(ch)) {
+        if (!std::isprint(static_cast<ui8>(ch))) {
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,

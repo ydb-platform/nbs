@@ -47,7 +47,7 @@ bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId()
 
     // Parse ShardId and ShardNodeName that are in text format.
     const size_t pos = ShardId.rfind(ShardNumPrefix);
-    ui32 shardNo = 0;
+    ui64 shardNo = 0;
     // If ShardId does not contain "_s", it's a reference to the main
     // filesystem.
     if (pos != std::string::npos) {

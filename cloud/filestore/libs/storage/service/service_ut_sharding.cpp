@@ -8514,13 +8514,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        service.SendCreateFileStoreRequest("\rwq2e\n123123\t", 1024);
-        auto response = service.RecvCreateFileStoreResponse();
+        for (const char* badFsName: {"\rwq2e\n123123\t", "files\x88tore_s48"}) {
+            service.SendCreateFileStoreRequest(badFsName, 1024);
+            auto response = service.RecvCreateFileStoreResponse();
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
-            response->GetError().GetCode(),
-            response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
     }
 }
 }   // namespace NCloud::NFileStore::NStorage
