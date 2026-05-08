@@ -9,7 +9,9 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
+#include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -99,6 +101,27 @@ private:
     void HandleHttpInfo(
         const NActors::NMon::TEvHttpInfo::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleHttpInfo_AdvisoryPush(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_AdvisoryPull(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    static void RejectHttpRequest(
+        const NActors::TActorContext& ctx,
+        TRequestInfo& requestInfo,
+        TString message);
+
+    static void SendHttpResponse(
+        const NActors::TActorContext& ctx,
+        TRequestInfo& requestInfo,
+        TStringStream message,
+        const NMonitoringUtils::EAlertLevel alertLevel);
 
     void HandleConfigureVolumeBalancerRequest(
         const TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest::TPtr& ev,
