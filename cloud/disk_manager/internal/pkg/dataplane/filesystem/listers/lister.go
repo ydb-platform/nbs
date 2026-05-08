@@ -4,7 +4,14 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+// ErrNodeNotFound is returned by FilesystemLister.ListNodes when the node
+// does not exist (E_FS_NOENT). Callers may use errors.Is to detect this.
+var ErrNodeNotFound = errors.NewNonRetriableErrorf("node not found")
 
 ////////////////////////////////////////////////////////////////////////////////
 

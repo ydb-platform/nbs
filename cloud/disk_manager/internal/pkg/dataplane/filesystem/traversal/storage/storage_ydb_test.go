@@ -403,3 +403,67 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries2, 0)
 }
+
+func TestDeleteNodeWithChildrenFromQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	snapshot := "snapshot"
+
+	// Schedule root node.
+	err := f.storage.SchedulerDirectoryForTraversal(f.ctx, snapshot, nfs.RootNodeID)
+	require.NoError(t, err)
+
+	// Schedule root's children: nodes 2, 3, 4.
+	require.NoError(t, f.storage.ScheduleChildNodesForListing(
+		f.ctx,
+		snapshot,
+		nfs.RootNodeID,
+		"cookie1",
+		[]nfs.Node{
+			{NodeID: 2, ParentID: nfs.RootNodeID},
+			{NodeID: 3, ParentID: nfs.RootNodeID},
+			{NodeID: 4, ParentID: nfs.RootNodeID},
+		},
+	))
+
+	// Schedule node 2's children: nodes 5, 6.
+	require.NoError(t, f.storage.ScheduleChildNodesForListing(
+		f.ctx,
+		snapshot,
+		2,
+		"cookie2",
+		[]nfs.Node{
+			{NodeID: 5, ParentID: 2},
+			{NodeID: 6, ParentID: 2},
+		},
+	))
+
+	entries, err := f.storage.SelectNodesToList(
+		f.ctx, snapshot, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	// root, 2, 3, 4, 5, 6
+	require.ElementsMatch(t, getNodeIDs(entries), []uint64{nfs.RootNodeID, 2, 3, 4, 5, 6})
+
+	// Delete node 2 along with its children (5 and 6).
+	err = f.storage.DeleteNodeWithChildrenFromQueue(f.ctx, snapshot, 2)
+	require.NoError(t, err)
+
+	entries, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	// root, 3, 4 remain; 2, 5, 6 are removed.
+	require.ElementsMatch(t, getNodeIDs(entries), []uint64{nfs.RootNodeID, 3, 4})
+
+	// Deleting a nonexistent node should not error and leave the queue unchanged.
+	err = f.storage.DeleteNodeWithChildrenFromQueue(f.ctx, snapshot, 999)
+	require.NoError(t, err)
+
+	entries, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodeIDs(entries), []uint64{nfs.RootNodeID, 3, 4})
+}

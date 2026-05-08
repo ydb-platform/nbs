@@ -482,3 +482,170 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 	listerFactoryMock.AssertExpectations(t)
 	listerMock.AssertExpectations(t)
 }
+
+func TestTraversalSkipsChildrenOfDeletedNode(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+
+	storageMock := storage_mocks.NewStorageMock()
+	listerFactoryMock := listers_mocks.NewFilesystemListerFactoryMock()
+	listerMock := listers_mocks.NewFilesystemListerMock()
+
+	snapshotID := "test-snapshot"
+	filesystemID := "test-filesystem"
+	checkpointID := "test-checkpoint"
+	workersCount := uint32(1)
+	selectLimit := uint64(1000)
+
+	config := &traversal_config.FilesystemTraversalConfig{
+		TraversalWorkersCount:  &workersCount,
+		SelectNodesToListLimit: &selectLimit,
+	}
+
+	deletedDirNodeID := uint64(100)
+	validDirNodeID := uint64(200)
+
+	// Schedule root node for traversal.
+	storageMock.On(
+		"SchedulerDirectoryForTraversal",
+		mock.Anything,
+		snapshotID,
+		nfs.RootNodeID,
+	).Return(nil)
+
+	// First SelectNodesToList returns root node.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything,
+		selectLimit,
+	).Return(
+		[]storage.NodeQueueEntry{{NodeID: nfs.RootNodeID, Cookie: ""}},
+		nil,
+	).Once()
+
+	// Second SelectNodesToList returns the deleted directory and a valid one.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything,
+		selectLimit,
+	).Return(
+		[]storage.NodeQueueEntry{
+			{NodeID: deletedDirNodeID, Cookie: ""},
+			{NodeID: validDirNodeID, Cookie: ""},
+		},
+		nil,
+	).Once()
+
+	// Third SelectNodesToList returns empty (traversal done).
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything,
+		selectLimit,
+	).Return([]storage.NodeQueueEntry{}, nil)
+
+	// CreateLister returns lister mock.
+	listerFactoryMock.On(
+		"CreateLister",
+		mock.Anything,
+		filesystemID,
+		checkpointID,
+	).Return(listerMock, nil)
+
+	// ListNodes for root returns two child directories.
+	storageMock.On(
+		"ScheduleChildNodesForListing",
+		mock.Anything,
+		snapshotID,
+		nfs.RootNodeID,
+		"", // nextCookie
+		[]nfs.Node{
+			nfs.Node(nfs_client.Node{NodeID: deletedDirNodeID, Name: "deleted", Type: nfs_client.NODE_KIND_DIR}),
+			nfs.Node(nfs_client.Node{NodeID: validDirNodeID, Name: "valid", Type: nfs_client.NODE_KIND_DIR}),
+		},
+	).Return(nil)
+
+	listerMock.On(
+		"ListNodes",
+		mock.Anything,
+		nfs.RootNodeID,
+		"",
+	).Return(
+		[]nfs.Node{
+			nfs.Node(nfs_client.Node{NodeID: deletedDirNodeID, Name: "deleted", Type: nfs_client.NODE_KIND_DIR}),
+			nfs.Node(nfs_client.Node{NodeID: validDirNodeID, Name: "valid", Type: nfs_client.NODE_KIND_DIR}),
+		},
+		"",
+		nil,
+	)
+
+	// ListNodes for the deleted directory returns ErrNodeNotFound.
+	listerMock.On(
+		"ListNodes",
+		mock.Anything,
+		deletedDirNodeID,
+		"",
+	).Return([]nfs.Node(nil), "", listers.ErrNodeNotFound)
+
+	// ListNodes for the valid directory returns empty.
+	listerMock.On(
+		"ListNodes",
+		mock.Anything,
+		validDirNodeID,
+		"",
+	).Return([]nfs.Node{}, "", nil)
+
+	// When deleted directory is not found, DeleteNodeWithChildrenFromQueue is called.
+	storageMock.On(
+		"DeleteNodeWithChildrenFromQueue",
+		mock.Anything,
+		snapshotID,
+		deletedDirNodeID,
+	).Return(nil)
+
+	// Valid directory has no subdirectories.
+	storageMock.On(
+		"ScheduleChildNodesForListing",
+		mock.Anything,
+		snapshotID,
+		validDirNodeID,
+		"",
+		[]nfs.Node(nil),
+	).Return(nil)
+
+	listerMock.On("Close", mock.Anything).Return(nil)
+
+	traverser := NewFilesystemTraverser(
+		snapshotID,
+		filesystemID,
+		checkpointID,
+		listerFactoryMock,
+		storageMock,
+		func(ctx context.Context) error {
+			return nil
+		},
+		config,
+		false,
+		nfs.RootNodeID,
+	)
+
+	err := traverser.Traverse(
+		ctx,
+		func(
+			ctx context.Context,
+			nodes []nfs.Node,
+			_ listers.FilesystemLister,
+		) error {
+			return nil
+		},
+	)
+	require.NoError(t, err)
+
+	storageMock.AssertExpectations(t)
+	listerFactoryMock.AssertExpectations(t)
+	listerMock.AssertExpectations(t)
+}

@@ -2,6 +2,7 @@ package traversal
 
 import (
 	"context"
+	"errors"
 
 	"golang.org/x/sync/errgroup"
 
@@ -247,6 +248,21 @@ func (t *FilesystemTraverser) listNode(
 			cookie,
 		)
 		if err != nil {
+			if errors.Is(err, listers.ErrNodeNotFound) {
+				// The node no longer exists. Remove it along with any of
+				// its children that were already enqueued, so workers do
+				// not waste time on them.
+				logging.Info(
+					ctx,
+					"Node %v not found during listing, removing it and its children from queue",
+					node.NodeID,
+				)
+				return t.storage.DeleteNodeWithChildrenFromQueue(
+					ctx,
+					t.filesystemSnapshotID,
+					node.NodeID,
+				)
+			}
 			return err
 		}
 

@@ -45,4 +45,11 @@ type Storage interface {
 		ctx context.Context,
 		snapshotID string,
 	) error
+
+	// Removes the node and all its scheduled children from the listing queue.
+	DeleteNodeWithChildrenFromQueue(
+		ctx context.Context,
+		snapshotID string,
+		nodeID uint64,
+	) error
 }

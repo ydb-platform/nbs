@@ -187,6 +187,7 @@ func (s *storageYDB) scheduleChildNodesForListing(
 				persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
 				persistence.StructFieldValue("node_id", persistence.Uint64Value(child.NodeID)),
 				persistence.StructFieldValue("cookie", persistence.StringValue([]byte(""))),
+				persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(parentNodeID)),
 			))
 		}
 
@@ -197,6 +198,7 @@ func (s *storageYDB) scheduleChildNodesForListing(
 				filesystem_snapshot_id: Utf8,
 				node_id: Uint64,
 				cookie: String,
+				parent_node_id: Uint64,
 			>>;
 
 			upsert into directory_listing_queue
@@ -207,6 +209,41 @@ func (s *storageYDB) scheduleChildNodesForListing(
 		if err != nil {
 			return err
 		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) deleteNodeWithChildrenFromQueue(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	nodeID uint64,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $node_id as Uint64;
+
+		delete from directory_listing_queue
+		where filesystem_snapshot_id = $snapshot_id
+			and (node_id = $node_id or parent_node_id = $node_id)
+	`, s.tablesPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
+	)
+	if err != nil {
+		return err
 	}
 
 	return tx.Commit(ctx)
@@ -351,4 +388,23 @@ func (s *storageYDB) ClearDirectoryListingQueue(
 	)
 
 	return err
+}
+
+func (s *storageYDB) DeleteNodeWithChildrenFromQueue(
+	ctx context.Context,
+	snapshotID string,
+	nodeID uint64,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.deleteNodeWithChildrenFromQueue(
+				ctx,
+				session,
+				snapshotID,
+				nodeID,
+			)
+		},
+	)
 }
