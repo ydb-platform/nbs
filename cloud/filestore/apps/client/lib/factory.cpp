@@ -29,6 +29,10 @@ TCommandPtr NewRmCommand();
 TCommandPtr NewStartEndpointCommand();
 TCommandPtr NewStopEndpointCommand();
 TCommandPtr NewTouchCommand();
+TCommandPtr NewUnsafeCreateNodeCommand();
+TCommandPtr NewUnsafeDeleteNodeCommand();
+TCommandPtr NewUnsafeCreateNodeRefCommand();
+TCommandPtr NewUnsafeDeleteNodeRefCommand();
 TCommandPtr NewWriteCommand();
 TCommandPtr NewExecuteActionCommand();
 TCommandPtr NewCreateSessionCommand();
@@ -78,6 +82,10 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "stat", NewStatCommand },
     { "stopendpoint", NewStopEndpointCommand },
     { "touch", NewTouchCommand },
+    { "unsafecreatenode", NewUnsafeCreateNodeCommand },
+    { "unsafedeletenode", NewUnsafeDeleteNodeCommand },
+    { "unsafecreatenoderef", NewUnsafeCreateNodeRefCommand },
+    { "unsafedeletenoderef", NewUnsafeDeleteNodeRefCommand },
     { "write", NewWriteCommand },
     { "ping", NewPingCommand },
 };

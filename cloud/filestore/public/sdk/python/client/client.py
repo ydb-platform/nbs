@@ -567,6 +567,92 @@ class Client(object):
         )
 
     @_handle_errors
+    def unsafe_create_node(
+        self,
+        filesystem_id: str,
+        node: protos.TNodeAttr,
+        idempotence_id=None,
+        timestamp=None,
+        trace_id=None,
+        request_timeout=None,
+    ) -> protos.TUnsafeCreateNodeResponse:
+        request = protos.TUnsafeCreateNodeRequest(
+            Headers=protos.THeaders(),
+            FileSystemId=filesystem_id,
+            Node=node,
+        )
+        return self.__impl.unsafe_create_node(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
+
+    @_handle_errors
+    def unsafe_delete_node(
+        self,
+        filesystem_id: str,
+        node_id: int,
+        idempotence_id=None,
+        timestamp=None,
+        trace_id=None,
+        request_timeout=None,
+    ) -> protos.TUnsafeDeleteNodeResponse:
+        request = protos.TUnsafeDeleteNodeRequest(
+            Headers=protos.THeaders(),
+            FileSystemId=filesystem_id,
+            Id=node_id,
+        )
+        return self.__impl.unsafe_delete_node(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
+
+    @_handle_errors
+    def unsafe_create_node_ref(
+        self,
+        filesystem_id: str,
+        parent_id: int,
+        name: str,
+        child_id: int,
+        shard_id: str = "",
+        shard_node_name: str = "",
+        idempotence_id=None,
+        timestamp=None,
+        trace_id=None,
+        request_timeout=None,
+    ) -> protos.TUnsafeCreateNodeRefResponse:
+        request = protos.TUnsafeCreateNodeRefRequest(
+            Headers=protos.THeaders(),
+            FileSystemId=filesystem_id,
+            ParentId=parent_id,
+            Name=name.encode("utf-8"),
+            ChildId=child_id,
+            ShardId=shard_id,
+            ShardNodeName=shard_node_name,
+        )
+        return self.__impl.unsafe_create_node_ref(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
+
+    @_handle_errors
+    def unsafe_delete_node_ref(
+        self,
+        filesystem_id: str,
+        parent_id: int,
+        name: str,
+        idempotence_id=None,
+        timestamp=None,
+        trace_id=None,
+        request_timeout=None,
+    ) -> protos.TUnsafeDeleteNodeRefResponse:
+        request = protos.TUnsafeDeleteNodeRefRequest(
+            Headers=protos.THeaders(),
+            FileSystemId=filesystem_id,
+            ParentId=parent_id,
+            Name=name.encode("utf-8"),
+        )
+        return self.__impl.unsafe_delete_node_ref(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
+
+    @_handle_errors
     def execute_action(
             self,
             action: str,

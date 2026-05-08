@@ -460,33 +460,22 @@ func (c *client) UnsafeCreateNode(
 
 	defer c.metrics.StatRequest("UnsafeCreateNode")(&err)
 
-	response := &private_protos.TUnsafeCreateNodeResponse{}
-	err = c.executeAction(
+	return wrapError(c.nfs.UnsafeCreateNode(
 		ctx,
-		"unsafecreatenode",
-		&private_protos.TUnsafeCreateNodeRequest{
-			FileSystemId: filesystemID,
-			Node: &protos.TNodeAttr{
-				Id:    node.NodeID,
-				Type:  uint32(node.Type),
-				Mode:  node.Mode,
-				Uid:   uint32(node.UID),
-				Gid:   uint32(node.GID),
-				ATime: node.Atime,
-				MTime: node.Mtime,
-				CTime: node.Ctime,
-				Size:  node.Size,
-				Links: node.Links,
-				DevId: node.DevID,
-			},
-		},
-		response,
-	)
-	if err != nil {
-		return err
-	}
+		filesystemID,
+		nfs_client.Node(node),
+	))
+}
 
-	return checkActionError(response.Error)
+func (c *client) UnsafeDeleteNode(
+	ctx context.Context,
+	filesystemID string,
+	nodeID uint64,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnsafeDeleteNode")(&err)
+
+	return wrapError(c.nfs.UnsafeDeleteNode(ctx, filesystemID, nodeID))
 }
 
 func (c *client) UnsafeCreateNodeRef(
@@ -501,25 +490,27 @@ func (c *client) UnsafeCreateNodeRef(
 
 	defer c.metrics.StatRequest("UnsafeCreateNodeRef")(&err)
 
-	response := &private_protos.TUnsafeCreateNodeRefResponse{}
-	err = c.executeAction(
+	return wrapError(c.nfs.UnsafeCreateNodeRef(
 		ctx,
-		"unsafecreatenoderef",
-		&private_protos.TUnsafeCreateNodeRefRequest{
-			FileSystemId:  filesystemID,
-			ParentId:      parentID,
-			Name:          []byte(name),
-			ChildId:       childID,
-			ShardId:       shardID,
-			ShardNodeName: shardNodeName,
-		},
-		response,
-	)
-	if err != nil {
-		return err
-	}
+		filesystemID,
+		parentID,
+		name,
+		childID,
+		shardID,
+		shardNodeName,
+	))
+}
 
-	return checkActionError(response.Error)
+func (c *client) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	filesystemID string,
+	parentID uint64,
+	name string,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnsafeDeleteNodeRef")(&err)
+
+	return wrapError(c.nfs.UnsafeDeleteNodeRef(ctx, filesystemID, parentID, name))
 }
 
 func (c *client) ConfigureAsShard(

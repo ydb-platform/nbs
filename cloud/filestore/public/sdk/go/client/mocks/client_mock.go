@@ -204,6 +204,59 @@ func (m *ClientInterfaceMock) UnlinkNode(
 	return args.Error(0)
 }
 
+func (m *ClientInterfaceMock) UnsafeCreateNode(
+	ctx context.Context,
+	fileSystemID string,
+	node nfs_client.Node,
+) error {
+
+	args := m.Called(ctx, fileSystemID, node)
+	return args.Error(0)
+}
+
+func (m *ClientInterfaceMock) UnsafeDeleteNode(
+	ctx context.Context,
+	fileSystemID string,
+	nodeID uint64,
+) error {
+
+	args := m.Called(ctx, fileSystemID, nodeID)
+	return args.Error(0)
+}
+
+func (m *ClientInterfaceMock) UnsafeCreateNodeRef(
+	ctx context.Context,
+	fileSystemID string,
+	parentID uint64,
+	name string,
+	childID uint64,
+	shardID string,
+	shardNodeName string,
+) error {
+
+	args := m.Called(
+		ctx,
+		fileSystemID,
+		parentID,
+		name,
+		childID,
+		shardID,
+		shardNodeName,
+	)
+	return args.Error(0)
+}
+
+func (m *ClientInterfaceMock) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	fileSystemID string,
+	parentID uint64,
+	name string,
+) error {
+
+	args := m.Called(ctx, fileSystemID, parentID, name)
+	return args.Error(0)
+}
+
 func (m *ClientInterfaceMock) ExecuteAction(
 	ctx context.Context,
 	action string,

@@ -121,6 +121,35 @@ type ClientInterface interface {
 		unlinkDirectory bool,
 	) error
 
+	UnsafeCreateNode(
+		ctx context.Context,
+		fileSystemID string,
+		node Node,
+	) error
+
+	UnsafeDeleteNode(
+		ctx context.Context,
+		fileSystemID string,
+		nodeID uint64,
+	) error
+
+	UnsafeCreateNodeRef(
+		ctx context.Context,
+		fileSystemID string,
+		parentID uint64,
+		name string,
+		childID uint64,
+		shardID string,
+		shardNodeName string,
+	) error
+
+	UnsafeDeleteNodeRef(
+		ctx context.Context,
+		fileSystemID string,
+		parentID uint64,
+		name string,
+	) error
+
 	ExecuteAction(
 		ctx context.Context,
 		action string,

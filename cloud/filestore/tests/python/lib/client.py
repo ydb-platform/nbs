@@ -292,6 +292,46 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def unsafe_create_node(self, fs, node_id, *argv):
+        list_args = [str(x) for x in argv]
+        cmd = [
+            self.__binary_path, "unsafecreatenode",
+            "--filesystem", fs,
+            "--node-id", str(node_id),
+        ] + list_args + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def unsafe_delete_node(self, fs, node_id):
+        cmd = [
+            self.__binary_path, "unsafedeletenode",
+            "--filesystem", fs,
+            "--node-id", str(node_id),
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def unsafe_create_node_ref(self, fs, parent_id, name, *argv):
+        list_args = [str(x) for x in argv]
+        cmd = [
+            self.__binary_path, "unsafecreatenoderef",
+            "--filesystem", fs,
+            "--parent-id", str(parent_id),
+            "--name", name,
+        ] + list_args + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def unsafe_delete_node_ref(self, fs, parent_id, name):
+        cmd = [
+            self.__binary_path, "unsafedeletenoderef",
+            "--filesystem", fs,
+            "--parent-id", str(parent_id),
+            "--name", name,
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def forced_compaction(self, fs):
         cmd = [
             self.__binary_path, "forcedcompaction",

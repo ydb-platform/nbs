@@ -38,6 +38,7 @@ SRCS(
     stop_endpoint.cpp
     text_table.cpp
     touch.cpp
+    unsafe_node.cpp
     write.cpp
 )
 

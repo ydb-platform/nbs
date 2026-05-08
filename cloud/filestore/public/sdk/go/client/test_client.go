@@ -205,6 +205,38 @@ func (client *testClient) UnlinkNode(
 	return &protos.TUnlinkNodeResponse{}, nil
 }
 
+func (client *testClient) UnsafeCreateNode(
+	ctx context.Context,
+	req *protos.TUnsafeCreateNodeRequest,
+) (*protos.TUnsafeCreateNodeResponse, error) {
+
+	return &protos.TUnsafeCreateNodeResponse{}, nil
+}
+
+func (client *testClient) UnsafeDeleteNode(
+	ctx context.Context,
+	req *protos.TUnsafeDeleteNodeRequest,
+) (*protos.TUnsafeDeleteNodeResponse, error) {
+
+	return &protos.TUnsafeDeleteNodeResponse{}, nil
+}
+
+func (client *testClient) UnsafeCreateNodeRef(
+	ctx context.Context,
+	req *protos.TUnsafeCreateNodeRefRequest,
+) (*protos.TUnsafeCreateNodeRefResponse, error) {
+
+	return &protos.TUnsafeCreateNodeRefResponse{}, nil
+}
+
+func (client *testClient) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	req *protos.TUnsafeDeleteNodeRefRequest,
+) (*protos.TUnsafeDeleteNodeRefResponse, error) {
+
+	return &protos.TUnsafeDeleteNodeRefResponse{}, nil
+}
+
 func (client *testClient) ExecuteAction(
 	ctx context.Context,
 	req *protos.TExecuteActionRequest,

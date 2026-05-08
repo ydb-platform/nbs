@@ -453,6 +453,86 @@ func (client *grpcClient) UnlinkNode(
 	return resp.(*protos.TUnlinkNodeResponse), err
 }
 
+func (client *grpcClient) UnsafeCreateNode(
+	ctx context.Context,
+	req *protos.TUnsafeCreateNodeRequest,
+) (*protos.TUnsafeCreateNodeResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeCreateNode(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TUnsafeCreateNodeResponse), err
+}
+
+func (client *grpcClient) UnsafeDeleteNode(
+	ctx context.Context,
+	req *protos.TUnsafeDeleteNodeRequest,
+) (*protos.TUnsafeDeleteNodeResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeDeleteNode(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TUnsafeDeleteNodeResponse), err
+}
+
+func (client *grpcClient) UnsafeCreateNodeRef(
+	ctx context.Context,
+	req *protos.TUnsafeCreateNodeRefRequest,
+) (*protos.TUnsafeCreateNodeRefResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeCreateNodeRef(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TUnsafeCreateNodeRefResponse), err
+}
+
+func (client *grpcClient) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	req *protos.TUnsafeDeleteNodeRefRequest,
+) (*protos.TUnsafeDeleteNodeRefResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeDeleteNodeRef(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TUnsafeDeleteNodeRefResponse), err
+}
+
 func (client *grpcClient) ExecuteAction(
 	ctx context.Context,
 	req *protos.TExecuteActionRequest,

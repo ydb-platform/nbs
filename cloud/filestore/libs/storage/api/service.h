@@ -293,6 +293,18 @@ struct TEvService
         EvToggleServiceStateRequest = EvBegin + 97,
         EvToggleServiceStateResponse,
 
+        EvUnsafeCreateNodeRequest = EvBegin + 99,
+        EvUnsafeCreateNodeResponse,
+
+        EvUnsafeDeleteNodeRequest = EvBegin + 101,
+        EvUnsafeDeleteNodeResponse,
+
+        EvUnsafeCreateNodeRefRequest = EvBegin + 103,
+        EvUnsafeCreateNodeRefResponse,
+
+        EvUnsafeDeleteNodeRefRequest = EvBegin + 105,
+        EvUnsafeDeleteNodeRefResponse,
+
         EvEnd
     };
 

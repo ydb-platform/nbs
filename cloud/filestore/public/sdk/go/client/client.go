@@ -114,6 +114,24 @@ func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
 	}
 }
 
+func attrFromNode(node Node) *protos.TNodeAttr {
+	return &protos.TNodeAttr{
+		Id:                node.NodeID,
+		Type:              uint32(node.Type),
+		Mode:              node.Mode,
+		Uid:               uint32(node.UID),
+		Gid:               uint32(node.GID),
+		ATime:             node.Atime,
+		MTime:             node.Mtime,
+		CTime:             node.Ctime,
+		Size:              node.Size,
+		Links:             node.Links,
+		ShardFileSystemId: []byte(node.ShardFileSystemID),
+		ShardNodeName:     []byte(node.ShardNodeName),
+		DevId:             node.DevID,
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func headersForSession(session Session) *protos.THeaders {
@@ -549,6 +567,80 @@ func (client *Client) UnlinkNode(
 	}
 
 	_, err := client.Impl.UnlinkNode(ctx, req)
+	return err
+}
+
+func (client *Client) UnsafeCreateNode(
+	ctx context.Context,
+	fileSystemID string,
+	node Node,
+) error {
+
+	req := &protos.TUnsafeCreateNodeRequest{
+		FileSystemId: fileSystemID,
+		Headers:      &protos.THeaders{},
+		Node:         attrFromNode(node),
+	}
+
+	_, err := client.Impl.UnsafeCreateNode(ctx, req)
+	return err
+}
+
+func (client *Client) UnsafeDeleteNode(
+	ctx context.Context,
+	fileSystemID string,
+	nodeID uint64,
+) error {
+
+	req := &protos.TUnsafeDeleteNodeRequest{
+		FileSystemId: fileSystemID,
+		Headers:      &protos.THeaders{},
+		Id:           nodeID,
+	}
+
+	_, err := client.Impl.UnsafeDeleteNode(ctx, req)
+	return err
+}
+
+func (client *Client) UnsafeCreateNodeRef(
+	ctx context.Context,
+	fileSystemID string,
+	parentID uint64,
+	name string,
+	childID uint64,
+	shardID string,
+	shardNodeName string,
+) error {
+
+	req := &protos.TUnsafeCreateNodeRefRequest{
+		FileSystemId:  fileSystemID,
+		Headers:       &protos.THeaders{},
+		ParentId:      parentID,
+		Name:          []byte(name),
+		ChildId:       childID,
+		ShardId:       shardID,
+		ShardNodeName: shardNodeName,
+	}
+
+	_, err := client.Impl.UnsafeCreateNodeRef(ctx, req)
+	return err
+}
+
+func (client *Client) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	fileSystemID string,
+	parentID uint64,
+	name string,
+) error {
+
+	req := &protos.TUnsafeDeleteNodeRefRequest{
+		FileSystemId: fileSystemID,
+		Headers:      &protos.THeaders{},
+		ParentId:     parentID,
+		Name:         []byte(name),
+	}
+
+	_, err := client.Impl.UnsafeDeleteNodeRef(ctx, req)
 	return err
 }
 
