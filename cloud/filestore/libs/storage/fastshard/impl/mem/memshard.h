@@ -6,6 +6,6 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileSystemShardPtr CreateMemFileSystemShard();
+IFileSystemShardPtr CreateMemFileSystemShard(ui32 shardNo);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

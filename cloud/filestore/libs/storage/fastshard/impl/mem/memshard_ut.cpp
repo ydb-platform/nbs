@@ -16,10 +16,18 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
 {
     Y_UNIT_TEST(ShouldCreateUnlinkFiles)
     {
-        auto s = CreateMemFileSystemShard();
+        constexpr ui32 ShardNo = 77;
+
+        auto s = CreateMemFileSystemShard(ShardNo);
         UNIT_ASSERT_VALUES_EQUAL(
             E_NOT_IMPLEMENTED,
             s->CreateNode({}).GetValueSync().GetError().GetCode());
+
+        // TODO(#5643): write uts.
+        //
+        // We have some uts in the tablet ut test suite - not sure whether we
+        // really need the same coverage here. But covering some basic stuff
+        // would be nice.
     }
 }
 
