@@ -96,8 +96,13 @@ public:
             .Apply(
                 [](const auto& future)
                 {
+                    const auto& [device, error] = future.GetValue();
+
                     NProto::TAcquireNVMeDeviceResponse response;
-                    response.MutableError()->CopyFrom(future.GetValue());
+                    response.MutableError()->CopyFrom(error);
+                    if (!HasError(error)) {
+                        response.MutableDevice()->CopyFrom(device);
+                    }
                     return response;
                 });
     }

@@ -491,7 +491,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         for (const auto& sn: {serialNumber, TString("UNK")}) {
             {
                 auto future = Service->AcquireNVMeDevice(sn);
-                const auto& error = future.GetValueSync();
+                const auto& [_, error] = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_REJECTED,
                     error.GetCode(),
@@ -520,7 +520,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         {
             auto future = Service->AcquireNVMeDevice("UNK");
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
                 error.GetCode(),
@@ -540,11 +540,13 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         {
             auto future = Service->AcquireNVMeDevice(serialNumber);
-            const auto& error = future.GetValueSync();
+            const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+
+            UNIT_ASSERT_VALUES_EQUAL(serialNumber, device.GetSerialNumber());
         }
 
         const TString ctrlPath = "/dev/nvme0";
@@ -623,7 +625,10 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                     TVector<TFuture<NProto::TError>> futures;
 
                     for (int i = 0; i != requestNum; ++i) {
-                        futures.push_back(Service->AcquireNVMeDevice("UNK"));
+                        futures.push_back(
+                            Service->AcquireNVMeDevice("UNK").Apply(
+                                [](const auto& future)
+                                { return future.GetValue().GetError(); }));
                         futures.push_back(Service->ReleaseNVMeDevice("UNK"));
                         Sleep(10ms);
                     }
@@ -682,20 +687,22 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         {
             auto future = Service->AcquireNVMeDevice("NVME_0");
-            const auto& error = future.GetValueSync();
+            const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL("NVME_0", device.GetSerialNumber());
         }
 
         {
             auto future = Service->AcquireNVMeDevice("NVME_2");
-            const auto& error = future.GetValueSync();
+            const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL("NVME_2", device.GetSerialNumber());
         }
 
         {
@@ -789,7 +796,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         {
             auto future =
                 Service->AcquireNVMeDevice(Devices[0].GetSerialNumber());
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),
@@ -799,7 +806,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         {
             auto future =
                 Service->AcquireNVMeDevice(Devices[1].GetSerialNumber());
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -809,7 +816,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         {
             auto future =
                 Service->AcquireNVMeDevice(Devices[2].GetSerialNumber());
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),

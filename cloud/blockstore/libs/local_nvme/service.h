@@ -24,7 +24,7 @@ struct ILocalNVMeService: public IStartable
         TResultOrError<TVector<NProto::TNVMeDevice>>> = 0;
 
     [[nodiscard]] virtual auto AcquireNVMeDevice(const TString& serialNumber)
-        -> NThreading::TFuture<NProto::TError> = 0;
+        -> NThreading::TFuture<TResultOrError<NProto::TNVMeDevice>> = 0;
 
     [[nodiscard]] virtual auto ReleaseNVMeDevice(const TString& serialNumber)
         -> NThreading::TFuture<NProto::TError> = 0;

@@ -99,13 +99,14 @@ public:
     [[nodiscard]] auto ListNVMeDevices() -> TFuture<TListDevicesResult> final;
 
     [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> final;
+        -> TFuture<TResultOrError<NProto::TNVMeDevice>> final;
 
     [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
         -> TFuture<NProto::TError> final;
 
 private:
-    auto AcquireDevice(TCont* c, const TString& serialNumber) -> NProto::TError;
+    auto AcquireDevice(TCont* c, const TString& serialNumber)
+        -> TResultOrError<NProto::TNVMeDevice>;
     auto ReleaseDevice(TCont* c, const TString& serialNumber) -> NProto::TError;
     auto ListDevices(TCont* c) const -> TVector<NProto::TNVMeDevice>;
 
@@ -203,15 +204,15 @@ auto TLocalNVMeService::ListNVMeDevices() -> TFuture<TListDevicesResult>
 }
 
 auto TLocalNVMeService::AcquireNVMeDevice(const TString& serialNumber)
-    -> TFuture<NProto::TError>
+    -> TFuture<TResultOrError<NProto::TNVMeDevice>>
 {
     STORAGE_INFO("Acquire NVMe device " << serialNumber.Quote());
 
     if (auto error = EnsureIsReady(); HasError(error)) {
-        return MakeFuture(error);
+        return MakeFuture(TResultOrError<NProto::TNVMeDevice>(error));
     }
 
-    return ExecuteAsync<NProto::TError>(
+    return ExecuteAsync<TResultOrError<NProto::TNVMeDevice>>(
         *this,
         "acquire",
         &TLocalNVMeService::AcquireDevice,
@@ -411,7 +412,7 @@ auto TLocalNVMeService::BindDeviceToDriver(
 }
 
 auto TLocalNVMeService::AcquireDevice(TCont* c, const TString& serialNumber)
-    -> NProto::TError
+    -> TResultOrError<NProto::TNVMeDevice>
 {
     Y_UNUSED(c);
 
@@ -434,7 +435,12 @@ auto TLocalNVMeService::AcquireDevice(TCont* c, const TString& serialNumber)
 
     UpdateStateCache();
 
-    return BindDeviceToDriver(*device, "vfio-pci");
+    auto error = BindDeviceToDriver(*device, "vfio-pci");
+    if (HasError(error)) {
+        return error;
+    }
+
+    return *device;
 }
 
 auto TLocalNVMeService::GetNVMeCtrlPath(const NProto::TNVMeDevice& device)
