@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
@@ -611,8 +612,11 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             profileLog);
         auto& runtime = setup.GetRuntime();
 
+        NActors::TActorId worker;
         bool enableWriteBlobErrorInjection = false;
         bool writeBlobErrorInjected = false;
+        bool targetCommitIdCaptured = false;
+        ui64 targetCommitId = 0;
         const ui32 confirmAddDataType =
             static_cast<ui32>(EFileStoreRequest::ConfirmAddData);
         const ui32 cancelAddDataType =
@@ -622,10 +626,32 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             {
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGenerateBlobIdsRequest: {
+                        if (enableWriteBlobErrorInjection && !worker) {
+                            worker = event->Sender;
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvGenerateBlobIdsResponse: {
+                        if (enableWriteBlobErrorInjection &&
+                            !targetCommitIdCaptured)
+                        {
+                            auto* msg = event->template Get<
+                                TEvIndexTablet::TEvGenerateBlobIdsResponse>();
+                            targetCommitId = msg->Record.GetCommitId();
+                            targetCommitIdCaptured = true;
+                        }
+                        break;
+                    }
+                    // Ensure that we corrupt needed Put and not random one.
                     case NKikimr::TEvBlobStorage::EvPutResult: {
                         auto* msg = event->template Get<
                             NKikimr::TEvBlobStorage::TEvPutResult>();
                         if (enableWriteBlobErrorInjection &&
+                            event->Recipient == worker &&
+                            targetCommitIdCaptured &&
+                            MakePartialBlobId(msg->Id).CommitId() ==
+                                targetCommitId &&
                             !writeBlobErrorInjected)
                         {
                             msg->Status = NKikimrProto::ERROR;
