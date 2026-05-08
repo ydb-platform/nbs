@@ -48,9 +48,9 @@ class TVolumeBalancerState
 
         ui32 SufferCount = 0;
 
-        std::optional<TYdbDiskLoadCounters> LoadCounters = {};
+        std::optional<TYdbDiskLoadCounters> LoadCounters;
 
-        TResultOrError<TDuration> Cost = MakeError(E_ABORTED, "Uninitialized");
+        std::optional<TDuration> Cost;
 
         TVolumeInfo(TDuration pullInterval);
     };
@@ -150,7 +150,7 @@ private:
         const TString& diskId,
         const TVolumeInfo& volume) const;
 
-    TResultOrError<TDuration> CalculateCost(
+    std::optional<TDuration> CalculateCost(
         const TVolumeInfo& info,
         const TYdbDiskLoadCounters& currentLoad) const;
 };
