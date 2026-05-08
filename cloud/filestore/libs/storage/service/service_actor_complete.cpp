@@ -162,5 +162,26 @@ void TStorageServiceActor::CompleteRequest(
 
 #undef FILESTORE_IMPLEMENT_RESPONSE
 
+////////////////////////////////////////////////////////////////////////////////
+// Response handlers for private tablet operations (UnsafeCreateNode, etc.)
+// These are defined here because CompleteRequest<TMethod> is defined in this
+// translation unit.
+
+#define FILESTORE_IMPLEMENT_PRIVATE_RESPONSE(name)                             \
+    void TStorageServiceActor::Handle##name##Response(                         \
+        const TEvIndexTablet::TEv##name##Response::TPtr& ev,                   \
+        const TActorContext& ctx)                                              \
+    {                                                                          \
+        CompleteRequest<TEvIndexTablet::T##name##Method>(ctx, ev);             \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_PRIVATE_RESPONSE
+
+FILESTORE_IMPLEMENT_PRIVATE_RESPONSE(UnsafeCreateNode)
+FILESTORE_IMPLEMENT_PRIVATE_RESPONSE(UnsafeDeleteNode)
+FILESTORE_IMPLEMENT_PRIVATE_RESPONSE(UnsafeCreateNodeRef)
+FILESTORE_IMPLEMENT_PRIVATE_RESPONSE(UnsafeDeleteNodeRef)
+
+#undef FILESTORE_IMPLEMENT_PRIVATE_RESPONSE
+
 
 }   // namespace NCloud::NFileStore::NStorage

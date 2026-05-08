@@ -75,6 +75,24 @@ public:
             std::move(responseHandler));
     }
 
+#define FILESTORE_IMPLEMENT_PRIVATE_METHOD(name)                               \
+    TFuture<NProtoPrivate::T##name##Response> name(                            \
+        TCallContextPtr ctx,                                                   \
+        std::shared_ptr<NProtoPrivate::T##name##Request> request) override     \
+    {                                                                          \
+        return ExecuteRequest<                                                 \
+            NProtoPrivate::T##name##Request,                                   \
+            NProtoPrivate::T##name##Response>(std::move(ctx), std::move(request)); \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_PRIVATE_METHOD
+
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeCreateNode)
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeDeleteNode)
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeCreateNodeRef)
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeDeleteNodeRef)
+
+#undef FILESTORE_IMPLEMENT_PRIVATE_METHOD
+
 private:
     template <typename TRequest, typename TResponse>
     TFuture<TResponse> ExecuteRequest(
@@ -148,6 +166,22 @@ private:
     FILESTORE_IMPLEMENT_METHOD(WriteDataLocal)
 
 #undef FILESTORE_IMPLEMENT_METHOD
+
+#define FILESTORE_IMPLEMENT_PRIVATE_METHOD(name)                               \
+    TFuture<NProtoPrivate::T##name##Response> ExecuteServiceRequest(           \
+        TCallContextPtr ctx,                                                   \
+        std::shared_ptr<NProtoPrivate::T##name##Request> request)              \
+    {                                                                          \
+        return Service->name(std::move(ctx), std::move(request));              \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_PRIVATE_METHOD
+
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeCreateNode)
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeDeleteNode)
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeCreateNodeRef)
+    FILESTORE_IMPLEMENT_PRIVATE_METHOD(UnsafeDeleteNodeRef)
+
+#undef FILESTORE_IMPLEMENT_PRIVATE_METHOD
 };
 
 }   // namespace

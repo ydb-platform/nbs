@@ -1,6 +1,7 @@
 package client
 
 import (
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 
@@ -126,6 +127,26 @@ type ClientInterface interface {
 		action string,
 		input []byte,
 	) ([]byte, error)
+
+	UnsafeCreateNode(
+		ctx context.Context,
+		req *private_protos.TUnsafeCreateNodeRequest,
+	) (*private_protos.TUnsafeCreateNodeResponse, error)
+
+	UnsafeDeleteNode(
+		ctx context.Context,
+		req *private_protos.TUnsafeDeleteNodeRequest,
+	) (*private_protos.TUnsafeDeleteNodeResponse, error)
+
+	UnsafeCreateNodeRef(
+		ctx context.Context,
+		req *private_protos.TUnsafeCreateNodeRefRequest,
+	) (*private_protos.TUnsafeCreateNodeRefResponse, error)
+
+	UnsafeDeleteNodeRef(
+		ctx context.Context,
+		req *private_protos.TUnsafeDeleteNodeRefRequest,
+	) (*private_protos.TUnsafeDeleteNodeRefResponse, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

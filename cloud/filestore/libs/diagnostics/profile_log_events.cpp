@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
 #include <cloud/filestore/public/api/protos/cluster.pb.h>
@@ -326,6 +327,38 @@ template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TCancelAddDataRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TUnsafeCreateNodeRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TUnsafeDeleteNodeRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TUnsafeCreateNodeRefRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TUnsafeDeleteNodeRefRequest& request)
 {
     Y_UNUSED(profileLogRequest, request);
 }
@@ -690,6 +723,10 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(CancelAddData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
     IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
+    IMPLEMENT_DEFAULT_METHOD(UnsafeCreateNode, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(UnsafeDeleteNode, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(UnsafeCreateNodeRef, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(UnsafeDeleteNodeRef, NProtoPrivate)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 

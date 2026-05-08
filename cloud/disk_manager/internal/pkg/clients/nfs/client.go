@@ -460,10 +460,8 @@ func (c *client) UnsafeCreateNode(
 
 	defer c.metrics.StatRequest("UnsafeCreateNode")(&err)
 
-	response := &private_protos.TUnsafeCreateNodeResponse{}
-	err = c.executeAction(
+	resp, err := c.nfs.UnsafeCreateNode(
 		ctx,
-		"unsafecreatenode",
 		&private_protos.TUnsafeCreateNodeRequest{
 			FileSystemId: filesystemID,
 			Node: &protos.TNodeAttr{
@@ -480,13 +478,12 @@ func (c *client) UnsafeCreateNode(
 				DevId: node.DevID,
 			},
 		},
-		response,
 	)
 	if err != nil {
-		return err
+		return wrapError(err)
 	}
 
-	return checkActionError(response.Error)
+	return checkActionError(resp.Error)
 }
 
 func (c *client) UnsafeCreateNodeRef(
@@ -501,10 +498,8 @@ func (c *client) UnsafeCreateNodeRef(
 
 	defer c.metrics.StatRequest("UnsafeCreateNodeRef")(&err)
 
-	response := &private_protos.TUnsafeCreateNodeRefResponse{}
-	err = c.executeAction(
+	resp, err := c.nfs.UnsafeCreateNodeRef(
 		ctx,
-		"unsafecreatenoderef",
 		&private_protos.TUnsafeCreateNodeRefRequest{
 			FileSystemId:  filesystemID,
 			ParentId:      parentID,
@@ -513,13 +508,12 @@ func (c *client) UnsafeCreateNodeRef(
 			ShardId:       shardID,
 			ShardNodeName: shardNodeName,
 		},
-		response,
 	)
 	if err != nil {
-		return err
+		return wrapError(err)
 	}
 
-	return checkActionError(response.Error)
+	return checkActionError(resp.Error)
 }
 
 func (c *client) ConfigureAsShard(

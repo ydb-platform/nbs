@@ -1,6 +1,7 @@
 package client
 
 import (
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -568,6 +569,34 @@ func (client *Client) ExecuteAction(
 	}
 
 	return resp.GetOutput(), nil
+}
+
+func (client *Client) UnsafeCreateNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRequest,
+) (*private_protos.TUnsafeCreateNodeResponse, error) {
+	return client.Impl.UnsafeCreateNode(ctx, req)
+}
+
+func (client *Client) UnsafeDeleteNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRequest,
+) (*private_protos.TUnsafeDeleteNodeResponse, error) {
+	return client.Impl.UnsafeDeleteNode(ctx, req)
+}
+
+func (client *Client) UnsafeCreateNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRefRequest,
+) (*private_protos.TUnsafeCreateNodeRefResponse, error) {
+	return client.Impl.UnsafeCreateNodeRef(ctx, req)
+}
+
+func (client *Client) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRefRequest,
+) (*private_protos.TUnsafeDeleteNodeRefResponse, error) {
+	return client.Impl.UnsafeDeleteNodeRef(ctx, req)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

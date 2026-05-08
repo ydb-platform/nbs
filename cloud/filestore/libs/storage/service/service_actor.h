@@ -10,6 +10,7 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/service.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -192,6 +193,36 @@ private:
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvService)
 #undef FILESTORE_DECLARE_REQUEST_RESPONSE
 
+    // Private unsafe node/noderef operations - handled via TEvIndexTablet
+    // directly to avoid JSON serialization overhead of ExecuteAction.
+    void HandleUnsafeCreateNode(
+        const TEvIndexTablet::TEvUnsafeCreateNodeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleUnsafeCreateNodeResponse(
+        const TEvIndexTablet::TEvUnsafeCreateNodeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUnsafeDeleteNode(
+        const TEvIndexTablet::TEvUnsafeDeleteNodeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleUnsafeDeleteNodeResponse(
+        const TEvIndexTablet::TEvUnsafeDeleteNodeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUnsafeCreateNodeRef(
+        const TEvIndexTablet::TEvUnsafeCreateNodeRefRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleUnsafeCreateNodeRefResponse(
+        const TEvIndexTablet::TEvUnsafeCreateNodeRefResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUnsafeDeleteNodeRef(
+        const TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleUnsafeDeleteNodeRefResponse(
+        const TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     STFUNC(StateWork);
 
     void HandleRegisterLocalFileStore(
@@ -295,27 +326,11 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    NActors::IActorPtr CreateUnsafeCreateNodeActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    NActors::IActorPtr CreateUnsafeDeleteNodeActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
     NActors::IActorPtr CreateUnsafeUpdateNodeActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
     NActors::IActorPtr CreateUnsafeGetNodeActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    NActors::IActorPtr CreateUnsafeCreateNodeRefActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    NActors::IActorPtr CreateUnsafeDeleteNodeRefActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

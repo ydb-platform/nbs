@@ -2,6 +2,7 @@
 #include "service_ut_helpers.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -329,9 +330,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             auto* node = request.MutableNode();
             node->SetId(id3);
             node->SetSize(333);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNode", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeCreateNodeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         {
@@ -340,10 +348,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             auto* node = request.MutableNode();
             node->SetId(id3);
             node->SetSize(333);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("UnsafeCreateNode", buf);
-            auto response = service.RecvExecuteActionResponse();
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeCreateNodeResponse>();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_EXIST,
                 response->GetStatus(),
@@ -416,9 +427,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             NProtoPrivate::TUnsafeDeleteNodeRequest request;
             request.SetFileSystemId(fsId);
             request.SetId(id3);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeDeleteNode", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeDeleteNodeRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeDeleteNodeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         {
@@ -440,10 +458,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             NProtoPrivate::TUnsafeDeleteNodeRequest request;
             request.SetFileSystemId(fsId);
             request.SetId(id3);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("UnsafeDeleteNode", buf);
-            auto response = service.RecvExecuteActionResponse();
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeDeleteNodeRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeDeleteNodeResponse>();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_NOENT,
                 response->GetStatus(),
@@ -536,9 +557,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetName(name2);
             request.SetShardId(shardId2);
             request.SetShardNodeName(shardNodeName2);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRefRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         {
@@ -548,10 +576,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetName(name2);
             request.SetShardId(shardId2);
             request.SetShardNodeName(shardNodeName2);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("UnsafeCreateNodeRef", buf);
-            auto response = service.RecvExecuteActionResponse();
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRefRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_EXIST,
                 response->GetStatus(),
@@ -603,9 +634,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetFileSystemId(fsId);
             request.SetParentId(parentId);
             request.SetName(name1);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeDeleteNodeRef", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         {
@@ -629,10 +667,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetFileSystemId(fsId);
             request.SetParentId(parentId);
             request.SetName(name1);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("UnsafeDeleteNodeRef", buf);
-            auto response = service.RecvExecuteActionResponse();
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse>();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_NOENT,
                 response->GetStatus(),
@@ -849,18 +890,32 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetFileSystemId(fsId);
             request.SetParentId(RootNodeId);
             request.SetName("file1");
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeDeleteNodeRef", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         {
             NProtoPrivate::TUnsafeDeleteNodeRequest request;
             request.SetFileSystemId(fsId);
             request.SetId(nodeId);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeDeleteNode", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeDeleteNodeRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeDeleteNodeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         {
@@ -869,9 +924,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             auto* node = request.MutableNode();
             node->SetId(nodeId);
             node->SetSize(333);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNode", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeCreateNodeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         {
@@ -880,9 +942,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetParentId(RootNodeId);
             request.SetName("file2");
             request.SetChildId(nodeId);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRefRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    request));
+            auto response =
+                service.RecvResponse<TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                FormatError(response->GetError()));
         }
 
         //

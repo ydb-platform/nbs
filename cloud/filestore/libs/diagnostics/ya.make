@@ -22,6 +22,7 @@ PEERDIR(
     # FIXME use public api protos
     cloud/filestore/libs/storage/tablet/protos
     cloud/filestore/private/api/protos
+    cloud/filestore/private/api/unsafe_protos
     cloud/filestore/public/api/protos
 
     cloud/storage/core/libs/diagnostics

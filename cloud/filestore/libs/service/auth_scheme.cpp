@@ -97,6 +97,12 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::ListEndpoints:
             return CreatePermissionList({EPermission::List});
 
+        case EFileStoreRequest::UnsafeCreateNode:
+        case EFileStoreRequest::UnsafeDeleteNode:
+        case EFileStoreRequest::UnsafeCreateNodeRef:
+        case EFileStoreRequest::UnsafeDeleteNodeRef:
+            return TPermissionList().Flip();
+
         case EFileStoreRequest::MAX:
             Y_ABORT("EFileStoreRequest::MAX is not valid");
     }

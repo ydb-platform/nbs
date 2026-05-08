@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"github.com/stretchr/testify/mock"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
@@ -212,6 +213,46 @@ func (m *ClientInterfaceMock) ExecuteAction(
 
 	args := m.Called(ctx, action, input)
 	res, _ := args.Get(0).([]byte)
+	return res, args.Error(1)
+}
+
+func (m *ClientInterfaceMock) UnsafeCreateNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRequest,
+) (*private_protos.TUnsafeCreateNodeResponse, error) {
+
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*private_protos.TUnsafeCreateNodeResponse)
+	return res, args.Error(1)
+}
+
+func (m *ClientInterfaceMock) UnsafeDeleteNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRequest,
+) (*private_protos.TUnsafeDeleteNodeResponse, error) {
+
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*private_protos.TUnsafeDeleteNodeResponse)
+	return res, args.Error(1)
+}
+
+func (m *ClientInterfaceMock) UnsafeCreateNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRefRequest,
+) (*private_protos.TUnsafeCreateNodeRefResponse, error) {
+
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*private_protos.TUnsafeCreateNodeRefResponse)
+	return res, args.Error(1)
+}
+
+func (m *ClientInterfaceMock) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRefRequest,
+) (*private_protos.TUnsafeDeleteNodeRefResponse, error) {
+
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*private_protos.TUnsafeDeleteNodeRefResponse)
 	return res, args.Error(1)
 }
 

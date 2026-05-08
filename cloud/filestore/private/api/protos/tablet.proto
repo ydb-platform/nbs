@@ -725,18 +725,6 @@ message TWriteCompactionMapResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Direct inode and node ref manipulation.
 
-message TUnsafeDeleteNodeRequest
-{
-    string FileSystemId = 1;
-    uint64 Id = 2;
-}
-
-message TUnsafeDeleteNodeResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
-
 message TUnsafeUpdateNodeRequest
 {
     string FileSystemId = 1;
@@ -760,19 +748,6 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
-}
-
-message TUnsafeDeleteNodeRefRequest
-{
-    string FileSystemId = 1;
-    uint64 ParentId = 2;
-    bytes Name = 3;
-}
-
-message TUnsafeDeleteNodeRefResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
 }
 
 message TUnsafeUpdateNodeRefRequest

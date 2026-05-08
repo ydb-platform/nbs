@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/service.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
 
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
@@ -51,6 +52,53 @@ FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD)
 FILESTORE_LOCAL_DATA_METHODS(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
+
+////////////////////////////////////////////////////////////////////////////////
+// Method structs for the private tablet API (NProtoPrivate / TEvIndexTablet).
+
+struct TUnsafeCreateNodeMethod
+{
+    static constexpr auto RequestName = TStringBuf("UnsafeCreateNode");
+
+    using TRequest = NProtoPrivate::TUnsafeCreateNodeRequest;
+    using TResponse = NProtoPrivate::TUnsafeCreateNodeResponse;
+
+    using TRequestEvent = TEvIndexTablet::TEvUnsafeCreateNodeRequest;
+    using TResponseEvent = TEvIndexTablet::TEvUnsafeCreateNodeResponse;
+};
+
+struct TUnsafeDeleteNodeMethod
+{
+    static constexpr auto RequestName = TStringBuf("UnsafeDeleteNode");
+
+    using TRequest = NProtoPrivate::TUnsafeDeleteNodeRequest;
+    using TResponse = NProtoPrivate::TUnsafeDeleteNodeResponse;
+
+    using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRequest;
+    using TResponseEvent = TEvIndexTablet::TEvUnsafeDeleteNodeResponse;
+};
+
+struct TUnsafeCreateNodeRefMethod
+{
+    static constexpr auto RequestName = TStringBuf("UnsafeCreateNodeRef");
+
+    using TRequest = NProtoPrivate::TUnsafeCreateNodeRefRequest;
+    using TResponse = NProtoPrivate::TUnsafeCreateNodeRefResponse;
+
+    using TRequestEvent = TEvIndexTablet::TEvUnsafeCreateNodeRefRequest;
+    using TResponseEvent = TEvIndexTablet::TEvUnsafeCreateNodeRefResponse;
+};
+
+struct TUnsafeDeleteNodeRefMethod
+{
+    static constexpr auto RequestName = TStringBuf("UnsafeDeleteNodeRef");
+
+    using TRequest = NProtoPrivate::TUnsafeDeleteNodeRefRequest;
+    using TResponse = NProtoPrivate::TUnsafeDeleteNodeRefResponse;
+
+    using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest;
+    using TResponseEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -245,6 +293,30 @@ public:
 FILESTORE_REMOTE_SERVICE(FILESTORE_SEND_REQUEST)
 
 #undef FILESTORE_SEND_REQUEST
+
+#define FILESTORE_SEND_PRIVATE_REQUEST(name)                                   \
+    TMethodHandler<T##name##Method> name##Handler;                             \
+    void SendRequest(                                                          \
+        IActorSystem& actorSystem,                                             \
+        TCallContextPtr callContext,                                           \
+        NProtoPrivate::T##name##Request request,                               \
+        TPromise<NProtoPrivate::T##name##Response> promise)                    \
+    {                                                                          \
+        name##Handler.SendRequest(                                             \
+            actorSystem,                                                       \
+            std::move(callContext),                                            \
+            std::move(request),                                                \
+            std::move(promise),                                                \
+            SelfId);                                                           \
+    }                                                                          \
+// FILESTORE_SEND_PRIVATE_REQUEST
+
+FILESTORE_SEND_PRIVATE_REQUEST(UnsafeCreateNode)
+FILESTORE_SEND_PRIVATE_REQUEST(UnsafeDeleteNode)
+FILESTORE_SEND_PRIVATE_REQUEST(UnsafeCreateNodeRef)
+FILESTORE_SEND_PRIVATE_REQUEST(UnsafeDeleteNodeRef)
+
+#undef FILESTORE_SEND_PRIVATE_REQUEST
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -274,6 +346,15 @@ public:
     {
         switch (ev->GetTypeRewrite()) {
             FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_RESPONSE_IMPL)
+
+            HFunc(TUnsafeCreateNodeMethod::TResponseEvent,
+                Impl->UnsafeCreateNodeHandler.HandleResponse);
+            HFunc(TUnsafeDeleteNodeMethod::TResponseEvent,
+                Impl->UnsafeDeleteNodeHandler.HandleResponse);
+            HFunc(TUnsafeCreateNodeRefMethod::TResponseEvent,
+                Impl->UnsafeCreateNodeRefHandler.HandleResponse);
+            HFunc(TUnsafeDeleteNodeRefMethod::TResponseEvent,
+                Impl->UnsafeDeleteNodeRefHandler.HandleResponse);
 
             default:
                 HandleUnexpectedEvent(
@@ -463,6 +544,54 @@ public:
             std::move(callContext),
             std::move(request),
             std::move(responseHandler));
+    }
+
+    TFuture<NProtoPrivate::TUnsafeCreateNodeResponse> UnsafeCreateNode(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeCreateNodeRequest> request) override
+    {
+        auto response = NewPromise<NProtoPrivate::TUnsafeCreateNodeResponse>();
+        ExecuteRequest<TUnsafeCreateNodeMethod>(
+            std::move(callContext),
+            std::move(request),
+            response);
+        return response.GetFuture();
+    }
+
+    TFuture<NProtoPrivate::TUnsafeDeleteNodeResponse> UnsafeDeleteNode(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeDeleteNodeRequest> request) override
+    {
+        auto response = NewPromise<NProtoPrivate::TUnsafeDeleteNodeResponse>();
+        ExecuteRequest<TUnsafeDeleteNodeMethod>(
+            std::move(callContext),
+            std::move(request),
+            response);
+        return response.GetFuture();
+    }
+
+    TFuture<NProtoPrivate::TUnsafeCreateNodeRefResponse> UnsafeCreateNodeRef(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeCreateNodeRefRequest> request) override
+    {
+        auto response = NewPromise<NProtoPrivate::TUnsafeCreateNodeRefResponse>();
+        ExecuteRequest<TUnsafeCreateNodeRefMethod>(
+            std::move(callContext),
+            std::move(request),
+            response);
+        return response.GetFuture();
+    }
+
+    TFuture<NProtoPrivate::TUnsafeDeleteNodeRefResponse> UnsafeDeleteNodeRef(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeDeleteNodeRefRequest> request) override
+    {
+        auto response = NewPromise<NProtoPrivate::TUnsafeDeleteNodeRefResponse>();
+        ExecuteRequest<TUnsafeDeleteNodeRefMethod>(
+            std::move(callContext),
+            std::move(request),
+            response);
+        return response.GetFuture();
     }
 
     TFuture<NProto::TReadDataLocalResponse> ReadDataLocal(

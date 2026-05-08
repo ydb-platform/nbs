@@ -13,6 +13,7 @@ PEERDIR(
     cloud/filestore/libs/diagnostics
     cloud/filestore/public/api/grpc
     cloud/filestore/public/api/protos
+    cloud/filestore/private/api/unsafe_protos
 
     cloud/filestore/libs/service
 

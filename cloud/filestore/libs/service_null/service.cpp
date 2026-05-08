@@ -213,6 +213,38 @@ struct TNullFileStore final
         Y_UNUSED(request);
         Y_UNUSED(responseHandler);
     }
+
+    TFuture<NProtoPrivate::TUnsafeCreateNodeResponse> UnsafeCreateNode(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeCreateNodeRequest> request) override
+    {
+        Y_UNUSED(callContext, request);
+        return MakeFuture(NProtoPrivate::TUnsafeCreateNodeResponse());
+    }
+
+    TFuture<NProtoPrivate::TUnsafeDeleteNodeResponse> UnsafeDeleteNode(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeDeleteNodeRequest> request) override
+    {
+        Y_UNUSED(callContext, request);
+        return MakeFuture(NProtoPrivate::TUnsafeDeleteNodeResponse());
+    }
+
+    TFuture<NProtoPrivate::TUnsafeCreateNodeRefResponse> UnsafeCreateNodeRef(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeCreateNodeRefRequest> request) override
+    {
+        Y_UNUSED(callContext, request);
+        return MakeFuture(NProtoPrivate::TUnsafeCreateNodeRefResponse());
+    }
+
+    TFuture<NProtoPrivate::TUnsafeDeleteNodeRefResponse> UnsafeDeleteNodeRef(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProtoPrivate::TUnsafeDeleteNodeRefRequest> request) override
+    {
+        Y_UNUSED(callContext, request);
+        return MakeFuture(NProtoPrivate::TUnsafeDeleteNodeRefResponse());
+    }
 };
 
 }   // namespace

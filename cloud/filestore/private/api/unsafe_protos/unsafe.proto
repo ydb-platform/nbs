@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "cloud/storage/core/protos/error.proto";
+import "cloud/filestore/public/api/protos/headers.proto";
 import "cloud/filestore/public/api/protos/node.proto";
 
 package NCloud.NFileStore.NProtoPrivate;
@@ -12,6 +13,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/uns
 
 message TUnsafeCreateNodeRequest
 {
+    NCloud.NFileStore.NProto.THeaders Headers = 3;
+
     string FileSystemId = 1;
     NProto.TNodeAttr Node = 2;
 }
@@ -22,8 +25,24 @@ message TUnsafeCreateNodeResponse
     NCloud.NProto.TError Error = 1;
 }
 
+message TUnsafeDeleteNodeRequest
+{
+    NCloud.NFileStore.NProto.THeaders Headers = 3;
+
+    string FileSystemId = 1;
+    uint64 Id = 2;
+}
+
+message TUnsafeDeleteNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
 message TUnsafeCreateNodeRefRequest
 {
+    NCloud.NFileStore.NProto.THeaders Headers = 7;
+
     string FileSystemId = 1;
     uint64 ParentId = 2;
     bytes Name = 3;
@@ -33,6 +52,21 @@ message TUnsafeCreateNodeRefRequest
 }
 
 message TUnsafeCreateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeDeleteNodeRefRequest
+{
+    NCloud.NFileStore.NProto.THeaders Headers = 4;
+
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+}
+
+message TUnsafeDeleteNodeRefResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

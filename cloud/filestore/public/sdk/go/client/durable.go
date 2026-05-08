@@ -3,6 +3,7 @@ package client
 import (
 	"time"
 
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	"golang.org/x/net/context"
 )
@@ -356,6 +357,82 @@ func (client *durableClient) ExecuteAction(
 	)
 
 	return resp.(*protos.TExecuteActionResponse), err
+}
+
+func (client *durableClient) UnsafeCreateNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRequest,
+) (*private_protos.TUnsafeCreateNodeResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeCreateNode(ctx, req)
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeCreateNodeResponse), nil
+}
+
+func (client *durableClient) UnsafeDeleteNode(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRequest,
+) (*private_protos.TUnsafeDeleteNodeResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeDeleteNode(ctx, req)
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeDeleteNodeResponse), nil
+}
+
+func (client *durableClient) UnsafeCreateNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeCreateNodeRefRequest,
+) (*private_protos.TUnsafeCreateNodeRefResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeCreateNodeRef(ctx, req)
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeCreateNodeRefResponse), nil
+}
+
+func (client *durableClient) UnsafeDeleteNodeRef(
+	ctx context.Context,
+	req *private_protos.TUnsafeDeleteNodeRefRequest,
+) (*private_protos.TUnsafeDeleteNodeRefResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnsafeDeleteNodeRef(ctx, req)
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*private_protos.TUnsafeDeleteNodeRefResponse), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
