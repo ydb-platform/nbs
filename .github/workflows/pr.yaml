@@ -27,13 +27,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check-trigger-label:
-    uses: ./.github/workflows/check-test-launch-label.yaml
-
   check-running-allowed:
-    needs:
-      - check-trigger-label
-    if: needs.check-trigger-label.outputs.allowed == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
@@ -89,10 +83,17 @@ jobs:
                 }
               }
             }
-  create-build-and-test-target-var:
+
+  check-trigger-label:
     needs:
       - check-running-allowed
-    if: needs.check-running-allowed.outputs.result == 'true'
+    uses: ./.github/workflows/check-test-launch-label.yaml
+
+  create-build-and-test-target-var:
+    needs:
+      - check-trigger-label
+      - check-running-allowed
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}

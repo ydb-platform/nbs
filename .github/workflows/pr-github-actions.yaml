@@ -49,27 +49,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check-trigger-label:
-    uses: ./.github/workflows/check-test-launch-label.yaml
-
-  set-env:
-    needs:
-      - check-trigger-label
-    if: needs.check-trigger-label.outputs.allowed == 'true'
-    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
-    outputs:
-      allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
-      large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
-    # we don't need anything, but otherwise github will complain
-    steps:
-      - name: set env
-        id: set-env
-        run: echo
   check-running-allowed:
-    needs:
-      - check-trigger-label
-    if: needs.check-trigger-label.outputs.allowed == 'true'
-    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
     steps:
@@ -138,10 +119,28 @@ jobs:
                 }
               }
             }
+
+  check-trigger-label:
+    needs:
+      - check-running-allowed
+    uses: ./.github/workflows/check-test-launch-label.yaml
+
+  set-env:
+    needs:
+      - check-running-allowed
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
+      large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
+    # we don't need anything, but otherwise github will complain
+    steps:
+      - name: set env
+        id: set-env
+        run: echo
   shell:
-    needs: [ set-env, check-running-allowed ]
-    if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    needs: [set-env, check-running-allowed, check-trigger-label]
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
       - name: checkout
@@ -192,9 +191,9 @@ jobs:
           shfmt_flags: "-i 4 -ci -kp -bn -sr"
 
   python:
-    needs: [ set-env, check-running-allowed ]
-    if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    needs: [set-env, check-running-allowed, check-trigger-label]
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
       - name: checkout
@@ -377,9 +376,9 @@ jobs:
             })
 
   workflows:
-    needs: [ set-env, check-running-allowed ]
-    if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    needs: [set-env, check-running-allowed, check-trigger-label]
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -399,7 +398,7 @@ jobs:
         uses: asdf-vm/actions/install@v4.0.1
         with:
           tool_versions: |
-            action-validator 0.8.0 
+            action-validator 0.8.0
 
       - name: Prepare s3
         id: s3
@@ -453,9 +452,10 @@ jobs:
             })
   create-build-and-test-target-var:
     needs:
+      - check-trigger-label
       - check-running-allowed
-    if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
       matrix_include_asan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_asan }}
@@ -501,7 +501,7 @@ jobs:
           scheduling_type: ${{ vars.NEBIUS_SCHEDULING_TYPE || 'on_demand' }}
 
   build_and_test:
-    needs: [ check-running-allowed, create-build-and-test-target-var ]
+    needs: [check-running-allowed, create-build-and-test-target-var]
     if: needs.check-running-allowed.outputs.result == 'true'
     strategy:
       fail-fast: false
