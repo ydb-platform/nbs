@@ -68,12 +68,17 @@ struct TFileStoreEvents
     {
         START = EventSpaceBegin(NKikimr::TKikimrEvents::ES_FILESTORE),
 
-#define FILESTORE_DECLARE_COMPONENT(component)                                 \
+#define FILESTORE_DECLARE_COMPONENT(component, spaceSize)                      \
         component##_START,                                                     \
-        component##_END = component##_START + 100,                             \
+        component##_END = component##_START + spaceSize,                       \
 // FILESTORE_DECLARE_COMPONENT
 
-        FILESTORE_ACTORS(FILESTORE_DECLARE_COMPONENT)
+        FILESTORE_DECLARE_COMPONENT(SCHEMESHARD, 100)
+        FILESTORE_DECLARE_COMPONENT(SERVICE, 302)
+        FILESTORE_DECLARE_COMPONENT(TABLET, 100)
+        FILESTORE_DECLARE_COMPONENT(TABLET_WORKER, 100)
+        FILESTORE_DECLARE_COMPONENT(TABLET_PROXY, 100)
+        FILESTORE_DECLARE_COMPONENT(SS_PROXY, 100)
 
 #undef FILESTORE_DECLARE_COMPONENT
 
