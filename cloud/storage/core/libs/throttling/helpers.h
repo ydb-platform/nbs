@@ -18,7 +18,9 @@ ui64 CalculateThrottlerC2(double maxIops, double maxBandwidth);
 
 TDuration SecondsToDuration(double seconds);
 
+TDuration CostPerIO(ui64 maxIops, ui64 maxBandwidth, ui64 byteCount);
+
 TDuration
-CostPerIO(ui64 maxIops, ui64 maxBandwidth, ui64 byteCount, ui64 ioCount = 1);
+CostPerIO(ui64 maxIops, ui64 maxBandwidth, ui64 byteCount, ui64 ioCount);
 
 }   // namespace NCloud

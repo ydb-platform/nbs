@@ -90,10 +90,9 @@ void TVolumeBalancerState::UpdateVolumeStats(
             };
 
             info.Cost = CalculateCost(info, currentLoadCounters);
-
             info.LoadCounters = currentLoadCounters;
         } else {
-            info.Cost = MakeError(E_FAIL, "Volume is preempted");
+            info.Cost = std::nullopt;
             info.LoadCounters = std::nullopt;
         }
 
@@ -150,10 +149,11 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                             out << info.SufferCount;
                         }
                         TABLED() {
-                            out
-                                << (HasError(info.Cost.GetError())
-                                        ? info.Cost.GetError().GetMessage()
-                                        : info.Cost.GetResult().ToString());
+                            if (info.Cost.has_value()) {
+                                out << info.Cost.value().GetValue();
+                            } else {
+                                out << "-";
+                            }
                         }
                     }
                 }
@@ -323,13 +323,13 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         !VolumesInProgress.count(diskId);
 }
 
-TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
-        const TVolumeInfo& info,
-        const TYdbDiskLoadCounters& currentLoad) const
+std::optional<TDuration> TVolumeBalancerState::CalculateCost(
+    const TVolumeInfo& info,
+    const TYdbDiskLoadCounters& currentLoad) const
 {
     if (!info.LoadCounters.has_value()) {
         // Unable to calculate cost: No counters from previous iteration
-        return MakeError(E_FAIL, "No counters from previous iteration");
+        return std::nullopt;
     }
 
     const auto& last = info.LoadCounters.value();
@@ -340,7 +340,7 @@ TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
         currentLoad.ReadBlobCount < last.ReadBlobCount)
     {
         // Unable to calculate cost: Negative counters diff
-        return MakeError(E_FAIL, "Negative counters diff");
+        return std::nullopt;
     }
 
     const auto perfSettings =
@@ -348,7 +348,7 @@ TResultOrError<TDuration> TVolumeBalancerState::CalculateCost(
 
     if (!perfSettings.WriteIops || !perfSettings.ReadIops) {
         // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
-        return MakeError(E_FAIL, "Perf settings not configured");
+        return std::nullopt;
     }
 
     const ui32 expectedParallelism =
