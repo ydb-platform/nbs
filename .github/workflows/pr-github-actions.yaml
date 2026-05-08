@@ -49,7 +49,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-trigger-label:
+    uses: ./.github/workflows/check-test-launch-label.yaml
+
   set-env:
+    needs:
+      - check-trigger-label
+    if: needs.check-trigger-label.outputs.allowed == 'true'
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
@@ -60,6 +66,9 @@ jobs:
         id: set-env
         run: echo
   check-running-allowed:
+    needs:
+      - check-trigger-label
+    if: needs.check-trigger-label.outputs.allowed == 'true'
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
@@ -410,8 +419,7 @@ jobs:
         run: |
           set -x
           export TMP_OUT=$(mktemp)
-          find .github/workflows -type f \( -iname \*.yaml -o -iname \*.yml \) -print0 \
-            | xargs -0 -I {} action-validator --verbose {} > $TMP_OUT
+          find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read -r path; do echo Checking $path; action-validator --verbose $path; done > $TMP_OUT
 
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
