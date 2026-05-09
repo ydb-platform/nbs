@@ -508,7 +508,15 @@ void TIndexTabletActor::CreateSessionsInShards(
         logTag.c_str(),
         JoinSeq(",", shardIds).c_str());
 
+    //
+    // The returned FileStore structure can be huge for filesystems with many
+    // shards. At the same time it's actually not used at all - it's only needed
+    // by the storage service layer, not by other tablets. And the storage
+    // service layer gets it from the main tablet.
+    //
+
     request.SetNoFileStoreInfo(true);
+
     auto actor = std::make_unique<TCreateShardSessionsActor>(
         std::move(logTag),
         SelfId(),
