@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2023 EfficiOS Inc.
+#
+# SPDX-License-Identifier: MIT
+
+/arch_mo.tap
+/arch_mo_cxx.tap

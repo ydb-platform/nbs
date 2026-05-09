@@ -1,0 +1,21 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2024 Michael Jeanson <mjeanson@efficios.com>
+
+SH_TAP=0
+
+if [ "x${RSEQ_TESTS_SRCDIR:-}" != "x" ]; then
+	UTILSSH="$RSEQ_TESTS_SRCDIR/utils/utils.sh"
+else
+	UTILSSH="$(dirname "$0")/utils/utils.sh"
+fi
+
+# shellcheck source=./utils/utils.sh
+source "$UTILSSH"
+
+CURDIR="${RSEQ_TESTS_BUILDDIR}/"
+
+LIBDISABLE_RSEQ_SYSCALL_PATH="${CURDIR}/.libs"
+LIBDISABLE_RSEQ_SYSCALL="${LIBDISABLE_RSEQ_SYSCALL_PATH}/libdisable-rseq-syscall.so"
+
+LD_PRELOAD="${LIBDISABLE_RSEQ_SYSCALL}" "${CURDIR}/no_syscall_test_cxx.tap"
