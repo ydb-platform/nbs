@@ -312,7 +312,7 @@ public:
         }
 
         a->SetLinks(a->GetLinks() + 1);
-        const ui64 handleId = ++LastHandleId;
+        const ui64 handleId = ShardedId(++LastHandleId, ShardNo);
         auto& h = Handles[handleId];
         h.Attr = a;
         h.FileNode = &Files[a->GetId()];
