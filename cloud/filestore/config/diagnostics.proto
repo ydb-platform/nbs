@@ -154,4 +154,7 @@ message TDiagnosticsConfig
 
     // Dump lwtrace tracks every DumpTracksInterval ms.
     optional uint32 DumpTracksInterval = 32;
+
+    // Enable profile log internal metrics.
+    optional bool EnableProfileLogMetrics = 33;
 }

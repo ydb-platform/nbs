@@ -22,6 +22,9 @@ struct IProfileLog
         NProto::TProfileLogRequestInfo Request;
     };
 
+    virtual void SetupCounters(NMonitoring::TDynamicCountersPtr)
+    {}
+
     virtual void Write(TRecord record) = 0;
 };
 

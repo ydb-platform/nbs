@@ -6,6 +6,7 @@
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
 #include <library/cpp/eventlog/eventlog.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
@@ -126,6 +127,7 @@ struct TEnv
     const TTempDir TempDir;
     const TFsPath ProfilePath = TempDir.Path() / "profile.log";
 
+    NMonitoring::TDynamicCountersPtr Counters;
     ITimerPtr Timer;
     std::shared_ptr<TTestScheduler> Scheduler;
     TProfileLogSettings Settings;
@@ -133,14 +135,18 @@ struct TEnv
     TEventProcessor EventProcessor;
 
     TEnv()
-        : Timer(CreateWallClockTimer())
+        : Counters(new NMonitoring::TDynamicCounters())
+        , Timer(CreateWallClockTimer())
         , Scheduler(new TTestScheduler())
         , Settings{ProfilePath.c_str(), TDuration::Seconds(1), 0, 0}
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
-    {}
+    {
+        ProfileLog->SetupCounters(Counters);
+    }
 
     TEnv(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
-        : Timer(CreateWallClockTimer())
+        : Counters(new NMonitoring::TDynamicCounters())
+        , Timer(CreateWallClockTimer())
         , Scheduler(new TTestScheduler())
         , Settings(
               ProfilePath.c_str(),
@@ -148,7 +154,9 @@ struct TEnv
               maxFlushRecords,
               maxFrameFlushRecords)
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
-    {}
+    {
+        ProfileLog->SetupCounters(Counters);
+    }
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -171,6 +179,11 @@ struct TEnv
         const char* argv[] = {"foo", Settings.FilePath.c_str()};
         IterateEventLog(NEvClass::Factory(), &EventProcessor, 2, argv);
         Sort(EventProcessor.FlatMessages);
+    }
+
+    ui64 GetCounter(const TString& name) const
+    {
+        return Counters->GetCounter(name)->Val();
     }
 };
 
@@ -292,6 +305,109 @@ struct TRequestInfoBuilder
 
 Y_UNIT_TEST_SUITE(TProfileLogTest)
 {
+    Y_UNIT_TEST_F(TestEmptyFlushMetrics, TEnv)
+    {
+        ProcessLog();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, GetCounter("ProfileLog/FlushCount"));
+        UNIT_ASSERT_VALUES_EQUAL(0, GetCounter("ProfileLog/EnqueuedRecords"));
+        UNIT_ASSERT_VALUES_EQUAL(0, GetCounter("ProfileLog/DequeuedRecords"));
+        UNIT_ASSERT_VALUES_EQUAL(0, GetCounter("ProfileLog/DiscardedRequests"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetCounter("ProfileLog/EventLogCompressedBytes"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetCounter("ProfileLog/ProfileLogRecordProtoBytes"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetCounter("ProfileLog/LastFlushCompressedBytes"));
+    }
+
+    Y_UNIT_TEST_F(TestFlushMetrics, TEnv)
+    {
+        ProfileLog->Write({
+            "fs1",
+            TRequestInfoBuilder()
+                .SetTimestamp(TInstant::Seconds(1))
+                .SetDuration(TDuration::MilliSeconds(100))
+                .SetRequestType(1)
+                .SetError(0)
+                .Build()
+        });
+
+        ProfileLog->Write({
+            "fs1",
+            TRequestInfoBuilder()
+                .SetTimestamp(TInstant::Seconds(2))
+                .SetDuration(TDuration::MilliSeconds(200))
+                .SetRequestType(2)
+                .SetError(0)
+                .Build()
+        });
+
+        ProfileLog->Write({
+            "fs2",
+            TRequestInfoBuilder()
+                .SetTimestamp(TInstant::Seconds(3))
+                .SetDuration(TDuration::MilliSeconds(300))
+                .SetRequestType(3)
+                .SetError(0)
+                .Build()
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, GetCounter("ProfileLog/EnqueuedRecords"));
+
+        ProcessLog();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, GetCounter("ProfileLog/FlushCount"));
+        UNIT_ASSERT_VALUES_EQUAL(3, GetCounter("ProfileLog/DequeuedRecords"));
+        UNIT_ASSERT_VALUES_EQUAL(0, GetCounter("ProfileLog/DiscardedRequests"));
+        UNIT_ASSERT(GetCounter("ProfileLog/ProfileLogRecordProtoBytes") > 0);
+        UNIT_ASSERT(GetCounter("ProfileLog/EventLogCompressedBytes") > 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetCounter("ProfileLog/EventLogCompressedBytes"),
+            GetCounter("ProfileLog/LastFlushCompressedBytes"));
+    }
+
+    Y_UNIT_TEST(TestSmokeWithoutMetrics)
+    {
+        TTempDir tempDir;
+        const TFsPath profilePath = tempDir.Path() / "profile.log";
+
+        auto timer = CreateWallClockTimer();
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TProfileLogSettings settings{
+            profilePath.c_str(),
+            TDuration::Seconds(1),
+            0,
+            0
+        };
+        auto profileLog = CreateProfileLog(settings, timer, scheduler);
+
+        profileLog->Start();
+        profileLog->Write({
+            "fs1",
+            TRequestInfoBuilder()
+                .SetTimestamp(TInstant::Seconds(1))
+                .SetDuration(TDuration::MilliSeconds(100))
+                .SetRequestType(1)
+                .SetError(0)
+                .Build()
+        });
+        scheduler->RunAllScheduledTasks();
+        profileLog->Stop();
+
+        TEventProcessor eventProcessor;
+        const char* argv[] = {"foo", settings.FilePath.c_str()};
+        IterateEventLog(NEvClass::Factory(), &eventProcessor, 2, argv);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, eventProcessor.FlatMessages.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "fs1\t1000000\t1\t100000\t0",
+            eventProcessor.FlatMessages[0]);
+    }
+
     Y_UNIT_TEST_F(TestSmoke, TEnv)
     {
         for (ui32 i = 1; i <= 100'000; ++i) {
@@ -466,6 +582,13 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         UNIT_ASSERT_VALUES_EQUAL(
             extraDiscardedRecords,
             env.EventProcessor.DiscardedMessageCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxFlushRecords + extraDiscardedRecords,
+            env.GetCounter("ProfileLog/DequeuedRecords"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            extraDiscardedRecords,
+            env.GetCounter("ProfileLog/DiscardedRequests"));
 
         // check each record contains maxFrameFlushRecords records
         for (ui64 i = 0; i < maxFlushRecords / maxFrameFlushRecords; ++i) {

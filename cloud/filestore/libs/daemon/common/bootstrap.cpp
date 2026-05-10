@@ -226,6 +226,10 @@ void TBootstrapCommon::InitDiagnostics()
     }
 
     FilestoreCounters = FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters());
+    if (Configs->DiagnosticsConfig->GetEnableProfileLogMetrics()) {
+        ProfileLog->SetupCounters(
+            FilestoreCounters->GetSubgroup("component", "profile_log"));
+    }
 
     FsCountersProvider = CreateFsCountersProvider(
         MetricsComponent,

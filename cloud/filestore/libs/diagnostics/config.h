@@ -143,6 +143,7 @@ public:
 
     ui64 GetProfileLogMaxFlushRecords() const;
     ui64 GetProfileLogMaxFrameFlushRecords() const;
+    bool GetEnableProfileLogMetrics() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
