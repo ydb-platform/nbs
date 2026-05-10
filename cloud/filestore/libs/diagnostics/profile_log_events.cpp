@@ -18,6 +18,7 @@
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 
@@ -519,10 +520,22 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TSetNodeAttrRequest& request)
 {
+    const auto flags = request.GetFlags();
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
-    nodeInfo->SetFlags(request.GetFlags());
+    nodeInfo->SetFlags(flags);
     nodeInfo->SetMode(request.GetUpdate().GetMode());
+
+    using F = NProto::TSetNodeAttrRequest;
+    if (HasProtoFlag(flags, F::F_SET_ATTR_ATIME)) {
+        nodeInfo->SetATime(request.GetUpdate().GetATime());
+    }
+    if (HasProtoFlag(flags, F::F_SET_ATTR_MTIME)) {
+        nodeInfo->SetMTime(request.GetUpdate().GetMTime());
+    }
+    if (HasProtoFlag(flags, F::F_SET_ATTR_CTIME)) {
+        nodeInfo->SetCTime(request.GetUpdate().GetCTime());
+    }
 }
 
 template <>

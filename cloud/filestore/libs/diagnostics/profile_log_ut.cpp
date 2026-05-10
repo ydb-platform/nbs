@@ -51,7 +51,10 @@ TString NodeInfoToString(const NProto::TProfileLogNodeInfo& nodeInfo)
         << "," << nodeInfo.GetNodeId()
         << "," << nodeInfo.GetHandle()
         << "," << nodeInfo.GetSize()
-        << "," << nodeInfo.GetType();
+        << "," << nodeInfo.GetType()
+        << "," << nodeInfo.GetATime()
+        << "," << nodeInfo.GetMTime()
+        << "," << nodeInfo.GetCTime();
 }
 
 TString LockInfoToString(const NProto::TProfileLogLockInfo& lockInfo)
@@ -394,7 +397,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             EventProcessor.FlatMessages[2]
         );
         UNIT_ASSERT_VALUES_EQUAL(
-            "fs2\t4000000\t11\t800000\t1\t1,node,2,new_node,3,7,12,123,32,2",
+            "fs2\t4000000\t11\t800000\t1\t1,node,2,new_node,3,7,12,123,32,2,0,0,0",
             EventProcessor.FlatMessages[3]
         );
         UNIT_ASSERT_VALUES_EQUAL(

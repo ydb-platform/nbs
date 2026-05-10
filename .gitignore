@@ -170,3 +170,6 @@ cloud/storage/core/tools/testing/qemu/bin/usr/**
 cloud/storage/core/tools/testing/qemu/bin/qemu-bin.tar.gz
 
 cloud/filestore/bin/pids.txt
+
+# nbs_internal directory
+nbs_internal/**
