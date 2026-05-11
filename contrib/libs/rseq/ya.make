@@ -9,7 +9,7 @@ VERSION(2024)
 NO_COMPILER_WARNINGS()
 
 ADDINCL(
-    GLOBAL contrib/libs/rseq/include
+    contrib/libs/rseq/include
 )
 
 SRCS(

@@ -8,6 +8,11 @@ NO_COMPILER_WARNINGS()
 
 CXXFLAGS(-std=c++20)
 
+ADDINCL(
+    contrib/libs/silk/include
+    contrib/restricted/boost/intrusive/include
+)
+
 PEERDIR(
     contrib/libs/silk/src/util
     contrib/restricted/googletest/googletest

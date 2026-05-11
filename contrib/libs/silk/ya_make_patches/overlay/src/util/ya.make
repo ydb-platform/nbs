@@ -7,15 +7,15 @@ LICENSE_TEXTS(${ARCADIA_ROOT}/contrib/libs/silk/LICENSE)
 CXXFLAGS(-std=c++20)
 
 ADDINCL(
-    GLOBAL contrib/libs/silk/include
-    GLOBAL contrib/libs/silk/src
-    GLOBAL contrib/restricted/boost/intrusive/include
+    contrib/libs/silk/include
+    contrib/libs/rseq/include
     contrib/libs/backtrace
+    contrib/restricted/boost/intrusive/include
 )
 
 PEERDIR(
-    contrib/libs/rseq
     contrib/libs/backtrace
+    contrib/libs/rseq
     contrib/restricted/boost/context/fcontext_impl
     contrib/restricted/boost/intrusive
 )
