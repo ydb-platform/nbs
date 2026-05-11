@@ -578,24 +578,17 @@ void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
 
 void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
 {
-    TExecutorPoolStats poolStats;
-    TVector<TExecutorThreadStats> threadStats;
-    auto& actorSystem = *ctx.ExecutorThread.ActorSystem;
-    const ui32 poolId = ctx.SelfID.PoolID();
-    actorSystem.GetPoolStats(poolId, poolStats, threadStats);
-    i64 ticks = 0;
-    for (ui64 i = 0; i < threadStats.size(); ++i) {
-        ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType()];
-    }
-
-    const i64 curUsageMicros = ::NHPTimer::GetSeconds(ticks) * 1'000'000;
+    const i64 curUsageMicros =
+        Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
     const TInstant ts = ctx.Now();
     if (Metrics.PrevCPUUsageMicrosTs) {
         const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
         if (timeDiff) {
             const double usageDiff =
                 curUsageMicros - Metrics.PrevCPUUsageMicros;
-            Metrics.CPUUsageRate = 100 * (usageDiff / timeDiff.MicroSeconds());
+            Metrics.CPUUsageRate.store(
+                100 * (usageDiff / timeDiff.MicroSeconds()),
+                std::memory_order_relaxed);
         }
     }
 
