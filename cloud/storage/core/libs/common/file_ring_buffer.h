@@ -2,6 +2,8 @@
 
 #include "error.h"
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -43,6 +45,8 @@ public:
     */
     TFileRingBuffer(
         const TString& filePath,
+        TLog log,
+        TString logTag,
         ui64 dataCapacity,
         ui64 metadataCapacity = 0);
 

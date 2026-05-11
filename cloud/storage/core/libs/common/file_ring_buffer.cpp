@@ -97,7 +97,7 @@ public:
 //  Structure contract:
 //
 //  1. Empty buffer:
-//    - ReadPos = WritePos = 0
+//    - ReadPos == WritePos (any position)
 //
 //  2. Non-empty buffer:
 //    - ReadPos != WritePos
@@ -277,6 +277,8 @@ class TFileRingBuffer::TImpl
 {
 private:
     TFileMap Map;
+    TLog Log;
+    const TString LogTag;
 
     TEntriesData Data;
     bool Corrupted = false;
@@ -381,8 +383,17 @@ private:
         TEntryInfo back = front;
         TEntryInfo cur = front;
 
-        if (front.IsInvalid() || front.ActualPos != Header()->ReadPos) {
+        if (front.IsInvalid()) {
             SetCorrupted();
+            return;
+        }
+
+        if (front.ActualPos != Header()->ReadPos) {
+            STORAGE_WARN(
+                LogTag
+                << " TFileRingBuffer: Front entry position mismatch, ReadPos = "
+                << Header()->ReadPos
+                << ", front.ActualPos = " << front.ActualPos);
         }
 
         while (cur.HasValue()) {
@@ -390,17 +401,17 @@ private:
             cur = GetNextEntry(cur);
         }
 
-        if (cur.IsInvalid() || cur.ActualPos != Header()->WritePos) {
+        if (cur.IsInvalid()) {
             SetCorrupted();
+            return;
         }
 
-        if (front.HasValue()) {
-            Y_ABORT_UNLESS(back.HasValue());
-            Header()->ReadPos = front.ActualPos;
-            Header()->WritePos = back.GetNextEntryPos();
-        } else {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
+        if (back.GetNextEntryPos() != Header()->WritePos) {
+            STORAGE_WARN(
+                LogTag
+                << " TFileRingBuffer: Back entry position mismatch, WritePos = "
+                << Header()->WritePos
+                << ", back.GetNextEntryPos() = " << back.GetNextEntryPos());
         }
     }
 
@@ -507,18 +518,31 @@ private:
             front = GetNextEntry(front);
         }
 
-        if (front.HasValue()) {
-            Header()->ReadPos = front.ActualPos;
+        if (front.IsInvalid()) {
+            SetCorrupted();
         } else {
-            // All entries deleted, ring buffer should be emptied
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
+            Header()->ReadPos = front.ActualPos;
+        }
+    }
+
+    void WriteSlackSpaceMarker(ui64 pos)
+    {
+        auto* eh = Data.GetEntryHeader(pos);
+        if (eh != nullptr) {
+            eh->SetDataSize(0);
         }
     }
 
 public:
-    TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
+    TImpl(
+        const TString& filePath,
+        TLog log,
+        TString logTag,
+        ui64 dataCapacity,
+        ui64 metadataCapacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
+        , Log(std::move(log))
+        , LogTag(std::move(logTag))
     {
         Y_ABORT_UNLESS(sizeof(TEntryHeader) <= dataCapacity);
 
@@ -553,7 +577,10 @@ public:
                 }
             });
 
-        EraseFreeEntriesFromFront();
+        if (!IsCorrupted()) {
+            // This call also skips slack space
+            EraseFreeEntriesFromFront();
+        }
     }
 
     bool PushBack(TStringBuf data)
@@ -618,10 +645,7 @@ public:
                         // out of space
                         return nullptr;
                     }
-                    auto* eh = Data.GetEntryHeader(Header()->WritePos);
-                    if (eh != nullptr) {
-                        eh->SetDataSize(0);
-                    }
+                    WriteSlackSpaceMarker(Header()->WritePos);
                     writePos = 0;
                 }
             } else {
@@ -633,6 +657,19 @@ public:
                     return nullptr;
                 }
             }
+        } else if (Header()->WritePos != 0) {
+            // In order to fully utilize space when the buffer is empty,
+            // we need to reset read and write positions and ensure that
+            // the state can be restored from the intermediate state
+            WriteSlackSpaceMarker(Header()->WritePos);
+            // Ensure ordering of write operations
+            std::atomic_thread_fence(std::memory_order_release);
+            Header()->WritePos = 0;
+            // If crash happens here, EraseFreeEntriesFromFront() called in
+            // constructor will skip slack space
+            std::atomic_thread_fence(std::memory_order_release);
+            Header()->ReadPos = 0;
+            writePos = 0;
         }
 
         CurrentAllocation = Data.GetEntryHeader(writePos);
@@ -672,6 +709,10 @@ public:
 
     bool Free(const void* ptr)
     {
+        if (IsCorrupted()) {
+            return false;
+        }
+
         auto it = EntryMap.find(ptr);
         if (it == EntryMap.end()) {
             return false;
@@ -845,9 +886,16 @@ public:
 
 TFileRingBuffer::TFileRingBuffer(
         const TString& filePath,
+        TLog log,
+        TString logTag,
         ui64 dataCapacity,
         ui64 metadataCapacity)
-    : Impl(new TImpl(filePath, dataCapacity, metadataCapacity))
+    : Impl(new TImpl(
+          filePath,
+          std::move(log),
+          std::move(logTag),
+          dataCapacity,
+          metadataCapacity))
 {}
 
 TFileRingBuffer::~TFileRingBuffer() = default;

@@ -32,7 +32,12 @@ public:
         TLog log,
         TString logTag)
         : Stats(std::move(stats))
-        , Storage(config.FilePath, config.DataCapacity, config.MetadataCapacity)
+        , Storage(
+              config.FilePath,
+              log,
+              logTag,
+              config.DataCapacity,
+              config.MetadataCapacity)
         , Config(std::move(config))
         , Log(std::move(log))
         , LogTag(std::move(logTag))

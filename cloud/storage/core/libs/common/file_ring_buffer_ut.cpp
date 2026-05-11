@@ -9,7 +9,7 @@
 #include <util/system/filemap.h>
 #include <util/system/tempfile.h>
 
-namespace NCloud {
+namespace NCloud::NTesting {
 
 namespace {
 
@@ -87,6 +87,22 @@ TString PopAll(TFileRingBuffer& rb)
     return sb;
 }
 
+class TFileRingBuffer: public NCloud::TFileRingBuffer
+{
+public:
+    TFileRingBuffer(
+        const TString& filePath,
+        ui64 dataCapacity,
+        ui64 metadataCapacity = 0)
+        : NCloud::TFileRingBuffer(
+              filePath,
+              TLog(),
+              "[tag]",
+              dataCapacity,
+              metadataCapacity)
+    {}
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TReferenceImplementation
@@ -115,24 +131,24 @@ struct TReferenceImplementation
         }
 
         if (!Empty()) {
-            if (ReadPos < WritePos) {
-                const auto avail = MaxWeight - WritePos;
-                if (avail < sz) {
-                    if (ReadPos <= sz) {
-                        // out of space
-                        return false;
-                    }
-
-                    SlackSpace = avail;
-                    WritePos = 0;
-                }
-            } else {
-                const auto avail = ReadPos - WritePos;
-                if (avail <= sz) {
+        if (ReadPos < WritePos) {
+            const auto avail = MaxWeight - WritePos;
+            if (avail < sz) {
+                if (ReadPos <= sz) {
                     // out of space
                     return false;
                 }
+
+                SlackSpace = avail;
+                WritePos = 0;
             }
+        } else {
+            const auto avail = ReadPos - WritePos;
+            if (avail <= sz) {
+                // out of space
+                return false;
+            }
+        }
         }
 
         WritePos += sz;
@@ -588,28 +604,18 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("12345678"));
     }
 
-    Y_UNIT_TEST(VisitAndPopBackShouldProduceSameResults)
+    Y_UNIT_TEST(ForbidModificationOfCorruptedBuffer)
     {
-        for (int i = 0; i <= 32; i++) {
-            TStateWithCorruptedEntryLength s(i);
-            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+        TStateWithCorruptedEntryLength s(13);
+        TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
 
-            TVector<TString> afterVisit;
-            rb.Visit([&] (ui32 checksum, TStringBuf entry)
-            {
-                Y_UNUSED(checksum);
-                afterVisit.push_back(TString(entry));
-            });
-
-            TVector<TString> afterPopBack;
-            while (!rb.Empty())
-            {
-                afterPopBack.push_back(TString(rb.Front()));
-                rb.PopFront();
-            }
-
-            UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
-        }
+        auto state1 = Dump(rb);
+        rb.PopFront();
+        auto state2 = Dump(rb);
+        UNIT_ASSERT_VALUES_EQUAL(state1, state2);
+        rb.PushBack("1");
+        auto state3 = Dump(rb);
+        UNIT_ASSERT_VALUES_EQUAL(state1, state3);
     }
 
     Y_UNIT_TEST(ShouldGetRawCapacity)
@@ -1036,6 +1042,32 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         UNIT_ASSERT_VALUES_EQUAL("", Dump(*rb));
         UNIT_ASSERT_VALUES_EQUAL(0, rb->Size());
+    }
+
+    Y_UNIT_TEST(ShouldSupportFreeBetweenAllocAndCommit)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        const TString data = "efgh";
+
+        UNIT_ASSERT(rb->PushBack("abcd"));   // 12 bytes
+
+        auto alloc = rb->Alloc(4);
+        UNIT_ASSERT(!HasError(alloc));
+        data.copy(alloc.GetResult(), data.size());
+
+        rb->PopFront();
+
+        UNIT_ASSERT(rb->Commit());
+
+        UNIT_ASSERT_VALUES_EQUAL(data, rb->Front());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        UNIT_ASSERT(!rb->IsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(data, rb->Front());
     }
 }
 
