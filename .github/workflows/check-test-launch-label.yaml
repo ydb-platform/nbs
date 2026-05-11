@@ -1,0 +1,58 @@
+name: Check test launch label
+
+on:
+  workflow_call:
+    outputs:
+      allowed:
+        description: "Whether this workflow event should launch test jobs"
+        value: ${{ jobs.check.outputs.allowed }}
+
+jobs:
+  check:
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - name: Check labeled trigger
+        id: check
+        shell: bash
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          ALLOWED_LABELS: |
+            ok-to-test
+            recheck
+            blockstore
+            filestore
+            disk_manager
+            tasks
+            storage
+            asan
+            tsan
+            msan
+            ubsan
+            on_demand
+            pooled
+            hybrid
+            large-tests
+            allow-downgrade
+            rebase
+            sleep
+            disable_truncate
+        run: |
+          set -euo pipefail
+
+          if [ "${EVENT_ACTION}" != "labeled" ]; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          while IFS= read -r allowed_label; do
+            if [ "${LABEL_NAME}" = "${allowed_label}" ]; then
+              echo "allowed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done <<< "${ALLOWED_LABELS}"
+
+          echo "Label '${LABEL_NAME}' is not in the test-launch label whitelist"
+          echo "allowed=false" >> "$GITHUB_OUTPUT"
