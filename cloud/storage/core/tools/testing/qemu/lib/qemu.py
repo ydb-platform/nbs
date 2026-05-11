@@ -106,13 +106,14 @@ class Qemu:
         self.virtio = virtio
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
+        self.is_arm = is_arm
+        self.migration = "" if self.is_arm else ",migration=external"
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
         self.backup_rootfs = backup_rootfs
         self.inst_index = inst_index
         self.shared_nic_port = shared_nic_port
         self.use_virtiofs_server = use_virtiofs_server
-        self.is_arm = is_arm
 
     def prepare_mount_paths(self, ssh):
         for tag, path, _ in self.mount_paths:
@@ -147,9 +148,13 @@ class Qemu:
 
         cmd = ["-chardev",
                "socket,id=vhost0,path={},reconnect=1".format(vhost_socket)]
-        cmd += ["-device",
-                "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=%s,queue-size=512,migration=external"
-                % self.num_request_queues]
+        cmd += [
+            "-device",
+            "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
+            "num-request-queues={},queue-size=512{}".format(
+                self.num_request_queues,
+                self.migration),
+        ]
         return cmd
 
     def _get_virtioblk_options(self, vhost_socket):
@@ -275,8 +280,11 @@ class Qemu:
             if self.use_virtiofs_server:
                 cmd += ["-chardev",
                         "socket,id={},path={},reconnect=1".format(tag, vhost_socket)]
-                cmd += ["-device",
-                        "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},queue-size=512,migration=external".format(tag, tag, tag)]
+                cmd += [
+                    "-device",
+                    "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},"
+                    "queue-size=512{}".format(tag, tag, tag, self.migration),
+                ]
             else:
                 cmd += ["-virtfs",
                         "local,path={path},mount_tag={tag},security_model=none".format(tag=tag, path=path)]
