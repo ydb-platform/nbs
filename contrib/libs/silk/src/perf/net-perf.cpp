@@ -389,6 +389,7 @@ struct ServerConfig
     uint16_t port = 7777;
     uint32_t msgSize = 64;
     uint64_t delayNs = 0;
+    bool printCounters = false;
 };
 
 class Server
@@ -512,6 +513,7 @@ int Server::serverFiberMain(ServerFiberParams * params) noexcept
     Server * server = params->server;
     TcpConnection & conn = params->connection->conn;
 
+    SILK_ASSERT(server->cfg.msgSize >= sizeof(uint32_t));
     auto buf = std::make_unique<char[]>(server->cfg.msgSize);
 
     for (;;)
@@ -525,6 +527,12 @@ int Server::serverFiberMain(ServerFiberParams * params) noexcept
             }
             break;
         }
+
+        // The first 4 bytes carry a per-message stall budget in nanoseconds.
+        // Busy-loop for that long to simulate compute-bound work; the fiber
+        // holds its CPU during the stall so other ready fibers on this CPU
+        // are visible to the work-stealing path on idle CPUs.
+        busyLoopForStall(buf.get());
 
         if (server->cfg.delayNs)
         {
@@ -553,6 +561,12 @@ struct ClientConfig
     uint32_t msgSize = 64;
     uint64_t durationNs = 10'000'000'000ULL;
     uint64_t warmupNs = 2'000'000'000ULL;
+    // Per-connection Poisson rate of stall messages (Hz). 0 disables stalls.
+    // The first 4 bytes of each message are the stall duration in nanoseconds;
+    // server busy-loops for that long before echoing.
+    double stallRateHz = 0.0;
+    uint64_t stallNs = 0;
+    bool printCounters = false;
 };
 
 class Client
@@ -646,11 +660,17 @@ int Client::clientFiberMain(ClientFiberParams * params) noexcept
     Client * client = params->client;
     Connection * connection = params->connection;
 
+    SILK_ASSERT(client->cfg.msgSize >= sizeof(uint32_t));
     auto buf = std::make_unique<char[]>(client->cfg.msgSize);
     std::memset(buf.get(), 0xAB, client->cfg.msgSize);
 
+    StallScheduler stalls(client->cfg.stallRateHz, client->cfg.stallNs, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(connection)));
+
     for (;;)
     {
+        uint32_t stallNs = stalls.next();
+        std::memcpy(buf.get(), &stallNs, sizeof(stallNs));
+
         uint64_t start = silk::Tsc::getCycles();
 
         int r = connection->conn.writeAll(buf.get(), client->cfg.msgSize);
@@ -700,7 +720,13 @@ static void printJson(std::vector<uint64_t> & latNs, const ClientConfig & cfg)
     printf("  \"rps\": %.1f,\n", rps);
     printf("  \"bw_bytes\": %.0f,\n", bwBytesS);
     printLatencyUs(latNs);
-    printCounters();
+    if (cfg.printCounters)
+    {
+        printf(",");
+        printSchedulerLatency();
+        printf(",");
+        printCounters();
+    }
     printf("}\n");
 }
 
@@ -724,6 +750,7 @@ static void runServer(int argc, char ** argv)
         ("port",     po::value(&cfg.port),    "listen port")
         ("msg-size", po::value(&cfg.msgSize), "echo message size in bytes")
         ("delay",    po::value(&delayStr),    "server-side delay per message (e.g. 1ms, 100us)")
+        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
         ("verbose,v", po::bool_switch(&verbose), "enable debug logging")
         ;
     // clang-format on
@@ -753,7 +780,8 @@ static void runServer(int argc, char ** argv)
     sigset_t mask = blockSignals();
 
     silk::initialize();
-    silk::FiberScheduler::initialize();
+    silk::FiberScheduler::Options options{.enableProfiler = cfg.printCounters};
+    silk::FiberScheduler::initialize(&options);
 
     SILK_INFO("starting server on {}:{}", cfg.host, cfg.port);
 
@@ -766,6 +794,15 @@ static void runServer(int argc, char ** argv)
 
     SILK_INFO("stopping server");
     server.stop();
+
+    if (cfg.printCounters)
+    {
+        printf("{\n");
+        printSchedulerLatency();
+        printf(",");
+        printCounters();
+        printf("}\n");
+    }
 
     silk::FiberScheduler::destroy();
     silk::destroy();
@@ -784,6 +821,7 @@ static void runClient(int argc, char ** argv)
 
     std::string durationStr = "10s";
     std::string warmupStr = "2s";
+    std::string stallDurationStr = "0";
 
     // clang-format off
     desc.add_options()
@@ -794,6 +832,9 @@ static void runClient(int argc, char ** argv)
         ("msg-size",    po::value(&cfg.msgSize),        "message size in bytes")
         ("duration",    po::value(&durationStr),        "measurement duration (e.g. 10s, 500ms)")
         ("warmup",      po::value(&warmupStr),          "warmup duration (e.g. 2s, 500ms)")
+        ("stall-rate",     po::value(&cfg.stallRateHz), "per-connection Poisson rate of stall messages (Hz, 0 disables)")
+        ("stall-duration", po::value(&stallDurationStr), "stall duration per stall event (e.g. 100us, 1ms)")
+        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
         ("verbose,v",   po::bool_switch(&verbose),      "enable debug logging")
         ;
     // clang-format on
@@ -810,6 +851,7 @@ static void runClient(int argc, char ** argv)
         po::notify(vm);
         cfg.durationNs = parseDuration(durationStr);
         cfg.warmupNs = parseDuration(warmupStr);
+        cfg.stallNs = parseDuration(stallDurationStr);
         if (verbose)
         {
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
@@ -824,7 +866,8 @@ static void runClient(int argc, char ** argv)
     sigset_t mask = blockSignals();
 
     silk::initialize();
-    silk::FiberScheduler::initialize();
+    silk::FiberScheduler::Options options{.enableProfiler = cfg.printCounters};
+    silk::FiberScheduler::initialize(&options);
 
     SILK_INFO("starting client on {}:{}", cfg.host, cfg.port);
 

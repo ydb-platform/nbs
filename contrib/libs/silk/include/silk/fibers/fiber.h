@@ -34,16 +34,116 @@ using FiberMain = int(void * parameters) noexcept;
 using ParametersDtor = void(void * parameters) noexcept;
 
 /**
+ * Packed fiber identity: [category:8 | cpu:10 | counter:46] stored as uint64_t.
+ *  category: byte passed to run; the runtime treats it as opaque.
+ *  cpu:      CPU on which the fiber's id was created at allocation time.
+ *  counter:  per-CPU monotonic counter, fresh on every Fiber init/reuse.
+ */
+union FiberId
+{
+    struct
+    {
+        uint64_t counter : 46;
+        uint64_t cpu : 10;
+        uint64_t category : 8;
+    };
+    uint64_t raw;
+};
+static_assert(sizeof(FiberId) == 8);
+
+/**
+ * Kind of a profile event emitted by the scheduler.
+ */
+enum class ProfileEventKind : uint8_t
+{
+    READY_WAIT = 0, // enqueueReady -> runFiber: ready-queue dwell
+    FIBER_RUN = 1, // switchToFiberContext -> return: on-CPU time per slice
+    SUSPEND_WAIT = 2, // suspended -> enqueueReady: blocked-on-condition latency
+    IO_WAIT = 3, // enqueueIo -> handleCompletion: full IO latency
+    SQ_WAIT = 4, // enqueueIo -> io_uring_submit: SQE pending in silk's SQ ring before flush to kernel
+    SUBMIT_IO = 5, // io_uring_submit syscall cost
+    CQ_WAIT = 6, // wall-clock gap between consecutive non-empty CQ drains on a ring
+    MAX
+};
+
+/**
+ * Percentile latency report returned by FiberScheduler::reportLatency.
+ * All values are in nanoseconds.
+ */
+struct LatencyReport
+{
+    uint64_t p50;
+    uint64_t p90;
+    uint64_t p99;
+    uint64_t p999;
+    uint64_t count;
+};
+
+/**
  * Cooperative fiber scheduler with per-CPU threads, async IO, and work-stealing.
  */
 class FiberScheduler
 {
 public:
     /**
+     * Optional knobs passed to initialize.  Add fields with defaults to extend
+     * without changing the API.
+     */
+    struct Options
+    {
+        // Per-fiber stack size in bytes. Must be a multiple of the system page size.
+        // The pool also reserves two guard pages adjacent to each stack.
+        uint32_t fiberStackSize = 64 * 1024;
+
+        // Per-CPU ready queue capacity (fibers). Must be a power of two and >= 2.
+        // Sized to absorb dispatch bursts without falling back to the global queue.
+        uint32_t readyQueueCapacity = 1024;
+
+        // Hash-table size for futex-style waiter lookups. Must be a power of two.
+        uint32_t waiterTableSize = 4096;
+
+        // Per-CPU io_uring SQ ring capacity. Must be a power of two; the kernel
+        // rounds up to the nearest supported size.
+        uint32_t ioUringQueueSize = 256;
+
+        // Upper bound on the number of SQEs that may sit in silk's SQ ring
+        // before being flushed to the kernel.  Must be <= ioUringQueueSize.
+        uint32_t ioUringFlushThreshold = 64;
+
+        // Upper bound on how long an SQE may sit in silk's SQ ring before
+        // being flushed to the kernel.
+        uint32_t ioUringFlushTimeout = 100'000;
+
+        // Derived in initialize() from ioUringFlushTimeout; users do not set this.
+        uint64_t ioUringFlushTimeoutCycles = 0;
+
+        // Scheduler park backoff (nanoseconds). The dispatch loop spins for up to
+        // spinThresholdNs after going idle; past that it parks on the eventfd with
+        // an exponential backoff starting at initialWaitNs and capped at maxWaitNs.
+        uint32_t initialWaitNs = 1'000;
+        uint32_t maxWaitNs = 10'000'000;
+        uint32_t spinThresholdNs = 20'000;
+
+        // Allocate per-CPU latency profilers.
+        bool enableProfiler = false;
+
+        // Disable work-stealing. Set to study the effect of work-stealing in
+        // isolation (e.g. head-of-line blocking benchmarks).
+        // Production should leave this off.
+        bool disableWorkStealing = false;
+    };
+
+    /**
      * Initialize the scheduler and start per-CPU scheduler threads.
      * Must be called once before any other FiberScheduler method.
+     * @param options  Optional configuration; defaults are used when null.
      */
-    static void initialize() noexcept;
+    static void initialize(const Options * options = nullptr) noexcept;
+
+    /**
+     * Return the active configuration. Set by initialize; immutable thereafter.
+     */
+    static const Options & getOptions() noexcept { return options; }
 
     /**
      * Stop all scheduler threads and release all resources.
@@ -62,9 +162,24 @@ public:
     template <typename T>
     [[nodiscard]] static int run(int (*fiberMain)(T *) noexcept, T && parameters, FiberFuture * future) noexcept
     {
+        return run(fiberMain, std::forward<T>(parameters), 0, future);
+    }
+
+    /**
+     * Start a fiber whose result will be delivered to a FiberFuture and stamp
+     * the fiber's identity with @p category (FiberId::category field).
+     * The runtime treats the category as opaque; profilers and tracers use it
+     * to group samples by fiber role.
+     */
+    template <typename T>
+    [[nodiscard]] static int run(int (*fiberMain)(T *) noexcept, T && parameters, uint8_t category, FiberFuture * future) noexcept
+    {
         static_assert(sizeof(T) <= FIBER_PARAMETERS_SIZE);
         Fiber * fiber = allocateFiber(
-            reinterpret_cast<FiberMain *>(fiberMain), std::is_trivially_destructible_v<T> ? nullptr : destroyParameters<T>, future);
+            reinterpret_cast<FiberMain *>(fiberMain),
+            std::is_trivially_destructible_v<T> ? nullptr : destroyParameters<T>,
+            category,
+            future);
         if (fiber)
         {
             std::construct_at(static_cast<T *>(getFiberParameters(fiber)), std::forward<T>(parameters));
@@ -84,12 +199,19 @@ public:
      * @return           The fiber's integer result code.
      */
     template <typename T>
-    static int run(int (*fiberMain)(T *) noexcept, T && parameters) noexcept
+    static int run(int (*fiberMain)(T *) noexcept, T && parameters, uint8_t category = 0) noexcept
     {
         FiberFuture future;
-        int r = run(fiberMain, std::forward<T>(parameters), &future);
+        int r = run(fiberMain, std::forward<T>(parameters), category, &future);
         return r ? r : future.wait();
     }
+
+    /**
+     * Return the current fiber's identity, or a zero-initialized FiberId if
+     * the calling thread is not currently inside a fiber's context (e.g. proxy
+     * fiber thread, or scheduler thread between fibers).
+     */
+    static FiberId getCurrentFiberId() noexcept;
 
     /**
      * Return the Fiber handle for the calling context.
@@ -154,7 +276,7 @@ public:
     /**
      * Suspend the current fiber and invoke callback.
      *
-     * The callback is responsible for arranging wakeup — typically by registering
+     * The callback is responsible for arranging wakeup - typically by registering
      * the fiber as a waiter and calling schedule() when the condition is met.
      * The callback must handle the race where the wakeup arrives before the fiber
      * is fully suspended.
@@ -195,6 +317,8 @@ public:
     private:
         friend class FiberScheduler;
         uint64_t * result = nullptr;
+        uint64_t submitTimestamp = 0;
+        uint8_t category = 0;
     };
 
     /**
@@ -334,6 +458,14 @@ public:
      */
     static void sleep(uint64_t nanoseconds, SleepFuture * future) noexcept;
 
+    /**
+     * Return latency percentiles for the given event kind and fiber category,
+     * aggregated across all per-CPU profilers.
+     * @param kind      Profile event kind.
+     * @param category  Fiber category (FiberId::category).
+     */
+    static LatencyReport reportLatency(ProfileEventKind kind, uint8_t category) noexcept;
+
 private:
     struct SchedulerState;
     struct ProcessorState;
@@ -355,7 +487,14 @@ private:
 
     struct CompareStealCost
     {
-        bool operator()(const StealCandidate & l, const StealCandidate & r) const noexcept { return l.costCycles < r.costCycles; }
+        bool operator()(const StealCandidate & l, const StealCandidate & r) const noexcept
+        {
+            if (l.costCycles != r.costCycles)
+            {
+                return l.costCycles < r.costCycles;
+            }
+            return l.processorNumber < r.processorNumber;
+        }
     };
 
     //
@@ -370,7 +509,7 @@ private:
 
     static void buildStealCandidates() noexcept;
     static void * getFiberParameters(Fiber * fiber) noexcept;
-    static Fiber * allocateFiber(FiberMain * fiberMain, ParametersDtor * parametersDtor, FiberFuture * future) noexcept;
+    static Fiber * allocateFiber(FiberMain * fiberMain, ParametersDtor * parametersDtor, uint8_t category, FiberFuture * future) noexcept;
     static void freeFiber(Fiber * fiber) noexcept;
     static void enqueueReady(Fiber * fiber) noexcept;
     static void yieldSuspendCallback(Fiber * fiber, void * context) noexcept;
@@ -395,7 +534,8 @@ private:
     // State.
     //
 
-    inline static SchedulerState * scheduler;
+    static Options options;
+    static SchedulerState * scheduler;
 };
 
 } // namespace silk

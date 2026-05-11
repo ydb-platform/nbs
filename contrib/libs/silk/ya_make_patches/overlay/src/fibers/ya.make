@@ -18,7 +18,9 @@ SRCS(
     fiber.cpp
     futex.cpp
     future.cpp
+    histogram.cpp
     mutex.cpp
+    profiler.cpp
     sequencer.cpp
 )
 

@@ -130,6 +130,7 @@ struct ClientConfig
     uint64_t durationNs = 10'000'000'000ULL;
     uint64_t warmupNs = 2'000'000'000ULL;
     bool direct = false;
+    bool printCounters = false;
 };
 
 class Benchmark
@@ -323,7 +324,13 @@ static void printJson(std::vector<uint64_t> & latNs, const ClientConfig & cfg)
     printf("  \"rps\": %.1f,\n", rps);
     printf("  \"bw_bytes\": %.0f,\n", bwBytesS);
     printLatencyUs(latNs);
-    printCounters();
+    if (cfg.printCounters)
+    {
+        printf(",");
+        printSchedulerLatency();
+        printf(",");
+        printCounters();
+    }
     printf("}\n");
 }
 
@@ -355,6 +362,7 @@ int main(int argc, char ** argv)
         ("warmup",   po::value(&warmupStr),          "warmup duration (e.g. 2s, 500ms)")
         ("filename", po::value(&cfg.filename)->required(), "file path")
         ("direct",   po::bool_switch(&cfg.direct),  "use O_DIRECT (bypass page cache)")
+        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
         ("verbose,v", po::bool_switch(&verbose),    "enable debug logging")
         ;
     // clang-format on
@@ -407,7 +415,15 @@ int main(int argc, char ** argv)
     sigset_t mask = blockSignals();
 
     silk::initialize();
-    silk::FiberScheduler::initialize();
+    // Disable mid-drain submit batching: file workloads (especially tmpfs)
+    // hit io_uring's inline-completion fast path on submit; deferring the
+    // syscall through a dispatch-batch threshold pushes those completions off
+    // the fast path and costs 25-37% on parallel randread (see docs/perf.md).
+    silk::FiberScheduler::Options options{
+        .ioUringFlushThreshold = 1,
+        .enableProfiler = cfg.printCounters,
+    };
+    silk::FiberScheduler::initialize(&options);
 
     SILK_INFO(
         "starting benchmark on: {}  size={:.1f}GiB{}",

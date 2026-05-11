@@ -13,16 +13,14 @@ PEERDIR(
     contrib/restricted/boost/intrusive
 )
 
-ADDINCL(
-    contrib/restricted/boost/intrusive/include
-)
-
 SRCS(
     cpu.cpp
     fiber.cpp
     futex.cpp
     future.cpp
+    histogram.cpp
     mutex.cpp
+    profiler.cpp
     sequencer.cpp
 )
 
