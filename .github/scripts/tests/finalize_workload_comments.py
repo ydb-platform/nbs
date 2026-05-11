@@ -28,6 +28,7 @@ def iter_build_presets(matrix_include: str) -> list[str]:
 
 def main() -> None:
     setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
+    setup_logger(name=gs.__name__, fmt="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--matrix-include", required=True)
     parser.add_argument(
