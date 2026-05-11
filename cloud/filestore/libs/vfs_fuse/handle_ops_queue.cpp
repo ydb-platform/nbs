@@ -4,8 +4,12 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
-    : RequestsToProcess(filePath, size)
+THandleOpsQueue::THandleOpsQueue(
+    const TString& filePath,
+    ui32 size,
+    TLog log,
+    TString logTag)
+    : RequestsToProcess(filePath, std::move(log), std::move(logTag), size)
 {}
 
 THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
@@ -59,9 +63,15 @@ ui64 THandleOpsQueue::Size() const
 
 THandleOpsQueuePtr CreateHandleOpsQueue(
     const TString& filePath,
-    ui32 size)
+    ui32 size,
+    TLog log,
+    TString logTag)
 {
-    return std::make_unique<THandleOpsQueue>(filePath, size);
+    return std::make_unique<THandleOpsQueue>(
+        filePath,
+        size,
+        std::move(log),
+        std::move(logTag));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

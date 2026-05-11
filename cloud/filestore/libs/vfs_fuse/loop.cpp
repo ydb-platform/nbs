@@ -1002,7 +1002,12 @@ private:
 
                     handleOpsQueue = CreateHandleOpsQueue(
                         path / HandleOpsQueueFileName,
-                        Config->GetHandleOpsQueueSize());
+                        Config->GetHandleOpsQueueSize(),
+                        Log,
+                        Sprintf(
+                            "[f:%s][c:%s]",
+                            Config->GetFileSystemId().Quote().c_str(),
+                            Config->GetClientId().Quote().c_str()));
                     HandleOpsQueueInitialized = true;
                 } else {
                     ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(

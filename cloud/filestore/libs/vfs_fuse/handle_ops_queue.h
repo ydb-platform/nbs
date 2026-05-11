@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/vfs_fuse/protos/queue_entry.pb.h>
 
 #include <cloud/storage/core/libs/common/file_ring_buffer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -23,7 +24,11 @@ public:
         SerializationError,
     };
 
-    explicit THandleOpsQueue(const TString& filePath, ui32 size);
+    THandleOpsQueue(
+        const TString& filePath,
+        ui32 size,
+        TLog log,
+        TString logTags);
 
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();
@@ -34,6 +39,10 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueuePtr CreateHandleOpsQueue(const TString& filePath, ui32 size);
+THandleOpsQueuePtr CreateHandleOpsQueue(
+    const TString& filePath,
+    ui32 size,
+    TLog log,
+    TString logTag);
 
 }   // namespace NCloud::NFileStore::NFuse
