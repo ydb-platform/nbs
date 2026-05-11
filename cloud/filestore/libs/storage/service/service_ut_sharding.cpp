@@ -5875,6 +5875,181 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
     }
 
+    SERVICE_TEST(ShouldReturnXDevRegardlessOfForceFlag)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+
+        const TString fsId = "test";
+        const ui64 blockCount = 1'000;
+
+        TTestEnv env({}, config);
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        //
+        // Creating a single-tablet filesystem. No shards yet - default
+        // AutomaticallyCreatedShardSize is 5TB, so none are created.
+        //
+        service.CreateFileStore(fsId, blockCount);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        //
+        // Dir and file are created before shards exist — they live in the main
+        // tablet, shardNo == 0 even after shards are added later.
+        //
+        const auto dir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(dir1Id));
+
+        const auto file1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(file1Id));
+
+        //
+        // Adding a shard and enabling DirectoryCreationInShards.
+        //
+        service.ResizeFileStore(
+            fsId,
+            blockCount,
+            false /* force */,
+            1 /* shardCount */,
+            false /* enableStrictSizeMode */,
+            true /* directoryCreationInShards */,
+            false /* forceDirectoryCreationInShards */);
+        WaitForTabletStart(service);
+
+        headers = service.InitSession(fsId, "client");
+
+        //
+        // Creating a dir directly in shard - it's not possible to create it
+        // via the API of the main filesystem because it checks whether there
+        // are any nodes created in the main tablet.
+        //
+        // But situations like the one tested here were possible before some of
+        // the recent changes - that's why we have this test.
+        //
+        const auto shardId = fsId + "_s1";
+        auto shardHeaders = service.InitSession(shardId, "client");
+        const auto uuid = CreateGuidAsString();
+
+        const auto dir2Id =service.CreateNode(
+            shardHeaders,
+            TCreateNodeArgs::Directory(RootNodeId, uuid)
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(dir2Id));
+
+        //
+        // This node ref is not going to be used directly but let's still create
+        // it to make the directory structure similar to what we would have in
+        // real clusters.
+        //
+        {
+            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(RootNodeId);
+            request.SetName("dir2");
+            request.SetShardId(shardId);
+            request.SetShardNodeName(uuid);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+        }
+
+        //
+        // Creating a file in the new dir.
+        //
+        const auto fileId2 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2Id, "file2")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(fileId2));
+
+        //
+        // Trying to move file1 into dir2. Can't be done because dir1/file1
+        // NodeRef is not external.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir1Id,
+                "file1",
+                dir2Id,
+                "file1",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+
+        //
+        // Trying to move file2 into dir1. Should be possible.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir2Id,
+                "file2",
+                dir1Id,
+                "file2",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+
+        //
+        // file1 can be renamed in dir1.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir1Id,
+                "file1",
+                dir1Id,
+                "file1.new",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+
+        //
+        // Creating a file in the new dir.
+        //
+        const auto fileId3 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2Id, "file3")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(fileId3));
+
+        //
+        // Can't move file3 on top of file1.new because dir1/file1.new is not an
+        // external NodeRef. Technically such an op can be implemented but right
+        // now it's not.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir2Id,
+                "file3",
+                dir1Id,
+                "file1.new",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+    }
+
     SERVICE_TEST(ShouldListNodesAndGetNodeAttrInDirectoryInShard)
     {
         config.SetDirectoryCreationInShardsEnabled(true);
