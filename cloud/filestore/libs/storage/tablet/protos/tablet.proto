@@ -60,6 +60,10 @@ message TFileSystem
 
     bool IsFastShard = 23;
     NProtoPrivate.TFastShardConfig FastShardConfig = 24;
+
+    // The way we read and write compact ShardId and ShardNodeName from/to
+    // NodeRefs table.
+    NProtoPrivate.EShardIdCompressionMode ShardIdCompressionMode = 25;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

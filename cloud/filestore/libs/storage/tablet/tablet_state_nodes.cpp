@@ -438,7 +438,7 @@ void TIndexTabletState::CreateNodeRef(
         shardId,
         shardNodeName,
         markExhaustive,
-        ShardIdCompressionMode);
+        GetShardIdCompressionMode());
 }
 
 void TIndexTabletState::RemoveNodeRef(
@@ -481,7 +481,7 @@ bool TIndexTabletState::ReadNodeRef(
         commitId,
         name,
         ref,
-        ShardIdCompressionMode,
+        GetShardIdCompressionMode(),
         GetMainFileSystemId());
 
     if (ready && ref) {
@@ -507,7 +507,7 @@ bool TIndexTabletState::ReadNodeRefs(
     const TString& cookie,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui32 maxBytes,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& mainFsId,
     TString* next,
     bool noAutoPrecharge,
@@ -545,7 +545,7 @@ bool TIndexTabletState::ReadNodeRefs(
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& mainFsId)
 {
     return db.ReadNodeRefs(

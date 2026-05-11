@@ -216,7 +216,7 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
         args.Cookie,
         args.ChildRefs,
         args.MaxBytes,
-        Config->GetShardIdCompressionMode(),
+        GetShardIdCompressionMode(),
         GetMainFileSystemId(),
         &args.Next,
         Config->GetNodeRefsNoAutoPrecharge(),

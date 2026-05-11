@@ -108,26 +108,30 @@ void CheckShardsSize(
         shard2Stats.GetStats().GetTotalBlocksCount());
 }
 
-NProtoPrivate::TChangeStorageConfigResponse ChangeStorageConfig(
+NProtoPrivate::TUnsafeChangeTabletStateResponse SetShardIdCompressionMode(
     const TString& fsId,
-    NProto::TStorageConfig config,
     TServiceClient& service,
-    bool mergeWithConfig)
+    NProtoPrivate::EShardIdCompressionMode mode,
+    bool checkResult = true)
 {
-    NProtoPrivate::TChangeStorageConfigRequest request;
+    NProtoPrivate::TUnsafeChangeTabletStateRequest request;
     request.SetFileSystemId(fsId);
-
-    *request.MutableStorageConfig() = std::move(config);
-    request.SetMergeWithStorageConfigFromTabletDB(mergeWithConfig);
-
+    request.SetShardIdCompressionMode(mode);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
 
-    auto jsonResponse = service.ExecuteAction(
-        "changestorageconfig", buf);
-    NProtoPrivate::TChangeStorageConfigResponse response;
+    auto jsonResponse = service.SendAndRecvExecuteAction("UnsafeChangeTabletState", buf);
+
+    if (checkResult) {
+        UNIT_ASSERT_C(
+            SUCCEEDED(jsonResponse->GetStatus()),
+            jsonResponse->GetErrorReason());
+    }
+
+    NProtoPrivate::TUnsafeChangeTabletStateResponse response;
     UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(), &response).ok());
+
     return response;
 }
 
@@ -8379,33 +8383,27 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(dirId));
         }
 
-        NProto::TStorageConfig newStorageConfig;
-        auto setMode = [&](const NProto::EShardIdCompressionMode mode) {
-            newStorageConfig.SetShardIdCompressionMode(mode);
+        auto setMode = [&](const NProtoPrivate::EShardIdCompressionMode mode) {
             // Change config in the main filesystem
-            ChangeStorageConfig(fsId, newStorageConfig, service, true);
-            WaitForTabletStart(service);
+            SetShardIdCompressionMode(fsId, service, mode);
             // Change config in shards
             if (directoryCreationInShards) {
                 for (ui64 shardNo = 1; shardNo < shardCount + 1; ++shardNo) {
-                    ChangeStorageConfig(
+                    SetShardIdCompressionMode(
                         TStringBuilder() << fsId << "_s" << shardNo,
-                        newStorageConfig,
                         service,
-                        true);
-                    WaitForTabletStart(service);
+                        mode);
                 }
             }
-            headers = service.InitSession(fsId, "client");
         };
 
         // ShardId compression modes are ordered so that any ShardId written
         // using a given mode can be read using the same or further mode.
-        TVector<NProto::EShardIdCompressionMode> compressionModes = {
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION,
-            NProto::EShardIdCompressionMode::SICM_READ,
-            NProto::EShardIdCompressionMode::SICM_READ_WRITE,
-            NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT};
+        TVector<NProtoPrivate::EShardIdCompressionMode> compressionModes = {
+            NProtoPrivate::SICM_NO_COMPRESSION,
+            NProtoPrivate::SICM_READ,
+            NProtoPrivate::SICM_READ_WRITE,
+            NProtoPrivate::SICM_READ_WRITE_CONVERT};
 
         // For each mode in compressionModes, we create several files. Then, for
         // every mode greater than or equal to the one in which the files were
@@ -8413,7 +8411,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         for (size_t writeModeNum = 0; writeModeNum < compressionModes.size();
              ++writeModeNum)
         {
-            const NProto::EShardIdCompressionMode writeMode =
+            const NProtoPrivate::EShardIdCompressionMode writeMode =
                 compressionModes[writeModeNum];
             setMode(writeMode);
 
@@ -8462,7 +8460,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                  readModeNum < compressionModes.size();
                  ++readModeNum)
             {
-                const NProto::EShardIdCompressionMode readMode =
+                const NProtoPrivate::EShardIdCompressionMode readMode =
                     compressionModes[readModeNum];
                 setMode(readMode);
 
@@ -8500,6 +8498,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 UNIT_ASSERT(status.ok());
             }
         }
+
+        // Should get error when attempting to set NProtoPrivate::EShardIdCompressionMode::SICM_NO_COMPRESSION
+        const auto response = SetShardIdCompressionMode(fsId, service, NProtoPrivate::SICM_NO_COMPRESSION, false);
+
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
     }
 
     SERVICE_TEST(ShouldReadAndWriteCompressedShardId)

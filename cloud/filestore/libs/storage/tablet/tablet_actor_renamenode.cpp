@@ -487,7 +487,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
                         {},
                         refs,
                         1,
-                        Config->GetShardIdCompressionMode(),
+                        GetShardIdCompressionMode(),
                         GetMainFileSystemId()))
                 {
                     return false;

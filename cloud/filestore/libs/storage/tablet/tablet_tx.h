@@ -3136,7 +3136,7 @@ struct TTxIndexTablet
         {}
     };
 
-    struct TUnsafeChangeTabletState: TTxIndexTabletBase
+    struct TUnsafeChangeTabletState: TTxIndexTabletBase, TErrorAware
     {
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeChangeTabletStateRequest Request;
@@ -3150,7 +3150,9 @@ struct TTxIndexTablet
         {}
 
         void Clear() override
-        {}
+        {
+            TErrorAware::Clear();
+        }
     };
 
     // The whole point of these transactions is to observe some data in NodeRefs

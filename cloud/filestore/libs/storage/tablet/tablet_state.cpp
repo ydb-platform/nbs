@@ -159,8 +159,6 @@ void TIndexTabletState::LoadState(
 
     MaxTabletStep = Max(config.GetMaxTabletStep(), LastStep);
 
-    ShardIdCompressionMode = config.GetShardIdCompressionMode();
-
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
@@ -228,8 +226,6 @@ void TIndexTabletState::UpdateConfig(
     const NProto::TFileSystem& fileSystem,
     const TThrottlerConfig& throttlerConfig)
 {
-    ShardIdCompressionMode = config.GetShardIdCompressionMode();
-
     FileSystem.CopyFrom(fileSystem);
     db.WriteFileSystem(fileSystem);
 
@@ -246,6 +242,15 @@ void TIndexTabletState::SetFrozen(TIndexTabletDatabase& db, bool frozen)
     FileSystem.SetFrozen(frozen);
     db.WriteFileSystem(FileSystem);
 }
+
+void TIndexTabletState::SetShardIdCompressionMode(
+        TIndexTabletDatabase& db,
+        NProtoPrivate::EShardIdCompressionMode mode)
+{
+    FileSystem.SetShardIdCompressionMode(mode);
+    db.WriteFileSystem(FileSystem);
+}
+
 
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {

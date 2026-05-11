@@ -904,7 +904,30 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
     Y_UNUSED(ctx);
 
     TIndexTabletDatabase db(tx.DB);
-    SetFrozen(db, args.Request.GetFrozen());
+
+    if (args.Request.HasShardIdCompressionMode()) {
+        const auto oldMode = GetShardIdCompressionMode();
+        const auto newMode = args.Request.GetShardIdCompressionMode();
+
+        // It is prohibited to set NO_COMPRESSION if the previous mode was not
+        // NO_COMPRESSION as it may switch the filesystem to an unusable state.
+        if (!args.Request.GetForceSetShardIdCompressionMode() &&
+            newMode == NProtoPrivate::SICM_NO_COMPRESSION &&
+            oldMode != NProtoPrivate::SICM_NO_COMPRESSION)
+        {
+            args.Error = MakeError(
+                E_ARGUMENT,
+                "Can't set NO_COMPRESSION mode if the previous mode is not "
+                "NO_COMPRESSION");
+            return;
+        }
+
+        SetShardIdCompressionMode(db, newMode);
+    }
+
+    if (args.Request.HasFrozen()) {
+        SetFrozen(db, args.Request.GetFrozen());
+    }
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
@@ -914,7 +937,8 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>(
+            std::move(args.Error));
 
     LOG_INFO(
         ctx,

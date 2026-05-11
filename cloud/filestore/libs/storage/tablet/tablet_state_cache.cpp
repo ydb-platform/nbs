@@ -230,7 +230,7 @@ bool TInMemoryIndexState::ReadNodeRef(
     ui64 commitId,
     const TString& name,
     TMaybe<TNodeRef>& ref,
-    NProto::EShardIdCompressionMode mode,
+    NProtoPrivate::EShardIdCompressionMode mode,
     const TString& mainFsId)
 {
     Y_UNUSED(mode, mainFsId);
@@ -270,7 +270,7 @@ bool TInMemoryIndexState::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& mainFsId,
     TString* next,
     ui32* skippedRefs,
@@ -339,7 +339,7 @@ bool TInMemoryIndexState::ReadNodeRefs(
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& mainFsId)
 {
     Y_UNUSED(

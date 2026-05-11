@@ -133,8 +133,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         constexpr ui64 nodeId = 1;
         constexpr ui64 childNodeId1 = 2;
         constexpr ui64 childNodeId2 = 3;
-        constexpr NProto::EShardIdCompressionMode defaultShardMode =
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
+            NProtoPrivate::SICM_NO_COMPRESSION;
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
             NProto::TNode attrs;
@@ -597,8 +597,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         constexpr ui64 nodeId = 1;
         constexpr ui64 childNodeId1 = 2;
         constexpr ui64 childNodeId2 = 3;
-        constexpr NProto::EShardIdCompressionMode defaultShardMode =
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
+            NProtoPrivate::SICM_NO_COMPRESSION;
 
         executor.WriteTx(
             [&](TIndexTabletDatabase db)
@@ -1020,16 +1020,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
 
         // ShardId compression modes are ordered so that any ShardId written
         // using a given mode can be read using the same or further mode.
-        TVector<NProto::EShardIdCompressionMode> compressionModes = {
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION,
-            NProto::EShardIdCompressionMode::SICM_READ,
-            NProto::EShardIdCompressionMode::SICM_READ_WRITE,
-            NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT};
+        TVector<NProtoPrivate::EShardIdCompressionMode> compressionModes = {
+            NProtoPrivate::SICM_NO_COMPRESSION,
+            NProtoPrivate::SICM_READ,
+            NProtoPrivate::SICM_READ_WRITE,
+            NProtoPrivate::SICM_READ_WRITE_CONVERT};
 
         for (size_t writeModeNum = 0; writeModeNum < compressionModes.size();
              ++writeModeNum)
         {
-            const NProto::EShardIdCompressionMode writeMode =
+            const NProtoPrivate::EShardIdCompressionMode writeMode =
                 compressionModes[writeModeNum];
             // Create refs that refernce nodes in shards
             TVector<IIndexTabletDatabase::TNodeRef> nodeRefs;
@@ -1081,7 +1081,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                  readModeNum < compressionModes.size();
                  ++readModeNum)
             {
-                const NProto::EShardIdCompressionMode readMode =
+                const NProtoPrivate::EShardIdCompressionMode readMode =
                     compressionModes[readModeNum];
 
                 // Read NodeRefs one by one.
@@ -1217,7 +1217,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                         shardId.first,
                         shardId.second,
                         false,
-                        NProto::EShardIdCompressionMode::SICM_READ_WRITE);
+                        NProtoPrivate::SICM_READ_WRITE);
                 });
         }
 
@@ -1249,7 +1249,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                         shardId.first,
                         shardId.second,
                         false,
-                        NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION);
+                        NProtoPrivate::SICM_NO_COMPRESSION);
                 });
         }
 
@@ -1266,7 +1266,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                         commitId,
                         TStringBuilder() << "file_" << i,
                         ref,
-                        NProto::EShardIdCompressionMode::SICM_READ,
+                        NProtoPrivate::SICM_READ,
                         "filesystem"));
                 });
         }

@@ -234,7 +234,7 @@ namespace {
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
             ref,
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION,
+            NProtoPrivate::EShardIdCompressionMode::SICM_NO_COMPRESSION,
             ""));
         CheckNodeRef(request, *ref);
     }
@@ -259,8 +259,8 @@ namespace {
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 1, 0);
 
-        constexpr NProto::EShardIdCompressionMode defaultShardMode =
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
+            NProtoPrivate::EShardIdCompressionMode::SICM_NO_COMPRESSION;
 
             TMaybe<IIndexTabletDatabase::TNodeRef> ref;
         UNIT_ASSERT(
@@ -316,8 +316,8 @@ namespace {
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 3, 0);
 
-        constexpr NProto::EShardIdCompressionMode defaultShardMode =
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
+            NProtoPrivate::EShardIdCompressionMode::SICM_NO_COMPRESSION;
 
         const TVector<TInMemoryIndexState::TWriteNodeRefsRequest> requests = {
             {
@@ -436,8 +436,8 @@ namespace {
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 1, 0);
 
-        constexpr NProto::EShardIdCompressionMode defaultShardMode =
-            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
+            NProtoPrivate::EShardIdCompressionMode::SICM_NO_COMPRESSION;
 
         TInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},

@@ -145,7 +145,7 @@ public:
         ui64 commitId,
         const TString& name,
         TMaybe<TNodeRef>& ref,
-        NProto::EShardIdCompressionMode shardIdMode,
+        NProtoPrivate::EShardIdCompressionMode shardIdMode,
         const TString& mainFsId) = 0;
 
     virtual bool ReadNodeRefs(
@@ -154,7 +154,7 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        NProto::EShardIdCompressionMode shardIdMode,
+        NProtoPrivate::EShardIdCompressionMode shardIdMode,
         const TString& fsId,
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
@@ -174,7 +174,7 @@ public:
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie,
-        NProto::EShardIdCompressionMode shardIdMode,
+        NProtoPrivate::EShardIdCompressionMode shardIdMode,
         const TString& fsId) = 0;
 
     virtual bool PrechargeNodeRefs(

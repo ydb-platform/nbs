@@ -243,9 +243,6 @@ private:
 
     /*const*/ ui32 MaxTabletStep = Max<ui32>();
 
-    NProto::EShardIdCompressionMode ShardIdCompressionMode =
-        NProto::SICM_NO_COMPRESSION;
-
     bool StateLoaded = false;
 
 protected:
@@ -305,6 +302,10 @@ public:
 
     void SetFrozen(TIndexTabletDatabase& db, bool frozen);
 
+    void SetShardIdCompressionMode(
+        TIndexTabletDatabase& db,
+        NProtoPrivate::EShardIdCompressionMode mode);
+
     //
     // FileSystem
     //
@@ -357,6 +358,11 @@ public:
         }
 
         return FileSystem.GetNodesCount();
+    }
+
+    NProtoPrivate::EShardIdCompressionMode GetShardIdCompressionMode()
+    {
+        return FileSystem.GetShardIdCompressionMode();
     }
 
     ui64 GetCurrentCommitId() const
@@ -682,7 +688,7 @@ public:
         const TString& cookie,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
-        NProto::EShardIdCompressionMode shardIdMode,
+        NProtoPrivate::EShardIdCompressionMode shardIdMode,
         const TString& fsId,
         TString* next = nullptr,
         bool noAutoPrecharge = false,
@@ -696,7 +702,7 @@ public:
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie,
-        NProto::EShardIdCompressionMode shardIdMode,
+        NProtoPrivate::EShardIdCompressionMode shardIdMode,
         const TString& fsId);
 
     bool PrechargeNodeRefs(

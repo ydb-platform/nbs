@@ -133,7 +133,7 @@ public:
         ui64 commitId,
         const TString& name,
         TMaybe<IIndexTabletDatabase::TNodeRef>& ref,
-        NProto::EShardIdCompressionMode,
+        NProtoPrivate::EShardIdCompressionMode,
         const TString& mainFsId) override;
 
     bool ReadNodeRefs(
@@ -142,7 +142,7 @@ public:
         const TString& cookie,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
-        NProto::EShardIdCompressionMode mode,
+        NProtoPrivate::EShardIdCompressionMode mode,
         const TString& mainFsId,
         TString* next,
         ui32* skippedRefs,
@@ -156,7 +156,7 @@ public:
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie,
-        NProto::EShardIdCompressionMode mode,
+        NProtoPrivate::EShardIdCompressionMode mode,
         const TString& mainFsId) override;
 
     bool PrechargeNodeRefs(

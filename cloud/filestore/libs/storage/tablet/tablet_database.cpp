@@ -517,14 +517,14 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
 // NodeRefs
 namespace {
 
-bool IsToEncodeShardId(const NProto::EShardIdCompressionMode mode)
+bool IsToEncodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
 {
     switch (mode) {
-        case NProto::SICM_NO_COMPRESSION:
-        case NProto::SICM_READ:
+        case NProtoPrivate::SICM_NO_COMPRESSION:
+        case NProtoPrivate::SICM_READ:
             return false;
-        case NProto::SICM_READ_WRITE:
-        case NProto::SICM_READ_WRITE_CONVERT:
+        case NProtoPrivate::SICM_READ_WRITE:
+        case NProtoPrivate::SICM_READ_WRITE_CONVERT:
             return true;
         default:
             Y_ABORT_UNLESS(false);
@@ -532,14 +532,14 @@ bool IsToEncodeShardId(const NProto::EShardIdCompressionMode mode)
     }
 }
 
-bool IsToDecodeShardId(const NProto::EShardIdCompressionMode mode)
+bool IsToDecodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
 {
     switch (mode) {
-        case NProto::SICM_NO_COMPRESSION:
+        case NProtoPrivate::SICM_NO_COMPRESSION:
             return false;
-        case NProto::SICM_READ:
-        case NProto::SICM_READ_WRITE:
-        case NProto::SICM_READ_WRITE_CONVERT:
+        case NProtoPrivate::SICM_READ:
+        case NProtoPrivate::SICM_READ_WRITE:
+        case NProtoPrivate::SICM_READ_WRITE_CONVERT:
             return true;
         default:
             Y_ABORT_UNLESS(false);
@@ -569,7 +569,7 @@ void TIndexTabletDatabase::WriteNodeRef(
     const TString& shardId,
     const TString& shardNodeName,
     bool /*markExhaustive*/,
-    NProto::EShardIdCompressionMode shardIdMode)
+    NProtoPrivate::EShardIdCompressionMode shardIdMode)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
@@ -614,7 +614,7 @@ bool TIndexTabletDatabase::ReadNodeRef(
     ui64 commitId,
     const TString& name,
     TMaybe<TNodeRef>& ref,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& mainFsId)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
@@ -661,7 +661,7 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& mainFsId,
     TString* next,
     ui32* skippedRefs,
@@ -695,21 +695,21 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
 
             auto& ref = refs.back();
 
-            if (!IsToDecodeShardId(shardIdMode) ||
-                ref.TryToDecodeShardId(mainFsId))
+            if (IsToDecodeShardId(shardIdMode) &&
+                !ref.TryToDecodeShardId(mainFsId))
             {
+                // This is a kind of impossible situation meaning that data in
+                // the table is corrupted
+                ReportMalformedEncodedShardNodeRef(mainFsId, ref);
+                refs.resize(refs.size() - 1);
+                ++skipped;
+            } else {
                 // TODO(#5148): consider other size calculation modes
                 if (sizeMode == NProto::LNSM_FULL_ROW) {
                     bytes += ref.CalculateByteSize();
                 } else {
                     bytes += ref.Name.size();
                 }
-            } else {
-                // This is a kind of impossible situation meaning that data in
-                // the table is corrupted
-                ReportMalformedEncodedShardNodeRef(mainFsId, ref);
-                refs.resize(refs.size() - 1);
-                ++skipped;
             }
         } else {
             ++skipped;
@@ -742,7 +742,7 @@ TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefs>(
     const TString&,
     TVector<TNodeRef>&,
     ui32,
-    NProto::EShardIdCompressionMode,
+    NProtoPrivate::EShardIdCompressionMode,
     const TString& fsId,
     TString*,
     ui32*,
@@ -755,7 +755,7 @@ TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefsNoPrecharge>(
     const TString&,
     TVector<TNodeRef>&,
     ui32,
-    NProto::EShardIdCompressionMode,
+    NProtoPrivate::EShardIdCompressionMode,
     const TString& fsId,
     TString*,
     ui32*,
@@ -767,7 +767,7 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& fsId,
     TString* next,
     ui32* skippedRefs,
@@ -807,7 +807,7 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     TVector<TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& mainFsId)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
@@ -2401,7 +2401,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRef(
     ui64 commitId,
     const TString& name,
     TMaybe<TNodeRef>& ref,
-    NProto::EShardIdCompressionMode mode,
+    NProtoPrivate::EShardIdCompressionMode mode,
     const TString& mainFsId)
 {
     const bool result = TIndexTabletDatabase::ReadNodeRef(
@@ -2425,7 +2425,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& fsId,
     TString* next,
     ui32* skippedRefs,
@@ -2480,7 +2480,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     TVector<TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie,
-    NProto::EShardIdCompressionMode shardIdMode,
+    NProtoPrivate::EShardIdCompressionMode shardIdMode,
     const TString& fsId)
 {
     auto result = TIndexTabletDatabase::ReadNodeRefs(
@@ -2510,7 +2510,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
     const TString& shardId,
     const TString& shardNodeName,
     bool markExhaustive,
-    NProto::EShardIdCompressionMode shardIdMode)
+    NProtoPrivate::EShardIdCompressionMode shardIdMode)
 {
     TIndexTabletDatabase::WriteNodeRef(
         nodeId,

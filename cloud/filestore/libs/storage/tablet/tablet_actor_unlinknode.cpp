@@ -451,7 +451,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
                 {},
                 refs,
                 1,
-                Config->GetShardIdCompressionMode(),
+                GetShardIdCompressionMode(),
                 GetMainFileSystemId()))
         {
             return false;
