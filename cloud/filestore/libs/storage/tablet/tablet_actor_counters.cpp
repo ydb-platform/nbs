@@ -865,7 +865,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::TABLET,
-                "%s Failed to updated shard balancer: %s",
+                "%s Failed to update shard balancer: %s",
                 LogTag.c_str(),
                 FormatError(error).Quote().c_str());
 

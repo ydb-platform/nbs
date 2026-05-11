@@ -109,6 +109,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/fastshard/iface
+    cloud/filestore/libs/storage/fastshard/impl/mem
     cloud/filestore/libs/storage/model
     cloud/filestore/libs/storage/tablet/actors
     cloud/filestore/libs/storage/tablet/events

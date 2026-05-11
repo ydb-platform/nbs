@@ -14,6 +14,11 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
     const NActors::TActorContext& ctx)                                         \
 {                                                                              \
     auto* msg = ev->Get();                                                     \
+    LOG_TRACE(ctx, TFileStoreComponents::TABLET,                               \
+        "%s " Y_STRINGIZE(name) " request %s",                                 \
+        LogTag.c_str(),                                                        \
+        msg->Record.ShortUtf8DebugString().Quote().c_str());                   \
+                                                                               \
     auto sender = ev->Sender;                                                  \
     ui64 cookie = ev->Cookie;                                                  \
     auto* ass = ctx.ActorSystem();                                             \
@@ -21,6 +26,10 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
         [=] (const auto& f) {                                                  \
             auto response = std::make_unique<ns::TEv##name##Response>(         \
                 UnsafeExtractValue(f));                                        \
+            LOG_TRACE(ctx, TFileStoreComponents::TABLET,                       \
+                "%s " Y_STRINGIZE(name) " response %s",                        \
+                LogTag.c_str(),                                                \
+                response->Record.ShortUtf8DebugString().Quote().c_str());      \
             ass->Send(sender, response.release(), 0 /* flags */, cookie);      \
         });                                                                    \
 }                                                                              \
