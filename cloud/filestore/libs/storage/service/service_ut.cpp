@@ -292,6 +292,56 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertResizeFileStoreFailed("test", 0);
     }
 
+    Y_UNIT_TEST(ShouldReplyIfAlterFileStoreFails)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1'000);
+
+        auto& runtime = env.GetRuntime();
+
+        bool alterFailed = false;
+
+        runtime.SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvAlterFileStoreRequest)
+                {
+                    auto response =
+                        std::make_unique<TEvSSProxy::TEvAlterFileStoreResponse>(
+                            MakeError(E_REJECTED, "alter failed"));
+
+                    runtime.Send(
+                        new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,
+                            event->Cookie),
+                        nodeIdx);
+
+                    alterFailed = true;
+
+                    // swallow original request
+                    return true;
+                }
+
+                return false;
+            });
+
+        service.SendAlterFileStoreRequest("test", "yyyy", "zzzz");
+
+        auto response = service.RecvAlterFileStoreResponse();
+
+        UNIT_ASSERT(alterFailed);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->Record.GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldDownsizeFileStore)
     {
         TTestEnv env;
@@ -472,12 +522,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateFileStore("test", 1000);
 
-        auto error = MakeError(E_ARGUMENT, "Error");
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([nodeIdx, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(
-                            error);
+                        auto response =
+                            std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(
+                                MakeError(E_ARGUMENT, "Error"));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
