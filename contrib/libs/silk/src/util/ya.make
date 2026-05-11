@@ -14,8 +14,8 @@ ADDINCL(
 )
 
 PEERDIR(
-    contrib/libs/silk/contrib/librseq
     contrib/libs/backtrace
+    contrib/libs/rseq
     contrib/restricted/boost/context/fcontext_impl
     contrib/restricted/boost/intrusive
 )
