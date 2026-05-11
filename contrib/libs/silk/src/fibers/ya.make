@@ -6,11 +6,6 @@ LICENSE_TEXTS(${ARCADIA_ROOT}/contrib/libs/silk/LICENSE)
 
 CXXFLAGS(-std=c++20)
 
-ADDINCL(
-    contrib/libs/silk/include
-    contrib/restricted/boost/intrusive/include
-)
-
 PEERDIR(
     contrib/libs/silk/src/util
     contrib/libs/liburing
