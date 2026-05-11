@@ -61,7 +61,7 @@ Y_UNIT_TEST_SUITE(TTcMallocStatsTest)
 
         UNIT_ASSERT_C(
             physicalMemoryUsed->GetAtomic() > 0,
-            physicalMemoryUsed->GetAtomic());
+            "generic.physical_memory_used counter should be updated");
     }
 
     Y_UNIT_TEST(ShouldComputeCachesBytesFromCacheCounters)

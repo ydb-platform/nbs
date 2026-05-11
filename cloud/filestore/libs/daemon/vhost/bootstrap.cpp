@@ -292,20 +292,14 @@ void TBootstrapVhost::InitComponents()
         BackgroundScheduler,
         ModuleStatsRegistry);
 
-    const auto* localServiceConfigProto =
-        Configs->VhostServiceConfig->GetLocalServiceConfig();
     // Need tcmalloc metrics wrapper for local service since these are usually
     // provided as part of actor system
-    if (Configs->Options->Service == NDaemon::EServiceKind::Local &&
-        localServiceConfigProto)
+    if (Configs->Options->Service == NDaemon::EServiceKind::Local)
     {
-        TLocalFileStoreConfig localServiceConfig(*localServiceConfigProto);
-        if (localServiceConfig.GetEnableTcMallocMetrics()) {
-            TcMallocStatsUpdater = CreateStatsUpdater(
-                Timer,
-                BackgroundScheduler,
-                CreateTcMallocStatsHandler(Monitoring->GetCounters()));
-        }
+        TcMallocStatsUpdater = CreateStatsUpdater(
+            Timer,
+            BackgroundScheduler,
+            CreateTcMallocStatsHandler(Monitoring->GetCounters()));
     }
 
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
