@@ -131,24 +131,24 @@ struct TReferenceImplementation
         }
 
         if (!Empty()) {
-        if (ReadPos < WritePos) {
-            const auto avail = MaxWeight - WritePos;
-            if (avail < sz) {
-                if (ReadPos <= sz) {
+            if (ReadPos < WritePos) {
+                const auto avail = MaxWeight - WritePos;
+                if (avail < sz) {
+                    if (ReadPos <= sz) {
+                        // out of space
+                        return false;
+                    }
+
+                    SlackSpace = avail;
+                    WritePos = 0;
+                }
+            } else {
+                const auto avail = ReadPos - WritePos;
+                if (avail <= sz) {
                     // out of space
                     return false;
                 }
-
-                SlackSpace = avail;
-                WritePos = 0;
             }
-        } else {
-            const auto avail = ReadPos - WritePos;
-            if (avail <= sz) {
-                // out of space
-                return false;
-            }
-        }
         }
 
         WritePos += sz;
