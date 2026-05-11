@@ -147,6 +147,16 @@ public:
         }
         return false;
     }
+
+    [[nodiscard]] size_t StatsSize() const
+    {
+        return Stats.size();
+    }
+
+    [[nodiscard]] size_t TotalSize() const
+    {
+        return Stats.size() + OffloadedStats.Size();
+    }
 };
 
 using TNodeRefsByHandle = THashMap<ui64, ui64>;
@@ -439,6 +449,11 @@ struct TSessionsStats
     ui32 StatelessSessionsCount = 0;
     ui32 ActiveSessionsCount = 0;
     ui32 OrphanSessionsCount = 0;
+
+    i64 HandleStatsByNodeMaxSize = 0;
+    i64 HandleStatsByNodeSumSize = 0;
+    i64 HandleStatsByNodeMaxTotalSize = 0;
+    i64 HandleStatsByNodeSumTotalSize = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

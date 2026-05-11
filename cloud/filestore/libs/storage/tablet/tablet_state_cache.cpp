@@ -367,13 +367,13 @@ void TInMemoryIndexState::WriteNodeRef(
         .ShardNodeName = shardNodeName};
 
     if (!v) {
-        const auto [_, inserted, evicted] = NodeRefs.emplace(key, value);
+        const auto [_, inserted, evicted] = NodeRefs.emplace(key, std::move(value));
         if (evicted) {
             NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(
                 evicted->NodeId);
         }
     } else {
-        *v = value;
+        *v = std::move(value);
     }
 }
 

@@ -139,6 +139,10 @@ void TTabletMetrics::Register(
         metrType)                                                              \
 // REGISTER_AGGREGATABLE_SUM_EXT
 
+#define REGISTER_AGGREGATABLE_MAX(name, metrType)                              \
+    REGISTER(AggregatableFsRegistry, name, EAggregationType::AT_MAX, metrType) \
+    // REGISTER_AGGREGATABLE_MAX
+
 #define REGISTER_LOCAL(name, metrType)                                         \
     REGISTER(                                                                  \
         FsRegistry,                                                            \
@@ -286,6 +290,19 @@ void TTabletMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
+
+    REGISTER_AGGREGATABLE_MAX(
+        HandleStatsByNodeMaxSize,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        HandleStatsByNodeSumSize,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_MAX(
+        HandleStatsByNodeMaxTotalSize,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        HandleStatsByNodeSumTotalSize,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(
         NodesOpenForWritingBySingleSession,
