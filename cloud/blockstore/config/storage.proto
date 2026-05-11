@@ -1557,4 +1557,11 @@ message TStorageServiceConfig
 
     // Cool down timeout before secure erase devices (in milliseconds).
     optional uint32 CoolDownTimeoutBeforeSecureErase = 494;
+
+    // If true, preemption with source == balancer will
+    // use gentle remount mechanism, avoiding direct tablet killing.
+    optional bool VolumeBalancerGentlePreemptionEnabled = 495;
+
+    // Timeout for gentle preemption (ms).
+    optional uint32 VolumeBalancerGentlePreemptionTimeout = 496;
 }

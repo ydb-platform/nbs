@@ -5893,6 +5893,310 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service_source.UnmountVolume(DefaultDiskId, sessionId);
     }
+
+    Y_UNIT_TEST(ShouldKeepDataPlaneUpWhileHiveIsUnavailableDuringBalancerPush)
+    {
+        TTestEnv env;
+
+        NProto::TStorageServiceConfig config;
+        config.SetBalancerActionDelayInterval(0);
+        config.SetVolumeBalancerGentlePreemptionEnabled(true);
+
+        ui32 nodeIdx1 = SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx1);
+
+        service.CreateVolume();
+        auto response = service.MountVolume();
+        auto sessionId = response->Record.GetSessionId();
+
+        bool hiveDown = false;
+
+        int unlockRejectsCount = 0;
+        int tabletDeadCount = 0;
+        int startVolumeActorStoppedCount = 0;
+        ui64 volumeTabletId = 0;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvUnlockTabletRequest: {
+                        if (!hiveDown) {
+                            break;
+                        }
+                        unlockRejectsCount++;
+                        auto error = MakeKikimrError(
+                            NKikimrProto::ERROR,
+                            "Could not connect");
+                        auto response = std::make_unique<
+                            TEvHiveProxy::TEvUnlockTabletResponse>(error);
+                        runtime.Send(
+                            new IEventHandle(
+                                ev->Sender,
+                                ev->Recipient,
+                                response.release(),
+                                0,   // flags,
+                                ev->Cookie),
+                            nodeIdx1);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvTablet::EvTabletDead: {
+                        auto* msg = ev->Get<TEvTablet::TEvTabletDead>();
+                        if (msg->TabletID == volumeTabletId) {
+                            tabletDeadCount++;
+                        }
+                        break;
+                    }
+                    case TEvServicePrivate::EvStartVolumeActorStopped: {
+                        startVolumeActorStoppedCount++;
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg =
+                            ev->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            });
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+
+        hiveDown = true;
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+        }
+
+        runtime.DispatchEvents({}, TDuration::Seconds(2));
+
+        UNIT_ASSERT(unlockRejectsCount > 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, tabletDeadCount);
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, tabletDeadCount);
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+
+        hiveDown = false;
+
+        runtime.DispatchEvents(
+            {.FinalEvents = {TEvServicePrivate::EvMountRequestProcessed}});
+
+        UNIT_ASSERT(tabletDeadCount > 0);
+        UNIT_ASSERT_VALUES_EQUAL(1, startVolumeActorStoppedCount);
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+    }
+
+    Y_UNIT_TEST(ShouldKeepDataPlaneUpWhileHiveIsUnavailableDuringBalancerPull)
+    {
+        TTestEnv env;
+
+        NProto::TStorageServiceConfig config;
+        config.SetBalancerActionDelayInterval(0);
+        config.SetVolumeBalancerGentlePreemptionEnabled(true);
+
+        ui32 nodeIdx1 = SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx1);
+
+        service.CreateVolume();
+        auto response = service.MountVolume();
+        auto sessionId = response->Record.GetSessionId();
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            runtime.DispatchEvents(
+                {.FinalEvents = {TEvServicePrivate::EvMountRequestProcessed}});
+        }
+
+        bool hiveDown = false;
+
+        int lockRejectsCount = 0;
+        int tabletDeadCount = 0;
+        ui64 volumeTabletId = 0;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLockTabletRequest: {
+                        if (!hiveDown) {
+                            break;
+                        }
+                        lockRejectsCount++;
+                        auto error = MakeKikimrError(
+                            NKikimrProto::ERROR,
+                            "Could not connect");
+                        auto response = std::make_unique<
+                            TEvHiveProxy::TEvLockTabletResponse>(error);
+                        runtime.Send(
+                            new IEventHandle(
+                                ev->Sender,
+                                ev->Recipient,
+                                response.release(),
+                                0,   // flags,
+                                ev->Cookie),
+                            nodeIdx1);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvTablet::EvTabletDead: {
+                        auto* msg = ev->Get<TEvTablet::TEvTabletDead>();
+                        if (msg->TabletID == volumeTabletId) {
+                            tabletDeadCount++;
+                        }
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg =
+                            ev->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            });
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+
+        hiveDown = true;
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            runtime.DispatchEvents({}, TDuration::Seconds(5));
+        }
+
+        UNIT_ASSERT(lockRejectsCount > 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, tabletDeadCount);
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+
+        runtime.DispatchEvents({}, TDuration::Seconds(2));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, tabletDeadCount);
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+
+        hiveDown = false;
+
+        runtime.DispatchEvents(
+            {.FinalEvents = {TEvServicePrivate::EvMountRequestProcessed}});
+
+        UNIT_ASSERT(tabletDeadCount > 0);
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+    }
+
+    Y_UNIT_TEST(ShouldChangeBindingBothWaysWithGentlePreemptionEnabled)
+    {
+        TTestEnv env;
+
+        NProto::TStorageServiceConfig config;
+        config.SetBalancerActionDelayInterval(0);
+        config.SetVolumeBalancerGentlePreemptionEnabled(true);
+
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        TString sessionId;
+        {
+            auto response = service.MountVolume();
+            sessionId = response->Record.GetSessionId();
+        }
+
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+        }
+
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+        }
+
+        service.UnmountVolume(DefaultDiskId, sessionId);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

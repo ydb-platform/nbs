@@ -91,7 +91,13 @@ apt-get install -y --no-install-recommends \
 #apt-get remove -y unattended-upgrades
 #apt-get purge -y unattended-upgrades
 
+# CVE-2026-31431
 echo "install algif_aead /bin/false" > /etc/modprobe.d/disable-algif.conf
+# CVE-2026-43284
+echo "install esp4 /bin/false" > /etc/modprobe.d/disable-esp4.conf
+echo "install esp6 /bin/false" > /etc/modprobe.d/disable-esp6.conf
+# CVE-2026-43500
+echo "install rxrpc /bin/false" > /etc/modprobe.d/disable-rxrpc.conf
 
 pip3 install -r /tmp/packer/requirements.txt
 

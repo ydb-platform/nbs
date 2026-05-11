@@ -220,11 +220,37 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
+        TVector<NProtoPrivate::TCreateSessionResponse> responses;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& e) {
+                Y_UNUSED(runtime);
+                if (e->GetTypeRewrite() ==
+                        TEvIndexTablet::EvCreateSessionResponse)
+                {
+                    const auto* msg =
+                        e->Get<TEvIndexTablet::TEvCreateSessionResponse>();
+                    responses.push_back(msg->Record);
+                }
+                return false;
+            });
+
         auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
         headers1.FileSystemId = fsConfig.Shard1Id;
         auto headers2 = headers;
         headers2.FileSystemId = fsConfig.Shard2Id;
+
+        UNIT_ASSERT_C(3 <= responses.size(), responses.size());
+        for (ui32 i = 0; i < responses.size() - 1; ++i) {
+            UNIT_ASSERT_C(
+                !responses[i].HasFileStore(),
+                responses[i].ShortUtf8DebugString());
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            fsConfig.FsId,
+            responses.back().GetFileStore().GetFileSystemId(),
+            responses.back().ShortUtf8DebugString());
 
         ui64 nodeId1 =
             service
