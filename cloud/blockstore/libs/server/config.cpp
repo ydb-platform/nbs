@@ -118,6 +118,7 @@ constexpr TDuration Seconds(int s)
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
     xxx(EnableOverlappingRequestsGuard,  bool,               false            )\
     xxx(EnableRequestSplitter,       bool,                   false            )\
+    xxx(ExternalVhostServerThreadPoolSize, ui64,             0                )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on

@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/encryption/encryptor.h>
 
 #include <cloud/storage/core/libs/common/future_helper.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -147,12 +149,16 @@ IEncryptorPtr CreateEncryptor(
 
 IBackendPtr CreateBackend(
     const TOptions& options,
-    NCloud::ILoggingServicePtr logging)
+    NCloud::ILoggingServicePtr logging,
+    ITaskQueuePtr threadPool)
 {
     auto encryptor = CreateEncryptor(options, logging);
 
     if (options.DeviceBackend == "aio") {
-        return CreateAioBackend(std::move(encryptor), logging);
+        return CreateAioBackend(
+            std::move(encryptor),
+            logging,
+            std::move(threadPool));
     } else if (options.DeviceBackend == "rdma") {
         return CreateRdmaBackend(logging);
     } else if (options.DeviceBackend == "null") {
@@ -225,10 +231,19 @@ int main(int argc, char** argv)
     pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
 
     auto logService = CreateLogService(options);
-    auto backend = CreateBackend(options, logService);
+    NCloud::ITaskQueuePtr threadPool;
+    if (options.ThreadPoolSize > 0) {
+        threadPool =
+            NCloud::CreateThreadPool("Encryption", options.ThreadPoolSize);
+    }
+    auto backend = CreateBackend(options, logService, threadPool);
     auto server = CreateServer(logService, backend);
     auto Log = logService->CreateLog("SERVER");
     SetCriticalEventsLog(Log);
+
+    if (threadPool) {
+        threadPool->Start();
+    }
 
     server->Start(options);
 

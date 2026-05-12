@@ -5,10 +5,14 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
-#include <cloud/contrib/vhost/virtio/virtio_blk_spec.h>
+
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/vhost-client/monotonic_buffer_resource.h>
 #include <cloud/storage/core/libs/vhost-client/vhost-client.h>
+
+#include <cloud/contrib/vhost/virtio/virtio_blk_spec.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/writer/json_value.h>
@@ -61,8 +65,13 @@ const TString DefaultEncryptionKey("1234567890123456789012345678901");
 using TBlocksPerRequest = size_t;
 using TBlockSize = ui32;
 using TUnaligned = bool;
-using TTestParams = std::
-    tuple<NProto::EEncryptionMode, TBlocksPerRequest, TBlockSize, TUnaligned>;
+using TThreadCount = size_t;
+using TTestParams = std::tuple<
+    NProto::EEncryptionMode,
+    TBlocksPerRequest,
+    TBlockSize,
+    TUnaligned,
+    TThreadCount>;
 
 class TMockEncryptor: public IEncryptor
 {
@@ -129,6 +138,7 @@ public:
     const NProto::EEncryptionMode EncryptionMode = std::get<0>(GetParam());
     const size_t BlocksPerRequest = std::get<1>(GetParam());
     const ui32 BlockSize = std::get<2>(GetParam());
+    const size_t ThreadCount = std::get<4>(GetParam());
     const ui64 BlocksPerChunk = ChunkByteCount / BlockSize;
     const ui32 SectorsPerBlock = BlockSize / SectorSize;
     const size_t SectorsPerRequest = SectorsPerBlock * BlocksPerRequest;
@@ -142,6 +152,7 @@ public:
     std::shared_ptr<IServer> Server;
     TVector<TTempFileHandle> Files;
     IEncryptorPtr Encryptor;
+    ITaskQueuePtr ThreadPool;
 
     TOptions Options {
         .SocketPath = SocketPath,
@@ -163,11 +174,14 @@ public:
             Encryptor =
                 CreateAesXtsEncryptor(TEncryptionKey(DefaultEncryptionKey));
         }
+        if (ThreadCount > 0) {
+            ThreadPool = CreateThreadPool("Encryptor", ThreadCount);
+        }
     }
 
     void StartServer(bool addNonExistingDevice = false)
     {
-        Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging));
+        Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging, ThreadPool));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
@@ -189,6 +203,10 @@ public:
             file.Resize(ChunkByteCount);
         }
 
+        if (ThreadPool) {
+            ThreadPool->Start();
+        }
+
         Server->Start(Options);
 
         ASSERT_TRUE(Client.Init());
@@ -198,7 +216,9 @@ public:
 
     void StartServerWithSplitDevices()
     {
-        Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging));
+        Server = CreateServer(
+            Logging,
+            CreateAioBackend(Encryptor, Logging, ThreadPool));
 
         // H - header
         // D - device
@@ -252,6 +272,10 @@ public:
                 .ByteCount = ChunkByteCount,
                 .Offset = offsets[i]
             });
+        }
+
+        if (ThreadPool) {
+            ThreadPool->Start();
         }
 
         Server->Start(Options);
@@ -1232,15 +1256,204 @@ INSTANTIATE_TEST_SUITE_P(
             NProto::EEncryptionMode::ENCRYPTION_AES_XTS),
         testing::Values(1, 2, 4),       // Blocks per request
         testing::Values(512_B, 4_KB),   // Block size
-        testing::Values(true, false)    // Unaligned
+        testing::Values(true, false),   // Unaligned
+        testing::Values(0, 2)),
+    [](const testing::TestParamInfo<TTestParams>& info)
+    {
+        const auto name = TStringBuilder()
+                          << std::get<0>(info.param) << "_bc"
+                          << std::get<1>(info.param) << "_bs"
+                          << std::get<2>(info.param) << "_"
+                          << (std::get<3>(info.param) ? "unaligned" : "aligned")
+                          << "_tc" << std::get<4>(info.param);
+        return std::string(name);
+    });
+
+class TSlowEncryptor: public IEncryptor
+{
+private:
+    TDuration SleepTime;
+    std::atomic<ui64> TotalSleepTimeMillis;
+
+    IEncryptorPtr Encryptor;
+
+public:
+    explicit TSlowEncryptor(TDuration sleepTime, IEncryptorPtr encryptor)
+        : SleepTime(sleepTime)
+        , Encryptor(std::move(encryptor))
+    {}
+
+    NProto::TError
+    Encrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
+    {
+        Y_UNUSED(src);
+        Y_UNUSED(blockIndex);
+        Sleep(SleepTime);
+        TotalSleepTimeMillis += SleepTime.MilliSeconds();
+        return Encryptor->Encrypt(src, dst, blockIndex);
+    }
+
+    NProto::TError
+    Decrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
+    {
+        Y_UNUSED(src);
+        Y_UNUSED(blockIndex);
+
+        Sleep(SleepTime);
+        TotalSleepTimeMillis += SleepTime.MilliSeconds();
+        return Encryptor->Decrypt(src, dst, blockIndex);
+    }
+
+    TDuration GetTotalSleepTime() const
+    {
+        return TDuration::MilliSeconds(TotalSleepTimeMillis.load());
+    }
+
+    void SetSleepTime(TDuration sleepTime)
+    {
+        SleepTime = sleepTime;
+    }
+};
+
+class TSlowEncryptorServerTest: public TServerTest
+{
+public:
+    TSlowEncryptorServerTest()
+    {
+        Encryptor = std::make_shared<TSlowEncryptor>(
+            TDuration::MilliSeconds(100),
+            Encryptor);
+    }
+
+    TDuration GetTotalSleepTime() const
+    {
+        auto* slowEncryptor = dynamic_cast<TSlowEncryptor*>(Encryptor.get());
+        EXPECT_TRUE(slowEncryptor != nullptr);
+        return slowEncryptor->GetTotalSleepTime();
+    }
+
+    void SetSleepTime(TDuration sleepTime)
+    {
+        auto* slowEncryptor = dynamic_cast<TSlowEncryptor*>(Encryptor.get());
+        EXPECT_TRUE(slowEncryptor != nullptr);
+        slowEncryptor->SetSleepTime(sleepTime);
+    }
+};
+
+TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
+{
+    StartServer();
+
+    auto makePatten = [&](size_t startBlock) -> TString
+    {
+        TString result;
+        result.resize(RequestSize);
+        for (size_t i = 0; i < BlocksPerRequest; ++i) {
+            memset(
+                const_cast<char*>(result.data()) + BlockSize * i,
+                GetFillChar(startBlock + i),
+                BlockSize);
+        }
+        return result;
+    };
+
+    SetSleepTime(TDuration::Zero());
+
+    {
+        std::span hdr = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+        std::span writeBuffer =
+            Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+        std::span status = Memory.Allocate(1);
+
+        for (ui64 i = 0; i < ui64(ThreadCount); ++i) {
+            reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
+                i * SectorsPerBlock;
+            TString expectedData = makePatten(i);
+            memcpy(
+                writeBuffer.data(),
+                expectedData.data(),
+                expectedData.size());
+            auto writeOp =
+                Client.WriteAsync(QueueIndex, {hdr, writeBuffer}, {status});
+            EXPECT_EQ(status.size(), writeOp.GetValueSync());
+            EXPECT_EQ(VIRTIO_BLK_S_OK, status[0]);
+        }
+    }
+
+    SetSleepTime(TDuration::MilliSeconds(100));
+
+    // read data
+    {
+        TVector<std::span<char>> hdrs;
+        TVector<std::span<char>> readBuffers;
+        TVector<std::span<char>> statuses;
+        TVector<NThreading::TFuture<ui32>> readOpsResult;
+
+        for (ui64 i = 0; i < ui64(ThreadCount); ++i) {
+            hdrs.push_back(Hdr(Memory, {.type = VIRTIO_BLK_T_IN}));
+            readBuffers.push_back(
+                Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize));
+            statuses.push_back(Memory.Allocate(1));
+
+            reinterpret_cast<virtio_blk_req_hdr*>(hdrs.back().data())->sector =
+                i * SectorsPerBlock;
+            auto readOp = Client.WriteAsync(
+                QueueIndex,
+                {hdrs.back()},
+                {readBuffers.back(), statuses.back()});
+            readOpsResult.push_back(readOp);
+        }
+
+        auto before = TInstant::Now();
+
+        auto waitResult = NThreading::WaitAll(readOpsResult);
+
+        waitResult.Wait();
+
+        auto after = TInstant::Now();
+        auto duration = after - before;
+
+        for (size_t i = 0; i < readOpsResult.size(); ++i) {
+            auto readOpResult = readOpsResult[i].GetValueSync();
+            EXPECT_EQ(statuses[i].size() + readBuffers[i].size(), readOpResult);
+            EXPECT_EQ(VIRTIO_BLK_S_OK, statuses[i][0]);
+            TString readData(readBuffers[i].data(), readBuffers[i].size());
+            EXPECT_EQ(makePatten(i), readData);
+        }
+
+        auto expectedSleepTime = (GetTotalSleepTime() / ThreadCount) * 1.1;
+
+        EXPECT_LT(duration, expectedSleepTime);
+    }
+
+    SetSleepTime(TDuration::Zero());
+
+    // validate storage
+    for (ui64 i = 0; i < ui64(ThreadCount); ++i) {
+        const TString expectedData(BlockSize, GetFillChar(i));
+        const TString realData = LoadBlockAndDecrypt(i);
+        EXPECT_EQ(expectedData, realData);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ,
+    TSlowEncryptorServerTest,
+    testing::Combine(
+        testing::Values(NProto::EEncryptionMode::ENCRYPTION_AES_XTS),
+        testing::Values(1, 2, 4),       // Blocks per request
+        testing::Values(512_B),         // Block size
+        testing::Values(true, false),   // Unaligned
+        testing::Values(2, 4)           // Thread Count
         ),
     [](const testing::TestParamInfo<TTestParams>& info)
     {
-        const auto name =
-            TStringBuilder()
-            << std::get<0>(info.param) << "_bc" << std::get<1>(info.param)
-            << "_bs" << std::get<2>(info.param) << "_"
-            << (std::get<3>(info.param) ? "unaligned" : "aligned");
+        const auto name = TStringBuilder()
+                          << std::get<0>(info.param) << "_bc"
+                          << std::get<1>(info.param) << "_bs"
+                          << std::get<2>(info.param) << "_"
+                          << (std::get<3>(info.param) ? "unaligned" : "aligned")
+                          << "_tc" << std::get<4>(info.param);
         return std::string(name);
     });
 

@@ -163,6 +163,8 @@ struct ICompletionStats
     virtual std::optional<TSimpleStats> Get(TDuration timeout) = 0;
 
     virtual void Sync(const TSimpleStats& stats) = 0;
+
+    virtual void Sync(const TAtomicStats& stats) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
