@@ -31,13 +31,14 @@ public:
     }
 
     [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> final
+        -> TFuture<TResultOrError<NProto::TNVMeDevice>> final
     {
         if (!serialNumber) {
-            return MakeFuture(MakeError(E_ARGUMENT, "Serial number is empty"));
+            return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(
+                MakeError(E_ARGUMENT, "Serial number is empty"));
         }
 
-        return MakeFuture(MakeError(
+        return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(MakeError(
             E_NOT_FOUND,
             TStringBuilder()
                 << "Device " << serialNumber.Quote() << " not found"));
