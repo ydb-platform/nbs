@@ -1004,7 +1004,11 @@ public:
         return ThreadSafeState->AccessCheckpointsInFlight();
     }
 
-    ui64 GetCleanupCommitId() const;
+    ui64 GetCleanupCommitId(bool cleanupWithCheckpoint) const;
+
+    ui64 GetMaxCheckpointCommitId() const;
+
+    ui64 GetMinCheckpointCommitId() const;
 
     ui64 CalculateCheckpointBytes() const;
 
