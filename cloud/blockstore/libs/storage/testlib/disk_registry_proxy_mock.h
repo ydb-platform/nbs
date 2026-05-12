@@ -423,15 +423,11 @@ private:
         }
 
         NProto::TError error;
-        if (State->VolumeHealthErrorsToReturn > 0) {
-            --State->VolumeHealthErrorsToReturn;
-            error = MakeError(E_REJECTED, "test error");
-        } else if (State->VolumeHealthAbortedToReturn > 0) {
-            --State->VolumeHealthAbortedToReturn;
-            error = MakeError(E_ABORTED, "test stale seqno");
-        } else if (State->VolumeHealthAlreadyToReturn > 0) {
-            --State->VolumeHealthAlreadyToReturn;
-            error = MakeError(S_ALREADY, "test already applied");
+        if (State->VolumeHealthForcedErrorCount > 0) {
+            --State->VolumeHealthForcedErrorCount;
+            error = MakeError(
+                State->VolumeHealthForcedErrorCode,
+                "test forced error");
         }
 
         NCloud::Reply(

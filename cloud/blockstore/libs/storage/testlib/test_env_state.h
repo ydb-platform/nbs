@@ -61,10 +61,9 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
     ui32 UpdateVolumeHealthRequests = 0;
     NProto::EVolumeHealth LastVolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
     ui64 LastVolumeHealthSeqNo = 0;
-    ui32 VolumeHealthErrorsToReturn = 0;
     bool DropVolumeHealthResponses = false;
-    ui32 VolumeHealthAbortedToReturn = 0;
-    ui32 VolumeHealthAlreadyToReturn = 0;
+    ui32 VolumeHealthForcedErrorCount = 0;
+    ui32 VolumeHealthForcedErrorCode = S_OK;
     THashSet<TString> DeviceReplacementUUIDs;
 
     TVector<TString> UnavailableDeviceUUIDs;

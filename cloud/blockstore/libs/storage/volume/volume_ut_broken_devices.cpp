@@ -146,8 +146,6 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         volume.WaitReady();
         runtime->DispatchEvents({}, 1s);
 
-        // После рестарта новая generation реконсилирует состояние:
-        // broken-set непуст → повторно шлём UNHEALTHY с бо́льшим seqNo.
         UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
             NProto::VOLUME_HEALTH_UNHEALTHY,
@@ -282,7 +280,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
     Y_UNIT_TEST(ShouldStopRetryAfterTerminalResponse)
     {
-        for (auto preset: {"E_ABORTED", "S_ALREADY"}) {
+        for (auto code: {E_ABORTED, S_ALREADY}) {
             auto state = MakeIntrusive<TDiskRegistryState>();
             auto runtime = PrepareTestActorRuntime(
                 MakeConfig(/*enableVolumeHealth=*/true),
@@ -291,25 +289,22 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
             TVolumeClient volume(*runtime);
             SetupNrdVolume(volume);
 
-            if (TString(preset) == "E_ABORTED") {
-                state->VolumeHealthAbortedToReturn = 1;
-            } else {
-                state->VolumeHealthAlreadyToReturn = 1;
-            }
+            state->VolumeHealthForcedErrorCount = 1;
+            state->VolumeHealthForcedErrorCode = code;
 
             SendBrokenDeviceNotification(volume, "uuid-1");
             runtime->DispatchEvents({}, 1s);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 1,
                 state->UpdateVolumeHealthRequests,
-                preset);
+                code);
 
             runtime->AdvanceCurrentTime(60s);
             runtime->DispatchEvents({}, 1s);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 1,
                 state->UpdateVolumeHealthRequests,
-                preset);
+                code);
         }
     }
 
