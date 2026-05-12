@@ -15,10 +15,12 @@ IF (SANITIZER_TYPE != "thread")
     )
 ENDIF()
 
-# TFileRingBufferTest::RandomizedPushPopRestore tests may take longer time
-IF (SANITIZER_TYPE == "memory")
-    SIZE(MEDIUM)
-    TIMEOUT(120)
+# TFileRingBufferTest::RandomizedPushPopRestore tests may need more time
+# under sanitizers
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 ENDIF()
 
 SRCS(
