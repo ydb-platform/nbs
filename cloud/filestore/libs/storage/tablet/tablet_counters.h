@@ -290,7 +290,7 @@ struct TTabletMetrics
     TInstant PrevCPUUsageMicrosTs;
     i64 PrevCPUUsageMicros{0};
     std::atomic<i64> CPUUsageMicros{0};
-    i64 CPUUsageRate = 0;
+    std::atomic<i64> CPUUsageRate{0};
 
     std::atomic<i64> OpLogEntryCount{0};
     std::atomic<i64> ResponseLogEntryCount{0};
