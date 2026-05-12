@@ -6197,6 +6197,57 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.UnmountVolume(DefaultDiskId, sessionId);
     }
+
+    Y_UNIT_TEST(ShouldChangeBindingBothWaysWithManualGentlePreemptionEnabled)
+    {
+        TTestEnv env;
+
+        NProto::TStorageServiceConfig config;
+        config.SetBalancerActionDelayInterval(0);
+        config.SetManualGentlePreemptionEnabled(true);
+
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        TString sessionId;
+        {
+            auto response = service.MountVolume();
+            sessionId = response->Record.GetSessionId();
+        }
+
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_MANUAL);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+        }
+
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                    NProto::EPreemptionSource::SOURCE_MANUAL);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+        }
+
+        service.UnmountVolume(DefaultDiskId, sessionId);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

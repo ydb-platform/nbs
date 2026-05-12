@@ -1564,4 +1564,8 @@ message TStorageServiceConfig
 
     // Timeout for gentle preemption (ms).
     optional uint32 VolumeBalancerGentlePreemptionTimeout = 496;
+
+    // If true, preemption with source == manual will
+    // use gentle remount mechanism, avoiding direct tablet killing.
+    optional bool ManualGentlePreemptionEnabled = 497;
 }
