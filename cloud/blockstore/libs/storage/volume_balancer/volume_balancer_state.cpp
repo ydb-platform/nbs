@@ -258,25 +258,31 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 void TVolumeBalancerState::UpdateVolumeToPush()
 {
     const bool moveMostHeavy = StorageConfig->GetVolumePreemptionType() ==
-        NProto::PREEMPTION_MOVE_MOST_HEAVY;
+                               NProto::PREEMPTION_MOVE_MOST_HEAVY;
 
     VolumeToPush = {};
+    TDuration bestCost = moveMostHeavy ? TDuration::Zero() : TDuration::Max();
 
-    ui64 value = moveMostHeavy ? 0 : Max<ui64>();
-    for (auto v = Volumes.begin(); v != Volumes.end(); ++v) {
-        if (!IsVolumePreemptible(v->first, v->second)) {
+    for (const auto& [diskId, info]: Volumes) {
+        if (!IsVolumePreemptible(diskId, info)) {
             continue;
         }
 
+        if (!info.Cost.has_value()) {
+            continue;
+        }
+
+        auto currentCost = info.Cost.value();
+
         if (moveMostHeavy) {
-            if (value < v->second.SufferCount) {
-                value = v->second.SufferCount;
-                VolumeToPush = v->first;
+            if (bestCost < currentCost) {
+                bestCost = currentCost;
+                VolumeToPush = diskId;
             }
         } else {
-            if (value > v->second.SufferCount) {
-                value = v->second.SufferCount;
-                VolumeToPush = v->first;
+            if (bestCost > currentCost) {
+                bestCost = currentCost;
+                VolumeToPush = diskId;
             }
         }
     }
