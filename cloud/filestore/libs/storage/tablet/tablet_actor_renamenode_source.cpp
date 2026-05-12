@@ -460,21 +460,13 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
     }
 
     if (!args.ChildRef->IsExternal()) {
-        if (GetFileSystem().GetForceDirectoryCreationInShards()) {
-            Metrics.RenameNotSupportedErrorCount.fetch_add(
-                1,
-                std::memory_order_relaxed);
+        Metrics.RenameNotSupportedErrorCount.fetch_add(
+            1,
+            std::memory_order_relaxed);
 
-            args.Error = ErrorRenameNotSupported(
-                args.ParentNodeId,
-                args.Request.GetNewParentId());
-        } else {
-            auto message = ReportRenameNodeRequestForLocalNode(TStringBuilder()
-                << "PrepareRenameNodeInSource: "
-                << args.Request.ShortDebugString());
-            args.Error = MakeError(E_ARGUMENT, std::move(message));
-        }
-
+        args.Error = ErrorRenameNotSupported(
+            args.ParentNodeId,
+            args.Request.GetNewParentId());
         return true;
     }
 

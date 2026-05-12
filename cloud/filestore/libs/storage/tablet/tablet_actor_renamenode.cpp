@@ -98,18 +98,6 @@ NProto::TError TIndexTabletActor::HandleCrossShardRenameNodeImpl(
         return MakeError(E_ARGUMENT, std::move(message));
     }
 
-    if (newParentShardNo == 0
-            && record.GetNewParentId() != RootNodeId
-            && !GetFileSystem().GetForceDirectoryCreationInShards())
-    {
-        auto message = ReportInvalidShardNo(
-            TStringBuilder() << "RenameNode: "
-                << record.ShortDebugString() << " newParentShardNo"
-                << ": " << newParentShardNo << ", NewParentId: "
-                << record.GetNewParentId());
-        return MakeError(E_ARGUMENT, std::move(message));
-    }
-
     ExecuteTx<TPrepareRenameNodeInSource>(
         ctx,
         std::move(requestInfo),
