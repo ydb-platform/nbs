@@ -450,10 +450,10 @@ struct TSessionsStats
     ui32 ActiveSessionsCount = 0;
     ui32 OrphanSessionsCount = 0;
 
-    i64 HandleStatsByNodeMaxSize = 0;
-    i64 HandleStatsByNodeSumSize = 0;
-    i64 HandleStatsByNodeMaxTotalSize = 0;
-    i64 HandleStatsByNodeSumTotalSize = 0;
+    ui64 HandleStatsByNodeMaxSize = 0;
+    ui64 HandleStatsByNodeSumSize = 0;
+    ui64 HandleStatsByNodeMaxTotalSize = 0;
+    ui64 HandleStatsByNodeSumTotalSize = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
