@@ -425,7 +425,14 @@ public:
         const ui64 end = request.GetOffset()
             + request.GetBuffer().size() - request.GetBufferOffset();
         if (f.Data.size() < end) {
+            const ui64 prevEnd = f.Data.size();
             f.Data.Resize(end);
+            if (request.GetOffset() > prevEnd) {
+                memset(
+                    f.Data.data() + prevEnd,
+                    0,
+                    request.GetOffset() - prevEnd);
+            }
         }
 
         if (a.GetSize() < end) {
