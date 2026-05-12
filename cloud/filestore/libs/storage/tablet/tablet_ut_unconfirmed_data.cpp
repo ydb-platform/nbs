@@ -1253,6 +1253,81 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         TIndexTabletClient observer(runtime, nodeIdx, tabletId);
         AssertStorageStats(observer, 0, 0);
     }
+
+    Y_UNIT_TEST(ShouldReleaseCollectBarrierOnGenerateBlobIdsChannelError)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({.ChannelCount = 4}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            TFileSystemConfig{.ChannelCount = 4});
+        tablet.InitSession("client", "session");
+
+        auto& runtime = env.GetRuntime();
+
+        bool yellowStopInjected = false;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() != TEvBlobStorage::EvPutResult) {
+                    return false;
+                }
+
+                auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                if (msg->Id.TabletID() != tabletId ||
+                    msg->Id.Channel() < TIndexTabletSchema::DataChannel)
+                {
+                    return false;
+                }
+
+                const auto flags =
+                    ui32(NKikimrBlobStorage::StatusIsValid) |
+                    ui32(NKikimrBlobStorage::StatusDiskSpaceYellowStop);
+                const_cast<TStorageStatusFlags&>(msg->StatusFlags).Merge(flags);
+                yellowStopInjected = true;
+                return false;
+            });
+
+        auto gcNode =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "gc"));
+        ui64 gcHandle = CreateHandle(tablet, gcNode);
+        tablet.WriteData(gcHandle, 0, block, 'a');
+        UNIT_ASSERT(yellowStopInjected);
+
+        auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "target"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto failedGenerateBlobIds =
+            tablet.AssertGenerateBlobIdsFailed(id, handle, 0, block);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_OUT_OF_SPACE,
+            failedGenerateBlobIds->GetStatus());
+
+        const ui64 commitIdAfterFailedGenerateBlobIds =
+            tablet.GenerateCommitId()->CommitId;
+
+        tablet.DestroyHandle(gcHandle);
+        tablet.UnlinkNode(RootNodeId, "gc", false);
+        tablet.CollectGarbage();
+
+        UNIT_ASSERT_GT(
+            tablet.GetStorageStats()
+                ->Record.GetStats()
+                .GetLastCollectCommitId(),
+            commitIdAfterFailedGenerateBlobIds);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

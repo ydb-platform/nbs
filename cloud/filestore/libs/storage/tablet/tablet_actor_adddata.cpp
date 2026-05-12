@@ -379,15 +379,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return;
     }
 
-    if (!canUseUnconfirmed) {
-        // We schedule this event for the case if the client does not call
-        // AddData. Thus we ensure that the collect barrier will be released
-        // eventually.
-        ctx.Schedule(
-            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
-            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
-    }
-
     AcquireCollectBarrier(commitId);
 
     auto response =
@@ -401,6 +392,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             GenerateBlobId(commitId, length, blobIndex, &partialBlobId);
         if (!ok) {
             ReassignDataChannelsIfNeeded(ctx);
+
+            TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
 
             auto response =
                 std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>(
@@ -418,6 +411,15 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             partialBlobId.Channel(),
             partialBlobId.Generation()));
         offset += length;
+    }
+
+    if (!canUseUnconfirmed) {
+        // We schedule this event for the case if the client does not call
+        // AddData. Thus we ensure that the collect barrier will be released
+        // eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
     }
 
     response->Record.SetCommitId(commitId);
