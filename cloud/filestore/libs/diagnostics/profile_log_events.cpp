@@ -429,6 +429,7 @@ void InitProfileLogRequestInfo(
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
     nodeInfo->SetNodeName(request.GetName());
+    nodeInfo->SetFlags(request.GetUnlinkDirectory());
 }
 
 template <>
