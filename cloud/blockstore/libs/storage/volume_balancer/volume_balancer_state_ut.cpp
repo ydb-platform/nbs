@@ -1,5 +1,4 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
-
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
 
@@ -45,8 +44,10 @@ TStorageConfigPtr CreateStorageConfig(
     }
     storageConfig.SetInitialPullDelay(initialPullDelay.MilliSeconds());
 
-    return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
-};
+    return std::make_shared<const TStorageConfig>(
+        storageConfig,
+        std::move(featuresConfig));
+}
 
 NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
     const TString& featureName,
@@ -59,16 +60,20 @@ NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
         feature->SetName(featureName);
         if (blacklist) {
             for (const auto& c: list) {
-                *feature->MutableBlacklist()->MutableCloudIds()->Add() = c.first;
-                *feature->MutableBlacklist()->MutableFolderIds()->Add() = c.second;
+                *feature->MutableBlacklist()->MutableCloudIds()->Add() =
+                    c.first;
+                *feature->MutableBlacklist()->MutableFolderIds()->Add() =
+                    c.second;
             }
             // All but blacklisted
             feature->SetCloudProbability(1);
             feature->SetFolderProbability(1);
         } else {
             for (const auto& c: list) {
-                *feature->MutableWhitelist()->MutableCloudIds()->Add() = c.first;
-                *feature->MutableWhitelist()->MutableFolderIds()->Add() = c.second;
+                *feature->MutableWhitelist()->MutableCloudIds()->Add() =
+                    c.first;
+                *feature->MutableWhitelist()->MutableFolderIds()->Add() =
+                    c.second;
             }
             // None but whitelisted
             feature->SetCloudProbability(0);
@@ -596,32 +601,34 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
     Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolume)
     {
-        TVolumeBalancerState state(
+        TVolumeBalancerStateTestEnv testEnv(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
                 /*volumeBalancerEnabled=*/true,
-                70,
-                CreateFeatureConfig("Balancer", {}, true)
+                DefaultCpuThreshold,
+                CreateFeatureConfig("Balancer", {}, true),
+                InitialPullDelay
             ),
             CreateDiagnosticsConfig(),
-            CreateSwitch(true)
+            {
+                {.DiskId = "vol0",
+                 .Source = NProto::SOURCE_INITIAL_MOUNT,
+                 .LoadProfile = LoadHeavy},
+            }
         );
-        TInstant now = TInstant::Seconds(0);
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
                 CreateVolumeStats({.DiskId = "vol0"}),
                 CreateVolumeStats({.DiskId = "vol1"})};
 
-            TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+        UNIT_ASSERT_VALUES_EQUAL("vol0", testEnv.GetVolumeToPush());
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
 
-            state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+        testEnv.Push("vol0");
 
-            UNIT_ASSERT(state.GetVolumeToPush() == "vol0");
-            UNIT_ASSERT(!state.GetVolumeToPull());
-        }
+        // vol0 registered as preempted, PullInterval set
+        testEnv.Simulate(UpdateCountersInterval, CpuUnderload);
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
@@ -634,15 +641,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                      .IsLocal = true,
                      .Source = NProto::SOURCE_INITIAL_MOUNT})};
 
-            TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+        // vol0 should not be nominated for pull due to SOURCE_INITIAL_MOUNT
+        testEnv.Simulate(WholeCyclesOver(InitialPullDelay), CpuUnderload);
 
-            state.UpdateVolumeStats(vols, std::move(perfMap), 30, now);
-
-            UNIT_ASSERT(!state.GetVolumeToPush());
-            UNIT_ASSERT(!state.GetVolumeToPull());
-        }
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPush());
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
     }
 
     Y_UNIT_TEST(ShouldSelectLightestVolumeWhenEnabledWithPreemptionTypeNone)
@@ -677,7 +680,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
             /*volumeBalancerEnabled=*/true,
             70,
-            /*featuresConfig=*/nullptr);
+            /*featuresConfig=*/nullptr,
+            InitialPullDelay);
 
         TVolumeBalancerState state(
             storageConfig,
@@ -716,26 +720,26 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
     Y_UNIT_TEST(ShouldNotMoveNonKikimrDisks)
     {
-        TVector<NProto::EStorageMediaKind> kinds {
+        const TVector kinds{
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
             NProto::STORAGE_MEDIA_SSD_LOCAL,
-            NProto::STORAGE_MEDIA_SSD_MIRROR3
-        };
+            NProto::STORAGE_MEDIA_SSD_MIRROR3};
 
-        TVolumeBalancerState state(
-            CreateStorageConfig(
-                NProto::PREEMPTION_MOVE_MOST_HEAVY,
-                /*volumeBalancerEnabled=*/true,
-                70,
-                CreateFeatureConfig("Balancer", {}, true)
-            ),
-            CreateDiagnosticsConfig(),
-            CreateSwitch(true)
-        );
+        for (const auto kind: kinds) {
+            TVolumeBalancerStateTestEnv testEnv(
+                CreateStorageConfig(
+                    NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                    /*volumeBalancerEnabled=*/true,
+                    DefaultCpuThreshold,
+                    CreateFeatureConfig("Balancer", {}, true),
+                    InitialPullDelay),
+                CreateDiagnosticsConfig(),
+                {
+                    {.DiskId = "vol0", .Kind = kind, .LoadProfile = LoadHeavy},
+                });
 
-        for (ui32 i = 0; i < kinds.size(); ++i) {
-            TInstant now = TInstant::Seconds(0);
+            testEnv.Simulate(UpdateCountersInterval, CpuOverload);
 
             TVector<NProto::TVolumeBalancerDiskStats> vols {
                 CreateVolumeStats({.DiskId = "vol0", .IsLocal = true, .Kind = kinds[i]})
