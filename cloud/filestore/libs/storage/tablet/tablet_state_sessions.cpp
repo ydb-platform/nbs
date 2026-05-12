@@ -607,8 +607,8 @@ TSessionsStats TIndexTabletState::CalculateSessionsStats() const
 
         // HandleStatsByNode stats
         {
-            const i64 size = s.HandleStatsByNode.StatsSize();
-            const i64 totalSize = s.HandleStatsByNode.TotalSize();
+            const size_t size = s.HandleStatsByNode.StatsSize();
+            const size_t totalSize = s.HandleStatsByNode.TotalSize();
             stats.HandleStatsByNodeMaxSize =
                 Max(stats.HandleStatsByNodeMaxSize, size);
             stats.HandleStatsByNodeSumSize += size;
