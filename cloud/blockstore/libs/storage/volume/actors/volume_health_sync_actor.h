@@ -2,8 +2,10 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
@@ -16,30 +18,23 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Reliable delivery of TVolumeActor's health state to DiskRegistry.
-// Lives one Volume generation; idempotency on DR side (seqNo) lets the new
-// generation simply re-push current health without persisting in-flight state.
 class TVolumeHealthSyncActor final
     : public NActors::TActorBootstrapped<TVolumeHealthSyncActor>
 {
 private:
-    const NActors::TActorId Owner;
     const TString DiskId;
+    TCompositeId SeqNoGen;
     TChildLogTitle LogTitle;
-    const TDuration InitialBackoff;
-    const TDuration MaxBackoff;
-
     NProto::EVolumeHealth DesiredHealth = NProto::VOLUME_HEALTH_HEALTHY;
     ui64 DesiredSeqNo = 0;
     ui64 LastConfirmedSeqNo = 0;
-
     TBackoffDelayProvider Backoff;
     ui64 WakeupCookie = 0;
 
 public:
     TVolumeHealthSyncActor(
-        const NActors::TActorId& owner,
         TString diskId,
+        ui32 generation,
         TChildLogTitle logTitle,
         TDuration initialBackoff,
         TDuration maxBackoff);

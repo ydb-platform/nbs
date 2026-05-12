@@ -18,16 +18,14 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeHealthSyncActor::TVolumeHealthSyncActor(
-    const TActorId& owner,
     TString diskId,
+    ui32 generation,
     TChildLogTitle logTitle,
     TDuration initialBackoff,
     TDuration maxBackoff)
-    : Owner(owner)
-    , DiskId(std::move(diskId))
+    : DiskId(std::move(diskId))
+    , SeqNoGen(TCompositeId::FromGeneration(generation))
     , LogTitle(std::move(logTitle))
-    , InitialBackoff(initialBackoff)
-    , MaxBackoff(maxBackoff)
     , Backoff(initialBackoff, maxBackoff)
 {}
 
@@ -75,31 +73,18 @@ void TVolumeHealthSyncActor::HandleSetDesiredHealth(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    if (msg->SeqNo <= DesiredSeqNo) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s SetDesiredVolumeHealth ignored: incoming seqNo=%" PRIu64
-            " <= current desired=%" PRIu64,
-            LogTitle.GetWithTime().c_str(),
-            msg->SeqNo,
-            DesiredSeqNo);
-        return;
-    }
+    DesiredHealth = msg->VolumeHealth;
+    DesiredSeqNo = SeqNoGen.Advance();
+    Backoff.Reset();
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s New desired volume health: %s seqNo=%" PRIu64,
         LogTitle.GetWithTime().c_str(),
-        msg->VolumeHealth == NProto::VOLUME_HEALTH_HEALTHY ? "healthy"
-                                                           : "unhealthy",
-        msg->SeqNo);
+        NProto::EVolumeHealth_Name(DesiredHealth).c_str(),
+        DesiredSeqNo);
 
-    DesiredHealth = msg->VolumeHealth;
-    DesiredSeqNo = msg->SeqNo;
-    Backoff.Reset();
     SendUpdate(ctx);
 }
 

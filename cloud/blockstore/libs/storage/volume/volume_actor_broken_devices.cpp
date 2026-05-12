@@ -4,8 +4,6 @@
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
-#include <cloud/storage/core/libs/common/media.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -14,41 +12,27 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TVolumeActor::ShouldSkipVolumeHealthNotification() const
-{
-    return !State ||
-           IsReliableDiskRegistryMediaKind(
-               State->GetMeta().GetConfig().GetStorageMediaKind()) ||
-           !Config->GetVolumeHealthNotificationEnabled();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void TVolumeActor::SendVolumeHealthNotification(
     const TActorContext& ctx,
     NProto::EVolumeHealth volumeHealth)
 {
-    if (ShouldSkipVolumeHealthNotification()) {
+    if (!VolumeHealthSyncActorId) {
         return;
     }
 
     VolumeHealth = volumeHealth;
-    const ui64 seqNo = VolumeHealthRequestId.Advance();
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Setting desired volume health = %s "
-        "(volumeRequestId=%" PRIu64 ")",
+        "%s Setting desired volume health = %s",
         LogTitle.GetWithTime().c_str(),
-        volumeHealth == NProto::VOLUME_HEALTH_HEALTHY ? "healthy" : "unhealthy",
-        seqNo);
+        NProto::EVolumeHealth_Name(volumeHealth).c_str());
 
     NCloud::Send(
         ctx,
         VolumeHealthSyncActorId,
         std::make_unique<TEvVolumePrivate::TEvSetDesiredVolumeHealth>(
-            volumeHealth,
-            seqNo));
+            volumeHealth));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,7 +41,7 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ShouldSkipVolumeHealthNotification()) {
+    if (!VolumeHealthSyncActorId) {
         return;
     }
 
@@ -90,7 +74,7 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
     const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ShouldSkipVolumeHealthNotification()) {
+    if (!VolumeHealthSyncActorId) {
         return;
     }
 

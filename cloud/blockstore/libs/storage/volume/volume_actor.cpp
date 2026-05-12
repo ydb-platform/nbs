@@ -119,7 +119,6 @@ TVolumeActor::TVolumeActor(
           TabletID(),
           [this](EVolumeThrottlingOpType opType, TDuration time)
           { UpdateDelayCounter(opType, time); })
-    , VolumeHealthRequestId(TCompositeId::FromGeneration(0))
     , TransactionTimeTracker(VolumeTransactions)
 {}
 

@@ -338,7 +338,6 @@ private:
     THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
 
     NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
-    TCompositeId VolumeHealthRequestId;
     NActors::TActorId VolumeHealthSyncActorId;
 
     TVolumeRequestMap VolumeRequests;
@@ -1284,8 +1283,6 @@ private:
         const NActors::TActorContext& ctx);
 
     void CleanupStaleBrokenDevices(const NActors::TActorContext& ctx);
-
-    bool ShouldSkipVolumeHealthNotification() const;
 
     void SendVolumeHealthNotification(
         const NActors::TActorContext& ctx,

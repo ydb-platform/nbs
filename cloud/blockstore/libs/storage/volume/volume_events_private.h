@@ -521,11 +521,9 @@ struct TEvVolumePrivate
     struct TSetDesiredVolumeHealth
     {
         NProto::EVolumeHealth VolumeHealth;
-        ui64 SeqNo;
 
-        TSetDesiredVolumeHealth(NProto::EVolumeHealth volumeHealth, ui64 seqNo)
+        explicit TSetDesiredVolumeHealth(NProto::EVolumeHealth volumeHealth)
             : VolumeHealth(volumeHealth)
-            , SeqNo(seqNo)
         {}
     };
 

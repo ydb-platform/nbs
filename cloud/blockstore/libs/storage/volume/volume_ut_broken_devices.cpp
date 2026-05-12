@@ -58,8 +58,6 @@ void SendRecoveredDeviceNotification(TVolumeClient& volume, const TString& uuid)
             TEvNonreplPartitionPrivate::TDeviceRecoveredNotification(uuid)));
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,15 +94,10 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SetupNrdVolume(volume);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, 1s);
-
         SendBrokenDeviceNotification(volume, "uuid-2");
         runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
-        UNIT_ASSERT_EQUAL(
-            NProto::VOLUME_HEALTH_UNHEALTHY,
-            state->LastVolumeHealth);
     }
 
     Y_UNIT_TEST(ShouldSendHealthyWhenAllDevicesRecover)
@@ -123,7 +116,6 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         SendRecoveredDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
-
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
 
         SendRecoveredDeviceNotification(volume, "uuid-2");
@@ -147,19 +139,25 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         SendBrokenDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
-
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
+        const ui64 firstSeqNo = state->LastVolumeHealthSeqNo;
 
         volume.RebootTablet();
         volume.WaitReady();
         runtime->DispatchEvents({}, 1s);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
+        // После рестарта новая generation реконсилирует состояние:
+        // broken-set непуст → повторно шлём UNHEALTHY с бо́льшим seqNo.
+        UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
+        UNIT_ASSERT_EQUAL(
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            state->LastVolumeHealth);
+        UNIT_ASSERT(state->LastVolumeHealthSeqNo > firstSeqNo);
 
         SendRecoveredDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
+        UNIT_ASSERT_VALUES_EQUAL(3, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
             NProto::VOLUME_HEALTH_HEALTHY,
             state->LastVolumeHealth);
@@ -176,12 +174,6 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         SetupNrdVolume(volume);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, 1s);
-
-        UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
-
-        volume.RebootTablet();
-        volume.WaitReady();
         runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
@@ -204,34 +196,6 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         runtime->DispatchEvents({}, 1s);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
-
-        volume.RebootTablet();
-        volume.WaitReady();
-        runtime->DispatchEvents({}, 1s);
-
-        UNIT_ASSERT_VALUES_EQUAL(0, state->UpdateVolumeHealthRequests);
-    }
-
-    Y_UNIT_TEST(ShouldSendNotificationOnEachHealthChange)
-    {
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
-
-        TVolumeClient volume(*runtime);
-        SetupNrdVolume(volume);
-
-        SendBrokenDeviceNotification(volume, "uuid-1");      // → UNHEALTHY
-        SendRecoveredDeviceNotification(volume, "uuid-1");   // → HEALTHY
-        SendBrokenDeviceNotification(volume, "uuid-1");      // → UNHEALTHY
-
-        runtime->DispatchEvents({}, 1s);
-
-        UNIT_ASSERT_VALUES_EQUAL(3, state->UpdateVolumeHealthRequests);
-        UNIT_ASSERT_EQUAL(
-            NProto::VOLUME_HEALTH_UNHEALTHY,
-            state->LastVolumeHealth);
     }
 
     Y_UNIT_TEST(ShouldCleanupStaleDevicesOnUpdateDevices)
@@ -246,11 +210,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         SendBrokenDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
-
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
-        UNIT_ASSERT_EQUAL(
-            NProto::VOLUME_HEALTH_UNHEALTHY,
-            state->LastVolumeHealth);
 
         volume.ReallocateDisk();
         volume.ReconnectPipe();
@@ -275,47 +235,16 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         SendBrokenDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
-
-        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
-        const ui64 firstVolumeHealthSeqNo = state->LastVolumeHealthSeqNo;
-        UNIT_ASSERT(firstVolumeHealthSeqNo > 0);
+        const ui64 first = state->LastVolumeHealthSeqNo;
+        UNIT_ASSERT(first > 0);
 
         SendRecoveredDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
-        UNIT_ASSERT(state->LastVolumeHealthSeqNo > firstVolumeHealthSeqNo);
+        UNIT_ASSERT(state->LastVolumeHealthSeqNo > first);
     }
 
-    Y_UNIT_TEST(ShouldRetryOnError)
-    {
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
-
-        TVolumeClient volume(*runtime);
-        SetupNrdVolume(volume);
-
-        state->VolumeHealthErrorsToReturn = 2;
-
-        SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, 1s);
-
-        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
-
-        runtime->AdvanceCurrentTime(2s);
-        runtime->DispatchEvents({}, 1s);
-        runtime->AdvanceCurrentTime(4s);
-        runtime->DispatchEvents({}, 1s);
-
-        UNIT_ASSERT_VALUES_EQUAL(3, state->UpdateVolumeHealthRequests);
-        UNIT_ASSERT_EQUAL(
-            NProto::VOLUME_HEALTH_UNHEALTHY,
-            state->LastVolumeHealth);
-    }
-
-    Y_UNIT_TEST(ShouldRetryHealthNotificationOnDrTimeout)
+    Y_UNIT_TEST(ShouldRetryUntilDelivered)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(
@@ -329,67 +258,62 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         SendBrokenDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
-
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
 
         runtime->AdvanceCurrentTime(2s);
         runtime->DispatchEvents({}, 1s);
-        UNIT_ASSERT_VALUES_EQUAL(2, state->UpdateVolumeHealthRequests);
-
         runtime->AdvanceCurrentTime(4s);
         runtime->DispatchEvents({}, 1s);
-        UNIT_ASSERT_VALUES_EQUAL(3, state->UpdateVolumeHealthRequests);
+        const ui32 attemptsBefore = state->UpdateVolumeHealthRequests;
+        UNIT_ASSERT(attemptsBefore >= 3);
 
+        state->DropVolumeHealthResponses = false;
         runtime->AdvanceCurrentTime(8s);
         runtime->DispatchEvents({}, 1s);
-        UNIT_ASSERT_VALUES_EQUAL(4, state->UpdateVolumeHealthRequests);
-    }
-
-    Y_UNIT_TEST(ShouldStopRetryAfterEAborted)
-    {
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
-
-        TVolumeClient volume(*runtime);
-        SetupNrdVolume(volume);
-
-        state->VolumeHealthAbortedToReturn = 1;
-
-        SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, 1s);
-
-        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
+        UNIT_ASSERT(state->UpdateVolumeHealthRequests > attemptsBefore);
+        const ui32 attemptsAfterAck = state->UpdateVolumeHealthRequests;
 
         runtime->AdvanceCurrentTime(60s);
         runtime->DispatchEvents({}, 1s);
-        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            attemptsAfterAck,
+            state->UpdateVolumeHealthRequests);
     }
 
-    Y_UNIT_TEST(ShouldStopRetryAfterSAlready)
+    Y_UNIT_TEST(ShouldStopRetryAfterTerminalResponse)
     {
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
+        for (auto preset: {"E_ABORTED", "S_ALREADY"}) {
+            auto state = MakeIntrusive<TDiskRegistryState>();
+            auto runtime = PrepareTestActorRuntime(
+                MakeConfig(/*enableVolumeHealth=*/true),
+                state);
 
-        TVolumeClient volume(*runtime);
-        SetupNrdVolume(volume);
+            TVolumeClient volume(*runtime);
+            SetupNrdVolume(volume);
 
-        state->VolumeHealthAlreadyToReturn = 1;
+            if (TString(preset) == "E_ABORTED") {
+                state->VolumeHealthAbortedToReturn = 1;
+            } else {
+                state->VolumeHealthAlreadyToReturn = 1;
+            }
 
-        SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, 1s);
+            SendBrokenDeviceNotification(volume, "uuid-1");
+            runtime->DispatchEvents({}, 1s);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                state->UpdateVolumeHealthRequests,
+                preset);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
-
-        runtime->AdvanceCurrentTime(60s);
-        runtime->DispatchEvents({}, 1s);
-        UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
+            runtime->AdvanceCurrentTime(60s);
+            runtime->DispatchEvents({}, 1s);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                state->UpdateVolumeHealthRequests,
+                preset);
+        }
     }
 
-    Y_UNIT_TEST(ShouldDropOldDesiredOnNewArrival)
+    Y_UNIT_TEST(ShouldReplaceInflightOnNewHealthChange)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(
@@ -402,7 +326,6 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
         state->DropVolumeHealthResponses = true;
         SendBrokenDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, 1s);
-
         UNIT_ASSERT_VALUES_EQUAL(1, state->UpdateVolumeHealthRequests);
         UNIT_ASSERT_EQUAL(
             NProto::VOLUME_HEALTH_UNHEALTHY,

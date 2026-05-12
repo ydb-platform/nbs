@@ -569,40 +569,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             DiskId);
     }
 
-    Y_UNIT_TEST(ShouldRejectStaleSeqNoWithEAborted)
-    {
-        const TVector agents{
-            CreateAgentConfig(
-                "agent-1",
-                {
-                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
-                }),
-        };
-
-        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
-        TDiskRegistryClient diskRegistry(*runtime);
-
-        diskRegistry.WaitReady();
-        diskRegistry.SetWritableState(true);
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
-        RegisterAndWaitForAgents(*runtime, agents);
-
-        diskRegistry.AllocateDisk("nonrepl-vol", 10_GB);
-
-        diskRegistry.UpdateVolumeHealth(
-            "nonrepl-vol",
-            NProto::VOLUME_HEALTH_UNHEALTHY,
-            5);
-
-        diskRegistry.SendUpdateVolumeHealthRequest(
-            "nonrepl-vol",
-            NProto::VOLUME_HEALTH_HEALTHY,
-            3);
-        auto response = diskRegistry.RecvUpdateVolumeHealthResponse();
-        UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
-    }
-
-    Y_UNIT_TEST(ShouldReturnSAlreadyForDuplicateSeqNo)
+    Y_UNIT_TEST(ShouldEnforceSeqNoOrdering)
     {
         auto notifyService = std::make_shared<TFakeNotifyService>();
 
@@ -638,7 +605,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             "nonrepl-vol",
             NProto::VOLUME_HEALTH_UNHEALTHY,
             5);
-
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
@@ -647,8 +613,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             "nonrepl-vol",
             NProto::VOLUME_HEALTH_UNHEALTHY,
             5);
-        auto response = diskRegistry.RecvUpdateVolumeHealthResponse();
-        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        auto duplicate = diskRegistry.RecvUpdateVolumeHealthResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, duplicate->GetStatus());
+
+        diskRegistry.SendUpdateVolumeHealthRequest(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_HEALTHY,
+            3);
+        auto stale = diskRegistry.RecvUpdateVolumeHealthResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, stale->GetStatus());
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);

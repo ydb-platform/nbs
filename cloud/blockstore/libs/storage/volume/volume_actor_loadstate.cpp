@@ -108,8 +108,6 @@ void TVolumeActor::CompleteLoadState(
     const TActorContext& ctx,
     TTxVolume::TLoadState& args)
 {
-    VolumeHealthRequestId = TCompositeId::FromGeneration(Executor()->Generation());
-
     if (args.StorageConfig.Defined()) {
         Config =
             TStorageConfig::Merge(GlobalStorageConfig, *args.StorageConfig);
@@ -171,15 +169,23 @@ void TVolumeActor::CompleteLoadState(
             DeviceUUIDToBrokenAt[info.DeviceUUID] = info.BrokenTs;
         }
 
-        if (!ShouldSkipVolumeHealthNotification()) {
+        const bool reliable = IsReliableDiskRegistryMediaKind(
+            State->GetMeta().GetConfig().GetStorageMediaKind());
+        if (!reliable && Config->GetVolumeHealthNotificationEnabled()) {
             VolumeHealthSyncActorId = NCloud::Register<TVolumeHealthSyncActor>(
                 ctx,
-                SelfId(),
                 State->GetDiskId(),
+                Executor()->Generation(),
                 LogTitle.GetChild(GetCycleCount()),
                 TDuration::Seconds(1),
                 TDuration::Seconds(30));
             Actors.insert(VolumeHealthSyncActorId);
+
+            if (!DeviceUUIDToBrokenAt.empty()) {
+                SendVolumeHealthNotification(
+                    ctx,
+                    NProto::VOLUME_HEALTH_UNHEALTHY);
+            }
         }
 
         Y_ABORT_UNLESS(CurrentState == STATE_INIT);
