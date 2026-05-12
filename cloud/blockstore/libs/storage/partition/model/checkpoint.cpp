@@ -125,9 +125,19 @@ const THashMap<TString, ui64>& TCheckpointStore::GetMapping() const
 ui64 TCheckpointStore::GetMinCommitId() const
 {
     if (CommitIds.empty()) {
+        // TODO:_ check all corner cases with min/max commit id.
         return Max();
     }
     return CommitIds.front();
+}
+
+ui64 TCheckpointStore::GetMaxCommitId() const
+{
+    if (CommitIds.empty()) {
+        return Min();
+    }
+    // TODO:_ is there any guarantee that the last commit id is the max?
+    return CommitIds.back();
 }
 
 void TCheckpointStore::GetCommitIds(TVector<ui64>& result) const
@@ -282,6 +292,19 @@ ui64 TCheckpointsInFlight::GetMinCommitId() const
         minCommitId = Min(minCommitId, txCommitId);
     }
     return minCommitId;
+}
+
+ui64 TCheckpointsInFlight::GetMaxCommitId() const
+{
+    auto maxCommitId = Min<ui64>();
+    for (const auto& [_, txPair]: PendingTransactions) {
+        const auto& txCommitId = txPair.CommitId;
+        if (!txCommitId) {
+            continue;
+        }
+        maxCommitId = Max(maxCommitId, txCommitId);
+    }
+    return maxCommitId;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

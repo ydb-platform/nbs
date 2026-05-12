@@ -1625,4 +1625,10 @@ message TStorageServiceConfig
     // If false (default), UseGentlePreemption param
     // for RebindVolumes action is ignored
     optional bool AllowGentlePreemptionForRebindVolumesAction = 514;
+
+    // If true, cleanup and garbage compaction are allowed while checkpoints
+    // exist. Cleanup skips blobs that might still be needed by a checkpoint.
+    // If false (default), cleanup commit id is capped below any checkpoint and
+    // garbage compaction is not enqueued while a checkpoint exists.
+    optional bool CleanupWithCheckpoint = 515;
 }

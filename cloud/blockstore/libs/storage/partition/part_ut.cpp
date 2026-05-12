@@ -3426,20 +3426,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         checkCompactionRequests(true);
 
+        //// partition.CreateCheckpoint("c1");
         partition.CreateCheckpoint("c1");
 
         // writing lots of blocks into range 1
         partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024));
         partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024));
 
+        //// runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         // there is a checkpoint => zeroed compaction should not run
+        //// checkCompactionRequests(false);
         checkCompactionRequests(false);
 
+        //// partition.DeleteCheckpoint("c1");
         partition.DeleteCheckpoint("c1");
 
         // triggering compaction attempt, block index does not matter
+        //// partition.WriteBlocks(0);
+        //// partition.Flush();
         partition.WriteBlocks(0);
         partition.Flush();
 
@@ -3585,14 +3591,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
 
         // wait for background operations completion
+        //// runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         // garbage == used x2 => still no compaction because there is a
         // checkpoint
+        //// checkCompactionRequests(false);
         checkCompactionRequests(false);
 
+        //// partition.DeleteCheckpoint("c1");
         partition.DeleteCheckpoint("c1");
 
+        //// partition.WriteBlocks(TBlockRange32::MakeOneBlock(0));
+        //// partition.Flush();
         partition.WriteBlocks(TBlockRange32::MakeOneBlock(0));
         partition.Flush();
 
@@ -3921,6 +3932,113 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
+    }
+
+    // TODO:_ distinguish max and min checkpoint id in test?
+    Y_UNIT_TEST(ShouldCleanupAndCompactWithCheckpointWhenCleanupWithCheckpointEnabled)
+    {
+        auto config = DefaultConfig();
+        config.SetCleanupWithCheckpoint(true);
+        // Keep background cleanup/GC from interfering with the scenario.
+        config.SetCleanupThreshold(999999);
+        // config.SetCleanupThreshold(1);
+        config.SetCollectGarbageThreshold(999999);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // 1. Write overlapping data and compact so superseded blobs enter the
+        // cleanup queue before any checkpoint exists.
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 2);
+        partition.Compaction();
+
+        ui64 cleanupQueueBytesAfterFirstCompaction = 0;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_GT(stats.GetCleanupQueueBytes(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageQueueSize());
+            cleanupQueueBytesAfterFirstCompaction = stats.GetCleanupQueueBytes();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        // Advance commit id so blobs enqueued by the first compaction have
+        // deletion commit ids strictly below the checkpoint bound used by
+        // CleanupWithCheckpoint.
+        // TODO:_ is this comment correct?
+        partition.WriteBlocks(0, 2);
+
+        // 2. Create a checkpoint that must keep seeing content "2".
+        partition.CreateCheckpoint("c1");
+
+        // 3. Write new data and compact again. Compaction should enqueue both:
+        // - the live pre-checkpoint blob (needed by "c1");
+        // - the post-checkpoint blob that was just superseded.
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 3);
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
+            // Cleanup queue grew: pre-checkpoint leftovers remain and new
+            // pre/post-checkpoint blobs from the second compaction were added.
+            // TODO:_ check more carefully?
+            UNIT_ASSERT_GT(
+                stats.GetCleanupQueueBytes(),
+                cleanupQueueBytesAfterFirstCompaction);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageQueueSize());
+        }
+
+        // 4. Manual cleanup with CleanupWithCheckpoint enabled:
+        // - blobs deleted before the checkpoint are cleaned;
+        // - blobs written after the checkpoint are cleaned;
+        // - the pre-checkpoint blob still needed by "c1" is kept.
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            // Current compacted blob + checkpoint-protected blob.
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_GT(stats.GetCleanupQueueBytes(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetGarbageQueueSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(0)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+
+        // After the checkpoint is gone, remaining cleanup-queue blob can be
+        // collected as well.
+        partition.DeleteCheckpoint("c1");
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetGarbageQueueSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(0)));
     }
 
     Y_UNIT_TEST(ShouldReadFromCheckpoint)
