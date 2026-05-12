@@ -88,6 +88,7 @@ public:
     const THashMap<TString, ui64>& GetMapping() const;
 
     ui64 GetMinCommitId() const;
+    ui64 GetMaxCommitId() const;
 
     void GetCommitIds(TVector<ui64>& result) const;
 
@@ -155,6 +156,7 @@ public:
     void GetCommitIds(TVector<ui64>& commitIds) const;
 
     [[nodiscard]] ui64 GetMinCommitId() const;
+    [[nodiscard]] ui64 GetMaxCommitId() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

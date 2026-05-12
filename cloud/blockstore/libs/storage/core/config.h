@@ -438,6 +438,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsCleanupWithCheckpointFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -856,6 +861,8 @@ public:
     [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
 
     [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
+
+    [[nodiscard]] bool GetCleanupWithCheckpoint() const;
 };
 
 ui64 GetAllocationUnit(

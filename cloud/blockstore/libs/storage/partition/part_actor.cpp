@@ -1077,6 +1077,15 @@ bool TPartitionActor::IsUseRecreatedBlobMetasOnCleanupEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsCleanupWithCheckpointEnabled() const
+{
+    return Config->GetCleanupWithCheckpoint() ||
+           Config->IsCleanupWithCheckpointFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
