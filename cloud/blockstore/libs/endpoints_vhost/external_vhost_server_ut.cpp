@@ -946,6 +946,84 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_C(stop, "actual entry: " << History[0].index());
         }
     }
+
+    Y_UNIT_TEST_F(ShoultPassThreadPoolSize, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, History.size());
+        {
+            const ui64 threadPoolSize = RandInt<ui64>() % 10 + 1;
+            NProto::TServerConfig serverConfig;
+            serverConfig.SetExternalVhostServerThreadPoolSize(threadPoolSize);
+            Listener = CreateEndpointListener(false, serverConfig);
+            auto request = CreateDefaultStartEndpointRequest();
+
+            auto error = Listener->StartEndpoint(request, Volume, Session)
+                             .GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+
+            auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+            UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
+
+            UNIT_ASSERT_VALUES_EQUAL(Volume.GetDiskId(), create->DiskId);
+
+            /*
+                --serial local0                     2
+                --disk-id vol0                      2
+                --block-size 512                    2
+                --socket-path /tmp/socket.vhost     2
+                --socket-access-mode ...            2
+                -q 2                                2
+                --device ...                        2
+                --device ...                        2
+                --read-only                         1
+                --wait-after-parent-exit ...        2
+                --thread-pool-size  ...             2
+                                                   19
+            */
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                21,
+                create->CmdArgs.size(),
+                JoinStrings(create->CmdArgs, " "));
+            UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "vol0",
+                GetArg(create->CmdArgs, "--disk-id"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "512",
+                GetArg(create->CmdArgs, "--block-size"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "30",
+                GetArg(create->CmdArgs, "--wait-after-parent-exit"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                ToString(threadPoolSize),
+                GetArg(create->CmdArgs, "--thread-pool-size"));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "/tmp/socket.vhost",
+                GetArg(create->CmdArgs, "--socket-path"));
+
+            UNIT_ASSERT_VALUES_EQUAL("2", GetArg(create->CmdArgs, "-q"));
+            UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
+
+            auto devices = GetArgN(create->CmdArgs, "--device");
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+
+            History.clear();
+        }
+
+        {
+            auto error = Listener->StopEndpoint(SocketPath).GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, History.size());
+            auto* stop = std::get_if<TStopExternalEndpoint>(&History[0]);
+            UNIT_ASSERT_C(stop, "actual entry: " << History[0].index());
+        }
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NServer

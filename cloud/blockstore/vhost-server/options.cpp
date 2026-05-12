@@ -166,7 +166,8 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&BlockstoreServicePid);
 
     opts.AddLongOption("thread-pool-size", "thread pool size")
-        .RequiredArgument("INT")
+        .OptionalArgument("INT")
+        .DefaultValue(0)
         .StoreResult(&ThreadPoolSize);
 
     TOptsParseResultException res(&opts, argc, argv);

@@ -1128,9 +1128,11 @@ private:
             }
         }
 
-        args.emplace_back("--thread-pool-size");
-        args.emplace_back(
-            ToString(ServerConfig->GetExternalVhostServerThreadPoolSize()));
+        if (ServerConfig->GetExternalVhostServerThreadPoolSize()) {
+            args.emplace_back("--thread-pool-size");
+            args.emplace_back(
+                ToString(ServerConfig->GetExternalVhostServerThreadPoolSize()));
+        }
 
         TVector<TString> cgroups(
             request.GetClientCGroups().begin(),
