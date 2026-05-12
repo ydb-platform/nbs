@@ -15,6 +15,12 @@ IF (SANITIZER_TYPE != "thread")
     )
 ENDIF()
 
+# TFileRingBufferTest::RandomizedPushPopRestore tests may take longer time
+IF (SANITIZER_TYPE == "memory")
+    SIZE(MEDIUM)
+    TIMEOUT(120)
+ENDIF()
+
 SRCS(
     aligned_buffer_ut.cpp
     backoff_delay_provider_ut.cpp
