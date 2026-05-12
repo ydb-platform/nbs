@@ -1286,8 +1286,6 @@ public:
     NProto::TError
     Encrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
     {
-        Y_UNUSED(src);
-        Y_UNUSED(blockIndex);
         Sleep(SleepTime);
         TotalSleepTimeMillis += SleepTime.MilliSeconds();
         return Encryptor->Encrypt(src, dst, blockIndex);
@@ -1296,9 +1294,6 @@ public:
     NProto::TError
     Decrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
     {
-        Y_UNUSED(src);
-        Y_UNUSED(blockIndex);
-
         Sleep(SleepTime);
         TotalSleepTimeMillis += SleepTime.MilliSeconds();
         return Encryptor->Decrypt(src, dst, blockIndex);
