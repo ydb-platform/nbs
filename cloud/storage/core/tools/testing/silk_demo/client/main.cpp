@@ -2,6 +2,7 @@
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
+#include <util/generic/size_literals.h>
 #include <util/generic/string.h>
 #include <util/stream/file.h>
 #include <util/stream/input.h>
@@ -9,8 +10,7 @@
 #include <util/system/file.h>
 
 #include <cerrno>
-#include <cstdint>
-#include <cstring>
+#include <system_error>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -20,6 +20,13 @@
 using namespace NCloud::NStorage::NSilkDemo;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+auto ErrnoMsg(int err)
+{
+    return std::system_category().message(err);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Blocking TCP helpers (client doesn't need silk).
@@ -65,7 +72,7 @@ int ConnectTo(const TString& host, ui16 port, int* outFd)
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = ::htons(port);
+    addr.sin_port = htons(port);
     if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
         ::close(fd);
         return EINVAL;
@@ -83,9 +90,11 @@ int ConnectTo(const TString& host, ui16 port, int* outFd)
 int SendRequest(int fd, const TRequest& req, TResponse* resp)
 {
     TString reqBuf;
-    Y_PROTOBUF_SUPPRESS_NODISCARD req.SerializeToString(&reqBuf);
+    if (!req.SerializeToString(&reqBuf)) {
+        return EBADMSG;
+    }
 
-    ui32 lenBe = ::htonl(static_cast<ui32>(reqBuf.size()));
+    ui32 lenBe = htonl(static_cast<ui32>(reqBuf.size()));
     if (int r = SendAll(fd, &lenBe, sizeof(lenBe)); r) {
         return r;
     }
@@ -97,8 +106,8 @@ int SendRequest(int fd, const TRequest& req, TResponse* resp)
     if (int r = RecvAll(fd, &respLenBe, sizeof(respLenBe)); r) {
         return r;
     }
-    ui32 respLen = ::ntohl(respLenBe);
-    if (respLen > 64u * 1024 * 1024) {
+    ui32 respLen = ntohl(respLenBe);
+    if (respLen > 64_MB) {
         return EMSGSIZE;
     }
 
@@ -133,7 +142,7 @@ int main(int argc, const char** argv)
 {
     using namespace NLastGetopt;
 
-    TString host = "127.0.0.1";
+    TString host;
     ui16 port = 0;
     TString mode;
     TString path;
@@ -141,24 +150,39 @@ int main(int argc, const char** argv)
     ui64 length = 0;
     TString dataFile;
 
-    TOpts opts;
-    opts.AddHelpOption();
-    opts.AddLongOption("host", "server host").DefaultValue("127.0.0.1").StoreResult(&host);
-    opts.AddLongOption("port", "server port").Required().StoreResult(&port);
-    opts.AddLongOption("mode", "read|write").Required().StoreResult(&mode);
-    opts.AddLongOption("path", "remote file path").Required().StoreResult(&path);
-    opts.AddLongOption("offset", "byte offset").DefaultValue(0).StoreResult(&offset);
-    opts.AddLongOption("length", "bytes to read (read mode)").DefaultValue(0).StoreResult(&length);
-    opts.AddLongOption(
-            "data-file",
-            "local file to read payload from for write mode; '-' reads stdin")
-        .DefaultValue("-")
-        .StoreResult(&dataFile);
-    TOptsParseResult(&opts, argc, argv);
+    {
+        TOpts opts;
+        opts.AddHelpOption();
+        opts.AddLongOption("host", "server host")
+            .DefaultValue("127.0.0.1")
+            .StoreResult(&host);
+        opts.AddLongOption("port", "server port")
+            .Required()
+            .StoreResult(&port);
+        opts.AddLongOption("mode", "read|write")
+            .Required()
+            .StoreResult(&mode);
+        opts.AddLongOption("path", "remote file path")
+            .Required()
+            .StoreResult(&path);
+        opts.AddLongOption("offset", "byte offset")
+            .DefaultValue(0)
+            .StoreResult(&offset);
+        opts.AddLongOption("length", "bytes to read (read mode)")
+            .DefaultValue(0)
+            .StoreResult(&length);
+        opts.AddLongOption(
+                "data-file",
+                "local file to read payload from for write mode;"
+                " '-' reads stdin")
+            .DefaultValue("-")
+            .StoreResult(&dataFile);
+        TOptsParseResultException(&opts, argc, argv);
+    }
 
     int fd = -1;
     if (int r = ConnectTo(host, port, &fd)) {
-        return Fail(TString("connect: ") + ::strerror(r));
+        return Fail(TStringBuilder() << "connect: " << ErrnoMsg(r));
     }
 
     TRequest req;
@@ -182,7 +206,7 @@ int main(int argc, const char** argv)
     int r = SendRequest(fd, req, &resp);
     ::close(fd);
     if (r) {
-        return Fail(TString("rpc: ") + ::strerror(r));
+        return Fail(TStringBuilder() << "rpc: " << ErrnoMsg(r));
     }
 
     if (resp.HasError() && resp.GetError().GetCode() != 0) {
@@ -193,14 +217,19 @@ int main(int argc, const char** argv)
 
     switch (resp.GetBodyCase()) {
         case TResponse::kWrite:
-            Cerr << "wrote " << resp.GetWrite().GetBytesWritten() << " bytes" << Endl;
+            Cerr << "wrote " << resp.GetWrite().GetBytesWritten()
+                << " bytes" << Endl;
             break;
         case TResponse::kRead:
-            Cout.Write(resp.GetRead().GetData().data(), resp.GetRead().GetData().size());
-            Cerr << "read " << resp.GetRead().GetData().size() << " bytes" << Endl;
+            Cout.Write(
+                resp.GetRead().GetData().data(),
+                resp.GetRead().GetData().size());
+            Cerr << "read " << resp.GetRead().GetData().size()
+                << " bytes" << Endl;
             break;
         default:
             return Fail("empty response body");
     }
+
     return 0;
 }
