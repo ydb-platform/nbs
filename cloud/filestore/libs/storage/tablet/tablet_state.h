@@ -266,6 +266,9 @@ protected:
     // has completed recovery confirmation.
     bool UnconfirmedRecoveryReady = false;
 
+protected:
+    void SetUnconfirmedRecoveryReady(bool value);
+
 public:
     TIndexTabletState();
     ~TIndexTabletState();
@@ -988,6 +991,9 @@ public:
     bool HasDataOverlapWithUnconfirmed(
         ui64 nodeId,
         const TByteRange& requestRange) const;
+
+    void ActivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
+    void DeactivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
 
     //
     // FreshBytes

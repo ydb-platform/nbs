@@ -8,6 +8,9 @@
 
 #include <cloud/storage/core/libs/common/lru_cache.h>
 
+#include <util/generic/deque.h>
+#include <util/generic/hash.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,10 +53,33 @@ public:
 
     [[nodiscard]] TInMemoryIndexStateStats GetStats() const;
 
+    void UpdateLogTag(TString logTag);
+
+private:
+    TString LogTag;
+
+    //
+    // Cache bypass
+    //
+
+public:
+    void ActivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
+
+    void DeactivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
+
+    void SetUnconfirmedRecoveryReady(bool unconfirmedRecoveryReady);
+
+private:
+    bool ShouldBypassCacheRead(ui64 nodeId, ui64 commitId) const;
+
+    bool UnconfirmedRecoveryReady = false;
+    THashMap<ui64, TDeque<ui64>> CacheBypassCommitIdsByNodeId;
+
     //
     // Nodes
     //
 
+public:
     bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
