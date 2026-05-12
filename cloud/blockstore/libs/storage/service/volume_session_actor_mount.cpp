@@ -904,8 +904,10 @@ void TMountRequestActor::GentlyPullVolume(const TActorContext& ctx)
 
 bool TMountRequestActor::GentlePreemptionAllowed() const
 {
-    return Config->GetVolumeBalancerGentlePreemptionEnabled() &&
-           Params.PreemptionSource == NProto::SOURCE_BALANCER;
+    return (Config->GetVolumeBalancerGentlePreemptionEnabled() &&
+            Params.PreemptionSource == NProto::SOURCE_BALANCER) ||
+           (Config->GetManualGentlePreemptionEnabled() &&
+            Params.PreemptionSource == NProto::SOURCE_BALANCER);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
