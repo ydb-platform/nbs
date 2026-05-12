@@ -1128,11 +1128,13 @@ private:
             }
         }
 
+        args.emplace_back("--thread-pool-size");
+        args.emplace_back(
+            ToString(ServerConfig->GetExternalVhostServerThreadPoolSize()));
+
         TVector<TString> cgroups(
             request.GetClientCGroups().begin(),
-            request.GetClientCGroups().end()
-        );
-
+            request.GetClientCGroups().end());
 
         auto ep = EndpointFactory(
             clientId,
