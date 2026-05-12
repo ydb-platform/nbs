@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
@@ -1035,7 +1036,7 @@ func GetCounter(
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	parser := expfmt.TextParser{}
+	parser := expfmt.NewTextParser(model.LegacyValidation)
 	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
 	require.NoError(t, err)
 
