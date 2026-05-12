@@ -234,7 +234,7 @@ int main(int argc, char** argv)
     NCloud::ITaskQueuePtr threadPool;
     if (options.ThreadPoolSize > 0) {
         threadPool =
-            NCloud::CreateThreadPool("UserPool", options.ThreadPoolSize);
+            NCloud::CreateThreadPool("USER_POOL", options.ThreadPoolSize);
     }
     auto backend = CreateBackend(options, logService, threadPool);
     auto server = CreateServer(logService, backend);
