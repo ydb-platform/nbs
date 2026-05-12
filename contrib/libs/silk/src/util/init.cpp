@@ -18,8 +18,8 @@ namespace silk
 
 void initialize() noexcept
 {
-    int r = rseq_init();
-    SILK_ASSERT(r == RSEQ_INIT_OK);
+    // Older librseq versions auto-register via constructor; no explicit
+    // rseq_init() call is needed.
 
     Tsc::initialize();
     Perf::initialize();

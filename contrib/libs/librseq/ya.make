@@ -35,6 +35,12 @@ NO_RUNTIME()
 
 CFLAGS(
     -DHAVE_CONFIG_H
+    # Fallbacks for kernel/glibc constants that may not be present in older
+    # sysroots. All three were added to glibc well before librseq's code paths
+    # that depend on them, but the ya sysroot may predate them.
+    -DMADV_WIPEONFORK=18
+    -DMADV_KEEPONFORK=19
+    -DMFD_CLOEXEC=1
 )
 
 SRCS(

@@ -13,7 +13,7 @@ ADDINCL(
 
 PEERDIR(
     contrib/libs/backtrace
-    contrib/libs/rseq
+    contrib/libs/librseq
     contrib/restricted/boost/context/fcontext_impl
     contrib/restricted/boost/intrusive
 )
