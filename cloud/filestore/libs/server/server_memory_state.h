@@ -84,21 +84,20 @@ public:
             return false;
         }
 
-        if (PageMap[index]) {
+        if (PageMap[index].exchange(true)) {
             return false;
         }
 
-        PageMap[index] = true;
         return true;
     }
 
     bool UnlockPage(ui64 index)
     {
-        if (index >= PageMap.size() || !PageMap[index]) {
+        if (index >= PageMap.size()) {
             return false;
         }
 
-        PageMap[index] = false;
+        PageMap[index].store(false);
         return true;
     }
 
@@ -119,7 +118,7 @@ public:
 
 private:
     TMmapRegionMetadata Metadata;
-    TVector<bool> PageMap;
+    TVector<std::atomic<bool>> PageMap;
 };
 
 struct TServerStateStats
