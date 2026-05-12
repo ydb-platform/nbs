@@ -35,6 +35,11 @@ NO_RUNTIME()
 
 CFLAGS(
     -DHAVE_CONFIG_H
+    # The ya sysroot's glibc headers predate these kernel UAPI flags; force-
+    # include the Linux UAPI headers from contrib/libs/linux-headers so they
+    # are available before <sys/mman.h> / <sys/memfd.h> are processed.
+    -include linux/mman.h
+    -include linux/memfd.h
 )
 
 SRCS(
