@@ -177,7 +177,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         }
 
         TString expected;
-        expected.ReserveAndResize(6_KB);
+        expected.resize(6_KB, 0);
 
         {
             auto response = tablet.SendAndRecvWriteData(
