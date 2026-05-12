@@ -1,5 +1,7 @@
 #include "tablet_state_cache.h"
 
+#include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -7,9 +9,10 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
-    : Nodes(0), NodeAttrs(0), NodeRefs(allocator)
-{
-}
+    : Nodes(0)
+    , NodeAttrs(0)
+    , NodeRefs(allocator)
+{}
 
 void TInMemoryIndexState::Reset(
     ui64 nodesCapacity,
@@ -48,6 +51,11 @@ void TInMemoryIndexState::MarkNodeRefsExhaustive(ui64 nodeId)
     NodeRefsExhaustivenessInfo.MarkNodeRefsExhaustive(nodeId);
 }
 
+void TInMemoryIndexState::UpdateLogTag(TString logTag)
+{
+    LogTag = std::move(logTag);
+}
+
 TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
 {
     return TInMemoryIndexStateStats{
@@ -63,6 +71,71 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
         .IsNodeRefsExhaustive = NodeRefsExhaustivenessInfo.IsExhaustive()};
 }
 
+void TInMemoryIndexState::ActivateInMemoryIndexStateBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    CacheBypassCommitIdsByNodeId[nodeId].push_back(commitId);
+}
+
+void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
+    ui64 nodeId,
+    ui64 commitId)
+{
+    auto nodeIt = CacheBypassCommitIdsByNodeId.find(nodeId);
+    TABLET_VERIFY_C(
+        nodeIt != CacheBypassCommitIdsByNodeId.end(),
+        "nodeId: " << nodeId << ", commitId: " << commitId);
+    TABLET_VERIFY_C(
+        !nodeIt->second.empty(),
+        "nodeId: " << nodeId << ", commitId: " << commitId);
+    TABLET_VERIFY_C(
+        nodeIt->second.front() == commitId,
+        "nodeId: " << nodeId << ", expected commitId: " << commitId
+                   << ", actual commitId: " << nodeIt->second.front()
+                   << ", queue size: " << nodeIt->second.size());
+
+    nodeIt->second.pop_front();
+    if (nodeIt->second.empty()) {
+        CacheBypassCommitIdsByNodeId.erase(nodeIt);
+    }
+}
+
+void TInMemoryIndexState::SetUnconfirmedRecoveryReady(
+    bool unconfirmedRecoveryReady)
+{
+    UnconfirmedRecoveryReady = unconfirmedRecoveryReady;
+}
+
+bool TInMemoryIndexState::ShouldBypassCacheRead(
+    ui64 nodeId,
+    ui64 commitId) const
+{
+    // If recovery is in progress, reading from the cache is not possible.
+    if (!UnconfirmedRecoveryReady) {
+        return true;
+    }
+
+    // No records at all. The map is always empty after the recovery phase if
+    // unconfirmed data is disabled, as it is the only client of this API for
+    // now.
+    if (CacheBypassCommitIdsByNodeId.empty()) {
+        return false;
+    }
+
+    // If there are no records for the given node, we can read from the cache.
+    const auto it = CacheBypassCommitIdsByNodeId.find(nodeId);
+    if (it == CacheBypassCommitIdsByNodeId.end() || it->second.empty()) {
+        return false;
+    }
+
+    // Otherwise, ensure that all writes with commit ids up to the current
+    // commit are already in the cache.
+    const ui64 frontCommitId = it->second.front();
+    // The InvalidCommitId comparison handles the CommitIdOverflow case.
+    return frontCommitId == InvalidCommitId || frontCommitId <= commitId;
+}
+
 //
 // Nodes
 //
@@ -72,6 +145,11 @@ bool TInMemoryIndexState::ReadNode(
     ui64 commitId,
     TMaybe<TNode>& node)
 {
+    // TODO (#5912) use waiting queue instead of going full TX flow
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     auto it = Nodes.Find(nodeId);
     if (it == Nodes.End()) {
         return false;
@@ -142,6 +220,11 @@ bool TInMemoryIndexState::ReadNodeAttr(
     const TString& name,
     TMaybe<TNodeAttr>& attr)
 {
+    // TODO (#5912) use waiting queue instead of going full TX flow
+    if (ShouldBypassCacheRead(nodeId, commitId)) {
+        return false;
+    }
+
     auto it = NodeAttrs.Find(TNodeAttrsKey(nodeId, name));
     if (it == NodeAttrs.End()) {
         return false;

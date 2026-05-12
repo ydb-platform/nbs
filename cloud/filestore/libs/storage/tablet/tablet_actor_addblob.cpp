@@ -191,9 +191,18 @@ private:
 
         Execute_AddBlob_Write(ctx, db, args);
 
-        if (args.CommitId == InvalidCommitId) {
-            return;
-        }
+        TABLET_VERIFY_C(
+            args.WriteRanges.size() == 1,
+            "WriteRanges.size(): " << args.WriteRanges.size());
+
+        // We shouldn't have errors other than CommitIdOverflow at this place
+        TABLET_VERIFY_C(
+            !HasError(args.Error) || args.CommitIdOverflow,
+            "Error: " << FormatError(args.Error));
+
+        Tablet.ActivateInMemoryIndexStateBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId);
 
         if (HasError(args.Error)) {
             return;
@@ -573,9 +582,12 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         args.RequestInfo->CallContext,
         "AddBlob");
 
-    // For ConfirmedData we already Released barrier and Answered to the client,
-    // nothing left to do and we can skip event
-    if (args.ConfirmedDataRefCommitId != InvalidCommitId) {
+    // For unconfirmed data we already released the barrier and answered to
+    // the client, nothing left to do and we can skip event.
+    if (args.Mode == EAddBlobMode::WriteUnconfirmed) {
+        DeactivateInMemoryIndexStateBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId);
         EnqueueCollectGarbageIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
         return;
