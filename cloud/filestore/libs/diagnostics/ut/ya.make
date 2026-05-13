@@ -10,8 +10,8 @@ SRCS(
     user_counter_ut.cpp
 )
 
-# MSan builds use the system allocator, so tcmalloc specific counters stay empty
-IF (SANITIZER_TYPE != "memory")
+# Sanitizer builds use the system allocator, so tcmalloc specific counters stay empty
+IF (NOT SANITIZER_TYPE)
     SRCS(
         tcmalloc_stats_ut.cpp
     )
