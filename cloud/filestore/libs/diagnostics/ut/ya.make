@@ -7,9 +7,14 @@ SRCS(
     profile_log_events_ut.cpp
     profile_log_ut.cpp
     request_stats_ut.cpp
-    tcmalloc_stats_ut.cpp
     user_counter_ut.cpp
 )
+
+IF (SANITIZER_TYPE != "memory")
+    SRCS(
+        tcmalloc_stats_ut.cpp
+    )
+ENDIF()
 
 PEERDIR(
     cloud/filestore/libs/diagnostics/metrics
