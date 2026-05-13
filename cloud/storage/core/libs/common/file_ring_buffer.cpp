@@ -377,17 +377,14 @@ private:
 
     void ValidateDataStructure()
     {
-        TEntryInfo front = GetFrontEntry();
-        TEntryInfo back = front;
-        TEntryInfo cur = front;
+        TEntryInfo cur = GetFrontEntry();
 
-        if (front.IsInvalid() || front.ActualPos != Header()->ReadPos) {
+        if (cur.IsInvalid() || cur.ActualPos != Header()->ReadPos) {
             SetCorrupted();
             return;
         }
 
         while (cur.HasValue()) {
-            back = cur;
             cur = GetNextEntry(cur);
         }
 
