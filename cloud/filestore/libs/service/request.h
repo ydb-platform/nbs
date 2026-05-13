@@ -39,9 +39,7 @@ namespace NCloud::NFileStore {
                                                                                \
     xxx(ExecuteAction,                      __VA_ARGS__)                       \
     xxx(UnsafeCreateNode,                   __VA_ARGS__)                       \
-    xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
     xxx(UnsafeCreateNodeRef,                __VA_ARGS__)                       \
-    xxx(UnsafeDeleteNodeRef,                __VA_ARGS__)                       \
 // FILESTORE_SERVICE_METHODS
 
 #define FILESTORE_DATA_METHODS(xxx, ...)                                       \

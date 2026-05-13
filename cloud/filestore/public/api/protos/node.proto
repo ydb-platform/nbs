@@ -256,27 +256,6 @@ message TUnsafeCreateNodeResponse
     TResponseHeaders Headers = 1000;
 }
 
-message TUnsafeDeleteNodeRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // FileSystem identifier.
-    string FileSystemId = 2;
-
-    // Node identifier.
-    uint64 Id = 3;
-}
-
-message TUnsafeDeleteNodeResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
-}
-
 message TUnsafeCreateNodeRefRequest
 {
     // Optional request headers.
@@ -302,30 +281,6 @@ message TUnsafeCreateNodeRefRequest
 }
 
 message TUnsafeCreateNodeRefResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
-}
-
-message TUnsafeDeleteNodeRefRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // FileSystem identifier.
-    string FileSystemId = 2;
-
-    // Parent node.
-    uint64 ParentId = 3;
-
-    // Reference to remove.
-    bytes Name = 4;
-}
-
-message TUnsafeDeleteNodeRefResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

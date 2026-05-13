@@ -503,15 +503,6 @@ def test_partial_set_node_attr():
     assert stat["Size"] == new_stat["Size"]
     assert stat["Mode"] == new_stat["Mode"]
 
-
-def __expect_failure(fn):
-    try:
-        fn()
-    except Exception:
-        return
-    assert False
-
-
 def test_unsafe_create_delete_node():
     client, results_path = __init_test()
     fs_id = "fs0"
@@ -540,43 +531,6 @@ def test_unsafe_create_delete_node():
     assert 20 == stat["Gid"]
     assert 123 == stat["Size"]
 
-    client.unsafe_delete_node_ref(fs_id, 1, "unsafe-file")
-    __expect_failure(lambda: client.stat(fs_id, "/unsafe-file"))
-
-    client.unsafe_delete_node(fs_id, node_id)
-
-    client.unsafe_create_node(fs_id, node_id, "--mode", 0o600)
-    client.unsafe_delete_node(fs_id, node_id)
-
-    client.destroy(fs_id)
-
-
-def test_unsafe_create_delete_node_ref():
-    client, results_path = __init_test()
-    fs_id = "fs0"
-
-    client.create(fs_id, "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
-    client.touch(fs_id, "/source")
-
-    source = json.loads(client.stat(fs_id, "/source"))
-    node_id = source["Id"]
-
-    client.unsafe_create_node_ref(
-        fs_id,
-        1,
-        "unsafe-alias",
-        "--child-id", node_id)
-
-    alias = json.loads(client.stat(fs_id, "/unsafe-alias"))
-    assert node_id == alias["Id"]
-
-    client.unsafe_delete_node_ref(fs_id, 1, "unsafe-alias")
-    __expect_failure(lambda: client.stat(fs_id, "/unsafe-alias"))
-
-    source = json.loads(client.stat(fs_id, "/source"))
-    assert node_id == source["Id"]
-
-    client.rm(fs_id, "/source")
     client.destroy(fs_id)
 
 

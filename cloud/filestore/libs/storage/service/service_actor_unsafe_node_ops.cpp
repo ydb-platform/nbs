@@ -20,14 +20,6 @@ NProtoPrivate::TUnsafeCreateNodeRequest ToTabletRequest(
     return result;
 }
 
-NProtoPrivate::TUnsafeDeleteNodeRequest ToTabletRequest(
-    const NProto::TUnsafeDeleteNodeRequest& request)
-{
-    NProtoPrivate::TUnsafeDeleteNodeRequest result;
-    result.SetFileSystemId(request.GetFileSystemId());
-    result.SetId(request.GetId());
-    return result;
-}
 
 NProtoPrivate::TUnsafeCreateNodeRefRequest ToTabletRequest(
     const NProto::TUnsafeCreateNodeRefRequest& request)
@@ -39,16 +31,6 @@ NProtoPrivate::TUnsafeCreateNodeRefRequest ToTabletRequest(
     result.SetChildId(request.GetChildId());
     result.SetShardId(request.GetShardId());
     result.SetShardNodeName(request.GetShardNodeName());
-    return result;
-}
-
-NProtoPrivate::TUnsafeDeleteNodeRefRequest ToTabletRequest(
-    const NProto::TUnsafeDeleteNodeRefRequest& request)
-{
-    NProtoPrivate::TUnsafeDeleteNodeRefRequest result;
-    result.SetFileSystemId(request.GetFileSystemId());
-    result.SetParentId(request.GetParentId());
-    result.SetName(request.GetName());
     return result;
 }
 
@@ -163,17 +145,6 @@ void TStorageServiceActor::HandleUnsafeCreateNode(
         TEvIndexTablet::TEvUnsafeCreateNodeResponse>(ctx, ev);
 }
 
-void TStorageServiceActor::HandleUnsafeDeleteNode(
-    const TEvService::TEvUnsafeDeleteNodeRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    ForwardUnsafeNodeRequest<
-        TEvService::TEvUnsafeDeleteNodeRequest,
-        TEvService::TEvUnsafeDeleteNodeResponse,
-        TEvIndexTablet::TEvUnsafeDeleteNodeRequest,
-        TEvIndexTablet::TEvUnsafeDeleteNodeResponse>(ctx, ev);
-}
-
 void TStorageServiceActor::HandleUnsafeCreateNodeRef(
     const TEvService::TEvUnsafeCreateNodeRefRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -184,16 +155,4 @@ void TStorageServiceActor::HandleUnsafeCreateNodeRef(
         TEvIndexTablet::TEvUnsafeCreateNodeRefRequest,
         TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>(ctx, ev);
 }
-
-void TStorageServiceActor::HandleUnsafeDeleteNodeRef(
-    const TEvService::TEvUnsafeDeleteNodeRefRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    ForwardUnsafeNodeRequest<
-        TEvService::TEvUnsafeDeleteNodeRefRequest,
-        TEvService::TEvUnsafeDeleteNodeRefResponse,
-        TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest,
-        TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse>(ctx, ev);
-}
-
 }   // namespace NCloud::NFileStore::NStorage

@@ -30,10 +30,6 @@ CLIENT_METHODS = [
     "create_node",
     "list_nodes",
     "unlink_node",
-    "unsafe_create_node",
-    "unsafe_delete_node",
-    "unsafe_create_node_ref",
-    "unsafe_delete_node_ref",
 
     # read/write methods
     "create_handle",

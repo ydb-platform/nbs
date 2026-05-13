@@ -230,9 +230,7 @@ void FinalizeProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(KickEndpoint)
     IMPLEMENT_DEFAULT_METHOD(ExecuteAction)
     IMPLEMENT_DEFAULT_METHOD(UnsafeCreateNode)
-    IMPLEMENT_DEFAULT_METHOD(UnsafeDeleteNode)
     IMPLEMENT_DEFAULT_METHOD(UnsafeCreateNodeRef)
-    IMPLEMENT_DEFAULT_METHOD(UnsafeDeleteNodeRef)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
@@ -688,9 +686,7 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(KickEndpoint, NProto)
     IMPLEMENT_DEFAULT_METHOD(ExecuteAction, NProto)
     IMPLEMENT_DEFAULT_METHOD(UnsafeCreateNode, NProto)
-    IMPLEMENT_DEFAULT_METHOD(UnsafeDeleteNode, NProto)
     IMPLEMENT_DEFAULT_METHOD(UnsafeCreateNodeRef, NProto)
-    IMPLEMENT_DEFAULT_METHOD(UnsafeDeleteNodeRef, NProto)
     IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)

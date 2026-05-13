@@ -296,14 +296,8 @@ struct TEvService
         EvUnsafeCreateNodeRequest = EvBegin + 99,
         EvUnsafeCreateNodeResponse,
 
-        EvUnsafeDeleteNodeRequest = EvBegin + 101,
-        EvUnsafeDeleteNodeResponse,
-
-        EvUnsafeCreateNodeRefRequest = EvBegin + 103,
+        EvUnsafeCreateNodeRefRequest = EvBegin + 101,
         EvUnsafeCreateNodeRefResponse,
-
-        EvUnsafeDeleteNodeRefRequest = EvBegin + 105,
-        EvUnsafeDeleteNodeRefResponse,
 
         EvEnd
     };

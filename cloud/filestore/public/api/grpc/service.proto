@@ -245,23 +245,9 @@ service TFileStoreService
         };
     }
 
-    rpc UnsafeDeleteNode(TUnsafeDeleteNodeRequest) returns (TUnsafeDeleteNodeResponse) {
-        option (google.api.http) = {
-            post: "/unsafe_delete_node"
-            body: "*"
-        };
-    }
-
     rpc UnsafeCreateNodeRef(TUnsafeCreateNodeRefRequest) returns (TUnsafeCreateNodeRefResponse) {
         option (google.api.http) = {
             post: "/unsafe_create_node_ref"
-            body: "*"
-        };
-    }
-
-    rpc UnsafeDeleteNodeRef(TUnsafeDeleteNodeRefRequest) returns (TUnsafeDeleteNodeRefResponse) {
-        option (google.api.http) = {
-            post: "/unsafe_delete_node_ref"
             body: "*"
         };
     }

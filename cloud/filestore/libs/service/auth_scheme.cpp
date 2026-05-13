@@ -54,9 +54,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
             return CreatePermissionList({EPermission::Write});
 
         case EFileStoreRequest::UnsafeCreateNode:
-        case EFileStoreRequest::UnsafeDeleteNode:
         case EFileStoreRequest::UnsafeCreateNodeRef:
-        case EFileStoreRequest::UnsafeDeleteNodeRef:
             return TPermissionList().Flip();
 
         case EFileStoreRequest::AddClusterNode:

@@ -114,37 +114,6 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUnsafeDeleteNodeCommand final
-    : public TFileStoreCommand
-{
-private:
-    ui64 NodeId = 0;
-
-public:
-    TUnsafeDeleteNodeCommand()
-    {
-        Opts.AddLongOption("node-id")
-            .Required()
-            .RequiredArgument("NUM")
-            .StoreResult(&NodeId);
-    }
-
-    bool Execute() override
-    {
-        auto request = CreateRequest<NProto::TUnsafeDeleteNodeRequest>();
-        request->SetId(NodeId);
-
-        auto response = WaitFor(Client->UnsafeDeleteNode(
-            PrepareCallContext(),
-            std::move(request)));
-
-        CheckResponse(response);
-        return true;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TUnsafeCreateNodeRefCommand final
     : public TFileStoreCommand
 {
@@ -199,44 +168,6 @@ public:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TUnsafeDeleteNodeRefCommand final
-    : public TFileStoreCommand
-{
-private:
-    ui64 ParentId = 0;
-    TString Name;
-
-public:
-    TUnsafeDeleteNodeRefCommand()
-    {
-        Opts.AddLongOption("parent-id")
-            .Required()
-            .RequiredArgument("NUM")
-            .StoreResult(&ParentId);
-
-        Opts.AddLongOption("name")
-            .Required()
-            .RequiredArgument("STR")
-            .StoreResult(&Name);
-    }
-
-    bool Execute() override
-    {
-        auto request = CreateRequest<NProto::TUnsafeDeleteNodeRefRequest>();
-        request->SetParentId(ParentId);
-        request->SetName(Name);
-
-        auto response = WaitFor(Client->UnsafeDeleteNodeRef(
-            PrepareCallContext(),
-            std::move(request)));
-
-        CheckResponse(response);
-        return true;
-    }
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,19 +177,9 @@ TCommandPtr NewUnsafeCreateNodeCommand()
     return std::make_shared<TUnsafeCreateNodeCommand>();
 }
 
-TCommandPtr NewUnsafeDeleteNodeCommand()
-{
-    return std::make_shared<TUnsafeDeleteNodeCommand>();
-}
-
 TCommandPtr NewUnsafeCreateNodeRefCommand()
 {
     return std::make_shared<TUnsafeCreateNodeRefCommand>();
-}
-
-TCommandPtr NewUnsafeDeleteNodeRefCommand()
-{
-    return std::make_shared<TUnsafeDeleteNodeRefCommand>();
 }
 
 }   // namespace NCloud::NFileStore::NClient
