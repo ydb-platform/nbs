@@ -238,6 +238,12 @@ struct TTabletMetrics
     std::atomic<i64> UncompressedBytesWritten{0};
     std::atomic<i64> CompressedBytesWritten{0};
 
+    // HandleStatsByNode size stats
+    std::atomic<i64> HandleStatsByNodeMaxSize{0};
+    std::atomic<i64> HandleStatsByNodeSumSize{0};
+    std::atomic<i64> HandleStatsByNodeMaxTotalSize{0};
+    std::atomic<i64> HandleStatsByNodeSumTotalSize{0};
+
     // Opened nodes stats
     std::atomic<i64> NodesOpenForWritingBySingleSession{0};
     std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
