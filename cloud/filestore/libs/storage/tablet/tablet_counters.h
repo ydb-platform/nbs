@@ -276,6 +276,11 @@ struct TTabletMetrics
         std::atomic<i64> ResponseNodeRefs{0};
     } ListNodesExtra;
 
+    struct TExtraCreateHandleMetrics
+    {
+        std::atomic<i64> GuestKeepCacheSet{0};
+    } CreateHandleExtra;
+
     struct TExtraConfirmAddDataMetrics
     {
         std::atomic<i64> DeferredCount{0};

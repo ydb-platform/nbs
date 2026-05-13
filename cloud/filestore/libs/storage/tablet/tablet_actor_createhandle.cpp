@@ -437,11 +437,16 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         {
             // We set the GuestKeepCache to tell the client not to bother
             // invalidating the caches upon opening a read-only handle
-            args.Response.SetGuestKeepCache(
+            const bool keepCache =
                 session->HandleStatsByNode.IsAllowedToKeepCache(
                     *node,
                     // isFirstReadAllowed
-                    Config->GetGuestCachingType() == NProto::GCT_ANY_READ));
+                    Config->GetGuestCachingType() == NProto::GCT_ANY_READ);
+            args.Response.SetGuestKeepCache(keepCache);
+
+            Metrics.CreateHandleExtra.GuestKeepCacheSet.fetch_add(
+                keepCache,
+                std::memory_order_relaxed);
         }
 
         // We can remember the last time that the cache was invalidated by a
