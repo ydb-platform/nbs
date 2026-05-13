@@ -1769,12 +1769,15 @@ private:
                 DurationToCyclesSafe(Config->MaxResponseDelay));
 
             for (auto& request: requests) {
-                RDMA_DEBUG(endpoint->Log, "request " << request->ReqId << " timed out");
+                const ui32 reqId = request->ReqId;
+                RDMA_DEBUG(endpoint->Log, "request " << reqId << " timed out");
                 endpoint->Counters->RequestAborted();
                 endpoint->AbortRequest(
                     std::move(request),
                     E_TIMEOUT,
-                    "request timeout");
+                    TStringBuilder() << "request " << reqId << " timed out "
+                                     << "[peer=" << endpoint->Host << ":"
+                                     << endpoint->Port << "]");
             }
         }
     }
