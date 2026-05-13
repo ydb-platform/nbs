@@ -8552,7 +8552,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             auto response = service.RecvCreateFileStoreResponse();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_REJECTED,
+                E_ARGUMENT,
                 response->GetError().GetCode(),
                 response->GetErrorReason());
         }

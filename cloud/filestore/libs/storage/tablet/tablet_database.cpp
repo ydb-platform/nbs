@@ -517,7 +517,7 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
 // NodeRefs
 namespace {
 
-bool IsToEncodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
+bool ShouldEncodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
 {
     switch (mode) {
         case NProtoPrivate::SICM_NO_COMPRESSION:
@@ -527,12 +527,12 @@ bool IsToEncodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
         case NProtoPrivate::SICM_READ_WRITE_CONVERT:
             return true;
         default:
-            Y_ABORT_UNLESS(false);
+            Y_UNREACHABLE();
             return false;
     }
 }
 
-bool IsToDecodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
+bool ShouldDecodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
 {
     switch (mode) {
         case NProtoPrivate::SICM_NO_COMPRESSION:
@@ -542,21 +542,46 @@ bool IsToDecodeShardId(const NProtoPrivate::EShardIdCompressionMode mode)
         case NProtoPrivate::SICM_READ_WRITE_CONVERT:
             return true;
         default:
-            Y_ABORT_UNLESS(false);
+            Y_UNREACHABLE();
             return false;
     }
 }
 
-void ReportMalformedEncodedShardNodeRef(
-    const TString& mainFsId,
-    const IIndexTabletDatabase::TNodeRef& ref)
+bool TryToDecodeShardId(
+    const NProtoPrivate::EShardIdCompressionMode mode,
+    IIndexTabletDatabase::TNodeRef& nodeRef,
+    const TString& mainFsId)
 {
-    NCloud::NFileStore::ReportMalformedEncodedShardNodeRef(
-        TStringBuilder()
-        << "Filesystem: " << mainFsId
-        << ", encoded ShardId: '" << ref.ShardId
-        << "', encoded ShardNodeName: '" << ref.ShardNodeName
-        << "'");
+    if (ShouldDecodeShardId(mode) && !nodeRef.TryToDecodeShardId(mainFsId)) {
+            // This is a kind of impossible situation meaning that data in
+            // the table is corrupted
+            NCloud::NFileStore::ReportMalformedEncodedShardNodeRef(
+                TStringBuilder()
+                << "Filesystem: " << mainFsId
+                << ", encoded ShardId: " << nodeRef.ShardId.Quote()
+                << ", encoded ShardNodeName: "
+                << nodeRef.ShardNodeName.Quote());
+
+        return false;
+    }
+
+    return true;
+}
+
+bool TryToEncodeShardId(
+    const NProtoPrivate::EShardIdCompressionMode shardIdMode,
+    IIndexTabletDatabase::TNodeRef& nodeRef)
+{
+    if (ShouldEncodeShardId(shardIdMode) && !nodeRef.TryToEncodeShardId()) {
+        NCloud::NFileStore::ReportMalformedShardNodeRef(
+            TStringBuilder()
+            << "ShardId: " << nodeRef.ShardId.Quote()
+            << ", ShardNodeName: " << nodeRef.ShardNodeName.Quote());
+
+        return false;
+    }
+
+    return true;
 }
 
 }   // namespace
@@ -583,10 +608,7 @@ void TIndexTabletDatabase::WriteNodeRef(
         .MaxCommitId = InvalidCommitId
     };
 
-    if (IsToEncodeShardId(shardIdMode) && !nodeRef.TryToEncodeShardId()) {
-        ReportMalformedShardNodeRef(
-            TStringBuilder()
-            << "ShardId: " << shardId << ", ShardNodeName: " << shardNodeName);
+    if (!TryToEncodeShardId(shardIdMode, nodeRef)) {
         return;
     }
 
@@ -642,10 +664,7 @@ bool TIndexTabletDatabase::ReadNodeRef(
                 maxCommitId
             );
 
-            if (IsToDecodeShardId(shardIdMode) &&
-                !ref.Get()->TryToDecodeShardId(mainFsId))
-            {
-                ReportMalformedEncodedShardNodeRef(mainFsId, ref.GetRef());
+            if (!TryToDecodeShardId(shardIdMode, ref.GetRef(), mainFsId)) {
                 ref.Clear();
             }
         }
@@ -695,13 +714,8 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
 
             auto& ref = refs.back();
 
-            if (IsToDecodeShardId(shardIdMode) &&
-                !ref.TryToDecodeShardId(mainFsId))
-            {
-                // This is a kind of impossible situation meaning that data in
-                // the table is corrupted
-                ReportMalformedEncodedShardNodeRef(mainFsId, ref);
-                refs.resize(refs.size() - 1);
+            if (!TryToDecodeShardId(shardIdMode, ref, mainFsId)) {
+                refs.pop_back();
                 ++skipped;
             } else {
                 // TODO(#5148): consider other size calculation modes
@@ -833,10 +847,9 @@ bool TIndexTabletDatabase::ReadNodeRefs(
             InvalidCommitId);
 
         auto& ref = refs.back();
-        if (IsToDecodeShardId(shardIdMode) && !ref.TryToDecodeShardId(mainFsId))
-        {
-            ReportMalformedEncodedShardNodeRef(mainFsId, ref);
-            refs.resize(refs.size() - 1);
+
+        if (!TryToDecodeShardId(shardIdMode, ref, mainFsId)) {
+            refs.pop_back();
         } else {
             --maxCount;
         }

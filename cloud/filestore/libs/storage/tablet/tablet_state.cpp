@@ -251,7 +251,6 @@ void TIndexTabletState::SetShardIdCompressionMode(
     db.WriteFileSystem(FileSystem);
 }
 
-
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&

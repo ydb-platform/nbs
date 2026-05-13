@@ -27,6 +27,15 @@ NProto::TError ValidateCreateFileSystemRequest(
             << "missing file system identifier");
     }
 
+    for (const char ch: fileSystemId) {
+        if (!std::isprint(static_cast<ui8>(ch))) {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "Can't create a filesystem with the ID that contains "
+                   "non-printable characters: "
+                << fileSystemId.Quote());
+        }
+    }
+
     const auto& cloudId = request.GetCloudId();
     if (!cloudId) {
         return MakeError(E_ARGUMENT, TStringBuilder()
@@ -86,9 +95,6 @@ private:
     STFUNC(StateWork);
 
     void CreateMainFileStore(const TActorContext& ctx);
-    bool ValidateFileSystemId(
-        const TActorContext& ctx,
-        const TString& fileSystemId);
     void CreateShards(const TActorContext& ctx);
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureMainFileStore(const TActorContext& ctx);
@@ -141,11 +147,6 @@ void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
 void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
 {
     NKikimrFileStore::TConfig config;
-
-    if (!ValidateFileSystemId(ctx, Request.GetFileSystemId())) {
-        return;
-    }
-
     config.SetFileSystemId(Request.GetFileSystemId());
     config.SetProjectId(Request.GetProjectId());
     config.SetFolderId(Request.GetFolderId());
@@ -185,29 +186,6 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
         std::move(config));
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
-}
-
-bool TCreateFileStoreActor::ValidateFileSystemId(
-    const TActorContext& ctx,
-    const TString& fileSystemId)
-{
-    for (const char ch: fileSystemId) {
-        if (!std::isprint(static_cast<ui8>(ch))) {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "[%s] Can't create a filesystem with an ID that contains "
-                "non-printable characters: %s",
-                LogTag.c_str(),
-                Request.GetFileSystemId().Quote().c_str());
-
-            ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
-
-            return false;
-        }
-    }
-
-    return true;
 }
 
 void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)

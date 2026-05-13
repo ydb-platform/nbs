@@ -360,7 +360,7 @@ public:
         return FileSystem.GetNodesCount();
     }
 
-    NProtoPrivate::EShardIdCompressionMode GetShardIdCompressionMode()
+    NProtoPrivate::EShardIdCompressionMode GetShardIdCompressionMode() const
     {
         return FileSystem.GetShardIdCompressionMode();
     }

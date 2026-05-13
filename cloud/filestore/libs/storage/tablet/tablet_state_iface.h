@@ -66,7 +66,8 @@ public:
 
         bool IsEncoded() const
         {
-            return !ShardId.empty() && !std::isprint(ShardId[0]);
+            return !ShardId.empty() &&
+                   !std::isprint(static_cast<ui8>(ShardId[0]));
         }
 
         bool TryToEncodeShardId();
