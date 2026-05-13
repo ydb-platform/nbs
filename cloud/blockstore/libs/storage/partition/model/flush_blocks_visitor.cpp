@@ -208,8 +208,8 @@ void TFlushBlocksVisitor::FlushBlob(
         (dataRefs.size() == blocks.size()) || (!dataRefs),
         TWellKnownEntityTypes::TABLET,
         TabletId,
-        "dataRefs.size():" << dataRefs.size() << ", blocks.size(): %lu"
-                           << blocks.size());
+        "dataRefs.size(): " << dataRefs.size()
+                            << ", blocks.size(): " << blocks.size());
 
     for (const auto& [start, end]: blocksByRanges) {
         TVector<TBlock> pieceBlocks(
