@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package NCloud.NStorage.NSilkDemo;
+
+////////////////////////////////////////////////////////////////////////////////
+// Wire format:
+//   [4-byte big-endian length][TRequest or TResponse bytes]
+//
+// Each connection carries a single request/response exchange, then closes.
+
+message TWriteRequest
+{
+    string Path = 1;
+    uint64 Offset = 2;
+    bytes Data = 3;
+}
+
+message TReadRequest
+{
+    string Path = 1;
+    uint64 Offset = 2;
+    uint64 Length = 3;
+}
+
+message TRequest
+{
+    oneof Body {
+        TWriteRequest Write = 1;
+        TReadRequest Read = 2;
+    }
+}
+
+message TError
+{
+    int32 Code = 1;    // 0 = OK; otherwise errno
+    string Message = 2;
+}
+
+message TWriteResponse
+{
+    uint64 BytesWritten = 1;
+}
+
+message TReadResponse
+{
+    bytes Data = 1;
+}
+
+message TResponse
+{
+    TError Error = 1;
+    oneof Body {
+        TWriteResponse Write = 2;
+        TReadResponse Read = 3;
+    }
+}
