@@ -174,13 +174,14 @@ public:
             Encryptor =
                 CreateAesXtsEncryptor(TEncryptionKey(DefaultEncryptionKey));
         }
-        if (ThreadCount > 0) {
-            ThreadPool = CreateThreadPool("Encryptor", ThreadCount);
-        }
     }
 
     void StartServer(bool addNonExistingDevice = false)
     {
+        if (ThreadCount > 0) {
+            ThreadPool = CreateThreadPool("Encryptor", ThreadCount);
+        }
+
         Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging, ThreadPool));
 
         Options.Layout.reserve(ChunkCount);
@@ -216,6 +217,10 @@ public:
 
     void StartServerWithSplitDevices()
     {
+        if (ThreadCount > 0) {
+            ThreadPool = CreateThreadPool("Encryptor", ThreadCount);
+        }
+
         Server = CreateServer(
             Logging,
             CreateAioBackend(Encryptor, Logging, ThreadPool));
@@ -299,6 +304,10 @@ public:
             Client.DeInit();
             Server->Stop();
             Server.reset();
+        }
+        if (ThreadPool) {
+            ThreadPool->Stop();
+            ThreadPool.reset();
         }
         Files.clear();
         Options.Layout.clear();

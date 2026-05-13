@@ -142,6 +142,9 @@ private:
 
     ITaskQueuePtr ThreadPool;
 
+    std::shared_ptr<std::atomic<ui64>> InflightTasksInThreadPool =
+        std::make_shared<std::atomic<ui64>>(0);
+
 public:
     TAioBackend(
         IEncryptorPtr encryptor,
@@ -356,6 +359,11 @@ void TAioBackend::Stop()
     pthread_kill(CompletionThread.native_handle(), SIGUSR2);
     CompletionThread.join();
 
+    TSpinWait spinWait;
+    while (InflightTasksInThreadPool->load() > 0) {
+        spinWait.Sleep();
+    }
+
     io_destroy(Io);
     Devices.clear();
 }
@@ -465,12 +473,15 @@ void TAioBackend::CompleteCompoundRequest(
         vhd_get_bdev_io(sub->GetParentRequest()->Io)->type == VHD_BDEV_READ &&
         result == VHD_BDEV_SUCCESS && ThreadPool;
 
-    auto completeCompoundRequest = [log = SharedLog,
-                                    encryptor = Encryptor,
-                                    sub = std::move(sub),
-                                    result,
-                                    stats,
-                                    now]() mutable
+    InflightTasksInThreadPool->fetch_add(1);
+    auto completeCompoundRequest =
+        [log = SharedLog,
+         encryptor = Encryptor,
+         inflightTasksInThreadPool = InflightTasksInThreadPool,
+         sub = std::move(sub),
+         result,
+         stats,
+         now]() mutable
     {
         CompleteCompoundRequestImpl(
             *log,
@@ -480,6 +491,7 @@ void TAioBackend::CompleteCompoundRequest(
             *stats,
             now);
         stats->Completed += 1;
+        inflightTasksInThreadPool->fetch_sub(1);
     };
 
     if (needToPostOnAnotherThread) {
@@ -501,12 +513,15 @@ void TAioBackend::CompleteRequest(
         Encryptor && bio->type == VHD_BDEV_READ && result == VHD_BDEV_SUCCESS &&
         ThreadPool;
 
-    auto completeRequest = [log = SharedLog,
-                            encryptor = Encryptor,
-                            req = std::move(req),
-                            result,
-                            stats,
-                            now]() mutable
+    InflightTasksInThreadPool->fetch_add(1);
+    auto completeRequest =
+        [log = SharedLog,
+         encryptor = Encryptor,
+         inflightTasksInThreadPool = InflightTasksInThreadPool,
+         req = std::move(req),
+         result,
+         stats,
+         now]() mutable
     {
         CompleteRequestImpl(
             *log,
@@ -516,6 +531,7 @@ void TAioBackend::CompleteRequest(
             *stats,
             now);
         stats->Completed += 1;
+        inflightTasksInThreadPool->fetch_sub(1);
     };
 
     if (needToPostOnAnotherThread) {

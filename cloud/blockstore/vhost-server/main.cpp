@@ -333,5 +333,9 @@ int main(int argc, char** argv)
 
     server->Stop();
 
+    if (threadPool) {
+        threadPool->Stop();
+    }
+
     return 0;
 }
