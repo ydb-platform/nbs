@@ -121,16 +121,6 @@ func (c *ClientMock) UnsafeCreateNode(
 	return args.Error(0)
 }
 
-func (c *ClientMock) UnsafeDeleteNode(
-	ctx context.Context,
-	filesystemID string,
-	nodeID uint64,
-) error {
-
-	args := c.Called(ctx, filesystemID, nodeID)
-	return args.Error(0)
-}
-
 func (c *ClientMock) UnsafeCreateNodeRef(
 	ctx context.Context,
 	filesystemID string,
@@ -150,17 +140,6 @@ func (c *ClientMock) UnsafeCreateNodeRef(
 		shardID,
 		shardNodeName,
 	)
-	return args.Error(0)
-}
-
-func (c *ClientMock) UnsafeDeleteNodeRef(
-	ctx context.Context,
-	filesystemID string,
-	parentID uint64,
-	name string,
-) error {
-
-	args := c.Called(ctx, filesystemID, parentID, name)
 	return args.Error(0)
 }
 

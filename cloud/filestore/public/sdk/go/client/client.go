@@ -586,22 +586,6 @@ func (client *Client) UnsafeCreateNode(
 	return err
 }
 
-func (client *Client) UnsafeDeleteNode(
-	ctx context.Context,
-	fileSystemID string,
-	nodeID uint64,
-) error {
-
-	req := &protos.TUnsafeDeleteNodeRequest{
-		FileSystemId: fileSystemID,
-		Headers:      &protos.THeaders{},
-		Id:           nodeID,
-	}
-
-	_, err := client.Impl.UnsafeDeleteNode(ctx, req)
-	return err
-}
-
 func (client *Client) UnsafeCreateNodeRef(
 	ctx context.Context,
 	fileSystemID string,
@@ -623,24 +607,6 @@ func (client *Client) UnsafeCreateNodeRef(
 	}
 
 	_, err := client.Impl.UnsafeCreateNodeRef(ctx, req)
-	return err
-}
-
-func (client *Client) UnsafeDeleteNodeRef(
-	ctx context.Context,
-	fileSystemID string,
-	parentID uint64,
-	name string,
-) error {
-
-	req := &protos.TUnsafeDeleteNodeRefRequest{
-		FileSystemId: fileSystemID,
-		Headers:      &protos.THeaders{},
-		ParentId:     parentID,
-		Name:         []byte(name),
-	}
-
-	_, err := client.Impl.UnsafeDeleteNodeRef(ctx, req)
 	return err
 }
 

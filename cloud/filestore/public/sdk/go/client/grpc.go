@@ -473,26 +473,6 @@ func (client *grpcClient) UnsafeCreateNode(
 	return resp.(*protos.TUnsafeCreateNodeResponse), err
 }
 
-func (client *grpcClient) UnsafeDeleteNode(
-	ctx context.Context,
-	req *protos.TUnsafeDeleteNodeRequest,
-) (*protos.TUnsafeDeleteNodeResponse, error) {
-
-	if req.Headers == nil {
-		req.Headers = &protos.THeaders{}
-	}
-
-	resp, err := client.executeRequest(
-		ctx,
-		req,
-		func(ctx context.Context) (response, error) {
-			return client.impl.UnsafeDeleteNode(ctx, req)
-		},
-	)
-
-	return resp.(*protos.TUnsafeDeleteNodeResponse), err
-}
-
 func (client *grpcClient) UnsafeCreateNodeRef(
 	ctx context.Context,
 	req *protos.TUnsafeCreateNodeRefRequest,
@@ -511,26 +491,6 @@ func (client *grpcClient) UnsafeCreateNodeRef(
 	)
 
 	return resp.(*protos.TUnsafeCreateNodeRefResponse), err
-}
-
-func (client *grpcClient) UnsafeDeleteNodeRef(
-	ctx context.Context,
-	req *protos.TUnsafeDeleteNodeRefRequest,
-) (*protos.TUnsafeDeleteNodeRefResponse, error) {
-
-	if req.Headers == nil {
-		req.Headers = &protos.THeaders{}
-	}
-
-	resp, err := client.executeRequest(
-		ctx,
-		req,
-		func(ctx context.Context) (response, error) {
-			return client.impl.UnsafeDeleteNodeRef(ctx, req)
-		},
-	)
-
-	return resp.(*protos.TUnsafeDeleteNodeRefResponse), err
 }
 
 func (client *grpcClient) ExecuteAction(

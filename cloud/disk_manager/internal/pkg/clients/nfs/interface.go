@@ -160,12 +160,6 @@ type Client interface {
 		node Node,
 	) error
 
-	UnsafeDeleteNode(
-		ctx context.Context,
-		filesystemID string,
-		nodeID uint64,
-	) error
-
 	UnsafeCreateNodeRef(
 		ctx context.Context,
 		filesystemID string,
@@ -174,13 +168,6 @@ type Client interface {
 		childID uint64,
 		shardID string,
 		shardNodeName string,
-	) error
-
-	UnsafeDeleteNodeRef(
-		ctx context.Context,
-		filesystemID string,
-		parentID uint64,
-		name string,
 	) error
 
 	ConfigureAsShard(

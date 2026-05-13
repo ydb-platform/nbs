@@ -103,20 +103,10 @@ type ClientIface interface {
 		req *protos.TUnsafeCreateNodeRequest,
 	) (*protos.TUnsafeCreateNodeResponse, error)
 
-	UnsafeDeleteNode(
-		ctx context.Context,
-		req *protos.TUnsafeDeleteNodeRequest,
-	) (*protos.TUnsafeDeleteNodeResponse, error)
-
 	UnsafeCreateNodeRef(
 		ctx context.Context,
 		req *protos.TUnsafeCreateNodeRefRequest,
 	) (*protos.TUnsafeCreateNodeRefResponse, error)
-
-	UnsafeDeleteNodeRef(
-		ctx context.Context,
-		req *protos.TUnsafeDeleteNodeRefRequest,
-	) (*protos.TUnsafeDeleteNodeRefResponse, error)
 
 	ExecuteAction(
 		ctx context.Context,
