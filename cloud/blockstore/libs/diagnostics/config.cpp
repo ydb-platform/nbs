@@ -299,6 +299,11 @@ void Out<NCloud::NBlockStore::TVolumePerfSettings>(
     v.MutableWrite()->SetIops(value.Write.Iops);
     v.MutableWrite()->SetBandwidth(value.Write.Bandwidth);
     v.SetCriticalFactor(value.CriticalFactor);
+    v.SetThrottlerOvercommit(value.ThrottlerOvercommit);
+    v.MutableMinRead()->SetIops(value.MinRead.Iops);
+    v.MutableMinRead()->SetBandwidth(value.MinRead.Bandwidth);
+    v.MutableMinWrite()->SetIops(value.MinWrite.Iops);
+    v.MutableMinWrite()->SetBandwidth(value.MinWrite.Bandwidth);
 
     SerializeToTextFormat(v, out);
 }

@@ -23,6 +23,8 @@ using namespace NMonitoring;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename T>
     requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
 [[nodiscard]] T SafeMultiply(T a, double m)

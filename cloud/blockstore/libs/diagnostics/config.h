@@ -17,7 +17,8 @@ namespace NCloud::NBlockStore {
 
 struct TVolumePerfSettings: public TAtomicRefCount<TVolumePerfSettings>
 {
-    struct TPerformanceProfile {
+    struct TPerformanceProfile
+    {
         ui32 Iops = 0;
         ui64 Bandwidth = 0;
 
