@@ -1,7 +1,5 @@
 #include "flush_blocks_visitor.h"
 
-#include "library/cpp/containers/stack_vector/stack_vec.h"
-
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
