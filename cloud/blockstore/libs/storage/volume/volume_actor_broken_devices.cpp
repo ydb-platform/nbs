@@ -1,14 +1,49 @@
 #include "volume_actor.h"
 
+#include "actors/volume_health_sync_actor.h"
+
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
+#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::RegisterVolumeHealthSyncActorIfNeeded(
+    const TActorContext& ctx)
+{
+    if (VolumeHealthSyncActorId) {
+        return;
+    }
+    if (!State) {
+        return;
+    }
+
+    const bool reliable = IsReliableDiskRegistryMediaKind(
+        State->GetMeta().GetConfig().GetStorageMediaKind());
+    if (reliable || !Config->GetVolumeHealthNotificationEnabled()) {
+        return;
+    }
+
+    VolumeHealthSyncActorId = NCloud::Register<TVolumeHealthSyncActor>(
+        ctx,
+        State->GetDiskId(),
+        Executor()->Generation(),
+        LogTitle.GetChild(GetCycleCount()),
+        TDuration::Seconds(1),
+        TDuration::Seconds(30));
+    Actors.insert(VolumeHealthSyncActorId);
+    if (!DeviceUUIDToBrokenAt.empty()) {
+        SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_UNHEALTHY);
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

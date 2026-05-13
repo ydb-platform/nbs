@@ -1,12 +1,10 @@
 #include "volume_actor.h"
 
 #include "volume_database.h"
-#include "actors/volume_health_sync_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/format.h>
-#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -169,24 +167,7 @@ void TVolumeActor::CompleteLoadState(
             DeviceUUIDToBrokenAt[info.DeviceUUID] = info.BrokenTs;
         }
 
-        const bool reliable = IsReliableDiskRegistryMediaKind(
-            State->GetMeta().GetConfig().GetStorageMediaKind());
-        if (!reliable && Config->GetVolumeHealthNotificationEnabled()) {
-            VolumeHealthSyncActorId = NCloud::Register<TVolumeHealthSyncActor>(
-                ctx,
-                State->GetDiskId(),
-                Executor()->Generation(),
-                LogTitle.GetChild(GetCycleCount()),
-                TDuration::Seconds(1),
-                TDuration::Seconds(30));
-            Actors.insert(VolumeHealthSyncActorId);
-
-            if (!DeviceUUIDToBrokenAt.empty()) {
-                SendVolumeHealthNotification(
-                    ctx,
-                    NProto::VOLUME_HEALTH_UNHEALTHY);
-            }
-        }
+        RegisterVolumeHealthSyncActorIfNeeded(ctx);
 
         Y_ABORT_UNLESS(CurrentState == STATE_INIT);
         BecomeAux(ctx, STATE_WORK);

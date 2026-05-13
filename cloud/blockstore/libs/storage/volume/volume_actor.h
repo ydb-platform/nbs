@@ -1284,6 +1284,9 @@ private:
 
     void CleanupStaleBrokenDevices(const NActors::TActorContext& ctx);
 
+    void RegisterVolumeHealthSyncActorIfNeeded(
+        const NActors::TActorContext& ctx);
+
     void SendVolumeHealthNotification(
         const NActors::TActorContext& ctx,
         NProto::EVolumeHealth volumeHealth);
