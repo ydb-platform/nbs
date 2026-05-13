@@ -114,10 +114,12 @@ class NbsServiceMock(service_pb2_grpc.TBlockStoreServiceServicer):
         )
 
     def AcquireNVMeDevice(self, request,  context):
-        response = protos.TAcquireNVMeDeviceResponse()
+        for d in LOCAL_NVME_DEVICES:
+            if d.SerialNumber == request.SerialNumber:
+                return protos.TAcquireNVMeDeviceResponse(Device=d)
 
-        if not any(x.SerialNumber == request.SerialNumber for x in LOCAL_NVME_DEVICES):
-            response.Error.Code = EResult.E_NOT_FOUND.value
+        response = protos.TAcquireNVMeDeviceResponse()
+        response.Error.Code = EResult.E_NOT_FOUND.value
 
         return response
 
@@ -284,7 +286,8 @@ def test_acquire_and_release_nvme_device():
 
         sn = LOCAL_NVME_DEVICES[0].SerialNumber
 
-        client.acquire_nvme_device(sn)
+        device = client.acquire_nvme_device(sn)
+        assert device == LOCAL_NVME_DEVICES[0]
 
         with pytest.raises(ClientError):
             client.acquire_nvme_device("unknown")

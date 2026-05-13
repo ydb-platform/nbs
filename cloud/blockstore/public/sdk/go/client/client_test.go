@@ -133,7 +133,7 @@ func TestLocalNVMeMethods(t *testing.T) {
 	_, err = client.ListNVMeDevices(ctx)
 	require.NoError(t, err)
 
-	err = client.AcquireNVMeDevice(ctx, "sn")
+	_, err = client.AcquireNVMeDevice(ctx, "sn")
 	require.NoError(t, err)
 
 	err = client.ReleaseNVMeDevice(ctx, "sn")
