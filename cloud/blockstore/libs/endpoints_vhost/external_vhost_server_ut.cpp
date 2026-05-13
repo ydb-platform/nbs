@@ -947,7 +947,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShoultPassThreadPoolSize, TFixture)
+    Y_UNIT_TEST_F(ShouldPassThreadPoolSize, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, History.size());
         {
