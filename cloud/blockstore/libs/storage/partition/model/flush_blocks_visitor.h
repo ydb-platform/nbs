@@ -73,12 +73,6 @@ private:
         TVector<TBlock> blocks,
         TVector<ui32> checksums);
 
-    template <typename TTmpContainerType>
-    void FlushBlobImpl(
-        TBlockBuffer blobContent,
-        TVector<TBlock> blocks,
-        TVector<ui32> checksums);
-
     static ui32 GetBlobRangeSize(
         const TVector<TBlock>& blocks,
         ui32 blockIndex);

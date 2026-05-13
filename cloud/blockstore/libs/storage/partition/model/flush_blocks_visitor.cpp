@@ -10,16 +10,19 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 namespace {
 
-constexpr size_t MaxOnStackTmpVectorSize = 128;
-
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TOutputContainer>
-TOutputContainer SplitBlocksByCompactionRangeBorders(
+struct TVectorRange
+{
+    size_t Start;
+    size_t End;
+};
+
+TVector<TVectorRange> SplitBlocksByCompactionRangeBorders(
     const TVector<TBlock>& blocks,
     const TCompactionMap& compactionMap)
 {
-    TOutputContainer blocksByRanges;
+    TVector<TVectorRange> blocksByRanges;
     size_t start = 0;
     while (start < blocks.size()) {
         size_t end = start + 1;
@@ -36,20 +39,9 @@ TOutputContainer SplitBlocksByCompactionRangeBorders(
     return blocksByRanges;
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-TFlushBlocksVisitor::TBlob::TBlob(
-        TBlockBuffer blobContent,
-        TVector<TBlock> blocks,
-        TVector<ui32> checksums,
-        ui8 compactionRangeCount)
-    : BlobContent(std::move(blobContent))
-    , Blocks(std::move(blocks))
-    , Checksums(std::move(checksums))
-    , CompactionRangeCount(compactionRangeCount)
-{}
 
 TFlushBlocksVisitor::TFlushBlocksVisitor(
         ui32 blockSize,
@@ -186,32 +178,6 @@ void TFlushBlocksVisitor::FlushBlob(
     TVector<TBlock> blocks,
     TVector<ui32> checksums)
 {
-    const size_t maxCompactionRangeCountPerBlob =
-        MaxBlobRangeSize / CompactionMap.GetRangeSize();
-
-    // With standard compaction range size and max blob range size
-    // the number of compaction ranges per blob will not exceed
-    // MaxOnStackTmpVectorSize
-    if (Y_LIKELY(maxCompactionRangeCountPerBlob <= MaxOnStackTmpVectorSize)) {
-        FlushBlobImpl<
-            TStackVec<std::pair<size_t, size_t>, MaxOnStackTmpVectorSize>>(
-            std::move(blobContent),
-            std::move(blocks),
-            std::move(checksums));
-    } else {
-        FlushBlobImpl<TVector<std::pair<size_t, size_t>>>(
-            std::move(blobContent),
-            std::move(blocks),
-            std::move(checksums));
-    }
-}
-
-template <typename TTmpContainerType>
-void TFlushBlocksVisitor::FlushBlobImpl(
-    TBlockBuffer blobContent,
-    TVector<TBlock> blocks,
-    TVector<ui32> checksums)
-{
     STORAGE_VERIFY(blocks, TWellKnownEntityTypes::TABLET, TabletId);
 
     if (!SplitByCompactionRangeMaxBlobCount ||
@@ -224,10 +190,8 @@ void TFlushBlocksVisitor::FlushBlobImpl(
         return;
     }
 
-    auto blocksByRanges =
-        SplitBlocksByCompactionRangeBorders<TTmpContainerType>(
-            blocks,
-            CompactionMap);
+    const auto blocksByRanges =
+        SplitBlocksByCompactionRangeBorders(blocks, CompactionMap);
 
     const ui64 compactionRangeCount = blocksByRanges.size();
     const bool splitByCompactionBorders =

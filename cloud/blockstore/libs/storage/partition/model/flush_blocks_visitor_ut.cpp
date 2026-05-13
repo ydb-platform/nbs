@@ -85,7 +85,8 @@ Y_UNIT_TEST_SUITE(TFlushBlocksVisitorTest)
                  2 * MaxBlobRangeSize,
                  2 * MaxBlobRangeSize + CompactionRangeSize,
                  2 * MaxBlobRangeSize + 2 * CompactionRangeSize},
-                /*readBlockMaskOnCompactionOptimizationEnabled*/ true);
+                /*readBlockMaskOnCompactionOptimizationEnabled*/ true,
+                /*splitByCompactionRangeMaxBlobCount*/ 0);
 
             UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
 
@@ -108,7 +109,8 @@ Y_UNIT_TEST_SUITE(TFlushBlocksVisitorTest)
                  2 * MaxBlobRangeSize,
                  2 * MaxBlobRangeSize + CompactionRangeSize,
                  2 * MaxBlobRangeSize + 2 * CompactionRangeSize},
-                /*readBlockMaskOnCompactionOptimizationEnabled*/ false);
+                /*readBlockMaskOnCompactionOptimizationEnabled*/ false,
+                /*splitByCompactionRangeMaxBlobCount*/ 0);
 
             UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
 
