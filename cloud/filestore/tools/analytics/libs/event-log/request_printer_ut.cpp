@@ -389,6 +389,15 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
             "{commit_id=2, offset=64, bytes=32}]",
             printer->DumpInfo(Request));
     }
+
+    Y_UNIT_TEST_F(ShouldPrintRequestFlags, TEnv)
+    {
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::UnlinkNode));
+        Request.SetFlags(1);
+        UNIT_ASSERT_VALUES_EQUAL("request_flags=1", printer->DumpInfo(Request));
+    }
 }
 
 }   // namespace NCloud::NFileStore
