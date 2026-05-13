@@ -383,6 +383,7 @@ private:
 
         if (front.IsInvalid() || front.ActualPos != Header()->ReadPos) {
             SetCorrupted();
+            return;
         }
 
         while (cur.HasValue()) {
@@ -392,15 +393,6 @@ private:
 
         if (cur.IsInvalid() || cur.ActualPos != Header()->WritePos) {
             SetCorrupted();
-        }
-
-        if (front.HasValue()) {
-            Y_ABORT_UNLESS(back.HasValue());
-            Header()->ReadPos = front.ActualPos;
-            Header()->WritePos = back.GetNextEntryPos();
-        } else {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
         }
     }
 
@@ -553,7 +545,9 @@ public:
                 }
             });
 
-        EraseFreeEntriesFromFront();
+        if (!IsCorrupted()) {
+            EraseFreeEntriesFromFront();
+        }
     }
 
     bool PushBack(TStringBuf data)
@@ -672,6 +666,10 @@ public:
 
     bool Free(const void* ptr)
     {
+        if (IsCorrupted()) {
+            return false;
+        }
+
         auto it = EntryMap.find(ptr);
         if (it == EntryMap.end()) {
             return false;
