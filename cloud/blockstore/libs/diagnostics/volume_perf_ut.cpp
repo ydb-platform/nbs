@@ -3,6 +3,7 @@
 #include "config.h"
 
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -184,21 +185,33 @@ NProto::TDiagnosticsConfig CreateDefaultPerformanceSettings(
 
 NProto::TDiagnosticsConfig CreatePerformanceSettings(
     NCloud::NProto::EStorageMediaKind type,
-    ui64 readIops,
+    ui32 readIops,
     ui64 readBandwidth,
-    ui64 writeIops,
-    ui64 writeBandwidth)
+    ui32 writeIops,
+    ui64 writeBandwidth,
+    ui32 minReadIops,
+    ui64 minReadBandwidth,
+    ui32 minWriteIops,
+    ui64 minWriteBandwidth)
 {
     NProto::TDiagnosticsConfig config;
     NProto::TVolumePerfSettings settings;
+
     auto& read = *settings.MutableRead();
     auto& write = *settings.MutableWrite();
-
     read.SetIops(readIops);
     read.SetBandwidth(readBandwidth);
-
     write.SetIops(writeIops);
     write.SetBandwidth(writeBandwidth);
+
+    settings.SetThrottlerOvercommit(1);
+
+    auto& minRead = *settings.MutableMinRead();
+    auto& minWrite = *settings.MutableMinWrite();
+    minRead.SetIops(minReadIops);
+    minRead.SetBandwidth(minReadBandwidth);
+    minWrite.SetIops(minWriteIops);
+    minWrite.SetBandwidth(minWriteBandwidth);
 
     switch (type) {
         case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
@@ -579,8 +592,11 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             0,
             0,
             0,
-            0
-        );
+            0,
+            0,
+            0,
+            0,
+            0);
 
         auto volume = CreateVolume(
             "test1",
@@ -778,6 +794,194 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             0,
             0,
             0);
+    }
+
+    Y_UNIT_TEST(ShouldOverridePerformanceProfileLimitsWithMinLimits)
+    {
+        constexpr ui32 ConfigReadIops = 10000;
+        constexpr ui32 ConfigWriteIops = 10000;
+        constexpr ui32 ConfigReadBw = 300_MB;
+        constexpr ui32 ConfigWriteBw = 300_MB;
+
+        constexpr ui32 ProfileReadIops = 100;
+        constexpr ui32 ProfileWriteIops = 100;
+        constexpr ui32 ProfileReadBw = 1_MB;
+        constexpr ui32 ProfileWriteBw = 1_MB;
+
+        const auto config = CreatePerformanceSettings(
+            NProto::STORAGE_MEDIA_SSD,
+            ConfigReadIops,    // readIops
+            ConfigReadBw,      // readBandwidth
+            ConfigWriteIops,   // writeIops
+            ConfigWriteBw,     // writeBandwidth
+            0,                 // minReadIops
+            0,                 // minReadBandwidth
+            0,                 // minWriteIops
+            0                  // minWriteBandwidth
+        );
+
+        // Create a config that overrides the performance profile limits.
+        const auto configWithMin = CreatePerformanceSettings(
+            NProto::STORAGE_MEDIA_SSD,
+            ConfigReadIops,    // readIops
+            ConfigReadBw,      // readBandwidth
+            ConfigWriteIops,   // writeIops
+            ConfigWriteBw,     // writeBandwidth
+            ConfigReadIops,    // minReadIops
+            ConfigReadBw,      // minReadBandwidth
+            ConfigWriteIops,   // minWriteIops
+            ConfigWriteBw      // minWriteBandwidth
+        );
+
+        constexpr ui32 RequestBytes = 1024 * 1024;
+
+        {
+            auto monitoring = CreateMonitoringServiceStub();
+            auto counters = monitoring->GetCounters();
+
+            auto volume = CreateVolume(
+                "test_clamped",
+                NProto::STORAGE_MEDIA_SSD,
+                ProfileReadIops,
+                ProfileReadBw,
+                ProfileWriteIops,
+                ProfileWriteBw);
+            auto volumeCounters =
+                CreateVolumeCounters(counters, volume.GetDiskId());
+
+            TVolumePerformanceCalculator calc(
+                volume,
+                std::make_shared<TDiagnosticsConfig>(config));
+            calc.Register(*volumeCounters, volume);
+
+            // Since config is clamped by profile limits, expectedScore becomes
+            // too large and DidSuffer() returns false even for "slow" requests.
+            TestSuffer(
+                calc,
+                volumeCounters,
+                TDuration::Seconds(15),
+                true,   // slowRequest
+                0,      // expected Suffer
+                0,      // expected SmoothSuffer
+                0);     // expected CriticalSuffer
+        }
+
+        {
+            auto monitoring = CreateMonitoringServiceStub();
+            auto counters = monitoring->GetCounters();
+
+            auto volume = CreateVolume(
+                "test_ignore",
+                NProto::STORAGE_MEDIA_SSD,
+                ProfileReadIops,
+                ProfileReadBw,
+                ProfileWriteIops,
+                ProfileWriteBw);
+            auto volumeCounters =
+                CreateVolumeCounters(counters, volume.GetDiskId());
+
+            TVolumePerformanceCalculator calc(
+                volume,
+                std::make_shared<TDiagnosticsConfig>(std::move(configWithMin)));
+
+            const auto before = calc.GetExpectedWriteCost(RequestBytes);
+            calc.Register(*volumeCounters, volume);
+            const auto after = calc.GetExpectedWriteCost(RequestBytes);
+
+            UNIT_ASSERT_VALUES_EQUAL(before, after);
+
+            TestSuffer(
+                calc,
+                volumeCounters,
+                TDuration::Seconds(15),
+                true,   // slowRequest
+                1,      // expected Suffer
+                1,      // expected SmoothSuffer
+                0);     // expected CriticalSuffer
+        }
+    }
+
+    Y_UNIT_TEST(ShouldApplyThrottlerOvercommitToPerformanceProfileLimits)
+    {
+        constexpr double NoOvercommit = 1.0;
+        constexpr double Overcommit = 2.0;
+
+        constexpr ui32 ConfigReadIops = 10000;
+        constexpr ui32 ConfigWriteIops = 20000;
+        constexpr ui64 ConfigReadBw = 300_MB;
+        constexpr ui64 ConfigWriteBw = 400_MB;
+
+        constexpr ui32 ProfileReadIops = 100;
+        constexpr ui32 ProfileWriteIops = 200;
+        constexpr ui32 ProfileReadBw = 5_MB;
+        constexpr ui32 ProfileWriteBw = 10_MB;
+
+        constexpr ui32 RequestBytes = 1024 * 1024;
+
+        auto baseConfig = CreatePerformanceSettings(
+            NProto::STORAGE_MEDIA_SSD,
+            ConfigReadIops,    // readIops
+            ConfigReadBw,      // readBandwidth
+            ConfigWriteIops,   // writeIops
+            ConfigWriteBw,     // writeBandwidth
+            0,                 // minReadIops
+            0,                 // minReadBandwidth
+            0,                 // minWriteIops
+            0                  // minWriteBandwidth
+        );
+        baseConfig.SetExpectedIoParallelism(1);
+
+        auto overcommit1Config = baseConfig;
+        overcommit1Config.MutableSsdPerfSettings()->SetThrottlerOvercommit(
+            NoOvercommit);
+
+        auto overcommit2Config = baseConfig;
+        overcommit2Config.MutableSsdPerfSettings()->SetThrottlerOvercommit(
+            Overcommit);
+
+        const auto volume = CreateVolume(
+            "test_overcommit",
+            NProto::STORAGE_MEDIA_SSD,
+            ProfileReadIops,
+            ProfileReadBw,
+            ProfileWriteIops,
+            ProfileWriteBw);
+
+        TVolumePerformanceCalculator calcOvercommit1(
+            volume,
+            std::make_shared<TDiagnosticsConfig>(overcommit1Config));
+        calcOvercommit1.Register(volume);
+
+        TVolumePerformanceCalculator calcOvercommit2(
+            volume,
+            std::make_shared<TDiagnosticsConfig>(overcommit2Config));
+        calcOvercommit2.Register(volume);
+
+        // With overcommit=1, perf settings are clamped by profile limits.
+        UNIT_ASSERT_VALUES_EQUAL(
+            CostPerIO(ProfileReadIops, ProfileReadBw, RequestBytes),
+            calcOvercommit1.GetExpectedReadCost(RequestBytes));
+        UNIT_ASSERT_VALUES_EQUAL(
+            CostPerIO(ProfileWriteIops, ProfileWriteBw, RequestBytes),
+            calcOvercommit1.GetExpectedWriteCost(RequestBytes));
+
+        // With overcommit=2, profile limits are scaled up before clamping.
+        UNIT_ASSERT_VALUES_EQUAL(
+            CostPerIO(
+                static_cast<ui64>(ProfileReadIops) * 2,
+                static_cast<ui64>(ProfileReadBw) * 2,
+                RequestBytes),
+            calcOvercommit2.GetExpectedReadCost(RequestBytes));
+        UNIT_ASSERT_VALUES_EQUAL(
+            CostPerIO(
+                static_cast<ui64>(ProfileWriteIops) * 2,
+                static_cast<ui64>(ProfileWriteBw) * 2,
+                RequestBytes),
+            calcOvercommit2.GetExpectedWriteCost(RequestBytes));
+
+        UNIT_ASSERT(
+            calcOvercommit2.GetExpectedWriteCost(RequestBytes) <
+            calcOvercommit1.GetExpectedWriteCost(RequestBytes));
     }
 
     Y_UNIT_TEST(ShouldCorrectlyUpdatePerformanceSettingsIfClientPerfSettingsIncreased)
