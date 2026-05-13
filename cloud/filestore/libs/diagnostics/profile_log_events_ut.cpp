@@ -389,11 +389,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         const auto& nodeInfo = profileLogRequest.GetNodeInfo();
         UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetParentNodeId());
         UNIT_ASSERT_VALUES_EQUAL(name, nodeInfo.GetNodeName());
-
         UNIT_ASSERT(!nodeInfo.HasNewParentNodeId());
         UNIT_ASSERT(!nodeInfo.HasNewNodeName());
         UNIT_ASSERT(!nodeInfo.HasFlags());
-
         UNIT_ASSERT(!nodeInfo.HasMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());
         UNIT_ASSERT(!nodeInfo.HasHandle());
