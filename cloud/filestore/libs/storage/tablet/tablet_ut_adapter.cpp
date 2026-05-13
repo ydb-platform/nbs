@@ -218,6 +218,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         }
 
         {
+            auto response = tablet.SendAndRecvAllocateData(
+                handle3,
+                4_KB /* offset */,
+                3_KB /* len */,
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            expected.resize(7_KB, 0);
+        }
+
+        {
+            auto response = tablet.SendAndRecvReadData(
+                handle3,
+                0 /* offset */,
+                7_KB /* len */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(expected, response->Record.GetBuffer());
+        }
+
+        {
             auto response = tablet.SendAndRecvGetNodeAttr(nodeId3);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -228,7 +253,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<ui32>(NProto::E_REGULAR_NODE),
                 node.GetType());
-            UNIT_ASSERT_VALUES_EQUAL(5_KB, node.GetSize());
+            UNIT_ASSERT_VALUES_EQUAL(7_KB, node.GetSize());
         }
 
         tablet.DestroySession();
