@@ -92,6 +92,42 @@ NProto::TDestroyCheckpointResponse TLocalFileSystem::DestroyCheckpoint(
     return {};
 }
 
+NProto::TUnsafeCreateNodeResponse TLocalFileSystem::UnsafeCreateNode(
+    const NProto::TUnsafeCreateNodeRequest& request)
+{
+    Y_UNUSED(request);
+    return TErrorResponse(
+        E_NOT_IMPLEMENTED,
+        "UnsafeCreateNode is not implemented for the local service");
+}
+
+NProto::TUnsafeDeleteNodeResponse TLocalFileSystem::UnsafeDeleteNode(
+    const NProto::TUnsafeDeleteNodeRequest& request)
+{
+    Y_UNUSED(request);
+    return TErrorResponse(
+        E_NOT_IMPLEMENTED,
+        "UnsafeDeleteNode is not implemented for the local service");
+}
+
+NProto::TUnsafeCreateNodeRefResponse TLocalFileSystem::UnsafeCreateNodeRef(
+    const NProto::TUnsafeCreateNodeRefRequest& request)
+{
+    Y_UNUSED(request);
+    return TErrorResponse(
+        E_NOT_IMPLEMENTED,
+        "UnsafeCreateNodeRef is not implemented for the local service");
+}
+
+NProto::TUnsafeDeleteNodeRefResponse TLocalFileSystem::UnsafeDeleteNodeRef(
+    const NProto::TUnsafeDeleteNodeRefRequest& request)
+{
+    Y_UNUSED(request);
+    return TErrorResponse(
+        E_NOT_IMPLEMENTED,
+        "UnsafeDeleteNodeRef is not implemented for the local service");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void ConvertStats(const NLowLevel::TFileStatEx& stat, NProto::TNodeAttr& node)
