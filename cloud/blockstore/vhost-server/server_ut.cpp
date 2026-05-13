@@ -1281,30 +1281,32 @@ INSTANTIATE_TEST_SUITE_P(
 class TSlowEncryptor: public IEncryptor
 {
 private:
-    TDuration SleepTime;
+    std::atomic<ui64> SleepTimeMillis;
     std::atomic<ui64> TotalSleepTimeMillis;
 
     IEncryptorPtr Encryptor;
 
 public:
     explicit TSlowEncryptor(TDuration sleepTime, IEncryptorPtr encryptor)
-        : SleepTime(sleepTime)
+        : SleepTimeMillis(sleepTime.MilliSeconds())
         , Encryptor(std::move(encryptor))
     {}
 
     NProto::TError
     Encrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
     {
-        Sleep(SleepTime);
-        TotalSleepTimeMillis += SleepTime.MilliSeconds();
+        const auto sleepTime = SleepTimeMillis.load();
+        Sleep(TDuration::MilliSeconds(sleepTime));
+        TotalSleepTimeMillis += sleepTime;
         return Encryptor->Encrypt(src, dst, blockIndex);
     }
 
     NProto::TError
     Decrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
     {
-        Sleep(SleepTime);
-        TotalSleepTimeMillis += SleepTime.MilliSeconds();
+        const auto sleepTime = SleepTimeMillis.load();
+        Sleep(TDuration::MilliSeconds(sleepTime));
+        TotalSleepTimeMillis += sleepTime;
         return Encryptor->Decrypt(src, dst, blockIndex);
     }
 
@@ -1315,7 +1317,7 @@ public:
 
     void SetSleepTime(TDuration sleepTime)
     {
-        SleepTime = sleepTime;
+        SleepTimeMillis.store(sleepTime.MilliSeconds());
     }
 };
 
@@ -1437,6 +1439,9 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
 #if !defined(__SANITIZE_MEMORY__) && !defined(__SANITIZE_ADDRESS__) && \
     !defined(__SANITIZE_THREAD__) && !UBSAN_BUILD
         EXPECT_LT(duration, expectedSleepTime);
+#else
+    Y_UNUSED(duration);
+    Y_UNUSED(expectedSleepTime);
 #endif
     }
 
