@@ -382,13 +382,17 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, profileLogRequest.RangesSize());
         UNIT_ASSERT(profileLogRequest.HasNodeInfo());
         UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(unlinkDirectory),
+            profileLogRequest.GetFlags());
 
         const auto& nodeInfo = profileLogRequest.GetNodeInfo();
         UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetParentNodeId());
         UNIT_ASSERT_VALUES_EQUAL(name, nodeInfo.GetNodeName());
-        UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(unlinkDirectory),
-            nodeInfo.GetFlags());
+
+        UNIT_ASSERT(!nodeInfo.HasNewParentNodeId());
+        UNIT_ASSERT(!nodeInfo.HasNewNodeName());
+        UNIT_ASSERT(!nodeInfo.HasFlags());
 
         UNIT_ASSERT(!nodeInfo.HasMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());

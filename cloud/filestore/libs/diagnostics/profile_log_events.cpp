@@ -426,10 +426,11 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TUnlinkNodeRequest& request)
 {
+    profileLogRequest.SetFlags(static_cast<ui32>(request.GetUnlinkDirectory()));
+
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
     nodeInfo->SetNodeName(request.GetName());
-    nodeInfo->SetFlags(request.GetUnlinkDirectory());
 }
 
 template <>
