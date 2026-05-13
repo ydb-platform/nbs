@@ -208,6 +208,7 @@ struct TTrackedUnconfirmedData
 {
     NProto::TUnconfirmedData Data;
     TString SessionId;
+    NActors::TActorId PipeServerId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
