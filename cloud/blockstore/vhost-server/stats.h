@@ -19,8 +19,12 @@ namespace NCloud::NBlockStore::NVHostServer {
 ////////////////////////////////////////////////////////////////////////////////
 
 using TCpuCycles = ui64;
-using TTimeHistogram = THistogram<7>;
-using TSizeHistogram = THistogram<3>;
+
+template <typename T>
+using TTimeHistogram = THistogram<T, 7>;
+
+template <typename T>
+using TSizeHistogram = THistogram<T, 3>;
 
 template <typename T>
 struct TRequestStats
@@ -85,8 +89,8 @@ struct TStats
     T EncryptorErrors = {};
 
     std::array<TRequestStats<T>, 2> Requests = {};
-    std::array<TTimeHistogram, 2> Times = {};
-    std::array<TSizeHistogram, 2> Sizes = {};
+    std::array<TTimeHistogram<T>, 2> Times = {};
+    std::array<TSizeHistogram<T>, 2> Sizes = {};
 
     TStats() = default;
 
