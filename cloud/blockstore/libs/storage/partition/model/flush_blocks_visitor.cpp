@@ -204,7 +204,12 @@ void TFlushBlocksVisitor::FlushBlob(
     }
 
     const auto& dataRefs = blobContent.GetBlocks();
-    Y_DEBUG_ABORT_UNLESS((dataRefs.size() == blocks.size()) || (!dataRefs));
+    STORAGE_VERIFY_C(
+        (dataRefs.size() == blocks.size()) || (!dataRefs),
+        TWellKnownEntityTypes::TABLET,
+        TabletId,
+        "dataRefs.size():" << dataRefs.size() << ", blocks.size(): %lu"
+                           << blocks.size());
 
     for (const auto& [start, end]: blocksByRanges) {
         TVector<TBlock> pieceBlocks(
