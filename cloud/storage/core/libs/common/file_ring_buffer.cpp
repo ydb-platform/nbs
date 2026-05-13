@@ -531,6 +531,9 @@ public:
         }
 
         if (Header()->Version == VERSION_PREV) {
+            // Migration needs access to entries
+            Data = TEntriesData(
+                GetMappedData(Header()->DataOffset, Header()->DataCapacity));
             Migrate();
         }
 
