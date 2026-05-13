@@ -114,24 +114,6 @@ func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
 	}
 }
 
-func attrFromNode(node Node) *protos.TNodeAttr {
-	return &protos.TNodeAttr{
-		Id:                node.NodeID,
-		Type:              uint32(node.Type),
-		Mode:              node.Mode,
-		Uid:               uint32(node.UID),
-		Gid:               uint32(node.GID),
-		ATime:             node.Atime,
-		MTime:             node.Mtime,
-		CTime:             node.Ctime,
-		Size:              node.Size,
-		Links:             node.Links,
-		ShardFileSystemId: []byte(node.ShardFileSystemID),
-		ShardNodeName:     []byte(node.ShardNodeName),
-		DevId:             node.DevID,
-	}
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func headersForSession(session Session) *protos.THeaders {
@@ -579,7 +561,19 @@ func (client *Client) UnsafeCreateNode(
 	req := &protos.TUnsafeCreateNodeRequest{
 		FileSystemId: fileSystemID,
 		Headers:      &protos.THeaders{},
-		Node:         attrFromNode(node),
+		Node: &protos.TNodeAttr{
+			Id:    node.NodeID,
+			Type:  uint32(node.Type),
+			Mode:  node.Mode,
+			Uid:   uint32(node.UID),
+			Gid:   uint32(node.GID),
+			ATime: node.Atime,
+			MTime: node.Mtime,
+			CTime: node.Ctime,
+			Size:  node.Size,
+			Links: node.Links,
+			DevId: node.DevID,
+		},
 	}
 
 	_, err := client.Impl.UnsafeCreateNode(ctx, req)
