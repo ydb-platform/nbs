@@ -685,6 +685,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshBlocksWriterEnabled,             bool,        false              )\
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
+    xxx(MaxInFlightCmsRequests,               ui32,        0                  )\
     xxx(OverlappingRequestsPolicy,                                             \
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
