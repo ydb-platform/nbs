@@ -44,6 +44,9 @@
     "test.test_multitablet_ls": {
         "uri": "file://test.test_multitablet_ls/results.txt"
     },
+    "test.test_readlink": {
+        "uri": "file://test.test_readlink/results.txt"
+    },
     "test.test_resize": {
         "uri": "file://test.test_resize/results.txt"
     },
