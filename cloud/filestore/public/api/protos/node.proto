@@ -188,6 +188,14 @@ message TCreateNodeRequest
 
     // Umask of the calling process
     uint32 Umask = 16;
+
+    // If a node is created by TCreateNodeInShardActor, the following fields
+    // contain the Name and NodeId from the original request that identify
+    // NodeRef in the IndexTabletActor managing the directory.
+
+    uint64 OriginalNodeId = 17;
+
+    bytes OriginalName = 18;
 }
 
 message TCreateNodeResponse

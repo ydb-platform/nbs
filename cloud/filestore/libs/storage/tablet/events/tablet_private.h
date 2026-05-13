@@ -665,6 +665,8 @@ struct TEvIndexTabletPrivate
         NProto::TProfileLogRequestInfo ProfileLogRequest;
         const bool NodeAlreadyExists;
         const ui32 CreateNodeRetryCount;
+        const ui64 OriginalNodeId;
+        const TString OriginalName;
 
         TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
@@ -675,7 +677,9 @@ struct TEvIndexTabletPrivate
                 TCreateNodeInShardResult result,
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 bool nodeAlreadyExists,
-                ui32 createNodeRetryCount)
+                ui32 createNodeRetryCount,
+                ui64 originalNodeId,
+                TString originalName)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -685,6 +689,8 @@ struct TEvIndexTabletPrivate
             , ProfileLogRequest(std::move(profileLogRequest))
             , NodeAlreadyExists(nodeAlreadyExists)
             , CreateNodeRetryCount(createNodeRetryCount)
+            , OriginalNodeId(originalNodeId)
+            , OriginalName(std::move(originalName))
         {
         }
     };

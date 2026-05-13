@@ -37,6 +37,15 @@ void TIndexTabletActor::ReplayOpLog(
         }
 
         if (op.HasCreateNodeRequest()) {
+            const auto& request = op.GetCreateNodeRequest();
+            if (!TryLockNodeRef(
+                    {request.GetOriginalNodeId(), request.GetOriginalName()}))
+            {
+                ReportFailedToLockNodeRef(
+                    TStringBuilder() << "CreateNodeInShardRequset: "
+                                     << request.ShortUtf8DebugString().Quote());
+            }
+
             Metrics.ReplayedCreateNodeInShardRequestsCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
