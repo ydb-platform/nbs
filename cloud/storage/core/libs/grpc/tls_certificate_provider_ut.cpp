@@ -5,7 +5,7 @@
 
 #include <library/cpp/logger/log.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
-#include <library/cpp/testing/common/env.h>
+#include <library/cpp/resource/resource.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/base.h>
@@ -25,17 +25,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString TestDataPath(TStringBuf relativePath)
+TString ReadCertResource(TStringBuf relativePath)
 {
-    return TStringBuilder()
-        << ArcadiaSourceRoot() << "/cloud/storage/core/libs/grpc/ut/certs/"
-        << relativePath;
-}
-
-TString ReadTextFile(const TString& path)
-{
-    TFileInput in(path);
-    return in.ReadAll();
+    return NResource::Find(
+        TStringBuilder() << "grpc/ut/certs/" << relativePath);
 }
 
 void WriteTextFile(const TString& path, const TString& content)
@@ -44,24 +37,19 @@ void WriteTextFile(const TString& path, const TString& content)
     out.Write(content.data(), content.size());
 }
 
-void CopyTextFile(const TString& sourcePath, const TString& destinationPath)
-{
-    WriteTextFile(destinationPath, ReadTextFile(sourcePath));
-}
-
 TCertificateFiles CreateCertificatePair(
     const TString& dirPath,
     const TString& prefix,
-    const TString& privateKeySourcePath,
-    const TString& certChainSourcePath)
+    const TString& privateKeyContent,
+    const TString& certChainContent)
 {
     const TString privateKeyPath = TStringBuilder()
         << dirPath << "/" << prefix << ".key";
     const TString certChainPath = TStringBuilder()
         << dirPath << "/" << prefix << ".crt";
 
-    CopyTextFile(privateKeySourcePath, privateKeyPath);
-    CopyTextFile(certChainSourcePath, certChainPath);
+    WriteTextFile(privateKeyPath, privateKeyContent);
+    WriteTextFile(certChainPath, certChainContent);
 
     return {
         .PrivateKeyPath = privateKeyPath,
@@ -91,16 +79,16 @@ struct TCertificateProviderTestContext
         , ServerPair(CreateCertificatePair(
               TempDir.Name(),
               "server",
-              TestDataPath("server1.key"),
-              TestDataPath("server1.crt")))
+              ReadCertResource("server1.key"),
+              ReadCertResource("server1.crt")))
         , ClientPair(CreateCertificatePair(
               TempDir.Name(),
               "client",
-              TestDataPath("server2.key"),
-              TestDataPath("server2.crt")))
-        , RootPem(ReadTextFile(TestDataPath("ca.crt")))
-        , ServerPem(ReadTextFile(TestDataPath("server1.crt")))
-        , ClientPem(ReadTextFile(TestDataPath("server2.crt")))
+              ReadCertResource("server2.key"),
+              ReadCertResource("server2.crt")))
+        , RootPem(ReadCertResource("ca.crt"))
+        , ServerPem(ReadCertResource("server1.crt"))
+        , ClientPem(ReadCertResource("server2.crt"))
     {
         RestoreFiles();
 
@@ -110,7 +98,7 @@ struct TCertificateProviderTestContext
         Refresher = CreateCertificateRefresher();
         Refresher->Init(
             CreateLoggingService("console"),
-            "TEST_TLS_CERTIFICATE_PROVIDER",
+            "TLS_CERTIFICATE_PROVIDER",
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},

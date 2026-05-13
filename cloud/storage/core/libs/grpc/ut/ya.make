@@ -16,15 +16,16 @@ ADDINCL(
     contrib/libs/grpc
 )
 
-DATA(
-    arcadia/cloud/storage/core/libs/grpc/ut/certs/ca.crt
-    arcadia/cloud/storage/core/libs/grpc/ut/certs/server1.crt
-    arcadia/cloud/storage/core/libs/grpc/ut/certs/server1.key
-    arcadia/cloud/storage/core/libs/grpc/ut/certs/server2.crt
-    arcadia/cloud/storage/core/libs/grpc/ut/certs/server2.key
+RESOURCE(
+    certs/ca.crt        grpc/ut/certs/ca.crt
+    certs/server1.crt   grpc/ut/certs/server1.crt
+    certs/server1.key   grpc/ut/certs/server1.key
+    certs/server2.crt   grpc/ut/certs/server2.crt
+    certs/server2.key   grpc/ut/certs/server2.key
 )
 
 PEERDIR(
+    library/cpp/resource
     library/cpp/testing/common
     library/cpp/testing/gmock_in_unittest
 )

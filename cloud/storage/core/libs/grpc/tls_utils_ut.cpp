@@ -1,6 +1,6 @@
 #include "tls_utils.h"
 
-#include <library/cpp/testing/common/env.h>
+#include <library/cpp/resource/resource.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
@@ -13,17 +13,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString TestDataPath(TStringBuf relativePath)
+TString ReadCertResource(TStringBuf relativePath)
 {
-    return TStringBuilder()
-        << ArcadiaSourceRoot() << "/cloud/storage/core/libs/grpc/ut/certs/"
-        << relativePath;
-}
-
-TString ReadTextFile(const TString& path)
-{
-    TFileInput in(path);
-    return in.ReadAll();
+    return NResource::Find(
+        TStringBuilder() << "grpc/ut/certs/" << relativePath);
 }
 
 void WriteTextFile(const TString& path, const TString& content)
@@ -35,16 +28,16 @@ void WriteTextFile(const TString& path, const TString& content)
 TCertificateFiles CreateCertificatePair(
     const TString& dirPath,
     const TString& prefix,
-    const TString& privateKeySourcePath,
-    const TString& certChainSourcePath)
+    const TString& privateKeyContent,
+    const TString& certChainContent)
 {
     const TString privateKeyPath =
         TStringBuilder() << dirPath << "/" << prefix << ".key";
     const TString certChainPath =
         TStringBuilder() << dirPath << "/" << prefix << ".crt";
 
-    WriteTextFile(privateKeyPath, ReadTextFile(privateKeySourcePath));
-    WriteTextFile(certChainPath, ReadTextFile(certChainSourcePath));
+    WriteTextFile(privateKeyPath, privateKeyContent);
+    WriteTextFile(certChainPath, certChainContent);
 
     return {
         .PrivateKeyPath = privateKeyPath,
@@ -60,7 +53,7 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
 {
     Y_UNIT_TEST(ShouldValidatePemCertificate)
     {
-        const auto pem = ReadTextFile(TestDataPath("server1.crt"));
+        const auto pem = ReadCertResource("server1.crt");
         const auto result = IsValidPemCertificate(pem);
         UNIT_ASSERT(!HasError(result.GetError()));
     }
@@ -73,31 +66,31 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
 
     Y_UNIT_TEST(ShouldMatchPrivateKeyAndCertificate)
     {
-        const auto key = ReadTextFile(TestDataPath("server1.key"));
-        const auto cert = ReadTextFile(TestDataPath("server1.crt"));
+        const auto key = ReadCertResource("server1.key");
+        const auto cert = ReadCertResource("server1.crt");
         const auto result = PrivateKeyAndCertificateMatch(key, cert);
         UNIT_ASSERT(!HasError(result.GetError()));
     }
 
     Y_UNIT_TEST(ShouldDetectMismatchedPrivateKeyAndCertificate)
     {
-        const auto key = ReadTextFile(TestDataPath("server1.key"));
-        const auto cert = ReadTextFile(TestDataPath("server2.crt"));
+        const auto key = ReadCertResource("server1.key");
+        const auto cert = ReadCertResource("server2.crt");
         const auto result = PrivateKeyAndCertificateMatch(key, cert);
         UNIT_ASSERT(HasError(result.GetError()));
     }
 
     Y_UNIT_TEST(ShouldValidateIdentityWithRoot)
     {
-        const auto root = ReadTextFile(TestDataPath("ca.crt"));
-        const auto cert = ReadTextFile(TestDataPath("server1.crt"));
+        const auto root = ReadCertResource("ca.crt");
+        const auto cert = ReadCertResource("server1.crt");
         const auto result = ValidateIdentityCertificateWithRoot(root, cert);
         UNIT_ASSERT(!HasError(result.GetError()));
     }
 
     Y_UNIT_TEST(ShouldExtractCertificateNotAfterTimestamp)
     {
-        const auto cert = ReadTextFile(TestDataPath("server1.crt"));
+        const auto cert = ReadCertResource("server1.crt");
         const auto result = GetCertificateNotAfterTimestampSec(cert);
         UNIT_ASSERT(!HasError(result.GetError()));
         UNIT_ASSERT(result.GetResult() > 0);
@@ -105,8 +98,11 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
 
     Y_UNIT_TEST(ShouldReadAndValidateRootCertificate)
     {
-        const auto result = ReadAndValidateRootCertificate(
-            TestDataPath("ca.crt"));
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+        const auto result = ReadAndValidateRootCertificate(rootPath);
         UNIT_ASSERT(!HasError(result.GetError()));
     }
 
@@ -116,8 +112,8 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         const auto pair = CreateCertificatePair(
             tempDir.Name(),
             "identity",
-            TestDataPath("server1.key"),
-            TestDataPath("server1.crt"));
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt"));
 
         const auto result = ReadAndValidateIdentityPair(pair);
         UNIT_ASSERT(!HasError(result.GetError()));
@@ -130,8 +126,8 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         const auto pair = CreateCertificatePair(
             tempDir.Name(),
             "identity",
-            TestDataPath("server1.key"),
-            TestDataPath("server2.crt"));
+            ReadCertResource("server1.key"),
+            ReadCertResource("server2.crt"));
 
         const auto result = ReadAndValidateIdentityPair(pair);
         UNIT_ASSERT(HasError(result.GetError()));
