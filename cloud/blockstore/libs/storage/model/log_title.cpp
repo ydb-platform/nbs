@@ -181,6 +181,12 @@ TString ToString(const TLogTitle::TFreshBlocksWriter& data)
     return stream;
 }
 
+TString ToString(const TLogTitle::TAgentAvailabilityMonitoringActor& data)
+{
+    return TStringBuilder()
+           << "[aam:" << data.DiskId << " agent:" << data.AgentId;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////

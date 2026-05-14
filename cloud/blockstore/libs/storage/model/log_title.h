@@ -86,6 +86,12 @@ public:
         ui32 Generation = 0;
     };
 
+    struct TAgentAvailabilityMonitoringActor
+    {
+        TString DiskId;
+        TString AgentId;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
@@ -96,7 +102,8 @@ private:
         TClient,
         TDiskRegistry,
         TPartitionMirror,
-        TFreshBlocksWriter>;
+        TFreshBlocksWriter,
+        TAgentAvailabilityMonitoringActor>;
 
     ui64 StartTime = 0;
     TData Data;
