@@ -84,7 +84,11 @@ public:
 
     void StartFlushing(const NActors::TActorContext& ctx) override
     {
-        Y_DEBUG_ABORT_UNLESS(PostponedQueueFlushScheduled);
+        if (!PostponedQueueFlushScheduled) {
+            // Nothing to flush
+            return;
+        }
+
         PostponedQueueFlushScheduled = false;
         PostponedQueueFlushInProgress = true;
 

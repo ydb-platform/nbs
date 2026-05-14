@@ -721,7 +721,9 @@ void TIndexTabletActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
-    Throttler->StartFlushing(ctx);
+    if (Throttler) {
+        Throttler->StartFlushing(ctx);
+    }
 }
 
 void TIndexTabletActor::HandlePoisonPill(

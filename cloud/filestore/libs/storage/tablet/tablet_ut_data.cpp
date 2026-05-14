@@ -8439,6 +8439,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             "got "
                 << rebootTracker.GetGenerationCount());
     }
+
+    // See #5975 for details
+    TABLET_TEST(ShouldNotCrashIfWakeupHappensBeforeThrottlerHasSomethingToFlush)
+    {
+        // Otherwise compilation error is possible
+        Y_UNUSED(tabletConfig);
+
+        TTestEnv env;
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        auto& runtime = env.GetRuntime();
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        // Need tablet to load its state
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        const auto sender = runtime.AllocateEdgeActor(nodeIdx);
+
+        runtime.SendToPipe(
+            tabletId,
+            sender,
+            new TEvents::TEvWakeup(),
+            nodeIdx,
+            GetPipeConfigWithRetries());
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

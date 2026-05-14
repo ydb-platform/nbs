@@ -195,6 +195,30 @@ Y_UNIT_TEST_SUITE(TTabletThrottlerTest)
                 senderId,
                 new NActors::TEvents::TEvFlushLog())));
     }
+
+    Y_UNIT_TEST(ShouldIgnoreFlushIfNoPostponedRequests)
+    {
+        TTabletThrottlerLoggerStub logger;
+        TTabletThrottlerPolicyAlwaysPostpone policy;
+
+        std::unique_ptr<TSampleActorWithThrottler> actor =
+            std::make_unique<TSampleActorWithThrottler>();
+        auto throttler = CreateTabletThrottler(*actor, logger, policy);
+        actor->ResetThrottler(std::move(throttler));
+
+        TTestActorRuntimeBase runtime;
+        runtime.Initialize();
+
+        auto senderId = runtime.AllocateEdgeActor();
+
+        auto actorId = runtime.Register(actor.release());
+
+        runtime.Send(
+            TAutoPtr<IEventHandle>(new IEventHandle(
+                actorId,
+                senderId,
+                new NActors::TEvents::TEvFlushLog())));
+    }
 }
 
 }   // namespace NCloud
