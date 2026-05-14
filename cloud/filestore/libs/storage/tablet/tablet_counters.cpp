@@ -381,6 +381,11 @@ void TTabletMetrics::Register(
         EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM_EXT(
+        CreateHandleExtra.GuestKeepCacheSet,
+        "CreateHandle.GuestKeepCacheSet",
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM_EXT(
         CompactionExtra.DudCount,
         "Compaction.DudCount",
         EMetricType::MT_DERIVATIVE);
