@@ -27,15 +27,15 @@ def process_coredumps(ssh):
 
     logging.info(f"looking for cores in {core_dir}")
     for core in os.listdir(core_dir):
-        match = re.search(r"(.+)\.(\d+)\.core", core.replace("!", "/"))
+        match = re.search(r"(.+)\.(\d+)\.core", core)
         if not match:
             continue
 
         logging.info(f"extracting backtrace from {core}")
-        binary_path = match.group(1)
+        binary_path = match.group(1).replace("!", "/")
         pid = match.group(2)
-        binary = os.path.basename(binary_path)
-        backtrace_path = os.path.join(backtrace_dir, f"{binary}.{pid}.backtrace")
+        backtrace = f"{match.group(1)}.{pid}.backtrace"
+        backtrace_path = os.path.join(backtrace_dir, backtrace)
         core_path = os.path.join(core_dir, core)
 
         get_backtrace(ssh, binary_path, core_path, backtrace_path)
