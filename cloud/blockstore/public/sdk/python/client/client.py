@@ -721,7 +721,7 @@ class Client(_SafeClient):
             idempotence_id,
             timestamp,
             trace_id,
-            request_timeout)
+            request_timeout).Device
 
     @_handle_errors
     def release_nvme_device(
