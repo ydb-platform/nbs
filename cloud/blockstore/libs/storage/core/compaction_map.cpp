@@ -239,19 +239,28 @@ struct TCompactionMap::TImpl
                     group->Score = newScore.Score;
                     group->Range = index;
                 }
-            } else if (index == group->Range) {
+            } else if (
+                index == group->Range &&
+                newScore.Score < prev.CompactionScore.Score)
+            {
+                // Score in the top range has decreased, need to recalculate the
+                // maximal score.
                 RecalculateGroupScore(group);
             }
 
-            const auto newGarbageBlockCount = compacted
-                ? 0
-                : group->Stats[index].GarbageBlockCount();
+            const auto newGarbageBlockCount =
+                compacted ? 0 : group->Stats[index].GarbageBlockCount();
 
             if (prev.GarbageBlockCount() < newGarbageBlockCount) {
                 if (GetGarbageBlockCount(*group) < newGarbageBlockCount) {
                     group->GarbageBlockCount = newGarbageBlockCount;
                 }
-            } else if (prev.GarbageBlockCount() == group->GarbageBlockCount) {
+            } else if (
+                prev.GarbageBlockCount() == group->GarbageBlockCount &&
+                newGarbageBlockCount < prev.GarbageBlockCount())
+            {
+                // Garbage block count in the top range has decreased, need to
+                // recalculate the maximal garbage block count.
                 RecalculateGroupGarbageBlockCount(group);
             }
         }
