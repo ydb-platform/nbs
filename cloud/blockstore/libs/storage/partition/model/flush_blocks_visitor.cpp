@@ -51,6 +51,7 @@ TFlushBlocksVisitor::TFlushBlocksVisitor(
         bool readBlockMaskOnCompactionOptimizationEnabled,
         ui64 splitByCompactionRangeMaxBlobCount,
         ui64 tabletId,
+        ui64 writeBlobSizeThreshold,
         TVector<TBlob>& blobs)
     : BlockSize(blockSize)
     , FlushBlobSizeThreshold(flushBlobSizeThreshold)
@@ -63,6 +64,7 @@ TFlushBlocksVisitor::TFlushBlocksVisitor(
           readBlockMaskOnCompactionOptimizationEnabled)
     , SplitByCompactionRangeMaxBlobCount(splitByCompactionRangeMaxBlobCount)
     , TabletId(tabletId)
+    , WriteBlobSizeThreshold(writeBlobSizeThreshold)
     , Blobs(blobs)
 {}
 
@@ -195,7 +197,21 @@ void TFlushBlocksVisitor::FlushBlob(
     const bool splitByCompactionBorders =
         compactionRangeCount <= SplitByCompactionRangeMaxBlobCount;
 
-    if (!splitByCompactionBorders || compactionRangeCount == 1) {
+    const bool isOriginalBlobHuge =
+        blocks.size() * BlockSize >= WriteBlobSizeThreshold;
+
+    const bool splittedBlobsAreHuge = std::ranges::all_of(
+        blocksByRanges,
+        [&](const auto& range)
+        {
+            return (range.End - range.Start) * BlockSize >=
+                   WriteBlobSizeThreshold;
+        });
+
+    if (!(splitByCompactionBorders &&
+          (isOriginalBlobHuge == splittedBlobsAreHuge)) ||
+        compactionRangeCount == 1)
+    {
         AppendDataBlob(
             std::move(blobContent),
             std::move(blocks),

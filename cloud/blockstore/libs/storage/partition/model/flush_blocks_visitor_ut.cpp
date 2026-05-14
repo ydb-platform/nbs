@@ -48,7 +48,8 @@ TVector<TFlushBlocksVisitor::TBlob> BuildBlobs(
     const TVector<ui32>& blockIndices,
     bool readBlockMaskOnCompactionOptimizationEnabled,
     ui64 splitByCompactionRangeMaxBlobCount,
-    ui64 diskPrefixLengthWithBlockChecksumsInBlobs = 0)
+    ui64 diskPrefixLengthWithBlockChecksumsInBlobs = 0,
+    ui64 writeBlobSizeThreshold = 1)
 {
     TCompactionMap compactionMap(
         CompactionRangeSize,
@@ -65,6 +66,7 @@ TVector<TFlushBlocksVisitor::TBlob> BuildBlobs(
         readBlockMaskOnCompactionOptimizationEnabled,
         splitByCompactionRangeMaxBlobCount,
         TabletId,
+        writeBlobSizeThreshold,
         blobs);
 
     for (size_t i = 0; i < blockIndices.size(); ++i) {
@@ -275,6 +277,85 @@ Y_UNIT_TEST_SUITE(TFlushBlocksVisitorTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, blobs[2].Blocks.size());
         UNIT_ASSERT_VALUES_EQUAL(0, blobs[2].Checksums.size());
+    }
+
+    Y_UNIT_TEST(ShouldSplitWhenOriginalBlobIsSmallerThanWriteBlobThreshold)
+    {
+        // BlockSize = 4, blocks {1, 2, 10, 11, 20} => original blob is
+        // 5 * 4 = 20 bytes which is below the WriteBlobSizeThreshold (100).
+        // The split pieces are 8, 8 and 4 bytes — also all below the
+        // threshold. Hugeness of the original blob matches hugeness of every
+        // piece (none of them is huge), so the blob must be split.
+        const auto blobs = BuildBlobs(
+            {1, 2, 10, 11, 20},
+            /*splitOptimizationEnabled*/ true,
+            /*splitByCompactionRangeMaxBlobCount*/ 3,
+            /*diskPrefixLengthWithBlockChecksumsInBlobs*/ 0,
+            /*writeBlobSizeThreshold*/ 100);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[0].Blocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].Blocks[1].BlockIndex);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[1].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(10, blobs[1].Blocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(11, blobs[1].Blocks[1].BlockIndex);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[2].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(20, blobs[2].Blocks[0].BlockIndex);
+    }
+
+    Y_UNIT_TEST(ShouldSplitWhenOriginalAndAllSplitBlobsAreHuge)
+    {
+        // BlockSize = 4, blocks {1, 2, 10, 11, 20} => original blob is 20
+        // bytes (huge w.r.t. threshold 4). Pieces are 8, 8 and 4 bytes — all
+        // >= 4, i.e. all huge. Hugeness matches between the original and
+        // every piece, so the blob must be split.
+        const auto blobs = BuildBlobs(
+            {1, 2, 10, 11, 20},
+            /*splitOptimizationEnabled*/ true,
+            /*splitByCompactionRangeMaxBlobCount*/ 3,
+            /*diskPrefixLengthWithBlockChecksumsInBlobs*/ 0,
+            /*writeBlobSizeThreshold*/ 4);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[0].Blocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].Blocks[1].BlockIndex);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[1].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(10, blobs[1].Blocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(11, blobs[1].Blocks[1].BlockIndex);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[2].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(20, blobs[2].Blocks[0].BlockIndex);
+    }
+
+    Y_UNIT_TEST(ShouldNotSplitWhenOriginalIsHugeButSomeSplitBlobsAreNotHuge)
+    {
+        // BlockSize = 4, blocks {1, 2, 10, 11, 20} => original blob is 20
+        // bytes (huge w.r.t. threshold 8). Pieces are 8, 8 and 4 bytes —
+        // the last piece (4 bytes) is below the threshold, so it is NOT
+        // huge while the original blob IS huge. Splitting would turn a huge
+        // blob into a mix of huge and small pieces, so it must be skipped.
+        const auto blobs = BuildBlobs(
+            {1, 2, 10, 11, 20},
+            /*splitOptimizationEnabled*/ true,
+            /*splitByCompactionRangeMaxBlobCount*/ 3,
+            /*diskPrefixLengthWithBlockChecksumsInBlobs*/ 0,
+            /*writeBlobSizeThreshold*/ 8);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, blobs[0].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs[0].CompactionRangeCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[0].Blocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].Blocks[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(10, blobs[0].Blocks[2].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(11, blobs[0].Blocks[3].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(20, blobs[0].Blocks[4].BlockIndex);
     }
 
     Y_UNIT_TEST(ShouldKeepChecksumsTogetherWhenBlobIsNotSplit)

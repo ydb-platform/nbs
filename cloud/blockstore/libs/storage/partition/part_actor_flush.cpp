@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/flush_blocks_visitor.h>
 
@@ -568,6 +569,9 @@ void TPartitionActor::HandleFlush(
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
             Config->GetSplitByCompactionRangeMaxBlobCount(),
             TabletID(),
+            GetWriteBlobThreshold(
+                *Config,
+                PartitionConfig.GetStorageMediaKind()),
             blobs);
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);

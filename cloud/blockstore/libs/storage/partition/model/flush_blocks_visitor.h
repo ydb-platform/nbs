@@ -31,6 +31,7 @@ private:
     const bool ReadBlockMaskOnCompactionOptimizationEnabled;
     const ui64 SplitByCompactionRangeMaxBlobCount;
     const ui64 TabletId;
+    const ui64 WriteBlobSizeThreshold;
 
     TVector<TBlob>& Blobs;
 
@@ -51,6 +52,7 @@ public:
         bool readBlockMaskOnCompactionOptimizationEnabled,
         ui64 splitByCompactionRangeMaxBlobCount,
         ui64 tabletId,
+        ui64 writeBlobSizeThreshold,
         TVector<TBlob>& blobs);
 
     bool Visit(const TFreshBlock& block) override;
