@@ -19,10 +19,14 @@ def get_backtrace(ssh, binary, core, backtrace):
 
 
 def process_coredumps(ssh):
-    ssh(f"sudo cp /cores/* {common.output_path()}")
+    core_dir = os.path.join(common.output_path(), "cores")
+    backtrace_dir = os.path.join(common.output_path(), "backtraces")
 
-    logging.info(f"looking for cores in {common.output_path()}")
-    for core in os.listdir(common.output_path()):
+    ssh(f"sudo cp -r /cores {core_dir}")
+    ssh(f"sudo mkdir {backtrace_dir}")
+
+    logging.info(f"looking for cores in {core_dir}")
+    for core in os.listdir(core_dir):
         match = re.search(r"(.+)\.(\d+)\.core", core.replace("!", "/"))
         if not match:
             continue
@@ -31,7 +35,7 @@ def process_coredumps(ssh):
         binary_path = match.group(1)
         pid = match.group(2)
         binary = os.path.basename(binary_path)
-        backtrace_path = os.path.join(common.output_path(), f"{binary}.{pid}.backtrace")
-        core_path = os.path.join(common.output_path(), core)
+        backtrace_path = os.path.join(backtrace_dir, f"{binary}.{pid}.backtrace")
+        core_path = os.path.join(core_dir, core)
 
         get_backtrace(ssh, binary_path, core_path, backtrace_path)
