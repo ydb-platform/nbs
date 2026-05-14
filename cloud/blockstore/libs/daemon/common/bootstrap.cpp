@@ -307,23 +307,19 @@ void TBootstrapBase::Init()
 
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback()) {
-        Y_ENSURE(cert.CertFile, "Empty CertFile");
-        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
         certPathList.push_back({
             cert.CertPrivateKeyFile,
             cert.CertFile
         });
     }
 
-    if (!certPathList.empty()) {
-        CertificateProvider = CreateCertificateProvider(
-            Logging,
-            "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
-            serverGroup,
-            Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
-    }
+    CertificateProvider = CreateCertificateProvider(
+        Logging,
+        "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
+        serverGroup,
+        Configs->ServerConfig->GetRootCertsFile(),
+        std::move(certPathList),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(

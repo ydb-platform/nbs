@@ -278,7 +278,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         writer.join();
     }
 
-    Y_UNIT_TEST(ShouldDestroyProviderWhileUpdateInProgress)
+    Y_UNIT_TEST(ShouldStopProviderWhileUpdateInProgress)
     {
         TCertificateProviderTestContext context;
 
@@ -300,14 +300,18 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto future = context.Provider->UpdateCertificates();
         UNIT_ASSERT(!future.IsReady());
 
-        std::thread destroyer([&provider = context.Provider] {
-            provider.reset();
+        std::thread stopper([&provider = context.Provider] {
+            provider->Stop();
         });
 
         allowWritePromise.SetValue();
 
-        destroyer.join();
+        stopper.join();
+        context.Provider.reset();
         writer.join();
+
+        UNIT_ASSERT(future.IsReady());
+        future.GetValueSync();
     }
 }
 

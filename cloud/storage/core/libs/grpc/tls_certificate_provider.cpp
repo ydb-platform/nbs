@@ -15,13 +15,12 @@
 #include <util/generic/maybe.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/system/condvar.h>
 #include <util/system/thread.h>
 #include <util/system/yassert.h>
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -96,7 +95,7 @@ private:
     const NMonitoring::TDynamicCountersPtr ServerGroup;
     const TString RootCertPath;
     const TDuration RefreshIntervalSec;
-    mutable std::mutex WakeupMutex;
+    mutable TMutex WakeupMutex;
     TMaybe<TString> RootCertificate;
     TVector<TCertificateState> Certificates;
     std::atomic<bool> Stopping = false;
@@ -104,7 +103,7 @@ private:
     bool UpdateInProgress = false;
     bool Started = false;
     TMaybe<TPendingUpdate> PendingUpdate;
-    std::condition_variable Wakeup;
+    TCondVar Wakeup;
     std::unique_ptr<TThread> RefreshThread;
 
 public:
@@ -135,7 +134,11 @@ public:
 
     virtual ~TPeriodicCertificateProviderBase()
     {
-        Stop();
+        STORAGE_VERIFY_C(
+            RefreshThread.get() == nullptr,
+            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
+            LogComponent,
+            "destructor called while refresh thread is running");
     }
 
 protected:
@@ -147,6 +150,11 @@ protected:
     TMaybe<TString> GetRootCertificate() const
     {
         return RootCertificate;
+    }
+
+    bool IsRefreshThreadStopped() const
+    {
+        return RefreshThread.get() == nullptr;
     }
 
     const TString& GetRootCertPath() const
@@ -192,7 +200,7 @@ protected:
         }
         Started = false;
         Stopping.store(true);
-        Wakeup.notify_all();
+        Wakeup.BroadCast();
         if (RefreshThread) {
             RefreshThread->Join();
             RefreshThread.reset();
@@ -202,8 +210,7 @@ protected:
     NThreading::TFuture<void> UpdateNow()
     {
         NThreading::TFuture<void> future;
-        {
-            std::lock_guard lock(WakeupMutex);
+        with_lock (WakeupMutex) {
             if (UpdateInProgress || UpdateRequested) {
                 STORAGE_VERIFY_C(
                     PendingUpdate.Defined(),
@@ -217,7 +224,7 @@ protected:
                 UpdateRequested = true;
             }
         }
-        Wakeup.notify_all();
+        Wakeup.BroadCast();
         return future;
     }
 
@@ -226,9 +233,9 @@ private:
     {
         while (!Stopping.load()) {
             std::unique_lock lock(WakeupMutex);
-            const bool isRequested = Wakeup.wait_for(
-                lock,
-                std::chrono::seconds(RefreshIntervalSec.Seconds()),
+            const bool isRequested = Wakeup.WaitT(
+                WakeupMutex,
+                RefreshIntervalSec,
                 [this] {
                     return Stopping.load() || UpdateRequested;
                 });
@@ -402,6 +409,7 @@ class TPeriodicCertificateProvider final
     : public grpc_tls_certificate_provider
     , public TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>
 {
+    using TBase = TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>;
 private:
     RefCountedPtr<grpc_tls_certificate_distributor> Distributor;
 
@@ -436,12 +444,15 @@ public:
                 Y_UNUSED(identityBeingWatched);
                 OnWatchStatusChanged(std::move(certName));
             });
-
     }
 
     ~TPeriodicCertificateProvider() override
     {
-        Stop();
+        STORAGE_VERIFY_C(
+            IsRefreshThreadStopped(),
+            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
+            "TLS_CERTIFICATE_PROVIDER",
+            "destructor called without explicit Stop");
         Distributor->SetWatchStatusCallback(nullptr);
     }
 
@@ -459,20 +470,17 @@ public:
 
     NThreading::TFuture<void> UpdateNow()
     {
-        return TPeriodicCertificateProviderBase<
-            TPeriodicCertificateProvider>::UpdateNow();
+        return TBase::UpdateNow();
     }
 
     void Start()
     {
-        TPeriodicCertificateProviderBase<
-            TPeriodicCertificateProvider>::Start();
+        TBase::Start();
     }
 
     void Stop()
     {
-        TPeriodicCertificateProviderBase<
-            TPeriodicCertificateProvider>::Stop();
+        TBase::Stop();
     }
 
 private:

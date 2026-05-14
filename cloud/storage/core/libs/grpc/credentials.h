@@ -41,9 +41,6 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
         tlsOptions.set_verify_server_certs(false);
         credentials = grpc::experimental::TlsCredentials(tlsOptions);
     } else {
-        if (!certificateProvider) {
-            ythrow yexception() << "Empty CertificateProvider";
-        }
         credentials = certificateProvider->CreateSecureClientCredentials();
     }
     return credentials;

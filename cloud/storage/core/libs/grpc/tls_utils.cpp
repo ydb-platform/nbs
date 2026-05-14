@@ -16,6 +16,8 @@ namespace NCloud::NTlsUtils {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
 using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
 using TEvpPkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;

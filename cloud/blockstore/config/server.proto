@@ -289,7 +289,7 @@ message TServerConfig
     // Drop all discard requests without processing them.
     optional bool DropDiscardRequests = 132;
 
-    // Certificate refresh period in seconds for automatic TLS certificate
+    // Certificate refresh period (in milliseconds) for automatic TLS certificate
     // reloading. Zero disables periodic certificate reloading.
     optional uint32 RefreshCertsPeriod = 133;
 }
