@@ -31,6 +31,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
@@ -273,6 +274,22 @@ TClientAppConfigPtr CreateClientConfig(
     return std::make_shared<TClientAppConfig>(appConfig);
 }
 
+ICertificateProviderPtr CreateCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList;
+    if (config->GetCertFile() || config->GetCertPrivateKeyFile()) {
+        certPathList.push_back({
+            config->GetCertPrivateKeyFile(),
+            config->GetCertFile()
+        });
+    }
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
 IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
 {
     auto config = CreateClientConfig(ClientConfig, std::move(clientId));
@@ -290,7 +307,8 @@ IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
         Scheduler,
         Logging,
         Monitoring,
-        std::move(clientStats));
+        std::move(clientStats),
+        CreateCertificateProvider(config));
 
     Y_ABORT_UNLESS(!HasError(error));
 
