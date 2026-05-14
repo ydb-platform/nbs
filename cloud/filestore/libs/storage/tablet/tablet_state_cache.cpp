@@ -8,13 +8,15 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
+template <typename TNodeRefsImpl>
+TInMemoryIndexState<TNodeRefsImpl>::TInMemoryIndexState(IAllocator* allocator)
     : Nodes(0)
     , NodeAttrs(0)
     , NodeRefs(allocator)
 {}
 
-void TInMemoryIndexState::Reset(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::Reset(
     ui64 nodesCapacity,
     ui64 nodeAttrsCapacity,
     ui64 nodeRefsCapacity,
@@ -28,7 +30,9 @@ void TInMemoryIndexState::Reset(
     }
 }
 
-void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::LoadNodeRefs(
+    const TVector<TNodeRef>& nodeRefs)
 {
     for (const auto& nodeRef: nodeRefs) {
         WriteNodeRef(
@@ -41,27 +45,31 @@ void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
     }
 }
 
-void TInMemoryIndexState::MarkNodeRefsLoadComplete()
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::MarkNodeRefsLoadComplete()
 {
     NodeRefsExhaustivenessInfo.MarkNodeRefsLoadComplete();
 }
 
-void TInMemoryIndexState::MarkNodeRefsExhaustive(ui64 nodeId)
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::MarkNodeRefsExhaustive(ui64 nodeId)
 {
     NodeRefsExhaustivenessInfo.MarkNodeRefsExhaustive(nodeId);
 }
 
-void TInMemoryIndexState::UpdateLogTag(TString logTag)
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::UpdateLogTag(TString logTag)
 {
     LogTag = std::move(logTag);
 }
 
-TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
+template <typename TNodeRefsImpl>
+TInMemoryIndexStateStats TInMemoryIndexState<TNodeRefsImpl>::GetStats() const
 {
     return TInMemoryIndexStateStats{
         .NodesCount = Nodes.Size(),
         .NodesCapacity = Nodes.GetMaxSize(),
-        .NodeRefsCount = NodeRefs.size(),
+        .NodeRefsCount = NodeRefs.Size(),
         .NodeRefsCapacity = NodeRefs.GetMaxSize(),
         .NodeAttrsCount = NodeAttrs.Size(),
         .NodeAttrsCapacity = NodeAttrs.GetMaxSize(),
@@ -71,14 +79,16 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
         .IsNodeRefsExhaustive = NodeRefsExhaustivenessInfo.IsExhaustive()};
 }
 
-void TInMemoryIndexState::ActivateInMemoryIndexStateBypass(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::ActivateInMemoryIndexStateBypass(
     ui64 nodeId,
     ui64 commitId)
 {
     CacheBypassCommitIdsByNodeId[nodeId].push_back(commitId);
 }
 
-void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::DeactivateInMemoryIndexStateBypass(
     ui64 nodeId,
     ui64 commitId)
 {
@@ -101,13 +111,15 @@ void TInMemoryIndexState::DeactivateInMemoryIndexStateBypass(
     }
 }
 
-void TInMemoryIndexState::SetUnconfirmedRecoveryReady(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::SetUnconfirmedRecoveryReady(
     bool unconfirmedRecoveryReady)
 {
     UnconfirmedRecoveryReady = unconfirmedRecoveryReady;
 }
 
-bool TInMemoryIndexState::ShouldBypassCacheRead(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ShouldBypassCacheRead(
     ui64 nodeId,
     ui64 commitId) const
 {
@@ -140,7 +152,8 @@ bool TInMemoryIndexState::ShouldBypassCacheRead(
 // Nodes
 //
 
-bool TInMemoryIndexState::ReadNode(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNode(
     ui64 nodeId,
     ui64 commitId,
     TMaybe<TNode>& node)
@@ -168,7 +181,8 @@ bool TInMemoryIndexState::ReadNode(
     return true;
 }
 
-bool TInMemoryIndexState::ReadNodes(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodes(
     ui64 startNodeId,
     ui64 maxNodes,
     ui64& nextNodeId,
@@ -180,7 +194,8 @@ bool TInMemoryIndexState::ReadNodes(
     return false;
 }
 
-void TInMemoryIndexState::WriteNode(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::WriteNode(
     ui64 nodeId,
     ui64 commitId,
     const NProto::TNode& attrs)
@@ -188,7 +203,8 @@ void TInMemoryIndexState::WriteNode(
     Nodes.Update(nodeId, TNodeRow{.CommitId = commitId, .Node = attrs});
 }
 
-void TInMemoryIndexState::DeleteNode(ui64 nodeId)
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::DeleteNode(ui64 nodeId)
 {
     auto it = Nodes.Find(nodeId);
     if (it != Nodes.End()) {
@@ -200,7 +216,8 @@ void TInMemoryIndexState::DeleteNode(ui64 nodeId)
 // Nodes_Ver
 //
 
-bool TInMemoryIndexState::ReadNodeVer(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeVer(
     ui64 nodeId,
     ui64 commitId,
     TMaybe<TNode>& node)
@@ -214,7 +231,8 @@ bool TInMemoryIndexState::ReadNodeVer(
 // NodeAttrs
 //
 
-bool TInMemoryIndexState::ReadNodeAttr(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeAttr(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -248,7 +266,8 @@ bool TInMemoryIndexState::ReadNodeAttr(
     return true;
 }
 
-bool TInMemoryIndexState::ReadNodeAttrs(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeAttrs(
     ui64 nodeId,
     ui64 commitId,
     TVector<TNodeAttr>& attrs)
@@ -259,7 +278,8 @@ bool TInMemoryIndexState::ReadNodeAttrs(
     return false;
 }
 
-void TInMemoryIndexState::WriteNodeAttr(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::WriteNodeAttr(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -270,7 +290,10 @@ void TInMemoryIndexState::WriteNodeAttr(
     NodeAttrs.Update(key, TNodeAttrsRow{.CommitId = commitId, .Value = value, .Version = version});
 }
 
-void TInMemoryIndexState::DeleteNodeAttr(ui64 nodeId, const TString& name)
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::DeleteNodeAttr(
+    ui64 nodeId,
+    const TString& name)
 {
     auto it = NodeAttrs.Find(TNodeAttrsKey(nodeId, name));
     if (it != NodeAttrs.End()) {
@@ -282,7 +305,8 @@ void TInMemoryIndexState::DeleteNodeAttr(ui64 nodeId, const TString& name)
 // NodeAttrs_Ver
 //
 
-bool TInMemoryIndexState::ReadNodeAttrVer(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeAttrVer(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -293,7 +317,8 @@ bool TInMemoryIndexState::ReadNodeAttrVer(
     return false;
 }
 
-bool TInMemoryIndexState::ReadNodeAttrVers(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeAttrVers(
     ui64 nodeId,
     ui64 commitId,
     TVector<TNodeAttr>& attrs)
@@ -308,7 +333,8 @@ bool TInMemoryIndexState::ReadNodeAttrVers(
 // NodeRefs
 //
 
-bool TInMemoryIndexState::ReadNodeRef(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -343,7 +369,8 @@ bool TInMemoryIndexState::ReadNodeRef(
     return true;
 }
 
-bool TInMemoryIndexState::ReadNodeRefs(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefs(
     ui64 nodeId,
     ui64 commitId,
     const TString& cookie,
@@ -359,23 +386,25 @@ bool TInMemoryIndexState::ReadNodeRefs(
         return false;
     }
 
-    auto it = NodeRefs.lower_bound(TNodeRefsKey(nodeId, cookie));
+    auto it = NodeRefs.LowerBound(TNodeRefsKey(nodeId, cookie));
 
     ui32 bytes = 0;
     ui32 skipped = 0;
-    while (it != NodeRefs.end() && it->first.NodeId == nodeId) {
-        NodeRefs.TouchKey(it->first);
+    const TNodeRefsKey* key = nullptr;
+    const TNodeRefsRow* value = nullptr;
+    while (it.Next(&key, &value) && key->NodeId == nodeId) {
+        NodeRefs.TouchKey(*key);
 
-        ui64 minCommitId = it->second.CommitId;
+        ui64 minCommitId = value->CommitId;
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
             refs.emplace_back(TNodeRef{
                 nodeId,
-                it->first.Name,
-                it->second.ChildId,
-                it->second.ShardId,
-                it->second.ShardNodeName,
+                key->Name,
+                value->ChildId,
+                value->ShardId,
+                value->ShardNodeName,
                 minCommitId,
                 maxCommitId});
 
@@ -390,15 +419,13 @@ bool TInMemoryIndexState::ReadNodeRefs(
             ++skipped;
         }
 
-        ++it;
-
         if (maxBytes && bytes >= maxBytes) {
             break;
         }
     }
 
-    if (next && it != NodeRefs.end() && it->first.NodeId == nodeId) {
-        *next = it->first.Name;
+    if (next && it.Next(&key, &value) && key->NodeId == nodeId) {
+        *next = key->Name;
     }
 
     if (skippedRefs) {
@@ -408,7 +435,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
     return true;
 }
 
-bool TInMemoryIndexState::ReadNodeRefs(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefs(
     ui64 startNodeId,
     const TString& startCookie,
     ui64 maxCount,
@@ -423,7 +451,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
     return false;
 }
 
-bool TInMemoryIndexState::PrechargeNodeRefs(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::PrechargeNodeRefs(
     ui64 nodeId,
     const TString& cookie,
     ui64 rowsToPrecharge,
@@ -433,7 +462,8 @@ bool TInMemoryIndexState::PrechargeNodeRefs(
     return true;
 }
 
-void TInMemoryIndexState::WriteNodeRef(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::WriteNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -450,7 +480,7 @@ void TInMemoryIndexState::WriteNodeRef(
         .ShardNodeName = shardNodeName};
 
     if (!v) {
-        const auto [_, inserted, evicted] = NodeRefs.emplace(key, std::move(value));
+        const auto evicted = NodeRefs.Put(key, std::move(value));
         if (evicted) {
             NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(
                 evicted->NodeId);
@@ -460,16 +490,20 @@ void TInMemoryIndexState::WriteNodeRef(
     }
 }
 
-void TInMemoryIndexState::DeleteNodeRef(ui64 nodeId, const TString& name)
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::DeleteNodeRef(
+    ui64 nodeId,
+    const TString& name)
 {
-    NodeRefs.erase(TNodeRefsKey(nodeId, name));
+    NodeRefs.Erase(TNodeRefsKey(nodeId, name));
 }
 
 //
 // NodeRefs_Ver
 //
 
-bool TInMemoryIndexState::ReadNodeRefVer(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefVer(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -480,7 +514,8 @@ bool TInMemoryIndexState::ReadNodeRefVer(
     return false;
 }
 
-bool TInMemoryIndexState::ReadNodeRefVers(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefVers(
     ui64 nodeId,
     ui64 commitId,
     TVector<TNodeRef>& refs)
@@ -495,7 +530,8 @@ bool TInMemoryIndexState::ReadNodeRefVers(
 // CheckpointNodes
 //
 
-bool TInMemoryIndexState::ReadCheckpointNodes(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadCheckpointNodes(
     ui64 checkpointId,
     TVector<ui64>& nodes,
     size_t maxCount)
@@ -510,7 +546,8 @@ bool TInMemoryIndexState::ReadCheckpointNodes(
 // MixedIndex
 //
 
-bool TInMemoryIndexState::ReadMixedBlocks(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadMixedBlocks(
     ui32 rangeId,
     TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
     IAllocator* alloc)
@@ -519,7 +556,8 @@ bool TInMemoryIndexState::ReadMixedBlocks(
     return false;
 }
 
-bool TInMemoryIndexState::ReadDeletionMarkers(
+template <typename TNodeRefsImpl>
+bool TInMemoryIndexState<TNodeRefsImpl>::ReadDeletionMarkers(
     ui32 rangeId,
     TVector<TDeletionMarker>& deletionMarkers)
 {
@@ -529,7 +567,8 @@ bool TInMemoryIndexState::ReadDeletionMarkers(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TInMemoryIndexState::UpdateState(
+template <typename TNodeRefsImpl>
+void TInMemoryIndexState<TNodeRefsImpl>::UpdateState(
     const TVector<TIndexStateRequest>& nodeUpdates)
 {
     for (const auto& update: nodeUpdates) {
@@ -573,7 +612,7 @@ void TInMemoryIndexState::UpdateState(
             const auto* request =
                 std::get_if<TMarkNodeRefsAsCachedRequest>(&update))
         {
-            if (NodeRefs.size() >= request->RefsSize) {
+            if (NodeRefs.Size() >= request->RefsSize) {
                 NodeRefsExhaustivenessInfo.MarkNodeRefsExhaustive(
                     request->NodeId);
             }
@@ -582,5 +621,7 @@ void TInMemoryIndexState::UpdateState(
         }
     }
 }
+
+template class TInMemoryIndexState<TStandardNodeRefsCache>;
 
 }   // namespace NCloud::NFileStore::NStorage

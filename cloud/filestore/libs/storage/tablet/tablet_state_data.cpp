@@ -425,7 +425,7 @@ void TIndexTabletState::ActivateInMemoryIndexStateBypass(
     ui64 nodeId,
     ui64 commitId)
 {
-    Impl->InMemoryIndexState.ActivateInMemoryIndexStateBypass(
+    Impl->InMemoryIndexState->ActivateInMemoryIndexStateBypass(
         nodeId,
         commitId);
 }
@@ -434,7 +434,7 @@ void TIndexTabletState::DeactivateInMemoryIndexStateBypass(
     ui64 nodeId,
     ui64 commitId)
 {
-    Impl->InMemoryIndexState.DeactivateInMemoryIndexStateBypass(
+    Impl->InMemoryIndexState->DeactivateInMemoryIndexStateBypass(
         nodeId,
         commitId);
 }
@@ -442,7 +442,7 @@ void TIndexTabletState::DeactivateInMemoryIndexStateBypass(
 void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
 {
     UnconfirmedRecoveryReady = value;
-    Impl->InMemoryIndexState.SetUnconfirmedRecoveryReady(value);
+    Impl->InMemoryIndexState->SetUnconfirmedRecoveryReady(value);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

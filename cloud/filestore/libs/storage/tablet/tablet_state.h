@@ -1552,7 +1552,7 @@ public:
 
     IIndexTabletDatabase& AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(
-        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
+        const TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
     void MarkNodeRefsLoadComplete();
     void MarkNodeRefsExhaustive(ui64 nodeId);
     TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
