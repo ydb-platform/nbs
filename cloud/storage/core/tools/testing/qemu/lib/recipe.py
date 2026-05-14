@@ -151,6 +151,7 @@ def _process_coredumps():
         process_coredumps(ssh)
         instance += 1
 
+
 def stop(argv):
     _process_coredumps()
 

@@ -34,4 +34,4 @@ def process_coredumps(ssh):
         backtrace_path = os.path.join(common.output_path(), f"{binary}.{pid}.backtrace")
         core_path = os.path.join(common.output_path(), core)
 
-        backtrace = get_backtrace(ssh, binary_path, core_path, backtrace_path)
+        get_backtrace(ssh, binary_path, core_path, backtrace_path)
