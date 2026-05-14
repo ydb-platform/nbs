@@ -260,15 +260,17 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         runtime->AdvanceCurrentTime(2s);
         runtime->DispatchEvents({}, 1s);
+
         runtime->AdvanceCurrentTime(4s);
         runtime->DispatchEvents({}, 1s);
+
         const ui32 attemptsBefore = state->UpdateVolumeHealthRequests;
-        UNIT_ASSERT(attemptsBefore >= 3);
+        UNIT_ASSERT_LE(3, attemptsBefore);
 
         state->DropVolumeHealthResponses = false;
         runtime->AdvanceCurrentTime(8s);
         runtime->DispatchEvents({}, 1s);
-        UNIT_ASSERT(state->UpdateVolumeHealthRequests > attemptsBefore);
+        UNIT_ASSERT_GT(state->UpdateVolumeHealthRequests, attemptsBefore);
         const ui32 attemptsAfterAck = state->UpdateVolumeHealthRequests;
 
         runtime->AdvanceCurrentTime(60s);

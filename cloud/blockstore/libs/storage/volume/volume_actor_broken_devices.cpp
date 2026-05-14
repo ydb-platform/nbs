@@ -19,16 +19,21 @@ using namespace NKikimr::NTabletFlatExecutor;
 void TVolumeActor::RegisterVolumeHealthSyncActorIfNeeded(
     const TActorContext& ctx)
 {
+    if (!Config->GetVolumeHealthNotificationEnabled()) {
+        return;
+    }
+
     if (VolumeHealthSyncActorId) {
         return;
     }
+
     if (!State) {
         return;
     }
 
-    const bool reliable = IsReliableDiskRegistryMediaKind(
-        State->GetMeta().GetConfig().GetStorageMediaKind());
-    if (reliable || !Config->GetVolumeHealthNotificationEnabled()) {
+    if (IsReliableDiskRegistryMediaKind(
+            State->GetMeta().GetConfig().GetStorageMediaKind()))
+    {
         return;
     }
 
@@ -37,10 +42,13 @@ void TVolumeActor::RegisterVolumeHealthSyncActorIfNeeded(
         State->GetDiskId(),
         Executor()->Generation(),
         LogTitle.GetChild(GetCycleCount()),
-        TDuration::Seconds(1),
-        TDuration::Seconds(30));
+        TBackoffDelayProvider{TDuration::Seconds(1), TDuration::Seconds(30)});
     Actors.insert(VolumeHealthSyncActorId);
-    if (!DeviceUUIDToBrokenAt.empty()) {
+
+    if (DeviceUUIDToBrokenAt.empty()) {
+        // ???
+        // SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
+    } else {
         SendVolumeHealthNotification(ctx, NProto::VOLUME_HEALTH_UNHEALTHY);
     }
 }
@@ -55,19 +63,11 @@ void TVolumeActor::SendVolumeHealthNotification(
         return;
     }
 
-    VolumeHealth = volumeHealth;
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Setting desired volume health = %s",
-        LogTitle.GetWithTime().c_str(),
-        NProto::EVolumeHealth_Name(volumeHealth).c_str());
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
+    request->Record.SetVolumeHealth(volumeHealth);
 
-    NCloud::Send(
-        ctx,
-        VolumeHealthSyncActorId,
-        std::make_unique<TEvVolumePrivate::TEvSetDesiredVolumeHealth>(
-            volumeHealth));
+    NCloud::Send(ctx, VolumeHealthSyncActorId, std::move(request));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -184,23 +184,23 @@ void TVolumeActor::CleanupStaleBrokenDevices(const TActorContext& ctx)
         return;
     }
 
-    THashSet<TString> currentUUIDs;
+    THashMap<TString, TInstant> staleDeviceUUIDToBrokenAt;
+    staleDeviceUUIDToBrokenAt.swap(DeviceUUIDToBrokenAt);
+
     for (const auto* dev: GetAllDevices(State->GetMeta())) {
-        currentUUIDs.insert(dev->GetDeviceUUID());
-    }
-    for (auto it = DeviceUUIDToBrokenAt.begin();
-         it != DeviceUUIDToBrokenAt.end();)
-    {
-        if (!currentUUIDs.contains(it->first)) {
-            ExecuteTx<TUpdateBrokenDevice>(
-                ctx,
-                it->first,
-                TInstant::Zero(),
-                /*add=*/false);
-            DeviceUUIDToBrokenAt.erase(it++);
-        } else {
-            ++it;
+        auto it = staleDeviceUUIDToBrokenAt.find(dev->GetDeviceUUID());
+        if (it != staleDeviceUUIDToBrokenAt.end()) {
+            DeviceUUIDToBrokenAt.insert(*it);
+            staleDeviceUUIDToBrokenAt.erase(it);
         }
+    }
+
+    for (const auto& [uuid, _]: staleDeviceUUIDToBrokenAt) {
+        ExecuteTx<TUpdateBrokenDevice>(
+            ctx,
+            uuid,
+            TInstant::Zero(),
+            false);   // add
     }
 
     if (DeviceUUIDToBrokenAt.empty()) {

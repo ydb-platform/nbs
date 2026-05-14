@@ -337,7 +337,7 @@ private:
 
     THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
 
-    NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
+    // NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
     NActors::TActorId VolumeHealthSyncActorId;
 
     TVolumeRequestMap VolumeRequests;

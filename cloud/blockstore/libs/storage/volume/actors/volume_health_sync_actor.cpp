@@ -21,91 +21,109 @@ TVolumeHealthSyncActor::TVolumeHealthSyncActor(
     TString diskId,
     ui32 generation,
     TChildLogTitle logTitle,
-    TDuration initialBackoff,
-    TDuration maxBackoff)
-    : DiskId(std::move(diskId))
+    TBackoffDelayProvider delayProvider)
+    : TActor(&TThis::StateWork)
+    , DiskId(std::move(diskId))
     , SeqNoGen(TCompositeId::FromGeneration(generation))
     , LogTitle(std::move(logTitle))
-    , Backoff(initialBackoff, maxBackoff)
+    , DelayProvider(std::move(delayProvider))
 {}
-
-void TVolumeHealthSyncActor::Bootstrap(const TActorContext& ctx)
-{
-    Become(&TThis::StateWork);
-    Y_UNUSED(ctx);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeHealthSyncActor::SendUpdate(const TActorContext& ctx)
+void TVolumeHealthSyncActor::HandleUpdateVolumeHealth(
+    const TEvDiskRegistry::TEvUpdateVolumeHealthRequest::TPtr& ev,
+    const TActorContext& ctx)
 {
-    auto request =
-        std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
-    request->Record.SetDiskId(DiskId);
-    request->Record.SetVolumeHealth(DesiredHealth);
-    request->Record.MutableHeaders()->SetVolumeRequestId(DesiredSeqNo);
+    auto* msg = ev->Get();
+    const auto health = msg->Record.GetVolumeHealth();
 
-    NCloud::Send(
+    const ui64 seqNo = SeqNoGen.GetValue();
+    SeqNoGen.Advance();
+
+    DelayProvider.Reset();
+
+    LOG_INFO(
         ctx,
-        MakeDiskRegistryProxyServiceId(),
-        std::move(request),
-        DesiredSeqNo);
+        TBlockStoreComponents::VOLUME,
+        "%s Sync volume health with Disk Registry: %s seqNo=%" PRIu64,
+        LogTitle.GetWithTime().c_str(),
+        NProto::EVolumeHealth_Name(health).c_str(),
+        seqNo);
 
-    ScheduleRetry(ctx);
+    UpdateInProgress = TUpdate{
+        .Health = health,
+        .SeqNo = seqNo,
+        .Deadline = CalcRequestDeadline(ctx.Now()),
+    };
+
+    SendUpdate(ctx, UpdateInProgress.value());
 }
 
-void TVolumeHealthSyncActor::ScheduleRetry(const TActorContext& ctx)
+TInstant TVolumeHealthSyncActor::CalcRequestDeadline(TInstant now) const
 {
-    const auto delay = Backoff.GetDelayAndIncrease();
+    const auto delay = DelayProvider.GetDelay();
     const auto jitterMicros = delay.MicroSeconds() / 2
                                   ? RandomNumber<ui64>(delay.MicroSeconds() / 2)
                                   : 0;
     const auto total = delay + TDuration::MicroSeconds(jitterMicros);
 
-    ++WakeupCookie;
-    ctx.Schedule(total, new TEvents::TEvWakeup(WakeupCookie));
+    return total.ToDeadLine(now);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-void TVolumeHealthSyncActor::HandleSetDesiredHealth(
-    const TEvVolumePrivate::TEvSetDesiredVolumeHealth::TPtr& ev,
-    const TActorContext& ctx)
+void TVolumeHealthSyncActor::SendUpdate(
+    const TActorContext& ctx,
+    TUpdate update)
 {
-    auto* msg = ev->Get();
-    DesiredHealth = msg->VolumeHealth;
-    DesiredSeqNo = SeqNoGen.Advance();
-    Backoff.Reset();
-
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s New desired volume health: %s seqNo=%" PRIu64,
+        "%s Send UpdateVolumeHealth request: %s seqNo=%" PRIu64,
         LogTitle.GetWithTime().c_str(),
-        NProto::EVolumeHealth_Name(DesiredHealth).c_str(),
-        DesiredSeqNo);
+        NProto::EVolumeHealth_Name(update.Health).c_str(),
+        update.SeqNo);
 
-    SendUpdate(ctx);
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
+    request->Record.SetDiskId(DiskId);
+    request->Record.SetVolumeHealth(update.Health);
+    request->Record.MutableHeaders()->SetVolumeRequestId(update.SeqNo);
+
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        std::move(request),
+        update.SeqNo);
+
+    ctx.Schedule(update.Deadline, new TEvents::TEvWakeup(update.SeqNo));
 }
 
-void TVolumeHealthSyncActor::HandleUpdateVolumeHealthResponse(
-    const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TVolumeHealthSyncActor::ProcessError(
+    const TActorContext& ctx,
+    ui64 seqNo,
+    const NProto::TError& error)
 {
-    if (ev->Cookie != DesiredSeqNo) {
+    if (!UpdateInProgress || seqNo != UpdateInProgress->SeqNo) {
         return;
     }
 
-    const auto& error = ev->Get()->Record.GetError();
-    if (HasError(error) && GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s UpdateVolumeHealth retriable error (seqNo=%" PRIu64
-            "): %s; awaiting backoff",
+            "%s UpdateVolumeHealth retriable error (seqNo=%" PRIu64 "): %s",
             LogTitle.GetWithTime().c_str(),
-            DesiredSeqNo,
+            seqNo,
             FormatError(error).c_str());
+
+        if (error.GetCode() == E_TIMEOUT) {
+            DelayProvider.IncreaseDelay();
+        }
+
+        UpdateInProgress->Deadline = CalcRequestDeadline(ctx.Now());
+
+        SendUpdate(ctx, UpdateInProgress.value());
+
         return;
     }
 
@@ -113,36 +131,44 @@ void TVolumeHealthSyncActor::HandleUpdateVolumeHealthResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s UpdateVolumeHealth final error (seqNo=%" PRIu64 "): %s",
+            "%s UpdateVolumeHealth failed (seqNo=%" PRIu64 "): %s",
             LogTitle.GetWithTime().c_str(),
-            DesiredSeqNo,
+            seqNo,
+            FormatError(error).c_str());
+    } else {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s UpdateVolumeHealth succeeded (seqNo=%" PRIu64 "): %s",
+            LogTitle.GetWithTime().c_str(),
+            seqNo,
             FormatError(error).c_str());
     }
 
-    LastConfirmedSeqNo = DesiredSeqNo;
-    Backoff.Reset();
-    ++WakeupCookie;
+    UpdateInProgress.reset();
+}
+
+void TVolumeHealthSyncActor::HandleUpdateVolumeHealthResponse(
+    const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ProcessError(ctx, ev->Cookie, ev->Get()->Record.GetError());
 }
 
 void TVolumeHealthSyncActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ev->Get()->Tag != WakeupCookie) {
-        return;
-    }
-    if (LastConfirmedSeqNo >= DesiredSeqNo) {
+    if (!UpdateInProgress || ev->Get()->Tag != UpdateInProgress->SeqNo) {
         return;
     }
 
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Retrying UpdateVolumeHealth seqNo=%" PRIu64,
-        LogTitle.GetWithTime().c_str(),
-        DesiredSeqNo);
-
-    SendUpdate(ctx);
+    if (UpdateInProgress->Deadline <= ctx.Now()) {
+        ProcessError(
+            ctx,
+            UpdateInProgress->SeqNo,
+            MakeError(E_TIMEOUT, "timed out"));
+    }
 }
 
 void TVolumeHealthSyncActor::HandlePoisonPill(
@@ -162,8 +188,8 @@ STFUNC(TVolumeHealthSyncActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(
-            TEvVolumePrivate::TEvSetDesiredVolumeHealth,
-            HandleSetDesiredHealth);
+            TEvDiskRegistry::TEvUpdateVolumeHealthRequest,
+            HandleUpdateVolumeHealth);
         HFunc(
             TEvDiskRegistry::TEvUpdateVolumeHealthResponse,
             HandleUpdateVolumeHealthResponse);

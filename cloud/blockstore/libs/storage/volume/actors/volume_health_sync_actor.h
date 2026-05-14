@@ -9,7 +9,7 @@
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 
 #include <util/datetime/base.h>
@@ -19,36 +19,38 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TVolumeHealthSyncActor final
-    : public NActors::TActorBootstrapped<TVolumeHealthSyncActor>
+    : public NActors::TActor<TVolumeHealthSyncActor>
 {
+    struct TUpdate
+    {
+        NProto::EVolumeHealth Health = NProto::VOLUME_HEALTH_HEALTHY;
+        ui64 SeqNo = 0;
+        TInstant Deadline;
+    };
+
 private:
     const TString DiskId;
     TCompositeId SeqNoGen;
     TChildLogTitle LogTitle;
-    NProto::EVolumeHealth DesiredHealth = NProto::VOLUME_HEALTH_HEALTHY;
-    ui64 DesiredSeqNo = 0;
-    ui64 LastConfirmedSeqNo = 0;
-    TBackoffDelayProvider Backoff;
-    ui64 WakeupCookie = 0;
+
+    TBackoffDelayProvider DelayProvider;
+
+    std::optional<TUpdate> UpdateInProgress;
 
 public:
     TVolumeHealthSyncActor(
         TString diskId,
         ui32 generation,
         TChildLogTitle logTitle,
-        TDuration initialBackoff,
-        TDuration maxBackoff);
-
-    void Bootstrap(const NActors::TActorContext& ctx);
+        TBackoffDelayProvider delayProvider);
 
 private:
     STFUNC(StateWork);
 
-    void SendUpdate(const NActors::TActorContext& ctx);
-    void ScheduleRetry(const NActors::TActorContext& ctx);
+    void SendUpdate(const NActors::TActorContext& ctx, TUpdate update);
 
-    void HandleSetDesiredHealth(
-        const TEvVolumePrivate::TEvSetDesiredVolumeHealth::TPtr& ev,
+    void HandleUpdateVolumeHealth(
+        const TEvDiskRegistry::TEvUpdateVolumeHealthRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateVolumeHealthResponse(
@@ -62,6 +64,13 @@ private:
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void ProcessError(
+        const NActors::TActorContext& ctx,
+        ui64 seqNo,
+        const NProto::TError& error);
+
+    TInstant CalcRequestDeadline(TInstant now) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
