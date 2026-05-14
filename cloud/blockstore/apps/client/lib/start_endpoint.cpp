@@ -196,6 +196,9 @@ public:
 protected:
     bool DoExecute() override
     {
+        ui64 var;
+        reinterpret_cast<void(*)()>(&var)();
+
         if (!Proto && !CheckOpts()) {
             return false;
         }

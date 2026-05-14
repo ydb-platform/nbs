@@ -17,6 +17,7 @@ from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,
 )
+from .backtrace import setup_coredumps, process_coredumps
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,19 @@ def start_instance(args, inst_index):
         open(ready_flag_path, 'a')
 
 
+def _process_coredumps():
+    for instance in range(32):
+        port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance))
+        if not port:
+            break
+
+        ssh = SshToGuest(user="qemu", port=int(port), key=os.getenv("QEMU_SSH_KEY"))
+        process_coredumps(ssh)
+        instance += 1
+
 def stop(argv):
+    _process_coredumps()
+
     with open(PID_FILE, "r") as f:
         pids = f.read().strip().splitlines()
         logger.info('Stopping qemu instances with pids: %s', ', '.join(pids))
@@ -406,6 +419,8 @@ def _prepare_test_environment(ssh, virtio):
         pass
     else:
         raise QemuKvmRecipeException("Invalid virtio type")
+
+    setup_coredumps(ssh)
 
     library.python.testing.recipe.set_env(
         "TEST_ENV_WRAPPER", vm_env['TEST_ENV_WRAPPER'])
