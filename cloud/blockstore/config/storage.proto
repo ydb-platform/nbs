@@ -1574,5 +1574,5 @@ message TStorageServiceConfig
     // Maximum number of inflight DR transactions after which CMS host
     // modification requests (AddHost, AddDevice, RemoveHost, RemoveDevice,
     // PurgeHost) are rejected with E_REJECTED. 0 means no limit.
-    optional uint32 MaxInflightEdHostRequests = 498;
+    optional uint32 MaxInFlightCmsRequests = 498;
 }
