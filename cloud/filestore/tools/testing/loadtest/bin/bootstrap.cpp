@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -29,6 +30,24 @@ namespace NCloud::NFileStore::NLoadTest {
 using namespace NMonitoring;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const NClient::TClientConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList;
+    if (config->GetCertFile() || config->GetCertPrivateKeyFile()) {
+        certPathList.push_back({
+            config->GetCertPrivateKeyFile(),
+            config->GetCertFile()
+        });
+    }
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -74,7 +93,7 @@ public:
         auto client = NClient::CreateFileStoreClient(
             ClientConfig,
             Logging,
-            nullptr);
+            CreateClientCertificateProvider(ClientConfig));
 
         client = NClient::CreateDurableClient(
             Logging,
@@ -92,7 +111,7 @@ public:
         return NClient::CreateShmControlClient(
             ClientConfig,
             Logging,
-            nullptr);
+            CreateClientCertificateProvider(ClientConfig));
     }
 };
 

@@ -82,6 +82,24 @@ const TString ServerMetricsComponent = "server";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const NClient::TClientConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList;
+    if (config->GetCertFile() || config->GetCertPrivateKeyFile()) {
+        certPathList.push_back({
+            config->GetCertPrivateKeyFile(),
+            config->GetCertFile()
+        });
+    }
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFileStoreEndpoints final
     : public IFileStoreEndpoints
 {
@@ -158,7 +176,7 @@ public:
                     fileStore = NClient::CreateFileStoreClient(
                         clientConfig,
                         Logging,
-                        nullptr);
+                        CreateClientCertificateProvider(clientConfig));
                 }
                 break;
             }

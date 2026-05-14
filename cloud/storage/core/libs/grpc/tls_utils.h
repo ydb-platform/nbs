@@ -6,7 +6,7 @@
 
 #include "src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h"
 
-#include <string_view>
+#include <util/generic/strbuf.h>
 
 namespace NCloud::NTlsUtils {
 
@@ -14,18 +14,18 @@ namespace NCloud::NTlsUtils {
 
 TResultOrError<TString> TryReadFile(const TString& path);
 
-TResultOrError<void> IsValidPemCertificate(std::string_view pem);
+TResultOrError<void> IsValidPemCertificate(TStringBuf pem);
 
 TResultOrError<void> PrivateKeyAndCertificateMatch(
-    std::string_view privateKey,
-    std::string_view certChain);
+    TStringBuf privateKey,
+    TStringBuf certChain);
 
 TResultOrError<void> ValidateIdentityCertificateWithRoot(
-    std::string_view rootCertPem,
-    std::string_view certChainPem);
+    TStringBuf rootCertPem,
+    TStringBuf certChainPem);
 
 TResultOrError<ui64> GetCertificateNotAfterTimestampSec(
-    std::string_view certChainPem);
+    TStringBuf certChainPem);
 
 TResultOrError<TString> ReadAndValidateRootCertificate(
     const TString& rootCertPath);

@@ -2,6 +2,7 @@
 #include "tls_utils.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include "src/core/lib/gprpp/ref_counted_ptr.h"
@@ -11,8 +12,10 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/folder/dirut.h>
+#include <util/generic/maybe.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/system/thread.h>
 #include <util/system/yassert.h>
 
 #include <algorithm>
@@ -22,7 +25,6 @@
 #include <exception>
 #include <memory>
 #include <mutex>
-#include <thread>
 #include <tuple>
 
 namespace NCloud {
@@ -79,7 +81,7 @@ public:
     struct TCertificateState
     {
         TCertificateFiles Files;
-        y_absl::optional<PemKeyCertPairList> IdentityKeyCertPairs;
+        TMaybe<PemKeyCertPairList> IdentityKeyCertPairs;
         NMonitoring::TDynamicCountersPtr Metrics;
     };
 
@@ -95,15 +97,15 @@ private:
     const TString RootCertPath;
     const TDuration RefreshIntervalSec;
     mutable std::mutex WakeupMutex;
-    y_absl::optional<TString> RootCertificate;
+    TMaybe<TString> RootCertificate;
     TVector<TCertificateState> Certificates;
     std::atomic<bool> Stopping = false;
     bool UpdateRequested = false;
     bool UpdateInProgress = false;
     bool Started = false;
-    y_absl::optional<TPendingUpdate> PendingUpdate;
+    TMaybe<TPendingUpdate> PendingUpdate;
     std::condition_variable Wakeup;
-    std::thread RefreshThread;
+    std::unique_ptr<TThread> RefreshThread;
 
 public:
     TLog Log;
@@ -125,7 +127,7 @@ public:
         for (const auto& certificate: certificates) {
             Certificates.push_back({
                 .Files = certificate,
-                .IdentityKeyCertPairs = y_absl::nullopt,
+                .IdentityKeyCertPairs = Nothing(),
                 .Metrics = {}
             });
         }
@@ -142,7 +144,7 @@ protected:
         return Certificates;
     }
 
-    y_absl::optional<TString> GetRootCertificate() const
+    TMaybe<TString> GetRootCertificate() const
     {
         return RootCertificate;
     }
@@ -179,41 +181,8 @@ protected:
         }
 
         ForceUpdate();
-        RefreshThread = std::thread([this] {
-            while (!Stopping.load()) {
-                std::unique_lock lock(WakeupMutex);
-                const bool isRequested = Wakeup.wait_for(
-                    lock,
-                    std::chrono::seconds(RefreshIntervalSec.Seconds()),
-                    [this] {
-                        return Stopping.load() || UpdateRequested;
-                    });
-                if (Stopping.load()) {
-                    return;
-                }
-                if (isRequested) {
-                    Y_ABORT_UNLESS(PendingUpdate.has_value());
-                } else {
-                    PendingUpdate = CreatePendingUpdate();
-                }
-                UpdateRequested = false;
-                UpdateInProgress = true;
-                lock.unlock();
-
-                try {
-                    ForceUpdate();
-                    lock.lock();
-                    UpdateInProgress = false;
-                    CompletePendingUpdate();
-                    lock.unlock();
-                } catch (...) {
-                    lock.lock();
-                    UpdateInProgress = false;
-                    FailPendingUpdate(std::current_exception());
-                    lock.unlock();
-                }
-            }
-        });
+        RefreshThread = std::make_unique<TThread>([this] { RunRefreshThread(); });
+        RefreshThread->Start();
     }
 
     void Stop()
@@ -224,8 +193,9 @@ protected:
         Started = false;
         Stopping.store(true);
         Wakeup.notify_all();
-        if (RefreshThread.joinable()) {
-            RefreshThread.join();
+        if (RefreshThread) {
+            RefreshThread->Join();
+            RefreshThread.reset();
         }
     }
 
@@ -235,7 +205,11 @@ protected:
         {
             std::lock_guard lock(WakeupMutex);
             if (UpdateInProgress || UpdateRequested) {
-                Y_ABORT_UNLESS(PendingUpdate.has_value());
+                STORAGE_VERIFY_C(
+                    PendingUpdate.Defined(),
+                    TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
+                    LogComponent,
+                    "missing pending update while update is in progress");
                 future = PendingUpdate->Promise.GetFuture();
             } else {
                 PendingUpdate = CreatePendingUpdate();
@@ -248,6 +222,47 @@ protected:
     }
 
 private:
+    void RunRefreshThread()
+    {
+        while (!Stopping.load()) {
+            std::unique_lock lock(WakeupMutex);
+            const bool isRequested = Wakeup.wait_for(
+                lock,
+                std::chrono::seconds(RefreshIntervalSec.Seconds()),
+                [this] {
+                    return Stopping.load() || UpdateRequested;
+                });
+            if (Stopping.load()) {
+                return;
+            }
+            if (isRequested) {
+                STORAGE_VERIFY_C(
+                    PendingUpdate.Defined(),
+                    TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
+                    LogComponent,
+                    "missing pending update for requested refresh");
+            } else {
+                PendingUpdate = CreatePendingUpdate();
+            }
+            UpdateRequested = false;
+            UpdateInProgress = true;
+            lock.unlock();
+
+            try {
+                ForceUpdate();
+                lock.lock();
+                UpdateInProgress = false;
+                CompletePendingUpdate();
+                lock.unlock();
+            } catch (...) {
+                lock.lock();
+                UpdateInProgress = false;
+                FailPendingUpdate(std::current_exception());
+                lock.unlock();
+            }
+        }
+    }
+
     TPendingUpdate CreatePendingUpdate()
     {
         return {.Promise = NThreading::NewPromise<void>()};
@@ -255,23 +270,31 @@ private:
 
     void CompletePendingUpdate()
     {
-        Y_ABORT_UNLESS(PendingUpdate.has_value());
+        STORAGE_VERIFY_C(
+            PendingUpdate.Defined(),
+            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
+            LogComponent,
+            "complete called without pending update");
         PendingUpdate->Promise.SetValue();
-        PendingUpdate = y_absl::nullopt;
+        PendingUpdate = Nothing();
     }
 
     void FailPendingUpdate(std::exception_ptr ex)
     {
-        Y_ABORT_UNLESS(PendingUpdate.has_value());
+        STORAGE_VERIFY_C(
+            PendingUpdate.Defined(),
+            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
+            LogComponent,
+            "fail called without pending update");
         PendingUpdate->Promise.SetException(std::move(ex));
-        PendingUpdate = y_absl::nullopt;
+        PendingUpdate = Nothing();
     }
 
     void ForceUpdate()
     {
-        TVector<y_absl::optional<PemKeyCertPairList>> identities(
+        TVector<TMaybe<PemKeyCertPairList>> identities(
             Certificates.size());
-        TVector<y_absl::optional<ui64>> certNotAfterTs(Certificates.size());
+        TVector<TMaybe<ui64>> certNotAfterTs(Certificates.size());
 
         const bool needsRoot = !!GetRootCertPath();
         TResultOrError<TString> rootResult = TString{};
@@ -285,7 +308,7 @@ private:
             }
         }
 
-        y_absl::optional<TString> newRoot;
+        TMaybe<TString> newRoot;
         const bool hasNewRoot =
             !needsRoot || !HasError(rootResult.GetError());
         if (needsRoot && hasNewRoot) {
@@ -305,7 +328,7 @@ private:
                     << identityResult.GetError().GetMessage());
             }
 
-            if (identities[i].has_value()) {
+            if (identities[i].Defined()) {
                 const auto& pair = identities[i]->front();
                 if (needsRoot && hasNewRoot) {
                     auto rootValidation =
@@ -330,7 +353,7 @@ private:
                         "Unable to parse certificate notAfter date for "
                         << files.CertChainPath.Quote() << ": "
                         << FormatError(notAfterTs.GetError()));
-                    identities[i] = y_absl::nullopt;
+                    identities[i] = Nothing();
                 } else {
                     certNotAfterTs[i] = notAfterTs.ExtractResult();
                 }
@@ -339,8 +362,8 @@ private:
 
         bool rootChanged = false;
         if (!needsRoot) {
-            rootChanged = RootCertificate.has_value();
-            RootCertificate = y_absl::nullopt;
+            rootChanged = RootCertificate.Defined();
+            RootCertificate = Nothing();
         } else if (hasNewRoot) {
             rootChanged = newRoot != RootCertificate;
             RootCertificate = newRoot;
@@ -348,13 +371,13 @@ private:
         bool hasUpdates = rootChanged;
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            if (Certificates[i].Metrics && certNotAfterTs[i].has_value()) {
+            if (Certificates[i].Metrics && certNotAfterTs[i].Defined()) {
                 *Certificates[i].Metrics->GetCounter(
                     "ExpireTs",
                     false) = *certNotAfterTs[i];
             }
 
-            if (!identities[i].has_value()) {
+            if (!identities[i].Defined()) {
                 continue;
             }
             const bool identityChanged =
@@ -418,6 +441,7 @@ public:
 
     ~TPeriodicCertificateProvider() override
     {
+        Stop();
         Distributor->SetWatchStatusCallback(nullptr);
     }
 
@@ -458,13 +482,13 @@ private:
         const auto rootCertificate = GetRootCertificate();
 
         const bool needsRoot = !!GetRootCertPath();
-        const bool rootInvalid = needsRoot && !rootCertificate.has_value();
+        const bool rootInvalid = needsRoot && !rootCertificate.Defined();
 
         bool identityInvalid = false;
         PemKeyCertPairList identityPairs;
 
         for (const auto& state: states) {
-            if (!state.IdentityKeyCertPairs.has_value()) {
+            if (!state.IdentityKeyCertPairs.Defined()) {
                 identityInvalid = true;
             } else {
                 const auto& pairs = *state.IdentityKeyCertPairs;
@@ -478,9 +502,14 @@ private:
         if (!identityInvalid && !identityPairs.empty() &&
             (!needsRoot || !rootInvalid))
         {
+            y_absl::optional<TString> grpcRootCertificate = y_absl::nullopt;
+            if (rootCertificate.Defined()) {
+                grpcRootCertificate = *rootCertificate;
+            }
+
             Distributor->SetKeyMaterials(
                 certName,
-                rootCertificate,
+                std::move(grpcRootCertificate),
                 std::move(identityPairs));
             return;
         }

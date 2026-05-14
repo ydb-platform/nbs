@@ -11,6 +11,7 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/tempdir.h>
+#include <util/generic/yexception.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/system/fs.h>
@@ -136,6 +137,59 @@ struct TCertificateProviderTestContext
 
 Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 {
+    Y_UNIT_TEST(ShouldFailToCreateStaticProviderWithIncompleteIdentityPair)
+    {
+        TTempDir tempDir;
+        const TString certPath = TStringBuilder()
+            << tempDir.Name() << "/cert.crt";
+        const TString keyPath = TStringBuilder()
+            << tempDir.Name() << "/cert.key";
+        WriteTextFile(certPath, ReadCertResource("server1.crt"));
+        WriteTextFile(keyPath, ReadCertResource("server1.key"));
+
+        try {
+            auto provider = CreateStaticCertificateProvider(
+                {},
+                TVector<TCertificateFiles>{
+                    {
+                        .PrivateKeyPath = TString{},
+                        .CertChainPath = certPath,
+                    }});
+            UNIT_ASSERT_UNEQUAL(provider, nullptr);
+            UNIT_FAIL("expected yexception for missing private key");
+        } catch (const yexception&) {
+        }
+
+        try {
+            auto provider = CreateStaticCertificateProvider(
+                {},
+                TVector<TCertificateFiles>{
+                    {
+                        .PrivateKeyPath = keyPath,
+                        .CertChainPath = TString{},
+                    }});
+            UNIT_ASSERT_UNEQUAL(provider, nullptr);
+            UNIT_FAIL("expected yexception for missing cert chain");
+        } catch (const yexception&) {
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFailToCreatePeriodicProviderWithEmptyCertificates)
+    {
+        try {
+            auto provider = CreateCertificateProvider(
+                CreateLoggingService("console"),
+                "TLS_CERTIFICATE_PROVIDER",
+                nullptr,
+                {},
+                {},
+                TDuration::Seconds(1));
+            UNIT_ASSERT_UNEQUAL(provider, nullptr);
+            UNIT_FAIL("expected yexception for empty certificates list");
+        } catch (const yexception&) {
+        }
+    }
+
     Y_UNIT_TEST(ShouldUpdateCertificates)
     {
         TCertificateProviderTestContext context;
@@ -221,6 +275,38 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         allowWritePromise.SetValue();
         future1.GetValueSync();
         future2.GetValueSync();
+        writer.join();
+    }
+
+    Y_UNIT_TEST(ShouldDestroyProviderWhileUpdateInProgress)
+    {
+        TCertificateProviderTestContext context;
+
+        const auto& fifoPath = context.ClientPair.CertChainPath;
+        NFs::Remove(fifoPath);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, ::mkfifo(fifoPath.c_str(), 0600));
+
+        auto allowWritePromise = NThreading::NewPromise<void>();
+        auto allowWrite = allowWritePromise.GetFuture();
+        std::thread writer([fifoPath, pem = context.ClientPem](
+            NThreading::TFuture<void> allowWrite)
+        {
+            TFileOutput out(fifoPath);
+            allowWrite.GetValueSync();
+            out.Write(pem.data(), pem.size());
+        }, std::move(allowWrite));
+
+        auto future = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(!future.IsReady());
+
+        std::thread destroyer([&provider = context.Provider] {
+            provider.reset();
+        });
+
+        allowWritePromise.SetValue();
+
+        destroyer.join();
         writer.join();
     }
 }

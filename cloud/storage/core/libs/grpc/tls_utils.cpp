@@ -23,7 +23,7 @@ using TX509StorePtr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
 using TX509StoreCtxPtr = std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)>;
 using TX509StackPtr = std::unique_ptr<STACK_OF(X509), decltype(&sk_X509_free)>;
 
-TResultOrError<std::vector<TX509Ptr>> ParsePemCertificates(std::string_view pem)
+TResultOrError<std::vector<TX509Ptr>> ParsePemCertificates(TStringBuf pem)
 {
     std::vector<TX509Ptr> certificates;
     TBioPtr bio(BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())), BIO_free);
@@ -74,7 +74,7 @@ TResultOrError<TString> TryReadFile(const TString& path)
     }
 }
 
-TResultOrError<void> IsValidPemCertificate(std::string_view pem)
+TResultOrError<void> IsValidPemCertificate(TStringBuf pem)
 {
     if (pem.empty()) {
         return TErrorResponse(E_FAIL, "PEM certificate is empty");
@@ -91,8 +91,8 @@ TResultOrError<void> IsValidPemCertificate(std::string_view pem)
 }
 
 TResultOrError<void> PrivateKeyAndCertificateMatch(
-    std::string_view privateKey,
-    std::string_view certChain)
+    TStringBuf privateKey,
+    TStringBuf certChain)
 {
     TBioPtr certBio(
         BIO_new_mem_buf(certChain.data(), static_cast<int>(certChain.size())),
@@ -127,8 +127,8 @@ TResultOrError<void> PrivateKeyAndCertificateMatch(
 }
 
 TResultOrError<void> ValidateIdentityCertificateWithRoot(
-    std::string_view rootCertPem,
-    std::string_view certChainPem)
+    TStringBuf rootCertPem,
+    TStringBuf certChainPem)
 {
     auto rootsResult = ParsePemCertificates(rootCertPem);
     auto identityChainResult = ParsePemCertificates(certChainPem);
@@ -207,7 +207,7 @@ TResultOrError<void> ValidateIdentityCertificateWithRoot(
     return TResultOrError<void>();
 }
 
-TResultOrError<ui64> GetCertificateNotAfterTimestampSec(std::string_view certChainPem)
+TResultOrError<ui64> GetCertificateNotAfterTimestampSec(TStringBuf certChainPem)
 {
     auto chainResult = ParsePemCertificates(certChainPem);
     if (HasError(chainResult.GetError())) {
