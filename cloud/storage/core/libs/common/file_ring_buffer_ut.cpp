@@ -588,28 +588,21 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("12345678"));
     }
 
-    Y_UNIT_TEST(VisitAndPopBackShouldProduceSameResults)
+    Y_UNIT_TEST(ForbidModificationOfCorruptedBuffer)
     {
-        for (int i = 0; i <= 32; i++) {
-            TStateWithCorruptedEntryLength s(i);
-            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+        TStateWithCorruptedEntryLength s(13);
+        TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+        auto state = Dump(rb);
 
-            TVector<TString> afterVisit;
-            rb.Visit([&] (ui32 checksum, TStringBuf entry)
-            {
-                Y_UNUSED(checksum);
-                afterVisit.push_back(TString(entry));
-            });
+        const char* ptr = rb.Front().data();
+        UNIT_ASSERT(!rb.Free(ptr));
+        UNIT_ASSERT_VALUES_EQUAL(state, Dump(rb));
 
-            TVector<TString> afterPopBack;
-            while (!rb.Empty())
-            {
-                afterPopBack.push_back(TString(rb.Front()));
-                rb.PopFront();
-            }
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(state, Dump(rb));
 
-            UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
-        }
+        UNIT_ASSERT(!rb.PushBack("1"));
+        UNIT_ASSERT_VALUES_EQUAL(state, Dump(rb));
     }
 
     Y_UNIT_TEST(ShouldGetRawCapacity)
