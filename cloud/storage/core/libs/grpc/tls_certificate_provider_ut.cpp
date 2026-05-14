@@ -70,7 +70,6 @@ struct TCertificateProviderTestContext
     TString ClientPem;
 
     ICertificateProviderPtr Provider;
-    ICertificateRefresherPtr Refresher;
     NMonitoring::TDynamicCountersPtr RootCounters;
     NMonitoring::TDynamicCountersPtr ServerGroup;
 
@@ -95,15 +94,13 @@ struct TCertificateProviderTestContext
         RootCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         ServerGroup = RootCounters->GetSubgroup("component", "server");
 
-        Refresher = CreateCertificateRefresher();
-        Refresher->Init(
+        Provider = CreateCertificateProvider(
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},
             TDuration::Seconds(1));
-        Provider = Refresher->GetCertificateProvider();
         UNIT_ASSERT(Provider);
         Provider->Start();
     }
@@ -189,23 +186,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             before,
             context.GetExpireTs(context.ClientPair.CertChainPath));
-    }
-
-    Y_UNIT_TEST(ShouldFailOnRepeatedInit)
-    {
-        TCertificateProviderTestContext context;
-
-        UNIT_ASSERT_EXCEPTION(
-            context.Refresher->Init(
-                CreateLoggingService("console"),
-                "TEST_TLS_CERTIFICATE_PROVIDER",
-                context.ServerGroup,
-                context.RootPath,
-                TVector<TCertificateFiles>{
-                    context.ServerPair,
-                    context.ClientPair},
-                TDuration::Seconds(1)),
-            TServiceError);
     }
 
     Y_UNIT_TEST(ShouldReturnImmediatelyOnUpdateTrigger)

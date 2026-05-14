@@ -47,7 +47,6 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/network/init.h>
-#include <util/stream/file.h>
 #include <util/string/join.h>
 #include <util/system/file.h>
 #include <util/system/mutex.h>
@@ -70,14 +69,6 @@ namespace NHeaders {
     const grpc::string Timestamp = "x-nbs-timestamp";
     const grpc::string TraceId = "x-nbs-trace-id";
     const grpc::string RequestTimeout = "x-nbs-request-timeout";
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ReadFile(const TString& fileName)
-{
-    TFileInput in(fileName);
-    return in.ReadAll();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,6 +116,7 @@ struct TAppContext
 {
     TServerAppConfigPtr Config;
     ILoggingServicePtr Logging;
+    ICertificateProviderPtr CertificateProvider;
     TLog Log;
     IBlockStorePtr Service;
     IBlockStorePtr UdsService;
@@ -950,7 +942,8 @@ public:
         IServerStatsPtr serverStats,
         IBlockStorePtr service,
         IBlockStorePtr udsService,
-        TServerOptions options);
+        TServerOptions options,
+        ICertificateProviderPtr certificateProvider);
 
     ~TServer() override;
 
@@ -968,7 +961,6 @@ private:
     void StartRequests();
 
     std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials();
-    grpc::SslServerCredentialsOptions CreateSslOptions();
 
     void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog);
     void StopListenUnixSocket();
@@ -982,11 +974,13 @@ TServer::TServer(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IBlockStorePtr udsService,
-    TServerOptions options)
+    TServerOptions options,
+    ICertificateProviderPtr certificateProvider)
 {
     Config = std::move(config);
     Log = logging->CreateLog("BLOCKSTORE_SERVER");
     Logging = std::move(logging);
+    CertificateProvider = std::move(certificateProvider);
     ServerStats = std::move(serverStats);
     Service = std::move(service);
     UdsService = std::move(udsService);
@@ -1118,59 +1112,10 @@ void TServer::Start()
     StartRequests();
 }
 
-grpc::SslServerCredentialsOptions TServer::CreateSslOptions()
-{
-    grpc::SslServerCredentialsOptions sslOptions;
-    sslOptions.client_certificate_request = GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
-
-    if (const auto& rootCertsFile = Config->GetRootCertsFile()) {
-        sslOptions.pem_root_certs = ReadFile(rootCertsFile);
-    }
-
-    for (const auto& cert: Config->GetCertsWithLegacyFallback()) {
-        grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-
-        Y_ENSURE(cert.CertFile, "Empty CertFile");
-        keyCert.cert_chain = ReadFile(cert.CertFile);
-
-        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
-        keyCert.private_key = ReadFile(cert.CertPrivateKeyFile);
-
-        sslOptions.pem_key_cert_pairs.push_back(keyCert);
-    }
-
-    return sslOptions;
-}
-
 std::shared_ptr<grpc::ServerCredentials> TServer::CreateSecureServerCredentials()
 {
-    auto provider = GetCertificateRefresher()->GetCertificateProvider();
-
-    if (!provider) {
-        auto sslOptions = CreateSslOptions();
-        return grpc::SslServerCredentials(sslOptions);
-    }
-
-    TVector<NCloud::TCertificateFiles> certPathList;
-    for (const auto& cert: Config->GetCertsWithLegacyFallback()) {
-        Y_ENSURE(cert.CertFile, "Empty CertFile");
-        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
-
-        NCloud::TCertificateFiles certPaths;
-        certPaths.PrivateKeyPath = cert.CertPrivateKeyFile;
-        certPaths.CertChainPath = cert.CertFile;
-        certPathList.push_back(std::move(certPaths));
-    }
-
-    grpc::experimental::TlsServerCredentialsOptions tlsOptions(std::move(provider));
-    tlsOptions.set_cert_request_type(GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
-    tlsOptions.watch_identity_key_cert_pairs();
-
-    if (Config->GetRootCertsFile()) {
-        tlsOptions.watch_root_certs();
-    }
-
-    return grpc::experimental::TlsServerCredentials(tlsOptions);
+    Y_ENSURE(CertificateProvider, "Empty CertificateProvider");
+    return CertificateProvider->CreateSecureServerCredentials();
 }
 
 void TServer::StartListenUnixSocket(
@@ -1306,7 +1251,8 @@ IServerPtr CreateServer(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IBlockStorePtr udsService,
-    TServerOptions options)
+    TServerOptions options,
+    ICertificateProviderPtr certificateProvider)
 {
     return std::make_shared<TServer>(
         std::move(config),
@@ -1314,7 +1260,8 @@ IServerPtr CreateServer(
         std::move(serverStats),
         std::move(service),
         std::move(udsService),
-        std::move(options));
+        std::move(options),
+        std::move(certificateProvider));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

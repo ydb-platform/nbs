@@ -73,7 +73,8 @@ public:
     {
         auto client = NClient::CreateFileStoreClient(
             ClientConfig,
-            Logging);
+            Logging,
+            nullptr);
 
         client = NClient::CreateDurableClient(
             Logging,
@@ -90,7 +91,8 @@ public:
     {
         return NClient::CreateShmControlClient(
             ClientConfig,
-            Logging);
+            Logging,
+            nullptr);
     }
 };
 

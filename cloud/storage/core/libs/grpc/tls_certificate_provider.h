@@ -5,7 +5,9 @@
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <grpcpp/security/credentials.h>
 #include <grpcpp/security/tls_certificate_provider.h>
+#include <grpcpp/security/server_credentials.h>
 
 #include <library/cpp/threading/future/core/future.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -30,28 +32,25 @@ struct TCertificateFiles
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ICertificateProvider
-    : grpc::experimental::CertificateProviderInterface
-    , IStartable
+    : IStartable
 {
     virtual NThreading::TFuture<void> UpdateCertificates() = 0;
+    virtual std::shared_ptr<grpc::ChannelCredentials>
+        CreateSecureClientCredentials() = 0;
+    virtual std::shared_ptr<grpc::ServerCredentials>
+        CreateSecureServerCredentials() = 0;
 };
 
-struct ICertificateRefresher
-{
-    virtual void Init(
-        ILoggingServicePtr logging,
-        TString logComponent,
-        NMonitoring::TDynamicCountersPtr serverGroup,
-        TString rootCertPath,
-        TVector<TCertificateFiles> certificates,
-        TDuration refreshIntervalSec) = 0;
+ICertificateProviderPtr CreateCertificateProvider(
+    ILoggingServicePtr logging,
+    TString logComponent,
+    NMonitoring::TDynamicCountersPtr serverGroup,
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates,
+    TDuration refreshIntervalSec);
 
-    virtual std::shared_ptr<ICertificateProvider> GetCertificateProvider() = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-ICertificateRefresherPtr CreateCertificateRefresher();
-ICertificateRefresherPtr GetCertificateRefresher();
+ICertificateProviderPtr CreateStaticCertificateProvider(
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates);
 
 }   // namespace NCloud

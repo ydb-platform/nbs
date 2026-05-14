@@ -11,6 +11,8 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/folder/dirut.h>
+#include <util/generic/yexception.h>
+#include <util/stream/file.h>
 #include <util/system/yassert.h>
 
 #include <algorithm>
@@ -33,6 +35,40 @@ using grpc_core::PemKeyCertPairList;
 using grpc_core::RefCountedPtr;
 
 using TCertificateFiles = NCloud::TCertificateFiles;
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ValidateCertificates(
+    const TVector<TCertificateFiles>& certificates,
+    bool requireNonEmpty)
+{
+    if (requireNonEmpty && certificates.empty()) {
+        ythrow yexception()
+            << "Certificates list should not be empty";
+    }
+
+    for (size_t i = 0; i < certificates.size(); ++i) {
+        const auto& certificate = certificates[i];
+        if (!certificate.PrivateKeyPath) {
+            ythrow yexception()
+                << "Empty PrivateKeyPath for certificate #"
+                << i;
+        }
+        if (!certificate.CertChainPath) {
+            ythrow yexception()
+                << "Empty CertChainPath for certificate #"
+                << i;
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString ReadFile(const TString& fileName)
+{
+    TFileInput in(fileName);
+    return in.ReadAll();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -86,13 +122,7 @@ public:
         , RootCertPath(std::move(rootCertPath))
         , RefreshIntervalSec(refreshIntervalSec)
     {
-        Y_ENSURE(
-            !certificates.empty(),
-            "Certificates list should not be empty");
-
         for (const auto& certificate: certificates) {
-            Y_ENSURE(certificate.PrivateKeyPath, "Empty PrivateKeyPath");
-            Y_ENSURE(certificate.CertChainPath, "Empty CertChainPath");
             Certificates.push_back({
                 .Files = certificate,
                 .IdentityKeyCertPairs = y_absl::nullopt,
@@ -489,11 +519,33 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TGrpcCertificateProvider final
+    : public grpc::experimental::CertificateProviderInterface
+{
+private:
+    grpc_core::RefCountedPtr<TPeriodicCertificateProvider> Provider;
+
+public:
+    explicit TGrpcCertificateProvider(
+        grpc_core::RefCountedPtr<TPeriodicCertificateProvider> provider)
+        : Provider(std::move(provider))
+    {}
+
+    grpc_tls_certificate_provider* c_provider() override
+    {
+        return Provider.get();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TPeriodicCertificateProviderImpl final
     : public ICertificateProvider
 {
 private:
     grpc_core::RefCountedPtr<TPeriodicCertificateProvider> Provider;
+    std::shared_ptr<TGrpcCertificateProvider> GrpcProvider;
+    const bool HasRootCert;
 
 public:
     TPeriodicCertificateProviderImpl(
@@ -503,6 +555,7 @@ public:
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
         TDuration refreshIntervalSec)
+        : HasRootCert(!!rootCertPath)
     {
         Provider = grpc_core::RefCountedPtr<
             TPeriodicCertificateProvider>(
@@ -513,16 +566,40 @@ public:
                     std::move(rootCertPath),
                     std::move(certificates),
                     refreshIntervalSec));
-    }
 
-    grpc_tls_certificate_provider* c_provider() override
-    {
-        return Provider.get();
+        GrpcProvider =
+            std::make_shared<TGrpcCertificateProvider>(Provider);
     }
 
     NThreading::TFuture<void> UpdateCertificates() override
     {
         return Provider->UpdateNow();
+    }
+
+    std::shared_ptr<grpc::ChannelCredentials>
+        CreateSecureClientCredentials() override
+    {
+        grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
+        tlsOptions.set_certificate_provider(GrpcProvider);
+        tlsOptions.watch_identity_key_cert_pairs();
+        if (HasRootCert) {
+            tlsOptions.watch_root_certs();
+        }
+        return grpc::experimental::TlsCredentials(tlsOptions);
+    }
+
+    std::shared_ptr<grpc::ServerCredentials>
+        CreateSecureServerCredentials() override
+    {
+        grpc::experimental::TlsServerCredentialsOptions tlsOptions(
+            GrpcProvider);
+        tlsOptions.set_cert_request_type(
+            GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
+        tlsOptions.watch_identity_key_cert_pairs();
+        if (HasRootCert) {
+            tlsOptions.watch_root_certs();
+        }
+        return grpc::experimental::TlsServerCredentials(tlsOptions);
     }
 
     void Start() override
@@ -536,65 +613,114 @@ public:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TCertificateRefresher
-    : public ICertificateRefresher
+class TStaticCertificateProvider final
+    : public ICertificateProvider
 {
-    std::once_flag InitFlag;
-    std::shared_ptr<ICertificateProvider> Provider;
+private:
+    const TString RootCertPath;
+    const TVector<TCertificateFiles> Certificates;
 
-    void Init(
-        ILoggingServicePtr logging,
-        TString logComponent,
-        NMonitoring::TDynamicCountersPtr serverGroup,
-        TString rootCertPath,
-        TVector<TCertificateFiles> certificates,
-        TDuration refreshIntervalSec)
+public:
+    TStaticCertificateProvider(
+            TString rootCertPath,
+            TVector<TCertificateFiles> certificates)
+        : RootCertPath(std::move(rootCertPath))
+        , Certificates(std::move(certificates))
+    {}
+
+    NThreading::TFuture<void> UpdateCertificates() override
     {
-        bool initializedNow = false;
-        std::call_once(InitFlag, [&] {
-            ICertificateProviderPtr provider =
-                std::make_shared<TPeriodicCertificateProviderImpl>(
-                    std::move(logging),
-                    std::move(logComponent),
-                    std::move(serverGroup),
-                    std::move(rootCertPath),
-                    std::move(certificates),
-                    refreshIntervalSec);
-            std::atomic_store_explicit(
-                &Provider,
-                std::move(provider),
-                std::memory_order_release);
-            initializedNow = true;
-        });
+        auto promise = NThreading::NewPromise<void>();
+        promise.SetValue();
+        return promise.GetFuture();
+    }
 
-        if (!initializedNow) {
-            throw TServiceError(E_INVALID_STATE)
-                << "TCertificateRefresher is already initialized";
+    std::shared_ptr<grpc::ChannelCredentials>
+        CreateSecureClientCredentials() override
+    {
+        grpc::SslCredentialsOptions sslOptions;
+        if (RootCertPath) {
+            sslOptions.pem_root_certs = ReadFile(RootCertPath);
         }
+
+        if (!Certificates.empty()) {
+            const auto& cert = Certificates.front();
+            sslOptions.pem_cert_chain = ReadFile(cert.CertChainPath);
+            sslOptions.pem_private_key = ReadFile(cert.PrivateKeyPath);
+        }
+
+        return grpc::SslCredentials(sslOptions);
     }
 
-    std::shared_ptr<ICertificateProvider> GetCertificateProvider()
+    std::shared_ptr<grpc::ServerCredentials>
+        CreateSecureServerCredentials() override
     {
-        return std::atomic_load_explicit(&Provider, std::memory_order_acquire);
+        grpc::SslServerCredentialsOptions sslOptions;
+        sslOptions.client_certificate_request =
+            GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
+
+        if (RootCertPath) {
+            sslOptions.pem_root_certs = ReadFile(RootCertPath);
+        }
+
+        for (const auto& cert: Certificates) {
+            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
+
+            keyCert.cert_chain = ReadFile(cert.CertChainPath);
+
+            keyCert.private_key = ReadFile(cert.PrivateKeyPath);
+
+            sslOptions.pem_key_cert_pairs.push_back(std::move(keyCert));
+        }
+
+        return grpc::SslServerCredentials(sslOptions);
     }
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
 };
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICertificateRefresherPtr CreateCertificateRefresher()
+ICertificateProviderPtr CreateCertificateProvider(
+    ILoggingServicePtr logging,
+    TString logComponent,
+    NMonitoring::TDynamicCountersPtr serverGroup,
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates,
+    TDuration refreshIntervalSec)
 {
-    return std::make_shared<TCertificateRefresher>();
+    if (refreshIntervalSec == TDuration::Zero()) {
+        return CreateStaticCertificateProvider(
+            std::move(rootCertPath),
+            std::move(certificates));
+    }
+
+    ValidateCertificates(certificates, true);
+
+    return std::make_shared<TPeriodicCertificateProviderImpl>(
+        std::move(logging),
+        std::move(logComponent),
+        std::move(serverGroup),
+        std::move(rootCertPath),
+        std::move(certificates),
+        refreshIntervalSec);
 }
 
-ICertificateRefresherPtr GetCertificateRefresher()
+ICertificateProviderPtr CreateStaticCertificateProvider(
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates)
 {
-    static ICertificateRefresherPtr refresher =
-        CreateCertificateRefresher();
-    return refresher;
+    ValidateCertificates(certificates, false);
+
+    return std::make_shared<TStaticCertificateProvider>(
+        std::move(rootCertPath),
+        std::move(certificates));
 }
 
 }   // namespace NCloud

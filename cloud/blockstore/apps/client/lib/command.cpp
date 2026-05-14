@@ -26,6 +26,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -51,6 +52,22 @@ namespace {
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nbs-server/cfg/nbs-iam.txt";
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList;
+    if (config->GetCertFile() || config->GetCertPrivateKeyFile()) {
+        certPathList.push_back({
+            config->GetCertPrivateKeyFile(),
+            config->GetCertFile()
+        });
+    }
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 }   // namespace
 
@@ -428,7 +445,8 @@ void TCommand::Init()
             Scheduler,
             Logging,
             Monitoring,
-            ClientStats);
+            ClientStats,
+            CreateClientCertificateProvider(ClientConfig));
 
         Y_ABORT_UNLESS(!HasError(error));
         Client = std::move(client);

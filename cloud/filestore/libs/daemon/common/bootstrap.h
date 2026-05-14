@@ -79,7 +79,6 @@ protected:
     IActorSystemPtr ActorSystem;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     ICertificateProviderPtr CertificateProvider;
-    ICertificateRefresherPtr CertificateRefresher;
 
 public:
     TBootstrapCommon(

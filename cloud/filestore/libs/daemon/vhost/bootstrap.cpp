@@ -157,7 +157,8 @@ public:
                 } else {
                     fileStore = NClient::CreateFileStoreClient(
                         clientConfig,
-                        Logging);
+                        Logging,
+                        nullptr);
                 }
                 break;
             }
@@ -344,28 +345,24 @@ void TBootstrapVhost::InitComponents()
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
 
-    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
-        TVector<TCertificateFiles> certPathList;
-        for (const auto& cert: Configs->ServerConfig->GetCerts()) {
-            Y_ENSURE(cert.CertFile, "Empty CertFile");
-            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
-            certPathList.push_back({
-                cert.CertPrivateKeyFile,
-                cert.CertFile
-            });
-        }
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+        Y_ENSURE(cert.CertFile, "Empty CertFile");
+        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
 
-        if (!certPathList.empty()) {
-            CertificateRefresher = GetCertificateRefresher();
-            CertificateRefresher->Init(
-                Logging,
-                "FILESTORE_TLS_CERTIFICATE_PROVIDER",
-                serverCounters,
-                Configs->ServerConfig->GetRootCertsFile(),
-                std::move(certPathList),
-                Configs->ServerConfig->GetRefreshCertsPeriod());
-            CertificateProvider = CertificateRefresher->GetCertificateProvider();
-        }
+    if (!certPathList.empty()) {
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            "FILESTORE_TLS_CERTIFICATE_PROVIDER",
+            serverCounters,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
     }
 
     Server = CreateServer(
@@ -374,7 +371,8 @@ void TBootstrapVhost::InitComponents()
         StatsRegistry->GetRequestStats(),
         serverCounters,
         Scheduler,
-        EndpointManager);
+        EndpointManager,
+        CertificateProvider);
     RegisterServer(Server);
 
     if (LocalService) {
@@ -388,7 +386,8 @@ void TBootstrapVhost::InitComponents()
             serverCounters,
             ProfileLog,
             Scheduler,
-            LocalService);
+            LocalService,
+            CertificateProvider);
 
         STORAGE_INFO("initialized LocalServiceServer: %s",
             serverConfigProto.Utf8DebugString().Quote().c_str());

@@ -305,28 +305,24 @@ void TBootstrapBase::Init()
 
     InitCriticalEventsCounter(serverGroup);
 
-    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
-        TVector<TCertificateFiles> certPathList;
-        for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback()) {
-            Y_ENSURE(cert.CertFile, "Empty CertFile");
-            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
-            certPathList.push_back({
-                cert.CertPrivateKeyFile,
-                cert.CertFile
-            });
-        }
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback()) {
+        Y_ENSURE(cert.CertFile, "Empty CertFile");
+        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
 
-        if (!certPathList.empty()) {
-            CertificateRefresher = GetCertificateRefresher();
-            CertificateRefresher->Init(
-                Logging,
-                "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
-                serverGroup,
-                Configs->ServerConfig->GetRootCertsFile(),
-                std::move(certPathList),
-                Configs->ServerConfig->GetRefreshCertsPeriod());
-            CertificateProvider = CertificateRefresher->GetCertificateProvider();
-        }
+    if (!certPathList.empty()) {
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
+            serverGroup,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
     }
 
     for (auto& event: PostponedCriticalEvents) {
@@ -734,7 +730,8 @@ void TBootstrapBase::Init()
             .CellId = Configs->CellsConfig->GetCellsEnabled() ?
                 Configs->CellsConfig->GetCellId() :
                 ""
-        });
+        },
+        CertificateProvider);
 
     STORAGE_INFO("Server initialized");
 

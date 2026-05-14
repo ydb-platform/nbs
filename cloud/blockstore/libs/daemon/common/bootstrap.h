@@ -88,7 +88,6 @@ protected:
     ILocalNVMeDeviceProviderPtr LocalNVMeDeviceProvider;
     ILocalNVMeServicePtr LocalNVMeService;
     ICertificateProviderPtr CertificateProvider;
-    ICertificateRefresherPtr CertificateRefresher;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
