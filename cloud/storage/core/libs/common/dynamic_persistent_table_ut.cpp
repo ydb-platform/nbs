@@ -189,6 +189,8 @@ TVector<TTestData> TestDataRecords = {
     {4, "fourth", {70, 80}},
     {5, "fifth", {90, 100}}};
 
+constexpr ui64 TestDataMoveBufferSize = 1_KB;
+
 struct TReferenceImplementation
 {
     ui64 MaxTableSize;
@@ -1605,7 +1607,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataMoveBufferSize = 1,
+                    .InitialDataMoveBufferSize = TestDataMoveBufferSize,
                 });
 
             for (const auto& data: testData) {
@@ -1641,6 +1643,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // SIMULATE ABORTED COMPACTION:
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do), but only half of the record to simulate crash/abort
+            UNIT_ASSERT_C(
+                recordSize <= tableHeader->DataMoveBufferSize,
+                "Data move buffer should fit record data");
             std::memcpy(
                 dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
@@ -1688,7 +1693,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataMoveBufferSize = 1,
+                    .InitialDataMoveBufferSize = TestDataMoveBufferSize,
                 });
 
             for (const auto& data: testData) {
@@ -1724,6 +1729,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // SIMULATE ABORTED COMPACTION:
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do)
+            UNIT_ASSERT_C(
+                recordSize <= tableHeader->DataMoveBufferSize,
+                "Data move buffer should fit record data");
             std::memcpy(
                 dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
@@ -1778,7 +1786,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataMoveBufferSize = 2,
+                    .InitialDataMoveBufferSize = TestDataMoveBufferSize,
                 });
 
             for (const auto& data: testData) {
@@ -1814,6 +1822,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             // SIMULATE ABORTED COMPACTION:
             // Copy the data to tmp buffer using memcpy (as compaction would
             // do)
+            UNIT_ASSERT_C(
+                recordSize <= tableHeader->DataMoveBufferSize,
+                "Data move buffer should fit record data");
             std::memcpy(
                 dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
@@ -1875,7 +1886,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxRecords = 32,
                     .InitialDataAreaSize = 1024,
                     .MaxDataAreaStepSize = 1_GB,
-                    .InitialDataMoveBufferSize = 2,
+                    .InitialDataMoveBufferSize = TestDataMoveBufferSize,
                 });
 
             for (const auto& data: testData) {
@@ -1914,6 +1925,9 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             // SIMULATE ABORTED COMPACTION:
             // Copy the data to tmp buffer using memcpy (as compaction would do)
+            UNIT_ASSERT_C(
+                recordSize <= tableHeader->DataMoveBufferSize,
+                "Data move buffer should fit record data");
             std::memcpy(
                 dataMoveBufferPtr,
                 filePtr + descriptorsPtr[recordToMoveIndex].DataOffset,
@@ -1981,6 +1995,10 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 TTable::RecordAreaExpansionStep *
                     sizeof(TTable::TRecordDescriptor);
 
+            UNIT_ASSERT_C(
+                descriptorsPtr[indices[0]].DataSize <=
+                    tableHeader->DataMoveBufferSize,
+                "Data move buffer should fit record data");
             std::memcpy(
                 dataMoveBufferPtr,
                 filePtr + descriptorsPtr[indices[0]].DataOffset,
