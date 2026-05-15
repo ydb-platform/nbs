@@ -1,8 +1,9 @@
 #pragma once
 
-#include "error.h"
 #include "file_map_memory_limiter.h"
-#include "numeric.h"
+
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/numeric.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 

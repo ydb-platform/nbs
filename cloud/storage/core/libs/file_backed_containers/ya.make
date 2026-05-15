@@ -1,0 +1,18 @@
+LIBRARY()
+
+SRCS(
+    dynamic_persistent_table.cpp
+    file_map_memory_limiter.cpp
+    file_ring_buffer.cpp
+    persistent_table.cpp
+)
+
+PEERDIR(
+    cloud/storage/core/libs/common
+)
+
+END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

@@ -789,7 +789,7 @@ public:
 
     void SetCorrupted()
     {
-        Corrupted = true;
+            Corrupted = true;
     }
 
     ui64 GetRawCapacity() const

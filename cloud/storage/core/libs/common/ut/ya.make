@@ -15,14 +15,6 @@ IF (SANITIZER_TYPE != "thread")
     )
 ENDIF()
 
-# TFileRingBufferTest::RandomizedPushPopRestore tests may need more time
-# under sanitizers
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
-ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
-ENDIF()
-
 SRCS(
     aligned_buffer_ut.cpp
     backoff_delay_provider_ut.cpp
@@ -34,13 +26,9 @@ SRCS(
     disjoint_interval_map_ut.cpp
     error_ut.cpp
     file_io_service_ut.cpp
-    file_map_memory_limiter_ut.cpp
-    file_ring_buffer_ut.cpp
     guarded_sglist_ut.cpp
     history_ut.cpp
     lru_cache_ut.cpp
-    dynamic_persistent_table_ut.cpp
-    persistent_table_ut.cpp
     ring_buffer_ut.cpp
     scheduler_ut.cpp
     scoped_handle_ut.cpp

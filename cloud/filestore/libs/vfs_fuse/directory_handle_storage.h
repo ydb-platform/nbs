@@ -4,7 +4,7 @@
 
 #include "fs_directory_handle.h"
 
-#include <cloud/storage/core/libs/common/dynamic_persistent_table.h>
+#include <cloud/storage/core/libs/file_backed_containers/dynamic_persistent_table.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 

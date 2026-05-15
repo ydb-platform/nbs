@@ -1,7 +1,7 @@
 #include "persistent_storage.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/file_ring_buffer.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/json/writer/json.h>
