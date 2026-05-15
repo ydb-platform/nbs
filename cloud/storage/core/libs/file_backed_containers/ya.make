@@ -9,6 +9,7 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/diagnostics
 )
 
 END()

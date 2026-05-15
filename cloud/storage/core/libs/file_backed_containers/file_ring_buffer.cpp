@@ -1,5 +1,7 @@
 #include "file_ring_buffer.h"
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/hash.h>
@@ -573,6 +575,13 @@ public:
 
     bool PushBack(TStringBuf data)
     {
+        if (IsCorrupted()) {
+            ReportAccessToCorruptedFileBackedContainerError(
+                "An attempt to call TFileRingBuffer::PushBack() on a corrupted "
+                "container has been made");
+            return false;
+        }
+
         auto allocationStatus = Alloc(data.size());
         if (HasError(allocationStatus) ||
             allocationStatus.GetResult() == nullptr)
@@ -594,6 +603,9 @@ public:
         }
 
         if (IsCorrupted()) {
+            ReportAccessToCorruptedFileBackedContainerError(
+                "An attempt to call TFileRingBuffer::Alloc() on a corrupted "
+                "container has been made");
             return MakeError(E_INVALID_STATE, "Buffer is corrupted");
         }
 
@@ -702,6 +714,9 @@ public:
     bool Free(const void* ptr)
     {
         if (IsCorrupted()) {
+            ReportAccessToCorruptedFileBackedContainerError(
+                "An attempt to call TFileRingBuffer::Free() on a corrupted "
+                "container has been made");
             return false;
         }
 
@@ -724,8 +739,9 @@ public:
         auto e = GetFrontEntry();
 
         if (e.IsInvalid()) {
-            // corruption
-            // TODO: report?
+            ReportAccessToCorruptedFileBackedContainerError(
+                "An attempt to call TFileRingBuffer::Front() on a corrupted "
+                "container has been made");
             return {};
         }
 
@@ -734,6 +750,13 @@ public:
 
     void PopFront()
     {
+        if (IsCorrupted()) {
+            ReportAccessToCorruptedFileBackedContainerError(
+                "An attempt to call TFileRingBuffer::PopFront() on a corrupted "
+                "container has been made");
+            return;
+        }
+
         auto cur = GetFrontEntry();
         if (!cur.HasValue()) {
             return;
@@ -773,6 +796,12 @@ public:
 
     void Visit(const TVisitor& visitor)
     {
+        if (IsCorrupted()) {
+            ReportAccessToCorruptedFileBackedContainerError(
+                "An attempt to call TFileRingBuffer::Visit() on a corrupted "
+                "container has been made");
+        }
+
         VisitEntries(
             [&](const TEntryInfo& e)
             {
@@ -789,7 +818,12 @@ public:
 
     void SetCorrupted()
     {
-        Corrupted = true;
+        if (!Corrupted) {
+            Corrupted = true;
+            ReportFileBackedContainerCorruptionDetectedError(
+                "Corruption detected in FileRingBuffer, path: " +
+                Map.GetFile().GetName());
+        }
     }
 
     ui64 GetRawCapacity() const
