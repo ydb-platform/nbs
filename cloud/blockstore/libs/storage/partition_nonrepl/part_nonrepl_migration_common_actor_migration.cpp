@@ -90,8 +90,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Migrating range: %s",
-        DiskId.c_str(),
+        "%s Migrating range: %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(range).c_str());
 
     const bool inserted = MigrationsInProgress.TryInsert(range);
@@ -221,8 +221,8 @@ TNonreplicatedPartitionMigrationCommonActor::TakeNextMigrationRange(
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Range migration rejected, range: %s",
-                DiskId.c_str(),
+                "%s Range migration rejected, range: %s",
+                LogTitle.GetWithTime().c_str(),
                 DescribeRange(range).c_str());
             return std::nullopt;
         }
@@ -292,9 +292,11 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     Y_DEBUG_ABORT_UNLESS(erased);
 
     if (HasError(msg->GetError())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%s] Range migration failed: %s, error: %s",
-            DiskId.c_str(),
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Range migration failed: %s, error: %s",
+            LogTitle.GetWithTime().c_str(),
             DescribeRange(msg->Range).c_str(),
             FormatError(msg->GetError()).c_str());
 
@@ -319,8 +321,8 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Range %s migrated. Recommended bandwidth: %.2f MiB",
-        DiskId.c_str(),
+        "%s Range %s migrated. Recommended bandwidth: %.2f MiB",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(msg->Range).c_str(),
         static_cast<double>(msg->RecommendedBandwidth) / 1_MB);
 
@@ -477,8 +479,8 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Schedule migrating next range after %s",
-        DiskId.c_str(),
+        "%s Schedule migrating next range after %s",
+        LogTitle.GetWithTime().c_str(),
         delayBetweenMigrations.ToString().Quote().c_str());
 
     RangeMigrationScheduled = true;

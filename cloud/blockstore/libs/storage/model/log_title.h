@@ -2,6 +2,7 @@
 
 #include <util/generic/string.h>
 #include <util/system/types.h>
+
 #include <span>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -49,6 +50,11 @@ public:
     };
 
     struct TPartitionMirror
+    {
+        TString DiskId;
+    };
+
+    struct TPartitionMigration
     {
         TString DiskId;
     };
@@ -103,7 +109,8 @@ private:
         TDiskRegistry,
         TPartitionMirror,
         TFreshBlocksWriter,
-        TAgentAvailabilityMonitoringActor>;
+        TAgentAvailabilityMonitoringActor,
+        TPartitionMigration>;
 
     ui64 StartTime = 0;
     TData Data;

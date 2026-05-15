@@ -22,9 +22,9 @@ void TNonreplicatedPartitionMigrationCommonActor::UpdateCounters(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "Partition %s for disk %s counters not found",
-            ToString(sender).c_str(),
-            DiskId.Quote().c_str());
+            "%s Partition %s counters not found",
+            LogTitle.GetWithTime().c_str(),
+            ToString(sender).c_str());
 
         Y_DEBUG_ABORT_UNLESS(0);
     }
@@ -182,9 +182,9 @@ void TNonreplicatedPartitionMigrationCommonActor::
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "[%s] Failed to send migration actor statistics due to empty "
+            "%s Failed to send migration actor statistics due to empty "
             "StatisticRequestInfo.",
-            DiskId.Quote().c_str());
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
@@ -194,8 +194,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "[%s] Failed to send migration actor statistics due to error: %s",
-            DiskId.Quote().c_str(),
+            "%s Failed to send migration actor statistics due to error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(msg->Error).c_str());
     }
 
