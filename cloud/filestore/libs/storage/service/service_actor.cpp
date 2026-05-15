@@ -5,6 +5,9 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
+#include <cloud/filestore/libs/client/client.h>
+#include <cloud/filestore/libs/client/durable.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -43,6 +46,24 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 
     LastCpuWaitTs = ctx.Monotonic();
     ServiceState = NProto::SERVICE_STATE_RUNNING;
+
+    // create filestore client
+    {
+        auto tiimer = CreateWallClockTimer();
+        auto scheduler = CreateScheduler();
+        auto clientConfig = std::make_shared<NClient::TClientConfig>(NProto::TClientConfig{});
+
+        auto client = NClient::CreateFileStoreClient(
+            ClientConfig,
+            Logging);
+
+        Client = NClient::CreateDurableClient(
+            Logging,
+            Timer,
+            Scheduler,
+            CreateRetryPolicy(ClientConfig),
+            client);
+    }
 
     RegisterPages(ctx);
     RegisterCounters(ctx);
