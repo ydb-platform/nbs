@@ -200,18 +200,20 @@ void TFlushBlocksVisitor::FlushBlob(
     const bool isOriginalBlobHuge =
         blocks.size() * BlockSize >= WriteBlobSizeThreshold;
 
-    const bool splittedBlobsAreHuge = std::ranges::all_of(
-        blocksByRanges,
-        [&](const auto& range)
-        {
-            return (range.End - range.Start) * BlockSize >=
-                   WriteBlobSizeThreshold;
-        });
+    if (isOriginalBlobHuge) {
+        for (const auto& range: blocksByRanges) {
+            if ((range.End - range.Start) * BlockSize < WriteBlobSizeThreshold)
+            {
+                AppendDataBlob(
+                    std::move(blobContent),
+                    std::move(blocks),
+                    std::move(checksums));
+                return;
+            }
+        }
+    }
 
-    if (!(splitByCompactionBorders &&
-          (isOriginalBlobHuge == splittedBlobsAreHuge)) ||
-        compactionRangeCount == 1)
-    {
+    if (!splitByCompactionBorders || compactionRangeCount == 1) {
         AppendDataBlob(
             std::move(blobContent),
             std::move(blocks),
