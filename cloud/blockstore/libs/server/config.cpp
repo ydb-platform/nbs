@@ -332,14 +332,13 @@ TVector<TCertificate> TServerAppConfig::GetCertsWithLegacyFallback() const
         return certs;
     }
 
-    // TODO: Remove, when old CertFile/CertPrivateKeyFile options are gone.
-    Y_ENSURE(GetCertFile(), "Empty CertFile");
-    Y_ENSURE(GetCertPrivateKeyFile(), "Empty CertPrivateKeyFile");
-
-    certs.push_back({
-        GetCertFile(),
-        GetCertPrivateKeyFile(),
-    });
+    auto certFile = GetCertFile();
+    if (certFile) {
+        certs.push_back({
+            std::move(certFile),
+            GetCertPrivateKeyFile(),
+        });
+    }
     return certs;
 }
 
