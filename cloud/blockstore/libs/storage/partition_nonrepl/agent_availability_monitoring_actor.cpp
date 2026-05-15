@@ -60,6 +60,11 @@ TAgentAvailabilityMonitoringActor::TAgentAvailabilityMonitoringActor(
     , NonreplPartitionActorId(nonreplPartitionActorId)
     , ParentActorId(parentActorId)
     , LaggingAgent(std::move(laggingAgent))
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TAgentAvailabilityMonitoringActor{
+              .DiskId = PartConfig->GetName(),
+              .AgentId = LaggingAgent.GetAgentId()})
 {
     Y_ABORT_IF(LaggingAgent.GetDevices().empty());
 
@@ -92,10 +97,9 @@ void TAgentAvailabilityMonitoringActor::CheckAgentAvailability(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Checking lagging agent %s availability by reading device %s "
+        "%s Checking lagging agent availability by reading device %s "
         "first block checksum",
-        PartConfig->GetName().c_str(),
-        LaggingAgent.GetAgentId().Quote().c_str(),
+        LogTitle.GetWithTime().c_str(),
         LaggingAgent.GetDevices()[0].GetDeviceUUID().Quote().c_str());
 
     auto request =
@@ -138,10 +142,8 @@ void TAgentAvailabilityMonitoringActor::HandleChecksumBlocksUndelivery(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Couldn't read block checksum from lagging agent %s due to "
-        "undelivered request",
-        PartConfig->GetName().c_str(),
-        LaggingAgent.GetAgentId().Quote().c_str());
+        "%s Couldn't read block checksum due to undelivered request",
+        LogTitle.GetWithTime().c_str());
 }
 
 void TAgentAvailabilityMonitoringActor::HandleChecksumBlocksResponse(
@@ -153,10 +155,8 @@ void TAgentAvailabilityMonitoringActor::HandleChecksumBlocksResponse(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] Couldn't read block checksum from lagging agent %s due to "
-            "error: %s",
-            PartConfig->GetName().c_str(),
-            LaggingAgent.GetAgentId().Quote().c_str(),
+            "%s Couldn't read block checksum due to error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
         return;
@@ -165,9 +165,8 @@ void TAgentAvailabilityMonitoringActor::HandleChecksumBlocksResponse(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Successfully read block checksum from lagging agent %s",
-        PartConfig->GetName().c_str(),
-        LaggingAgent.GetAgentId().Quote().c_str());
+        "%s Successfully read block checksum from lagging agent",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
         ctx,
