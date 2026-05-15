@@ -433,6 +433,10 @@ def _prepare_test_environment(ssh, virtio):
             "export {}={}".format(k, shlex.quote(v))
             for k, v in vm_env.items()
         ] + [
+            # this should be a part of `setup_coredumps`, but there seems to be
+            # no portable way to do this globally
+            "ulimit -c unlimited"
+        ] + [
             '"$@"',
             "exit_code=$?",
             "sync",

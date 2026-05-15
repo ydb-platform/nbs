@@ -7,35 +7,28 @@ import yatest.common as common
 
 def setup_coredumps(ssh):
     ssh("sudo mkdir /cores")
-    ssh("sudo sysctl -w 'kernel.core_pattern=/cores/%E.%p.core'")
-    ssh("echo '* soft core unlimited' | sudo tee -a /etc/security/limits.conf")
-    ssh("echo '* hard core unlimited' | sudo tee -a /etc/security/limits.conf")
+    ssh("sudo sysctl -w 'kernel.core_pattern=/cores/%E.%p'")
 
+    # Default core limit is 0, so it's essential to increase it. Unfortunately
+    # there seems to be no portable way to do this across all images used in
+    # our tests. What works every time, is setting them locally inside the
+    # /run_test.sh script
 
-def get_backtrace(ssh, binary, core, backtrace):
     gdb = common.runtime.gdb_path()
     gdb_args = "--batch -iex 'set print thread-events off' -iex 'set auto-load safe-path /' -ex bt"
-    ssh(f"sudo {gdb} {binary} {core} {gdb_args} | sudo tee {backtrace}")
+    backtrace_dir = common.output_path()
+    script = "\n".join([
+        f"#!/bin/bash",
+        f"set -x",
+        f"for core in $(ls /cores); do",
+        f"    binary_path_pid=$(echo $core | sed 's/!/\\//g')",
+        f"    binary_path=$(echo $binary_path_pid | sed 's/\\.[0-9]*$//')",
+        f"    binary_pid=$(basename $binary_path_pid)",
+        f"    backtrace={backtrace_dir}/$binary_pid.backtrace",
+        f"    sudo {gdb} $binary_path /cores/$core {gdb_args} | sudo tee $backtrace",
+        f"done"])
+    ssh(f"sudo tee /process_coredumps.sh <<'EOF' && sudo chmod +x /process_coredumps.sh\n{script}\nEOF")
 
 
 def process_coredumps(ssh):
-    core_dir = os.path.join(common.output_path(), "cores")
-    backtrace_dir = os.path.join(common.output_path(), "backtraces")
-
-    ssh(f"sudo cp -r /cores {core_dir}")
-    ssh(f"sudo mkdir {backtrace_dir}")
-
-    logging.info(f"looking for cores in {core_dir}")
-    for core in os.listdir(core_dir):
-        match = re.search(r"(.+)\.(\d+)\.core", core)
-        if not match:
-            continue
-
-        logging.info(f"extracting backtrace from {core}")
-        binary_path = match.group(1).replace("!", "/")
-        pid = match.group(2)
-        backtrace = f"{match.group(1)}.{pid}.backtrace"
-        backtrace_path = os.path.join(backtrace_dir, backtrace)
-        core_path = os.path.join(core_dir, core)
-
-        get_backtrace(ssh, binary_path, core_path, backtrace_path)
+    ssh(f"sudo /process_coredumps.sh")
