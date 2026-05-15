@@ -2043,6 +2043,53 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, requestNumber.GetRequestNumber());
         UNIT_ASSERT_VALUES_EQUAL(4, requestNumber.GetDiskRegistryGeneration());
     }
+
+    Y_UNIT_TEST_F(ShouldRejectedCmsRequestsWhenInFlightLimitExceeded, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetMaxInFlightCmsRequests(1);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        auto makeRemoveHostActions = [&]()
+        {
+            NProto::TAction action;
+            action.SetHost("agent-1");
+            action.SetType(NProto::TAction::REMOVE_HOST);
+            return TVector<NProto::TAction>{action};
+        };
+
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
+
+        int rejectedCount = 0;
+        for (int i = 0; i < 4; ++i) {
+            auto response = DiskRegistry->RecvCmsActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+            const auto code =
+                response->Record.GetActionResults(0).GetResult().GetCode();
+            if (code == E_REJECTED) {
+                ++rejectedCount;
+            }
+        }
+
+        UNIT_ASSERT_C(
+            rejectedCount >= 3,
+            "Expected at least 3 rejected responses, got: " << rejectedCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

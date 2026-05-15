@@ -31,6 +31,20 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
         NProto::EAgentState_Name(msg->State).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
+    const ui32 maxInFlight = Config->GetMaxInFlightCmsRequests();
+    if (maxInFlight > 0 &&
+        TransactionTimeTracker.GetInFlightOperationsCountByTransactionName(
+            TUpdateCmsHostState::Name) >= maxInFlight)
+    {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<
+                TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse>(
+                MakeError(E_REJECTED, "too many inflight transactions")));
+        return;
+    }
+
     ExecuteTx<TUpdateCmsHostState>(
         ctx,
         std::move(requestInfo),

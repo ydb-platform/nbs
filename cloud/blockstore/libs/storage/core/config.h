@@ -799,6 +799,7 @@ public:
     [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 
     [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
+    [[nodiscard]] ui32 GetMaxInFlightCmsRequests() const;
 
     [[nodiscard]] NProto::EOverlappingRequestsPolicy
     GetOverlappingRequestsPolicy() const;

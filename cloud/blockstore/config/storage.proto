@@ -1570,4 +1570,9 @@ message TStorageServiceConfig
     // the blob may be split at compaction range
     // borders to eliminate reading block masks. Zero disables splitting.
     optional uint64 SplitByCompactionRangeMaxBlobCount = 497;
+
+    // Maximum number of inflight DR transactions after which CMS host
+    // modification requests (AddHost, AddDevice, RemoveHost, RemoveDevice,
+    // PurgeHost) are rejected with E_REJECTED. 0 means no limit.
+    optional uint32 MaxInFlightCmsRequests = 498;
 }
