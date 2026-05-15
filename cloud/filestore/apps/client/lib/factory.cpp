@@ -34,6 +34,7 @@ TCommandPtr NewExecuteActionCommand();
 TCommandPtr NewCreateSessionCommand();
 TCommandPtr NewResetSessionCommand();
 TCommandPtr NewDestroySessionCommand();
+TCommandPtr NewReadLinkCommand();
 TCommandPtr NewStatCommand();
 TCommandPtr NewSetNodeAttrCommand();
 TCommandPtr NewFindGarbageCommand();
@@ -69,6 +70,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "mount", NewMountCommand },
     { "mv", NewMvCommand },
     { "read", NewReadCommand },
+    { "readlink", NewReadLinkCommand },
     { "removeclusternode", NewRemoveClusterNodeCommand },
     { "resetsession", NewResetSessionCommand },
     { "resize", NewResizeCommand },
