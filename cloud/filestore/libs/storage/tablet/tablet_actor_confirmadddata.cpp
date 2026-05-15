@@ -388,16 +388,18 @@ void TIndexTabletActor::ConfirmData(ui64 commitId, const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::DeleteUnconfirmedDataForSession(
-    const TString& sessionId,
-    const TActorContext& ctx)
+void TIndexTabletActor::DeleteUnconfirmedData(
+    const TActorContext& ctx,
+    const char* deletionEntity,
+    const TString& entityId,
+    const std::function<bool(const TTrackedUnconfirmedData&)>& shouldDelete)
 {
     TVector<ui64> commitIdsToDelete;
 
     auto enqueueCommitIdsToDelete = [&](const auto& data)
     {
         for (const auto& [commitId, trackedData]: data) {
-            if (trackedData.SessionId != sessionId) {
+            if (!shouldDelete(trackedData)) {
                 continue;
             }
 
@@ -412,28 +414,54 @@ void TIndexTabletActor::DeleteUnconfirmedDataForSession(
     enqueueCommitIdsToDelete(UnconfirmedData);
     enqueueCommitIdsToDelete(UnconfirmedDataInProgress);
 
-    if (!commitIdsToDelete.empty()) {
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s Deleting unconfirmed data: sessionId=%s, "
-            "deleteNow=%zu",
-            LogTag.c_str(),
-            sessionId.Quote().c_str(),
-            commitIdsToDelete.size());
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s Deleting unconfirmed data: %s=%s, deleteNow=%zu",
+        LogTag.c_str(),
+        deletionEntity,
+        entityId.c_str(),
+        commitIdsToDelete.size());
 
-        // Session cleanup has the same ordering requirement as CancelAddData:
-        // once commitIds are placed into DeletionQueue, DeleteUnconfirmedData
-        // must be executed before any later AddBlob execute. For that reason it
-        // should be also page-fault-free.
-        ExecuteTx<TDeleteUnconfirmedData>(
-            ctx,
-            CreateRequestInfo(
-                SelfId(),
-                0 /* cookie */,
-                MakeIntrusive<TCallContext>()),
-            std::move(commitIdsToDelete));
+    if (commitIdsToDelete.empty()) {
+        return;
     }
+
+    // Cleanup has the same ordering requirement as CancelAddData: once
+    // commitIds are placed into DeletionQueue, DeleteUnconfirmedData must be
+    // executed before any later AddBlob execute. For that reason it should be
+    // also page-fault-free.
+    ExecuteTx<TDeleteUnconfirmedData>(
+        ctx,
+        CreateRequestInfo(
+            SelfId(),
+            0 /* cookie */,
+            MakeIntrusive<TCallContext>()),
+        std::move(commitIdsToDelete));
+}
+
+void TIndexTabletActor::DeleteUnconfirmedDataForSession(
+    const TString& sessionId,
+    const TActorContext& ctx)
+{
+    DeleteUnconfirmedData(
+        ctx,
+        "sessionId",
+        sessionId.Quote(),
+        [&sessionId](const TTrackedUnconfirmedData& trackedData)
+        { return trackedData.SessionId == sessionId; });
+}
+
+void TIndexTabletActor::DeleteUnconfirmedDataForPipeServer(
+    const TActorId& pipeServerId,
+    const TActorContext& ctx)
+{
+    DeleteUnconfirmedData(
+        ctx,
+        "pipeServer",
+        pipeServerId.ToString(),
+        [&pipeServerId](const TTrackedUnconfirmedData& trackedData)
+        { return trackedData.PipeServerId == pipeServerId; });
 }
 
 ////////////////////////////////////////////////////////////////////////////////

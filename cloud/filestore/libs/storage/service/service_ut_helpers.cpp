@@ -1,10 +1,15 @@
 #include "service_ut_helpers.h"
 
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
+#include <cloud/filestore/libs/storage/testlib/service_client.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <utility>
 
 namespace NCloud::NFileStore::NStorage {
+
+using namespace NActors;
 
 void TTestProfileLog::Start()
 {}
@@ -30,6 +35,15 @@ TString GenerateValidateData(ui32 size, ui32 seed)
         data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
     }
     return data;
+}
+
+void WaitForTabletStart(TServiceClient& service)
+{
+    TDispatchOptions options;
+    options.FinalEvents = {
+        TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+    service.AccessRuntime().DispatchEvents(options, TDuration::Seconds(5));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

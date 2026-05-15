@@ -1475,6 +1475,50 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(observer, 0, 0);
     }
 
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnWritePipeDisconnection)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient sessionClient(runtime, nodeIdx, tabletId);
+        sessionClient.InitSession("client", "session");
+
+        auto id = CreateNode(
+            sessionClient,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(sessionClient, id);
+
+        TIndexTabletClient writeClient(
+            runtime,
+            nodeIdx,
+            tabletId,
+            {},
+            false /* updateConfig */);
+        writeClient.SetHeaders("client", "session", 0 /* sessionSeqNo */);
+
+        auto gbi = writeClient.GenerateBlobIds(id, handle, 0, block);
+        Y_UNUSED(gbi);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(sessionClient, 1, 0);
+
+        writeClient.DisconnectPipe();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        TIndexTabletClient observer(runtime, nodeIdx, tabletId);
+        AssertStorageStats(observer, 0, 0);
+    }
+
     Y_UNIT_TEST(ShouldReleaseCollectBarrierOnGenerateBlobIdsChannelError)
     {
         constexpr ui32 block = 4_KB;

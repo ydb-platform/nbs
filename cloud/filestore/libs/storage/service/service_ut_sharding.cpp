@@ -146,14 +146,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     const auto StartupEventType =
         TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest;
 
-    void WaitForTabletStart(TServiceClient& service)
-    {
-        TDispatchOptions options;
-        options.FinalEvents = {
-            TDispatchOptions::TFinalEventCondition(StartupEventType)};
-        service.AccessRuntime().DispatchEvents(options);
-    }
-
     void CatchActorIds(TServiceClient& service, TVector<TActorId>& ids)
     {
         service.AccessRuntime().SetEventFilter(

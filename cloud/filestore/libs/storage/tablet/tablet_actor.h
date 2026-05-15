@@ -761,8 +761,19 @@ private:
         const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    void DeleteUnconfirmedData(
+        const NActors::TActorContext& ctx,
+        const char* deletionEntity,
+        const TString& entityId,
+        const std::function<bool(const TTrackedUnconfirmedData&)>&
+            shouldDelete);
+
     void DeleteUnconfirmedDataForSession(
         const TString& sessionId,
+        const NActors::TActorContext& ctx);
+
+    void DeleteUnconfirmedDataForPipeServer(
+        const NActors::TActorId& pipeServerId,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

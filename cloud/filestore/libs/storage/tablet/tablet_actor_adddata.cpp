@@ -462,7 +462,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             commitId,
             TTrackedUnconfirmedData{
                 .Data = std::move(unconfirmedData),
-                .SessionId = GetSessionId(msg->Record)});
+                .SessionId = GetSessionId(msg->Record),
+                .PipeServerId = ev->Recipient});
         TABLET_VERIFY(inserted);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
