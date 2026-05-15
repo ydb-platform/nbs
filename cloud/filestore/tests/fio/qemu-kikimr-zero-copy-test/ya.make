@@ -24,6 +24,11 @@ SET(
     cloud/filestore/tests/fio/qemu-kikimr-zero-copy-test/nfs-patch.txt
 )
 
+SET(
+    NFS_SERVER_CONFIG_PATCH
+    cloud/filestore/tests/fio/qemu-kikimr-zero-copy-test/nfs-server-patch.txt
+)
+
 SET(QEMU_VIRTIO fs)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)

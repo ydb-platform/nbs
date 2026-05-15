@@ -830,4 +830,7 @@ message TStorageConfig
     optional uint32 SoftBackpressureMaxReadBandwidth = 519;    // in MiB/s
     optional uint32 SoftBackpressureMaxWriteIops = 520;
     optional uint32 SoftBackpressureMaxReadIops = 521;
+
+    // Enable local filestore-server
+    optional bool LocalFilestoreServerEnabled = 522;
 }
