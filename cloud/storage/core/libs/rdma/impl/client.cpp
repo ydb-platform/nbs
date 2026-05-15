@@ -2500,7 +2500,7 @@ bool TClient::IsAlignedDataEnabled() const
 inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
 {
     out << "SEND " << TWorkRequestId(send->wr.wr_id);
-    if (auto msg = send->Message()) {
+    if (const auto* msg = send->Message()) {
         if (auto ver = ParseMessageHeader(msg);
             ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
@@ -2513,11 +2513,12 @@ inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
 inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 {
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
-    if (auto msg = recv->Message()) {
+    if (const auto* msg = recv->Message()) {
         if (auto ver = ParseMessageHeader(msg);
             ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
-            out << " [request=" << msg->ReqId << "]";
+            out << " [request=" << msg->ReqId << " status=" << msg->Status
+                << " responseBytes=" << msg->ResponseBytes << "]";
         }
     }
     return out;
