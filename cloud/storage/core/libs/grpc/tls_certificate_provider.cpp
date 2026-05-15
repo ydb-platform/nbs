@@ -21,7 +21,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <exception>
 #include <memory>
 #include <mutex>
 #include <tuple>
@@ -135,7 +134,7 @@ public:
     virtual ~TPeriodicCertificateProviderBase()
     {
         STORAGE_VERIFY_C(
-            RefreshThread.get() == nullptr,
+            IsRefreshThreadStopped(),
             TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
             LogComponent,
             "destructor called while refresh thread is running");
@@ -255,18 +254,11 @@ private:
             UpdateInProgress = true;
             lock.unlock();
 
-            try {
-                ForceUpdate();
-                lock.lock();
-                UpdateInProgress = false;
-                CompletePendingUpdate();
-                lock.unlock();
-            } catch (...) {
-                lock.lock();
-                UpdateInProgress = false;
-                FailPendingUpdate(std::current_exception());
-                lock.unlock();
-            }
+            ForceUpdate();
+            lock.lock();
+            UpdateInProgress = false;
+            CompletePendingUpdate();
+            lock.unlock();
         }
     }
 
@@ -283,17 +275,6 @@ private:
             LogComponent,
             "complete called without pending update");
         PendingUpdate->Promise.SetValue();
-        PendingUpdate = Nothing();
-    }
-
-    void FailPendingUpdate(std::exception_ptr ex)
-    {
-        STORAGE_VERIFY_C(
-            PendingUpdate.Defined(),
-            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
-            LogComponent,
-            "fail called without pending update");
-        PendingUpdate->Promise.SetException(std::move(ex));
         PendingUpdate = Nothing();
     }
 
