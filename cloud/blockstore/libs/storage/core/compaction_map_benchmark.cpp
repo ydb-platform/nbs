@@ -57,10 +57,16 @@ ui16 RandomUsedBlockCount(ui16 blockCount)
 {
     const ui32 bucket = RandomNumber<ui32>(4);
     if (bucket == 0) {
+        // No garbage with probability 25%.
         return blockCount;
     }
     if (bucket == 1) {
+        // Everything is garbage with probability 25%.
         return 0;
+    }
+
+    if (blockCount <= 1) {
+        return blockCount;
     }
     return static_cast<ui16>(RandomNumber<ui32>(blockCount - 1) + 1);
 }
@@ -73,15 +79,17 @@ void DoUpdateRandomized(ui64 diskSize, benchmark::State& state)
     const ui64 rangeCount = blockCount / RangeSize;
 
     TCompressedBitmap usedBlocks(rangeCount * RangeSize);
-
     TVector<TCompactionCounter> counters(Reserve(rangeCount));
+
+    constexpr ui16 BlocksInRange = 1024;
+
     for (size_t i = 0; i < rangeCount; ++i) {
         const ui16 blobCount =
-            static_cast<ui16>(RandomNumber<ui32>(5) + 1);
+            static_cast<ui16>(RandomNumber<ui32>(6)); // [0, 5]
         const ui16 statBlockCount =
-            static_cast<ui16>(RandomNumber<ui32>(901) + 100);
+            static_cast<ui16>(RandomNumber<ui32>(BlocksInRange + 1)); // [0, BlocksInRange]
         const ui16 usedBlockCount = RandomUsedBlockCount(statBlockCount);
-        const float score = 0.1f + 0.1f * RandomNumber<float>();
+        const float score = 0.1f * RandomNumber<float>(); // [0.0, 0.1]
 
         auto rangeStat = TRangeStat(
             blobCount,
