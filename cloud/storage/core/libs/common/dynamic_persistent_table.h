@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error.h"
+#include "memory_controller.h"
 #include "numeric.h"
 
 #include <library/cpp/digest/crc32c/crc32c.h>
@@ -11,6 +13,7 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/stream/mem.h>
+#include <util/string/builder.h>
 #include <util/system/align.h>
 #include <util/system/file.h>
 #include <util/system/filemap.h>
@@ -142,6 +145,7 @@ private:
 
     TString FileName;
     const TDynamicPersistentTableConfig Config;
+    const IMemoryControllerPtr MemoryController;
     ui64 MaxRecords = 0;
     ui64 LowMemoryOps = 0;
 
@@ -258,9 +262,11 @@ public:
 public:
     TDynamicPersistentTable(
         const TString& fileName,
-        const TDynamicPersistentTableConfig& config)
+        const TDynamicPersistentTableConfig& config,
+        IMemoryControllerPtr memoryController)
         : FileName(fileName)
         , Config(config)
+        , MemoryController(memoryController)
         , MaxRecords(config.MaxRecords)
         , DataAreaSize(config.InitialDataAreaSize)
     {
@@ -278,6 +284,11 @@ public:
         Init();
     }
 
+    ~TDynamicPersistentTable()
+    {
+        UpdateFileMapSize(GetFileMapSize(), 0);
+    }
+
     H* HeaderData()
     {
         return &HeaderPtr->Data;
@@ -293,33 +304,39 @@ public:
         return GetRecord(index, EDataRetrievalMode::WithValidation);
     }
 
-    ui64 AllocRecord(ui64 dataSize)
+    TResultOrError<ui64> AllocRecord(ui64 dataSize)
     {
-        ui64 index = InvalidIndex;
         if (dataSize == 0) {
-            return InvalidIndex;
+            return MakeError(E_ARGUMENT, "Data size should be nonzero");
         }
 
+        ui64 index = InvalidIndex;
         if (!FreeRecordIndexes.empty()) {
             index = FreeRecordIndexes.front();
             FreeRecordIndexes.pop_front();
         } else if (NextFreeRecordIndex < MaxRecords) {
             index = NextFreeRecordIndex++;
         } else {
-            ExpandRecordArea();
+            if (auto error = ExpandRecordArea(); HasError(error)) {
+                return error;
+            }
             index = NextFreeRecordIndex++;
         }
 
         if (index == InvalidIndex) {
-            return InvalidIndex;
+            return MakeError(E_FAIL, "Invalid record index");
         }
 
         HeaderPtr->NextFreeRecordIndex = NextFreeRecordIndex;
 
         if (NextDataOffset + dataSize > DataAreaSize) {
             TryCompactDataArea(dataSize);
-            if (NextDataOffset + dataSize > DataAreaSize) {
-                ExpandDataArea(dataSize);
+            const ui64 requiredSize = NextDataOffset + dataSize;
+            if (requiredSize > DataAreaSize) {
+                if (auto error = ExpandDataArea(requiredSize); HasError(error)) {
+                    FreeRecordIndexes.push_back(index);
+                    return error;
+                }
             }
         }
 
@@ -387,6 +404,8 @@ public:
 
     void Clear()
     {
+        UpdateFileMapSize(GetFileMapSize(), 0);
+
         NextFreeRecordIndex = 0;
         NextDataOffset = 0;
         GapSpaceSize = 0;
@@ -534,7 +553,7 @@ private:
         TailDataIndex = index;
     }
 
-    void ExpandRecordArea()
+    NProto::TError ExpandRecordArea()
     {
         if (GapSpaceSize != 0) {
             CompactDataArea();
@@ -553,14 +572,15 @@ private:
             movedBytes += DescriptorsPtr[currentIndex].DataSize;
         }
 
-        if (NextDataOffset < expansionBytes) {
-            NextDataOffset = expansionBytes;
+        const ui64 nextDataOffset = Max(NextDataOffset, expansionBytes);
+        const ui64 requiredSize = nextDataOffset + movedBytes;
+        if (requiredSize > DataAreaSize) {
+            if (auto error = ExpandDataArea(requiredSize); HasError(error)) {
+                return error;
+            }
         }
 
-        if (NextDataOffset + movedBytes > DataAreaSize) {
-            ExpandDataArea(movedBytes);
-        }
-
+        NextDataOffset = nextDataOffset;
         ui64 nextAppendOffset = DataAreaOffset + NextDataOffset;
 
         while (HeadDataIndex != InvalidIndex &&
@@ -584,8 +604,13 @@ private:
         HeaderPtr->MaxRecords = targetMaxRecords;
         MaxRecords = targetMaxRecords;
         DataAreaOffset = targetDataAreaOffset;
-        ResizeAndRemap();
+        // The expanded record area consumes the reserved data-area prefix.
+        DataAreaSize -= expansionBytes;
+        HeaderPtr->DataAreaSize = DataAreaSize;
+        RefreshPointers();
         NextDataOffset -= expansionBytes;
+
+        return {};
     }
 
     void PrepareAddRecord(ui64 index)
@@ -700,6 +725,9 @@ private:
 
         FileMap = std::make_unique<TFileMap>(FileName, TMemoryMapCommon::oRdWr);
         FileMap->Map(0, sizeof(THeader));
+        // Startup/restore mappings are always accounted but are not rejected by
+        // the memory controller. The limit is applied only to later growth.
+        UpdateFileMapSize(0, GetFileMapSize());
 
         HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
         if (HeaderPtr->MaxRecords == 0) {
@@ -1000,10 +1028,10 @@ private:
         HeaderPtr->DataMoveBufferSize = Config.InitialDataMoveBufferSize;
     }
 
-    void ExpandDataArea(ui64 requiredRecordDataSize)
+    NProto::TError ExpandDataArea(ui64 requiredSize)
     {
         ui64 newDataAreaSize = DataAreaSize;
-        while (NextDataOffset + requiredRecordDataSize > newDataAreaSize) {
+        while (requiredSize > newDataAreaSize) {
             const ui64 dataAreaStepSize =
                 newDataAreaSize < Config.MaxDataAreaStepSize
                     ? newDataAreaSize
@@ -1012,12 +1040,60 @@ private:
             newDataAreaSize += dataAreaStepSize;
         }
 
+        const ui64 newFileMapSize = CalcFileSize(newDataAreaSize);
+        // This is intentionally a growth admission check, not a reservation.
+        // Usage is charged after ResizeAndRemap() succeeds.
+        if (auto error = CanResizeFileMap(newFileMapSize); HasError(error)) {
+            return error;
+        }
+
         DataAreaSize = newDataAreaSize;
         HeaderPtr->DataAreaSize = DataAreaSize;
 
         ResizeAndRemap();
 
         ResetShrinkState();
+
+        return {};
+    }
+
+    NProto::TError CanResizeFileMap(ui64 newFileMapSize) const
+    {
+        const ui64 fileMapSize = GetFileMapSize();
+        if (!MemoryController || newFileMapSize <= fileMapSize) {
+            return {};
+        }
+
+        const ui64 increaseSize = newFileMapSize - fileMapSize;
+        if (MemoryController->CanIncreaseFileMapUsage(increaseSize)) {
+            return {};
+        }
+
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "MemoryNotEnough: failed to increase file map size by "
+                << increaseSize << " bytes");
+    }
+
+    void UpdateFileMapSize(ui64 oldFileMapSize, ui64 newFileMapSize)
+    {
+        if (!MemoryController) {
+            return;
+        }
+
+        if (newFileMapSize > oldFileMapSize) {
+            MemoryController->IncreaseFileMapUsage(
+                newFileMapSize - oldFileMapSize);
+        } else if (newFileMapSize < oldFileMapSize) {
+            MemoryController->DecreaseFileMapUsage(
+                oldFileMapSize - newFileMapSize);
+        }
+    }
+
+    ui64 GetFileMapSize() const
+    {
+        return FileMap ? FileMap->MappedSize() : 0;
     }
 
     ui64 GetLiveDataSize() const
@@ -1041,7 +1117,14 @@ private:
 
     void ResizeAndRemap()
     {
+        const ui64 oldFileMapSize = GetFileMapSize();
         FileMap->ResizeAndRemap(0, CalcFileSize(DataAreaSize));
+        RefreshPointers();
+        UpdateFileMapSize(oldFileMapSize, GetFileMapSize());
+    }
+
+    void RefreshPointers()
+    {
         HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
         FilePtr = reinterpret_cast<char*>(FileMap->Ptr());
         DescriptorsPtr =

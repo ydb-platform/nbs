@@ -24,7 +24,8 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
             .InitialDataAreaSize = initialDataAreaSize,
             .MaxDataAreaStepSize = maxDataAreaStepSize,
             .InitialDataMoveBufferSize = initialDataMoveBufferSize,
-        });
+        },
+        nullptr);
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -255,11 +256,12 @@ TDirectoryHandleChunkPair TDirectoryHandleStorage::DeserializeHandleChunk(
 
 ui64 TDirectoryHandleStorage::CreateRecord(const TBuffer& record)
 {
-    ui64 index = Table->AllocRecord(record.Size());
-    if (index == TDirectoryHandleTable::InvalidIndex) {
+    auto result = Table->AllocRecord(record.Size());
+    if (HasError(result)) {
         return TDirectoryHandleTable::InvalidIndex;
     }
 
+    const ui64 index = result.GetResult();
     if (!Table->WriteRecordData(index, record.Data(), record.Size())) {
         return TDirectoryHandleTable::InvalidIndex;
     }
