@@ -133,11 +133,7 @@ public:
 
     virtual ~TPeriodicCertificateProviderBase()
     {
-        STORAGE_VERIFY_C(
-            IsRefreshThreadStopped(),
-            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
-            LogComponent,
-            "destructor called while refresh thread is running");
+        Stop();
     }
 
 protected:
@@ -149,11 +145,6 @@ protected:
     TMaybe<TString> GetRootCertificate() const
     {
         return RootCertificate;
-    }
-
-    bool IsRefreshThreadStopped() const
-    {
-        return RefreshThread.get() == nullptr;
     }
 
     const TString& GetRootCertPath() const
@@ -386,18 +377,20 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPeriodicCertificateProvider final
+class TGrpcPeriodicCertificateProvider final
     : public grpc_tls_certificate_provider
-    , public TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>
+    , public TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>
 {
-    using TBase = TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>;
+    using TBase =
+        TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>;
 private:
     RefCountedPtr<grpc_tls_certificate_distributor> Distributor;
 
 public:
-    friend class TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>;
+    friend class
+        TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>;
 
-    TPeriodicCertificateProvider(
+    TGrpcPeriodicCertificateProvider(
             ILoggingServicePtr logging,
             TString logComponent,
             NMonitoring::TDynamicCountersPtr serverGroup,
@@ -405,7 +398,7 @@ public:
             TVector<TCertificateFiles> certificates,
             TDuration refreshIntervalSec)
         : TPeriodicCertificateProviderBase<
-            TPeriodicCertificateProvider>(
+            TGrpcPeriodicCertificateProvider>(
               std::move(logging),
               std::move(logComponent),
               std::move(serverGroup),
@@ -427,13 +420,9 @@ public:
             });
     }
 
-    ~TPeriodicCertificateProvider() override
+    ~TGrpcPeriodicCertificateProvider() override
     {
-        STORAGE_VERIFY_C(
-            IsRefreshThreadStopped(),
-            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
-            "TLS_CERTIFICATE_PROVIDER",
-            "destructor called without explicit Stop");
+        TBase::Stop();
         Distributor->SetWatchStatusCallback(nullptr);
     }
 
@@ -541,11 +530,11 @@ class TGrpcCertificateProvider final
     : public grpc::experimental::CertificateProviderInterface
 {
 private:
-    grpc_core::RefCountedPtr<TPeriodicCertificateProvider> Provider;
+    grpc_core::RefCountedPtr<TGrpcPeriodicCertificateProvider> Provider;
 
 public:
     explicit TGrpcCertificateProvider(
-        grpc_core::RefCountedPtr<TPeriodicCertificateProvider> provider)
+        grpc_core::RefCountedPtr<TGrpcPeriodicCertificateProvider> provider)
         : Provider(std::move(provider))
     {}
 
@@ -557,16 +546,16 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPeriodicCertificateProviderImpl final
+class TPeriodicCertificateProvider final
     : public ICertificateProvider
 {
 private:
-    grpc_core::RefCountedPtr<TPeriodicCertificateProvider> Provider;
+    grpc_core::RefCountedPtr<TGrpcPeriodicCertificateProvider> Provider;
     std::shared_ptr<TGrpcCertificateProvider> GrpcProvider;
     const bool HasRootCert;
 
 public:
-    TPeriodicCertificateProviderImpl(
+    TPeriodicCertificateProvider(
         ILoggingServicePtr logging,
         TString logComponent,
         NMonitoring::TDynamicCountersPtr serverGroup,
@@ -576,8 +565,8 @@ public:
         : HasRootCert(!!rootCertPath)
     {
         Provider = grpc_core::RefCountedPtr<
-            TPeriodicCertificateProvider>(
-                new TPeriodicCertificateProvider(
+            TGrpcPeriodicCertificateProvider>(
+                new TGrpcPeriodicCertificateProvider(
                     std::move(logging),
                     std::move(logComponent),
                     std::move(serverGroup),
@@ -721,7 +710,7 @@ ICertificateProviderPtr CreateCertificateProvider(
 
     ValidateCertificates(certificates, true);
 
-    return std::make_shared<TPeriodicCertificateProviderImpl>(
+    return std::make_shared<TPeriodicCertificateProvider>(
         std::move(logging),
         std::move(logComponent),
         std::move(serverGroup),
