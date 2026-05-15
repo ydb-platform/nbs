@@ -102,7 +102,7 @@ public:
 //    - ReadPos points to a slack space
 //    - WritePos == 0
 //    This may happen when Alloc was terminated in the middle of the operation.
-//    Correction ReadPos = 0 is performed at validation.
+//    ReadPos is corrected to 0 during validation.
 //
 //  2. Non-empty buffer:
 //    - ReadPos != WritePos
@@ -628,8 +628,9 @@ public:
                 // the state can be restored from the intermediate state
                 WriteSlackSpaceMarker(Header()->WritePos);
 
-                // There is no concurrent access to the memory but it is needed
-                // to ensure that a compiler does not reorder writes
+                // A compiler-only fence is sufficient here because there is no
+                // concurrent access to the memory and we just need to ensure
+                // that a compiler does not reorder writes.
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 Header()->WritePos = 0;
                 std::atomic_signal_fence(std::memory_order_seq_cst);
@@ -683,7 +684,9 @@ public:
         CurrentAllocation->SetChecksum(
             Crc32c(ptr, CurrentAllocation->GetDataSize()));
 
-        // We need to ensure that a compiler does not reorder writes here
+        // A compiler-only fence is sufficient here because there is no
+        // concurrent access to the memory and we just need to ensure
+        // that a compiler does not reorder writes.
         std::atomic_signal_fence(std::memory_order_seq_cst);
 
         auto writePos = Data.GetEntryPos(CurrentAllocation);
