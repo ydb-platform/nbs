@@ -396,6 +396,10 @@ public:
                 << "\t";
         }
 
+        if (request.GetFlags()) {
+            out << PrintValue("request_flags", request.GetFlags()) << "\t";
+        }
+
         if (out.empty()) {
             out << "{no_info}";
         } else {

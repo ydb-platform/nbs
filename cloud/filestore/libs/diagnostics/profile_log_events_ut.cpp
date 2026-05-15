@@ -370,10 +370,12 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     {
         const auto nodeId = 12;
         const auto name = "node";
+        const bool unlinkDirectory = true;
 
         NProto::TUnlinkNodeRequest req;
         req.SetNodeId(nodeId);
         req.SetName(name);
+        req.SetUnlinkDirectory(unlinkDirectory);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitProfileLogRequestInfo(profileLogRequest, req);
@@ -381,6 +383,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, profileLogRequest.RangesSize());
         UNIT_ASSERT(profileLogRequest.HasNodeInfo());
         UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(unlinkDirectory),
+            profileLogRequest.GetFlags());
 
         const auto& nodeInfo = profileLogRequest.GetNodeInfo();
         UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetParentNodeId());

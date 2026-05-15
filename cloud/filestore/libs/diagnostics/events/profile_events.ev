@@ -118,6 +118,8 @@ message TProfileLogRequestInfo {
     optional string ClientId = 12;
 
     optional bool BehaveAsShard = 13;
+
+    optional uint32 Flags = 14;
 };
 
 message TProfileLogRecord {
