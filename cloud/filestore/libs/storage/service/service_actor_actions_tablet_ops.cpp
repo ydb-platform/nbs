@@ -54,18 +54,6 @@ IActorPtr TStorageServiceActor::CreateGetStorageStatsActionActor(
 ////////////////////////////////////////////////////////////////////////////////
 // UnsafeNodeOps / UnsafeNodeRefOps
 
-IActorPtr TStorageServiceActor::CreateUnsafeCreateNodeActionActor(
-    TRequestInfoPtr requestInfo,
-    TString input)
-{
-    using TUnsafeCreateNodeActor = TTabletActionActor<
-        TEvIndexTablet::TEvUnsafeCreateNodeRequest,
-        TEvIndexTablet::TEvUnsafeCreateNodeResponse>;
-    return std::make_unique<TUnsafeCreateNodeActor>(
-        std::move(requestInfo),
-        std::move(input));
-}
-
 IActorPtr TStorageServiceActor::CreateUnsafeDeleteNodeActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
@@ -98,18 +86,6 @@ IActorPtr TStorageServiceActor::CreateUnsafeGetNodeActionActor(
         TEvIndexTablet::TEvUnsafeGetNodeRequest,
         TEvIndexTablet::TEvUnsafeGetNodeResponse>;
     return std::make_unique<TUnsafeGetNodeActor>(
-        std::move(requestInfo),
-        std::move(input));
-}
-
-IActorPtr TStorageServiceActor::CreateUnsafeCreateNodeRefActionActor(
-    TRequestInfoPtr requestInfo,
-    TString input)
-{
-    using TUnsafeCreateNodeRefActor = TTabletActionActor<
-        TEvIndexTablet::TEvUnsafeCreateNodeRefRequest,
-        TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>;
-    return std::make_unique<TUnsafeCreateNodeRefActor>(
         std::move(requestInfo),
         std::move(input));
 }

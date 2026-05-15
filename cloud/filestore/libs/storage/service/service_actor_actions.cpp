@@ -77,10 +77,6 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateWriteCompactionMapActionActor
         },
         {
-            "unsafecreatenode",
-            &TStorageServiceActor::CreateUnsafeCreateNodeActionActor
-        },
-        {
             "unsafedeletenode",
             &TStorageServiceActor::CreateUnsafeDeleteNodeActionActor
         },
@@ -91,10 +87,6 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "unsafegetnode",
             &TStorageServiceActor::CreateUnsafeGetNodeActionActor
-        },
-        {
-            "unsafecreatenoderef",
-            &TStorageServiceActor::CreateUnsafeCreateNodeRefActionActor
         },
         {
             "unsafedeletenoderef",
