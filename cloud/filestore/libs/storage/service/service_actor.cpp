@@ -8,6 +8,17 @@
 #include <cloud/filestore/libs/client/client.h>
 #include <cloud/filestore/libs/client/durable.h>
 
+#include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
+
+#include <cloud/filestore/config/client.pb.h>
+
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <cloud/filestore/libs/client/config.h>
+
+#include <cloud/filestore/tools/testing/loadtest/lib/shm_client.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -49,20 +60,34 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 
     // create filestore client
     {
-        auto tiimer = CreateWallClockTimer();
+        auto timer = CreateWallClockTimer();
         auto scheduler = CreateScheduler();
         auto clientConfig = std::make_shared<NClient::TClientConfig>(NProto::TClientConfig{});
+        ILoggingServicePtr logging(
+            CreateLoggingService("nfs-client", {TLOG_DEBUG}));
 
         auto client = NClient::CreateFileStoreClient(
-            ClientConfig,
-            Logging);
+            clientConfig,
+            logging);
 
         Client = NClient::CreateDurableClient(
-            Logging,
-            Timer,
-            Scheduler,
-            CreateRetryPolicy(ClientConfig),
+            logging,
+            timer,
+            scheduler,
+            CreateRetryPolicy(clientConfig),
             client);
+
+        auto shmControl = CreateShmControlClient(clientConfig, logging);
+
+        ShmClient = NCloud::NFileStore::NLoadTest::CreateSharedMemoryClient(
+                        "/tmp/",
+                        "shm.bin",
+                        128_MB,
+                        1_MB,
+                        shmControl,
+                        scheduler,
+                        timer,
+                        logging);
     }
 
     RegisterPages(ctx);
