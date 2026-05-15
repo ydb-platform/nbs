@@ -381,7 +381,7 @@ struct TTestVerbs
             void* context,
             rdma_port_space ps)
         {
-            memset(this, 0, sizeof(rdma_cm_id));
+            *static_cast<rdma_cm_id*>(this) = {};
 
             Y_UNUSED(channel);
             Y_UNUSED(context);
@@ -423,7 +423,9 @@ struct TTestVerbs
         sockaddr* dstAddr,
         TDuration timeout) override
     {
-        Y_UNUSED(timeout);
+        if (TestContext->HandleResolveAddress) {
+            TestContext->HandleResolveAddress(id, srcAddr, dstAddr, timeout);
+        }
 
         static_assert(sizeof(sockaddr) <= sizeof(sockaddr_storage));
         memcpy(&id->route.addr.src_storage, srcAddr, sizeof(sockaddr));
@@ -434,7 +436,9 @@ struct TTestVerbs
 
     void ResolveRoute(rdma_cm_id* id, TDuration timeout) override
     {
-        Y_UNUSED(timeout);
+        if (TestContext->HandleResolveRoute) {
+            TestContext->HandleResolveRoute(id, timeout);
+        }
 
         EnqueueConnectionEvent(TestContext, RDMA_CM_EVENT_ROUTE_RESOLVED, id);
     }
@@ -511,6 +515,9 @@ struct TTestVerbs
 
     void Accept(rdma_cm_id* id, rdma_conn_param* param) override
     {
+        if (TestContext->HandleAccept) {
+            TestContext->HandleAccept(id, param);
+        }
         EnqueueConnectionEvent(
             TestContext,
             RDMA_CM_EVENT_ESTABLISHED,

@@ -45,11 +45,22 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     std::function<void(ibv_pd* pd, void* addr, size_t length, int flags)>
         RegisterMemoryRegion;
 
+    // If set, called when TTestVerbs resolves address/route.
+    std::function<void(
+        rdma_cm_id* id,
+        sockaddr* srcAddr,
+        sockaddr* dstAddr,
+        TDuration timeout)> HandleResolveAddress;
+    std::function<void(rdma_cm_id* id, TDuration timeout)> HandleResolveRoute;
+
     // If set, overrides the default behavior of TTestVerbs::Connect. The test
     // can use it together with EnqueueAcceptEvent / EnqueueRejectEvent helpers
     // to simulate custom server-side responses (e.g. specific reject messages
     // or accept messages with a particular protocol version).
     std::function<void(rdma_cm_id* id, rdma_conn_param* param)> HandleConnect;
+
+    // If set, called when server Accept() is invoked.
+    std::function<void(rdma_cm_id* id, rdma_conn_param* param)> HandleAccept;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;

@@ -65,6 +65,8 @@ void TBootstrap::Init()
             std::make_unique<NCloud::NStorage::NRdma::TServerConfig>();
         config->Backlog = Options->Backlog;
         config->QueueSize = Options->QueueSize;
+        config->SendQueueSize = Options->SendQueueSize;
+        config->RecvQueueSize = Options->RecvQueueSize;
         config->PollerThreads = Options->PollerThreads;
         config->WaitMode =
             NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
@@ -72,6 +74,10 @@ void TBootstrap::Init()
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
+        config->QpRetryCount = Options->QpRetryCount;
+        config->QpRnrRetryCount = Options->QpRnrRetryCount;
+        config->QpTimeout = Options->QpTimeout;
+        config->QpMinRnrTimer = Options->QpMinRnrTimer;
 
         Server = NCloud::NBlockStore::NRdma::CreateRdmaServer(
             Logging,
@@ -81,6 +87,8 @@ void TBootstrap::Init()
         auto config =
             std::make_unique<NCloud::NStorage::NRdma::TClientConfig>();
         config->QueueSize = Options->QueueSize;
+        config->SendQueueSize = Options->SendQueueSize;
+        config->RecvQueueSize = Options->RecvQueueSize;
         config->PollerThreads = Options->PollerThreads;
         config->WaitMode =
             NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
@@ -88,6 +96,13 @@ void TBootstrap::Init()
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
         config->BufferPool = Options->BufferPool;
+        config->ResolveTimeout =
+            TDuration::MilliSeconds(Options->ResolveTimeout);
+        config->FlushTimeout = TDuration::MilliSeconds(Options->FlushTimeout);
+        config->QpRetryCount = Options->QpRetryCount;
+        config->QpRnrRetryCount = Options->QpRnrRetryCount;
+        config->QpTimeout = Options->QpTimeout;
+        config->QpMinRnrTimer = Options->QpMinRnrTimer;
 
         Client = NCloud::NBlockStore::NRdma::CreateRdmaClient(
             Logging,
