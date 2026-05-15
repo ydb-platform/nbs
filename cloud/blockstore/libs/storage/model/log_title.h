@@ -108,9 +108,9 @@ private:
         TClient,
         TDiskRegistry,
         TPartitionMirror,
+        TPartitionMigration,
         TFreshBlocksWriter,
-        TAgentAvailabilityMonitoringActor,
-        TPartitionMigration>;
+        TAgentAvailabilityMonitoringActor>;
 
     ui64 StartTime = 0;
     TData Data;
