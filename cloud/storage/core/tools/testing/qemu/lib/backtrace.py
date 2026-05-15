@@ -1,7 +1,3 @@
-import logging
-import os
-import re
-
 import yatest.common as common
 
 
@@ -18,17 +14,17 @@ def setup_coredumps(ssh):
     gdb_args = "--batch -iex 'set print thread-events off' -iex 'set auto-load safe-path /' -ex bt"
     backtrace_dir = common.output_path()
     script = "\n".join([
-        f"#!/bin/bash",
-        f"set -x",
-        f"for core in $(ls /cores); do",
-        f"    binary_path_pid=$(echo $core | sed 's/!/\\//g')",
-        f"    binary_path=$(echo $binary_path_pid | sed 's/\\.[0-9]*$//')",
-        f"    binary_pid=$(basename $binary_path_pid)",
+        "#!/bin/bash",
+        "set -x",
+        "for core in $(ls /cores); do",
+        "    binary_path_pid=$(echo $core | sed 's/!/\\//g')",
+        "    binary_path=$(echo $binary_path_pid | sed 's/\\.[0-9]*$//')",
+        "    binary_pid=$(basename $binary_path_pid)",
         f"    backtrace={backtrace_dir}/$binary_pid.backtrace",
         f"    sudo {gdb} $binary_path /cores/$core {gdb_args} | sudo tee $backtrace",
-        f"done"])
+        "done"])
     ssh(f"sudo tee /process_coredumps.sh <<'EOF' && sudo chmod +x /process_coredumps.sh\n{script}\nEOF")
 
 
 def process_coredumps(ssh):
-    ssh(f"sudo /process_coredumps.sh")
+    ssh("sudo /process_coredumps.sh")
