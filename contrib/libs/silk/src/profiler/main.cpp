@@ -3,8 +3,6 @@
 
 #include <silk/util/logger.h>
 
-#include <boost/program_options.hpp>
-
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -13,6 +11,7 @@
 #include <pthread.h>
 #include <signal.h>
 
+#include <cxxopts.hpp>
 #include <linux/capability.h>
 #include <sys/syscall.h>
 
@@ -72,40 +71,42 @@ int main(int argc, char ** argv)
     bool offcpu = false;
     bool verbose = false;
 
-    namespace po = boost::program_options;
-    po::options_description desc("profiler options");
+    cxxopts::Options cli("profiler", "profiler options");
 
     // clang-format off
-    desc.add_options()
-        ("help,h",                                              "show this help")
-        ("pid",           po::value(&targetPid)->required(),         "target process ID")
-        ("hz",            po::value(&sampleHz)->default_value(sampleHz),   "on-CPU sampling frequency")
-        ("duration",      po::value(&durationSec)->default_value(durationSec), "run for N seconds (0 = until Ctrl+C)")
-        ("kernel-stacks", po::bool_switch(&kernelStacks),            "capture kernel stack frames")
-        ("on-cpu",        po::bool_switch(&oncpu),                   "capture on-CPU stack samples")
-        ("off-cpu",       po::bool_switch(&offcpu),                  "capture off-CPU blocking time")
-        ("verbose,v",     po::bool_switch(&verbose),                 "enable debug logging")
+    cli.add_options()
+        ("h,help",        "show this help")
+        ("pid",           "target process ID",                          cxxopts::value<uint32_t>(targetPid))
+        ("hz",            "on-CPU sampling frequency",                  cxxopts::value<uint32_t>(sampleHz))
+        ("duration",      "run for N seconds (0 = until Ctrl+C)",       cxxopts::value<uint32_t>(durationSec))
+        ("kernel-stacks", "capture kernel stack frames",                cxxopts::value<bool>(kernelStacks))
+        ("on-cpu",        "capture on-CPU stack samples",               cxxopts::value<bool>(oncpu))
+        ("off-cpu",       "capture off-CPU blocking time",              cxxopts::value<bool>(offcpu))
+        ("v,verbose",     "enable debug logging",                       cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: profiler [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return 0;
         }
-        po::notify(vm);
+        if (result.count("pid") == 0)
+        {
+            std::cerr << "error: --pid is required\n" << cli.help() << "\n";
+            return 1;
+        }
         if (verbose)
         {
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
         return 1;
     }
 
@@ -120,8 +121,8 @@ int main(int argc, char ** argv)
 
     if (!hasBpf || !hasPerfmon)
     {
-        SILK_ERROR("missing required capabilities (CAP_BPF={}, CAP_PERFMON={})", hasBpf, hasPerfmon);
-        SILK_ERROR("run once: sudo setcap cap_bpf,cap_perfmon,cap_syslog+eip {}", argv[0]);
+        SILK_ERROR("missing required capabilities (CAP_BPF=%d, CAP_PERFMON=%d)", hasBpf, hasPerfmon);
+        SILK_ERROR("run once: sudo setcap cap_bpf,cap_perfmon,cap_syslog+eip %s", argv[0]);
         return 1;
     }
 
@@ -133,7 +134,7 @@ int main(int argc, char ** argv)
     int r = symbolizer.readSelfMappings();
     if (r)
     {
-        SILK_ERROR("readSelfMappings: {}", strerror(r));
+        SILK_ERROR("readSelfMappings: %s", strerror(r));
         return r;
     }
 
@@ -141,7 +142,7 @@ int main(int argc, char ** argv)
     r = symbolizer.readMappings(targetPid);
     if (r)
     {
-        SILK_ERROR("readMappings: {}", strerror(r));
+        SILK_ERROR("readMappings: %s", strerror(r));
         return r;
     }
 
@@ -155,7 +156,7 @@ int main(int argc, char ** argv)
         else
         {
             SILK_WARN("CAP_SYSLOG missing -- kernel frames will appear as hex addresses");
-            SILK_WARN("run once: sudo setcap cap_bpf,cap_perfmon,cap_syslog+eip {}", argv[0]);
+            SILK_WARN("run once: sudo setcap cap_bpf,cap_perfmon,cap_syslog+eip %s", argv[0]);
         }
     }
 
@@ -164,17 +165,17 @@ int main(int argc, char ** argv)
     r = profiler.start();
     if (r)
     {
-        SILK_ERROR("profiler start failed: {}", strerror(r));
+        SILK_ERROR("profiler start failed: %s", strerror(r));
         return r;
     }
 
     if (durationSec > 0)
     {
-        SILK_INFO("profiling pid {} at {} Hz for {} seconds", targetPid, sampleHz, durationSec);
+        SILK_INFO("profiling pid %u at %u Hz for %u seconds", targetPid, sampleHz, durationSec);
     }
     else
     {
-        SILK_INFO("profiling pid {} at {} Hz -- Ctrl+C to stop", targetPid, sampleHz);
+        SILK_INFO("profiling pid %u at %u Hz -- Ctrl+C to stop", targetPid, sampleHz);
     }
 
     uint64_t waitNs = durationSec > 0 ? (uint64_t)durationSec * 1'000'000'000ULL : UINT64_MAX;
@@ -189,7 +190,7 @@ int main(int argc, char ** argv)
     }
     catch (const std::exception & ex)
     {
-        SILK_ERROR("collect: {}", ex.what());
+        SILK_ERROR("collect: %s", ex.what());
         return 1;
     }
 

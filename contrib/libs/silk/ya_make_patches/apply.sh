@@ -1,38 +1,70 @@
 #!/bin/bash
 #
-# apply.sh — Patch a fresh silk checkout to be compilable with ya make.
+# apply.sh — Install/update silk in this repo from an external source tree.
 #
-# Usage (from repo root):
-#   bash contrib/libs/silk/ya_make_patches/apply.sh
+# Usage (from anywhere):
+#   bash contrib/libs/silk/ya_make_patches/apply.sh /path/to/silk-checkout
+#
+# What it does:
+#   1. Wipes the existing silk tree (except this ya_make_patches/ directory)
+#   2. Copies the source from /path/to/silk-checkout into contrib/libs/silk/
+#   3. Applies in-tree source patches from ya_make_patches/patches/
+#   4. Lays down the ya.make / config / stub files from ya_make_patches/overlay/
+#   5. Ensures any out-of-tree dependencies (e.g. boost::intrusive/set.hpp) exist
 #
 
 set -euo pipefail
 
-PATCH_DIR="$(dirname "$(readlink -f "$0")")"
-SILK_DIR="$(dirname "$PATCH_DIR")"
-REPO_ROOT="$(realpath "$SILK_DIR/../../..")"
+usage() {
+    cat <<EOF
+Usage: $0 <silk-source-dir>
 
-echo "=== Applying ya make patches to silk ==="
-echo "Silk dir: $SILK_DIR"
-echo "Repo root: $REPO_ROOT"
+  silk-source-dir  Path to a checkout of silk (the directory that contains
+                   include/, src/, contrib/ etc.)
 
-# Apply source patches
-for p in "$PATCH_DIR"/patches/*.patch; do
-    [ -f "$p" ] || continue
-    echo "--- Applying $(basename "$p")"
-    patch -N -p1 -d "$SILK_DIR" < "$p" || true
-done
+Example:
+  $0 ~/git/silk
+EOF
+    exit 1
+}
 
-# Copy overlay files (ya.make, config headers, stubs, test env files)
-echo "--- Copying overlay files"
-cp -r "$PATCH_DIR"/overlay/. "$SILK_DIR"/
-
-# Ensure boost::intrusive/set.hpp exists
-BOOST_SET="$REPO_ROOT/contrib/restricted/boost/intrusive/include/boost/intrusive/set.hpp"
-if [ ! -f "$BOOST_SET" ]; then
-    echo "--- Downloading boost/intrusive/set.hpp (missing from repo)"
-    curl -sL "https://raw.githubusercontent.com/boostorg/intrusive/boost-1.84.0/include/boost/intrusive/set.hpp" \
-        -o "$BOOST_SET"
+if [ $# -ne 1 ]; then
+    usage
 fi
 
-echo "=== Done. Run: ya make --build=debug contrib/libs/silk ==="
+SILK_SRC="$(realpath "$1")"
+if [ ! -d "$SILK_SRC/src/util" ] || [ ! -d "$SILK_SRC/include/silk" ]; then
+    echo "error: $SILK_SRC does not look like a silk checkout (missing src/util or include/silk)"
+    exit 1
+fi
+
+PATCH_DIR="$(dirname "$(readlink -f "$0")")"
+SILK_DST="$(dirname "$PATCH_DIR")"
+
+echo "=== Installing silk from $SILK_SRC into $SILK_DST ==="
+
+# 1. Wipe the existing silk tree except ya_make_patches/.
+echo "--- Cleaning $SILK_DST"
+find "$SILK_DST" -mindepth 1 -maxdepth 1 \
+    ! -name ya_make_patches \
+    -exec rm -rf {} +
+
+# 2. Copy fresh silk source.
+echo "--- Copying silk source"
+cp -r "$SILK_SRC"/. "$SILK_DST"/
+# Restore ya_make_patches in case the source happened to ship one.
+# (No-op if it didn't.)
+
+# 3. Apply source patches in lexicographic order.
+shopt -s nullglob
+for p in "$PATCH_DIR"/patches/*.patch; do
+    echo "--- Applying $(basename "$p")"
+    patch -N -p1 -d "$SILK_DST" < "$p"
+done
+shopt -u nullglob
+
+# 4. Lay down the ya.make / config / stub files.
+echo "--- Copying overlay files"
+cp -r "$PATCH_DIR"/overlay/. "$SILK_DST"/
+
+echo "=== Done. Build with: ya make --build=debug contrib/libs/silk ==="

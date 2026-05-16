@@ -9,15 +9,12 @@
 #include <silk/util/platform.h>
 #include <silk/util/tsc.h>
 
-#include <boost/program_options.hpp>
-
 #include <cerrno>
 #include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <format>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -28,6 +25,7 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <cxxopts.hpp>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
@@ -115,7 +113,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
 
     if (::inet_pton(AF_INET, host, &addr.sin_addr) != 1)
     {
-        SILK_ERROR("inet_pton failed: invalid address {}", host);
+        SILK_ERROR("inet_pton failed: invalid address %s", host);
         return EINVAL;
     }
 
@@ -123,7 +121,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (fd < 0)
     {
         int r = errno;
-        SILK_ERROR("socket failed: {}", std::strerror(r));
+        SILK_ERROR("socket failed: %s", std::strerror(r));
         return r;
     }
 
@@ -131,7 +129,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)))
     {
         int r = errno;
-        SILK_ERROR("setsockopt TCP_NODELAY failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt TCP_NODELAY failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -142,7 +140,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
         r = errno;
         if (r != EINPROGRESS)
         {
-            SILK_ERROR("connect failed: {}", std::strerror(r));
+            SILK_ERROR("connect failed: %s", std::strerror(r));
             ::close(fd);
             return r;
         }
@@ -150,7 +148,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
         r = silk::FiberScheduler::poll(fd, POLLOUT);
         if (r)
         {
-            SILK_ERROR("poll failed: {}", std::strerror(r));
+            SILK_ERROR("poll failed: %s", std::strerror(r));
             ::close(fd);
             return r;
         }
@@ -161,13 +159,13 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &r, &len))
     {
         r = errno;
-        SILK_ERROR("getsockopt SO_ERROR failed: {}", std::strerror(r));
+        SILK_ERROR("getsockopt SO_ERROR failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
     if (r)
     {
-        SILK_ERROR("connect error: {}", std::strerror(r));
+        SILK_ERROR("connect error: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -188,7 +186,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     }
     else if (::inet_pton(AF_INET, host, &addr.sin_addr) != 1)
     {
-        SILK_ERROR("inet_pton failed: invalid address {}", host);
+        SILK_ERROR("inet_pton failed: invalid address %s", host);
         return EINVAL;
     }
 
@@ -196,7 +194,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (fd < 0)
     {
         int r = errno;
-        SILK_ERROR("socket failed: {}", std::strerror(r));
+        SILK_ERROR("socket failed: %s", std::strerror(r));
         return r;
     }
 
@@ -204,7 +202,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)))
     {
         int r = errno;
-        SILK_ERROR("setsockopt TCP_NODELAY failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt TCP_NODELAY failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -212,7 +210,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)))
     {
         int r = errno;
-        SILK_ERROR("setsockopt SO_REUSEADDR failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt SO_REUSEADDR failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -220,7 +218,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)))
     {
         int r = errno;
-        SILK_ERROR("bind failed: {}", std::strerror(r));
+        SILK_ERROR("bind failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -228,7 +226,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (::listen(fd, backlog))
     {
         int r = errno;
-        SILK_ERROR("listen failed: {}", std::strerror(r));
+        SILK_ERROR("listen failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -264,7 +262,7 @@ int TcpConnection::accept(TcpConnection * out) noexcept
     if (::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)))
     {
         int r = errno;
-        SILK_ERROR("setsockopt TCP_NODELAY failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt TCP_NODELAY failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -443,7 +441,7 @@ Server::Server(const ServerConfig & cfg)
     : cfg(cfg)
 {
     int r = TcpConnection::listen(cfg.host.c_str(), cfg.port, LISTEN_BACKLOG, &listener);
-    SILK_ASSERT(!r, "listen failed: {}", std::strerror(r));
+    SILK_ASSERT(!r, "listen failed: %s", std::strerror(r));
 }
 
 Server::~Server() = default;
@@ -451,7 +449,7 @@ Server::~Server() = default;
 void Server::start()
 {
     int r = silk::FiberScheduler::run(acceptFiberMain, {this}, &acceptFuture);
-    SILK_ASSERT(!r, "cannot start fiber: {}", std::strerror(r));
+    SILK_ASSERT(!r, "cannot start fiber: %s", std::strerror(r));
 
     acceptStarted = true;
 }
@@ -490,7 +488,7 @@ int Server::acceptFiberMain(AcceptFiberParams * params) noexcept
             delete connection;
             if (!isExpectedShutdown(r))
             {
-                SILK_ERROR("accept failed: {}", strerror(r));
+                SILK_ERROR("accept failed: %s", strerror(r));
             }
             break;
         }
@@ -500,7 +498,7 @@ int Server::acceptFiberMain(AcceptFiberParams * params) noexcept
         r = silk::FiberScheduler::run(serverFiberMain, {server, connection}, &connection->future);
         if (r)
         {
-            SILK_ERROR("cannot start fiber: {}", std::strerror(r));
+            SILK_ERROR("cannot start fiber: %s", std::strerror(r));
             break;
         }
     }
@@ -523,7 +521,7 @@ int Server::serverFiberMain(ServerFiberParams * params) noexcept
         {
             if (!isExpectedShutdown(r))
             {
-                SILK_ERROR("read failed: {}", strerror(r));
+                SILK_ERROR("read failed: %s", strerror(r));
             }
             break;
         }
@@ -544,7 +542,7 @@ int Server::serverFiberMain(ServerFiberParams * params) noexcept
         {
             if (!isExpectedShutdown(r))
             {
-                SILK_ERROR("write failed: {}", strerror(r));
+                SILK_ERROR("write failed: %s", strerror(r));
             }
             break;
         }
@@ -619,13 +617,13 @@ void Client::start()
     for (Connection & connection : connections)
     {
         int r = TcpConnection::connect(cfg.host.c_str(), cfg.port, &connection.conn);
-        SILK_ASSERT(!r, "connect failed: {}", std::strerror(r));
+        SILK_ASSERT(!r, "connect failed: %s", std::strerror(r));
     }
 
     for (Connection & connection : connections)
     {
         int r = silk::FiberScheduler::run(clientFiberMain, {this, &connection}, &connection.future);
-        SILK_ASSERT(!r, "cannot start fiber: {}", std::strerror(r));
+        SILK_ASSERT(!r, "cannot start fiber: %s", std::strerror(r));
     }
 
     warmupEndCycles.store(silk::Tsc::getCycles() + silk::Tsc::nanosecondsToCycles(cfg.warmupNs), std::memory_order_relaxed);
@@ -678,7 +676,7 @@ int Client::clientFiberMain(ClientFiberParams * params) noexcept
         {
             if (!isExpectedShutdown(r))
             {
-                SILK_ERROR("write failed: {}", strerror(r));
+                SILK_ERROR("write failed: %s", strerror(r));
             }
             break;
         }
@@ -688,7 +686,7 @@ int Client::clientFiberMain(ClientFiberParams * params) noexcept
         {
             if (!isExpectedShutdown(r))
             {
-                SILK_ERROR("read failed: {}", strerror(r));
+                SILK_ERROR("read failed: %s", strerror(r));
             }
             break;
         }
@@ -738,42 +736,39 @@ static void runServer(int argc, char ** argv)
     ServerConfig cfg;
     bool verbose = false;
 
-    namespace po = boost::program_options;
-    po::options_description desc("net-perf server options");
+    cxxopts::Options cli("net-perf server", "net-perf server options");
 
     std::string delayStr = "0";
 
     // clang-format off
-    desc.add_options()
-        ("help,h", "show this help")
-        ("host",     po::value(&cfg.host),    "listen host")
-        ("port",     po::value(&cfg.port),    "listen port")
-        ("msg-size", po::value(&cfg.msgSize), "echo message size in bytes")
-        ("delay",    po::value(&delayStr),    "server-side delay per message (e.g. 1ms, 100us)")
-        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
-        ("verbose,v", po::bool_switch(&verbose), "enable debug logging")
+    cli.add_options()
+        ("h,help",         "show this help")
+        ("host",           "listen host",                                                                   cxxopts::value<std::string>(cfg.host))
+        ("port",           "listen port",                                                                   cxxopts::value<uint16_t>(cfg.port))
+        ("msg-size",       "echo message size in bytes",                                                    cxxopts::value<uint32_t>(cfg.msgSize))
+        ("delay",          "server-side delay per message (e.g. 1ms, 100us)",                               cxxopts::value<std::string>(delayStr))
+        ("print-counters", "enable per-CPU profiler and include counters in the JSON report",               cxxopts::value<bool>(cfg.printCounters))
+        ("v,verbose",      "enable debug logging",                                                          cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: net-perf server [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return;
         }
-        po::notify(vm);
         cfg.delayNs = parseDuration(delayStr);
         if (verbose)
         {
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
         exit(1);
     }
 
@@ -783,7 +778,7 @@ static void runServer(int argc, char ** argv)
     silk::FiberScheduler::Options options{.enableProfiler = cfg.printCounters};
     silk::FiberScheduler::initialize(&options);
 
-    SILK_INFO("starting server on {}:{}", cfg.host, cfg.port);
+    SILK_INFO("starting server on %s:%u", cfg.host.c_str(), cfg.port);
 
     Server server(cfg);
     server.start();
@@ -814,41 +809,37 @@ static void runServer(int argc, char ** argv)
 static void runClient(int argc, char ** argv)
 {
     ClientConfig cfg;
-    bool verbose = false;
-
-    namespace po = boost::program_options;
-    po::options_description desc("net-perf client options");
-
     std::string durationStr = "10s";
     std::string warmupStr = "2s";
     std::string stallDurationStr = "0";
+    bool verbose = false;
+
+    cxxopts::Options cli("net-perf client", "net-perf client options");
 
     // clang-format off
-    desc.add_options()
-        ("help,h", "show this help")
-        ("host",        po::value(&cfg.host),           "server host")
-        ("port",        po::value(&cfg.port),           "server port")
-        ("connections", po::value(&cfg.numConnections), "parallel connections")
-        ("msg-size",    po::value(&cfg.msgSize),        "message size in bytes")
-        ("duration",    po::value(&durationStr),        "measurement duration (e.g. 10s, 500ms)")
-        ("warmup",      po::value(&warmupStr),          "warmup duration (e.g. 2s, 500ms)")
-        ("stall-rate",     po::value(&cfg.stallRateHz), "per-connection Poisson rate of stall messages (Hz, 0 disables)")
-        ("stall-duration", po::value(&stallDurationStr), "stall duration per stall event (e.g. 100us, 1ms)")
-        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
-        ("verbose,v",   po::bool_switch(&verbose),      "enable debug logging")
+    cli.add_options()
+        ("h,help",         "show this help")
+        ("host",           "server host",                                                                   cxxopts::value<std::string>(cfg.host))
+        ("port",           "server port",                                                                   cxxopts::value<uint16_t>(cfg.port))
+        ("connections",    "parallel connections",                                                          cxxopts::value<uint32_t>(cfg.numConnections))
+        ("msg-size",       "message size in bytes",                                                         cxxopts::value<uint32_t>(cfg.msgSize))
+        ("duration",       "measurement duration (e.g. 10s, 500ms)",                                        cxxopts::value<std::string>(durationStr))
+        ("warmup",         "warmup duration (e.g. 2s, 500ms)",                                              cxxopts::value<std::string>(warmupStr))
+        ("stall-rate",     "per-connection Poisson rate of stall messages (Hz, 0 disables)",                cxxopts::value<double>(cfg.stallRateHz))
+        ("stall-duration", "stall duration per stall event (e.g. 100us, 1ms)",                              cxxopts::value<std::string>(stallDurationStr))
+        ("print-counters", "enable per-CPU profiler and include counters in the JSON report",               cxxopts::value<bool>(cfg.printCounters))
+        ("v,verbose",      "enable debug logging",                                                          cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: net-perf client [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return;
         }
-        po::notify(vm);
         cfg.durationNs = parseDuration(durationStr);
         cfg.warmupNs = parseDuration(warmupStr);
         cfg.stallNs = parseDuration(stallDurationStr);
@@ -857,9 +848,9 @@ static void runClient(int argc, char ** argv)
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
         exit(1);
     }
 
@@ -869,7 +860,7 @@ static void runClient(int argc, char ** argv)
     silk::FiberScheduler::Options options{.enableProfiler = cfg.printCounters};
     silk::FiberScheduler::initialize(&options);
 
-    SILK_INFO("starting client on {}:{}", cfg.host, cfg.port);
+    SILK_INFO("starting client on %s:%u", cfg.host.c_str(), cfg.port);
 
     Client client(cfg);
     client.start();
@@ -878,13 +869,13 @@ static void runClient(int argc, char ** argv)
 
     if (cfg.warmupNs > 0)
     {
-        SILK_INFO("warming up for {}...", formatDuration(cfg.warmupNs));
+        SILK_INFO("warming up for %s...", formatDuration(cfg.warmupNs).c_str());
         signalled = sigwaitFor(mask, cfg.warmupNs);
     }
 
     if (!signalled)
     {
-        SILK_INFO("measuring for {}...", formatDuration(cfg.durationNs));
+        SILK_INFO("measuring for %s...", formatDuration(cfg.durationNs).c_str());
         sigwaitFor(mask, cfg.durationNs);
     }
 

@@ -31,7 +31,6 @@
 #include <aws/s3/S3EndpointProvider.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/PutObjectRequest.h>
-#include <boost/program_options.hpp>
 
 #include <atomic>
 #include <cstdint>
@@ -47,6 +46,8 @@
 #include <poll.h>
 #include <pthread.h>
 #include <unistd.h>
+
+#include <cxxopts.hpp>
 
 //
 // I/O modes.
@@ -323,7 +324,7 @@ const char * PocoHttpClient::getMethod(Aws::Http::HttpMethod method)
         case Aws::Http::HttpMethod::HTTP_TRACE:
             return "TRACE";
     }
-    SILK_ASSERT(false);
+    SILK_FAIL("unknown HTTP method: %d", static_cast<int>(method));
 }
 
 void PocoHttpClient::writeHeaders(Poco::Net::HTTPRequest & pocoReq, const Aws::Http::HeaderValueCollection & headers)
@@ -514,7 +515,7 @@ int FiberExecutor::execFiberMain(ExecParams * params) noexcept
         // The SDK wraps tasks in std::packaged_task, which captures exceptions
         // into the promise before rethrowing. The session thread sees the error
         // via callable.get(). We catch here only to satisfy noexcept.
-        SILK_ERROR("fiber executor task exception: {}", e.what());
+        SILK_ERROR("fiber executor task exception: %s", e.what());
     }
     return 0;
 }
@@ -703,7 +704,7 @@ void S3Bench::runSession(Session * session)
             // endpoint or a transient failure every session exits after one bad outcome,
             // and the run produces no useful latency data. failedSessions exposes the
             // count so the caller can warn.
-            SILK_ERROR("S3 request failed: {}", slots[head].error->GetMessage());
+            SILK_ERROR("S3 request failed: %s", slots[head].error->GetMessage().c_str());
             session->failed = true;
             head = (head + 1) % cfg.ioDepth;
             break;
@@ -739,40 +740,37 @@ int main(int argc, char ** argv)
     std::string warmupStr = "2s";
     bool verbose = false;
 
-    namespace po = boost::program_options;
-    po::options_description desc("s3-perf options");
+    cxxopts::Options cli("s3-perf", "s3-perf options");
 
     // clang-format off
-    desc.add_options()
-        ("help,h",       "show this help")
-        ("endpoint",     po::value(&cfg.endpointUrl),       "S3 endpoint URL (e.g. http://127.0.0.1:9000)")
-        ("region",       po::value(&cfg.region),            "AWS region")
-        ("bucket",       po::value(&cfg.bucket),            "S3 bucket")
-        ("key",          po::value(&cfg.key),               "object key")
-        ("access-key",   po::value(&cfg.accessKeyId),       "AWS access key ID")
-        ("secret-key",   po::value(&cfg.secretAccessKey),   "AWS secret access key")
-        ("size",         po::value(&cfg.objectSize),        "object size in bytes (for write)")
-        ("numjobs",      po::value(&cfg.numJobs),           "concurrent session threads")
-        ("iodepth",      po::value(&cfg.ioDepth),           "parallel S3 requests per session")
-        ("rw",           po::value(&rwStr),                 "I/O mode: read | write | readwrite")
-        ("threads",      po::bool_switch(&cfg.useThreads),  "use SDK thread executor instead of FiberExecutor")
-        ("duration",     po::value(&durationStr),            "measurement duration (e.g. 10s, 500ms)")
-        ("warmup",       po::value(&warmupStr),             "warmup duration (e.g. 2s, 500ms)")
-        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
-        ("verbose,v",    po::bool_switch(&verbose),         "enable debug logging")
+    cli.add_options()
+        ("h,help",         "show this help")
+        ("endpoint",       "S3 endpoint URL (e.g. http://127.0.0.1:9000)",                                 cxxopts::value<std::string>(cfg.endpointUrl))
+        ("region",         "AWS region",                                                                   cxxopts::value<std::string>(cfg.region))
+        ("bucket",         "S3 bucket",                                                                    cxxopts::value<std::string>(cfg.bucket))
+        ("key",            "object key",                                                                   cxxopts::value<std::string>(cfg.key))
+        ("access-key",     "AWS access key ID",                                                            cxxopts::value<std::string>(cfg.accessKeyId))
+        ("secret-key",     "AWS secret access key",                                                        cxxopts::value<std::string>(cfg.secretAccessKey))
+        ("size",           "object size in bytes (for write)",                                             cxxopts::value<uint32_t>(cfg.objectSize))
+        ("numjobs",        "concurrent session threads",                                                   cxxopts::value<uint32_t>(cfg.numJobs))
+        ("iodepth",        "parallel S3 requests per session",                                             cxxopts::value<uint32_t>(cfg.ioDepth))
+        ("rw",             "I/O mode: read | write | readwrite",                                          cxxopts::value<std::string>(rwStr))
+        ("threads",        "use SDK thread executor instead of FiberExecutor",                             cxxopts::value<bool>(cfg.useThreads))
+        ("duration",       "measurement duration (e.g. 10s, 500ms)",                                       cxxopts::value<std::string>(durationStr))
+        ("warmup",         "warmup duration (e.g. 2s, 500ms)",                                             cxxopts::value<std::string>(warmupStr))
+        ("print-counters", "enable per-CPU profiler and include counters in the JSON report",              cxxopts::value<bool>(cfg.printCounters))
+        ("v,verbose",      "enable debug logging",                                                         cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: s3-perf [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return 0;
         }
-        po::notify(vm);
         cfg.durationNs = parseDuration(durationStr);
         cfg.warmupNs = parseDuration(warmupStr);
         if (verbose)
@@ -780,9 +778,9 @@ int main(int argc, char ** argv)
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
         return 1;
     }
 
@@ -829,13 +827,13 @@ int main(int argc, char ** argv)
 
     if (cfg.warmupNs > 0)
     {
-        SILK_INFO("warming up for {}...", formatDuration(cfg.warmupNs));
+        SILK_INFO("warming up for %s...", formatDuration(cfg.warmupNs).c_str());
         signalled = sigwaitFor(mask, cfg.warmupNs);
     }
 
     if (!signalled)
     {
-        SILK_INFO("measuring for {}...", formatDuration(cfg.durationNs));
+        SILK_INFO("measuring for %s...", formatDuration(cfg.durationNs).c_str());
         sigwaitFor(mask, cfg.durationNs);
     }
 
@@ -847,7 +845,7 @@ int main(int argc, char ** argv)
     uint32_t failedSessions = bench.failedSessions();
     if (failedSessions > 0)
     {
-        SILK_WARN("{}/{} sessions exited early due to S3 errors", failedSessions, cfg.numJobs);
+        SILK_WARN("%u/%u sessions exited early due to S3 errors", failedSessions, cfg.numJobs);
     }
 
     auto latencies = bench.collectLatencies();

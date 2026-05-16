@@ -6,8 +6,6 @@
 #include <silk/util/platform.h>
 #include <silk/util/tsc.h>
 
-#include <boost/program_options.hpp>
-
 #include <atomic>
 #include <cerrno>
 #include <csignal>
@@ -27,6 +25,7 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <cxxopts.hpp>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/epoll.h>
@@ -119,7 +118,7 @@ int Event::create(Event * out) noexcept
     if (fd < 0)
     {
         int r = errno;
-        SILK_ERROR("eventfd failed: {}", std::strerror(r));
+        SILK_ERROR("eventfd failed: %s", std::strerror(r));
         return r;
     }
     *out = Event(fd);
@@ -133,7 +132,7 @@ int Event::trigger() noexcept
     if (n != sizeof(value))
     {
         int r = errno;
-        SILK_ERROR("write eventfd failed: {}", std::strerror(r));
+        SILK_ERROR("write eventfd failed: %s", std::strerror(r));
         return r;
     }
     return 0;
@@ -205,7 +204,7 @@ int Epoll::create(Epoll * out) noexcept
     if (fd < 0)
     {
         int r = errno;
-        SILK_ERROR("epoll_create1 failed: {}", std::strerror(r));
+        SILK_ERROR("epoll_create1 failed: %s", std::strerror(r));
         return r;
     }
     *out = Epoll(fd);
@@ -221,7 +220,7 @@ int Epoll::add(int fd, uint32_t events, void * ptr) noexcept
     if (r)
     {
         r = errno;
-        SILK_ERROR("epoll_ctl ADD failed: {}", std::strerror(r));
+        SILK_ERROR("epoll_ctl ADD failed: %s", std::strerror(r));
         return r;
     }
     return 0;
@@ -233,7 +232,7 @@ int Epoll::del(int fd) noexcept
     if (r)
     {
         r = errno;
-        SILK_ERROR("epoll_ctl DEL failed: {}", std::strerror(r));
+        SILK_ERROR("epoll_ctl DEL failed: %s", std::strerror(r));
         return r;
     }
     return 0;
@@ -247,7 +246,7 @@ int Epoll::wait(epoll_event * events, int maxEvents, int timeoutMs, int * outCou
         int r = errno;
         if (r != EINTR)
         {
-            SILK_ERROR("epoll_wait failed: {}", std::strerror(r));
+            SILK_ERROR("epoll_wait failed: %s", std::strerror(r));
         }
         return r;
     }
@@ -334,7 +333,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     int r = ::inet_pton(AF_INET, host, &addr.sin_addr);
     if (r != 1)
     {
-        SILK_ERROR("inet_pton failed: invalid address {}", host);
+        SILK_ERROR("inet_pton failed: invalid address %s", host);
         return EINVAL;
     }
 
@@ -345,7 +344,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (fd < 0)
     {
         r = errno;
-        SILK_ERROR("socket failed: {}", std::strerror(r));
+        SILK_ERROR("socket failed: %s", std::strerror(r));
         return r;
     }
 
@@ -354,7 +353,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (r)
     {
         r = errno;
-        SILK_ERROR("setsockopt TCP_NODELAY failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt TCP_NODELAY failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -363,7 +362,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (r)
     {
         r = errno;
-        SILK_ERROR("connect failed: {}", std::strerror(r));
+        SILK_ERROR("connect failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -372,7 +371,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (flags < 0)
     {
         r = errno;
-        SILK_ERROR("fcntl F_GETFL failed: {}", std::strerror(r));
+        SILK_ERROR("fcntl F_GETFL failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -381,7 +380,7 @@ int TcpConnection::connect(const char * host, uint16_t port, TcpConnection * out
     if (r)
     {
         r = errno;
-        SILK_ERROR("fcntl F_SETFL O_NONBLOCK failed: {}", std::strerror(r));
+        SILK_ERROR("fcntl F_SETFL O_NONBLOCK failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -405,7 +404,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
         int r = ::inet_pton(AF_INET, host, &addr.sin_addr);
         if (r != 1)
         {
-            SILK_ERROR("inet_pton failed: invalid address {}", host);
+            SILK_ERROR("inet_pton failed: invalid address %s", host);
             return EINVAL;
         }
     }
@@ -414,7 +413,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (fd < 0)
     {
         int r = errno;
-        SILK_ERROR("socket failed: {}", std::strerror(r));
+        SILK_ERROR("socket failed: %s", std::strerror(r));
         return r;
     }
 
@@ -423,7 +422,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (r)
     {
         r = errno;
-        SILK_ERROR("setsockopt TCP_NODELAY failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt TCP_NODELAY failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -432,7 +431,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (r)
     {
         r = errno;
-        SILK_ERROR("setsockopt SO_REUSEADDR failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt SO_REUSEADDR failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -444,7 +443,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (r)
     {
         r = errno;
-        SILK_ERROR("setsockopt SO_REUSEPORT failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt SO_REUSEPORT failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -453,7 +452,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (r)
     {
         r = errno;
-        SILK_ERROR("bind failed: {}", std::strerror(r));
+        SILK_ERROR("bind failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -462,7 +461,7 @@ int TcpConnection::listen(const char * host, uint16_t port, int backlog, TcpConn
     if (r)
     {
         r = errno;
-        SILK_ERROR("listen failed: {}", std::strerror(r));
+        SILK_ERROR("listen failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -485,7 +484,7 @@ int TcpConnection::accept(TcpConnection * out) noexcept
     if (r)
     {
         r = errno;
-        SILK_ERROR("setsockopt TCP_NODELAY failed: {}", std::strerror(r));
+        SILK_ERROR("setsockopt TCP_NODELAY failed: %s", std::strerror(r));
         ::close(fd);
         return r;
     }
@@ -603,7 +602,7 @@ Server::Server(const ServerConfig & cfg)
     for (Worker & worker : workers)
     {
         int r = TcpConnection::listen(cfg.host.c_str(), cfg.port, LISTEN_BACKLOG, &worker.listener);
-        SILK_ASSERT(!r, "listen failed: {}", std::strerror(r));
+        SILK_ASSERT(!r, "listen failed: %s", std::strerror(r));
     }
 }
 
@@ -622,7 +621,7 @@ void Server::start()
     for (Worker & worker : workers)
     {
         int r = Event::create(&worker.stopEvent);
-        SILK_ASSERT(!r, "Event::create failed: {}", std::strerror(r));
+        SILK_ASSERT(!r, "Event::create failed: %s", std::strerror(r));
         worker.thread = std::thread(workerMain, WorkerParams{this, &worker});
     }
 
@@ -693,7 +692,7 @@ bool Server::drive(Connection * conn, uint32_t msgSize) noexcept
             }
             if (!isExpectedShutdown(r))
             {
-                SILK_ERROR("read failed: {}", std::strerror(r));
+                SILK_ERROR("read failed: %s", std::strerror(r));
             }
             return false;
         }
@@ -721,7 +720,7 @@ bool Server::drive(Connection * conn, uint32_t msgSize) noexcept
         }
         if (!isExpectedShutdown(r))
         {
-            SILK_ERROR("write failed: {}", std::strerror(r));
+            SILK_ERROR("write failed: %s", std::strerror(r));
         }
         return false;
     }
@@ -734,7 +733,7 @@ void Server::workerMain(WorkerParams params) noexcept
 
     Epoll epoll;
     int r = Epoll::create(&epoll);
-    SILK_ASSERT(!r, "Epoll::create failed: {}", std::strerror(r));
+    SILK_ASSERT(!r, "Epoll::create failed: %s", std::strerror(r));
 
     ListenerTag listenerTag;
     StopTag stopTag;
@@ -755,7 +754,7 @@ void Server::workerMain(WorkerParams params) noexcept
         {
             continue;
         }
-        SILK_ASSERT(!r, "epoll_wait failed: {}", std::strerror(r));
+        SILK_ASSERT(!r, "epoll_wait failed: %s", std::strerror(r));
 
         for (int i = 0; i < eventCount; ++i)
         {
@@ -782,7 +781,7 @@ void Server::workerMain(WorkerParams params) noexcept
                         }
                         if (!isExpectedShutdown(ar))
                         {
-                            SILK_ERROR("accept failed: {}", std::strerror(ar));
+                            SILK_ERROR("accept failed: %s", std::strerror(ar));
                         }
                         break;
                     }
@@ -931,7 +930,7 @@ void Client::start()
     for (Connection & connection : connections)
     {
         int r = TcpConnection::connect(cfg.host.c_str(), cfg.port, &connection.conn);
-        SILK_ASSERT(!r, "connect failed: {}", std::strerror(r));
+        SILK_ASSERT(!r, "connect failed: %s", std::strerror(r));
         SILK_ASSERT(cfg.msgSize >= sizeof(uint32_t));
         connection.buf = std::make_unique<char[]>(cfg.msgSize);
         std::memset(connection.buf.get(), 0xAB, cfg.msgSize);
@@ -946,7 +945,7 @@ void Client::start()
     {
         Worker & worker = workers[i];
         int r = Event::create(&worker.stopEvent);
-        SILK_ASSERT(!r, "Event::create failed: {}", std::strerror(r));
+        SILK_ASSERT(!r, "Event::create failed: %s", std::strerror(r));
         worker.connections = connections.data() + connIdx;
         worker.connCount = base + (i < extra ? 1 : 0);
         connIdx += worker.connCount;
@@ -1036,7 +1035,7 @@ bool Client::drive(Connection * conn, const ClientConfig & cfg, uint64_t warmupE
             }
             if (!isExpectedShutdown(r))
             {
-                SILK_ERROR("write failed: {}", std::strerror(r));
+                SILK_ERROR("write failed: %s", std::strerror(r));
             }
             return false;
         }
@@ -1074,7 +1073,7 @@ bool Client::drive(Connection * conn, const ClientConfig & cfg, uint64_t warmupE
         }
         if (!isExpectedShutdown(r))
         {
-            SILK_ERROR("read failed: {}", std::strerror(r));
+            SILK_ERROR("read failed: %s", std::strerror(r));
         }
         return false;
     }
@@ -1087,7 +1086,7 @@ void Client::workerMain(WorkerParams params) noexcept
 
     Epoll epoll;
     int r = Epoll::create(&epoll);
-    SILK_ASSERT(!r, "Epoll::create failed: {}", std::strerror(r));
+    SILK_ASSERT(!r, "Epoll::create failed: %s", std::strerror(r));
 
     StopTag stopTag;
     r = epoll.add(worker->stopEvent.getFd(), EPOLLIN, &stopTag);
@@ -1113,7 +1112,7 @@ void Client::workerMain(WorkerParams params) noexcept
         {
             continue;
         }
-        SILK_ASSERT(!r, "epoll_wait failed: {}", std::strerror(r));
+        SILK_ASSERT(!r, "epoll_wait failed: %s", std::strerror(r));
 
         uint64_t warmupEndCycles = client->warmupEndCycles.load(std::memory_order_relaxed);
 
@@ -1181,33 +1180,30 @@ static void runServer(int argc, char ** argv)
     ServerConfig cfg;
     bool verbose = false;
 
-    namespace po = boost::program_options;
-    po::options_description desc("net-perf-epoll server options");
+    cxxopts::Options cli("net-perf-epoll server", "net-perf-epoll server options");
 
     std::string delayStr = "0";
 
     // clang-format off
-    desc.add_options()
-        ("help,h", "show this help")
-        ("host",     po::value(&cfg.host),    "listen host")
-        ("port",     po::value(&cfg.port),    "listen port")
-        ("msg-size", po::value(&cfg.msgSize), "echo message size in bytes")
-        ("threads",  po::value(&cfg.threads), "worker threads (each owns SO_REUSEPORT listener)")
-        ("delay",    po::value(&delayStr),    "server-side delay per message (must be 0; not supported)")
-        ("verbose,v", po::bool_switch(&verbose), "enable debug logging")
+    cli.add_options()
+        ("h,help",    "show this help")
+        ("host",      "listen host",                                              cxxopts::value<std::string>(cfg.host))
+        ("port",      "listen port",                                              cxxopts::value<uint16_t>(cfg.port))
+        ("msg-size",  "echo message size in bytes",                               cxxopts::value<uint32_t>(cfg.msgSize))
+        ("threads",   "worker threads (each owns SO_REUSEPORT listener)",         cxxopts::value<uint32_t>(cfg.threads))
+        ("delay",     "server-side delay per message (must be 0; not supported)", cxxopts::value<std::string>(delayStr))
+        ("v,verbose", "enable debug logging",                                     cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: net-perf-epoll server [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return;
         }
-        po::notify(vm);
         if (parseDuration(delayStr) != 0)
         {
             std::cerr << "error: --delay is not supported by net-perf-epoll\n";
@@ -1222,16 +1218,16 @@ static void runServer(int argc, char ** argv)
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
-        std::exit(1);
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
+        exit(1);
     }
 
     sigset_t mask = blockSignals();
     silk::initialize();
 
-    SILK_INFO("starting server on {}:{} with {} thread(s)", cfg.host, cfg.port, cfg.threads);
+    SILK_INFO("starting server on %s:%u with %u thread(s)", cfg.host.c_str(), cfg.port, cfg.threads);
 
     Server server(cfg);
     server.start();
@@ -1252,42 +1248,38 @@ static void runServer(int argc, char ** argv)
 static void runClient(int argc, char ** argv)
 {
     ClientConfig cfg;
-    bool verbose = false;
-
-    namespace po = boost::program_options;
-    po::options_description desc("net-perf-epoll client options");
-
     std::string durationStr = "10s";
     std::string warmupStr = "2s";
     std::string stallDurationStr = "0";
+    bool verbose = false;
+
+    cxxopts::Options cli("net-perf-epoll client", "net-perf-epoll client options");
 
     // clang-format off
-    desc.add_options()
-        ("help,h", "show this help")
-        ("host",        po::value(&cfg.host),           "server host")
-        ("port",        po::value(&cfg.port),           "server port")
-        ("connections", po::value(&cfg.numConnections), "parallel connections (split across threads)")
-        ("threads",     po::value(&cfg.threads),        "worker threads")
-        ("msg-size",    po::value(&cfg.msgSize),        "message size in bytes")
-        ("duration",    po::value(&durationStr),        "measurement duration (e.g. 10s, 500ms)")
-        ("warmup",      po::value(&warmupStr),          "warmup duration (e.g. 2s, 500ms)")
-        ("stall-rate",     po::value(&cfg.stallRateHz),   "per-connection Poisson rate of stall messages (Hz, 0 disables)")
-        ("stall-duration", po::value(&stallDurationStr),  "stall duration per stall event (e.g. 100us, 1ms)")
-        ("print-counters", po::bool_switch(&cfg.printCounters), "include counters in the JSON report")
-        ("verbose,v",   po::bool_switch(&verbose),      "enable debug logging")
+    cli.add_options()
+        ("h,help",         "show this help")
+        ("host",           "server host",                                                       cxxopts::value<std::string>(cfg.host))
+        ("port",           "server port",                                                       cxxopts::value<uint16_t>(cfg.port))
+        ("connections",    "parallel connections (split across threads)",                       cxxopts::value<uint32_t>(cfg.numConnections))
+        ("threads",        "worker threads",                                                    cxxopts::value<uint32_t>(cfg.threads))
+        ("msg-size",       "message size in bytes",                                             cxxopts::value<uint32_t>(cfg.msgSize))
+        ("duration",       "measurement duration (e.g. 10s, 500ms)",                            cxxopts::value<std::string>(durationStr))
+        ("warmup",         "warmup duration (e.g. 2s, 500ms)",                                  cxxopts::value<std::string>(warmupStr))
+        ("stall-rate",     "per-connection Poisson rate of stall messages (Hz, 0 disables)",    cxxopts::value<double>(cfg.stallRateHz))
+        ("stall-duration", "stall duration per stall event (e.g. 100us, 1ms)",                  cxxopts::value<std::string>(stallDurationStr))
+        ("print-counters", "include counters in the JSON report",                               cxxopts::value<bool>(cfg.printCounters))
+        ("v,verbose",      "enable debug logging",                                              cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: net-perf-epoll client [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return;
         }
-        po::notify(vm);
         cfg.durationNs = parseDuration(durationStr);
         cfg.warmupNs = parseDuration(warmupStr);
         cfg.stallNs = parseDuration(stallDurationStr);
@@ -1304,16 +1296,17 @@ static void runClient(int argc, char ** argv)
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
-        std::exit(1);
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
+        exit(1);
     }
 
     sigset_t mask = blockSignals();
     silk::initialize();
 
-    SILK_INFO("starting client on {}:{} with {} thread(s) and {} connection(s)", cfg.host, cfg.port, cfg.threads, cfg.numConnections);
+    SILK_INFO(
+        "starting client on %s:%u with %u thread(s) and %u connection(s)", cfg.host.c_str(), cfg.port, cfg.threads, cfg.numConnections);
 
     Client client(cfg);
     client.start();
@@ -1322,13 +1315,13 @@ static void runClient(int argc, char ** argv)
 
     if (cfg.warmupNs > 0)
     {
-        SILK_INFO("warming up for {}...", formatDuration(cfg.warmupNs));
+        SILK_INFO("warming up for %s...", formatDuration(cfg.warmupNs).c_str());
         signalled = sigwaitFor(mask, cfg.warmupNs);
     }
 
     if (!signalled)
     {
-        SILK_INFO("measuring for {}...", formatDuration(cfg.durationNs));
+        SILK_INFO("measuring for %s...", formatDuration(cfg.durationNs).c_str());
         sigwaitFor(mask, cfg.durationNs);
     }
 

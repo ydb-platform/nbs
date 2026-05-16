@@ -25,7 +25,6 @@
 #include <Poco/Net/NetException.h>
 #include <Poco/Net/ServerSocket.h>
 #include <Poco/Net/StreamSocket.h>
-#include <boost/program_options.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -34,7 +33,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <format>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -43,6 +41,8 @@
 #include <vector>
 
 #include <pthread.h>
+
+#include <cxxopts.hpp>
 
 //
 // Client
@@ -135,7 +135,7 @@ void Client::start()
         else
         {
             int r = silk::FiberScheduler::run(fiberMain, {this, &conn}, &conn.future);
-            SILK_ASSERT(!r, "cannot start fiber: {}", std::strerror(r));
+            SILK_ASSERT(!r, "cannot start fiber: %s", std::strerror(r));
         }
     }
 
@@ -156,7 +156,7 @@ void Client::stop()
         {
             if (!isExpectedShutdown(e.code()))
             {
-                SILK_ERROR("shutdown failed: {}", e.displayText());
+                SILK_ERROR("shutdown failed: %s", e.displayText().c_str());
             }
         }
     }
@@ -204,7 +204,7 @@ void Client::runLoop(Connection * conn) noexcept
         {
             if (!stopping.load(std::memory_order_relaxed) && !isExpectedShutdown(e.code()))
             {
-                SILK_ERROR("HTTP request failed: {}", e.displayText());
+                SILK_ERROR("HTTP request failed: %s", e.displayText().c_str());
             }
             break;
         }
@@ -257,33 +257,30 @@ static void runClient(int argc, char ** argv)
     std::string warmupStr = "2s";
     bool verbose = false;
 
-    namespace po = boost::program_options;
-    po::options_description desc("http-perf client options");
+    cxxopts::Options cli("http-perf client", "http-perf client options");
 
     // clang-format off
-    desc.add_options()
-        ("help,h",      "show this help")
-        ("host",        po::value(&cfg.host),             "server host")
-        ("port",        po::value(&cfg.port),             "server port")
-        ("connections", po::value(&cfg.numConnections),   "parallel connections or threads")
-        ("threads",     po::bool_switch(&cfg.useThreads), "use OS threads instead of fibers")
-        ("duration",    po::value(&durationStr),          "measurement duration (e.g. 10s, 500ms)")
-        ("warmup",      po::value(&warmupStr),            "warmup duration (e.g. 2s, 500ms)")
-        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
-        ("verbose,v",   po::bool_switch(&verbose),        "enable debug logging")
+    cli.add_options()
+        ("h,help",         "show this help")
+        ("host",           "server host",                                                       cxxopts::value<std::string>(cfg.host))
+        ("port",           "server port",                                                       cxxopts::value<uint16_t>(cfg.port))
+        ("connections",    "parallel connections or threads",                                   cxxopts::value<uint32_t>(cfg.numConnections))
+        ("threads",        "use OS threads instead of fibers",                                  cxxopts::value<bool>(cfg.useThreads))
+        ("duration",       "measurement duration (e.g. 10s, 500ms)",                            cxxopts::value<std::string>(durationStr))
+        ("warmup",         "warmup duration (e.g. 2s, 500ms)",                                  cxxopts::value<std::string>(warmupStr))
+        ("print-counters", "enable per-CPU profiler and include counters in the JSON report",   cxxopts::value<bool>(cfg.printCounters))
+        ("v,verbose",      "enable debug logging",                                              cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: http-perf client [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return;
         }
-        po::notify(vm);
         cfg.durationNs = parseDuration(durationStr);
         cfg.warmupNs = parseDuration(warmupStr);
         if (verbose)
@@ -291,9 +288,9 @@ static void runClient(int argc, char ** argv)
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
         exit(1);
     }
 
@@ -308,9 +305,9 @@ static void runClient(int argc, char ** argv)
     }
 
     SILK_INFO(
-        "starting {} http client, host={}:{}, connections={}",
+        "starting %s http client, host=%s:%u, connections=%u",
         cfg.useThreads ? "threaded" : "fiber",
-        cfg.host,
+        cfg.host.c_str(),
         cfg.port,
         cfg.numConnections);
 
@@ -319,13 +316,13 @@ static void runClient(int argc, char ** argv)
 
     if (cfg.warmupNs > 0)
     {
-        SILK_INFO("warming up for {}...", formatDuration(cfg.warmupNs));
+        SILK_INFO("warming up for %s...", formatDuration(cfg.warmupNs).c_str());
         signalled = sigwaitFor(mask, cfg.warmupNs);
     }
 
     if (!signalled)
     {
-        SILK_INFO("measuring for {}...", formatDuration(cfg.durationNs));
+        SILK_INFO("measuring for %s...", formatDuration(cfg.durationNs).c_str());
         sigwaitFor(mask, cfg.durationNs);
     }
 
@@ -492,7 +489,7 @@ private:
 void FiberHTTPServer::start()
 {
     int r = silk::FiberScheduler::run(acceptFiberMain, AcceptFiberParams{this}, &acceptFuture);
-    SILK_ASSERT(r == 0, "spawn accept fiber: {}", std::strerror(r));
+    SILK_ASSERT(r == 0, "spawn accept fiber: %s", std::strerror(r));
 }
 
 void FiberHTTPServer::stop()
@@ -509,12 +506,12 @@ void FiberHTTPServer::stop()
     {
         if (!isExpectedShutdown(e.code()))
         {
-            SILK_ERROR("shutdown failed: {}", e.displayText());
+            SILK_ERROR("shutdown failed: %s", e.displayText().c_str());
         }
     }
 
     int r = acceptFuture.wait();
-    SILK_ASSERT(r == 0, "accept fiber: {}", std::strerror(r));
+    SILK_ASSERT(r == 0, "accept fiber: %s", std::strerror(r));
 
     socket.close();
 
@@ -530,7 +527,7 @@ void FiberHTTPServer::stop()
             {
                 if (!isExpectedShutdown(e.code()))
                 {
-                    SILK_ERROR("shutdown failed: {}", e.displayText());
+                    SILK_ERROR("shutdown failed: %s", e.displayText().c_str());
                 }
             }
         }
@@ -556,7 +553,7 @@ void FiberHTTPServer::acceptLoop() noexcept
         {
             if (!stopping.load(std::memory_order_relaxed) && !isExpectedShutdown(e.code()))
             {
-                SILK_ERROR("accept failed: {}", e.displayText());
+                SILK_ERROR("accept failed: %s", e.displayText().c_str());
             }
             return;
         }
@@ -571,7 +568,7 @@ void FiberHTTPServer::acceptLoop() noexcept
         int r = silk::FiberScheduler::run(connFiberMain, ConnFiberParams{this, clientSocket}, &conn->future);
         if (r != 0)
         {
-            SILK_ERROR("spawn conn fiber: {}", std::strerror(r));
+            SILK_ERROR("spawn conn fiber: %s", std::strerror(r));
             {
                 std::lock_guard lock(connsMutex);
                 conns.remove(conn);
@@ -593,7 +590,7 @@ void FiberHTTPServer::connectionLoop(Poco::Net::StreamSocket socket) noexcept
     {
         if (!stopping.load(std::memory_order_relaxed) && !isExpectedShutdown(e.code()))
         {
-            SILK_ERROR("connection error: {}", e.displayText());
+            SILK_ERROR("connection error: %s", e.displayText().c_str());
         }
     }
 }
@@ -607,40 +604,37 @@ static void runServer(int argc, char ** argv)
     std::string delayStr = "0";
     bool verbose = false;
 
-    namespace po = boost::program_options;
-    po::options_description desc("http-perf server options");
+    cxxopts::Options cli("http-perf server", "http-perf server options");
 
     // clang-format off
-    desc.add_options()
-        ("help,h",    "show this help")
-        ("port",      po::value(&cfg.port),       "listen port")
-        ("queued",    po::value(&cfg.maxQueued),  "max queued connections (default: 4 * available CPUs)")
-        ("delay",     po::value(&delayStr),       "per-request response delay (e.g. 5ms, 100us)")
-        ("threads",   po::bool_switch(&cfg.useThreads), "use OS threads instead of fibers")
-        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
-        ("verbose,v", po::bool_switch(&verbose),  "enable debug logging")
+    cli.add_options()
+        ("h,help",         "show this help")
+        ("port",           "listen port",                                                       cxxopts::value<uint16_t>(cfg.port))
+        ("queued",         "max queued connections (default: 4 * available CPUs)",              cxxopts::value<uint32_t>(cfg.maxQueued))
+        ("delay",          "per-request response delay (e.g. 5ms, 100us)",                      cxxopts::value<std::string>(delayStr))
+        ("threads",        "use OS threads instead of fibers",                                  cxxopts::value<bool>(cfg.useThreads))
+        ("print-counters", "enable per-CPU profiler and include counters in the JSON report",   cxxopts::value<bool>(cfg.printCounters))
+        ("v,verbose",      "enable debug logging",                                              cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: http-perf server [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return;
         }
-        po::notify(vm);
         cfg.delayNs = parseDuration(delayStr);
         if (verbose)
         {
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
         exit(1);
     }
 
@@ -668,11 +662,11 @@ static void runServer(int argc, char ** argv)
     Poco::Net::HTTPRequestHandlerFactory::Ptr factory = new EchoHandlerFactory(handlerCfg);
 
     SILK_INFO(
-        "starting {} http server on port {}, queued={}, delay={}",
+        "starting %s http server on port %u, queued=%u, delay=%s",
         cfg.useThreads ? "threaded" : "fiber",
         cfg.port,
         cfg.maxQueued,
-        formatDuration(cfg.delayNs));
+        formatDuration(cfg.delayNs).c_str());
 
     if (cfg.useThreads)
     {

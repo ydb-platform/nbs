@@ -8,8 +8,6 @@
 #include <silk/util/platform.h>
 #include <silk/util/tsc.h>
 
-#include <boost/program_options.hpp>
-
 #include <atomic>
 #include <cerrno>
 #include <cmath>
@@ -17,7 +15,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <format>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -27,6 +24,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#include <cxxopts.hpp>
 #include <sys/stat.h>
 
 //
@@ -221,7 +219,7 @@ void Benchmark::start()
     for (Job & job : jobs)
     {
         int r = silk::FiberScheduler::run(workerFiberMain, {this, &job}, &job.future);
-        SILK_ASSERT(!r, "cannot start fiber: {}", std::strerror(r));
+        SILK_ASSERT(!r, "cannot start fiber: %s", std::strerror(r));
     }
 
     warmupEndCycles.store(silk::Tsc::getCycles() + silk::Tsc::nanosecondsToCycles(cfg.warmupNs), std::memory_order_relaxed);
@@ -280,7 +278,7 @@ int Benchmark::workerFiberMain(WorkerFiberParams * params) noexcept
         int r = slot->future.wait();
         if (r)
         {
-            SILK_ERROR("request failed: {}", std::strerror(r));
+            SILK_ERROR("request failed: %s", std::strerror(r));
             break;
         }
 
@@ -300,7 +298,7 @@ int Benchmark::workerFiberMain(WorkerFiberParams * params) noexcept
     for (uint32_t i = 0; i < benchmark->cfg.iodepth; ++i)
     {
         int r = job->slots[i].future.wait();
-        SILK_ERROR("request failed: {}", std::strerror(r));
+        SILK_ERROR("request failed: %s", std::strerror(r));
     }
 
     return 0;
@@ -347,44 +345,46 @@ int main(int argc, char ** argv)
     std::string warmupStr = "2s";
     bool verbose = false;
 
-    namespace po = boost::program_options;
-    po::options_description desc("file-perf options");
+    cxxopts::Options cli("file-perf", "file-perf options");
 
     // clang-format off
-    desc.add_options()
-        ("help,h", "show this help")
-        ("numjobs",  po::value(&cfg.numJobs),      "number of concurrent worker fibers")
-        ("iodepth",  po::value(&cfg.iodepth),      "per-fiber IO queue depth")
-        ("bs",       po::value(&bsStr),             "block size (e.g. 4k, 1m)")
-        ("rw",       po::value(&rwStr),             "I/O mode: randread | seqread | randwrite")
-        ("size",     po::value(&sizeStr),           "file size (e.g. 1g, 512m)")
-        ("runtime",  po::value(&runtimeStr),         "measurement duration (e.g. 10s, 500ms)")
-        ("warmup",   po::value(&warmupStr),          "warmup duration (e.g. 2s, 500ms)")
-        ("filename", po::value(&cfg.filename)->required(), "file path")
-        ("direct",   po::bool_switch(&cfg.direct),  "use O_DIRECT (bypass page cache)")
-        ("print-counters", po::bool_switch(&cfg.printCounters), "enable per-CPU profiler and include counters in the JSON report")
-        ("verbose,v", po::bool_switch(&verbose),    "enable debug logging")
+    cli.add_options()
+        ("h,help",         "show this help")
+        ("numjobs",        "number of concurrent worker fibers",                                            cxxopts::value<uint32_t>(cfg.numJobs))
+        ("iodepth",        "per-fiber IO queue depth",                                                      cxxopts::value<uint32_t>(cfg.iodepth))
+        ("bs",             "block size (e.g. 4k, 1m)",                                                      cxxopts::value<std::string>(bsStr))
+        ("rw",             "I/O mode: randread | seqread | randwrite",                                      cxxopts::value<std::string>(rwStr))
+        ("size",           "file size (e.g. 1g, 512m)",                                                     cxxopts::value<std::string>(sizeStr))
+        ("runtime",        "measurement duration (e.g. 10s, 500ms)",                                        cxxopts::value<std::string>(runtimeStr))
+        ("warmup",         "warmup duration (e.g. 2s, 500ms)",                                              cxxopts::value<std::string>(warmupStr))
+        ("filename",       "file path",                                                                     cxxopts::value<std::string>(cfg.filename))
+        ("direct",         "use O_DIRECT (bypass page cache)",                                              cxxopts::value<bool>(cfg.direct))
+        ("print-counters", "enable per-CPU profiler and include counters in the JSON report",               cxxopts::value<bool>(cfg.printCounters))
+        ("v,verbose",      "enable debug logging",                                                          cxxopts::value<bool>(verbose))
         ;
     // clang-format on
 
-    po::variables_map vm;
     try
     {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        if (vm.count("help"))
+        auto result = cli.parse(argc, argv);
+        if (result.count("help"))
         {
-            std::cout << "usage: file-perf [options]\n" << desc << "\n";
+            std::cout << cli.help() << "\n";
             return 0;
         }
-        po::notify(vm);
+        if (result.count("filename") == 0)
+        {
+            std::cerr << "error: --filename is required\n" << cli.help() << "\n";
+            return 1;
+        }
         if (verbose)
         {
             silk::Logger::setLevel(silk::LogLevel::DEBUG);
         }
     }
-    catch (const po::error & ex)
+    catch (const cxxopts::exceptions::exception & ex)
     {
-        std::cerr << "error: " << ex.what() << "\n" << desc << "\n";
+        std::cerr << "error: " << ex.what() << "\n" << cli.help() << "\n";
         return 1;
     }
 
@@ -403,14 +403,14 @@ int main(int argc, char ** argv)
 
     int openFlags = O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC | (cfg.direct ? O_DIRECT : 0);
     int fd = ::open(cfg.filename.c_str(), openFlags, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-    SILK_ASSERT(fd >= 0, "open failed: {}", std::strerror(errno));
+    SILK_ASSERT(fd >= 0, "open failed: %s", std::strerror(errno));
 
     struct stat st;
     int r = ::fstat(fd, &st);
-    SILK_ASSERT(!r, "fstat failed: {}", std::strerror(errno));
+    SILK_ASSERT(!r, "fstat failed: %s", std::strerror(errno));
 
     r = ::fallocate(fd, 0, 0, static_cast<off_t>(cfg.fileSize));
-    SILK_ASSERT(!r, "fallocate failed: {}", std::strerror(errno));
+    SILK_ASSERT(!r, "fallocate failed: %s", std::strerror(errno));
 
     sigset_t mask = blockSignals();
 
@@ -426,8 +426,8 @@ int main(int argc, char ** argv)
     silk::FiberScheduler::initialize(&options);
 
     SILK_INFO(
-        "starting benchmark on: {}  size={:.1f}GiB{}",
-        cfg.filename,
+        "starting benchmark on: %s  size=%.1fGiB%s",
+        cfg.filename.c_str(),
         static_cast<double>(cfg.fileSize) / (1024.0 * 1024 * 1024),
         cfg.direct ? "  direct" : "");
 
@@ -440,13 +440,13 @@ int main(int argc, char ** argv)
 
     if (cfg.warmupNs > 0)
     {
-        SILK_INFO("warming up for {}...", formatDuration(cfg.warmupNs));
+        SILK_INFO("warming up for %s...", formatDuration(cfg.warmupNs).c_str());
         signalled = sigwaitFor(mask, cfg.warmupNs);
     }
 
     if (!signalled)
     {
-        SILK_INFO("measuring for {}...", formatDuration(cfg.durationNs));
+        SILK_INFO("measuring for %s...", formatDuration(cfg.durationNs).c_str());
         sigwaitFor(mask, cfg.durationNs);
     }
 
