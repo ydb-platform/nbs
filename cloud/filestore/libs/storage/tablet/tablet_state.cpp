@@ -192,9 +192,7 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadCacheMaxHandlesPerNode());
 
     Impl->InMemoryIndexState = std::make_unique<TStandardInMemoryIndexState>(
-        AllocatorRegistry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache));
-    Impl->InMemoryIndexState->UpdateLogTag(LogTag);
-    Impl->InMemoryIndexState->Reset(
+        AllocatorRegistry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache),
         CalculateInMemoryIndexCacheCapacity(
             config.GetInMemoryIndexCacheNodesCapacity(),
             GetNodesCount(),
@@ -208,6 +206,8 @@ void TIndexTabletState::LoadState(
             GetNodesCount(),
             config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()),
         config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity());
+    Impl->InMemoryIndexState->UpdateLogTag(LogTag);
+
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {

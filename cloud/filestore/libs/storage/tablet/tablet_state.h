@@ -1550,7 +1550,7 @@ public:
     // In-memory index state.
     //
 
-    IIndexTabletDatabase& AccessInMemoryIndexState();
+    IIndexTabletDatabase* AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(
         const TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
     void MarkNodeRefsLoadComplete();

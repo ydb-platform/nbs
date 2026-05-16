@@ -106,16 +106,13 @@ public:
     };
 
 public:
-    explicit TStandardNodeRefsCache(IAllocator *allocator)
+    TStandardNodeRefsCache(IAllocator *allocator, size_t maxSize)
         : NodeRefs(allocator)
-    {}
-
-public:
-    TVector<TNodeRefsKey> SetMaxSize(size_t maxSize)
     {
-        return NodeRefs.SetMaxSize(maxSize);
+        NodeRefs.SetMaxSize(maxSize);
     }
 
+public:
     size_t Size() const
     {
         return NodeRefs.size();

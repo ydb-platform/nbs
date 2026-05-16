@@ -376,7 +376,12 @@ private:
 
         // if we can execute the transaction using the in-memory index state,
         // we will do so and return immediately.
-        if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
+        auto* indexState = AccessInMemoryIndexState();
+        if (!indexState) {
+            ReportInMemoryIndexStateNotInitialized();
+        }
+
+        if (indexState && TryExecuteTx(ctx, *indexState, tx)) {
             Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
                 1,
                 std::memory_order_relaxed);

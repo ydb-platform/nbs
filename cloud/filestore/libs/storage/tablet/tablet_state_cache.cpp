@@ -9,26 +9,17 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TNodeRefsImpl>
-TInMemoryIndexState<TNodeRefsImpl>::TInMemoryIndexState(IAllocator* allocator)
-    : Nodes(0)
-    , NodeAttrs(0)
-    , NodeRefs(allocator)
+TInMemoryIndexState<TNodeRefsImpl>::TInMemoryIndexState(
+        IAllocator* allocator,
+        ui64 nodesCapacity,
+        ui64 nodeAttrsCapacity,
+        ui64 nodeRefsCapacity,
+        ui64 nodeRefsExhaustivenessCapacity)
+    : Nodes(nodesCapacity)
+    , NodeAttrs(nodeAttrsCapacity)
+    , NodeRefs(allocator, nodeRefsCapacity)
+    , NodeRefsExhaustivenessInfo(nodeRefsExhaustivenessCapacity)
 {}
-
-template <typename TNodeRefsImpl>
-void TInMemoryIndexState<TNodeRefsImpl>::Reset(
-    ui64 nodesCapacity,
-    ui64 nodeAttrsCapacity,
-    ui64 nodeRefsCapacity,
-    ui64 nodeRefsExhaustivenessCapacity)
-{
-    Nodes.SetMaxSize(nodesCapacity);
-    NodeAttrs.SetMaxSize(nodeAttrsCapacity);
-    NodeRefsExhaustivenessInfo.SetMaxSize(nodeRefsExhaustivenessCapacity);
-    for (const auto& key: NodeRefs.SetMaxSize(nodeRefsCapacity)) {
-        NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(key.NodeId);
-    }
-}
 
 template <typename TNodeRefsImpl>
 void TInMemoryIndexState<TNodeRefsImpl>::LoadNodeRefs(

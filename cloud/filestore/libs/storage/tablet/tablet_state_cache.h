@@ -34,12 +34,6 @@ struct TInMemoryIndexStateStats
 class IInMemoryIndexState : public IIndexTabletDatabase
 {
 public:
-    virtual void Reset(
-        ui64 nodesCapacity,
-        ui64 nodeAttrsCapacity,
-        ui64 nodeRefsCapacity,
-        ui64 nodeRefsExhaustivenessCapacity) = 0;
-
     virtual void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs) = 0;
 
     virtual void MarkNodeRefsLoadComplete() = 0;
@@ -134,13 +128,12 @@ template <typename TNodeRefsImpl>
 class TInMemoryIndexState : public IInMemoryIndexState
 {
 public:
-    explicit TInMemoryIndexState(IAllocator* allocator);
-
-    void Reset(
+    TInMemoryIndexState(
+        IAllocator* allocator,
         ui64 nodesCapacity,
         ui64 nodeAttrsCapacity,
         ui64 nodeRefsCapacity,
-        ui64 nodeRefsExhaustivenessCapacity) override;
+        ui64 nodeRefsExhaustivenessCapacity);
 
     void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs) override;
 
@@ -366,14 +359,9 @@ private:
         ::TLRUCache<ui64, bool> IsExhaustivePerNode;
 
     public:
-        TNodeRefsExhaustivenessInfo()
-            : IsExhaustivePerNode(0)
+        explicit TNodeRefsExhaustivenessInfo(size_t size)
+            : IsExhaustivePerNode(size)
         {}
-
-        void SetMaxSize(size_t size)
-        {
-            IsExhaustivePerNode.SetMaxSize(size);
-        }
 
         [[nodiscard]] bool IsExhaustiveForNode(ui64 nodeId)
         {

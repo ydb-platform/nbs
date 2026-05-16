@@ -18,13 +18,17 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     const NProto::TNode nodeAttrs1 = CreateRegularAttrs(0666, 1, 2);
     const NProto::TNode nodeAttrs2 = CreateRegularAttrs(0666, 3, 4);
 
+    auto* Alloc()
+    {
+        return TDefaultAllocator::Instance();
+    }
+
     //
     // Nodes
     //
     Y_UNIT_TEST(ShouldPopulateNodes)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 1, 0, 0, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         TMaybe<IIndexTabletDatabase::TNode> node;
@@ -57,8 +61,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldEvictNodes)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 1, 0, 0, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         state.UpdateState(
@@ -83,8 +86,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldDeleteNodes)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 1, 0, 0, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         state.UpdateState({IInMemoryIndexState::TWriteNodeRequest{
@@ -108,8 +110,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldBypassCacheReads)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 1, 0, 0, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         state.UpdateState({IInMemoryIndexState::TWriteNodeRequest{
@@ -162,8 +163,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldBypassCacheReadsUntilUnconfirmedWritesComplete)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 1, 0, 0, 0);
 
         state.UpdateState({IInMemoryIndexState::TWriteNodeRequest{
             .NodeId = nodeId1,
@@ -205,8 +205,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     //
     Y_UNIT_TEST(ShouldPopulateNodeAttrs)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 1, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 0, 1, 0, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         TMaybe<IIndexTabletDatabase::TNodeAttr> attr;
@@ -242,8 +241,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldEvictNodeAttrs)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 1, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 0, 1, 0, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         state.UpdateState(
@@ -263,8 +261,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldDeleteNodeAttrs)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 1, 0, 0);
+        TStandardInMemoryIndexState state(Alloc(), 0, 1, 0, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         state.UpdateState({IInMemoryIndexState::TWriteNodeAttrsRequest{
@@ -345,8 +342,7 @@ namespace {
     //
     Y_UNIT_TEST(ShouldPopulateNodeRefs)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 0, 1, 0);
+        TStandardInMemoryIndexState state(Alloc(), 0, 0, 1, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
@@ -396,8 +392,7 @@ namespace {
 
     Y_UNIT_TEST(ShouldEvictNodeRefs)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 0, 3, 0);
+        TStandardInMemoryIndexState state(Alloc(), 0, 0, 3, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         const TVector<IInMemoryIndexState::TWriteNodeRefsRequest> requests = {
@@ -508,8 +503,7 @@ namespace {
 
     Y_UNIT_TEST(ShouldDeleteNodeRefs)
     {
-        TStandardInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 0, 1, 0);
+        TStandardInMemoryIndexState state(Alloc(), 0, 0, 1, 0);
         state.SetUnconfirmedRecoveryReady(true);
 
         IInMemoryIndexState::TWriteNodeRefsRequest request = {

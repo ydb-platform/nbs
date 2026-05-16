@@ -612,9 +612,9 @@ void TIndexTabletState::VisitNodeRefLocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IIndexTabletDatabase& TIndexTabletState::AccessInMemoryIndexState()
+IIndexTabletDatabase* TIndexTabletState::AccessInMemoryIndexState()
 {
-    return *Impl->InMemoryIndexState;
+    return Impl->InMemoryIndexState.get();
 }
 
 void TIndexTabletState::UpdateInMemoryIndexState(
