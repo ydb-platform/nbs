@@ -74,7 +74,6 @@ public:
     private:
         TNodeRefs::iterator Impl;
         TNodeRefs::iterator End;
-        bool Called = false;
 
     public:
         TIterator(TNodeRefs::iterator impl, TNodeRefs::iterator end)
@@ -83,12 +82,8 @@ public:
         {}
 
     public:
-        bool Next(const TNodeRefsKey** key, const TNodeRefsRow** value)
+        bool Get(const TNodeRefsKey** key, const TNodeRefsRow** value)
         {
-            if (Impl != End && Called) {
-                ++Impl;
-            }
-
             if (Impl == End) {
                 *key = nullptr;
                 *value = nullptr;
@@ -97,8 +92,16 @@ public:
 
             *key = &Impl->first;
             *value = &Impl->second;
-            Called = true;
             return true;
+        }
+
+        auto& operator++()
+        {
+            if (Impl != End) {
+                ++Impl;
+            }
+
+            return *this;
         }
     };
 

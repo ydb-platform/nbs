@@ -392,7 +392,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefs(
     ui32 skipped = 0;
     const TNodeRefsKey* key = nullptr;
     const TNodeRefsRow* value = nullptr;
-    while (it.Next(&key, &value) && key->NodeId == nodeId) {
+    while (it.Get(&key, &value) && key->NodeId == nodeId) {
         NodeRefs.TouchKey(*key);
 
         ui64 minCommitId = value->CommitId;
@@ -419,12 +419,14 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefs(
             ++skipped;
         }
 
+        ++it;
+
         if (maxBytes && bytes >= maxBytes) {
             break;
         }
     }
 
-    if (next && it.Next(&key, &value) && key->NodeId == nodeId) {
+    if (next && it.Get(&key, &value) && key->NodeId == nodeId) {
         *next = key->Name;
     }
 
