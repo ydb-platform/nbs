@@ -123,7 +123,7 @@ public:
         return NodeRefs.GetMaxSize();
     }
 
-    TNodeRefsRow* FindInIndex(const TNodeRefsKey& key)
+    TNodeRefsRow* Find(const TNodeRefsKey& key)
     {
         return NodeRefs.FindInIndex(key);
     }

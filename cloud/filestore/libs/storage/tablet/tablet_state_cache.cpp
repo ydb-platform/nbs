@@ -331,7 +331,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRef(
     const TString& name,
     TMaybe<TNodeRef>& ref)
 {
-    auto* v = NodeRefs.FindInIndex(TNodeRefsKey(nodeId, name));
+    auto* v = NodeRefs.Find(TNodeRefsKey(nodeId, name));
     if (!v) {
         // If the cache is exhaustive for the node and we did not find the
         // entry, then we are sure that the entry does not exist and we can
@@ -465,7 +465,7 @@ void TInMemoryIndexState<TNodeRefsImpl>::WriteNodeRef(
     const TString& shardNodeName)
 {
     const auto key = TNodeRefsKey(nodeId, name);
-    auto* v = NodeRefs.FindInIndex(key);
+    auto* v = NodeRefs.Find(key);
     TNodeRefsRow value{
         .CommitId = commitId,
         .ChildId = childNode,
