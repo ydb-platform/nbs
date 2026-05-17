@@ -142,7 +142,7 @@ def start_instance(args, inst_index):
 
 
 def _process_coredumps():
-    for instance in range(32):
+    for instance in range(1024):
         port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance))
         if not port:
             break
