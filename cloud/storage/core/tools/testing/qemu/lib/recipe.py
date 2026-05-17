@@ -147,7 +147,7 @@ def _process_coredumps(args):
             port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance), 22)
             ssh = SshToGuest(user=_get_ssh_user(args), port=int(port), key=os.getenv("QEMU_SSH_KEY"))
             process_coredumps(ssh)
-        except:
+        except Exception:
             logger.exception(f"Failed to process instance #{instance} coredumps")
 
 
