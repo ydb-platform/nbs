@@ -2,7 +2,7 @@ import yatest.common as common
 
 
 def setup_coredumps(ssh):
-    ssh("sudo mkdir /cores")
+    ssh("sudo mkdir -p /cores")
     ssh("sudo sysctl -w 'kernel.core_pattern=/cores/%E.%p'")
 
     # Default core limit is 0, so it's essential to increase it. Unfortunately

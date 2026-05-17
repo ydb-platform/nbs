@@ -141,19 +141,19 @@ def start_instance(args, inst_index):
         open(ready_flag_path, 'a')
 
 
-def _process_coredumps():
-    for instance in range(1024):
-        port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance))
-        if not port:
-            break
-
-        ssh = SshToGuest(user="qemu", port=int(port), key=os.getenv("QEMU_SSH_KEY"))
-        process_coredumps(ssh)
-        instance += 1
+def _process_coredumps(args):
+    for instance in range(args.instance_count):
+        try:
+            port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance), 22)
+            ssh = SshToGuest(user=_get_ssh_user(args), port=int(port), key=os.getenv("QEMU_SSH_KEY"))
+            process_coredumps(ssh)
+        except:
+            logger.exception(f"Failed to process instance #{instance} coredumps")
 
 
 def stop(argv):
-    _process_coredumps()
+    args = _parse_args(argv)
+    _process_coredumps(args)
 
     with open(PID_FILE, "r") as f:
         pids = f.read().strip().splitlines()
