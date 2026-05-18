@@ -5,9 +5,9 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include "src/core/lib/gprpp/ref_counted_ptr.h"
-#include "src/core/lib/security/credentials/tls/grpc_tls_certificate_distributor.h"
-#include "src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h"
+#include <src/core/lib/gprpp/ref_counted_ptr.h>
+#include <src/core/lib/security/credentials/tls/grpc_tls_certificate_distributor.h>
+#include <src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -380,6 +380,7 @@ private:
 class TGrpcPeriodicCertificateProvider final
     : public grpc_tls_certificate_provider
     , public TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>
+    , public std::enable_shared_from_this<TGrpcPeriodicCertificateProvider>
 {
     using TBase =
         TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>;
@@ -409,14 +410,16 @@ public:
             grpc_core::MakeRefCounted<grpc_tls_certificate_distributor>())
     {
         Distributor->SetWatchStatusCallback(
-            [this](
+            [weak = weak_from_this()](
                 TString certName,
                 bool rootBeingWatched,
                 bool identityBeingWatched)
             {
                 Y_UNUSED(rootBeingWatched);
                 Y_UNUSED(identityBeingWatched);
-                OnWatchStatusChanged(std::move(certName));
+                if (auto self = weak.lock()) {
+                    self->OnWatchStatusChanged(std::move(certName));
+                }
             });
     }
 
@@ -556,12 +559,12 @@ private:
 
 public:
     TPeriodicCertificateProvider(
-        ILoggingServicePtr logging,
-        TString logComponent,
-        NMonitoring::TDynamicCountersPtr serverGroup,
-        TString rootCertPath,
-        TVector<TCertificateFiles> certificates,
-        TDuration refreshIntervalSec)
+            ILoggingServicePtr logging,
+            TString logComponent,
+            NMonitoring::TDynamicCountersPtr serverGroup,
+            TString rootCertPath,
+            TVector<TCertificateFiles> certificates,
+            TDuration refreshIntervalSec)
         : HasRootCert(!!rootCertPath)
     {
         Provider = grpc_core::RefCountedPtr<
