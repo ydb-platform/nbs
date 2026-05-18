@@ -1682,6 +1682,141 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             tablet.GetNodeAttr(id)->Record.GetNode().GetSize());
         AssertStorageStats(tablet, 0, 0);
     }
+
+    Y_UNIT_TEST(ShouldNotUseReadAheadCacheUntilAddBlobUnconfirmedCommits)
+    {
+        constexpr ui32 block = 4_KB;
+        constexpr ui64 readAheadStep = 128_KB;
+        constexpr ui64 writeOffset = 1_MB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetReadAheadCacheRangeSize(1_MB);
+        storageConfig.SetReadAheadCacheMaxResultsPerNode(32);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        tablet.WriteData(handle, 0, 2_MB, 'a');
+
+        for (ui32 i = 0; i < 7; ++i) {
+            tablet.DescribeData(handle, i * readAheadStep, readAheadStep);
+        }
+
+        const ui64 commitId = GenerateBlobIdsAndPutBlob(
+            env,
+            tablet,
+            id,
+            handle,
+            writeOffset,
+            block,
+            'b');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        TAutoPtr<IEventHandle> blockedRwPut;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                    !blockedRwPut)
+                {
+                    blockedRwPut = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2));
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!blockedRwPut; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(blockedRwPut, "Expected blocked RW tx put");
+        tablet.AssertSetNodeAttrNoResponse();
+
+        TAutoPtr<IEventHandle> addBlobCommitResult;
+        bool confirmResponseSeen = false;
+        ui32 commitResultsAfterConfirm = 0;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvConfirmAddDataResponse)
+                {
+                    confirmResponseSeen = true;
+                    return false;
+                }
+
+                if (confirmResponseSeen &&
+                    event->GetTypeRewrite() == TEvTablet::EvCommitResult)
+                {
+                    ++commitResultsAfterConfirm;
+                    if (commitResultsAfterConfirm == 2 &&
+                        !addBlobCommitResult) {
+                        addBlobCommitResult = event.Release();
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        // This request is prepared before AddBlob is executed and can
+        // repopulate read-ahead with the old blob mapping after AddBlob has
+        // already invalidated it in ExecuteTx.
+        tablet.SendDescribeDataRequest(
+            handle,
+            writeOffset - readAheadStep,
+            readAheadStep);
+
+        tablet.SendConfirmAddDataRequest(commitId);
+
+        runtime.Send(blockedRwPut.Release(), nodeIdx);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !!addBlobCommitResult; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            addBlobCommitResult,
+            "Expected AddBlob commit result to be held by the test");
+
+        tablet.AssertSetNodeAttrResponse(S_OK);
+        tablet.AssertConfirmAddDataResponse(S_OK);
+        tablet.AssertDescribeDataResponse(S_OK);
+
+        tablet.SendDescribeDataRequest(handle, writeOffset, block);
+
+        // A stale read-ahead hit would answer immediately here, before
+        // CompleteTx_AddBlob gets a chance to invalidate the cache again.
+        tablet.AssertDescribeDataNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(addBlobCommitResult.Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        tablet.AssertDescribeDataResponse(S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(block, 'b'),
+            ReadData(tablet, handle, block, writeOffset));
+        AssertStorageStats(tablet, 0, 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

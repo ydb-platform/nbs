@@ -68,6 +68,7 @@ struct TIndexTabletState::TImpl
     TCompactionMap CompactionMap;
     TGarbageQueue GarbageQueue;
     TTruncateQueue TruncateQueue;
+    TCacheReadBypass CacheReadBypass;
     TReadAheadCache ReadAheadCache;
     std::unique_ptr<IInMemoryIndexState> InMemoryIndexState;
     TSet<ui64> OrphanNodeIds;

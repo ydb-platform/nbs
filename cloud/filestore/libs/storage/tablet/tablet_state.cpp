@@ -83,6 +83,7 @@ TIndexTabletState::~TIndexTabletState() = default;
 
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
+    Impl->CacheReadBypass.UpdateLogTag(tag);
     Impl->FreshBytes.UpdateLogTag(tag);
     if (Impl->InMemoryIndexState) {
         Impl->InMemoryIndexState->UpdateLogTag(tag);
@@ -193,6 +194,7 @@ void TIndexTabletState::LoadState(
 
     Impl->InMemoryIndexState = std::make_unique<TStandardInMemoryIndexState>(
         AllocatorRegistry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache),
+        Impl->CacheReadBypass,
         CalculateInMemoryIndexCacheCapacity(
             config.GetInMemoryIndexCacheNodesCapacity(),
             GetNodesCount(),
