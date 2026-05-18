@@ -2,26 +2,23 @@
 
 #include <silk/util/platform.h>
 
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
-#include <sstream>
+#include <cstring>
 
 #if defined(SILK_USE_LIBBACKTRACE)
-#    include <cstring>
-#    include <format>
-#    include <string_view>
-
 #    include <backtrace.h>
 #    include <cxxabi.h>
 #endif // SILK_USE_LIBBACKTRACE
 
+#define COLOR_RESET "\033[0m"
+#define COLOR_RED "\033[1;31m"
+#define COLOR_YELLOW "\033[0;33m"
+#define COLOR_GREEN "\033[0;32m"
+
 namespace silk
 {
-
-static constexpr const char * COLOR_RESET = "\033[0m";
-static constexpr const char * COLOR_RED = "\033[1;31m";
-static constexpr const char * COLOR_YELLOW = "\033[0;33m";
-static constexpr const char * COLOR_GREEN = "\033[0;32m";
 
 #if defined(SILK_USE_LIBBACKTRACE)
 
@@ -35,14 +32,13 @@ static backtrace_state * btState = backtrace_create_state(nullptr, 1, btCreateEr
 
 struct Context
 {
-    std::ostringstream * out;
     int frame = 0;
 };
 
 static int btCallback(void * data, uintptr_t pc, const char * filename, int lineno, const char * function) noexcept
 {
     Context * ctx = static_cast<Context *>(data);
-    (*ctx->out) << "#" << ctx->frame++ << "  " << std::format("{:#018x}", pc) << " in " << COLOR_YELLOW;
+    std::fprintf(stderr, "#%d  %#018lx in " COLOR_YELLOW, ctx->frame++, static_cast<unsigned long>(pc));
 
     int status = 0;
     char * demangled = function ? abi::__cxa_demangle(function, nullptr, nullptr, &status) : nullptr;
@@ -51,24 +47,24 @@ static int btCallback(void * data, uintptr_t pc, const char * filename, int line
         const char * paren = std::strchr(demangled, '(');
         if (paren)
         {
-            (*ctx->out) << std::string_view(demangled, paren - demangled);
-            (*ctx->out) << COLOR_RESET << " " << paren;
+            std::fwrite(demangled, 1, static_cast<size_t>(paren - demangled), stderr);
+            std::fprintf(stderr, COLOR_RESET " %s", paren);
         }
         else
         {
-            (*ctx->out) << demangled << COLOR_RESET << " ()";
+            std::fprintf(stderr, "%s" COLOR_RESET " ()", demangled);
         }
     }
     else
     {
-        (*ctx->out) << (function ? function : "??") << COLOR_RESET << " ()";
+        std::fprintf(stderr, "%s" COLOR_RESET " ()", function ? function : "??");
     }
 
     if (filename)
     {
-        (*ctx->out) << " at " << COLOR_GREEN << filename << COLOR_RESET << ":" << lineno;
+        std::fprintf(stderr, " at " COLOR_GREEN "%s" COLOR_RESET ":%d", filename, lineno);
     }
-    (*ctx->out) << "\n";
+    std::fputc('\n', stderr);
 
     std::free(demangled);
     return 0;
@@ -76,30 +72,48 @@ static int btCallback(void * data, uintptr_t pc, const char * filename, int line
 
 static void btErrorCallback(void * data, const char * msg, int err) noexcept
 {
-    Context * ctx = static_cast<Context *>(data);
-    (*ctx->out) << "  backtrace error " << err << ": " << msg << "\n";
+    SILK_UNUSED(data);
+    std::fprintf(stderr, "  backtrace error %d: %s\n", err, msg);
 }
 
 #endif // SILK_USE_LIBBACKTRACE
 
-void assertFail(const char * message, const char * file, int line, const char * details) noexcept
+void assertFail(const char * file, int line, const char * message, const char * fmt, ...) noexcept
 {
-    std::ostringstream out;
-    out << COLOR_RED << file << ":" << line << " " << message;
-    if (details)
+    ::flockfile(stderr);
+
+    std::fprintf(stderr, COLOR_RED "%s:%d ", file, line);
+    if (message)
     {
-        out << " -- " << details;
+        std::fputs(message, stderr);
     }
-    out << COLOR_RESET << "\n";
+    if (fmt)
+    {
+        if (message)
+        {
+            std::fputs(" -- ", stderr);
+        }
+        va_list ap;
+        va_start(ap, fmt);
+        std::vfprintf(stderr, fmt, ap);
+        va_end(ap);
+    }
+    std::fputs(COLOR_RESET "\n", stderr);
 
 #if defined(SILK_USE_LIBBACKTRACE)
-    Context ctx{&out, 0};
+    Context ctx;
     backtrace_full(btState, 0, btCallback, btErrorCallback, &ctx);
 #endif
 
-    std::fputs(out.str().c_str(), stderr);
+    ::funlockfile(stderr);
+
     std::fflush(stderr);
     std::abort();
 }
 
 } // namespace silk
+
+#undef COLOR_RESET
+#undef COLOR_RED
+#undef COLOR_YELLOW
+#undef COLOR_GREEN

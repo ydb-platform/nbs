@@ -181,13 +181,13 @@ int ConnFiberMain(TConnParams* params) noexcept
         // Read length prefix (4 bytes, big-endian).
         ui32 lenBe = 0;
         if (int r = RecvAll(fd, &lenBe, sizeof(lenBe)); r) {
-            SILK_WARN("recv length failed: {}", ErrnoMsg(r));
+            SILK_WARN("recv length failed: %s", ErrnoMsg(r).c_str());
             ::close(fd);
             return r;
         }
         ui32 len = ntohl(lenBe);
         if (len > 64_MB) {
-            SILK_WARN("request too large: {}", len);
+            SILK_WARN("request too large: %u", len);
             ::close(fd);
             return EMSGSIZE;
         }
@@ -196,7 +196,7 @@ int ConnFiberMain(TConnParams* params) noexcept
         TString reqBuf;
         reqBuf.ReserveAndResize(len);
         if (int r = RecvAll(fd, reqBuf.begin(), len); r) {
-            SILK_WARN("recv body failed: {}", ErrnoMsg(r));
+            SILK_WARN("recv body failed: %s", ErrnoMsg(r).c_str());
             ::close(fd);
             return r;
         }
@@ -230,12 +230,12 @@ int ConnFiberMain(TConnParams* params) noexcept
 
         ui32 respLenBe = htonl(static_cast<ui32>(respBuf.size()));
         if (int r = SendAll(fd, &respLenBe, sizeof(respLenBe)); r) {
-            SILK_WARN("send length failed: {}", ErrnoMsg(r));
+            SILK_WARN("send length failed: %s", ErrnoMsg(r).c_str());
         } else if (int r = SendAll(fd, respBuf.data(), respBuf.size()); r) {
-            SILK_WARN("send body failed: {}", ErrnoMsg(r));
+            SILK_WARN("send body failed: %s", ErrnoMsg(r).c_str());
         }
     } catch (const std::exception& e) {
-        SILK_ERROR("handler exception: {}", e.what());
+        SILK_ERROR("handler exception: %s", e.what());
     }
 
     ::close(fd);
@@ -257,7 +257,7 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
     while (true) {
         int lfd = listenFd.load(std::memory_order_acquire);
         if (lfd < 0) {
-            SILK_ERROR("lfd closed: {}", ErrnoMsg(errno));
+            SILK_ERROR("lfd closed: %s", ErrnoMsg(errno).c_str());
             break;
         }
 
@@ -271,7 +271,7 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
         if (cfd < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 if (int r = FiberScheduler::poll(lfd, POLLIN); r && r != EINTR) {
-                    SILK_ERROR("poll(listen) failed: {}", ErrnoMsg(r));
+                    SILK_ERROR("poll(listen) failed: %s", ErrnoMsg(r).c_str());
                     break;
                 }
                 continue;
@@ -279,7 +279,7 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
             if (errno == EINTR || errno == ECONNABORTED) {
                 continue;
             }
-            SILK_ERROR("accept failed: {}", ErrnoMsg(errno));
+            SILK_ERROR("accept failed: %s", ErrnoMsg(errno).c_str());
             break;
         }
 
@@ -288,7 +288,7 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
 
         int r = FiberScheduler::run(ConnFiberMain, TConnParams{cfd}, nullptr);
         if (r) {
-            SILK_ERROR("spawn handler fiber failed: {}", ErrnoMsg(r));
+            SILK_ERROR("spawn handler fiber failed: %s", ErrnoMsg(r).c_str());
             ::close(cfd);
         }
     }
@@ -302,7 +302,7 @@ int MakeListenSocket(const TString& host, ui16 port)
 {
     int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (fd < 0) {
-        SILK_ERROR("socket: {}", ErrnoMsg(errno));
+        SILK_ERROR("socket: %s", ErrnoMsg(errno).c_str());
         return -1;
     }
 
@@ -314,21 +314,21 @@ int MakeListenSocket(const TString& host, ui16 port)
     addr.sin_port = htons(port);
     if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
         SILK_ERROR(
-            "inet_pton({}): {}",
-            std::string_view(host),
-            ErrnoMsg(errno));
+            "inet_pton(%s): %s",
+            host.c_str(),
+            ErrnoMsg(errno).c_str());
         ::close(fd);
         return -1;
     }
 
     if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        SILK_ERROR("bind: {}", ErrnoMsg(errno));
+        SILK_ERROR("bind: %s", ErrnoMsg(errno).c_str());
         ::close(fd);
         return -1;
     }
 
     if (::listen(fd, 128) < 0) {
-        SILK_ERROR("listen: {}", ErrnoMsg(errno));
+        SILK_ERROR("listen: %s", ErrnoMsg(errno).c_str());
         ::close(fd);
         return -1;
     }
@@ -397,7 +397,7 @@ int main(int argc, const char** argv)
         return 1;
     }
 
-    SILK_INFO("listening on {}:{}", std::string_view(host), port);
+    SILK_INFO("listening on %s:%u", host.c_str(), port);
 
     // Block on the accept loop fiber.
     FiberScheduler::run(AcceptFiberMain, TAcceptParams{context.get()});
