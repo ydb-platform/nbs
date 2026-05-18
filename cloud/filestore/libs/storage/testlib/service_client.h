@@ -468,6 +468,39 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvService::TEvUnsafeCreateNodeRequest> CreateUnsafeCreateNodeRequest(
+        const TString& fileSystemId,
+        ui64 nodeId,
+        ui64 size)
+    {
+        auto request =
+            std::make_unique<TEvService::TEvUnsafeCreateNodeRequest>();
+        request->Record.SetFileSystemId(fileSystemId);
+        auto* node = request->Record.MutableNode();
+        node->SetId(nodeId);
+        node->SetSize(size);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvUnsafeCreateNodeRefRequest> CreateUnsafeCreateNodeRefRequest(
+        const TString& fileSystemId,
+        ui64 parentId,
+        const TString& name,
+        ui64 childId = 0,
+        const TString& shardId = {},
+        const TString& shardNodeName = {})
+    {
+        auto request =
+            std::make_unique<TEvService::TEvUnsafeCreateNodeRefRequest>();
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetParentId(parentId);
+        request->Record.SetName(name);
+        request->Record.SetChildId(childId);
+        request->Record.SetShardId(shardId);
+        request->Record.SetShardNodeName(shardNodeName);
+        return request;
+    }
+
     std::unique_ptr<TEvService::TEvGetNodeAttrRequest> CreateGetNodeAttrRequest(
         const THeaders& headers,
         const TString& fileSystemId,

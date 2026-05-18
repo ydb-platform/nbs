@@ -2923,13 +2923,13 @@ struct TTxIndexTablet
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
-        const NProtoPrivate::TUnsafeCreateNodeRequest Request;
+        const NProto::TUnsafeCreateNodeRequest Request;
 
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TUnsafeCreateNode(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TUnsafeCreateNodeRequest request)
+                NProto::TUnsafeCreateNodeRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -3022,13 +3022,13 @@ struct TTxIndexTablet
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
-        const NProtoPrivate::TUnsafeCreateNodeRefRequest Request;
+        const NProto::TUnsafeCreateNodeRefRequest Request;
 
         TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
 
         TUnsafeCreateNodeRef(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TUnsafeCreateNodeRefRequest request)
+                NProto::TUnsafeCreateNodeRefRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}

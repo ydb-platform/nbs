@@ -324,26 +324,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         id3 = Max(id1, id2) + 1;
 
         {
-            NProtoPrivate::TUnsafeCreateNodeRequest request;
-            request.SetFileSystemId(fsId);
-            auto* node = request.MutableNode();
-            node->SetId(id3);
-            node->SetSize(333);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNode", buf);
+            service.UnsafeCreateNode(fsId, id3, 333);
         }
 
         {
-            NProtoPrivate::TUnsafeCreateNodeRequest request;
-            request.SetFileSystemId(fsId);
-            auto* node = request.MutableNode();
-            node->SetId(id3);
-            node->SetSize(333);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("UnsafeCreateNode", buf);
-            auto response = service.RecvExecuteActionResponse();
+            service.SendUnsafeCreateNodeRequest(fsId, id3, 333);
+            auto response = service.RecvUnsafeCreateNodeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_EXIST,
                 response->GetStatus(),
@@ -530,28 +516,24 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         }
 
         {
-            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
-            request.SetFileSystemId(fsId);
-            request.SetParentId(parentId);
-            request.SetName(name2);
-            request.SetShardId(shardId2);
-            request.SetShardNodeName(shardNodeName2);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+            service.UnsafeCreateNodeRef(
+                fsId,
+                parentId,
+                name2,
+                0,
+                shardId2,
+                shardNodeName2);
         }
 
         {
-            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
-            request.SetFileSystemId(fsId);
-            request.SetParentId(parentId);
-            request.SetName(name2);
-            request.SetShardId(shardId2);
-            request.SetShardNodeName(shardNodeName2);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("UnsafeCreateNodeRef", buf);
-            auto response = service.RecvExecuteActionResponse();
+            service.SendUnsafeCreateNodeRefRequest(
+                fsId,
+                parentId,
+                name2,
+                0,
+                shardId2,
+                shardNodeName2);
+            auto response = service.RecvUnsafeCreateNodeRefResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_EXIST,
                 response->GetStatus(),
@@ -864,25 +846,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         }
 
         {
-            NProtoPrivate::TUnsafeCreateNodeRequest request;
-            request.SetFileSystemId(fsId);
-            auto* node = request.MutableNode();
-            node->SetId(nodeId);
-            node->SetSize(333);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNode", buf);
+            service.UnsafeCreateNode(fsId, nodeId, 333);
         }
 
         {
-            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
-            request.SetFileSystemId(fsId);
-            request.SetParentId(RootNodeId);
-            request.SetName("file2");
-            request.SetChildId(nodeId);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+            service.UnsafeCreateNodeRef(
+                fsId,
+                RootNodeId,
+                "file2",
+                nodeId);
         }
 
         //

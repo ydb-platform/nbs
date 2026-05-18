@@ -7,7 +7,6 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/filestore/public/api/protos
     cloud/storage/core/protos
 )
 

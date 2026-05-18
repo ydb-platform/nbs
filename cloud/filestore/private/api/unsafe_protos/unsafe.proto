@@ -1,42 +1,10 @@
 syntax = "proto3";
 
 import "cloud/storage/core/protos/error.proto";
-import "cloud/filestore/public/api/protos/node.proto";
 
 package NCloud.NFileStore.NProtoPrivate;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos";
-
-////////////////////////////////////////////////////////////////////////////////
-// Direct inode and node ref manipulation.
-
-message TUnsafeCreateNodeRequest
-{
-    string FileSystemId = 1;
-    NProto.TNodeAttr Node = 2;
-}
-
-message TUnsafeCreateNodeResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
-
-message TUnsafeCreateNodeRefRequest
-{
-    string FileSystemId = 1;
-    uint64 ParentId = 2;
-    bytes Name = 3;
-    uint64 ChildId = 4;
-    string ShardId = 5;
-    string ShardNodeName = 6;
-}
-
-message TUnsafeCreateNodeRefResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // ConfigureShards request/response.

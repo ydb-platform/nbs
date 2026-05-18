@@ -15,6 +15,22 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define FILESTORE_PUBLIC_UNSAFE_TABLET_REQUESTS(xxx, ...)                      \
+    xxx(UnsafeCreateNode,           __VA_ARGS__)                               \
+    xxx(UnsafeCreateNodeRef,        __VA_ARGS__)                               \
+// FILESTORE_PUBLIC_UNSAFE_TABLET_REQUESTS
+
+#define FILESTORE_PRIVATE_UNSAFE_TABLET_REQUESTS(xxx, ...)                     \
+    xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
+    xxx(UnsafeUpdateNode,           __VA_ARGS__)                               \
+    xxx(UnsafeGetNode,              __VA_ARGS__)                               \
+    xxx(UnsafeDeleteNodeRef,        __VA_ARGS__)                               \
+    xxx(UnsafeUpdateNodeRef,        __VA_ARGS__)                               \
+    xxx(UnsafeGetNodeRef,           __VA_ARGS__)                               \
+    xxx(UnsafeCreateHandle,         __VA_ARGS__)                               \
+    xxx(UnsafeChangeTabletState,    __VA_ARGS__)                               \
+// FILESTORE_PRIVATE_UNSAFE_TABLET_REQUESTS
+
 #define FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, ...)                             \
     xxx(UnsafeCreateNode,           __VA_ARGS__)                               \
     xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
@@ -28,7 +44,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeChangeTabletState,    __VA_ARGS__)                               \
 // FILESTORE_UNSAFE_TABLET_REQUESTS
 
-#define FILESTORE_TABLET_REQUESTS(xxx, ...)                                    \
+#define FILESTORE_TABLET_REQUESTS_COMMON(xxx, ...)                             \
     xxx(WaitReady,                  __VA_ARGS__)                               \
     xxx(CreateSession,              __VA_ARGS__)                               \
     xxx(DestroySession,             __VA_ARGS__)                               \
@@ -64,7 +80,10 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
-                                                                               \
+// FILESTORE_TABLET_REQUESTS_COMMON
+
+#define FILESTORE_TABLET_REQUESTS(xxx, ...)                                    \
+    FILESTORE_TABLET_REQUESTS_COMMON(xxx, __VA_ARGS__)                         \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
@@ -237,7 +256,15 @@ struct TEvIndexTablet
     static_assert(EvEnd < (int)TFileStoreEvents::TABLET_END,
         "EvEnd expected to be < TFileStoreEvents::TABLET_END");
 
-    FILESTORE_TABLET_REQUESTS(FILESTORE_DECLARE_PROTO_EVENTS, NProtoPrivate)
+    FILESTORE_TABLET_REQUESTS_COMMON(
+        FILESTORE_DECLARE_PROTO_EVENTS,
+        NProtoPrivate)
+    FILESTORE_PRIVATE_UNSAFE_TABLET_REQUESTS(
+        FILESTORE_DECLARE_PROTO_EVENTS,
+        NProtoPrivate)
+    FILESTORE_PUBLIC_UNSAFE_TABLET_REQUESTS(
+        FILESTORE_DECLARE_PROTO_EVENTS,
+        NProto)
 };
 
 }   // namespace NCloud::NFileStore::NStorage

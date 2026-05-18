@@ -11,29 +11,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProtoPrivate::TUnsafeCreateNodeRequest ToTabletRequest(
-    const NProto::TUnsafeCreateNodeRequest& request)
-{
-    NProtoPrivate::TUnsafeCreateNodeRequest result;
-    result.SetFileSystemId(request.GetFileSystemId());
-    result.MutableNode()->CopyFrom(request.GetNode());
-    return result;
-}
-
-
-NProtoPrivate::TUnsafeCreateNodeRefRequest ToTabletRequest(
-    const NProto::TUnsafeCreateNodeRefRequest& request)
-{
-    NProtoPrivate::TUnsafeCreateNodeRefRequest result;
-    result.SetFileSystemId(request.GetFileSystemId());
-    result.SetParentId(request.GetParentId());
-    result.SetName(request.GetName());
-    result.SetChildId(request.GetChildId());
-    result.SetShardId(request.GetShardId());
-    result.SetShardNodeName(request.GetShardNodeName());
-    return result;
-}
-
 template <typename TServiceRequest, typename TServiceResponse, typename TTabletRequest, typename TTabletResponse>
 class TUnsafeNodeActionActor final
     : public TActorBootstrapped<TUnsafeNodeActionActor<
@@ -51,7 +28,7 @@ private:
     using TBase = TActorBootstrapped<TThis>;
 
     const TRequestInfoPtr RequestInfo;
-    const typename TServiceRequest::ProtoRecordType Request;
+    typename TServiceRequest::ProtoRecordType Request;
 
 public:
     TUnsafeNodeActionActor(
@@ -70,8 +47,9 @@ public:
             return;
         }
 
-        auto request = std::make_unique<TTabletRequest>();
-        request->Record = ToTabletRequest(Request);
+        auto request =
+            std::make_unique<TTabletRequest>(RequestInfo->CallContext);
+        request->Record = std::move(Request);
         NCloud::Send(
             ctx,
             MakeIndexTabletProxyServiceId(),
@@ -99,7 +77,10 @@ private:
         const typename TTabletResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        ReplyAndDie(ctx, ev->Get()->Record.GetError());
+        auto response = std::make_unique<TServiceResponse>();
+        response->Record = std::move(ev->Get()->Record);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        TBase::Die(ctx);
     }
 
     void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
