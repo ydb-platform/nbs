@@ -419,6 +419,8 @@ public:
 
     ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
 
+    void InitInMemoryIndexState(const TStorageConfig& config);
+
     NProto::TError SelectShard(
         NProto::ENodeType nodeType,
         ui64 fileSize,
