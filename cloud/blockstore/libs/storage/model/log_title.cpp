@@ -31,7 +31,7 @@ TStringBuilder& operator<<(TStringBuilder& stream, TOptional<T> opt)
         } else {
             stream << "?";
         }
-    } else{
+    } else {
         stream << opt.Value;
     }
 
@@ -158,6 +158,11 @@ TString ToString(const TLogTitle::TPartitionNonrepl& data)
 TString ToString(const TLogTitle::TPartitionMirror& data)
 {
     return TStringBuilder() << "[md:" << data.DiskId;
+}
+
+TString ToString(const TLogTitle::TPartitionMigration& data)
+{
+    return TStringBuilder() << "[mig:" << data.DiskId;
 }
 
 TString ToString(const TLogTitle::TDiskRegistry& data)
