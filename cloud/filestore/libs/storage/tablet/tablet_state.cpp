@@ -84,7 +84,9 @@ TIndexTabletState::~TIndexTabletState() = default;
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
     Impl->FreshBytes.UpdateLogTag(tag);
-    Impl->InMemoryIndexState.UpdateLogTag(tag);
+    if (Impl->InMemoryIndexState) {
+        Impl->InMemoryIndexState->UpdateLogTag(tag);
+    }
     LogTag = std::move(tag);
 }
 
@@ -188,7 +190,9 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadCacheRangeSize(),
         config.GetReadAheadMaxGapPercentage(),
         config.GetReadAheadCacheMaxHandlesPerNode());
-    Impl->InMemoryIndexState.Reset(
+
+    Impl->InMemoryIndexState = std::make_unique<TStandardInMemoryIndexState>(
+        AllocatorRegistry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache),
         CalculateInMemoryIndexCacheCapacity(
             config.GetInMemoryIndexCacheNodesCapacity(),
             GetNodesCount(),
@@ -202,6 +206,8 @@ void TIndexTabletState::LoadState(
             GetNodesCount(),
             config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()),
         config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity());
+    Impl->InMemoryIndexState->UpdateLogTag(LogTag);
+
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
