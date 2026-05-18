@@ -503,6 +503,7 @@ def test_partial_set_node_attr():
     assert stat["Size"] == new_stat["Size"]
     assert stat["Mode"] == new_stat["Mode"]
 
+
 def test_unsafe_create_delete_node():
     client, results_path = __init_test()
     fs_id = "fs0"
