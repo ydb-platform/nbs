@@ -21,10 +21,8 @@ private:
     ui64 MTime = 0;
     ui64 CTime = 0;
     ui64 Size = 0;
-    ui32 Links = 0;
+    ui32 Links = 1;
     ui64 DevId = 0;
-    TString ShardId;
-    TString ShardNodeName;
 
 public:
     TUnsafeCreateNodeCommand()
@@ -69,19 +67,12 @@ public:
 
         Opts.AddLongOption("links")
             .RequiredArgument("NUM")
+            .DefaultValue(1)
             .StoreResult(&Links);
 
         Opts.AddLongOption("dev-id")
             .RequiredArgument("NUM")
             .StoreResult(&DevId);
-
-        Opts.AddLongOption("shard-id")
-            .RequiredArgument("STR")
-            .StoreResult(&ShardId);
-
-        Opts.AddLongOption("shard-node-name")
-            .RequiredArgument("STR")
-            .StoreResult(&ShardNodeName);
     }
 
     bool Execute() override
@@ -100,8 +91,6 @@ public:
         node->SetSize(Size);
         node->SetLinks(Links);
         node->SetDevId(DevId);
-        node->SetShardFileSystemId(ShardId);
-        node->SetShardNodeName(ShardNodeName);
 
         auto response = WaitFor(Client->UnsafeCreateNode(
             PrepareCallContext(),
@@ -152,6 +141,21 @@ public:
 
     bool Execute() override
     {
+        const bool hasChildRef = ChildId != 0;
+        const bool hasShardRef = ShardId || ShardNodeName;
+
+        Y_ENSURE(
+            hasChildRef || hasShardRef,
+            "either --child-id or both --shard-id and --shard-node-name "
+            "should be supplied");
+        Y_ENSURE(
+            !(hasChildRef && hasShardRef),
+            "--child-id can't be combined with --shard-id or "
+            "--shard-node-name");
+        Y_ENSURE(
+            ShardId.empty() == ShardNodeName.empty(),
+            "--shard-id and --shard-node-name should be supplied together");
+
         auto request = CreateRequest<NProto::TUnsafeCreateNodeRefRequest>();
         request->SetParentId(ParentId);
         request->SetName(Name);
