@@ -142,7 +142,8 @@ public:
     void FlushSucceeded(ui64 nodeId, size_t requestCount);
 
     // Inform that the flush has failed - the error should be propagated to
-    // Flush, FlushAll and ReleaseHandle requests
+    // Flush, FlushAll and ReleaseHandle requests.
+    // In the case of E_FS_NOSPC, pending requests will be also failed.
     EFlushRetryStatus FlushFailed(
         ui64 nodeId,
         const NCloud::NProto::TError& error);
@@ -193,6 +194,8 @@ private:
         ui64 nodeId,
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
+
+    void FailPendingRequests(const NCloud::NProto::TError& error);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
