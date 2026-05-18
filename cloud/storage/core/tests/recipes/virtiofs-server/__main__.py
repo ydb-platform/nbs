@@ -23,7 +23,7 @@ def _get_mount_paths():
         toolchain = os.path.dirname(os.path.dirname(
             os.environ['ASAN_SYMBOLIZER_PATH']))
 
-    mounts = [("source_path", common.source_path()),  # need to mound original source root as test environment has links into it
+    mounts = [("source_path", common.source_path()),  # need to mount the original source root as test environment has links into it
               ("build_path", common.build_path()),
               ("toolchain", toolchain)]
 
@@ -33,6 +33,11 @@ def _get_mount_paths():
 
     if common.ram_drive_path():
         mounts.append(tuple(("tmpfs_path", common.ram_drive_path())))
+
+    if common.runtime.gdb_path():
+        tool_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+            common.runtime.gdb_path())))
+        mounts.append(("gdb", tool_dir))
 
     return mounts
 

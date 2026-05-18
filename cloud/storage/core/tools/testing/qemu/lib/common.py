@@ -70,6 +70,11 @@ def get_mount_paths(inst_index=0):
     if common.ram_drive_path():
         mounts.append(tuple(("tmpfs_path", common.ram_drive_path(), socket_path("tmpfs_path"))))
 
+    if common.runtime.gdb_path():
+        tool_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+            common.runtime.gdb_path())))
+        mounts.append(("gdb", tool_dir, socket_path("gdb")))
+
     return mounts
 
 
