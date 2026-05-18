@@ -11,29 +11,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TServiceRequest, typename TServiceResponse, typename TTabletRequest, typename TTabletResponse>
-class TUnsafeNodeActionActor final
-    : public TActorBootstrapped<TUnsafeNodeActionActor<
-          TServiceRequest,
-          TServiceResponse,
-          TTabletRequest,
-          TTabletResponse>>
+class TUnsafeCreateNodeActor final
+    : public TActorBootstrapped<TUnsafeCreateNodeActor>
 {
 private:
-    using TThis = TUnsafeNodeActionActor<
-        TServiceRequest,
-        TServiceResponse,
-        TTabletRequest,
-        TTabletResponse>;
+    using TThis = TUnsafeCreateNodeActor;
     using TBase = TActorBootstrapped<TThis>;
 
     const TRequestInfoPtr RequestInfo;
-    typename TServiceRequest::ProtoRecordType Request;
+    NProto::TUnsafeCreateNodeRequest Request;
 
 public:
-    TUnsafeNodeActionActor(
+    TUnsafeCreateNodeActor(
             TRequestInfoPtr requestInfo,
-            typename TServiceRequest::ProtoRecordType request)
+            NProto::TUnsafeCreateNodeRequest request)
         : RequestInfo(std::move(requestInfo))
         , Request(std::move(request))
     {}
@@ -48,7 +39,8 @@ public:
         }
 
         auto request =
-            std::make_unique<TTabletRequest>(RequestInfo->CallContext);
+            std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRequest>(
+                RequestInfo->CallContext);
         request->Record = std::move(Request);
         NCloud::Send(
             ctx,
@@ -62,7 +54,7 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TTabletResponse, HandleResponse);
+            HFunc(TEvIndexTablet::TEvUnsafeCreateNodeResponse, HandleResponse);
 
             default:
                 HandleUnexpectedEvent(
@@ -74,10 +66,11 @@ private:
     }
 
     void HandleResponse(
-        const typename TTabletResponse::TPtr& ev,
+        const TEvIndexTablet::TEvUnsafeCreateNodeResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto response = std::make_unique<TServiceResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvUnsafeCreateNodeResponse>();
         response->Record = std::move(ev->Get()->Record);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
         TBase::Die(ctx);
@@ -85,31 +78,90 @@ private:
 
     void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
     {
-        auto response = std::make_unique<TServiceResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvUnsafeCreateNodeResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
         TBase::Die(ctx);
     }
 };
 
-template <typename TServiceRequest, typename TServiceResponse, typename TTabletRequest, typename TTabletResponse>
-void ForwardUnsafeNodeRequest(
-    const TActorContext& ctx,
-    const typename TServiceRequest::TPtr& ev)
+////////////////////////////////////////////////////////////////////////////////
+
+class TUnsafeCreateNodeRefActor final
+    : public TActorBootstrapped<TUnsafeCreateNodeRefActor>
 {
-    auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+private:
+    using TThis = TUnsafeCreateNodeRefActor;
+    using TBase = TActorBootstrapped<TThis>;
 
-    using TActor = TUnsafeNodeActionActor<
-        TServiceRequest,
-        TServiceResponse,
-        TTabletRequest,
-        TTabletResponse>;
+    const TRequestInfoPtr RequestInfo;
+    NProto::TUnsafeCreateNodeRefRequest Request;
 
-    ctx.Register(new TActor(std::move(requestInfo), std::move(msg->Record)));
-}
+public:
+    TUnsafeCreateNodeRefActor(
+            TRequestInfoPtr requestInfo,
+            NProto::TUnsafeCreateNodeRefRequest request)
+        : RequestInfo(std::move(requestInfo))
+        , Request(std::move(request))
+    {}
+
+    void Bootstrap(const TActorContext& ctx)
+    {
+        if (!Request.GetFileSystemId()) {
+            ReplyAndDie(
+                ctx,
+                MakeError(E_ARGUMENT, "FileSystem id should be supplied"));
+            return;
+        }
+
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRefRequest>(
+                RequestInfo->CallContext);
+        request->Record = std::move(Request);
+        NCloud::Send(
+            ctx,
+            MakeIndexTabletProxyServiceId(),
+            std::move(request));
+
+        TBase::Become(&TThis::StateWork);
+    }
+
+private:
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(
+                TEvIndexTablet::TEvUnsafeCreateNodeRefResponse,
+                HandleResponse);
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+
+    void HandleResponse(
+        const TEvIndexTablet::TEvUnsafeCreateNodeRefResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto response =
+            std::make_unique<TEvService::TEvUnsafeCreateNodeRefResponse>();
+        response->Record = std::move(ev->Get()->Record);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        TBase::Die(ctx);
+    }
+
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
+    {
+        auto response =
+            std::make_unique<TEvService::TEvUnsafeCreateNodeRefResponse>(error);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        TBase::Die(ctx);
+    }
+};
 
 }   // namespace
 
@@ -119,21 +171,29 @@ void TStorageServiceActor::HandleUnsafeCreateNode(
     const TEvService::TEvUnsafeCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ForwardUnsafeNodeRequest<
-        TEvService::TEvUnsafeCreateNodeRequest,
-        TEvService::TEvUnsafeCreateNodeResponse,
-        TEvIndexTablet::TEvUnsafeCreateNodeRequest,
-        TEvIndexTablet::TEvUnsafeCreateNodeResponse>(ctx, ev);
+    auto* msg = ev->Get();
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    ctx.Register(new TUnsafeCreateNodeActor(
+        std::move(requestInfo),
+        std::move(msg->Record)));
 }
 
 void TStorageServiceActor::HandleUnsafeCreateNodeRef(
     const TEvService::TEvUnsafeCreateNodeRefRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ForwardUnsafeNodeRequest<
-        TEvService::TEvUnsafeCreateNodeRefRequest,
-        TEvService::TEvUnsafeCreateNodeRefResponse,
-        TEvIndexTablet::TEvUnsafeCreateNodeRefRequest,
-        TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>(ctx, ev);
+    auto* msg = ev->Get();
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    ctx.Register(new TUnsafeCreateNodeRefActor(
+        std::move(requestInfo),
+        std::move(msg->Record)));
 }
 }   // namespace NCloud::NFileStore::NStorage
