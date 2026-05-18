@@ -504,7 +504,7 @@ def test_partial_set_node_attr():
     assert stat["Mode"] == new_stat["Mode"]
 
 
-def test_unsafe_create_delete_node():
+def test_unsafe_create_node():
     client, results_path = __init_test()
     fs_id = "fs0"
     node_id = 1000
