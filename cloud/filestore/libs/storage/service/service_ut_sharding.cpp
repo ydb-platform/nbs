@@ -8422,8 +8422,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         headers = service.InitSession(fsConfig.FsId, "client");
 
-        // After the tablet is restated "file1" creation is completed and
-        // CreateHandle should be seccessful.
+        // After the tablet is restarted "file1" creation is completed and
+        // CreateHandle should be successful.
         const auto createHandleResponse1 = service.CreateHandle(
             headers,
             fsConfig.FsId,

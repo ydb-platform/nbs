@@ -412,8 +412,7 @@ void TCreateNodeInShardActor::ReplyAndDie(
         std::move(ProfileLogRequest),
         NodeAlreadyExists,
         CreateNodeRetryCount,
-        Request.GetOriginalNodeId(),
-        Request.GetOriginalName()));
+        TNodeRefKey{Request.GetOriginalNodeId(), Request.GetOriginalName()}));
 
     Die(ctx);
 }
@@ -764,7 +763,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             if (!TryLockNodeRef({args.ParentNodeId, args.Name})) {
                 args.Error = MakeError(E_REJECTED, TStringBuilder()
                         << "node ref " << args.ParentNodeId << " " << args.Name
-                        << " is locked for CreateHandle");
+                        << " is locked for CreateNode");
                 return;
             }
 
@@ -969,7 +968,7 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
 
     EndNodeCreateInShard(msg->NodeName);
 
-    UnlockNodeRef({msg->OriginalNodeId, msg->OriginalName});
+    UnlockNodeRef(msg->OriginalNodeRefKey);
 
     Metrics.NodeExistsWhileCreatingInShardCount.fetch_add(
         msg->NodeAlreadyExists,

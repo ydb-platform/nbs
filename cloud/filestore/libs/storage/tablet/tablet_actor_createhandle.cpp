@@ -461,7 +461,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         if (!args.IsNodeRefLocked) {
             args.Error = MakeError(E_REJECTED, TStringBuilder()
                 << "node ref " << args.NodeId << " " << args.Name
-                << " is locked for CreateNode");
+                << " is locked for CreateHandle");
             return;
         }
     }
