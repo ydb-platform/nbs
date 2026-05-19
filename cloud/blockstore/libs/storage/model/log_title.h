@@ -98,6 +98,11 @@ public:
         TString AgentId;
     };
 
+    struct TMigrationRequest
+    {
+        TString DiskId;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
@@ -110,7 +115,8 @@ private:
         TPartitionMirror,
         TPartitionMigration,
         TFreshBlocksWriter,
-        TAgentAvailabilityMonitoringActor>;
+        TAgentAvailabilityMonitoringActor,
+        TMigrationRequest>;
 
     ui64 StartTime = 0;
     TData Data;

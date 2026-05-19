@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/storage/core/protos/error.pb.h>
 
@@ -49,6 +50,8 @@ private:
     ui32 PendingRequests = 0;
     TResponseProto LeaderResponse;
     TResponseProto FollowerResponse;
+
+    TLogTitle LogTitle;
 
 public:
     TMigrationRequestActor(
@@ -112,6 +115,9 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , Request(std::move(request))
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TMigrationRequest{.DiskId = DiskId})
 {
     Y_DEBUG_ABORT_UNLESS(FollowerPartition);
 }
@@ -252,8 +258,8 @@ void TMigrationRequestActor<TMethod>::HandleUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s",
-        DiskId.c_str(),
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
         FormatError(error).c_str());
 
     TResponseProto response;
@@ -281,8 +287,8 @@ void TMigrationRequestActor<TMethod>::HandleResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s got error from nonreplicated partition: %s",
-            DiskId.c_str(),
+            "%s %s got error from nonreplicated partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }
