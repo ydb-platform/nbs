@@ -208,6 +208,7 @@ struct TTrackedUnconfirmedData
 {
     NProto::TUnconfirmedData Data;
     TString SessionId;
+    // Tablet-pipe server actor that accepted GenerateBlobIds for this data.
     NActors::TActorId PipeServerId;
 };
 

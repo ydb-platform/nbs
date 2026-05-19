@@ -763,7 +763,8 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
 {
     const auto& msg = *ev->Get();
 
-    // TODO (#4962) use proper session id
+    // TODO (#4962): once owner-to-session relation is tracked properly, use
+    // the session id directly and simplify this split session/pipe cleanup.
     const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
 
     LOG_INFO(
@@ -777,9 +778,16 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
         msg.ServerId.ToString().c_str(),
         sessionIds.size());
 
+    // The disconnected pipe may be the control pipe, while unconfirmed writes
+    // for the same logical session can be tracked with a separate data pipe
+    // server id. Delete by session too.
     for (const auto& sessionId: sessionIds) {
         DeleteUnconfirmedDataForSession(sessionId, ctx);
     }
+
+    // msg.ServerId is the tablet-pipe server actor that received requests
+    // from this client connection. Unconfirmed data keeps this actor id from
+    // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
     RemoveSessionByPipeServer(msg.ServerId);
 }
@@ -1134,6 +1142,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
@@ -1163,6 +1172,7 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
@@ -1249,6 +1259,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
 
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
+        HFunc(
+            TEvIndexTabletPrivate::TEvCancelUnconfirmedData,
+            HandleCancelUnconfirmedData);
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
@@ -1428,6 +1441,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
@@ -1494,6 +1508,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);

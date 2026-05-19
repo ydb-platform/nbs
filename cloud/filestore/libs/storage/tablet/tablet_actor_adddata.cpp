@@ -466,6 +466,12 @@ void TIndexTabletActor::HandleGenerateBlobIds(
                 .PipeServerId = ev->Recipient});
         TABLET_VERIFY(inserted);
 
+        // If the client never confirms or cancels the operation, delete
+        // unconfirmed data and release the collect barrier eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvCancelUnconfirmedData(commitId));
+
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitTabletProfileLogRequestInfo(
             profileLogRequest,
