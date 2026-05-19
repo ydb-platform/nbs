@@ -143,7 +143,7 @@ public:
 
     // Inform that the flush has failed - the error should be propagated to
     // Flush, FlushAll and ReleaseHandle requests.
-    // In the case of E_FS_NOSPC, pending requests will be also failed.
+    // In the case of E_FS_NOSPC, pending requests will also be failed.
     EFlushRetryStatus FlushFailed(
         ui64 nodeId,
         const NCloud::NProto::TError& error);

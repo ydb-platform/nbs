@@ -88,7 +88,7 @@ struct TBootstrap
                             { return !HasError(result.GetValue()); });
     }
 
-    auto Add2(ui64 nodeId, ui64 handle, ui64 offset, TString data)
+    auto AddAndGetError(ui64 nodeId, ui64 handle, ui64 offset, TString data)
         -> NThreading::TFuture<NProto::TError>
     {
         auto request = std::make_shared<NProto::TWriteDataRequest>();
@@ -1189,20 +1189,19 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         b.Storage->SetCapacity(3);
 
-        // Will trigger E_FS_NOSPC on this request
         b.Add(1000, 1000, 0, "xyz");
 
         b.Add(1, 101, 0, "abc");
         b.Add(2, 201, 0, "def");
 
         // Existing node - different handle
-        auto w1 = b.Add2(1, 102, 0, "ghi");
+        auto w1 = b.AddAndGetError(1, 102, 0, "ghi");
 
         // Existing node - same handle
-        auto w2 = b.Add2(2, 201, 0, "jkl");
+        auto w2 = b.AddAndGetError(2, 201, 0, "jkl");
 
         // New node
-        auto w3 = b.Add2(3, 301, 0, "mno");
+        auto w3 = b.AddAndGetError(3, 301, 0, "mno");
 
         auto f1 = b.State->AddFlushRequest(1);
         auto f2 = b.State->AddFlushRequest(2);
