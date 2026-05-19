@@ -115,6 +115,8 @@ private:
 
     TMonotonic LastCpuWaitTs;
 
+    ui64 UnconfirmedWriteRequestsToForget = 0;
+
 public:
     TStorageServiceActor(
         TStorageConfigPtr storageConfig,
@@ -380,7 +382,14 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    void PerformConfigureUnconfirmedWriteForgetAction(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TString input);
+
 private:
+    bool ShouldForgetUnconfirmedWrite();
+
     void RenderSessions(IOutputStream& out);
     void RenderLocalFileStores(IOutputStream& out);
 

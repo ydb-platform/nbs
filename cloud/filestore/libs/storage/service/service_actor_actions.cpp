@@ -167,6 +167,10 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "toggleservicestate",
             &TStorageServiceActor::PerformToggleServiceStateAction
+        },
+        {
+            "configureunconfirmedwriteforget",
+            &TStorageServiceActor::PerformConfigureUnconfirmedWriteForgetAction
         }
     };
 
