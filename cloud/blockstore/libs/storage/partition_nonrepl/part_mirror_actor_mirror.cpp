@@ -159,7 +159,8 @@ void TMirrorPartitionActor::MirrorRequest(
                 State.GetReplicaInfos()[0].Config->GetName(),   // diskId
                 SelfId(),                                       // parentActorId
                 requestIdentityKey,
-                MultiAgentWriteRoundRobinSeed++);
+                MultiAgentWriteRoundRobinSeed++,
+                LogTitle.GetChild(GetCycleCount()));
             return;
         }
     }
