@@ -8,6 +8,7 @@
 #include <util/generic/size_literals.h>
 #include <util/stream/mem.h>
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 #include <util/system/align.h>
 #include <util/system/compiler.h>
 #include <util/system/filemap.h>
@@ -528,6 +529,18 @@ private:
         }
     }
 
+    bool ValidateAccess(const char* name) const
+    {
+        if (IsCorrupted()) {
+            ReportAccessToCorruptedFileBackedContainerError(Sprintf(
+                "An attempt to access an entry in a corrupted TFileRingBuffer "
+                "from %s has been made",
+                name));
+            return false;
+        }
+        return true;
+    }
+
 public:
     TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
@@ -575,10 +588,7 @@ public:
 
     bool PushBack(TStringBuf data)
     {
-        if (IsCorrupted()) {
-            ReportAccessToCorruptedFileBackedContainerError(
-                "An attempt to call TFileRingBuffer::PushBack() on a corrupted "
-                "container has been made");
+        if (!ValidateAccess("PushBack")) {
             return false;
         }
 
@@ -602,10 +612,7 @@ public:
                 "Previous allocation is not committed");
         }
 
-        if (IsCorrupted()) {
-            ReportAccessToCorruptedFileBackedContainerError(
-                "An attempt to call TFileRingBuffer::Alloc() on a corrupted "
-                "container has been made");
+        if (!ValidateAccess("Alloc")) {
             return MakeError(E_INVALID_STATE, "Buffer is corrupted");
         }
 
@@ -713,10 +720,7 @@ public:
 
     bool Free(const void* ptr)
     {
-        if (IsCorrupted()) {
-            ReportAccessToCorruptedFileBackedContainerError(
-                "An attempt to call TFileRingBuffer::Free() on a corrupted "
-                "container has been made");
+        if (!ValidateAccess("Free")) {
             return false;
         }
 
@@ -734,14 +738,16 @@ public:
         return true;
     }
 
-    TStringBuf Front() const
+    TStringBuf Front()
     {
+        if (!ValidateAccess("Front")) {
+            return {};
+        }
+
         auto e = GetFrontEntry();
 
         if (e.IsInvalid()) {
-            ReportAccessToCorruptedFileBackedContainerError(
-                "An attempt to call TFileRingBuffer::Front() on a corrupted "
-                "container has been made");
+            SetCorrupted();
             return {};
         }
 
@@ -750,10 +756,7 @@ public:
 
     void PopFront()
     {
-        if (IsCorrupted()) {
-            ReportAccessToCorruptedFileBackedContainerError(
-                "An attempt to call TFileRingBuffer::PopFront() on a corrupted "
-                "container has been made");
+        if (!ValidateAccess("PopFront")) {
             return;
         }
 
@@ -796,10 +799,8 @@ public:
 
     void Visit(const TVisitor& visitor)
     {
-        if (IsCorrupted()) {
-            ReportAccessToCorruptedFileBackedContainerError(
-                "An attempt to call TFileRingBuffer::Visit() on a corrupted "
-                "container has been made");
+        if (!ValidateAccess("Visit")) {
+            return;
         }
 
         VisitEntries(
@@ -939,7 +940,7 @@ bool TFileRingBuffer::Free(const void* ptr)
     return Impl->Free(ptr);
 }
 
-TStringBuf TFileRingBuffer::Front() const
+TStringBuf TFileRingBuffer::Front()
 {
     return Impl->Front();
 }
