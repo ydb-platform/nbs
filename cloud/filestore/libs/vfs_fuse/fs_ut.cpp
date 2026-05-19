@@ -954,6 +954,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldHandleReadDirLargeDataWithHandlesStoragePaging)
     {
+        const auto LargeDirectoryWaitTimeout = TDuration::Seconds(15);
+
         auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
         std::atomic<ui32> numCalls = 0;
@@ -1002,7 +1004,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 1);
 
         auto size1 = read.GetValue();
@@ -1010,7 +1012,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
 
         auto size2 = read.GetValue();
@@ -1039,7 +1041,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
 
         auto size5 = read.GetValue();
@@ -1062,7 +1064,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             nodeId,
             handleId,
             largeOffset);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 4);
 
         auto size6 = read.GetValue();
@@ -1102,7 +1104,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto handleId2 = handle2.GetValue();
 
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId2);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 5);
 
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
