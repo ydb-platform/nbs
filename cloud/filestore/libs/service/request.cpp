@@ -141,6 +141,8 @@ static const TString RequestNames[] = {
     "WriteBlob",
     "ConfirmAddData",
     "CancelAddData",
+    "UnsafeCreateNode",
+    "UnsafeCreateNodeRef",
 };
 
 static_assert(

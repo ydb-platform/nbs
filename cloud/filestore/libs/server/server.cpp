@@ -139,6 +139,8 @@ template <typename TRequest>
 bool IsServiceControlPlaneRequest()
 {
     FILESTORE_SERVICE_METHODS(FILESTORE_REQUEST_CHECK);
+    FILESTORE_REQUEST_CHECK(UnsafeCreateNode);
+    FILESTORE_REQUEST_CHECK(UnsafeCreateNodeRef);
     FILESTORE_ENDPOINT_METHODS(FILESTORE_REQUEST_CHECK);
     return false;
 }
