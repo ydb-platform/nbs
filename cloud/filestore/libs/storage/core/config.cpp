@@ -246,6 +246,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(InMemoryIndexCacheLoadSchedulePeriod,                                  \
         TDuration,                                                             \
         TDuration::Seconds(0)                                                 )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInMainTablet,     bool,       false     )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInShards,         bool,       false     )\
                                                                                \
     xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
                                                                                \

@@ -7,6 +7,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <absl/container/btree_map.h>
+
 #include <optional>
 
 /*
@@ -57,6 +59,46 @@ struct TNodeRefsKeyHash
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TContainer>
+class TMetadataCacheIterator
+{
+private:
+    using TImpl = typename TContainer::iterator;
+    TImpl Impl;
+    TImpl End;
+
+public:
+    TMetadataCacheIterator(TImpl impl, TImpl end)
+        : Impl(std::move(impl))
+        , End(std::move(end))
+    {}
+
+public:
+    bool Get(const TNodeRefsKey** key, const TNodeRefsRow** value)
+    {
+        if (Impl == End) {
+            *key = nullptr;
+            *value = nullptr;
+            return false;
+        }
+
+        *key = &Impl->first;
+        *value = &Impl->second;
+        return true;
+    }
+
+    auto& operator++()
+    {
+        if (Impl != End) {
+            ++Impl;
+        }
+
+        return *this;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStandardNodeRefsCache
 {
 private:
@@ -69,43 +111,6 @@ private:
     TNodeRefs NodeRefs;
 
 public:
-    class TIterator
-    {
-    private:
-        TNodeRefs::iterator Impl;
-        TNodeRefs::iterator End;
-
-    public:
-        TIterator(TNodeRefs::iterator impl, TNodeRefs::iterator end)
-            : Impl(std::move(impl))
-            , End(std::move(end))
-        {}
-
-    public:
-        bool Get(const TNodeRefsKey** key, const TNodeRefsRow** value)
-        {
-            if (Impl == End) {
-                *key = nullptr;
-                *value = nullptr;
-                return false;
-            }
-
-            *key = &Impl->first;
-            *value = &Impl->second;
-            return true;
-        }
-
-        auto& operator++()
-        {
-            if (Impl != End) {
-                ++Impl;
-            }
-
-            return *this;
-        }
-    };
-
-public:
     TStandardNodeRefsCache(IAllocator *allocator, size_t maxSize)
         : NodeRefs(allocator)
     {
@@ -113,12 +118,12 @@ public:
     }
 
 public:
-    size_t Size() const
+    [[nodiscard]] size_t Size() const
     {
         return NodeRefs.size();
     }
 
-    size_t GetMaxSize() const
+    [[nodiscard]] size_t GetMaxSize() const
     {
         return NodeRefs.GetMaxSize();
     }
@@ -128,9 +133,9 @@ public:
         return NodeRefs.FindInIndex(key);
     }
 
-    bool TouchKey(const TNodeRefsKey& key)
+    void TouchKey(const TNodeRefsKey& key)
     {
-        return NodeRefs.TouchKey(key);
+        NodeRefs.TouchKey(key);
     }
 
     void Erase(const TNodeRefsKey& key)
@@ -145,11 +150,69 @@ public:
         return std::get<2>(NodeRefs.emplace(key, std::move(value)));
     }
 
-    TIterator LowerBound(const TNodeRefsKey& key)
+    TMetadataCacheIterator<TNodeRefs> LowerBound(const TNodeRefsKey& key)
     {
         return {NodeRefs.lower_bound(key), NodeRefs.end()};
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TUnlimitedBTreeNodeRefsCache
+{
+private:
+    using TNodeRefs = absl::btree_map<TNodeRefsKey, TNodeRefsRow>;
+    TNodeRefs NodeRefs;
+
+public:
+    TUnlimitedBTreeNodeRefsCache(IAllocator *allocator, size_t maxSize)
+    {
+        Y_UNUSED(allocator);
+        Y_UNUSED(maxSize);
+    }
+
+public:
+    [[nodiscard]] size_t Size() const
+    {
+        return NodeRefs.size();
+    }
+
+    [[nodiscard]] size_t GetMaxSize() const
+    {
+        return 0;
+    }
+
+    TNodeRefsRow* Find(const TNodeRefsKey& key)
+    {
+        auto it = NodeRefs.find(key);
+        return it != NodeRefs.end() ? &it->second : nullptr;
+    }
+
+    void TouchKey(const TNodeRefsKey& key)
+    {
+        Y_UNUSED(key);
+    }
+
+    void Erase(const TNodeRefsKey& key)
+    {
+        NodeRefs.erase(key);
+    }
+
+    std::optional<TNodeRefsKey> Put(
+        const TNodeRefsKey& key,
+        TNodeRefsRow value)
+    {
+        NodeRefs.emplace(key, std::move(value));
+        return {};
+    }
+
+    TMetadataCacheIterator<TNodeRefs> LowerBound(const TNodeRefsKey& key)
+    {
+        return {NodeRefs.lower_bound(key), NodeRefs.end()};
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TNodeAttrsKey
 {

@@ -265,6 +265,8 @@ public:
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInMainTablet() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;

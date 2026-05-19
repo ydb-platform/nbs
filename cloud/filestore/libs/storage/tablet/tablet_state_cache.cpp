@@ -547,5 +547,6 @@ void TInMemoryIndexState<TNodeRefsImpl>::UpdateState(
 }
 
 template class TInMemoryIndexState<TStandardNodeRefsCache>;
+template class TInMemoryIndexState<TUnlimitedBTreeNodeRefsCache>;
 
 }   // namespace NCloud::NFileStore::NStorage
