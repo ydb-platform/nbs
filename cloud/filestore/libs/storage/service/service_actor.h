@@ -119,6 +119,9 @@ private:
 
     TMonotonic LastCpuWaitTs;
 
+    ITimerPtr Timer;
+    ISchedulerPtr Scheduler;
+    ILoggingServicePtr Logging;
     IFileStoreServicePtr Client;
     NLoadTest::IShmDataClientPtr ShmClient;
     NClient::ISessionPtr Session;

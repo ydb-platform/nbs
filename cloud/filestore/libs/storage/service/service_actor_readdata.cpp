@@ -19,6 +19,8 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <cloud/filestore/libs/client/config.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage {
@@ -85,6 +87,8 @@ private:
     TShardStatePtr ShardState;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead;
+    NClient::ISessionPtr Session;
+    NLoadTest::IShmDataClientPtr ShmClient;
 
 public:
     TReadDataActor(
@@ -105,7 +109,9 @@ public:
         TString clientId,
         TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead);
+        bool useTwoStageRead,
+        NClient::ISessionPtr session,
+        NLoadTest::IShmDataClientPtr shmClient);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -138,6 +144,11 @@ private:
         const TActorContext& ctx,
         NProto::TReadDataResponse& response);
 
+    void MoveShmToIovecs(
+        const TActorContext& ctx,
+        NProto::TReadDataResponse& response,
+        const char* shmPtr);
+
     void SendResponseAndDie(
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvReadDataResponse> response);
@@ -165,7 +176,9 @@ TReadDataActor::TReadDataActor(
         TString clientId,
         TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead)
+        bool useTwoStageRead,
+        NClient::ISessionPtr session,
+        NLoadTest::IShmDataClientPtr shmClient)
     : ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
@@ -191,6 +204,8 @@ TReadDataActor::TReadDataActor(
     , ShardState(std::move(shardState))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
+    , Session(std::move(session))
+    , ShmClient(std::move(shmClient))
 {
 }
 
@@ -215,7 +230,7 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     MainInFlightRequest = InFlightRequests->Register(
         Sender,
         Cookie,
-        std::move(CallContext),
+        CallContext,
         MediaKind,
         std::move(ChecksumCalcInfo),
         RequestStats,
@@ -228,10 +243,45 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     MainInFlightRequest->AccessProfileLogRequest().SetClientId(
         std::move(ClientId));
 
-    if (UseTwoStageRead) {
-        DescribeData(ctx);
+    if (Session) {
+        auto request = std::make_shared<NProto::TReadDataRequest>(ReadRequest);
+        request->ClearIovecs();
+        request->SetHandle(InvalidHandle);
+
+        ui64 outOffset = 0;
+        char* shmPtr = nullptr;
+        if (ShmClient) {
+            shmPtr = ShmClient->PrepareRead(*request, outOffset);
+        }
+        auto resp = Session->ReadData(CallContext, std::move(request)).GetValue(TDuration::Seconds(10));
+        if (HasError(resp)) {
+            if (ShmClient) {
+                ShmClient->FreeOffset(outOffset);
+            }
+            HandleError(ctx, resp.GetError());
+            return;
+        }
+
+        auto response =
+            std::make_unique<TEvService::TEvReadDataResponse>();
+        response->Record = std::move(resp);
+
+        if (shmPtr) {
+            MoveShmToIovecs(ctx, response->Record, shmPtr);
+        }
+
+        if (ShmClient) {
+            ShmClient->FreeOffset(outOffset);
+        }
+
+        SendResponseAndDie(ctx, std::move(response));
+        return;
     } else {
-        ReadData(ctx, {} /* fallbackReason */);
+        if (UseTwoStageRead) {
+            DescribeData(ctx);
+        } else {
+            ReadData(ctx, {} /* fallbackReason */);
+        }
     }
     Become(&TThis::StateWork);
 }
@@ -784,6 +834,49 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
     response.SetBufferOffset(0);
 }
 
+void TReadDataActor::MoveShmToIovecs(
+    const TActorContext& ctx,
+    NProto::TReadDataResponse& response,
+    const char* shmPtr)
+{
+    if (ReadRequest.GetIovecs().empty()) {
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "%s copying data from shared memory to target iovecs: response length: "
+        "%lu",
+        LogTag.c_str(),
+        response.GetLength());
+    size_t currentOffset = 0;
+
+    for (const auto& iovec: ReadRequest.GetIovecs()) {
+        if (currentOffset >= response.GetLength()) {
+            break;
+        }
+        auto dataToWrite =
+            Min(iovec.GetLength(), response.GetLength() - currentOffset);
+        if (dataToWrite > 0) {
+            char* targetData = reinterpret_cast<char*>(iovec.GetBase());
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s copying %lu bytes from shared memory to iovec at "
+                "offset %lu to the target "
+                "address "
+                "%p",
+                LogTag.c_str(),
+                dataToWrite,
+                currentOffset,
+                targetData);
+            memcpy(targetData, shmPtr + currentOffset, dataToWrite);
+            currentOffset += dataToWrite;
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
@@ -1005,6 +1098,26 @@ void TStorageServiceActor::HandleReadData(
             msg->Record.GetIovecs());
     }
 
+    if (Client) {
+        if (!Session) {
+            NProto::TSessionConfig proto;
+            proto.SetFileSystemId(filestore.filesystemid());
+
+            Session = NClient::CreateSession(
+                Logging,
+                Timer,
+                Scheduler,
+                Client,
+                std::make_shared<NClient::TSessionConfig>(proto));
+
+
+            auto response = Session->CreateSession().GetValue(TDuration::Seconds(10));
+            if (HasError(response)) {
+                Session.reset();
+            }
+        }
+    }
+
     auto actor = std::make_unique<TReadDataActor>(
         std::move(msg->Record),
         filestore.GetFileSystemId(),
@@ -1023,7 +1136,9 @@ void TStorageServiceActor::HandleReadData(
         session->ClientId,
         std::move(shardState),
         session->MediaKind,
-        useTwoStageRead);
+        useTwoStageRead,
+        Session,
+        ShmClient);
 
     NCloud::Register(ctx, std::move(actor));
 }

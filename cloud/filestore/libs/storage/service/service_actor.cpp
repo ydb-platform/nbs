@@ -19,10 +19,22 @@
 
 #include <cloud/filestore/tools/testing/loadtest/lib/shm_client.h>
 
+#include <fstream>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+
+namespace {
+std::string getProcessName()
+{
+    std::ifstream file("/proc/self/comm");
+    std::string name;
+    std::getline(file, name);
+    return name;
+}
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,36 +70,36 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
     LastCpuWaitTs = ctx.Monotonic();
     ServiceState = NProto::SERVICE_STATE_RUNNING;
 
-    // create filestore client
-    {
-        auto timer = CreateWallClockTimer();
-        auto scheduler = CreateScheduler();
-        auto clientConfig = std::make_shared<NClient::TClientConfig>(NProto::TClientConfig{});
-        ILoggingServicePtr logging(
-            CreateLoggingService("nfs-client", {TLOG_DEBUG}));
+    if (getProcessName() == "filestore-vhost") {
+        Timer = CreateWallClockTimer();
+        Scheduler = CreateScheduler();
+        NProto::TClientConfig protoClientConfig;
+        protoClientConfig.SetUnixSocketPath("/tmp/nfs.sock");
+        auto clientConfig = std::make_shared<NClient::TClientConfig>(
+            std::move(protoClientConfig));
+        Logging = CreateLoggingService("nfs-client", {TLOG_DEBUG});
 
-        auto client = NClient::CreateFileStoreClient(
-            clientConfig,
-            logging);
-
+        auto client = NClient::CreateFileStoreClient(clientConfig, Logging);
         Client = NClient::CreateDurableClient(
-            logging,
-            timer,
-            scheduler,
+            Logging,
+            Timer,
+            Scheduler,
             CreateRetryPolicy(clientConfig),
             client);
 
-        auto shmControl = CreateShmControlClient(clientConfig, logging);
-
+        auto shmControl = CreateShmControlClient(clientConfig, Logging);
         ShmClient = NCloud::NFileStore::NLoadTest::CreateSharedMemoryClient(
-                        "/tmp/",
-                        "shm.bin",
-                        128_MB,
-                        1_MB,
-                        shmControl,
-                        scheduler,
-                        timer,
-                        logging);
+            "/tmp/",
+            "shm.bin",
+            128_MB,
+            1_MB,
+            shmControl,
+            Scheduler,
+            Timer,
+            Logging);
+        ShmClient->Start();
+
+        Client->Start();
     }
 
     RegisterPages(ctx);
