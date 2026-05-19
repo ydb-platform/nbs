@@ -423,7 +423,7 @@ public:
         const TString& shardId,
         const TString& shardNodeName)
     {
-        using TRequestEvent = TEvIndexTablet::TEvUnsafeCreateNodeRefRequest;
+        using TRequestEvent = TEvService::TEvUnsafeCreateNodeRefRequest;
         auto request = std::make_unique<TRequestEvent>();
         request->Record.SetParentId(parentId);
         request->Record.SetName(name);
@@ -453,7 +453,7 @@ public:
 
     auto CreateUnsafeCreateNodeRequest(ui64 nodeId, ui64 sz)
     {
-        using TRequestEvent = TEvIndexTablet::TEvUnsafeCreateNodeRequest;
+        using TRequestEvent = TEvService::TEvUnsafeCreateNodeRequest;
         auto request = std::make_unique<TRequestEvent>();
         request->Record.SetFileSystemId(TString(DefaultFileSystemId));
         auto* node = request->Record.MutableNode();
