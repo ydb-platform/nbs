@@ -6531,6 +6531,124 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
     }
 
+    SERVICE_TEST(ShouldHandleGetNodeAttrErrorsFromShardInListNodesRaceDetection)
+    {
+        config.SetDirectoryCreationInShardsEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto dirId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir")
+        )->Record.GetNode().GetId();
+
+        auto subdir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir1")
+        )->Record.GetNode().GetId();
+        Y_UNUSED(subdir1Id);
+
+        auto subdir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir2")
+        )->Record.GetNode().GetId();
+
+        IEventHandlePtr unlinkNodeResponse;
+        bool shouldIntercept = true;
+        NProto::TError getAttrError;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeResponse
+                        && shouldIntercept)
+                {
+                    unlinkNodeResponse.reset(event.Release());
+                    return true;
+                }
+
+                if (event->GetTypeRewrite()
+                        == TEvService::EvGetNodeAttrResponse)
+                {
+                    using TResponse = TEvService::TEvGetNodeAttrResponse;
+                    auto* msg = event->Get<TResponse>();
+                    *msg->Record.MutableError() = getAttrError;
+                }
+
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, dirId, "subdir1", true);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(unlinkNodeResponse);
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/NodeNotFoundInShard");
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto& listing = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(subdir2Id, listing.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("subdir2", listing.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        getAttrError = MakeError(E_REJECTED);
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                getAttrError.GetCode(),
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        getAttrError = MakeError(E_FS_INVALID_SESSION);
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                getAttrError.GetCode(),
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        getAttrError = MakeError(E_IO);
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto& listing = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(subdir2Id, listing.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("subdir2", listing.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+        }
+    }
+
     SERVICE_TEST(ShouldHandleRenameNodeInDestinationError)
     {
         config.SetDirectoryCreationInShardsEnabled(true);
