@@ -29,8 +29,18 @@ trap on_exit EXIT
 
 # Download github runner
 mkdir -p /actions-runner && cd /actions-runner || exit
-curl -o runner.tar.gz -L "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+curl -fsSL -o runner.tar.gz -L "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+if [ -n "${RUNNER_SHA256_X64:-}" ]; then
+    echo "${RUNNER_SHA256_X64}  runner.tar.gz" | sha256sum -c -
+else
+    echo "RUNNER_SHA256_X64 is empty, skipping runner checksum verification"
+fi
 tar xzf ./runner.tar.gz
+install -m 0755 /tmp/packer/actions-runner-job-completed-cleanup.sh /usr/local/bin/actions-runner-job-completed-cleanup.sh
+touch /actions-runner/.env
+grep -q '^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=' /actions-runner/.env || {
+    echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/actions-runner-job-completed-cleanup.sh" >> /actions-runner/.env
+}
 
 install -m 0755 -d /etc/apt/keyrings
 # we do not have v6 connectivity on vms
@@ -100,6 +110,15 @@ echo "install esp6 /bin/false" > /etc/modprobe.d/disable-esp6.conf
 echo "install rxrpc /bin/false" > /etc/modprobe.d/disable-rxrpc.conf
 
 pip3 install -r /tmp/packer/requirements.txt
+
+YQ_VERSION=$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name')
+if [ -z "$YQ_VERSION" ] || [ "$YQ_VERSION" = "null" ]; then
+    echo "Failed to resolve latest yq release"
+    exit 1
+fi
+curl -fsSL -o /usr/local/bin/yq \
+    "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+chmod 0755 /usr/local/bin/yq
 
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
