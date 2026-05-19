@@ -365,8 +365,6 @@ void TBootstrapVhost::InitComponents()
 
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: Configs->ServerConfig->GetCerts()) {
-        Y_ENSURE(cert.CertFile, "Empty CertFile");
-        Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
         certPathList.push_back({
             cert.CertPrivateKeyFile,
             cert.CertFile

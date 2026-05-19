@@ -1114,7 +1114,6 @@ void TServer::Start()
 
 std::shared_ptr<grpc::ServerCredentials> TServer::CreateSecureServerCredentials()
 {
-    Y_ENSURE(CertificateProvider, "Empty CertificateProvider");
     return CertificateProvider->CreateSecureServerCredentials();
 }
 

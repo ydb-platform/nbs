@@ -1560,7 +1560,6 @@ public:
 private:
     std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials()
     {
-        Y_ENSURE(CertificateProvider, "Empty CertificateProvider");
         return CertificateProvider->CreateSecureServerCredentials();
     }
 

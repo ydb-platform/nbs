@@ -275,23 +275,20 @@ private:
             Certificates.size());
         TVector<TMaybe<ui64>> certNotAfterTs(Certificates.size());
 
+        const TMaybe<TString> oldRoot = RootCertificate;
         const bool needsRoot = !!GetRootCertPath();
-        TResultOrError<TString> rootResult = TString{};
-        if (needsRoot) {
-            rootResult =
+        if (!needsRoot) {
+            RootCertificate = Nothing();
+        } else {
+            auto rootResult =
                 NTlsUtils::ReadAndValidateRootCertificate(RootCertPath);
             if (HasError(rootResult.GetError())) {
                 STORAGE_WARN(
                     "Root certificate update is skipped: "
                     << rootResult.GetError().GetMessage());
+            } else {
+                RootCertificate = rootResult.ExtractResult();
             }
-        }
-
-        TMaybe<TString> newRoot;
-        const bool hasNewRoot =
-            !needsRoot || !HasError(rootResult.GetError());
-        if (needsRoot && hasNewRoot) {
-            newRoot = rootResult.ExtractResult();
         }
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
@@ -309,21 +306,6 @@ private:
 
             if (identities[i].Defined()) {
                 const auto& pair = identities[i]->front();
-                if (needsRoot && hasNewRoot) {
-                    auto rootValidation =
-                        NTlsUtils::ValidateIdentityCertificateWithRoot(
-                            *newRoot,
-                            pair.cert_chain());
-                    if (HasError(rootValidation.GetError())) {
-                        STORAGE_WARN(
-                            "Identity certificate chain from "
-                            << files.CertChainPath.Quote()
-                            << " is not trusted by root CA "
-                            << RootCertPath.Quote()
-                            << ", continue without failing update");
-                    }
-                }
-
                 auto notAfterTs =
                     NTlsUtils::GetCertificateNotAfterTimestampSec(
                         pair.cert_chain());
@@ -339,14 +321,7 @@ private:
             }
         }
 
-        bool rootChanged = false;
-        if (!needsRoot) {
-            rootChanged = RootCertificate.Defined();
-            RootCertificate = Nothing();
-        } else if (hasNewRoot) {
-            rootChanged = newRoot != RootCertificate;
-            RootCertificate = newRoot;
-        }
+        const bool rootChanged = oldRoot != RootCertificate;
         bool hasUpdates = rootChanged;
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
@@ -380,7 +355,6 @@ private:
 class TGrpcPeriodicCertificateProvider final
     : public grpc_tls_certificate_provider
     , public TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>
-    , public std::enable_shared_from_this<TGrpcPeriodicCertificateProvider>
 {
     using TBase =
         TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>;
@@ -391,6 +365,7 @@ public:
     friend class
         TPeriodicCertificateProviderBase<TGrpcPeriodicCertificateProvider>;
 
+public:
     TGrpcPeriodicCertificateProvider(
             ILoggingServicePtr logging,
             TString logComponent,
@@ -410,16 +385,14 @@ public:
             grpc_core::MakeRefCounted<grpc_tls_certificate_distributor>())
     {
         Distributor->SetWatchStatusCallback(
-            [weak = weak_from_this()](
+            [this](
                 TString certName,
                 bool rootBeingWatched,
                 bool identityBeingWatched)
             {
                 Y_UNUSED(rootBeingWatched);
                 Y_UNUSED(identityBeingWatched);
-                if (auto self = weak.lock()) {
-                    self->OnWatchStatusChanged(std::move(certName));
-                }
+                OnWatchStatusChanged(std::move(certName));
             });
     }
 
@@ -483,14 +456,9 @@ private:
         if (!identityInvalid && !identityPairs.empty() &&
             (!needsRoot || !rootInvalid))
         {
-            y_absl::optional<TString> grpcRootCertificate = y_absl::nullopt;
-            if (rootCertificate.Defined()) {
-                grpcRootCertificate = *rootCertificate;
-            }
-
             Distributor->SetKeyMaterials(
                 certName,
-                std::move(grpcRootCertificate),
+                rootCertificate.Defined() ? *rootCertificate : std::optional<TString>{},
                 std::move(identityPairs));
             return;
         }
@@ -499,10 +467,10 @@ private:
             certName,
             needsRoot && rootInvalid
                 ? GRPC_ERROR_CREATE("Unable to get valid root certificates.")
-                : y_absl::OkStatus(),
+                : std::optional<grpc_error_handle>{},
             identityInvalid || identityPairs.empty()
                 ? GRPC_ERROR_CREATE("Unable to get valid identity certificates.")
-                : y_absl::OkStatus());
+                : std::optional<grpc_error_handle>{});
     }
 
     void OnWatchStatusChanged(TString certName)
@@ -537,7 +505,7 @@ private:
 
 public:
     explicit TGrpcCertificateProvider(
-        grpc_core::RefCountedPtr<TGrpcPeriodicCertificateProvider> provider)
+            grpc_core::RefCountedPtr<TGrpcPeriodicCertificateProvider> provider)
         : Provider(std::move(provider))
     {}
 
@@ -567,15 +535,14 @@ public:
             TDuration refreshIntervalSec)
         : HasRootCert(!!rootCertPath)
     {
-        Provider = grpc_core::RefCountedPtr<
-            TGrpcPeriodicCertificateProvider>(
-                new TGrpcPeriodicCertificateProvider(
-                    std::move(logging),
-                    std::move(logComponent),
-                    std::move(serverGroup),
-                    std::move(rootCertPath),
-                    std::move(certificates),
-                    refreshIntervalSec));
+        Provider = grpc_core::RefCountedPtr<TGrpcPeriodicCertificateProvider>(
+            new TGrpcPeriodicCertificateProvider(
+                std::move(logging),
+                std::move(logComponent),
+                std::move(serverGroup),
+                std::move(rootCertPath),
+                std::move(certificates),
+                refreshIntervalSec));
 
         GrpcProvider =
             std::make_shared<TGrpcCertificateProvider>(Provider);
@@ -640,9 +607,7 @@ public:
 
     NThreading::TFuture<void> UpdateCertificates() override
     {
-        auto promise = NThreading::NewPromise<void>();
-        promise.SetValue();
-        return promise.GetFuture();
+        return NThreading::MakeFuture();
     }
 
     std::shared_ptr<grpc::ChannelCredentials>
