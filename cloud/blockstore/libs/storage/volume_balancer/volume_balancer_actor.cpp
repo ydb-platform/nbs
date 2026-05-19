@@ -328,11 +328,10 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         *InitiallyPreempted = numInitiallyPreempted;
 
         auto status = VolumeStats->GatherVolumePerfStatuses();
-        THashMap<TString, ui32> statusMap(status.begin(), status.end());
 
         State->UpdateVolumeStats(
             std::move(msg->VolumeStats),
-            std::move(statusMap),
+            {status.begin(), status.end()},
             *CpuWaitCounter,
             ctx.Now());
 
