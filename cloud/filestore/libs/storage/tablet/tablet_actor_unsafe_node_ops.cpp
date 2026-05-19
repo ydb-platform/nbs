@@ -12,7 +12,7 @@ using namespace NKikimr::NTabletFlatExecutor;
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleUnsafeCreateNode(
-    const TEvIndexTablet::TEvUnsafeCreateNodeRequest::TPtr& ev,
+    const TEvService::TEvUnsafeCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -23,7 +23,7 @@ void TIndexTabletActor::HandleUnsafeCreateNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvIndexTablet::TUnsafeCreateNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TUnsafeCreateNodeMethod>(*requestInfo);
 
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNode: %s",
@@ -94,7 +94,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNode(
         args.Request.DebugString().Quote().c_str(),
         oldNode.Quote().c_str());
 
-    using TResponse = TEvIndexTablet::TEvUnsafeCreateNodeResponse;
+    using TResponse = TEvService::TEvUnsafeCreateNodeResponse;
     auto response = std::make_unique<TResponse>(std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
@@ -370,7 +370,7 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNode(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleUnsafeCreateNodeRef(
-    const TEvIndexTablet::TEvUnsafeCreateNodeRefRequest::TPtr& ev,
+    const TEvService::TEvUnsafeCreateNodeRefRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -381,8 +381,7 @@ void TIndexTabletActor::HandleUnsafeCreateNodeRef(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvIndexTablet::TUnsafeCreateNodeRefMethod>(
-        *requestInfo);
+    AddInFlightRequest<TEvService::TUnsafeCreateNodeRefMethod>(*requestInfo);
 
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNodeRef: %s",
@@ -459,7 +458,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNodeRef(
         args.Request.DebugString().Quote().c_str(),
         FormatError(args.Error).c_str());
 
-    using TResponse = TEvIndexTablet::TEvUnsafeCreateNodeRefResponse;
+    using TResponse = TEvService::TEvUnsafeCreateNodeRefResponse;
     auto response = std::make_unique<TResponse>(std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

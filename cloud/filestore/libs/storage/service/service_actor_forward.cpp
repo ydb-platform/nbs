@@ -7,6 +7,8 @@
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
+#include <type_traits>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -34,6 +36,11 @@ void CalculateRequestChecksums(
 {
     CalculateWriteDataRequestChecksums(request, blockSize, profileLogRequest);
 }
+
+template <typename TMethod>
+constexpr bool IsSessionlessForwardRequest =
+    std::is_same_v<TMethod, TEvService::TUnsafeCreateNodeMethod> ||
+    std::is_same_v<TMethod, TEvService::TUnsafeCreateNodeRefMethod>;
 
 }   // namespace
 
@@ -151,6 +158,39 @@ void TStorageServiceActor::ForwardRequest(
         seqNo,
         TMethod::Name,
         msg->CallContext->RequestId);
+
+    if constexpr (IsSessionlessForwardRequest<TMethod>) {
+        if (!GetFileSystemId(msg->Record)) {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_ARGUMENT, "FileSystem id should be supplied"));
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
+
+        auto [cookie, inflight] = CreateInFlightRequest(
+            TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT,
+            StatsRegistry->GetRequestStats(),
+            ctx.Now());
+
+        InitProfileLogRequestInfo(
+            inflight->AccessProfileLogRequest(),
+            msg->Record);
+        TraceSerializer->BuildTraceRequest(
+            *msg->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+            msg->CallContext->LWOrbit);
+
+        auto event = std::make_unique<IEventHandle>(
+            MakeIndexTabletProxyServiceId(),
+            SelfId(),
+            ev->ReleaseBase().Release(),
+            0,          // flags
+            cookie,     // cookie
+            // forwardOnNondelivery
+            nullptr);
+
+        ctx.Send(event.release());
+        return;
+    }
 
     auto* session = State->FindSession(sessionId, seqNo);
     if (!session || session->ClientId != clientId || !session->SessionActor) {

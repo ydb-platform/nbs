@@ -1032,6 +1032,8 @@ bool TIndexTabletActor::HandleRequestsByFrozenTablet(STFUNC_SIG)
         FILESTORE_UNSAFE_TABLET_REQUESTS(
             FILESTORE_HANDLE_REQUEST,
             TEvIndexTablet)
+        FILESTORE_HANDLE_REQUEST(UnsafeCreateNode, TEvService)
+        FILESTORE_HANDLE_REQUEST(UnsafeCreateNodeRef, TEvService)
 
         //
         // Without WaitReady and CreateSession we won't even be able to connect

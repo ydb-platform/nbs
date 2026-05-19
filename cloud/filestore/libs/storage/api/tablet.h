@@ -32,11 +32,9 @@ namespace NCloud::NFileStore::NStorage {
 // FILESTORE_PRIVATE_UNSAFE_TABLET_REQUESTS
 
 #define FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, ...)                             \
-    xxx(UnsafeCreateNode,           __VA_ARGS__)                               \
     xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
     xxx(UnsafeUpdateNode,           __VA_ARGS__)                               \
     xxx(UnsafeGetNode,              __VA_ARGS__)                               \
-    xxx(UnsafeCreateNodeRef,        __VA_ARGS__)                               \
     xxx(UnsafeDeleteNodeRef,        __VA_ARGS__)                               \
     xxx(UnsafeUpdateNodeRef,        __VA_ARGS__)                               \
     xxx(UnsafeGetNodeRef,           __VA_ARGS__)                               \

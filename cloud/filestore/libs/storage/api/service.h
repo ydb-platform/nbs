@@ -32,6 +32,9 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(ResolvePath,                        __VA_ARGS__)                       \
                                                                                \
+    xxx(UnsafeCreateNode,                   __VA_ARGS__)                       \
+    xxx(UnsafeCreateNodeRef,                __VA_ARGS__)                       \
+                                                                               \
 // FILESTORE_SERVICE_REQUESTS_FWD
 
 #define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx, ...)           \
