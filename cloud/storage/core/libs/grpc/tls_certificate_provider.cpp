@@ -84,11 +84,6 @@ public:
     };
 
 private:
-    struct TPendingUpdate
-    {
-        NThreading::TPromise<void> Promise;
-    };
-
     const ILoggingServicePtr Logging;
     const TString LogComponent;
     const NMonitoring::TDynamicCountersPtr ServerGroup;
@@ -101,7 +96,7 @@ private:
     bool UpdateRequested = false;
     bool UpdateInProgress = false;
     bool Started = false;
-    TMaybe<TPendingUpdate> PendingUpdate;
+    NThreading::TPromise<void> PendingUpdate;
     TCondVar Wakeup;
     std::unique_ptr<TThread> RefreshThread;
 
@@ -178,7 +173,7 @@ protected:
             certificate.Metrics = std::move(certMetrics);
         }
 
-        ForceUpdate();
+        UpdateCertificates();
         RefreshThread = std::make_unique<TThread>([this] { RunRefreshThread(); });
         RefreshThread->Start();
     }
@@ -202,15 +197,10 @@ protected:
         NThreading::TFuture<void> future;
         with_lock (WakeupMutex) {
             if (UpdateInProgress || UpdateRequested) {
-                STORAGE_VERIFY_C(
-                    PendingUpdate.Defined(),
-                    TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
-                    LogComponent,
-                    "missing pending update while update is in progress");
-                future = PendingUpdate->Promise.GetFuture();
+                future = PendingUpdate.GetFuture();
             } else {
-                PendingUpdate = CreatePendingUpdate();
-                future = PendingUpdate->Promise.GetFuture();
+                PendingUpdate = NThreading::NewPromise<void>();
+                future = PendingUpdate.GetFuture();
                 UpdateRequested = true;
             }
         }
@@ -232,44 +222,22 @@ private:
             if (Stopping.load()) {
                 return;
             }
-            if (isRequested) {
-                STORAGE_VERIFY_C(
-                    PendingUpdate.Defined(),
-                    TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
-                    LogComponent,
-                    "missing pending update for requested refresh");
-            } else {
-                PendingUpdate = CreatePendingUpdate();
+            if (!isRequested) {
+                PendingUpdate = NThreading::NewPromise<void>();
             }
             UpdateRequested = false;
             UpdateInProgress = true;
             lock.unlock();
 
-            ForceUpdate();
+            UpdateCertificates();
             lock.lock();
+            PendingUpdate.SetValue();
             UpdateInProgress = false;
-            CompletePendingUpdate();
             lock.unlock();
         }
     }
 
-    TPendingUpdate CreatePendingUpdate()
-    {
-        return {.Promise = NThreading::NewPromise<void>()};
-    }
-
-    void CompletePendingUpdate()
-    {
-        STORAGE_VERIFY_C(
-            PendingUpdate.Defined(),
-            TWellKnownEntityTypes::TLS_CERTIFICATE_PROVIDER,
-            LogComponent,
-            "complete called without pending update");
-        PendingUpdate->Promise.SetValue();
-        PendingUpdate = Nothing();
-    }
-
-    void ForceUpdate()
+    void UpdateCertificates()
     {
         TVector<TMaybe<PemKeyCertPairList>> identities(
             Certificates.size());
@@ -640,11 +608,8 @@ public:
 
         for (const auto& cert: Certificates) {
             grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-
             keyCert.cert_chain = ReadFile(cert.CertChainPath);
-
             keyCert.private_key = ReadFile(cert.PrivateKeyPath);
-
             sslOptions.pem_key_cert_pairs.push_back(std::move(keyCert));
         }
 
