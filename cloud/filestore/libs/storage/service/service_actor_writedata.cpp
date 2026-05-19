@@ -151,6 +151,8 @@ private:
     TVector<double> ApproximateFreeSpaceShares;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     TRope Rope;
+    NClient::ISessionPtr Session;
+    NLoadTest::IShmDataClientPtr ShmClient;
 
 public:
     TWriteDataActor(
@@ -163,7 +165,9 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        NClient::ISessionPtr session,
+        NLoadTest::IShmDataClientPtr shmClient)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -175,6 +179,8 @@ public:
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
+        , Session(session)
+        , ShmClient(shmClient)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -183,6 +189,27 @@ public:
             RequestReceived_ServiceWorker,
             RequestInfo->CallContext,
             "GenerateBlobIds");
+
+        if (Session && ShmClient) {
+            auto request = std::make_shared<NProto::TWriteDataRequest>(WriteRequest);
+
+            ui64 shmOffset = 0;
+            shmOffset = ShmClient->PrepareWrite(*request);
+
+            auto response =
+                Session->WriteData(RequestInfo->CallContext, request)
+                    .GetValue(TDuration::Seconds(10));
+
+            ShmClient->FreeOffset(shmOffset);
+
+            if (HasError(response)) {
+                HandleError(ctx, response.GetError());
+                return;
+            }
+
+            ReplyAndDie(ctx, std::move(response));
+            return;
+        }
 
         Rope = CreateRope(WriteRequest.GetIovecs());
 
@@ -1061,7 +1088,9 @@ void TStorageServiceActor::HandleWriteData(
             session->RequestStats,
             ProfileLog,
             TraceSerializer,
-            session->MediaKind);
+            session->MediaKind,
+            Session,
+            ShmClient);
         NCloud::Register(ctx, std::move(actor));
     } else {
         LOG_DEBUG(

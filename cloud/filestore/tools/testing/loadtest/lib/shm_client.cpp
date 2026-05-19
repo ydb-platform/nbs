@@ -96,22 +96,44 @@ public:
         Y_ABORT_UNLESS(LocalAddr != MAP_FAILED, "PrepareWrite called before Start()");
         const auto& buffer = request.GetBuffer();
         const ui64 len = buffer.size();
-        Y_ABORT_UNLESS(
-            len <= SlotSize,
-            "buffer size %lu exceeds slot size %lu",
-            len,
-            SlotSize);
-        const ui64 shmOffset = AllocateShmOffset();
+        if (len != 0) {
+            Y_ABORT_UNLESS(
+                len <= SlotSize,
+                "buffer size %lu exceeds slot size %lu",
+                len,
+                SlotSize);
+            const ui64 shmOffset = AllocateShmOffset();
 
-        memcpy(static_cast<char*>(LocalAddr) + shmOffset, buffer.data(), len);
-        request.ClearBuffer();
+            memcpy(static_cast<char*>(LocalAddr) + shmOffset, buffer.data(), len);
+            request.ClearBuffer();
 
-        auto* iovec = request.AddIovecs();
-        iovec->SetBase(shmOffset);
-        iovec->SetLength(len);
-        request.SetRegionId(RegionId);
+            auto* iovec = request.AddIovecs();
+            iovec->SetBase(shmOffset);
+            iovec->SetLength(len);
+            request.SetRegionId(RegionId);
 
-        return shmOffset;
+            return shmOffset;
+        } else {
+            const ui64 shmOffset = AllocateShmOffset();
+            size_t currentOffset = 0;
+            for (const auto& iovec : request.GetIovecs()) {
+                memcpy(
+                    static_cast<char*>(LocalAddr) + shmOffset + currentOffset,
+                    reinterpret_cast<const char*>(iovec.GetBase()),
+                    iovec.GetLength());
+                currentOffset += iovec.GetLength();
+            }
+
+            request.MutableIovecs()->Clear();
+            auto* iovec = request.AddIovecs();
+            iovec->SetBase(shmOffset);
+            iovec->SetLength(currentOffset);
+            request.SetRegionId(RegionId);
+
+            return shmOffset;
+        }
+
+        return 0;
     }
 
     char* PrepareRead(NProto::TReadDataRequest& request, ui64& outOffset) override
