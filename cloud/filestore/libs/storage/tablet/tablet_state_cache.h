@@ -1,5 +1,6 @@
 #pragma once
 
+#include "tablet_cache_read_bypass.h"
 #include "tablet_state_iface.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/metadata_cache.h>
@@ -9,7 +10,6 @@
 
 #include <library/cpp/cache/cache.h>
 
-#include <util/generic/deque.h>
 #include <util/generic/hash.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -43,20 +43,6 @@ public:
     [[nodiscard]] virtual TInMemoryIndexStateStats GetStats() const = 0;
 
     virtual void UpdateLogTag(TString logTag) = 0;
-
-    //
-    // Cache bypass
-    //
-
-    virtual void ActivateInMemoryIndexStateBypass(
-        ui64 nodeId,
-        ui64 commitId) = 0;
-
-    virtual void DeactivateInMemoryIndexStateBypass(
-        ui64 nodeId,
-        ui64 commitId) = 0;
-
-    virtual void SetUnconfirmedRecoveryReady(bool unconfirmedRecoveryReady) = 0;
 
     //
     // Nodes
@@ -130,6 +116,7 @@ class TInMemoryIndexState : public IInMemoryIndexState
 public:
     TInMemoryIndexState(
         IAllocator* allocator,
+        const TCacheReadBypass& cacheReadBypass,
         ui64 nodesCapacity,
         ui64 nodeAttrsCapacity,
         ui64 nodeRefsCapacity,
@@ -147,25 +134,7 @@ public:
 
 private:
     TString LogTag;
-
-    //
-    // Cache bypass
-    //
-
-public:
-    void ActivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId) override;
-
-    void DeactivateInMemoryIndexStateBypass(
-        ui64 nodeId,
-        ui64 commitId) override;
-
-    void SetUnconfirmedRecoveryReady(bool unconfirmedRecoveryReady) override;
-
-private:
-    bool ShouldBypassCacheRead(ui64 nodeId, ui64 commitId) const;
-
-    bool UnconfirmedRecoveryReady = false;
-    THashMap<ui64, TDeque<ui64>> CacheBypassCommitIdsByNodeId;
+    const TCacheReadBypass& CacheReadBypass;
 
     //
     // Nodes

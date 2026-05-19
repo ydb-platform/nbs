@@ -993,8 +993,8 @@ public:
         ui64 nodeId,
         const TByteRange& requestRange) const;
 
-    void ActivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
-    void DeactivateInMemoryIndexStateBypass(ui64 nodeId, ui64 commitId);
+    void ActivateCacheReadBypass(ui64 nodeId, ui64 commitId);
+    void DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId);
 
     //
     // FreshBytes
@@ -1533,6 +1533,7 @@ public:
     bool TryFillDescribeResult(
         ui64 nodeId,
         ui64 handle,
+        ui64 commitId,
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
     TMaybe<TByteRange> RegisterDescribe(

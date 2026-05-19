@@ -200,7 +200,7 @@ private:
             !HasError(args.Error) || args.CommitIdOverflow,
             "Error: " << FormatError(args.Error));
 
-        Tablet.ActivateInMemoryIndexStateBypass(
+        Tablet.ActivateCacheReadBypass(
             args.WriteRanges.front().NodeId,
             args.CommitId);
 
@@ -585,7 +585,7 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     // For unconfirmed data we already released the barrier and answered to
     // the client, nothing left to do and we can skip event.
     if (args.Mode == EAddBlobMode::WriteUnconfirmed) {
-        DeactivateInMemoryIndexStateBypass(
+        DeactivateCacheReadBypass(
             args.WriteRanges.front().NodeId,
             args.CommitId);
         EnqueueCollectGarbageIfNeeded(ctx);

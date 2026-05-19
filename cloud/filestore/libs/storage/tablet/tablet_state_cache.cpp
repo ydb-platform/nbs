@@ -1,7 +1,5 @@
 #include "tablet_state_cache.h"
 
-#include <cloud/filestore/libs/storage/tablet/model/verify.h>
-
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -10,12 +8,14 @@ namespace NCloud::NFileStore::NStorage {
 
 template <typename TNodeRefsImpl>
 TInMemoryIndexState<TNodeRefsImpl>::TInMemoryIndexState(
-        IAllocator* allocator,
-        ui64 nodesCapacity,
-        ui64 nodeAttrsCapacity,
-        ui64 nodeRefsCapacity,
-        ui64 nodeRefsExhaustivenessCapacity)
-    : Nodes(nodesCapacity)
+    IAllocator* allocator,
+    const TCacheReadBypass& cacheReadBypass,
+    ui64 nodesCapacity,
+    ui64 nodeAttrsCapacity,
+    ui64 nodeRefsCapacity,
+    ui64 nodeRefsExhaustivenessCapacity)
+    : CacheReadBypass(cacheReadBypass)
+    , Nodes(nodesCapacity)
     , NodeAttrs(nodeAttrsCapacity)
     , NodeRefs(allocator, nodeRefsCapacity)
     , NodeRefsExhaustivenessInfo(nodeRefsExhaustivenessCapacity)
@@ -70,75 +70,6 @@ TInMemoryIndexStateStats TInMemoryIndexState<TNodeRefsImpl>::GetStats() const
         .IsNodeRefsExhaustive = NodeRefsExhaustivenessInfo.IsExhaustive()};
 }
 
-template <typename TNodeRefsImpl>
-void TInMemoryIndexState<TNodeRefsImpl>::ActivateInMemoryIndexStateBypass(
-    ui64 nodeId,
-    ui64 commitId)
-{
-    CacheBypassCommitIdsByNodeId[nodeId].push_back(commitId);
-}
-
-template <typename TNodeRefsImpl>
-void TInMemoryIndexState<TNodeRefsImpl>::DeactivateInMemoryIndexStateBypass(
-    ui64 nodeId,
-    ui64 commitId)
-{
-    auto nodeIt = CacheBypassCommitIdsByNodeId.find(nodeId);
-    TABLET_VERIFY_C(
-        nodeIt != CacheBypassCommitIdsByNodeId.end(),
-        "nodeId: " << nodeId << ", commitId: " << commitId);
-    TABLET_VERIFY_C(
-        !nodeIt->second.empty(),
-        "nodeId: " << nodeId << ", commitId: " << commitId);
-    TABLET_VERIFY_C(
-        nodeIt->second.front() == commitId,
-        "nodeId: " << nodeId << ", expected commitId: " << commitId
-                   << ", actual commitId: " << nodeIt->second.front()
-                   << ", queue size: " << nodeIt->second.size());
-
-    nodeIt->second.pop_front();
-    if (nodeIt->second.empty()) {
-        CacheBypassCommitIdsByNodeId.erase(nodeIt);
-    }
-}
-
-template <typename TNodeRefsImpl>
-void TInMemoryIndexState<TNodeRefsImpl>::SetUnconfirmedRecoveryReady(
-    bool unconfirmedRecoveryReady)
-{
-    UnconfirmedRecoveryReady = unconfirmedRecoveryReady;
-}
-
-template <typename TNodeRefsImpl>
-bool TInMemoryIndexState<TNodeRefsImpl>::ShouldBypassCacheRead(
-    ui64 nodeId,
-    ui64 commitId) const
-{
-    // If recovery is in progress, reading from the cache is not possible.
-    if (!UnconfirmedRecoveryReady) {
-        return true;
-    }
-
-    // No records at all. The map is always empty after the recovery phase if
-    // unconfirmed data is disabled, as it is the only client of this API for
-    // now.
-    if (CacheBypassCommitIdsByNodeId.empty()) {
-        return false;
-    }
-
-    // If there are no records for the given node, we can read from the cache.
-    const auto it = CacheBypassCommitIdsByNodeId.find(nodeId);
-    if (it == CacheBypassCommitIdsByNodeId.end() || it->second.empty()) {
-        return false;
-    }
-
-    // Otherwise, ensure that all writes with commit ids up to the current
-    // commit are already in the cache.
-    const ui64 frontCommitId = it->second.front();
-    // The InvalidCommitId comparison handles the CommitIdOverflow case.
-    return frontCommitId == InvalidCommitId || frontCommitId <= commitId;
-}
-
 //
 // Nodes
 //
@@ -150,7 +81,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNode(
     TMaybe<TNode>& node)
 {
     // TODO (#5912) use waiting queue instead of going full TX flow
-    if (ShouldBypassCacheRead(nodeId, commitId)) {
+    if (CacheReadBypass.ShouldBypassRead(nodeId, commitId)) {
         return false;
     }
 
@@ -230,7 +161,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeAttr(
     TMaybe<TNodeAttr>& attr)
 {
     // TODO (#5912) use waiting queue instead of going full TX flow
-    if (ShouldBypassCacheRead(nodeId, commitId)) {
+    if (CacheReadBypass.ShouldBypassRead(nodeId, commitId)) {
         return false;
     }
 
