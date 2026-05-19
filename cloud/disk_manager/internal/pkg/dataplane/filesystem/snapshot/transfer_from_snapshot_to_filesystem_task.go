@@ -52,7 +52,7 @@ func (t *transferFromSnapshotToFilesystemTask) filesystemID() string {
 	return t.request.GetFilesystem().GetFilesystemId()
 }
 
-func (t *transferFromSnapshotToFilesystemTask) getParentIDsInDestionationFs(
+func (t *transferFromSnapshotToFilesystemTask) getParentIDsInDestinationFs(
 	ctx context.Context,
 	nodes []nfs.Node,
 ) (map[uint64]uint64, error) {
@@ -221,6 +221,7 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 	return t.nodesStorage.CleanupRestorationNodeIDsMapping(
 		ctx,
 		t.snapshotID(),
+		t.filesystemID(),
 	)
 }
 
@@ -248,7 +249,7 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 
 	hardlinksByNodeID := t.groupHardlinksByNodeID(batch)
 
-	parentMapping, err := t.getParentIDsInDestionationFs(ctx, batch)
+	parentMapping, err := t.getParentIDsInDestinationFs(ctx, batch)
 	if err != nil {
 		return false, err
 	}
@@ -350,13 +351,16 @@ func (t *transferFromSnapshotToFilesystemTask) Cancel(
 	err := t.traversalStorage.ClearDirectoryListingQueue(
 		ctx,
 		snapshotID,
-		t.config.GetTraversalQueueDeletionLimit(),
 	)
 	if err != nil {
 		return err
 	}
 
-	return t.nodesStorage.CleanupRestorationNodeIDsMapping(ctx, snapshotID)
+	return t.nodesStorage.CleanupRestorationNodeIDsMapping(
+		ctx,
+		snapshotID,
+		t.filesystemID(),
+	)
 }
 
 func (t *transferFromSnapshotToFilesystemTask) GetMetadata(

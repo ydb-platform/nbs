@@ -184,12 +184,13 @@ func initFilesystemSnapshot(
 	traversalStorage := traversal_storage.NewStorage(
 		filesystemDB,
 		traversalConfig.GetStorageFolder(),
+		traversalConfig.GetTraversalQueueDeletionLimit(),
 	)
 
 	nodesStorage := nodes_storage.NewStorage(
 		filesystemDB,
 		snapshotConfig.GetNodesStorageFolder(),
-		int(snapshotConfig.GetSnapshotDataDeletionLimit()),
+		snapshotConfig.GetSnapshotDataDeletionLimit(),
 	)
 
 	return filesystem_snapshot.RegisterForExecution(

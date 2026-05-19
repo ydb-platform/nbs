@@ -88,7 +88,7 @@ func newFixture(t *testing.T) *fixture {
 	return &fixture{
 		ctx:              ctx,
 		db:               db,
-		traversalStorage: traversal_storage.NewStorage(db, traversalStorageFolder),
+		traversalStorage: traversal_storage.NewStorage(db, traversalStorageFolder, 100),
 		nodesStorage:     nodes_storage.NewStorage(db, nodesStorageFolder, 100),
 		client:           client,
 		factory:          factory,
@@ -149,11 +149,11 @@ func (f *fixture) newConfig() *snapshot_config.FilesystemSnapshotConfig {
 	traversalQueueDeletionLimit := uint64(100)
 	return &snapshot_config.FilesystemSnapshotConfig{
 		TraversalConfig: &traversal_config.FilesystemTraversalConfig{
-			SelectNodesToListLimit: &selectNodesToListLimit,
+			SelectNodesToListLimit:      &selectNodesToListLimit,
+			TraversalQueueDeletionLimit: &traversalQueueDeletionLimit,
 		},
-		ListNodesMaxBytes:           &listNodesMaxBytes,
-		RestoreHardlinksBatchSize:   &restoreHardlinksBatchSize,
-		TraversalQueueDeletionLimit: &traversalQueueDeletionLimit,
+		ListNodesMaxBytes:         &listNodesMaxBytes,
+		RestoreHardlinksBatchSize: &restoreHardlinksBatchSize,
 	}
 }
 
@@ -165,12 +165,12 @@ func (f *fixture) newSlowConfig() *snapshot_config.FilesystemSnapshotConfig {
 	traversalQueueDeletionLimit := uint64(100)
 	return &snapshot_config.FilesystemSnapshotConfig{
 		TraversalConfig: &traversal_config.FilesystemTraversalConfig{
-			SelectNodesToListLimit: &selectNodesToListLimit,
-			TraversalWorkersCount:  &traversalWorkersCount,
+			SelectNodesToListLimit:      &selectNodesToListLimit,
+			TraversalWorkersCount:       &traversalWorkersCount,
+			TraversalQueueDeletionLimit: &traversalQueueDeletionLimit,
 		},
-		ListNodesMaxBytes:           &listNodesMaxBytes,
-		RestoreHardlinksBatchSize:   &restoreHardlinksBatchSize,
-		TraversalQueueDeletionLimit: &traversalQueueDeletionLimit,
+		ListNodesMaxBytes:         &listNodesMaxBytes,
+		RestoreHardlinksBatchSize: &restoreHardlinksBatchSize,
 	}
 }
 

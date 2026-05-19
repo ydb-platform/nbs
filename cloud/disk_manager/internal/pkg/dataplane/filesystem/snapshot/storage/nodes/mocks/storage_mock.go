@@ -84,9 +84,10 @@ func (s *StorageMock) ListHardLinks(
 func (s *StorageMock) CleanupRestorationNodeIDsMapping(
 	ctx context.Context,
 	snapshotID string,
+	destinationFilesystemID string,
 ) error {
 
-	args := s.Called(ctx, snapshotID)
+	args := s.Called(ctx, snapshotID, destinationFilesystemID)
 	return args.Error(0)
 }
 

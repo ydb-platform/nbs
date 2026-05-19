@@ -21,14 +21,14 @@ const defaultUpsertBatchSize = 1000
 type storageYDB struct {
 	db              *persistence.YDBClient
 	tablesPath      string
-	deleteLimit     int
+	deleteLimit     uint64
 	upsertBatchSize int
 }
 
 func NewStorage(
 	db *persistence.YDBClient,
 	tablesPath string,
-	deleteLimit int,
+	deleteLimit uint64,
 ) Storage {
 
 	return &storageYDB{
@@ -560,9 +560,9 @@ func (s *storageYDB) deleteFromTable(
 
 		delete from %v on
 		select * from $to_delete;
-	`, s.tablesPath, table, snapshotIDColumn, table),
+		`, s.tablesPath, table, snapshotIDColumn, table),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(s.deleteLimit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(s.deleteLimit)),
 	)
 	if err != nil {
 		return 0, err
@@ -591,6 +591,68 @@ func (s *storageYDB) deleteFromTable(
 		count,
 		table,
 		snapshotID,
+	)
+
+	return count, nil
+}
+
+func (s *storageYDB) deleteFromRestorationNodeIDsMapping(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	destinationFilesystemID string,
+) (uint64, error) {
+
+	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $destination_filesystem_id as Utf8;
+		declare $limit as Uint64;
+
+		$to_delete = (
+			select source_snapshot_id, destination_filesystem_id, source_node_id
+			from restoration_node_ids_mapping
+			where source_snapshot_id = $snapshot_id
+				and destination_filesystem_id = $destination_filesystem_id
+			limit $limit
+		);
+
+		select count(*) as deleted_count from $to_delete;
+
+		delete from restoration_node_ids_mapping on
+		select * from $to_delete;
+	`, s.tablesPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$destination_filesystem_id", persistence.UTF8Value(destinationFilesystemID)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(s.deleteLimit)),
+	)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, nil
+	}
+
+	var count uint64
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("deleted_count", &count),
+	)
+	if err != nil {
+		return 0, errors.NewNonRetriableErrorf(
+			"deleteFromRestorationNodeIDsMapping: failed to parse count: %w",
+			err,
+		)
+	}
+
+	logging.Debug(
+		ctx,
+		"Deleted %v rows from restoration_node_ids_mapping for snapshot %v and destination filesystem %v",
+		count,
+		snapshotID,
+		destinationFilesystemID,
 	)
 
 	return count, nil
@@ -757,11 +819,37 @@ func (s *storageYDB) ListNodes(
 func (s *storageYDB) CleanupRestorationNodeIDsMapping(
 	ctx context.Context,
 	snapshotID string,
+	destinationFilesystemID string,
 ) error {
 
-	return s.deleteFromTables(ctx, snapshotID, []string{
-		"restoration_node_ids_mapping",
-	})
+	for {
+		deletedCount := uint64(0)
+
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				deleted, err := s.deleteFromRestorationNodeIDsMapping(
+					ctx,
+					session,
+					snapshotID,
+					destinationFilesystemID,
+				)
+				if err != nil {
+					return err
+				}
+
+				deletedCount = deleted
+				return nil
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		if deletedCount == 0 {
+			return nil
+		}
+	}
 }
 
 func (s *storageYDB) DeleteSnapshotData(

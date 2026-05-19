@@ -61,7 +61,7 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 		client,
 		t.config.GetListNodesMaxBytes(),
 		true,  // readOnly
-		true, // unsafe
+		true,  // unsafe
 		false, // ignoreNotFound
 	)
 
@@ -113,7 +113,6 @@ func (t *transferFromFilesystemToSnapshotTask) Cancel(
 	err := t.traversalStorage.ClearDirectoryListingQueue(
 		ctx,
 		snapshotID,
-		t.config.GetTraversalQueueDeletionLimit(),
 	)
 	if err != nil {
 		return err

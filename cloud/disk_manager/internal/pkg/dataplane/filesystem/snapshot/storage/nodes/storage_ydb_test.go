@@ -46,7 +46,7 @@ func newStorage(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	storageFolder string,
-	deleteLimit int,
+	deleteLimit uint64,
 ) Storage {
 
 	err := schema.Create(ctx, storageFolder, db, false)
@@ -75,7 +75,7 @@ func (f *fixture) teardown() {
 	f.cancel()
 }
 
-func createFixture(t *testing.T, deleteLimit int) *fixture {
+func createFixture(t *testing.T, deleteLimit uint64) *fixture {
 	ctx, cancel := context.WithCancel(test.NewContext())
 
 	db, err := newYDB(ctx)
@@ -186,7 +186,7 @@ func TestSavedNodesAreListed(t *testing.T) {
 }
 
 func TestDeleteSnapshotData(t *testing.T) {
-	deleteLimit := 2
+	deleteLimit := uint64(2)
 	f := createFixture(t, deleteLimit)
 	defer f.teardown()
 
@@ -359,6 +359,7 @@ func TestCleanupRestorationNodeIDsMapping(t *testing.T) {
 
 	snapshotID := "snapshot-cleanup"
 	dstFilesystemID := "dst-filesystem"
+	otherDstFilesystemID := "other-dst-filesystem"
 
 	nodeIDMapping := make(map[uint64]uint64, 10000)
 	for i := uint64(0); i < 10000; i++ {
@@ -369,6 +370,14 @@ func TestCleanupRestorationNodeIDsMapping(t *testing.T) {
 		f.ctx,
 		snapshotID,
 		dstFilesystemID,
+		nodeIDMapping,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.UpdateRestorationNodeIDMapping(
+		f.ctx,
+		snapshotID,
+		otherDstFilesystemID,
 		nodeIDMapping,
 	)
 	require.NoError(t, err)
@@ -387,7 +396,11 @@ func TestCleanupRestorationNodeIDsMapping(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, mapping, 10000)
 
-	err = f.storage.CleanupRestorationNodeIDsMapping(f.ctx, snapshotID)
+	err = f.storage.CleanupRestorationNodeIDsMapping(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+	)
 	require.NoError(t, err)
 
 	mapping, err = f.storage.GetDestinationNodeIDs(
@@ -398,6 +411,15 @@ func TestCleanupRestorationNodeIDsMapping(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, mapping)
+
+	mapping, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		otherDstFilesystemID,
+		srcNodeIDs,
+	)
+	require.NoError(t, err)
+	require.Len(t, mapping, 10000)
 }
 
 func makeHardlinkNode(

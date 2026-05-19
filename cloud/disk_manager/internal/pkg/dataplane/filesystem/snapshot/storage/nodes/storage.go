@@ -52,5 +52,6 @@ type Storage interface {
 	CleanupRestorationNodeIDsMapping(
 		ctx context.Context,
 		snapshotID string,
+		destinationFilesystemID string,
 	) error
 }
