@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cloud/filestore/libs/service/request.h>
 
 #include <google/protobuf/message.h>

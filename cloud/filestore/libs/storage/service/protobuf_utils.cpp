@@ -17,6 +17,8 @@ NCloud::NProto::TError ParseReadDataResponse(
     NActors::TRopeStream stream(iter, size);
     google::protobuf::io::CodedInputStream input(&stream);
 
+    input.PushLimit(size);
+
     while (true) {
         auto tag = input.ReadTag();
 
@@ -89,7 +91,12 @@ NCloud::NProto::TError ParseReadDataResponse(
                     if (dataToWrite > 0) {
                         char* targetData =
                             reinterpret_cast<char*>(iovec.GetBase());
-                        input.ReadRaw(targetData, dataToWrite);
+                        if (!input.ReadRaw(targetData, dataToWrite)) {
+                            return MakeError(
+                                E_FAIL,
+                                "Failed to read buffer data in ReadData "
+                                "response");
+                        }
                         bufferSize -= dataToWrite;
                         currentOffset += dataToWrite;
                     }
@@ -164,6 +171,12 @@ NCloud::NProto::TError ParseReadDataResponse(
                         "Failed to skip field in ReadData response");
                 }
         }
+    }
+
+    if (!input.ConsumedEntireMessage()) {
+        return MakeError(
+            E_FAIL,
+            "Failed to consume entire ReadData response message");
     }
 
     return {};

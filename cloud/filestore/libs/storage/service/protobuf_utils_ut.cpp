@@ -11,13 +11,13 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
-TString GenerateBuffer(ui32 size) {
-    TString result;
-    result.resize(size);
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
     for (ui32 i = 0; i < size; ++i) {
-        result[i] = rand() % 256;
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
     }
-    return result;
+    return data;
 }
 
 TVector<TString> CreateIovecs(size_t num, size_t size)
@@ -118,7 +118,7 @@ Y_UNIT_TEST_SUITE(TProtobufUtilsTest)
     {
         NProto::TReadDataRequest request;
         NProto::TReadDataResponse expectedResponse;
-        TString buffer = GenerateBuffer(1_MB);
+        TString buffer = GenerateValidateData(1_MB, 0);
         auto iovecs = CreateIovecs(1_MB / 4_KB, 4_KB);
         FillIovecs(*request.MutableIovecs(), iovecs);
         expectedResponse.SetBuffer(std::move(buffer));
@@ -152,7 +152,7 @@ Y_UNIT_TEST_SUITE(TProtobufUtilsTest)
 
         NProto::TReadDataRequest request;
         NProto::TReadDataResponse expectedResponse;
-        TString buffer = GenerateBuffer(1_MB);
+        TString buffer = GenerateValidateData(1_MB, seed);
         auto iovecs = CreateIovecs(1_MB / 4_KB, 4_KB);
         FillIovecs(*request.MutableIovecs(), iovecs);
         expectedResponse.SetBuffer(std::move(buffer));

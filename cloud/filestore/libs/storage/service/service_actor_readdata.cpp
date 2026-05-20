@@ -711,6 +711,7 @@ void TReadDataActor::HandleReadDataResponse(
     const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
+    bool isResponseParsed = false;
     if (UseCustomReadDataResponseParser && !ReadRequest.GetIovecs().empty()) {
         auto buffer = ev->GetChainBuffer();
         // extended format is not used for ReadDataResponse, but we check it
@@ -720,12 +721,17 @@ void TReadDataActor::HandleReadDataResponse(
                 *buffer,
                 response->Record,
                 ReadRequest.GetIovecs());
-            if (HasError(ret)) {
-                HandleError(ctx, ret);
-                return;
+            if (!HasError(ret)) {
+                isResponseParsed = true;
+            }
+            else {
+                // report critical event and fallback to the default parser
+                ReportReadDataResponseParserFailed(FormatError(ret));
             }
         }
-    } else {
+    }
+
+    if (!isResponseParsed) {
         auto* msg = ev->Get();
         response->Record = std::move(msg->Record);
     }
