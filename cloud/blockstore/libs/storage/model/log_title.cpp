@@ -170,11 +170,6 @@ TString ToString(const TLogTitle::TDiskRegistry& data)
     return TStringBuilder() << "[dr:" << data.TabletId;
 }
 
-TString ToString(const TLogTitle::TMigrationRequest& data)
-{
-    return TStringBuilder() << "[mra:" << data.DiskId;
-}
-
 TString ToString(const TLogTitle::TFreshBlocksWriter& data)
 {
     TStringBuilder stream;

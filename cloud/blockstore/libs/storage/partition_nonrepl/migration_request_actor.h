@@ -51,7 +51,7 @@ private:
     TResponseProto LeaderResponse;
     TResponseProto FollowerResponse;
 
-    TLogTitle LogTitle;
+    TChildLogTitle LogTitle;
 
 public:
     TMigrationRequestActor(
@@ -61,7 +61,8 @@ public:
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter);
+        ui64 nonreplicatedRequestCounter,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -107,7 +108,8 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter)
+        ui64 nonreplicatedRequestCounter,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , LeaderPartition(leaderPartition)
     , FollowerPartition(followerPartition)
@@ -115,9 +117,7 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , Request(std::move(request))
-    , LogTitle(
-          GetCycleCount(),
-          TLogTitle::TMigrationRequest{.DiskId = DiskId})
+    , LogTitle(std::move(logTitle))
 {
     Y_DEBUG_ABORT_UNLESS(FollowerPartition);
 }
