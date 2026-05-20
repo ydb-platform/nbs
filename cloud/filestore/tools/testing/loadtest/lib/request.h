@@ -62,6 +62,7 @@ struct IRequestGenerator
 IRequestGeneratorPtr CreateIndexRequestGenerator(
     NProto::TIndexLoadSpec spec,
     ILoggingServicePtr logging,
+    IFileStoreServicePtr client,
     NClient::ISessionPtr session,
     TString filesystemId,
     NProto::THeaders headers);

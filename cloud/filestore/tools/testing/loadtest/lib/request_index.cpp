@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
@@ -51,6 +52,7 @@ private:
 
     TLog Log;
 
+    IFileStoreServicePtr Client;
     ISessionPtr Session;
 
     TVector<std::pair<ui64, NProto::EAction>> Actions;
@@ -71,12 +73,14 @@ public:
     TIndexRequestGenerator(
             NProto::TIndexLoadSpec spec,
             ILoggingServicePtr logging,
+            IFileStoreServicePtr client,
             ISessionPtr session,
             TString filesystemId,
             NProto::THeaders headers)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
+        , Client(std::move(client))
         , Session(std::move(session))
     {
         Log = logging->CreateLog(Headers.GetClientId());
@@ -116,6 +120,10 @@ public:
             return DoAcquireLock();
         case NProto::ACTION_RELEASE_LOCK:
             return DoReleaseLock();
+        case NProto::ACTION_LIST_NODES:
+            return DoListNodes();
+        case NProto::ACTION_LIST_NODES_INTERNAL:
+            return DoListNodesInternal();
         default:
             Y_ABORT("unexpected action: %u", (ui32)action);
         }
@@ -138,6 +146,14 @@ private:
     TFuture<TCompletedRequest> DoCreateNode()
     {
         TGuard<TMutex> guard(StateLock);
+        auto started = TInstant::Now();
+
+        if (Spec.GetMaxNodes() && Nodes.size() >= Spec.GetMaxNodes()) {
+            return MakeFuture<TCompletedRequest>({
+                NProto::ACTION_CREATE_NODE,
+                started,
+                MakeError(S_FALSE)});
+        }
 
         auto name = GenerateNodeName();
         StagedNodes[name] = {};
@@ -147,7 +163,6 @@ private:
         request->SetName(name);
         request->MutableFile()->SetMode(0777);
 
-        auto started = TInstant::Now();
         auto self = weak_from_this();
         return Session->CreateNode(CreateCallContext(), std::move(request)).Apply(
             [=] (const TFuture<NProto::TCreateNodeResponse>& future) {
@@ -628,6 +643,101 @@ private:
         }
     }
 
+    TFuture<TCompletedRequest> DoListNodes()
+    {
+        TGuard<TMutex> guard(StateLock);
+
+        auto request = CreateRequest<NProto::TListNodesRequest>();
+        request->SetNodeId(RootNodeId);
+
+        auto started = TInstant::Now();
+        auto self = weak_from_this();
+        return Session->ListNodes(CreateCallContext(), std::move(request))
+            .Apply([=] (const TFuture<NProto::TListNodesResponse>& future) {
+                if (auto ptr = self.lock()) {
+                    return ptr->HandleListNodes(future, started);
+                }
+
+                return TCompletedRequest{
+                    NProto::ACTION_LIST_NODES,
+                    started,
+                    MakeError(E_CANCELLED, "cancelled")};
+            });
+    }
+
+    TCompletedRequest HandleListNodes(
+        const TFuture<NProto::TListNodesResponse>& future,
+        TInstant started)
+    {
+        TGuard<TMutex> guard(StateLock);
+
+        try {
+            CheckResponse(future.GetValue());
+            return {NProto::ACTION_LIST_NODES, started, {}};
+        } catch (const TServiceError& e)  {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR("list nodes has failed: %s",
+                FormatError(error).c_str());
+
+            return {NProto::ACTION_LIST_NODES, started, error};
+        }
+    }
+
+    TFuture<TCompletedRequest> DoListNodesInternal()
+    {
+        TGuard<TMutex> guard(StateLock);
+
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
+        request->MutableHeaders()->CopyFrom(Headers);
+        request->SetAction("ListNodesInternal");
+
+        NProtoPrivate::TListNodesInternalRequest lniRequest;
+        lniRequest.SetFileSystemId(FileSystemId);
+        auto& lnRequest = *lniRequest.MutableOriginalRequest();
+        lnRequest.SetNodeId(RootNodeId);
+
+        TStringStream ss;
+        lniRequest.PrintJSON(ss);
+        request->SetInput(std::move(ss.Str()));
+
+        auto started = TInstant::Now();
+        auto self = weak_from_this();
+        return Client->ExecuteAction(CreateCallContext(), std::move(request))
+            .Apply([=] (const TFuture<NProto::TExecuteActionResponse>& future) {
+                if (auto ptr = self.lock()) {
+                    return ptr->HandleExecuteAction(
+                        future,
+                        NProto::ACTION_LIST_NODES_INTERNAL,
+                        started);
+                }
+
+                return TCompletedRequest{
+                    NProto::ACTION_LIST_NODES_INTERNAL,
+                    started,
+                    MakeError(E_CANCELLED, "cancelled")};
+            });
+    }
+
+    TCompletedRequest HandleExecuteAction(
+        const TFuture<NProto::TExecuteActionResponse>& future,
+        NProto::EAction action,
+        TInstant started)
+    {
+        TGuard<TMutex> guard(StateLock);
+
+        try {
+            CheckResponse(future.GetValue());
+            return {action, started, {}};
+        } catch (const TServiceError& e)  {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR("action %s has failed: %s",
+                NProto::EAction_Name(action).c_str(),
+                FormatError(error).c_str());
+
+            return {action, started, error};
+        }
+    }
+
     template <typename T>
     std::shared_ptr<T> CreateRequest()
     {
@@ -664,6 +774,7 @@ private:
 IRequestGeneratorPtr CreateIndexRequestGenerator(
     NProto::TIndexLoadSpec spec,
     ILoggingServicePtr logging,
+    IFileStoreServicePtr client,
     ISessionPtr session,
     TString filesystemId,
     NProto::THeaders headers)
@@ -671,6 +782,7 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
     return std::make_shared<TIndexRequestGenerator>(
         std::move(spec),
         std::move(logging),
+        std::move(client),
         std::move(session),
         std::move(filesystemId),
         std::move(headers));

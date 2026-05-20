@@ -156,6 +156,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "getresponselogentry",
             &TStorageServiceActor::CreateGetResponseLogEntryActor
         },
+        {
+            "listnodesinternal",
+            &TStorageServiceActor::CreateListNodesInternalActor
+        },
     };
 
     using TInstantAction = void (TStorageServiceActor::*)(
