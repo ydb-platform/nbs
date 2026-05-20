@@ -1078,7 +1078,9 @@ void TStorageServiceActor::HandleWriteData(
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-        bool sendRequestToLocalServer = bytesCount == 1_MB;
+        bool sendRequestToLocalServer =
+            bytesCount == 1_MB &&
+            (msg->Record.GetOffset() % filestore.GetBlockSize() == 0);
 
         auto actor = std::make_unique<TWriteDataActor>(
             std::move(msg->Record),

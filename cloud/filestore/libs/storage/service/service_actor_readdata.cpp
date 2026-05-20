@@ -1118,7 +1118,9 @@ void TStorageServiceActor::HandleReadData(
         }
     }
 
-    bool sendRequestToLocalServer = msg->Record.GetLength() == 1_MB;
+    bool sendRequestToLocalServer =
+        msg->Record.GetLength() == 1_MB &&
+        (msg->Record.GetOffset() % filestore.GetBlockSize() == 0);
 
     auto actor = std::make_unique<TReadDataActor>(
         std::move(msg->Record),
