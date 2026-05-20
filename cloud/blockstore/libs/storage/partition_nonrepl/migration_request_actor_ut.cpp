@@ -71,7 +71,7 @@ public:
             msg->Record.GetDiskId(),
             SelfId(),   // parentActorId
             ++RequestIdentityKey,
-            TLogTitle(0, TLogTitle::TPartitionMirror{}).GetChild(0));
+            TLogTitle(0, TLogTitle::TPartitionMigration{}).GetChild(0));
     }
 };
 
