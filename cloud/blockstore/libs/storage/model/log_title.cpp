@@ -31,7 +31,7 @@ TStringBuilder& operator<<(TStringBuilder& stream, TOptional<T> opt)
         } else {
             stream << "?";
         }
-    } else{
+    } else {
         stream << opt.Value;
     }
 
@@ -160,6 +160,11 @@ TString ToString(const TLogTitle::TPartitionMirror& data)
     return TStringBuilder() << "[md:" << data.DiskId;
 }
 
+TString ToString(const TLogTitle::TPartitionMigration& data)
+{
+    return TStringBuilder() << "[mig:" << data.DiskId;
+}
+
 TString ToString(const TLogTitle::TDiskRegistry& data)
 {
     return TStringBuilder() << "[dr:" << data.TabletId;
@@ -179,6 +184,12 @@ TString ToString(const TLogTitle::TFreshBlocksWriter& data)
     stream << " d:" << TOptional{data.DiskId};
 
     return stream;
+}
+
+TString ToString(const TLogTitle::TAgentAvailabilityMonitoringActor& data)
+{
+    return TStringBuilder()
+           << "[aam:" << data.DiskId << " agent:" << data.AgentId;
 }
 
 }   // namespace

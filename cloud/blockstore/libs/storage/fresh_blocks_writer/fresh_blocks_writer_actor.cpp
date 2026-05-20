@@ -565,16 +565,14 @@ STFUNC(TFreshBlocksWriterActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         IgnoreFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest);
-
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
-
-        IgnoreFunc(
-            TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse);
-
-        IgnoreFunc(
-            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
-
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted);
+        IgnoreFunc(NKikimr::TEvTablet::TEvCheckBlobstorageStatusResult);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags);
 
         default:
             if (!RejectRequests(ev) &&

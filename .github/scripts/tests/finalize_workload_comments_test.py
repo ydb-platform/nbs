@@ -18,3 +18,8 @@ def test_iter_build_presets_returns_unique_sorted_values() -> None:
         "release-asan",
         "relwithdebinfo",
     ]
+
+
+def test_iter_build_presets_returns_empty_list_for_empty_matrix_output() -> None:
+    assert fwc.iter_build_presets("") == []
+    assert fwc.iter_build_presets("  \n") == []

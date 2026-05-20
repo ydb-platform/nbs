@@ -627,30 +627,30 @@ void TIndexTabletState::VisitNodeRefLocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IIndexTabletDatabase& TIndexTabletState::AccessInMemoryIndexState()
+IIndexTabletDatabase* TIndexTabletState::AccessInMemoryIndexState()
 {
-    return Impl->InMemoryIndexState;
+    return Impl->InMemoryIndexState.get();
 }
 
 void TIndexTabletState::UpdateInMemoryIndexState(
-    TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates)
+    const TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
 {
-    Impl->InMemoryIndexState.UpdateState(nodeUpdates);
+    Impl->InMemoryIndexState->UpdateState(nodeUpdates);
 }
 
 void TIndexTabletState::MarkNodeRefsLoadComplete()
 {
-    Impl->InMemoryIndexState.MarkNodeRefsLoadComplete();
+    Impl->InMemoryIndexState->MarkNodeRefsLoadComplete();
 }
 
 void TIndexTabletState::MarkNodeRefsExhaustive(ui64 nodeId)
 {
-    Impl->InMemoryIndexState.MarkNodeRefsExhaustive(nodeId);
+    Impl->InMemoryIndexState->MarkNodeRefsExhaustive(nodeId);
 }
 
 TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
 {
-    return Impl->InMemoryIndexState.GetStats();
+    return Impl->InMemoryIndexState->GetStats();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

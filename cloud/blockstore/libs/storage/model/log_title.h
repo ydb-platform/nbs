@@ -2,6 +2,7 @@
 
 #include <util/generic/string.h>
 #include <util/system/types.h>
+
 #include <span>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -53,6 +54,11 @@ public:
         TString DiskId;
     };
 
+    struct TPartitionMigration
+    {
+        TString DiskId;
+    };
+
     struct TSession
     {
         TString SessionId;
@@ -86,6 +92,12 @@ public:
         ui32 Generation = 0;
     };
 
+    struct TAgentAvailabilityMonitoringActor
+    {
+        TString DiskId;
+        TString AgentId;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
@@ -96,7 +108,9 @@ private:
         TClient,
         TDiskRegistry,
         TPartitionMirror,
-        TFreshBlocksWriter>;
+        TPartitionMigration,
+        TFreshBlocksWriter,
+        TAgentAvailabilityMonitoringActor>;
 
     ui64 StartTime = 0;
     TData Data;

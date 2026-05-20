@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -28,6 +29,7 @@ private:
     const NProto::TLaggingAgent LaggingAgent;
 
     ui32 LaggingAgentNodeId = 0;
+    TLogTitle LogTitle;
 
 public:
     TAgentAvailabilityMonitoringActor(

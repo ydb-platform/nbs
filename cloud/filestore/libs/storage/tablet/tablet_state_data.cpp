@@ -421,6 +421,22 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
     return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
 }
 
+void TIndexTabletState::ActivateCacheReadBypass(ui64 nodeId, ui64 commitId)
+{
+    Impl->CacheReadBypass.Activate(nodeId, commitId);
+}
+
+void TIndexTabletState::DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId)
+{
+    Impl->CacheReadBypass.Deactivate(nodeId, commitId);
+}
+
+void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
+{
+    UnconfirmedRecoveryReady = value;
+    Impl->CacheReadBypass.SetUnconfirmedRecoveryReady(value);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FreshBytes
 
@@ -1505,9 +1521,14 @@ auto TIndexTabletState::FindForcedRangeOperation(
 bool TIndexTabletState::TryFillDescribeResult(
     ui64 nodeId,
     ui64 handle,
+    ui64 commitId,
     const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
+    if (Impl->CacheReadBypass.ShouldBypassRead(nodeId, commitId)) {
+        return false;
+    }
+
     return Impl->ReadAheadCache.TryFillResult(nodeId, handle, range, response);
 }
 

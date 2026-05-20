@@ -196,15 +196,18 @@ TReadDataActor::TReadDataActor(
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
-    if (ReadRequest.GetIovecs().empty()) {
-        // BlockBuffer should not be initialized in constructor, because
-        // creating a block buffer leads to memory allocation (and
-        // initialization) which is heavy and we would like to execute that on a
-        // separate thread (instead of this actor's parent thread)
-        BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
-        TargetBuffers = CreateRope(BlockBuffer->begin(), BlockBuffer->size());
-    } else {
-        TargetBuffers = CreateRope(ReadRequest.GetIovecs());
+    if (UseTwoStageRead) {
+        if (ReadRequest.GetIovecs().empty()) {
+            // BlockBuffer should not be initialized in constructor, because
+            // creating a block buffer leads to memory allocation (and
+            // initialization) which is heavy and we would like to execute that
+            // on a separate thread (instead of this actor's parent thread)
+            BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
+            TargetBuffers =
+                CreateRope(BlockBuffer->begin(), BlockBuffer->size());
+        } else {
+            TargetBuffers = CreateRope(ReadRequest.GetIovecs());
+        }
     }
 
     // Registering InFlightRequest here for the same reason - it's quite

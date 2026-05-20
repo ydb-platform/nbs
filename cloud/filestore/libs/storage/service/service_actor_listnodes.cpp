@@ -468,10 +468,13 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
                 "Node check in leader failed with error: %s, %s",
                 FormatError(msg->GetError()).Quote().c_str(),
                 name.Quote().c_str());
-            // Retriable errors from the tablet should not cause
-            // NodeNotFoundInShard critical events - the underlying client
+            // Retriable errors and session errors from the tablet should not
+            // cause NodeNotFoundInShard critical events - the underlying client
             // should retry the ListNodes request
-            if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            const auto errorKind = GetErrorKind(msg->GetError());
+            if (errorKind == EErrorKind::ErrorRetriable
+                    || errorKind == EErrorKind::ErrorSession)
+            {
                 HandleError(ctx, *msg->Record.MutableError());
                 return;
             }

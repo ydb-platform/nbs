@@ -294,11 +294,16 @@ void Out<NCloud::NBlockStore::TVolumePerfSettings>(
     const NCloud::NBlockStore::TVolumePerfSettings& value)
 {
     NCloud::NBlockStore::NProto::TVolumePerfSettings v;
-    v.MutableRead()->SetIops(value.ReadIops);
-    v.MutableRead()->SetBandwidth(value.ReadBandwidth);
-    v.MutableWrite()->SetIops(value.WriteIops);
-    v.MutableWrite()->SetBandwidth(value.WriteBandwidth);
+    v.MutableRead()->SetIops(value.Read.Iops);
+    v.MutableRead()->SetBandwidth(value.Read.Bandwidth);
+    v.MutableWrite()->SetIops(value.Write.Iops);
+    v.MutableWrite()->SetBandwidth(value.Write.Bandwidth);
     v.SetCriticalFactor(value.CriticalFactor);
+    v.SetThrottlerOvercommit(value.ThrottlerOvercommit);
+    v.MutableMinRead()->SetIops(value.MinRead.Iops);
+    v.MutableMinRead()->SetBandwidth(value.MinRead.Bandwidth);
+    v.MutableMinWrite()->SetIops(value.MinWrite.Iops);
+    v.MutableMinWrite()->SetBandwidth(value.MinWrite.Bandwidth);
 
     SerializeToTextFormat(v, out);
 }

@@ -626,7 +626,8 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
                 BlockDigestGenerator,
                 State.GetRWClientId(),
                 State.GetReplicaActorsBypassingProxies()[replicaIndex],
-                SelfId()));
+                SelfId(),
+                LogTitle.GetChild(GetCycleCount())));
         State.SetLaggingReplicaProxy(replicaIndex, proxyActorId);
     }
 

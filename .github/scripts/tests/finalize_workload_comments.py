@@ -22,12 +22,16 @@ def get_pull_request() -> PullRequest:
 
 
 def iter_build_presets(matrix_include: str) -> list[str]:
+    if not matrix_include.strip():
+        return []
+
     matrix = json.loads(matrix_include)
     return sorted({entry["build_preset"] for entry in matrix.get("include", [])})
 
 
 def main() -> None:
     setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
+    setup_logger(name=gs.__name__, fmt="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--matrix-include", required=True)
     parser.add_argument(

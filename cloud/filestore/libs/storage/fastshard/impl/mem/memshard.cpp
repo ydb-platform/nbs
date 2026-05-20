@@ -370,10 +370,15 @@ public:
             HasFlag(flags, NProto::TAllocateDataRequest::F_ZERO_RANGE)) &&
             minBorder > request.GetOffset();
 
-        if (f.Data.size() < size && needExtend) {
+        const ui64 dataSize = f.Data.size();
+        if (dataSize < size && needExtend) {
             f.Data.Resize(size);
-        } else if (f.Data.size() < minBorder && shouldZero) {
+        } else if (dataSize < minBorder && shouldZero) {
             f.Data.Resize(minBorder);
+        }
+
+        if (dataSize < f.Data.size()) {
+            memset(f.Data.data() + dataSize, 0, f.Data.size() - dataSize);
         }
 
         if (shouldZero) {
@@ -425,7 +430,14 @@ public:
         const ui64 end = request.GetOffset()
             + request.GetBuffer().size() - request.GetBufferOffset();
         if (f.Data.size() < end) {
+            const ui64 prevEnd = f.Data.size();
             f.Data.Resize(end);
+            if (request.GetOffset() > prevEnd) {
+                memset(
+                    f.Data.data() + prevEnd,
+                    0,
+                    request.GetOffset() - prevEnd);
+            }
         }
 
         if (a.GetSize() < end) {

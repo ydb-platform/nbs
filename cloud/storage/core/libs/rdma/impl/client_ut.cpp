@@ -113,33 +113,130 @@ TEST(TRdmaClientTest, ShouldStartEndpoint)
 
 TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
 {
-        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
-        auto verbs =
-            NVerbs::CreateTestVerbs(testContext);
-        auto monitoring = CreateMonitoringServiceStub();
-        auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->IpTypeOfService = 42;
-        ASSERT_NE(42, testContext->ToS);
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->IpTypeOfService = 42;
+    ASSERT_NE(42, testContext->ToS);
 
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateTestClient(
-            verbs,
-            logging,
-            monitoring,
-            clientConfig);
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
 
-        client->Start();
-        Y_DEFER {
-            client->Stop();
-        };
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
 
-        auto clientEndpoint = client->StartEndpoint("::", 10020);
-        Y_UNUSED(clientEndpoint);
-        ASSERT_EQ(42, testContext->ToS);
-    }
+    auto clientEndpoint = client->StartEndpoint("::", 10020);
+    Y_UNUSED(clientEndpoint);
+    ASSERT_EQ(42, testContext->ToS);
+}
+
+TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->ResolveTimeout = TDuration::MilliSeconds(123);
+    clientConfig->QpRetryCount = 3;
+    clientConfig->QpRnrRetryCount = 5;
+    clientConfig->QpTimeout = 7;
+    clientConfig->QpMinRnrTimer = 9;
+
+    std::atomic<bool> resolveAddressCalled = false;
+    std::atomic<bool> resolveRouteCalled = false;
+    std::atomic<ui64> resolveAddressTimeoutUs = 0;
+    std::atomic<ui64> resolveRouteTimeoutUs = 0;
+
+    std::atomic<bool> connectCalled = false;
+    std::atomic<int> connectRetryCount = -1;
+    std::atomic<int> connectRnrRetryCount = -1;
+
+    std::atomic<bool> modifyCalled = false;
+
+    testContext->HandleResolveAddress =
+        [&](rdma_cm_id* id, sockaddr* srcAddr, sockaddr* dstAddr, TDuration t)
+    {
+        Y_UNUSED(id);
+        Y_UNUSED(srcAddr);
+        Y_UNUSED(dstAddr);
+
+        resolveAddressTimeoutUs.store(t.MicroSeconds());
+        resolveAddressCalled.store(true);
+    };
+
+    testContext->HandleResolveRoute = [&](rdma_cm_id* id, TDuration t)
+    {
+        Y_UNUSED(id);
+
+        resolveRouteTimeoutUs.store(t.MicroSeconds());
+        resolveRouteCalled.store(true);
+    };
+
+    testContext->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+
+        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
+
+        EXPECT_EQ(expectedMask, mask);
+        EXPECT_EQ(clientConfig->QpTimeout, attr->timeout);
+        EXPECT_EQ(clientConfig->QpMinRnrTimer, attr->min_rnr_timer);
+
+        modifyCalled.store(true);
+    };
+
+    testContext->HandleConnect = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
+        connectRetryCount.store(param->retry_count);
+        connectRnrRetryCount.store(param->rnr_retry_count);
+        connectCalled.store(true);
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
+
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    auto ep = client->StartEndpoint("::", 10020).GetValue(5s);
+    ASSERT_TRUE(ep);
+
+    ASSERT_TRUE(resolveAddressCalled.load());
+    ASSERT_TRUE(resolveRouteCalled.load());
+    ASSERT_EQ(
+        clientConfig->ResolveTimeout.MicroSeconds(),
+        resolveAddressTimeoutUs.load());
+    ASSERT_EQ(
+        clientConfig->ResolveTimeout.MicroSeconds(),
+        resolveRouteTimeoutUs.load());
+
+    ASSERT_TRUE(connectCalled.load());
+    ASSERT_EQ(clientConfig->QpRetryCount, connectRetryCount.load());
+    ASSERT_EQ(clientConfig->QpRnrRetryCount, connectRnrRetryCount.load());
+
+    ASSERT_TRUE(modifyCalled.load());
+}
 
 TEST(TRdmaClientTest, ShouldDetachFromPoller)
 {

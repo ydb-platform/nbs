@@ -238,6 +238,12 @@ struct TTabletMetrics
     std::atomic<i64> UncompressedBytesWritten{0};
     std::atomic<i64> CompressedBytesWritten{0};
 
+    // HandleStatsByNode size stats
+    std::atomic<i64> HandleStatsByNodeMaxSize{0};
+    std::atomic<i64> HandleStatsByNodeSumSize{0};
+    std::atomic<i64> HandleStatsByNodeMaxTotalSize{0};
+    std::atomic<i64> HandleStatsByNodeSumTotalSize{0};
+
     // Opened nodes stats
     std::atomic<i64> NodesOpenForWritingBySingleSession{0};
     std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
@@ -270,6 +276,11 @@ struct TTabletMetrics
         std::atomic<i64> ResponseNodeRefs{0};
     } ListNodesExtra;
 
+    struct TExtraCreateHandleMetrics
+    {
+        std::atomic<i64> GuestKeepCacheSet{0};
+    } CreateHandleExtra;
+
     struct TExtraConfirmAddDataMetrics
     {
         std::atomic<i64> DeferredCount{0};
@@ -290,7 +301,7 @@ struct TTabletMetrics
     TInstant PrevCPUUsageMicrosTs;
     i64 PrevCPUUsageMicros{0};
     std::atomic<i64> CPUUsageMicros{0};
-    i64 CPUUsageRate = 0;
+    std::atomic<i64> CPUUsageRate{0};
 
     std::atomic<i64> OpLogEntryCount{0};
     std::atomic<i64> ResponseLogEntryCount{0};

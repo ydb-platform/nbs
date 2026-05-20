@@ -102,6 +102,7 @@ def write_output(path: str, value: str) -> None:
 
 def main() -> None:
     setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
+    setup_logger(name=gs.__name__, fmt="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
 

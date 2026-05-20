@@ -228,7 +228,7 @@ struct TSessionAware
  */
 struct TIndexStateNodeUpdates
 {
-    TVector<TInMemoryIndexState::TIndexStateRequest> NodeUpdates;
+    TVector<IInMemoryIndexState::TIndexStateRequest> NodeUpdates;
 
     void Clear()
     {

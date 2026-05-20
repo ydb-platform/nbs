@@ -312,17 +312,19 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
             std::move(unrecoverableCommitIds));
     }
 
+    if (recoverableCommitIds.empty()) {
+        return BlobsConfirmed(ctx);
+    }
+
     // Recovery must replay confirmations in commitId order to preserve write
     // order for overlapping ranges.
     Sort(recoverableCommitIds);
 
     for (ui64 commitId: recoverableCommitIds) {
         // TODO(#5353) Support out of order insertion to unblock here
-        // imeadeately
+        // immediately
         ConfirmData(commitId, ctx);
     }
-
-    BlobsConfirmed(ctx);
 }
 
 void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
@@ -333,7 +335,7 @@ void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
         "%s ConfirmBlobs: recovery confirmation completed",
         LogTag.c_str());
 
-    UnconfirmedRecoveryReady = true;
+    SetUnconfirmedRecoveryReady(true);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -317,6 +317,7 @@ public:
 
     // called from CM thread
     void CreateQP();
+    void SetupQP();
     void Start() noexcept;
     void Stop() noexcept;
     void Flush() noexcept;
@@ -501,6 +502,23 @@ TServerSession::~TServerSession()
 
     SendQueue.Clear();
     RecvQueue.Clear();
+}
+
+void TServerSession::SetupQP()
+{
+    ibv_qp_attr qpAttr{};
+    int mask = 0;
+    if (Config->QpTimeout > 0) {
+        qpAttr.timeout = Config->QpTimeout;
+        mask |= IBV_QP_TIMEOUT;
+    }
+    if (Config->QpMinRnrTimer > 0) {
+        qpAttr.min_rnr_timer = Config->QpMinRnrTimer;
+        mask |= IBV_QP_MIN_RNR_TIMER;
+    }
+    if (mask != 0) {
+        Verbs->ModifyQP(Connection->qp, &qpAttr, mask);
+    }
 }
 
 void TServerSession::Start() noexcept
@@ -1905,8 +1923,8 @@ void TServer::Accept(
             .responder_resources = RDMA_MAX_RESP_RES,
             .initiator_depth = RDMA_MAX_INIT_DEPTH,
             .flow_control = 1,
-            .retry_count = 7,
-            .rnr_retry_count = 7,
+            .retry_count = Config->QpRetryCount,
+            .rnr_retry_count = Config->QpRnrRetryCount,
         };
 
         RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
@@ -1925,6 +1943,7 @@ void TServer::Accept(
 void TServer::HandleConnected(TServerSession* session) noexcept
 {
     try {
+        session->SetupQP();
         session->Start();
         session->CompletionPoller->Attach(session);
         RDMA_INFO(session->Log, "connected");

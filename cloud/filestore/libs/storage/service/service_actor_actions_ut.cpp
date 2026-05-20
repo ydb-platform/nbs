@@ -78,15 +78,6 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     return response;
 }
 
-void WaitForTabletStart(TServiceClient& service)
-{
-    TDispatchOptions options;
-    options.FinalEvents = {
-        TDispatchOptions::TFinalEventCondition(
-            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
-    service.AccessRuntime().DispatchEvents(options);
-}
-
 NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
     const NProtoPrivate::TGetStorageStatsRequest& request)

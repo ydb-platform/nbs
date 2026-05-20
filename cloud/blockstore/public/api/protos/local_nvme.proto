@@ -57,6 +57,9 @@ message TAcquireNVMeDeviceResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Acquired device.
+    TNVMeDeviceDesc Device = 2;
 }
 
 message TReleaseNVMeDeviceRequest

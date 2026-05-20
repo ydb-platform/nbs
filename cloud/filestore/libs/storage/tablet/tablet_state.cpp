@@ -83,8 +83,58 @@ TIndexTabletState::~TIndexTabletState() = default;
 
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
+    Impl->CacheReadBypass.UpdateLogTag(tag);
     Impl->FreshBytes.UpdateLogTag(tag);
+    if (Impl->InMemoryIndexState) {
+        Impl->InMemoryIndexState->UpdateLogTag(tag);
+    }
     LogTag = std::move(tag);
+}
+
+void TIndexTabletState::InitInMemoryIndexState(const TStorageConfig& config)
+{
+    auto* alloc =
+        AllocatorRegistry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache);
+    const ui64 nodesCapacity = CalculateInMemoryIndexCacheCapacity(
+        config.GetInMemoryIndexCacheNodesCapacity(),
+        GetNodesCount(),
+        config.GetInMemoryIndexCacheNodesToNodesCapacityRatio());
+    const ui64 nodeAttrsCapacity = CalculateInMemoryIndexCacheCapacity(
+        config.GetInMemoryIndexCacheNodeAttrsCapacity(),
+        GetNodesCount(),
+        config.GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio());
+    const ui64 nodeRefsCapacity = CalculateInMemoryIndexCacheCapacity(
+        config.GetInMemoryIndexCacheNodeRefsCapacity(),
+        GetNodesCount(),
+        config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio());
+    const ui64 nodeRefsExhaustivenessCapacity =
+        config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity();
+
+    const bool useUnlimitedBTreeNodeRefsCache =
+        GetFileSystem().GetShardNo() == 0
+        && config.GetUseUnlimitedBTreeNodeRefsCacheInMainTablet()
+        || GetFileSystem().GetShardNo() != 0
+        && config.GetUseUnlimitedBTreeNodeRefsCacheInShards();
+
+    if (useUnlimitedBTreeNodeRefsCache) {
+        using TCacheImpl = TInMemoryIndexState<TUnlimitedBTreeNodeRefsCache>;
+        Impl->InMemoryIndexState = std::make_unique<TCacheImpl>(
+            alloc,
+            Impl->CacheReadBypass,
+            nodesCapacity,
+            nodeAttrsCapacity,
+            nodeRefsCapacity,
+            nodeRefsExhaustivenessCapacity);
+    } else {
+        using TCacheImpl = TStandardInMemoryIndexState;
+        Impl->InMemoryIndexState = std::make_unique<TCacheImpl>(
+            alloc,
+            Impl->CacheReadBypass,
+            nodesCapacity,
+            nodeAttrsCapacity,
+            nodeRefsCapacity,
+            nodeRefsExhaustivenessCapacity);
+    }
 }
 
 void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
@@ -187,20 +237,10 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadCacheRangeSize(),
         config.GetReadAheadMaxGapPercentage(),
         config.GetReadAheadCacheMaxHandlesPerNode());
-    Impl->InMemoryIndexState.Reset(
-        CalculateInMemoryIndexCacheCapacity(
-            config.GetInMemoryIndexCacheNodesCapacity(),
-            GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodesCapacityRatio()),
-        CalculateInMemoryIndexCacheCapacity(
-            config.GetInMemoryIndexCacheNodeAttrsCapacity(),
-            GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio()),
-        CalculateInMemoryIndexCacheCapacity(
-            config.GetInMemoryIndexCacheNodeRefsCapacity(),
-            GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()),
-        config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity());
+
+    InitInMemoryIndexState(config);
+    Impl->InMemoryIndexState->UpdateLogTag(LogTag);
+
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
