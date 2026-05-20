@@ -13,13 +13,13 @@ namespace {
 
 void DoUpdate(ui64 diskSize, benchmark::State& state)
 {
-    constexpr size_t RangeSize = 1024;
+    constexpr size_t BlocksInRange = 1024;
     constexpr size_t BlockSize = 4096;
     const ui64 blockCount = diskSize / BlockSize;
-    const ui64 rangeCount = blockCount / RangeSize;
+    const ui64 rangeCount = blockCount / BlocksInRange;
 
-    TCompressedBitmap usedBlocks(rangeCount * RangeSize);
-    usedBlocks.Set(0, rangeCount * RangeSize);
+    TCompressedBitmap usedBlocks(rangeCount * BlocksInRange);
+    usedBlocks.Set(0, rangeCount * BlocksInRange);
 
     TVector<TCompactionCounter> counters(Reserve(rangeCount));
     for (size_t i = 0; i < rangeCount; ++i) {
@@ -34,12 +34,12 @@ void DoUpdate(ui64 diskSize, benchmark::State& state)
             0.1      // score
         );
 
-        counters.emplace_back(i * RangeSize, rangeStat);
+        counters.emplace_back(i * BlocksInRange, rangeStat);
     }
 
     for (const auto _: state) {
         TCompactionMap compactionMap(
-            RangeSize,
+            BlocksInRange,
             BuildLoadOptimizationCompactionPolicy(
                 {.MaxBlobSize = 4_MB,
                  .BlockSize = 4_KB,
@@ -73,15 +73,14 @@ ui16 RandomUsedBlockCount(ui16 blockCount)
 
 void DoUpdateRandomized(ui64 diskSize, benchmark::State& state)
 {
-    constexpr size_t RangeSize = 1024;
+    constexpr size_t BlocksInRange = 1024;
     constexpr size_t BlockSize = 4096;
     const ui64 blockCount = diskSize / BlockSize;
-    const ui64 rangeCount = blockCount / RangeSize;
+    const ui64 rangeCount = blockCount / BlocksInRange;
 
-    TCompressedBitmap usedBlocks(rangeCount * RangeSize);
+    TCompressedBitmap usedBlocks(rangeCount * BlocksInRange);
     TVector<TCompactionCounter> counters(Reserve(rangeCount));
 
-    constexpr ui16 BlocksInRange = 1024;
 
     for (size_t i = 0; i < rangeCount; ++i) {
         const ui16 blobCount =
@@ -101,17 +100,17 @@ void DoUpdateRandomized(ui64 diskSize, benchmark::State& state)
             false,
             score);
 
-        counters.emplace_back(i * RangeSize, rangeStat);
+        counters.emplace_back(i * BlocksInRange, rangeStat);
 
-        const ui64 rangeBase = i * RangeSize;
+        const ui64 rangeBlockOffset = i * BlocksInRange;
         if (usedBlockCount != 0) {
-            usedBlocks.Set(rangeBase, rangeBase + usedBlockCount);
+            usedBlocks.Set(rangeBlockOffset, rangeBlockOffset + usedBlockCount);
         }
     }
 
     for (const auto _: state) {
         TCompactionMap compactionMap(
-            RangeSize,
+            BlocksInRange,
             BuildLoadOptimizationCompactionPolicy(
                 {.MaxBlobSize = 4_MB,
                  .BlockSize = 4_KB,
