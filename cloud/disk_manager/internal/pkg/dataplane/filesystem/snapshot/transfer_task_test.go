@@ -207,7 +207,7 @@ func TestTransferFromFilesystemToSnapshotAndBack(t *testing.T) {
 	defer fsModel.Close()
 
 	expectedNames := tasks_common.NewStringSet(
-		nfs_testing.NodeNames(fsModel.ListAllNodesRecursively())...,
+		nfs_testing.NodeNames(fsModel.ListAllNodesRecursively(false))...,
 	)
 
 	config := f.newConfig()
@@ -272,7 +272,7 @@ func TestTransferFromFilesystemToSnapshotAndBack(t *testing.T) {
 		nfs_testing.Root(),
 	)
 	restoredNames := tasks_common.NewStringSet(
-		nfs_testing.NodeNames(restoredModel.ListAllNodesRecursively())...,
+		nfs_testing.NodeNames(restoredModel.ListAllNodesRecursively(false))...,
 	)
 	require.True(t, expectedNames.Equals(restoredNames))
 }
@@ -374,7 +374,7 @@ func TestTransferFromFilesystemToSnapshotAndBackWithNemesis(t *testing.T) {
 	)
 	expectedNames := fsModel.ExpectedNodeNames()
 	restoredNames := tasks_common.NewStringSet(
-		nfs_testing.NodeNames(restoredModel.ListAllNodesRecursively())...,
+		nfs_testing.NodeNames(restoredModel.ListAllNodesRecursively(false))...,
 	)
 	require.True(t, expectedNames.Equals(restoredNames))
 }

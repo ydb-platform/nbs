@@ -192,7 +192,7 @@ func TestFilesystemTraversalSmallTree(t *testing.T) {
 		"var",
 		"log",
 	}
-	nodes := model.ListAllNodesRecursively()
+	nodes := model.ListAllNodesRecursively(false)
 	require.Equal(t, expectedNames, nfs_testing.NodeNames(nodes))
 	model.Close()
 
@@ -212,7 +212,7 @@ func TestFilesystemTraversalSmallTree(t *testing.T) {
 	dstSession, err := nfsClient.CreateSession(ctx, dstFilesystemID, "", true)
 	require.NoError(t, err)
 	dstModel := nfs_testing.NewFileSystemModel(t, ctx, dstSession, rootDir)
-	dstNodes := dstModel.ListAllNodesRecursively()
+	dstNodes := dstModel.ListAllNodesRecursively(false)
 	require.Equal(t, expectedNames, nfs_testing.NodeNames(dstNodes))
 	dstModel.Close()
 
@@ -221,7 +221,7 @@ func TestFilesystemTraversalSmallTree(t *testing.T) {
 	)
 	require.NoError(t, err)
 	verifyModel := nfs_testing.NewFileSystemModel(t, ctx, verifySession, rootDir)
-	verifyNodes := verifyModel.ListAllNodesRecursively()
+	verifyNodes := verifyModel.ListAllNodesRecursively(false)
 	require.Equal(t, expectedNames, nfs_testing.NodeNames(verifyNodes))
 	verifyModel.Close()
 
