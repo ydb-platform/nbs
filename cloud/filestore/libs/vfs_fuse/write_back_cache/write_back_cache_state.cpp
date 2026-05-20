@@ -809,13 +809,16 @@ void TWriteBackCacheState::DropCachedData(
 void TWriteBackCacheState::FailPendingRequests(
     const NCloud::NProto::TError& error)
 {
-    while (auto* request = RequestManager.TryRemovePendingRequest()) {
+    while (auto* request = RequestManager.TryPopFrontPendingRequest()) {
         const ui64 nodeId = request->GetRequest().GetNodeId();
         auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
         auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
 
-        Y_ABORT_UNLESS(
-            pendingRequest->GetSequenceId() == request->GetSequenceId());
+        // The same request lives in two queues:
+        // - all pending requests
+        // - pending requests associated with the node
+        // Both queues are ordered with respect to their SequenceId
+        Y_ABORT_UNLESS(pendingRequest.get() == request);
 
         QueuedOperations.FailWriteDataPromise(
             std::move(request->AccessPromise()),

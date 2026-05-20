@@ -88,7 +88,7 @@ public:
 
     // Takes and removes front request from the pending queue.
     // Returns the removed request or nullptr if there are no pending requests.
-    TPendingWriteDataRequest* TryRemovePendingRequest();
+    TPendingWriteDataRequest* TryPopFrontPendingRequest();
 
     // Removes the request from the pending queue
     void Remove(std::unique_ptr<TPendingWriteDataRequest> request);

@@ -239,7 +239,7 @@ auto TWriteDataRequestManager::TryProcessPendingRequest()
     return cachedRequest;
 }
 
-TPendingWriteDataRequest* TWriteDataRequestManager::TryRemovePendingRequest()
+TPendingWriteDataRequest* TWriteDataRequestManager::TryPopFrontPendingRequest()
 {
     if (PendingRequests.Empty()) {
         return nullptr;
