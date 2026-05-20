@@ -58,14 +58,16 @@ void TIndexTabletActor::SendPendingConfirmAddDataResponse(
         return;
     }
 
-    auto pending = std::move(pendingIt->second);
+    auto pendingRequests = std::move(pendingIt->second);
     PendingConfirmation.erase(pendingIt);
 
-    if (!HasError(error)) {
-        Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
-    }
+    for (auto& pending: pendingRequests) {
+        if (!HasError(error)) {
+            Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
+        }
 
-    SendDeferredConfirmAddDataResponse(ctx, std::move(pending), error);
+        SendDeferredConfirmAddDataResponse(ctx, std::move(pending), error);
+    }
 }
 
 void TIndexTabletActor::UnconfirmedAddBlobSafePointReached(
@@ -152,8 +154,26 @@ void TIndexTabletActor::HandleConfirmAddData(
         pending.DeferredTs = startedTs;
         pending.CallContext = msg->CallContext;
         pending.ProfileLogRequest = std::move(profileLogRequest);
-        PendingConfirmation[commitId] = std::move(pending);
+        PendingConfirmation[commitId].push_back(std::move(pending));
     };
+
+    // The client may retry ConfirmAddData with the same commit id after losing
+    // the previous response on a pipe disconnect. From the tablet's point of
+    // view, the first request can still be waiting while AddDataUnconfirmed is
+    // in progress, or while AddBlob is in flight but has not reached the safe
+    // point that sends the reply. Keep all waiters and complete them together
+    // when the commit reaches a terminal state.
+    if (PendingConfirmation.contains(commitId)) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Deferring duplicate ConfirmAddData: commitId=%lu",
+            LogTag.c_str(),
+            commitId);
+
+        deferReply();
+        return;
+    }
 
     if (auto unconfirmedIt = UnconfirmedData.find(commitId);
         unconfirmedIt != UnconfirmedData.end())

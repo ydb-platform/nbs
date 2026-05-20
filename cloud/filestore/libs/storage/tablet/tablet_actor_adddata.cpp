@@ -413,7 +413,13 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         offset += length;
     }
 
-    if (!canUseUnconfirmed) {
+    if (canUseUnconfirmed) {
+        // If the client never confirms or cancels the operation, delete
+        // unconfirmed data and release the collect barrier eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvCancelUnconfirmedData(commitId));
+    } else {
         // We schedule this event for the case if the client does not call
         // AddData. Thus we ensure that the collect barrier will be released
         // eventually.
@@ -465,12 +471,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
                 .SessionId = GetSessionId(msg->Record),
                 .PipeServerId = ev->Recipient});
         TABLET_VERIFY(inserted);
-
-        // If the client never confirms or cancels the operation, delete
-        // unconfirmed data and release the collect barrier eventually.
-        ctx.Schedule(
-            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
-            new TEvIndexTabletPrivate::TEvCancelUnconfirmedData(commitId));
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitTabletProfileLogRequestInfo(
