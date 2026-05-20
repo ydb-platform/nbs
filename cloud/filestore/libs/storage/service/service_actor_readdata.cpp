@@ -1118,6 +1118,8 @@ void TStorageServiceActor::HandleReadData(
         }
     }
 
+    bool sendRequestToLocalServer = msg->Record.GetLength() == 1_MB;
+
     auto actor = std::make_unique<TReadDataActor>(
         std::move(msg->Record),
         filestore.GetFileSystemId(),
@@ -1137,7 +1139,7 @@ void TStorageServiceActor::HandleReadData(
         std::move(shardState),
         session->MediaKind,
         useTwoStageRead,
-        Session,
+        sendRequestToLocalServer ? Session : nullptr,
         ShmClient);
 
     NCloud::Register(ctx, std::move(actor));

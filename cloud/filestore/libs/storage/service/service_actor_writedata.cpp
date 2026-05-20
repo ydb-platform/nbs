@@ -1078,6 +1078,8 @@ void TStorageServiceActor::HandleWriteData(
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
+        bool sendRequestToLocalServer = bytesCount == 1_MB;
+
         auto actor = std::make_unique<TWriteDataActor>(
             std::move(msg->Record),
             range,
@@ -1089,7 +1091,7 @@ void TStorageServiceActor::HandleWriteData(
             ProfileLog,
             TraceSerializer,
             session->MediaKind,
-            Session,
+            sendRequestToLocalServer ? Session : nullptr,
             ShmClient);
         NCloud::Register(ctx, std::move(actor));
     } else {
