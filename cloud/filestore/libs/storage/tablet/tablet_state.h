@@ -333,7 +333,8 @@ public:
 
     TString GetMainFileSystemId() const
     {
-        return FileSystem.GetMainFileSystemId();
+        return FileSystem.GetShardNo() ? FileSystem.GetMainFileSystemId()
+                                       : FileSystem.GetFileSystemId();
     }
 
     ui32 GetGeneration() const

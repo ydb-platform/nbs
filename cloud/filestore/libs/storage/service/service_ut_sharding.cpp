@@ -10,6 +10,7 @@
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
+#include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
@@ -1745,16 +1746,64 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldValidateShardConfiguration)
     {
-        TShardedFileSystemConfig fsConfig;
-        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 3;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
 
-        const auto shard3Id = fsConfig.FsId + "_s3";
-        service.CreateFileStore(shard3Id, fsConfig.ShardBlockCount - 1);
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+
+        const TString fsId = "test";
+        const TString shard1Id = TStringBuilder()
+                                 << fsId << ShardNumPrefix << 1;
+        const TString shard2Id = TStringBuilder()
+                                 << fsId << ShardNumPrefix << 2;
+        const TString shard3Id = TStringBuilder()
+                                 << fsId << ShardNumPrefix << 3;
+
+        TTestEnv env({}, config);
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+        WaitForTabletStart(service);
+
+        // Detach the third shard for later use
+        {
+            NProtoPrivate::TConfigureShardsRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+            request.SetForce(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureshards", buf);
+            NProtoPrivate::TConfigureShardsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        {
+            NProtoPrivate::TConfigureShardsRequest request;
+            request.SetFileSystemId(shard3Id);
+            request.SetForce(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureshards", buf);
+            NProtoPrivate::TConfigureShardsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
 
         // ShardNo change not allowed
         {
             NProtoPrivate::TConfigureAsShardRequest request;
-            request.SetFileSystemId(fsConfig.Shard1Id);
+            request.SetFileSystemId(shard1Id);
             request.SetShardNo(2);
 
             TString buf;
@@ -1770,8 +1819,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Shard deletion not allowed
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
+            request.SetFileSystemId(fsId);
+            *request.AddShardFileSystemIds() = shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1786,9 +1835,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Shard reordering not allowed
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
-            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
+            request.SetFileSystemId(fsId);
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddShardFileSystemIds() = shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1816,9 +1865,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
-            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+            request.SetFileSystemId(fsId);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
             *request.AddShardFileSystemIds() = shard3Id;
 
             TString buf;
@@ -8380,7 +8429,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(shardAllocationUnit);
         config.SetDirectoryCreationInShardsEnabled(directoryCreationInShards);
 
-        const TString fsId = "abcdefgfilesystem-zyxwvutsrqponmlkjifed";
+        const TString fsId = "testfilesystem-filesystem1234id";
 
         TTestEnv env({}, config);
         ui32 nodeIdx = env.AddDynamicNode();
@@ -8392,22 +8441,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         constexpr ui32 filesCount = 8;
         ui32 fileNum = 0;
+        ui32 dirNum = 0;
         ui32 unsafeNodeNum = 0;
 
-        constexpr ui32 dirCount = 4;
-        for (ui32 dirNum = 0; dirNum < dirCount; ++dirNum) {
-            TString dirName = TStringBuilder() << "dir" << dirNum;
-            auto createNodeResponse =
-                service
-                    .CreateNode(
-                        headers,
-                        TCreateNodeArgs::Directory(RootNodeId, dirName))
-                    ->Record;
-            const auto dirId = createNodeResponse.GetNode().GetId();
-            ui32 shardNo =
-                directoryCreationInShards ? (dirNum % shardCount) + 1 : 0;
-            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(dirId));
-        }
+        TVector<ui64> dirs;
+        dirs.push_back(RootNodeId);
 
         auto setMode = [&](const NProtoPrivate::EShardIdCompressionMode mode) {
             // Change config in the main filesystem
@@ -8441,19 +8479,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 compressionModes[writeModeNum];
             setMode(writeMode);
 
-            // Create files
-            TVector<ui64> nodeIds;
+            // Create a directory for the the next batch of files
+            const TString dirName = TStringBuilder() << "dir" << dirNum++;
+            const ui64 dirId =
+                service.CreateNode(
+                        headers,
+                        TCreateNodeArgs::Directory(RootNodeId, dirName))
+                    ->Record.GetNode().GetId();
+            dirs.push_back(dirId);
+            ui32 shardNo = directoryCreationInShards
+                               ? ((dirs.size() - 2) % shardCount) + 1
+                               : 0;
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(dirs.back()));
+
+            // Create a batch of files
+            TVector<std::pair<ui64, TString>> files;
             for (ui32 i = 0; i < filesCount; ++i) {
-                nodeIds.push_back(
-                    service
-                        .CreateNode(
-                            headers,
-                            TCreateNodeArgs::File(
-                                RootNodeId,
-                                TStringBuilder() << "file_" << fileNum))
-                        ->Record.GetNode()
-                        .GetId());
-                fileNum++;
+                const TString fileName = TStringBuilder()
+                                         << "file_" << fileNum++;
+                files.push_back({(i % 2) ? RootNodeId : dirId, fileName});
+                service.CreateNode(
+                    headers,
+                    TCreateNodeArgs::File(
+                        files.back().first,
+                        files.back().second));
             }
 
             // Unsafe create nodeRef in the shard _s1 that references the main
@@ -8463,10 +8512,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             createNodeRefRequest.SetParentId(2);
             createNodeRefRequest.SetName(
                 TStringBuilder() << "UnsafeNodeName" << unsafeNodeNum);
-            createNodeRefRequest.SetChildId(unsafeNodeNum);
+            createNodeRefRequest.SetChildId(unsafeNodeNum++);
             createNodeRefRequest.SetShardId(fsId);
             createNodeRefRequest.SetShardNodeName(CreateGuidAsString());
-            unsafeNodeNum++;
 
             {
                 TString buf;
@@ -8490,20 +8538,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     compressionModes[readModeNum];
                 setMode(readMode);
 
-                // Create handles
-                for (const auto nodeId: nodeIds) {
-                    const ui64 handle = service
-                        .CreateHandle(
-                            headers,
-                            fsId,
-                            nodeId,
-                            "",
-                            TCreateHandleArgs::RDWR)
-                        ->Record.GetHandle();
-                    service
-                        .DestroyHandle(headers, fsId, nodeId, handle);
+                // Check that we can resolve all the node in each dir
+                for (const auto& dir: dirs) {
+                    service.ListNodes(headers, fsId, dir);
                 }
 
+                // Check that we can resolve ther node ref by creating handles
+                for (const auto& file: files) {
+                    service.CreateHandle(
+                        headers,
+                        fsId,
+                        file.first,
+                        file.second,
+                        TCreateHandleArgs::RDWR);
+                }
+
+                // Check that we can read the refernce to the main FS
                 NProtoPrivate::TUnsafeGetNodeRefRequest getNodeRefRequest;
                 getNodeRefRequest.SetFileSystemId(
                     createNodeRefRequest.GetFileSystemId());
@@ -8528,7 +8578,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Should get error when attempting to set NProtoPrivate::EShardIdCompressionMode::SICM_NO_COMPRESSION
         const auto response = SetShardIdCompressionMode(fsId, service, NProtoPrivate::SICM_NO_COMPRESSION, false);
 
-
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_ARGUMENT,
             response.GetError().GetCode(),
@@ -8547,7 +8596,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        for (const char* badFsName: {"\rwq2e\n123123\t", "files\x88tore_s48"}) {
+        for (const char* badFsName:
+             {"\rwq2e\n123123\t", "files\x88tore_s48", "ADHlkjsd_s64"})
+        {
             service.SendCreateFileStoreRequest(badFsName, 1024);
             auto response = service.RecvCreateFileStoreResponse();
 

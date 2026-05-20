@@ -36,6 +36,13 @@ NProto::TError ValidateCreateFileSystemRequest(
         }
     }
 
+    if (fileSystemId.find(ShardNumPrefix) != TString::npos) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "Can't create a filesystem with the ID that contains "
+            << TString(ShardNumPrefix).Quote()
+            << ", because it used as a prefix for a ShardNode");
+    }
+
     const auto& cloudId = request.GetCloudId();
     if (!cloudId) {
         return MakeError(E_ARGUMENT, TStringBuilder()
