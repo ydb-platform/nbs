@@ -276,7 +276,9 @@ struct TEvDiskAgentPrivate
     };
 
     struct TAcquireNVMeDeviceResponse
-    {};
+    {
+        NProto::TNVMeDevice NVMeDevice;
+    };
 
     //
     // ReleaseNVMeDevice

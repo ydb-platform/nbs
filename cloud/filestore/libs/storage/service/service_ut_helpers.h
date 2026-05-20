@@ -9,6 +9,8 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+class TServiceClient;
+
 class TTestProfileLog
     : public IProfileLog
 {
@@ -25,5 +27,7 @@ public:
 };
 
 TString GenerateValidateData(ui32 size, ui32 seed = 0);
+
+void WaitForTabletStart(TServiceClient& service);
 
 }   // namespace NCloud::NFileStore::NStorage

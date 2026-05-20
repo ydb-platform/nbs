@@ -91,6 +91,7 @@ namespace NCloud::NFileStore{
     xxx(UnconfirmedDataNotInProgress)                                          \
     xxx(InvalidCommitIdInUnconfirmedAddBlobSafePoint)                          \
     xxx(ListNodesInternalFailedToAddNodeRef)                                   \
+    xxx(InMemoryIndexStateNotInitialized)                                      \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

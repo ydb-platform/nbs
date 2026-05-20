@@ -604,6 +604,18 @@ TSessionsStats TIndexTabletState::CalculateSessionsStats() const
         } else {
             ++stats.StatelessSessionsCount;
         }
+
+        // HandleStatsByNode stats
+        {
+            const size_t size = s.HandleStatsByNode.StatsSize();
+            const size_t totalSize = s.HandleStatsByNode.TotalSize();
+            stats.HandleStatsByNodeMaxSize =
+                Max(stats.HandleStatsByNodeMaxSize, size);
+            stats.HandleStatsByNodeSumSize += size;
+            stats.HandleStatsByNodeMaxTotalSize =
+                Max(stats.HandleStatsByNodeMaxTotalSize, totalSize);
+            stats.HandleStatsByNodeSumTotalSize += totalSize;
+        }
     }
 
     return stats;

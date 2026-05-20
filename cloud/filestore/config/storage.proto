@@ -763,7 +763,11 @@ message TStorageConfig
     // Thresholds which enable backpressure - part 2.
     optional uint64 CollectGarbageThresholdForBackpressure = 495;
 
+    // These flags turn NodeRefs cache into a btree_map without capacity limits.
+    optional bool UseUnlimitedBTreeNodeRefsCacheInMainTablet = 496;
+    optional bool UseUnlimitedBTreeNodeRefsCacheInShards = 497;
+
     // Use custom protobuf parser for TReadDataResponse
     // to optimize TReadDataActor performance.
-    optional bool UseCustomReadDataResponseParser = 496;
+    optional bool UseCustomReadDataResponseParser = 498;
 }

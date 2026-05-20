@@ -9,3 +9,7 @@ RECURSE(
     virtiofs_server
     ydb
 )
+
+IF (OPENSOURCE)
+    RECURSE(silk_demo)
+ENDIF()

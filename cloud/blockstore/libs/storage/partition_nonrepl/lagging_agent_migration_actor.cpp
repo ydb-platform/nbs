@@ -140,8 +140,8 @@ void TLaggingAgentMigrationActor::OnMigrationError(const TActorContext& ctx)
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lagging agent %s migration failed",
-        PartConfig->GetName().c_str(),
+        "%s Lagging agent %s migration failed",
+        LogTitle.GetWithTime().c_str(),
         AgentId.c_str());
 }
 

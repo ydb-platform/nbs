@@ -893,6 +893,26 @@ def test_symlink_non_utf8_path():
     return ret
 
 
+def test_readlink():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    target = "/some/target/path"
+    client.ln("fs0", "/mylink", "--symlink", target)
+
+    out = client.readlink("fs0", path="/mylink")
+
+    node_id = json.loads(client.stat("fs0", "/mylink"))["Id"]
+    out += client.readlink("fs0", node=node_id)
+
+    client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    return common.canonical_file(results_path, local=True)
+
+
 def test_client_should_not_crash_on_shutdown_while_listing_endpoints():
     port_manager = yatest_common.PortManager()
     # We need a free port with no listener so the request gets stuck

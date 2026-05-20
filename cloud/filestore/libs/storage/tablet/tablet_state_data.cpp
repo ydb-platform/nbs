@@ -421,6 +421,22 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
     return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
 }
 
+void TIndexTabletState::ActivateCacheReadBypass(ui64 nodeId, ui64 commitId)
+{
+    Impl->CacheReadBypass.Activate(nodeId, commitId);
+}
+
+void TIndexTabletState::DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId)
+{
+    Impl->CacheReadBypass.Deactivate(nodeId, commitId);
+}
+
+void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
+{
+    UnconfirmedRecoveryReady = value;
+    Impl->CacheReadBypass.SetUnconfirmedRecoveryReady(value);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FreshBytes
 
@@ -1505,9 +1521,14 @@ auto TIndexTabletState::FindForcedRangeOperation(
 bool TIndexTabletState::TryFillDescribeResult(
     ui64 nodeId,
     ui64 handle,
+    ui64 commitId,
     const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
+    if (Impl->CacheReadBypass.ShouldBypassRead(nodeId, commitId)) {
+        return false;
+    }
+
     return Impl->ReadAheadCache.TryFillResult(nodeId, handle, range, response);
 }
 
@@ -1572,8 +1593,36 @@ NProto::TError TIndexTabletState::UpdateShardBalancer(
         minFreeSpaceReserve = 0;
     }
 
-    return Impl->ShardBalancer->Update(
-        stats,
+    if (!Impl->FileShardBalancer) {
+        return Impl->ShardBalancer->Update(
+            stats,
+            desiredFreeSpaceReserve,
+            minFreeSpaceReserve);
+    }
+
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    THashSet<TString> fileShardIdSet(fileShardIds.begin(), fileShardIds.end());
+    TVector<TShardStats> filteredStats;
+    TVector<TShardStats> fileShardStats;
+    for (ui32 i = 0; i < Min<ui32>(shardIds.size(), stats.size()); ++i) {
+        if (fileShardIdSet.contains(shardIds[i])) {
+            fileShardStats.push_back(stats[i]);
+        } else {
+            filteredStats.push_back(stats[i]);
+        }
+    }
+
+    auto e = Impl->ShardBalancer->Update(
+        filteredStats,
+        desiredFreeSpaceReserve,
+        minFreeSpaceReserve);
+    if (HasError(e)) {
+        return e;
+    }
+
+    return Impl->FileShardBalancer->Update(
+        fileShardStats,
         desiredFreeSpaceReserve,
         minFreeSpaceReserve);
 }

@@ -17,6 +17,7 @@ from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,
 )
+from .backtrace import setup_coredumps, process_coredumps
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,20 @@ def start_instance(args, inst_index):
         open(ready_flag_path, 'a')
 
 
+def _process_coredumps(args):
+    for instance in range(args.instance_count):
+        try:
+            port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance), 22)
+            ssh = SshToGuest(user=_get_ssh_user(args), port=int(port), key=os.getenv("QEMU_SSH_KEY"))
+            process_coredumps(ssh)
+        except Exception:
+            logger.exception(f"Failed to process instance #{instance} coredumps")
+
+
 def stop(argv):
+    args = _parse_args(argv)
+    _process_coredumps(args)
+
     with open(PID_FILE, "r") as f:
         pids = f.read().strip().splitlines()
         logger.info('Stopping qemu instances with pids: %s', ', '.join(pids))
@@ -407,6 +421,8 @@ def _prepare_test_environment(ssh, virtio):
     else:
         raise QemuKvmRecipeException("Invalid virtio type")
 
+    setup_coredumps(ssh)
+
     library.python.testing.recipe.set_env(
         "TEST_ENV_WRAPPER", vm_env['TEST_ENV_WRAPPER'])
 
@@ -416,6 +432,10 @@ def _prepare_test_environment(ssh, virtio):
         ] + [
             "export {}={}".format(k, shlex.quote(v))
             for k, v in vm_env.items()
+        ] + [
+            # this should be a part of `setup_coredumps`, but there seems to be
+            # no portable way to do this globally
+            "ulimit -c unlimited"
         ] + [
             '"$@"',
             "exit_code=$?",

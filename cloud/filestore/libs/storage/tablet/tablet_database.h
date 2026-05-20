@@ -107,11 +107,11 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 commitId,
         const NProto::TNode& attrs);
     virtual void DeleteNode(ui64 nodeId);
-    virtual bool ReadNode(
+    bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
         TMaybe<TNode>& node) override;
-    virtual bool ReadNodes(
+    bool ReadNodes(
         ui64 startNodeId,
         ui64 maxNodes,
         ui64& nextNodeId,
@@ -129,7 +129,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     virtual void DeleteNodeVer(ui64 nodeId, ui64 commitId);
 
-    virtual bool ReadNodeVer(
+    bool ReadNodeVer(
         ui64 nodeId,
         ui64 commitId,
         TMaybe<TNode>& node) override;
@@ -147,13 +147,13 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     virtual void DeleteNodeAttr(ui64 nodeId, const TString& name);
 
-    virtual bool ReadNodeAttr(
+    bool ReadNodeAttr(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<TNodeAttr>& attr) override;
 
-    virtual bool ReadNodeAttrs(
+    bool ReadNodeAttrs(
         ui64 nodeId,
         ui64 commitId,
         TVector<TNodeAttr>& attrs) override;
@@ -175,13 +175,13 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 commitId,
         const TString& name);
 
-    virtual bool ReadNodeAttrVer(
+    bool ReadNodeAttrVer(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<TNodeAttr>& attr) override;
 
-    virtual bool ReadNodeAttrVers(
+    bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
         TVector<TNodeAttr>& attrs) override;
@@ -201,13 +201,13 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     virtual void DeleteNodeRef(ui64 nodeId, const TString& name);
 
-    virtual bool ReadNodeRef(
+    bool ReadNodeRef(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<TNodeRef>& ref) override;
 
-    virtual bool ReadNodeRefs(
+    bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
@@ -231,8 +231,7 @@ private:
         NProto::EListNodesSizeMode sizeMode);
 
 public:
-
-    virtual bool ReadNodeRefs(
+    bool ReadNodeRefs(
         ui64 startNodeId,
         const TString& startCookie,
         ui64 maxCount,
@@ -240,7 +239,7 @@ public:
         ui64& nextNodeId,
         TString& nextCookie) override;
 
-    virtual bool PrechargeNodeRefs(
+    bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
         ui64 rowsToPrecharge,
@@ -264,13 +263,13 @@ public:
         ui64 commitId,
         const TString& name);
 
-    virtual bool ReadNodeRefVer(
+    bool ReadNodeRefVer(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<TNodeRef>& ref) override;
 
-    virtual bool ReadNodeRefVers(
+    bool ReadNodeRefVers(
         ui64 nodeId,
         ui64 commitId,
         TVector<TNodeRef>& refs) override;
@@ -593,7 +592,7 @@ class TIndexTabletDatabaseProxy: public TIndexTabletDatabase
 public:
     TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
+        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
 
     //
     // Nodes
@@ -724,9 +723,9 @@ public:
         const TString& name) override;
 
 private:
-    TVector<TInMemoryIndexState::TIndexStateRequest>& NodeUpdates;
+    TVector<IInMemoryIndexState::TIndexStateRequest>& NodeUpdates;
 
-    static TInMemoryIndexState::TWriteNodeRefsRequest
+    static IInMemoryIndexState::TWriteNodeRefsRequest
     ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref);
 };
 

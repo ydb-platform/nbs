@@ -22,8 +22,8 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    bench
     tests
     ut
 )
-
 

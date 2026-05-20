@@ -92,6 +92,8 @@ public:
 
     [[nodiscard]] const TInflightMap& GetInflightOperations() const;
     [[nodiscard]] TString GetInflightInfo(ui64 nowCycles) const;
+    [[nodiscard]] ui32 GetInFlightOperationsCountByTransactionName(
+        const TString& transactionName) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

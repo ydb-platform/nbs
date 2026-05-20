@@ -421,16 +421,18 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
     response->Record.SetSessionState(session->GetSessionState());
-    auto& fileStore = *response->Record.MutableFileStore();
-    Convert(GetFileSystem(), fileStore);
-    FillFeatures(GetFileSystem(), GetFileSystemStats(), *Config, fileStore);
+    if (!args.Request.GetNoFileStoreInfo()) {
+        auto& fileStore = *response->Record.MutableFileStore();
+        Convert(GetFileSystem(), fileStore);
+        FillFeatures(GetFileSystem(), GetFileSystemStats(), *Config, fileStore);
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s New session TFileStoreFeatures '%s'",
-        LogTag.c_str(),
-        fileStore.GetFeatures().ShortDebugString().c_str());
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s New session TFileStoreFeatures '%s'",
+            LogTag.c_str(),
+            fileStore.GetFeatures().ShortDebugString().c_str());
+    }
 
     TVector<TString> shardIds;
     // there's no point in returning shard list unless it's main filesystem
@@ -508,6 +510,15 @@ void TIndexTabletActor::CreateSessionsInShards(
         "%s Creating shard sessions (%s)",
         logTag.c_str(),
         JoinSeq(",", shardIds).c_str());
+
+    //
+    // The returned FileStore structure can be huge for filesystems with many
+    // shards. At the same time it's actually not used at all - it's only needed
+    // by the storage service layer, not by other tablets. And the storage
+    // service layer gets it from the main tablet.
+    //
+
+    request.SetNoFileStoreInfo(true);
 
     auto actor = std::make_unique<TCreateShardSessionsActor>(
         std::move(logTag),

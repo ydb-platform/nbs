@@ -5,6 +5,55 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+auto* Alloc()
+{
+    return TDefaultAllocator::Instance();
+}
+
+void CheckNodeRef(
+    const IInMemoryIndexState::TWriteNodeRefsRequest& request,
+    IIndexTabletDatabase::TNodeRef& ref)
+{
+    UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsKey.NodeId, ref.NodeId);
+    UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsKey.Name, ref.Name);
+    UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.ChildId, ref.ChildNodeId);
+    UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.CommitId, ref.MinCommitId);
+    UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, ref.MaxCommitId);
+    UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.ShardId, ref.ShardId);
+    UNIT_ASSERT_VALUES_EQUAL(
+        request.NodeRefsRow.ShardNodeName,
+        ref.ShardNodeName);
+}
+
+void ReadAndCheckNodeRef(
+    IInMemoryIndexState& state,
+    const IInMemoryIndexState::TWriteNodeRefsRequest& request)
+{
+    TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+    UNIT_ASSERT(state.ReadNodeRef(
+        request.NodeRefsKey.NodeId,
+        request.NodeRefsRow.CommitId,
+        request.NodeRefsKey.Name,
+        ref));
+    CheckNodeRef(request, *ref);
+}
+
+void FillStateRequests(
+    TVector<IInMemoryIndexState::TIndexStateRequest>& stateRequests,
+    const TVector<IInMemoryIndexState::TWriteNodeRefsRequest>& requests)
+{
+    stateRequests.reserve(requests.size());
+    for (const auto& req: requests) {
+        stateRequests.push_back(req);
+    }
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
@@ -23,15 +72,16 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     //
     Y_UNIT_TEST(ShouldPopulateNodes)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 1, 0, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
         TMaybe<IIndexTabletDatabase::TNode> node;
         UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
 
         NProto::TNode realNode = nodeAttrs1;
 
-        state.UpdateState({TInMemoryIndexState::TWriteNodeRequest{
+        state.UpdateState({IInMemoryIndexState::TWriteNodeRequest{
             .NodeId = nodeId1,
             .Row = {
                 .CommitId = commitId2,
@@ -56,18 +106,19 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldEvictNodes)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 1, 0, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
         state.UpdateState(
-            {TInMemoryIndexState::TWriteNodeRequest{
+            {IInMemoryIndexState::TWriteNodeRequest{
                  .NodeId = nodeId1,
                  .Row =
                      {
                          .CommitId = commitId1,
                          .Node = nodeAttrs1,
                      }},
-             TInMemoryIndexState::TWriteNodeRequest{
+             IInMemoryIndexState::TWriteNodeRequest{
                  .NodeId = nodeId2,
                  .Row = {
                      .CommitId = commitId1,
@@ -81,10 +132,11 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldDeleteNodes)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(1, 0, 0, 0);
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 1, 0, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
-        state.UpdateState({TInMemoryIndexState::TWriteNodeRequest{
+        state.UpdateState({IInMemoryIndexState::TWriteNodeRequest{
             .NodeId = nodeId1,
             .Row = {
                 .CommitId = commitId1,
@@ -96,11 +148,96 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT(node.Defined());
 
         state.UpdateState(
-            {TInMemoryIndexState::TDeleteNodeRequest{.NodeId = nodeId1}});
+            {IInMemoryIndexState::TDeleteNodeRequest{.NodeId = nodeId1}});
 
         node.Clear();
         UNIT_ASSERT(!state.ReadNode(1, commitId1, node));
         UNIT_ASSERT(node.Empty());
+    }
+
+    Y_UNIT_TEST(ShouldBypassCacheReads)
+    {
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 1, 0, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        state.UpdateState({IInMemoryIndexState::TWriteNodeRequest{
+            .NodeId = nodeId1,
+            .Row = {
+                .CommitId = commitId1,
+                .Node = nodeAttrs1,
+            }}});
+
+        TMaybe<IIndexTabletDatabase::TNode> node;
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
+        UNIT_ASSERT(node.Defined());
+
+        cacheBypass.Activate(nodeId1, commitId2);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
+        UNIT_ASSERT(node.Defined());
+
+        node.Clear();
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Empty());
+
+        cacheBypass.Deactivate(nodeId1, commitId2);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Defined());
+
+        cacheBypass.Activate(
+            nodeId1,
+            InvalidCommitId);
+
+        node.Clear();
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId1, node));
+        UNIT_ASSERT(node.Empty());
+
+        node.Clear();
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Empty());
+
+        cacheBypass.Deactivate(
+            nodeId1,
+            InvalidCommitId);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Defined());
+    }
+
+    Y_UNIT_TEST(ShouldBypassCacheReadsUntilUnconfirmedWritesComplete)
+    {
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 1, 0, 0, 0);
+
+        state.UpdateState({IInMemoryIndexState::TWriteNodeRequest{
+            .NodeId = nodeId1,
+            .Row = {
+                .CommitId = commitId1,
+                .Node = nodeAttrs1,
+            }}});
+
+        cacheBypass.Activate(nodeId1, commitId2);
+
+        TMaybe<IIndexTabletDatabase::TNode> node;
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Empty());
+
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        node.Clear();
+        UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Empty());
+
+        cacheBypass.Deactivate(nodeId1, commitId2);
+
+        node.Clear();
+        UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
+        UNIT_ASSERT(node.Defined());
     }
 
     const TString attrName1 = "name1";
@@ -117,13 +254,14 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     //
     Y_UNIT_TEST(ShouldPopulateNodeAttrs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 1, 0, 0);
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 0, 1, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
         TMaybe<IIndexTabletDatabase::TNodeAttr> attr;
         UNIT_ASSERT(!state.ReadNodeAttr(nodeId1, commitId2, attrName1, attr));
 
-        state.UpdateState({TInMemoryIndexState::TWriteNodeAttrsRequest{
+        state.UpdateState({IInMemoryIndexState::TWriteNodeAttrsRequest{
             .NodeAttrsKey =
                 {
                     nodeId1,
@@ -153,15 +291,16 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldEvictNodeAttrs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 1, 0, 0);
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 0, 1, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
         state.UpdateState(
-            {TInMemoryIndexState::TWriteNodeAttrsRequest{
+            {IInMemoryIndexState::TWriteNodeAttrsRequest{
                  .NodeAttrsKey = {nodeId1, attrName1},
                  .NodeAttrsRow = {commitId1, attrValue1, attrVersion1},
              },
-             TInMemoryIndexState::TWriteNodeAttrsRequest{
+             IInMemoryIndexState::TWriteNodeAttrsRequest{
                  .NodeAttrsKey = {nodeId2, attrName2},
                  .NodeAttrsRow = {commitId1, attrValue2, attrVersion2},
              }});
@@ -173,10 +312,11 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     Y_UNIT_TEST(ShouldDeleteNodeAttrs)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 1, 0, 0);
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 0, 1, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
-        state.UpdateState({TInMemoryIndexState::TWriteNodeAttrsRequest{
+        state.UpdateState({IInMemoryIndexState::TWriteNodeAttrsRequest{
             .NodeAttrsKey = {nodeId1, attrName1},
             .NodeAttrsRow = {commitId1, attrValue1, attrVersion1},
         }});
@@ -186,7 +326,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT(attr.Defined());
 
         state.UpdateState(
-            {TInMemoryIndexState::TDeleteNodeAttrsRequest{nodeId1, attrName1}});
+            {IInMemoryIndexState::TDeleteNodeAttrsRequest{nodeId1, attrName1}});
 
         attr.Clear();
         UNIT_ASSERT(!state.ReadNodeAttr(nodeId1, commitId1, attrName1, attr));
@@ -207,61 +347,22 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     const TVector<ui64> rootNodeIds = {1, 2, 3, 4};
     const TVector<ui64> childNodeIds = {1001, 1002, 1003, 1004};
 
-namespace {
-
-    void CheckNodeRef(
-        const TInMemoryIndexState::TWriteNodeRefsRequest& request,
-        IIndexTabletDatabase::TNodeRef& ref)
-    {
-        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsKey.NodeId, ref.NodeId);
-        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsKey.Name, ref.Name);
-        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.ChildId, ref.ChildNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.CommitId, ref.MinCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, ref.MaxCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.ShardId, ref.ShardId);
-        UNIT_ASSERT_VALUES_EQUAL(
-            request.NodeRefsRow.ShardNodeName,
-            ref.ShardNodeName);
-    }
-
-    void ReadAndCheckNodeRef(
-        TInMemoryIndexState& state,
-        const TInMemoryIndexState::TWriteNodeRefsRequest& request)
-    {
-        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
-        UNIT_ASSERT(state.ReadNodeRef(
-            request.NodeRefsKey.NodeId,
-            request.NodeRefsRow.CommitId,
-            request.NodeRefsKey.Name,
-            ref));
-        CheckNodeRef(request, *ref);
-    }
-
-    void FillStateRequests(
-        TVector<TInMemoryIndexState::TIndexStateRequest>& stateRequests,
-        const TVector<TInMemoryIndexState::TWriteNodeRefsRequest>& requests)
-    {
-        stateRequests.reserve(requests.size());
-        for (const auto& req: requests) {
-            stateRequests.push_back(req);
-        }
-    }
-
-}   // namespace
-
     //
     // NodeRefs
     //
-    Y_UNIT_TEST(ShouldPopulateNodeRefs)
+    template <typename TNodeRefsCache>
+    void DoTestShouldPopulateNodeRefs()
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 0, 1, 0);
+        TCacheReadBypass cacheBypass;
+        using TStateImpl = TInMemoryIndexState<TNodeRefsCache>;
+        TStateImpl state(Alloc(), cacheBypass, 0, 0, 1, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
         UNIT_ASSERT(
             !state.ReadNodeRef(rootNodeIds[0], commitId1, nodeNames[0], ref));
 
-        TInMemoryIndexState::TWriteNodeRefsRequest request = {
+        IInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
             .NodeRefsRow = {
                 .CommitId = commitId2,
@@ -302,12 +403,23 @@ namespace {
         UNIT_ASSERT(ref.Empty());
     }
 
-    Y_UNIT_TEST(ShouldEvictNodeRefs)
+    Y_UNIT_TEST(ShouldPopulateNodeRefsStandard)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 0, 3, 0);
+        DoTestShouldPopulateNodeRefs<TStandardNodeRefsCache>();
+    }
 
-        const TVector<TInMemoryIndexState::TWriteNodeRefsRequest> requests = {
+    Y_UNIT_TEST(ShouldPopulateNodeRefsUnlimitedBTree)
+    {
+        DoTestShouldPopulateNodeRefs<TUnlimitedBTreeNodeRefsCache>();
+    }
+
+    Y_UNIT_TEST(ShouldEvictNodeRefsStandard)
+    {
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 0, 0, 3, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        const TVector<IInMemoryIndexState::TWriteNodeRefsRequest> requests = {
             {
                 .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
                 .NodeRefsRow = {
@@ -337,7 +449,7 @@ namespace {
             }
         };
 
-        TVector<TInMemoryIndexState::TIndexStateRequest> stateRequests;
+        TVector<IInMemoryIndexState::TIndexStateRequest> stateRequests;
         FillStateRequests(stateRequests, requests);
 
         state.UpdateState(stateRequests);
@@ -356,7 +468,7 @@ namespace {
             &nextName,
             nullptr,
             false));
-        UNIT_ASSERT(refs.size() == 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
         UNIT_ASSERT(nextName.empty());
 
         // all three refs should be in cache
@@ -367,7 +479,7 @@ namespace {
 
         // here the order should be 2, 1, 0
         // after we add one more ref, 0 should be evicted
-        TInMemoryIndexState::TWriteNodeRefsRequest request3 = {
+        IInMemoryIndexState::TWriteNodeRefsRequest request3 = {
             .NodeRefsKey = {rootNodeIds[3], nodeNames[3]},
             .NodeRefsRow = {
                 .CommitId = commitId1,
@@ -399,7 +511,7 @@ namespace {
             false));
 
         // write a ref with the same key but different value
-        TInMemoryIndexState::TWriteNodeRefsRequest request4 = {
+        IInMemoryIndexState::TWriteNodeRefsRequest request4 = {
             .NodeRefsKey = {rootNodeIds[3], nodeNames[3]},
             .NodeRefsRow = {
                 .CommitId = commitId2,
@@ -413,12 +525,125 @@ namespace {
         ReadAndCheckNodeRef(state, request4);
     }
 
-    Y_UNIT_TEST(ShouldDeleteNodeRefs)
+    Y_UNIT_TEST(ShouldNotEvictNodeRefsUnlimitedBTree)
     {
-        TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 0, 1, 0);
+        TCacheReadBypass cacheBypass;
+        using TStateImpl = TInMemoryIndexState<TUnlimitedBTreeNodeRefsCache>;
+        TStateImpl state(Alloc(), cacheBypass, 0, 0, 3, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
 
-        TInMemoryIndexState::TWriteNodeRefsRequest request = {
+        const TVector<IInMemoryIndexState::TWriteNodeRefsRequest> requests = {
+            {
+                .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
+                .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[0],
+                    .ShardId = shardIds[0],
+                    .ShardNodeName = shardNodeNames[0],
+                }
+            },
+            {
+                .NodeRefsKey = {rootNodeIds[0], nodeNames[1]},
+                .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[1],
+                    .ShardId = shardIds[1],
+                    .ShardNodeName = shardNodeNames[1],
+                }
+            },
+            {
+                .NodeRefsKey = {rootNodeIds[2], nodeNames[2]},
+                .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[2],
+                    .ShardId = shardIds[2],
+                    .ShardNodeName = shardNodeNames[2],
+                }
+            }
+        };
+
+        TVector<IInMemoryIndexState::TIndexStateRequest> stateRequests;
+        FillStateRequests(stateRequests, requests);
+
+        state.UpdateState(stateRequests);
+        state.MarkNodeRefsLoadComplete();
+
+        // read two first refs
+        TVector<IIndexTabletDatabase::TNodeRef> refs;
+        TString nextName;
+
+        UNIT_ASSERT(state.ReadNodeRefs(
+            requests[0].NodeRefsKey.NodeId,
+            commitId1,
+            requests[0].NodeRefsKey.Name,
+            refs,
+            Max<ui32>(),
+            &nextName,
+            nullptr,
+            false));
+        UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
+        UNIT_ASSERT(nextName.empty());
+
+        // all three refs should be in cache
+        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+        for (const auto& request: requests) {
+            ReadAndCheckNodeRef(state, request);
+        }
+
+        IInMemoryIndexState::TWriteNodeRefsRequest request3 = {
+            .NodeRefsKey = {rootNodeIds[3], nodeNames[3]},
+            .NodeRefsRow = {
+                .CommitId = commitId1,
+                .ChildId = childNodeIds[3],
+                .ShardId = shardIds[3],
+                .ShardNodeName = shardNodeNames[3],
+            }
+        };
+        state.UpdateState({request3});
+
+        ReadAndCheckNodeRef(state, requests[0]);
+        ReadAndCheckNodeRef(state, requests[1]);
+        ReadAndCheckNodeRef(state, requests[2]);
+        ReadAndCheckNodeRef(state, request3);
+
+        // ReadNodeRefs should still return true since nothing's evicted
+        refs.clear();
+        UNIT_ASSERT(state.ReadNodeRefs(
+            requests[0].NodeRefsKey.NodeId,
+            commitId1,
+            requests[0].NodeRefsKey.Name,
+            refs,
+            Max<ui32>(),
+            &nextName,
+            nullptr,
+            false));
+        UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
+        UNIT_ASSERT(nextName.empty());
+
+        // write a ref with the same key but different value
+        IInMemoryIndexState::TWriteNodeRefsRequest request4 = {
+            .NodeRefsKey = {rootNodeIds[3], nodeNames[3]},
+            .NodeRefsRow = {
+                .CommitId = commitId2,
+                .ChildId = childNodeIds[0],
+                .ShardId = shardIds[1],
+                .ShardNodeName = shardNodeNames[2],
+            }
+        };
+        state.UpdateState({request4});
+
+        ReadAndCheckNodeRef(state, request4);
+    }
+
+    template <typename TNodeRefsCache>
+    void DoTestShouldDeleteNodeRefs()
+    {
+        TCacheReadBypass cacheBypass;
+        using TStateImpl = TInMemoryIndexState<TNodeRefsCache>;
+        TStateImpl state(Alloc(), cacheBypass, 0, 0, 1, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        IInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
             .NodeRefsRow = {
                 .CommitId = commitId1,
@@ -446,7 +671,7 @@ namespace {
             ref));
         UNIT_ASSERT(ref.Defined());
 
-        state.UpdateState({TInMemoryIndexState::TDeleteNodeRefsRequest{
+        state.UpdateState({IInMemoryIndexState::TDeleteNodeRefsRequest{
             request.NodeRefsKey.NodeId,
             request.NodeRefsKey.Name}});
 
@@ -457,6 +682,16 @@ namespace {
             request.NodeRefsKey.Name,
             ref));
         UNIT_ASSERT(ref.Empty());
+    }
+
+    Y_UNIT_TEST(ShouldDeleteNodeRefsStandard)
+    {
+        DoTestShouldDeleteNodeRefs<TStandardNodeRefsCache>();
+    }
+
+    Y_UNIT_TEST(ShouldDeleteNodeRefsUnlimitedBTree)
+    {
+        DoTestShouldDeleteNodeRefs<TUnlimitedBTreeNodeRefsCache>();
     }
 }
 

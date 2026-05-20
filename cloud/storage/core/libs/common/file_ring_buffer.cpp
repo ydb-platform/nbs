@@ -377,30 +377,19 @@ private:
 
     void ValidateDataStructure()
     {
-        TEntryInfo front = GetFrontEntry();
-        TEntryInfo back = front;
-        TEntryInfo cur = front;
+        TEntryInfo cur = GetFrontEntry();
 
-        if (front.IsInvalid() || front.ActualPos != Header()->ReadPos) {
+        if (cur.IsInvalid() || cur.ActualPos != Header()->ReadPos) {
             SetCorrupted();
+            return;
         }
 
         while (cur.HasValue()) {
-            back = cur;
             cur = GetNextEntry(cur);
         }
 
         if (cur.IsInvalid() || cur.ActualPos != Header()->WritePos) {
             SetCorrupted();
-        }
-
-        if (front.HasValue()) {
-            Y_ABORT_UNLESS(back.HasValue());
-            Header()->ReadPos = front.ActualPos;
-            Header()->WritePos = back.GetNextEntryPos();
-        } else {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
         }
     }
 
@@ -531,6 +520,9 @@ public:
         }
 
         if (Header()->Version == VERSION_PREV) {
+            // Migration needs access to entries
+            Data = TEntriesData(
+                GetMappedData(Header()->DataOffset, Header()->DataCapacity));
             Migrate();
         }
 
@@ -553,7 +545,9 @@ public:
                 }
             });
 
-        EraseFreeEntriesFromFront();
+        if (!IsCorrupted()) {
+            EraseFreeEntriesFromFront();
+        }
     }
 
     bool PushBack(TStringBuf data)
@@ -672,6 +666,10 @@ public:
 
     bool Free(const void* ptr)
     {
+        if (IsCorrupted()) {
+            return false;
+        }
+
         auto it = EntryMap.find(ptr);
         if (it == EntryMap.end()) {
             return false;

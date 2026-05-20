@@ -88,6 +88,7 @@ SRCS(
     tablet_actor_writedata.cpp
     tablet_actor_write_compactionmap.cpp
     tablet_actor_zerorange.cpp
+    tablet_cache_read_bypass.cpp
     tablet_counters.cpp
     tablet_database.cpp
     tablet_schema.cpp
@@ -109,6 +110,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/fastshard/iface
+    cloud/filestore/libs/storage/fastshard/impl/mem
     cloud/filestore/libs/storage/model
     cloud/filestore/libs/storage/tablet/actors
     cloud/filestore/libs/storage/tablet/events

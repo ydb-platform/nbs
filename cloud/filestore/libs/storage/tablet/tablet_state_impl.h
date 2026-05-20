@@ -68,8 +68,9 @@ struct TIndexTabletState::TImpl
     TCompactionMap CompactionMap;
     TGarbageQueue GarbageQueue;
     TTruncateQueue TruncateQueue;
+    TCacheReadBypass CacheReadBypass;
     TReadAheadCache ReadAheadCache;
-    TInMemoryIndexState InMemoryIndexState;
+    std::unique_ptr<IInMemoryIndexState> InMemoryIndexState;
     TSet<ui64> OrphanNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
     THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
@@ -97,7 +98,6 @@ struct TIndexTabletState::TImpl
         , CompactionMap(registry.GetAllocator(EAllocatorTag::CompactionMap))
         , GarbageQueue(registry.GetAllocator(EAllocatorTag::GarbageQueue))
         , ReadAheadCache(registry.GetAllocator(EAllocatorTag::ReadAheadCache))
-        , InMemoryIndexState(registry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache))
         , ThrottlingPolicy(TThrottlerConfig())
     {}
 };
