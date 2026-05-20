@@ -1001,12 +1001,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         ui32 fileNum = 0;
         const ui32 fileCount = 16;
         const TString fnamePrefix = "file_";
-        const TString mainFsId = "abcdefgfilesystem-zyxwvutsrqponmlkjifed";
-        const TVector<TString> shardId = {
-            mainFsId,
-            mainFsId + "_s1",
-            mainFsId + "_s32",
-            mainFsId + "_s475"};
 
         auto cmpNodeRefs = [](const IIndexTabletDatabase::TNodeRef& ref1,
                               const IIndexTabletDatabase::TNodeRef& ref2)
@@ -1018,156 +1012,170 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             UNIT_ASSERT_EQUAL(ref1.ChildNodeId, ref2.ChildNodeId);
         };
 
-        // ShardId compression modes are ordered so that any ShardId written
-        // using a given mode can be read using the same or further mode.
-        TVector<NProtoPrivate::EShardIdCompressionMode> compressionModes = {
-            NProtoPrivate::SICM_NO_COMPRESSION,
-            NProtoPrivate::SICM_READ,
-            NProtoPrivate::SICM_READ_WRITE,
-            NProtoPrivate::SICM_READ_WRITE_CONVERT};
+        const TVector<TString> mainFsIds = {
+            "testfilesystem-testfilesystem1234id",
+            "_s_s123X",
+            "_s",
+            "nfs_shared"};
 
-        for (size_t writeModeNum = 0; writeModeNum < compressionModes.size();
-             ++writeModeNum)
-        {
-            const NProtoPrivate::EShardIdCompressionMode writeMode =
-                compressionModes[writeModeNum];
-            // Create refs that refernce nodes in shards
-            TVector<IIndexTabletDatabase::TNodeRef> nodeRefs;
-            for (ui32 i = 0; i < fileCount; ++i) {
-                IIndexTabletDatabase::TNodeRef nodeRef = {
-                    .NodeId = nodeId,
-                    .Name = Sprintf("file_%04u", fileNum),
-                    .ChildNodeId = 0,
-                    .ShardId = shardId[fileNum % shardId.size()],
-                    .ShardNodeName = CreateGuidAsString(),
-                    .MinCommitId = commitId,
-                    .MaxCommitId = commitId};
-                nodeRefs.push_back(nodeRef);
-                fileNum++;
-            }
-            // Create refs that reference "local" nodes
-            for (ui32 i = 0; i < fileCount; ++i) {
-                IIndexTabletDatabase::TNodeRef nodeRef = {
-                    .NodeId = nodeId,
-                    .Name = Sprintf("file_%04u", fileNum),
-                    .ChildNodeId = fileNum,
-                    .ShardId = "",
-                    .ShardNodeName = "",
-                    .MinCommitId = commitId,
-                    .MaxCommitId = commitId};
-                nodeRefs.push_back(nodeRef);
-                fileNum++;
-            }
+        for (const auto& mainFsId: mainFsIds) {
+            const TVector<TString> shardId = {
+                mainFsId,
+                mainFsId + "_s1",
+                mainFsId + "_s32",
+                mainFsId + "_s475"};
 
-            // Write nodeRefs to DB
-            for (const auto& nodeRef: nodeRefs) {
-                executor.WriteTx(
-                    [&](TIndexTabletDatabase db)
-                    {
-                        NProto::TNode attrs;
-                        db.WriteNodeRef(
-                            nodeRef.NodeId,
-                            nodeRef.MinCommitId,
-                            nodeRef.Name,
-                            nodeRef.ChildNodeId,
-                            nodeRef.ShardId,
-                            nodeRef.ShardNodeName,
-                            false,
-                            writeMode);
-                    });
-            }
+                // ShardId compression modes are ordered so that any ShardId written
+            // using a given mode can be read using the same or further mode.
+            TVector<NProtoPrivate::EShardIdCompressionMode> compressionModes = {
+                NProtoPrivate::SICM_NO_COMPRESSION,
+                NProtoPrivate::SICM_READ,
+                NProtoPrivate::SICM_READ_WRITE,
+                NProtoPrivate::SICM_READ_WRITE_CONVERT};
 
-            for (size_t readModeNum = writeModeNum;
-                 readModeNum < compressionModes.size();
-                 ++readModeNum)
+            for (size_t writeModeNum = 0; writeModeNum < compressionModes.size();
+                ++writeModeNum)
             {
-                const NProtoPrivate::EShardIdCompressionMode readMode =
-                    compressionModes[readModeNum];
+                const NProtoPrivate::EShardIdCompressionMode writeMode =
+                    compressionModes[writeModeNum];
+                // Create refs that refernce nodes in shards
+                TVector<IIndexTabletDatabase::TNodeRef> nodeRefs;
+                for (ui32 i = 0; i < fileCount; ++i) {
+                    IIndexTabletDatabase::TNodeRef nodeRef = {
+                        .NodeId = nodeId,
+                        .Name = Sprintf("file_%04u", fileNum),
+                        .ChildNodeId = 0,
+                        .ShardId = shardId[fileNum % shardId.size()],
+                        .ShardNodeName = CreateGuidAsString(),
+                        .MinCommitId = commitId,
+                        .MaxCommitId = commitId};
+                    nodeRefs.push_back(nodeRef);
+                    fileNum++;
+                }
+                // Create refs that reference "local" nodes
+                for (ui32 i = 0; i < fileCount; ++i) {
+                    IIndexTabletDatabase::TNodeRef nodeRef = {
+                        .NodeId = nodeId,
+                        .Name = Sprintf("file_%04u", fileNum),
+                        .ChildNodeId = fileNum,
+                        .ShardId = "",
+                        .ShardNodeName = "",
+                        .MinCommitId = commitId,
+                        .MaxCommitId = commitId};
+                    nodeRefs.push_back(nodeRef);
+                    fileNum++;
+                }
 
-                // Read NodeRefs one by one.
+                // Write nodeRefs to DB
                 for (const auto& nodeRef: nodeRefs) {
-                    executor.ReadTx(
+                    executor.WriteTx(
                         [&](TIndexTabletDatabase db)
                         {
-                            TMaybe<IIndexTabletDatabase::TNodeRef> ref;
-                            UNIT_ASSERT(db.ReadNodeRef(
+                            NProto::TNode attrs;
+                            db.WriteNodeRef(
                                 nodeRef.NodeId,
                                 nodeRef.MinCommitId,
                                 nodeRef.Name,
-                                ref,
-                                readMode,
-                                mainFsId));
-                            cmpNodeRefs(nodeRef, ref.GetRef());
+                                nodeRef.ChildNodeId,
+                                nodeRef.ShardId,
+                                nodeRef.ShardNodeName,
+                                false,
+                                writeMode);
                         });
                 }
 
-                // Read node refs by calling two overloads
-                // IIndexTabletDatabase::ReadNodeRefs.
-                ui64 startNodeId = nodeRefs[0].NodeId;
-                TString startCookie = nodeRefs[0].Name;
-                ui64 nextNodeId = 0;
-                TString nextCookie;
-                TVector<IIndexTabletDatabase::TNodeRef> refs;
-                while (true) {
-                    executor.ReadTx(
-                        [&](TIndexTabletDatabase db)
-                        {
-                            UNIT_ASSERT(db.ReadNodeRefs(
-                                startNodeId,
-                                startCookie,
-                                (fileCount + 1) / 2,
-                                refs,
-                                nextNodeId,
-                                nextCookie,
-                                readMode,
-                                mainFsId));
-                        });
+                for (size_t readModeNum = writeModeNum;
+                    readModeNum < compressionModes.size();
+                    ++readModeNum)
+                {
+                    const NProtoPrivate::EShardIdCompressionMode readMode =
+                        compressionModes[readModeNum];
 
-                    if (nextCookie == startCookie && nextNodeId == startNodeId)
-                    {
-                        break;
+                    // Read NodeRefs one by one.
+                    for (const auto& nodeRef: nodeRefs) {
+                        executor.ReadTx(
+                            [&](TIndexTabletDatabase db)
+                            {
+                                TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+                                UNIT_ASSERT(db.ReadNodeRef(
+                                    nodeRef.NodeId,
+                                    nodeRef.MinCommitId,
+                                    nodeRef.Name,
+                                    ref,
+                                    readMode,
+                                    mainFsId));
+                                cmpNodeRefs(nodeRef, ref.GetRef());
+                            });
                     }
-                    startCookie = nextCookie;
-                    startNodeId = nextNodeId;
-                }
 
-                UNIT_ASSERT_EQUAL(nodeRefs.size(), refs.size());
+                    // Read node refs by calling two overloads
+                    // IIndexTabletDatabase::ReadNodeRefs.
+                    ui64 startNodeId = nodeRefs[0].NodeId;
+                    TString startCookie = nodeRefs[0].Name;
+                    ui64 nextNodeId = 0;
+                    TString nextCookie;
+                    TVector<IIndexTabletDatabase::TNodeRef> refs;
+                    while (true) {
+                        executor.ReadTx(
+                            [&](TIndexTabletDatabase db)
+                            {
+                                UNIT_ASSERT(db.ReadNodeRefs(
+                                    startNodeId,
+                                    startCookie,
+                                    (fileCount + 1) / 2,
+                                    refs,
+                                    nextNodeId,
+                                    nextCookie,
+                                    readMode,
+                                    mainFsId));
+                            });
 
-                ui32 nodeRefsSize = 0;
-                for (size_t i = 0; i < nodeRefs.size(); ++i) {
-                    cmpNodeRefs(nodeRefs[i], refs[i]);
-                    nodeRefsSize += nodeRefs[i].CalculateByteSize();
-                }
-
-                startCookie = nodeRefs[0].Name;
-                refs.clear();
-                while (true) {
-                    executor.ReadTx(
-                        [&](TIndexTabletDatabase db)
+                        if (nextCookie == startCookie && nextNodeId == startNodeId)
                         {
-                            UNIT_ASSERT(db.ReadNodeRefs(
-                                nodeId,
-                                commitId,
-                                startCookie,
-                                refs,
-                                (nodeRefsSize + 1) / 2,
-                                readMode,
-                                mainFsId,
-                                &nextCookie,
-                                nullptr,
-                                false /* noAutoPrecharge */,
-                                NProto::LNSM_FULL_ROW));
-                        });
-
-                    if (nextCookie == startCookie) {
-                        break;
+                            break;
+                        }
+                        startCookie = nextCookie;
+                        startNodeId = nextNodeId;
                     }
-                    startCookie = nextCookie;
-                }
 
-                UNIT_ASSERT_EQUAL(nodeRefs.size(), refs.size());
-                for (size_t i = 0; i < nodeRefs.size(); ++i) {
-                    cmpNodeRefs(nodeRefs[i], refs[i]);
+                    UNIT_ASSERT_EQUAL(nodeRefs.size(), refs.size());
+
+                    ui32 nodeRefsSize = 0;
+                    for (size_t i = 0; i < nodeRefs.size(); ++i) {
+                        cmpNodeRefs(nodeRefs[i], refs[i]);
+                        nodeRefsSize += nodeRefs[i].CalculateByteSize();
+                    }
+
+                    startCookie = nodeRefs[0].Name;
+                    refs.clear();
+                    while (true) {
+                        executor.ReadTx(
+                            [&](TIndexTabletDatabase db)
+                            {
+                                UNIT_ASSERT(db.ReadNodeRefs(
+                                    nodeId,
+                                    commitId,
+                                    startCookie,
+                                    refs,
+                                    (nodeRefsSize + 1) / 2,
+                                    readMode,
+                                    mainFsId,
+                                    &nextCookie,
+                                    nullptr,
+                                    false /* noAutoPrecharge */,
+                                    NProto::LNSM_FULL_ROW));
+                            });
+
+                        if (nextCookie == startCookie) {
+                            break;
+                        }
+                        startCookie = nextCookie;
+                    }
+
+                    UNIT_ASSERT_EQUAL(nodeRefs.size(), refs.size());
+                    for (size_t i = 0; i < nodeRefs.size(); ++i) {
+                        cmpNodeRefs(nodeRefs[i], refs[i]);
+                    }
                 }
             }
         }
@@ -1196,10 +1204,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         constexpr ui64 nodeId = 1;
 
         TVector<std::pair<TString, TString>> malformedShardIds = {
-            {"abcd_sx", CreateGuidAsString()},
-            {"abcd_s", CreateGuidAsString()},
             {"abcd_s0", CreateGuidAsString()},
-            {"abcd_s1235xx", CreateGuidAsString()},
             {"abcd_s123456", CreateGuidAsString()},
             {"abcd_s123", "not a guid"}};
 

@@ -36,11 +36,29 @@ NProto::TError ValidateCreateFileSystemRequest(
         }
     }
 
-    if (fileSystemId.find(ShardNumPrefix) != TString::npos) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "Can't create a filesystem with the ID that contains "
-            << TString(ShardNumPrefix).Quote()
-            << ", because it used as a prefix for a ShardNode");
+    const auto shardPrefixPos = fileSystemId.find(ShardNumPrefix);
+    if (shardPrefixPos != TString::npos &&
+        shardPrefixPos + ShardNumPrefix.size() < fileSystemId.size())
+    {
+        bool hasOnlyDigits = true;
+        for (auto i = shardPrefixPos + ShardNumPrefix.size();
+             i < fileSystemId.size();
+             ++i)
+        {
+            if (!std::isdigit(fileSystemId[i])) {
+                hasOnlyDigits = false;
+                break;
+            }
+        }
+
+        if (hasOnlyDigits) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Can't create a filesystem with the ID that ends with "
+                    << TString(ShardNumPrefix).Quote()
+                    << " followed by digits.");
+        }
     }
 
     const auto& cloudId = request.GetCloudId();

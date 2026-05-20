@@ -8882,13 +8882,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         for (const char* badFsName:
-             {"\rwq2e\n123123\t", "files\x88tore_s48", "ADHlkjsd_s64"})
+             {"\rwq2e\n123123\t", "files\x88tore_s48", "fs_s1234"})
         {
             service.SendCreateFileStoreRequest(badFsName, 1024);
             auto response = service.RecvCreateFileStoreResponse();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        for (const char* goodFsName:
+             {"nfs_shared", "_s", "fs_s1234_s", "testfs-fs98723rhfhnkJKid"})
+        {
+            service.SendCreateFileStoreRequest(goodFsName, 1024);
+            auto response = service.RecvCreateFileStoreResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
                 response->GetError().GetCode(),
                 response->GetErrorReason());
         }

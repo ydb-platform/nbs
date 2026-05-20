@@ -48,17 +48,21 @@ bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId()
     // Parse ShardId and ShardNodeName that are in text format.
     const size_t pos = ShardId.rfind(ShardNumPrefix);
     ui64 shardNo = 0;
-    // If ShardId does not contain "_s", it's a reference to the main
-    // filesystem.
-    if (pos != std::string::npos) {
+
+    // If ShardId ends with "_s[0-9]+", it references a shard, otherwise it
+    // references a main filesystem.
+    if (pos != TString::npos) {
         const char* pStart = ShardId.c_str() + pos + ShardNumPrefix.size();
         char* pEnd = nullptr;
         shardNo = std::strtoul(pStart, &pEnd, 10);
-        // Verify that ShardId is well formed.
+
         if (pEnd - pStart == 0 ||
-            static_cast<size_t>(pEnd - ShardId.c_str()) != ShardId.size() ||
-            shardNo == 0 || shardNo > MaxShardCount)
+            static_cast<size_t>(pEnd - ShardId.c_str()) != ShardId.size())
         {
+            shardNo = 0;
+        } else if (shardNo == 0 || shardNo > MaxShardCount) {
+            // If "_s" is followed by digits till the end of the ShardId,
+            // this digits should represent a number in (0, MaxShardCount]
             return false;
         }
     }
