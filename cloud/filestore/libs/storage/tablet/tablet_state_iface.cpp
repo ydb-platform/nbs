@@ -41,7 +41,7 @@ void AppendStringByNumber(TNumType num, TString& str)
 
 bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId()
 {
-    if (ShardId.empty()) {
+    if (ShardId.empty() || IsEncoded()) {
         return true;
     }
 
