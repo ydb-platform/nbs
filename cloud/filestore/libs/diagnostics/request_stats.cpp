@@ -41,7 +41,8 @@ bool IsReadWriteRequest(EFileStoreRequest rt)
 
 const auto REQUEST_COUNTERS_OPTIONS =
     TRequestCounters::EOption::ReportDataPlaneHistogram |
-    TRequestCounters::EOption::ReportControlPlaneHistogram;
+    TRequestCounters::EOption::ReportControlPlaneHistogram |
+    TRequestCounters::EOption::LazyRequestInitialization;
 
 TRequestCountersPtr MakeRequestCounters(
     ITimerPtr timer,
@@ -459,8 +460,7 @@ public:
         , Counters{MakeRequestCounters(
             timer,
             *counters,
-            REQUEST_COUNTERS_OPTIONS
-                | TRequestCounters::EOption::LazyRequestInitialization,
+            REQUEST_COUNTERS_OPTIONS,
             histogramCounterOptions)}
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
