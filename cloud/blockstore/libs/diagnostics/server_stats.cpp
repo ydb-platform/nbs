@@ -567,6 +567,7 @@ void TServerStats::RequestCompleted(
         << ", unaligned: " << req.Unaligned
         << maxTimeSuppressedMessage
         << ", error: " << FormatError(error)
+        << ", peer: " << req.Peer
         << ")");
 }
 
