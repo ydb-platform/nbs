@@ -186,6 +186,7 @@ struct TBackgroundOpsBackpressureStatus
     const EBackgroundOpBackpressureStatus FlushBytesItemCount;
     const EBackgroundOpBackpressureStatus Compaction;
     const EBackgroundOpBackpressureStatus Cleanup;
+    const EBackgroundOpBackpressureStatus CollectGarbage;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,6 +208,7 @@ struct TTrackedUnconfirmedData
 {
     NProto::TUnconfirmedData Data;
     TString SessionId;
+    NActors::TActorId PipeServerId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,6 +266,9 @@ protected:
     // Recovery gate for data operations: true when startup unconfirmed flow
     // has completed recovery confirmation.
     bool UnconfirmedRecoveryReady = false;
+
+protected:
+    void SetUnconfirmedRecoveryReady(bool value);
 
 public:
     TIndexTabletState();
@@ -413,6 +418,8 @@ public:
     }
 
     ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
+
+    void InitInMemoryIndexState(const TStorageConfig& config);
 
     NProto::TError SelectShard(
         NProto::ENodeType nodeType,
@@ -964,6 +971,7 @@ public:
         const ui64 FlushBytesItemCount;
         const ui64 CompactionScore;
         const ui64 CleanupScore;
+        const ui64 CollectGarbage;
     };
 
     using TBackpressureValues = TBackpressureThresholds;
@@ -986,6 +994,9 @@ public:
     bool HasDataOverlapWithUnconfirmed(
         ui64 nodeId,
         const TByteRange& requestRange) const;
+
+    void ActivateCacheReadBypass(ui64 nodeId, ui64 commitId);
+    void DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId);
 
     //
     // FreshBytes
@@ -1524,6 +1535,7 @@ public:
     bool TryFillDescribeResult(
         ui64 nodeId,
         ui64 handle,
+        ui64 commitId,
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
     TMaybe<TByteRange> RegisterDescribe(
@@ -1542,9 +1554,9 @@ public:
     // In-memory index state.
     //
 
-    IIndexTabletDatabase& AccessInMemoryIndexState();
+    IIndexTabletDatabase* AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(
-        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
+        const TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
     void MarkNodeRefsLoadComplete();
     void MarkNodeRefsExhaustive(ui64 nodeId);
     TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;

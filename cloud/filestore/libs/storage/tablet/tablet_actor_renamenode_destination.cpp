@@ -558,21 +558,13 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         }
 
         if (!args.NewChildRef->IsExternal()) {
-            if (GetFileSystem().GetForceDirectoryCreationInShards()) {
-                Metrics.RenameNotSupportedErrorCount.fetch_add(
-                    1,
-                    std::memory_order_relaxed);
+            Metrics.RenameNotSupportedErrorCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
 
-                args.Error = ErrorRenameNotSupported(
-                    args.Request.GetOriginalRequest().GetNodeId(),
-                    args.Request.GetNewParentId());
-            } else {
-                auto message = ReportRenameNodeRequestForLocalNode(
-                    TStringBuilder() << "RenameNodeInDestination: "
-                        << args.Request.ShortDebugString());
-                args.Error = MakeError(E_ARGUMENT, std::move(message));
-            }
-
+            args.Error = ErrorRenameNotSupported(
+                args.Request.GetOriginalRequest().GetNodeId(),
+                args.Request.GetNewParentId());
             return true;
         }
 
@@ -822,8 +814,7 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
         if (op.HasUnlinkNodeInShardRequest()) {
-            // rename + unlink is pretty rare so let's keep INFO level here
-            LOG_INFO(
+            LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",

@@ -986,7 +986,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             CreateGuidAsString());
         auto response = tablet.RecvRenameNodeInDestinationResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_ARGUMENT,
+            E_FS_XDEV,
             response->GetStatus(),
             FormatError(response->GetError()));
     }

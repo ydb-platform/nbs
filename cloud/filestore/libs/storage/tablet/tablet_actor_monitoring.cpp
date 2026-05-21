@@ -1194,6 +1194,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             DUMP_BACKPRESSURE_FIELD(FlushBytesItemCount);
             DUMP_BACKPRESSURE_FIELD(CompactionScore);
             DUMP_BACKPRESSURE_FIELD(CleanupScore);
+            DUMP_BACKPRESSURE_FIELD(CollectGarbage);
 
 #undef DUMP_BACKPRESSURE_FIELD
         }

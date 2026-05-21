@@ -110,6 +110,7 @@ public:
     ui32 GetCompactionThresholdForBackpressure() const;
     ui64 GetFlushBytesThresholdForBackpressure() const;
     ui64 GetFlushBytesItemCountThresholdForBackpressure() const;
+    ui64 GetCollectGarbageThresholdForBackpressure() const;
     ui32 GetBackpressureThresholdPercentageForBackgroundOpsPriority() const;
 
     TString GetHDDSystemChannelPoolKind() const;
@@ -264,6 +265,8 @@ public:
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInMainTablet() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;

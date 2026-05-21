@@ -758,10 +758,15 @@ void TIndexTabletActor::HandleDescribeData(
 
     auto* handle = FindHandle(msg->Record.GetHandle());
     const ui64 nodeId = handle ? handle->GetNodeId() : InvalidNodeId;
+    const ui64 commitId = handle
+        ? handle->GetCommitId()
+        : GetCurrentCommitId();
+
     NProtoPrivate::TDescribeDataResponse result;
     const bool filled = TryFillDescribeResult(
         nodeId,
         msg->Record.GetHandle(),
+        commitId,
         byteRange,
         &result);
 

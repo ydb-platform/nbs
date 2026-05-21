@@ -411,7 +411,8 @@ void TCreateNodeInShardActor::ReplyAndDie(
         std::move(Result),
         std::move(ProfileLogRequest),
         NodeAlreadyExists,
-        CreateNodeRetryCount));
+        CreateNodeRetryCount,
+        TNodeRefKey{Request.GetOriginalNodeId(), Request.GetOriginalName()}));
 
     Die(ctx);
 }
@@ -756,6 +757,16 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                 InvalidCommitId
             };
         } else {
+            // When the NodeRef references a node in a shard we need to lock it
+            // to prevent the node from being unlinked and to avoid races with
+            // other concurrent CreateHandle/CreateNode requests.
+            if (!TryLockNodeRef({args.ParentNodeId, args.Name})) {
+                args.Error = MakeError(E_REJECTED, TStringBuilder()
+                        << "node ref " << args.ParentNodeId << " " << args.Name
+                        << " is locked for CreateNode");
+                return;
+            }
+
             // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
             // use CommitId here in order not to generate some other unique ui64
             args.OpLogEntry.SetEntryId(args.CommitId);
@@ -767,6 +778,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             shardRequest->SetNodeId(RootNodeId);
             shardRequest->SetName(args.ShardNodeName);
             shardRequest->ClearShardFileSystemId();
+            shardRequest->SetOriginalNodeId(args.ParentNodeId);
+            shardRequest->SetOriginalName(args.Name);
             const bool serialized = args.ProfileLogRequest.SerializeToString(
                 args.OpLogEntry.MutableProfileLogRequest());
             if (!serialized) {
@@ -954,6 +967,8 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
     WorkerActors.erase(ev->Sender);
 
     EndNodeCreateInShard(msg->NodeName);
+
+    UnlockNodeRef(msg->OriginalNodeRefKey);
 
     Metrics.NodeExistsWhileCreatingInShardCount.fetch_add(
         msg->NodeAlreadyExists,

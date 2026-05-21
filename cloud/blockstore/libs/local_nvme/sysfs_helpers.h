@@ -31,6 +31,11 @@ struct ISysFs
 
     virtual auto GetNVMeDeviceFromPCIAddr(const TString& pciAddr)
         -> NProto::TNVMeDevice = 0;
+
+    virtual auto GetVfioDeviceForPCIDevice(const TString& pciAddr)
+        -> TString = 0;
+
+    [[nodiscard]] virtual auto IsVfioDevSupported() const -> bool = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -929,11 +929,8 @@ void TAlterFileStoreActor::HandleAlterFileStoreForAlterResponse(
     if (HasError(error)) {
         LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
             "[%s] Altering of main filestore failed: %s",
-            GetOperationString(),
             FileSystemId.Quote().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
-
-        return;
     }
 
     ReplyAndDie(ctx, error);

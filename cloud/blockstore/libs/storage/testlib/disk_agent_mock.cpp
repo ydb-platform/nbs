@@ -47,9 +47,12 @@ void TDiskAgentMock::HandleAcquireNVMeDevice(
              replyFrom = ctx.SelfID,
              cookie = ev->Cookie](const auto& future)
             {
+                const auto& [device, error] = future.GetValue();
+
                 auto response = std::make_unique<
                     TEvDiskAgentPrivate::TEvAcquireNVMeDeviceResponse>(
-                    future.GetValue());
+                    error,
+                    device);
 
                 actorSystem->Send(new IEventHandle{
                     replyTo,

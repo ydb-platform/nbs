@@ -685,6 +685,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshBlocksWriterEnabled,             bool,        false              )\
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
+    xxx(MaxInFlightCmsRequests,               ui32,        0                  )\
     xxx(OverlappingRequestsPolicy,                                             \
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
@@ -695,6 +696,11 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
         bool,                                                                  \
         false                                                                 )\
+                                                                               \
+    xxx(VolumeBalancerGentlePreemptionEnabled,      bool,       false         )\
+    xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
+                                                                               \
+    xxx(SplitByCompactionRangeMaxBlobCount,   ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

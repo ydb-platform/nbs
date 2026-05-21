@@ -137,6 +137,13 @@ void TLocalNVMeDeviceOpsActor::HandleAcquireNVMeDeviceResponse(
 
     auto response =
         std::make_unique<TEvService::TEvExecuteActionResponse>(msg->GetError());
+
+    if (!HasError(msg->GetError())) {
+        google::protobuf::util::MessageToJsonString(
+            msg->NVMeDevice,
+            response->Record.MutableOutput());
+    }
+
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -247,8 +254,7 @@ STFUNC(TLocalNVMeDeviceOpsActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListNVMeDevicesActor final
-    : public TLocalNVMeDeviceOpsActor
+class TListNVMeDevicesActor final: public TLocalNVMeDeviceOpsActor
 {
 public:
     using TLocalNVMeDeviceOpsActor::TLocalNVMeDeviceOpsActor;
@@ -269,8 +275,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAcquireNVMeDeviceActor final
-    : public TLocalNVMeDeviceOpsActor
+class TAcquireNVMeDeviceActor final: public TLocalNVMeDeviceOpsActor
 {
 public:
     using TLocalNVMeDeviceOpsActor::TLocalNVMeDeviceOpsActor;
@@ -306,8 +311,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReleaseNVMeDeviceActor final
-    : public TLocalNVMeDeviceOpsActor
+class TReleaseNVMeDeviceActor final: public TLocalNVMeDeviceOpsActor
 {
 public:
     using TLocalNVMeDeviceOpsActor::TLocalNVMeDeviceOpsActor;

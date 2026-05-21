@@ -43,10 +43,8 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
     return res;
 }
 
-bool TTestStorage::Commit()
-{
-    return true;
-}
+void TTestStorage::Commit()
+{}
 
 void TTestStorage::Free(const void* ptr)
 {

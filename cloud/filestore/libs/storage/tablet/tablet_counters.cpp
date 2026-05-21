@@ -139,6 +139,10 @@ void TTabletMetrics::Register(
         metrType)                                                              \
 // REGISTER_AGGREGATABLE_SUM_EXT
 
+#define REGISTER_AGGREGATABLE_MAX(name, metrType)                              \
+    REGISTER(AggregatableFsRegistry, name, EAggregationType::AT_MAX, metrType) \
+    // REGISTER_AGGREGATABLE_MAX
+
 #define REGISTER_LOCAL(name, metrType)                                         \
     REGISTER(                                                                  \
         FsRegistry,                                                            \
@@ -272,6 +276,10 @@ void TTabletMetrics::Register(
     REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CleanupBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CollectGarbageBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(
+        CollectGarbageBackpressureThreshold,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -282,6 +290,19 @@ void TTabletMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
+
+    REGISTER_AGGREGATABLE_MAX(
+        HandleStatsByNodeMaxSize,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        HandleStatsByNodeSumSize,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_MAX(
+        HandleStatsByNodeMaxTotalSize,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        HandleStatsByNodeSumTotalSize,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(
         NodesOpenForWritingBySingleSession,
@@ -360,6 +381,11 @@ void TTabletMetrics::Register(
         EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM_EXT(
+        CreateHandleExtra.GuestKeepCacheSet,
+        "CreateHandle.GuestKeepCacheSet",
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM_EXT(
         CompactionExtra.DudCount,
         "Compaction.DudCount",
         EMetricType::MT_DERIVATIVE);
@@ -385,6 +411,7 @@ void TTabletMetrics::Register(
     //
 
     REGISTER_AGGREGATABLE_SUM(CPUUsageMicros, EMetricType::MT_DERIVATIVE);
+    REGISTER_LOCAL(CPUUsageRate, EMetricType::MT_ABSOLUTE);
 
     REGISTER_LOCAL(OpLogEntryCount, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(ResponseLogEntryCount, EMetricType::MT_ABSOLUTE);

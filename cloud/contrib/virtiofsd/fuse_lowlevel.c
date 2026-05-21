@@ -358,10 +358,14 @@ int fuse_reply_err(fuse_req_t req, int err)
     return send_reply(req, -err, NULL, 0);
 }
 
+/* Implementation should define this function and add completion-specific logic
+ *
+ * See #5897 for details
 void fuse_reply_none(fuse_req_t req)
 {
     fuse_free_req(req);
 }
+*/
 
 static unsigned long calc_timeout_sec(double t)
 {

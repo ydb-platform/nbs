@@ -146,14 +146,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     const auto StartupEventType =
         TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest;
 
-    void WaitForTabletStart(TServiceClient& service)
-    {
-        TDispatchOptions options;
-        options.FinalEvents = {
-            TDispatchOptions::TFinalEventCondition(StartupEventType)};
-        service.AccessRuntime().DispatchEvents(options);
-    }
-
     void CatchActorIds(TServiceClient& service, TVector<TActorId>& ids)
     {
         service.AccessRuntime().SetEventFilter(
@@ -193,11 +185,37 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
+        TVector<NProtoPrivate::TCreateSessionResponse> responses;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& e) {
+                Y_UNUSED(runtime);
+                if (e->GetTypeRewrite() ==
+                        TEvIndexTablet::EvCreateSessionResponse)
+                {
+                    const auto* msg =
+                        e->Get<TEvIndexTablet::TEvCreateSessionResponse>();
+                    responses.push_back(msg->Record);
+                }
+                return false;
+            });
+
         auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
         headers1.FileSystemId = fsConfig.Shard1Id;
         auto headers2 = headers;
         headers2.FileSystemId = fsConfig.Shard2Id;
+
+        UNIT_ASSERT_C(3 <= responses.size(), responses.size());
+        for (ui32 i = 0; i < responses.size() - 1; ++i) {
+            UNIT_ASSERT_C(
+                !responses[i].HasFileStore(),
+                responses[i].ShortUtf8DebugString());
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            fsConfig.FsId,
+            responses.back().GetFileStore().GetFileSystemId(),
+            responses.back().ShortUtf8DebugString());
 
         ui64 nodeId1 =
             service
@@ -5875,6 +5893,181 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
     }
 
+    SERVICE_TEST(ShouldReturnXDevRegardlessOfForceFlag)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+
+        const TString fsId = "test";
+        const ui64 blockCount = 1'000;
+
+        TTestEnv env({}, config);
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        //
+        // Creating a single-tablet filesystem. No shards yet - default
+        // AutomaticallyCreatedShardSize is 5TB, so none are created.
+        //
+        service.CreateFileStore(fsId, blockCount);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        //
+        // Dir and file are created before shards exist — they live in the main
+        // tablet, shardNo == 0 even after shards are added later.
+        //
+        const auto dir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(dir1Id));
+
+        const auto file1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(file1Id));
+
+        //
+        // Adding a shard and enabling DirectoryCreationInShards.
+        //
+        service.ResizeFileStore(
+            fsId,
+            blockCount,
+            false /* force */,
+            1 /* shardCount */,
+            false /* enableStrictSizeMode */,
+            true /* directoryCreationInShards */,
+            false /* forceDirectoryCreationInShards */);
+        WaitForTabletStart(service);
+
+        headers = service.InitSession(fsId, "client");
+
+        //
+        // Creating a dir directly in shard - it's not possible to create it
+        // via the API of the main filesystem because it checks whether there
+        // are any nodes created in the main tablet.
+        //
+        // But situations like the one tested here were possible before some of
+        // the recent changes - that's why we have this test.
+        //
+        const auto shardId = fsId + "_s1";
+        auto shardHeaders = service.InitSession(shardId, "client");
+        const auto uuid = CreateGuidAsString();
+
+        const auto dir2Id =service.CreateNode(
+            shardHeaders,
+            TCreateNodeArgs::Directory(RootNodeId, uuid)
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(dir2Id));
+
+        //
+        // This node ref is not going to be used directly but let's still create
+        // it to make the directory structure similar to what we would have in
+        // real clusters.
+        //
+        {
+            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(RootNodeId);
+            request.SetName("dir2");
+            request.SetShardId(shardId);
+            request.SetShardNodeName(uuid);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+        }
+
+        //
+        // Creating a file in the new dir.
+        //
+        const auto fileId2 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2Id, "file2")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(fileId2));
+
+        //
+        // Trying to move file1 into dir2. Can't be done because dir1/file1
+        // NodeRef is not external.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir1Id,
+                "file1",
+                dir2Id,
+                "file1",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+
+        //
+        // Trying to move file2 into dir1. Should be possible.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir2Id,
+                "file2",
+                dir1Id,
+                "file2",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+
+        //
+        // file1 can be renamed in dir1.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir1Id,
+                "file1",
+                dir1Id,
+                "file1.new",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+
+        //
+        // Creating a file in the new dir.
+        //
+        const auto fileId3 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2Id, "file3")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(fileId3));
+
+        //
+        // Can't move file3 on top of file1.new because dir1/file1.new is not an
+        // external NodeRef. Technically such an op can be implemented but right
+        // now it's not.
+        //
+        {
+            auto response = service.SendAndRecvRenameNode(
+                headers,
+                dir2Id,
+                "file3",
+                dir1Id,
+                "file1.new",
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+        }
+    }
+
     SERVICE_TEST(ShouldListNodesAndGetNodeAttrInDirectoryInShard)
     {
         config.SetDirectoryCreationInShardsEnabled(true);
@@ -6336,6 +6529,124 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             "AppCriticalEvents/NodeNotFoundInShard");
 
         UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+    }
+
+    SERVICE_TEST(ShouldHandleGetNodeAttrErrorsFromShardInListNodesRaceDetection)
+    {
+        config.SetDirectoryCreationInShardsEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto dirId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir")
+        )->Record.GetNode().GetId();
+
+        auto subdir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir1")
+        )->Record.GetNode().GetId();
+        Y_UNUSED(subdir1Id);
+
+        auto subdir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir2")
+        )->Record.GetNode().GetId();
+
+        IEventHandlePtr unlinkNodeResponse;
+        bool shouldIntercept = true;
+        NProto::TError getAttrError;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeResponse
+                        && shouldIntercept)
+                {
+                    unlinkNodeResponse.reset(event.Release());
+                    return true;
+                }
+
+                if (event->GetTypeRewrite()
+                        == TEvService::EvGetNodeAttrResponse)
+                {
+                    using TResponse = TEvService::TEvGetNodeAttrResponse;
+                    auto* msg = event->Get<TResponse>();
+                    *msg->Record.MutableError() = getAttrError;
+                }
+
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, dirId, "subdir1", true);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(unlinkNodeResponse);
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/NodeNotFoundInShard");
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto& listing = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(subdir2Id, listing.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("subdir2", listing.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        getAttrError = MakeError(E_REJECTED);
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                getAttrError.GetCode(),
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        getAttrError = MakeError(E_FS_INVALID_SESSION);
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                getAttrError.GetCode(),
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        getAttrError = MakeError(E_IO);
+
+        {
+            auto response =
+                service.SendAndRecvListNodes(headers, fsConfig.FsId, dirId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto& listing = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(subdir2Id, listing.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("subdir2", listing.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+        }
     }
 
     SERVICE_TEST(ShouldHandleRenameNodeInDestinationError)
@@ -8093,7 +8404,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             listNodesResponse.GetNodes(0).GetId());
     }
 
-    SERVICE_TEST(ShouldReproRaceWhileCreatingHandle)
+    SERVICE_TEST(ShouldLockNodeRefWhileCreatingHandle)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
@@ -8142,9 +8453,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT(createNodeInShard);
 
         // At this point a NodeRef is created in the main filesystem but a node
-        // is not created in the shard.
-        // The next CreateHandleRequest actually creates a node in the shards
-        // that corresponds to the already created NodeRef.
+        // is not created in the shard. The NodeRef in the main filesystem is
+        // locked.
 
         intercept = false;
         service.SendCreateHandleRequest(
@@ -8156,37 +8466,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             "",
             ++requestId);
 
-        auto createHandleResponse = service.RecvCreateHandleResponse();
+        // An attempt to create a handle or to unlink the node should fail as
+        // the NodeRef is locked.
+        const auto createHandleResponse = service.RecvCreateHandleResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
+            E_REJECTED,
             createHandleResponse->GetError().GetCode(),
             createHandleResponse->GetError().GetMessage());
 
-        const auto nodeId = createHandleResponse->Record.GetNodeAttr().GetId();
+        service.SendUnlinkNodeRequest(headers, RootNodeId, "file1");
+        const auto unlinkNodeResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            unlinkNodeResponse->GetError().GetCode(),
+            unlinkNodeResponse->GetError().GetMessage());
 
-        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
-
-        bool createNodeResponseCaught = false;
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, TAutoPtr<IEventHandle>& e)
-            {
-                Y_UNUSED(runtime);
-                if (!createNodeResponseCaught &&
-                    e->GetTypeRewrite() == TEvService::EvCreateNodeResponse)
-                {
-                    const auto* msg =
-                        e->Get<TEvService::TEvCreateNodeResponse>();
-                    UNIT_ASSERT_VALUES_EQUAL_C(
-                        E_FS_EXIST,
-                        msg->GetStatus(),
-                        msg->GetErrorReason());
-                }
-                return false;
-            });
-
-        // Send stolen createNodeInShard event and get E_FS_EXIST from the
-        // shard. After a planned fix the previous CreateHandle should get
-        // E_REJECTED.
+        // Sending stolen createNodeInShard event should create a node in the
+        // shard and unlock the NodeRef.
         env.GetRuntime().Send(createNodeInShard.Release(), nodeIdx);
 
         auto createHandleResponse1 = service.RecvCreateHandleResponse();
@@ -8195,9 +8491,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             createHandleResponse1->GetStatus(),
             createHandleResponse1->GetErrorReason());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            nodeId,
-            createHandleResponse->Record.GetNodeAttr().GetId());
+        const auto nodeId1 =
+            createHandleResponse1->Record.GetNodeAttr().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        // As the NodeRef is unlocked now we should be able to create a handle
+        auto createHandleResponse2 = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::RDWR,
+            "",
+            ++requestId);
+
+        const auto nodeId2 =
+            createHandleResponse2->Record.GetNodeAttr().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId2));
 
         TTestRegistryVisitor visitor;
         auto registry = env.GetRegistry();
@@ -8206,7 +8516,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         visitor.ValidateExpectedCounters(
             {{{{"sensor", "NodeExistsWhileCreatingInShardCount"},
                {"filesystem", "test"}},
-              1},
+              0},
              {{{"sensor", "NodeExistsWhileCreatingInShardCount"},
                {"filesystem", "test_s1"}},
               0},
@@ -8215,7 +8525,127 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               0}});
     }
 
-    SERVICE_TEST(ShouldReplayOpLog)
+    SERVICE_TEST(ShouldLockNodeRefWhileCreatingNode)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        THeaders headers = service.InitSession(fsConfig.FsId, "client");
+
+        TAutoPtr<IEventHandle> createNodeInShard;
+        TString name;
+        bool intercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& e) {
+                Y_UNUSED(runtime);
+                if (e->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
+                    const auto* msg =
+                        e->Get<TEvService::TEvCreateNodeRequest>();
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
+                    {
+                        name = msg->Record.GetName();
+                        createNodeInShard = e;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"));
+
+        ui32 iterations = 0;
+        while (!createNodeInShard && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(createNodeInShard);
+
+        // At this point a NodeRef is created in the main filesystem but a node
+        // is not created in the shard.
+
+        ui64 requestId = 111;
+        intercept = false;
+        service.SendCreateHandleRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE,
+            "",
+            ++requestId);
+
+        // An attempt to create a handle or to unlink the node should fail as
+        // the NodeRef is locked.
+        const auto createHandleResponse = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            createHandleResponse->GetError().GetCode(),
+            createHandleResponse->GetError().GetMessage());
+
+        service.SendUnlinkNodeRequest(headers, RootNodeId, "file1");
+        const auto unlinkNodeResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            unlinkNodeResponse->GetError().GetCode(),
+            unlinkNodeResponse->GetError().GetMessage());
+
+        // Sending stolen createNodeInShard event should create a node in the
+        // shard and unlock the NodeRef.
+        env.GetRuntime().Send(createNodeInShard.Release(), nodeIdx);
+
+        const auto createNodeResponse = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createNodeResponse->GetStatus(),
+            createNodeResponse->GetErrorReason());
+
+        const auto nodeId = createNodeResponse->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
+
+        // The NodeRef is unlocked now and we should be able to create a handle.
+        const auto createHandleResponse1 = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::RDWR,
+            "",
+            ++requestId);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createHandleResponse1->GetStatus(),
+            createHandleResponse1->GetErrorReason());
+
+        const auto nodeId1 =
+            createHandleResponse1->Record.GetNodeAttr().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        TTestRegistryVisitor visitor;
+        auto registry = env.GetRegistry();
+        registry->Visit(TInstant::Zero(), visitor);
+
+        visitor.ValidateExpectedCounters(
+            {{{{"sensor", "NodeExistsWhileCreatingInShardCount"},
+               {"filesystem", "test"}},
+              0},
+             {{{"sensor", "NodeExistsWhileCreatingInShardCount"},
+               {"filesystem", "test_s1"}},
+              0},
+             {{{"sensor", "NodeExistsWhileCreatingInShardCount"},
+               {"filesystem", "test_s2"}},
+              0}});
+    }
+
+    SERVICE_TEST(ShouldReplayCreateNodeInShardFromOpLog)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
@@ -8263,33 +8693,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT(createNodeInShard);
 
         intercept = false;
-        service.SendCreateHandleRequest(
-            headers,
-            fsConfig.FsId,
-            RootNodeId,
-            "file1",
-            TCreateHandleArgs::CREATE,
-            "",
-            ++requestId);
-
-        auto createHandleResponse = service.RecvCreateHandleResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            createHandleResponse->GetError().GetCode(),
-            createHandleResponse->GetError().GetMessage());
-
-        const auto nodeId = createHandleResponse->Record.GetNodeAttr().GetId();
-
-        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
-
-        // OpLog should be replayed upon RebootTablet.
-        // As we already created 'file1', we should get E_FS_EXIST during
-        // replay.
         TIndexTabletClient tablet(
             env.GetRuntime(),
             nodeIdx,
             fsInfo.MainTabletId);
         tablet.RebootTablet();
+
+        const auto createHandleResponse = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            createHandleResponse->GetError().GetCode(),
+            createHandleResponse->GetError().GetMessage());
+
+        headers = service.InitSession(fsConfig.FsId, "client");
+
+        // After the tablet is restarted "file1" creation is completed and
+        // CreateHandle should be successful.
+        const auto createHandleResponse1 = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::RDWR,
+            "",
+            ++requestId);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createHandleResponse1->GetError().GetCode(),
+            createHandleResponse1->GetError().GetMessage());
 
         TTestRegistryVisitor visitor;
         auto registry = env.GetRegistry();
@@ -8307,7 +8739,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               0},
              {{{"sensor", "NodeExistsWhileCreatingInShardCount"},
                {"filesystem", "test"}},
-              1},
+              0},
              {{{"sensor", "NodeExistsWhileCreatingInShardCount"},
                {"filesystem", "test_s1"}},
               0},

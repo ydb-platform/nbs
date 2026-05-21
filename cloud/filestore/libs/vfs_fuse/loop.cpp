@@ -806,17 +806,21 @@ public:
             p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
-        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->Unmount()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_ERROR)
+            .Subscribe(
+                [onStop = std::move(onStop),
+                 scheduler = Scheduler](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->Unmount()
+                    scheduler->Schedule(
+                        TInstant::Zero(),
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }
@@ -852,17 +856,21 @@ public:
             s.SetValue();
         };
 
-        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->StopThread()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_SUSPEND)
+            .Subscribe(
+                [onStop = std::move(onStop),
+                 scheduler = Scheduler](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->StopThread()
+                    scheduler->Schedule(
+                        TInstant::Zero(),
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }

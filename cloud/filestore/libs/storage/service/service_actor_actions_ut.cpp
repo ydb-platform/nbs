@@ -78,15 +78,6 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     return response;
 }
 
-void WaitForTabletStart(TServiceClient& service)
-{
-    TDispatchOptions options;
-    options.FinalEvents = {
-        TDispatchOptions::TFinalEventCondition(
-            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
-    service.AccessRuntime().DispatchEvents(options);
-}
-
 NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
     const NProtoPrivate::TGetStorageStatsRequest& request)
@@ -650,6 +641,56 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 shardNodeName2,
                 r.GetNodes(0).GetShardNodeName());
+        }
+
+        {
+            auto r = service.ListNodes(headers, fsId, parentId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(name2, r.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                r.GetNodes(0).GetShardFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName2,
+                r.GetNodes(0).GetShardNodeName());
+
+            NProtoPrivate::TListNodesInternalRequest request;
+            request.SetFileSystemId(fsId);
+            auto& originalRequest = *request.MutableOriginalRequest();
+            originalRequest.SetNodeId(parentId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("ListNodesInternal", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            NProtoPrivate::TListNodesInternalResponse lniResponse;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &lniResponse).ok());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, lniResponse.NameSizesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, lniResponse.ShardIdSizesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, lniResponse.ShardNodeNameSizesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                name2,
+                lniResponse.GetNameBuffer().substr(
+                    0,
+                    lniResponse.GetNameSizes(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                lniResponse.GetExternalRefBuffer().substr(
+                    0,
+                    lniResponse.GetShardIdSizes(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName2,
+                lniResponse.GetExternalRefBuffer().substr(
+                    lniResponse.GetShardIdSizes(0),
+                    lniResponse.GetShardNodeNameSizes(0)));
         }
 
         service.DestroySession(headers);

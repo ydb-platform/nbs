@@ -799,6 +799,7 @@ public:
     [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 
     [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
+    [[nodiscard]] ui32 GetMaxInFlightCmsRequests() const;
 
     [[nodiscard]] NProto::EOverlappingRequestsPolicy
     GetOverlappingRequestsPolicy() const;
@@ -812,6 +813,12 @@ public:
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
 
     [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
+
+    [[nodiscard]] bool GetVolumeBalancerGentlePreemptionEnabled() const;
+
+    [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
+
+    [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
 };
 
 ui64 GetAllocationUnit(

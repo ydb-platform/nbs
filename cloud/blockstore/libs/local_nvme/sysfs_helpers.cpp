@@ -63,10 +63,6 @@ auto GetVFioDeviceName(const TFsPath& pciDevicePath) -> TString
         devName = child;
     }
 
-    Y_ENSURE(
-        !devName.empty(),
-        "no vfio<N> entry found in " << vfioDevDir.GetPath().Quote());
-
     return devName;
 }
 
@@ -191,6 +187,16 @@ public:
         }
 
         return device;
+    }
+
+    auto GetVfioDeviceForPCIDevice(const TString& pciAddr) -> TString final
+    {
+        return GetVFioDeviceName(SysFsRoot / "bus/pci/devices" / pciAddr);
+    }
+
+    [[nodiscard]] auto IsVfioDevSupported() const -> bool final
+    {
+        return NFs::Exists(SysFsRoot / "class/vfio-dev");
     }
 };
 

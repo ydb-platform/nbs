@@ -47,6 +47,16 @@ message TVolumePerfSettings
     optional NCloud.NProto.TPerformanceProfile Write = 1;
     optional NCloud.NProto.TPerformanceProfile Read = 2;
     optional uint32 CriticalFactor = 3;
+
+    // Multiplier that applies to volume's performance profile limits.
+    optional double ThrottlerOvercommit = 4;
+
+    // Minimum effective limits for write/read. After applying clamping by the
+    // volume performance profile (optionally scaled by ThrottlerOvercommit),
+    // the resulting IOPS/BW will not go below these values.
+    optional NCloud.NProto.TPerformanceProfile MinWrite = 5;
+    optional NCloud.NProto.TPerformanceProfile MinRead = 6;
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////

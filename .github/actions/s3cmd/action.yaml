@@ -74,7 +74,7 @@ runs:
         MIME_TYPES_FILE='/etc/mime.types'
         grep -qF -- "$MIME_TYPES_PLAINTEXT_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPES_PLAINTEXT_LINE" | tee -a "$MIME_TYPES_FILE" || true
 
-        export S3CMD_CONFIG=$(sudo -E -H -u $USER mktemp -p /home/$USER)
+        export S3CMD_CONFIG=$(sudo -E -H -u $USER mktemp -p /home/$USER s3cmd.XXXX)
         sudo chown $USER: $S3CMD_CONFIG
         echo "S3CMD_CONFIG=$S3CMD_CONFIG" >> $GITHUB_ENV
         export GITHUB_WORKFLOW_NO_SPACES=${GITHUB_WORKFLOW// /-}

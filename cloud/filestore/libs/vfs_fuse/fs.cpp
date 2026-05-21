@@ -23,7 +23,7 @@ int ReplyNone(
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "None");
 
-    fuse_reply_none_override(req);
+    fuse_reply_none(req);
 
     requestStats.RequestCompleted(log, callContext, error);
 

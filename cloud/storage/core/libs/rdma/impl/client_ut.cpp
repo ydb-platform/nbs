@@ -1,6 +1,7 @@
 #include "client.h"
 
 #include "test_verbs.h"
+#include "utils.h"
 
 #include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
@@ -112,33 +113,130 @@ TEST(TRdmaClientTest, ShouldStartEndpoint)
 
 TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
 {
-        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
-        auto verbs =
-            NVerbs::CreateTestVerbs(testContext);
-        auto monitoring = CreateMonitoringServiceStub();
-        auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->IpTypeOfService = 42;
-        ASSERT_NE(42, testContext->ToS);
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->IpTypeOfService = 42;
+    ASSERT_NE(42, testContext->ToS);
 
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateTestClient(
-            verbs,
-            logging,
-            monitoring,
-            clientConfig);
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
 
-        client->Start();
-        Y_DEFER {
-            client->Stop();
-        };
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
 
-        auto clientEndpoint = client->StartEndpoint("::", 10020);
-        Y_UNUSED(clientEndpoint);
-        ASSERT_EQ(42, testContext->ToS);
-    }
+    auto clientEndpoint = client->StartEndpoint("::", 10020);
+    Y_UNUSED(clientEndpoint);
+    ASSERT_EQ(42, testContext->ToS);
+}
+
+TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->ResolveTimeout = TDuration::MilliSeconds(123);
+    clientConfig->QpRetryCount = 3;
+    clientConfig->QpRnrRetryCount = 5;
+    clientConfig->QpTimeout = 7;
+    clientConfig->QpMinRnrTimer = 9;
+
+    std::atomic<bool> resolveAddressCalled = false;
+    std::atomic<bool> resolveRouteCalled = false;
+    std::atomic<ui64> resolveAddressTimeoutUs = 0;
+    std::atomic<ui64> resolveRouteTimeoutUs = 0;
+
+    std::atomic<bool> connectCalled = false;
+    std::atomic<int> connectRetryCount = -1;
+    std::atomic<int> connectRnrRetryCount = -1;
+
+    std::atomic<bool> modifyCalled = false;
+
+    testContext->HandleResolveAddress =
+        [&](rdma_cm_id* id, sockaddr* srcAddr, sockaddr* dstAddr, TDuration t)
+    {
+        Y_UNUSED(id);
+        Y_UNUSED(srcAddr);
+        Y_UNUSED(dstAddr);
+
+        resolveAddressTimeoutUs.store(t.MicroSeconds());
+        resolveAddressCalled.store(true);
+    };
+
+    testContext->HandleResolveRoute = [&](rdma_cm_id* id, TDuration t)
+    {
+        Y_UNUSED(id);
+
+        resolveRouteTimeoutUs.store(t.MicroSeconds());
+        resolveRouteCalled.store(true);
+    };
+
+    testContext->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+
+        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
+
+        EXPECT_EQ(expectedMask, mask);
+        EXPECT_EQ(clientConfig->QpTimeout, attr->timeout);
+        EXPECT_EQ(clientConfig->QpMinRnrTimer, attr->min_rnr_timer);
+
+        modifyCalled.store(true);
+    };
+
+    testContext->HandleConnect = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
+        connectRetryCount.store(param->retry_count);
+        connectRnrRetryCount.store(param->rnr_retry_count);
+        connectCalled.store(true);
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
+
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    auto ep = client->StartEndpoint("::", 10020).GetValue(5s);
+    ASSERT_TRUE(ep);
+
+    ASSERT_TRUE(resolveAddressCalled.load());
+    ASSERT_TRUE(resolveRouteCalled.load());
+    ASSERT_EQ(
+        clientConfig->ResolveTimeout.MicroSeconds(),
+        resolveAddressTimeoutUs.load());
+    ASSERT_EQ(
+        clientConfig->ResolveTimeout.MicroSeconds(),
+        resolveRouteTimeoutUs.load());
+
+    ASSERT_TRUE(connectCalled.load());
+    ASSERT_EQ(clientConfig->QpRetryCount, connectRetryCount.load());
+    ASSERT_EQ(clientConfig->QpRnrRetryCount, connectRnrRetryCount.load());
+
+    ASSERT_TRUE(modifyCalled.load());
+}
 
 TEST(TRdmaClientTest, ShouldDetachFromPoller)
 {
@@ -938,6 +1036,329 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
 
         wait(errors, 7);
         wait(active, 6);
+}
+
+TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 1s;
+    clientConfig->MaxResponseDelay = 1s;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    std::atomic<int> acceptedConnectVersion = 0;
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        acceptedConnectVersion = ParseMessageHeader(param->private_data);
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_PREV_VERSION);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+    ASSERT_TRUE(endpoint);
+
+    // first connect attempt is sent with the current protocol version
+    ASSERT_EQ(RDMA_PROTO_VERSION, acceptedConnectVersion.load());
+
+    // after a successful connect, the request message must be encoded with
+    // the negotiated (previous) protocol version
+    TManualEvent sent;
+    std::atomic<int> sentVersion = 0;
+    testContext->PostSend = [&](auto* qp, auto* wr)
+    {
+        Y_UNUSED(qp);
+        const auto* msg =
+            reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+        sentVersion = ParseMessageHeader(msg);
+        sent.Signal();
+    };
+
+    auto request = endpoint->AllocateRequest(
+        std::make_shared<TClientHandler>(),
+        std::make_unique<TNullContext>(),
+        1024,
+        1024);
+    ASSERT_FALSE(HasError(request.GetError()));
+
+    endpoint->SendRequest(
+        request.ExtractResult(),
+        MakeIntrusive<TCallContextBase>(0u));
+
+    ASSERT_TRUE(sent.WaitT(5s));
+    ASSERT_EQ(RDMA_PROTO_PREV_VERSION, sentVersion.load());
+}
+
+TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 2s;
+    clientConfig->MaxResponseDelay = 2s;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    std::atomic<int> connectAttempts = 0;
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        Y_UNUSED(param);
+        ++connectAttempts;
+
+        // accept message with an unsupported protocol version (newer than
+        // the current one)
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION + 1);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    try {
+        client->StartEndpoint("::", 10020).GetValue(15s);
+        FAIL() << "expected exception";
+    } catch (const TServiceError& e) {
+        ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
+    }
+
+    // there should have been at least one connect attempt that was rejected
+    // due to the unsupported version
+    ASSERT_GE(connectAttempts.load(), 1);
+}
+
+TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 1s;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    std::atomic<int> connectAttempts = 0;
+    std::atomic<int> firstConnectVersion = 0;
+    std::atomic<int> secondConnectVersion = 0;
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        const int version = ParseMessageHeader(param->private_data);
+        const int attempt = ++connectAttempts;
+
+        if (attempt == 1) {
+            firstConnectVersion = version;
+            TRejectMessage rejectMsg{};
+            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_1);
+            rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_INVALID_REQUEST);
+            rejectMsg.QueueSize = SafeCast<ui16>(clientConfig->QueueSize);
+            rejectMsg.MaxBufferSize =
+                SafeCast<ui32>(clientConfig->MaxBufferSize);
+            NVerbs::EnqueueRejectEvent(
+                testContext,
+                id,
+                &rejectMsg,
+                sizeof(rejectMsg));
+            return;
+        }
+
+        if (attempt == 2) {
+            secondConnectVersion = version;
+        }
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, version);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).GetValue(15s);
+    ASSERT_TRUE(endpoint);
+
+    ASSERT_EQ(RDMA_PROTO_VERSION, firstConnectVersion.load());
+    ASSERT_EQ(RDMA_PROTO_PREV_VERSION, secondConnectVersion.load());
+}
+
+TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
+{
+    constexpr ui16 ServerRecvQueueSize = 4;
+    constexpr ui16 ServerSendQueueSize = 8;
+
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->SendQueueSize = 16;
+    clientConfig->RecvQueueSize = 4;
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 1s;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    std::atomic<int> connectAttempts = 0;
+    std::atomic<ui16> firstSendQueueSize = 0;
+    std::atomic<ui16> firstRecvQueueSize = 0;
+    std::atomic<ui16> secondSendQueueSize = 0;
+    std::atomic<ui16> secondRecvQueueSize = 0;
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        const auto* connectMsg =
+            static_cast<const TConnectMessage*>(param->private_data);
+        const int attempt = ++connectAttempts;
+
+        if (attempt == 1) {
+            firstSendQueueSize = SafeCast<ui16>(connectMsg->SendQueueSize);
+            firstRecvQueueSize = SafeCast<ui16>(connectMsg->RecvQueueSize);
+
+            TRejectMessage2 rejectMsg{};
+            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);
+            rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_CONFIG_MISMATCH);
+            rejectMsg.SendQueueSize = ServerSendQueueSize;
+            rejectMsg.RecvQueueSize = ServerRecvQueueSize;
+            rejectMsg.MaxBufferSize =
+                SafeCast<ui32>(clientConfig->MaxBufferSize);
+            NVerbs::EnqueueRejectEvent(
+                testContext,
+                id,
+                &rejectMsg,
+                sizeof(rejectMsg));
+            return;
+        }
+
+        if (attempt == 2) {
+            secondSendQueueSize = SafeCast<ui16>(connectMsg->SendQueueSize);
+            secondRecvQueueSize = SafeCast<ui16>(connectMsg->RecvQueueSize);
+        }
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).GetValue(15s);
+    ASSERT_TRUE(endpoint);
+
+    // initial attempt uses configured queue sizes
+    ASSERT_EQ(clientConfig->SendQueueSize, firstSendQueueSize.load());
+    ASSERT_EQ(clientConfig->RecvQueueSize, firstRecvQueueSize.load());
+
+    // after the V2 config-mismatch reject the client must:
+    //   SendQueueSize = msg->RecvQueueSize / 2
+    //   RecvQueueSize = msg->SendQueueSize * 2
+    ASSERT_EQ(
+        static_cast<ui16>(ServerRecvQueueSize / 2),
+        secondSendQueueSize.load());
+    ASSERT_EQ(
+        static_cast<ui16>(ServerSendQueueSize * 2),
+        secondRecvQueueSize.load());
+}
+
+TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 2s;
+    clientConfig->MaxResponseDelay = 2s;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    std::atomic<int> connectAttempts = 0;
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        Y_UNUSED(param);
+        ++connectAttempts;
+
+        // synthesize a reject message with a totally unknown version that
+        // doesn't match any switch branch in HandleRejected
+        TRejectMessage2 rejectMsg{};
+        InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION + 5);
+        NVerbs::EnqueueRejectEvent(
+            testContext,
+            id,
+            &rejectMsg,
+            sizeof(rejectMsg));
+    };
+
+    try {
+        client->StartEndpoint("::", 10020).GetValue(15s);
+        FAIL() << "expected exception";
+    } catch (const TServiceError& e) {
+        ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
+    }
+
+    ASSERT_GE(connectAttempts.load(), 1);
 }
 
 }   // namespace NCloud::NStorage::NRdma

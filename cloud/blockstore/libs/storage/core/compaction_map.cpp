@@ -234,24 +234,27 @@ struct TCompactionMap::TImpl
                 : Policy->CalculateScore(group->Stats[index]);
             group->Stats[index].CompactionScore = newScore;
 
-            if (prev.CompactionScore.Score < newScore.Score) {
+            if (prev.CompactionScore.Score <= newScore.Score) {
                 if (group->Score < newScore.Score) {
                     group->Score = newScore.Score;
                     group->Range = index;
                 }
             } else if (index == group->Range) {
+                // Score in the top range has decreased, need to recalculate the
+                // maximal score.
                 RecalculateGroupScore(group);
             }
 
-            const auto newGarbageBlockCount = compacted
-                ? 0
-                : group->Stats[index].GarbageBlockCount();
+            const auto newGarbageBlockCount =
+                compacted ? 0 : group->Stats[index].GarbageBlockCount();
 
-            if (prev.GarbageBlockCount() < newGarbageBlockCount) {
+            if (prev.GarbageBlockCount() <= newGarbageBlockCount) {
                 if (GetGarbageBlockCount(*group) < newGarbageBlockCount) {
                     group->GarbageBlockCount = newGarbageBlockCount;
                 }
-            } else if (prev.GarbageBlockCount() == group->GarbageBlockCount) {
+            } else if (prev.GarbageBlockCount() == GetGarbageBlockCount(*group)) {
+                // Garbage block count in the top range has decreased, need to
+                // recalculate the maximal garbage block count.
                 RecalculateGroupGarbageBlockCount(group);
             }
         }
@@ -284,12 +287,14 @@ struct TCompactionMap::TImpl
             auto newScore = Policy->CalculateScore(group->Stats[index]);
             group->Stats[index].CompactionScore = newScore;
 
-            if (prev.CompactionScore.Score < newScore.Score) {
+            if (prev.CompactionScore.Score <= newScore.Score) {
                 if (group->Score < newScore.Score) {
                     group->Score = newScore.Score;
                     group->Range = index;
                 }
             } else if (index == group->Range) {
+                // Score in the top range has decreased, need to recalculate the
+                // maximal score.
                 RecalculateGroupScore(group);
             }
         }

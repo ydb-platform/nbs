@@ -35,7 +35,8 @@ class TSharedMemoryClient final
     , public std::enable_shared_from_this<TSharedMemoryClient>
 {
 private:
-    const TString FullPath;
+    const TString BaseDir;
+    const TString FilePath;
     const ui64 ShmSize;
     const ui64 SlotSize;
 
@@ -54,14 +55,16 @@ private:
 
 public:
     TSharedMemoryClient(
-            TString fullPath,
+            TString baseDir,
+            TString filePath,
             ui64 shmSize,
             ui64 slotSize,
             IShmControlPtr shmControl,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             ILoggingServicePtr logging)
-        : FullPath(std::move(fullPath))
+        : BaseDir(std::move(baseDir))
+        , FilePath(std::move(filePath))
         , ShmSize(shmSize)
         , SlotSize(slotSize)
         , Scheduler(std::move(scheduler))
@@ -141,20 +144,21 @@ public:
 private:
     void SetupSharedMemory()
     {
-        TFile file(FullPath, CreateAlways | RdWr);
+        TFsPath fullPath = TFsPath(BaseDir) / TFsPath(FilePath);
+        TFile file(fullPath, CreateAlways | RdWr);
         file.Resize(ShmSize);
         int fd = file.GetHandle();
 
         LocalAddr =
             ::mmap(nullptr, ShmSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         if (LocalAddr == MAP_FAILED) {
-            ythrow TSystemError() << "mmap failed for " << FullPath;
+            ythrow TSystemError() << "mmap failed for " << fullPath;
         }
         file.Close();
 
         auto ctx = MakeIntrusive<TCallContext>();
         auto req = std::make_shared<NProto::TMmapRequest>();
-        req->SetFilePath(TFsPath(FullPath).GetName());
+        req->SetFilePath(FilePath);
         req->SetSize(ShmSize);
 
         auto response = ShmControl->Mmap(std::move(ctx), std::move(req)).GetValueSync();
@@ -166,7 +170,7 @@ private:
 
         STORAGE_INFO(
             "Shared memory region registered: id=" << RegionId
-            << ", file=" << FullPath
+            << ", file=" << fullPath
             << ", size=" << ShmSize);
     }
 
@@ -232,7 +236,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IShmDataClientPtr CreateSharedMemoryClient(
-    TString fullFilePath,
+    TString baseDir,
+    TString filePath,
     ui64 shmSize,
     ui64 slotSize,
     IShmControlPtr shmControl,
@@ -241,7 +246,8 @@ IShmDataClientPtr CreateSharedMemoryClient(
     ILoggingServicePtr logging)
 {
     return std::make_shared<TSharedMemoryClient>(
-        std::move(fullFilePath),
+        std::move(baseDir),
+        std::move(filePath),
         shmSize,
         slotSize,
         std::move(shmControl),

@@ -303,6 +303,13 @@ struct TBootstrap
     {
         auto stop = StopAsync();
         StopTriggered.TrySetValue();
+
+        // Scheduled tasks are not run automatically when TTestScheduler is used
+        auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
+        if (testScheduler) {
+            testScheduler->RunAllScheduledTasks();
+        }
+
         UNIT_ASSERT(stop.Wait(WaitTimeout));
 
         if (Scheduler) {
@@ -947,6 +954,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldHandleReadDirLargeDataWithHandlesStoragePaging)
     {
+        const auto LargeDirectoryWaitTimeout = TDuration::Seconds(15);
+
         auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
         std::atomic<ui32> numCalls = 0;
@@ -995,7 +1004,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 1);
 
         auto size1 = read.GetValue();
@@ -1003,7 +1012,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
 
         auto size2 = read.GetValue();
@@ -1032,7 +1041,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
 
         auto size5 = read.GetValue();
@@ -1055,7 +1064,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             nodeId,
             handleId,
             largeOffset);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 4);
 
         auto size6 = read.GetValue();
@@ -1095,7 +1104,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto handleId2 = handle2.GetValue();
 
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId2);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 5);
 
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
@@ -3121,7 +3130,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotCrashWhileStoppingWhenForgetRequestIsInFlight)
     {
-        TBootstrap bootstrap(CreateWallClockTimer());
+        TBootstrap bootstrap;
 
         bootstrap.Start();
 
@@ -3147,6 +3156,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             // has already been destroyed by the time the request reaches the
             // virtio queue, causing a wait timeout in |TFuseVirtioClient|
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotHangIfForgetRequestReceivedBeforeInit)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.Start(/* sendInitRequest = */ false);
+
+        const ui64 nodeId = 123;
+        const ui64 refCount = 10;
+
+        auto forget = bootstrap.Fuse->SendRequest<TForgetRequest>(
+            nodeId,
+            refCount);
+        UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
     }
 
     Y_UNIT_TEST(ShouldRaiseCritEventWhenErrorWasSentToGuest)
@@ -4782,6 +4806,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotDeadlockWhenFlushCompletionFiredInScheduler)
     {
+        // Deadlock previously happened when:
+        // - automatic flush was executed on a scheduler thread;
+        // - at the same time, Stop was requested and triggered FlushAllData;
+        // - FlushAllData continuation was called on the same scheduler thread;
+        // - Stop continuation was called on the same scheduler thread and tried
+        //   to stop scheduler.
+
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
 
@@ -4797,42 +4828,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handleId = 456;
 
         auto writeDataCalled = NewPromise();
+        auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
 
-        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
-            // The callback is expected to be called in the scheduler thread
+        bootstrap.Service->WriteDataHandler = [&](auto callContext, auto)
+        {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             writeDataCalled.SetValue();
 
-            auto counter = bootstrap.Counters
-                ->FindSubgroup("component", "fs_ut_fs")
-                ->FindSubgroup("host", "cluster")
-                ->FindSubgroup("filesystem", FileSystemId)
-                ->FindSubgroup("client", "")
-                ->FindSubgroup("cloud", "")
-                ->FindSubgroup("folder", "")
-                ->FindSubgroup("module", "WriteBackCache")
-                ->GetCounter("FlushAllRequests_InProgressCount");
-
-            // Automatic flush does not create a request internally
-            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
-
-            // Wait until Stop is called and FlushAll is triggered
-            // because of cache non-emptiness at session destroy
-            UNIT_ASSERT(WaitForCondition(
-                WaitTimeout,
-                [&]
-                {
-                    // We block scheduler thread so counters will not be updated
-                    // automatically - need to call UpdateStats manually
-                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                    return counter->GetAtomic() > 0;
-                }));
-
-            return MakeFuture<NProto::TWriteDataResponse>({});
+            // Returns a pending future that will be completed manually on a
+            // scheduler thread after verifying FlushAll is in progress
+            return writeDataPromise.GetFuture();
         };
 
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
         };
 
@@ -4849,6 +4859,39 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Wait until automatic flush is called
         UNIT_ASSERT_NO_EXCEPTION(
             writeDataCalled.GetFuture().GetValue(WaitTimeout));
+
+        auto counter = bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
+                           ->FindSubgroup("host", "cluster")
+                           ->FindSubgroup("filesystem", FileSystemId)
+                           ->FindSubgroup("client", "")
+                           ->FindSubgroup("cloud", "")
+                           ->FindSubgroup("folder", "")
+                           ->FindSubgroup("module", "WriteBackCache")
+                           ->GetCounter("FlushAllRequests_InProgressCount");
+
+        // Automatic flush does not create a request internally
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+        auto stopFuture = bootstrap.StopAsync();
+
+        // Wait until FlushAll is triggered in session destroy handler
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]
+            {
+                // Stats are updated automatically with 1-second interval
+                // Update it manually to speed up the test
+                bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                return counter->GetAtomic() > 0;
+            }));
+
+        // WriteData completion should be done in a Scheduler thread, otherwise
+        // the deadlock won't reproduce
+        bootstrap.Scheduler->Schedule(
+            TInstant::Zero(),
+            [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
+
+        UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 }
 

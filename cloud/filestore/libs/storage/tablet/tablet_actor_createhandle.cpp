@@ -437,11 +437,16 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         {
             // We set the GuestKeepCache to tell the client not to bother
             // invalidating the caches upon opening a read-only handle
-            args.Response.SetGuestKeepCache(
+            const bool keepCache =
                 session->HandleStatsByNode.IsAllowedToKeepCache(
                     *node,
                     // isFirstReadAllowed
-                    Config->GetGuestCachingType() == NProto::GCT_ANY_READ));
+                    Config->GetGuestCachingType() == NProto::GCT_ANY_READ);
+            args.Response.SetGuestKeepCache(keepCache);
+
+            Metrics.CreateHandleExtra.GuestKeepCacheSet.fetch_add(
+                keepCache,
+                std::memory_order_relaxed);
         }
 
         // We can remember the last time that the cache was invalidated by a
@@ -453,6 +458,17 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
         args.Response.SetShardNodeName(args.ShardNodeName);
+
+        // When the NodeRef references a node in a shard we need to lock it to
+        // prevent the node from being unlinked and to avoid races with other
+        // concurrent CreateHandle/CreateNode requests.
+        args.IsNodeRefLocked = TryLockNodeRef({args.NodeId, args.Name});
+        if (!args.IsNodeRefLocked) {
+            args.Error = MakeError(E_REJECTED, TStringBuilder()
+                << "node ref " << args.NodeId << " " << args.Name
+                << " is locked for CreateHandle");
+            return;
+        }
     }
 
     if (args.IsNewShardNode) {
@@ -468,6 +484,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->SetNodeId(RootNodeId);
         shardRequest->SetName(args.ShardNodeName);
         shardRequest->ClearShardFileSystemId();
+        shardRequest->SetOriginalNodeId(args.NodeId);
+        shardRequest->SetOriginalName(args.Name);
         const bool serialized = args.ProfileLogRequest.SerializeToString(
             args.OpLogEntry.MutableProfileLogRequest());
         if (!serialized) {
@@ -527,6 +545,13 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     }
 
     RemoveInFlightRequest(*args.RequestInfo);
+
+    // If the node is to be created in the shard the NodeRef will be unlocked in
+    // TIndexTabletActor::HandleNodeCreatedInShard, otherwise it should be
+    // unlocked here.
+    if (args.IsNodeRefLocked) {
+        UnlockNodeRef({args.NodeId, args.Name});
+    }
 
     auto response =
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);

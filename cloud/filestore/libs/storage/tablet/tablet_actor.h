@@ -376,7 +376,12 @@ private:
 
         // if we can execute the transaction using the in-memory index state,
         // we will do so and return immediately.
-        if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
+        auto* indexState = AccessInMemoryIndexState();
+        if (!indexState) {
+            ReportInMemoryIndexStateNotInitialized();
+        }
+
+        if (indexState && TryExecuteTx(ctx, *indexState, tx)) {
             Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
@@ -761,8 +766,19 @@ private:
         const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    void DeleteUnconfirmedData(
+        const NActors::TActorContext& ctx,
+        const char* deletionEntity,
+        const TString& entityId,
+        const std::function<bool(const TTrackedUnconfirmedData&)>&
+            shouldDelete);
+
     void DeleteUnconfirmedDataForSession(
         const TString& sessionId,
+        const NActors::TActorContext& ctx);
+
+    void DeleteUnconfirmedDataForPipeServer(
+        const NActors::TActorId& pipeServerId,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

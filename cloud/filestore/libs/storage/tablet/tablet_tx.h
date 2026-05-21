@@ -228,7 +228,7 @@ struct TSessionAware
  */
 struct TIndexStateNodeUpdates
 {
-    TVector<TInMemoryIndexState::TIndexStateRequest> NodeUpdates;
+    TVector<IInMemoryIndexState::TIndexStateRequest> NodeUpdates;
 
     void Clear()
     {
@@ -1878,6 +1878,7 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
         bool IsNewShardNode = false;
+        bool IsNodeRefLocked = false;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         TVector<ui64> UpdatedNodes;

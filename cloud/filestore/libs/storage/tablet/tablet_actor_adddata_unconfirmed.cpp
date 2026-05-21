@@ -20,9 +20,9 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
     Y_UNUSED(ctx);
 
     if (!UnconfirmedDataInProgress.contains(args.CommitId)) {
-        ReportUnconfirmedDataNotInProgress(TStringBuilder()
-            << "tabletId: " << TabletID()
-            << ", commitId: " << args.CommitId);
+        ReportUnconfirmedDataNotInProgress(
+            TStringBuilder()
+            << "tabletId: " << TabletID() << ", commitId: " << args.CommitId);
         args.Error = MakeError(E_FAIL, "Unconfirmed data not in progress");
         LOG_ERROR(
             ctx,
@@ -79,10 +79,16 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
     const TActorContext& ctx,
     TTxIndexTablet::TAddDataUnconfirmed& args)
 {
-    ui64 requestBytes = UnconfirmedDataInProgress[args.CommitId].Data.GetLength();
+    auto inProgressIt = UnconfirmedDataInProgress.find(args.CommitId);
+    TABLET_VERIFY(inProgressIt != UnconfirmedDataInProgress.end());
+
+    const ui64 requestBytes = inProgressIt->second.Data.GetLength();
+    const bool deletionInProgress = DeletionQueue.contains(args.CommitId);
 
     Y_DEFER
     {
+        UnconfirmedDataInProgress.erase(inProgressIt);
+
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
             ctx.Now(),
@@ -98,8 +104,6 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
         }
     };
 
-    const bool deleteOnTxComplete = DeletionQueue.contains(args.CommitId);
-
     if (HasError(args.Error)) {
         LOG_WARN(
             ctx,
@@ -109,29 +113,11 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
             args.CommitId,
             FormatError(args.Error).c_str());
 
-        DeletionQueue.erase(args.CommitId);
-
-        TABLET_VERIFY(TryReleaseCollectBarrier(args.CommitId));
-    } else {
-        auto inProgressIt = UnconfirmedDataInProgress.find(args.CommitId);
-        TABLET_VERIFY(inProgressIt != UnconfirmedDataInProgress.end());
-        UnconfirmedData.emplace(
-            args.CommitId,
-            std::move(inProgressIt->second));
-        UnconfirmedDataInProgress.erase(inProgressIt);
-
-        if (deleteOnTxComplete) {
-            // Ordering is critical here. Once AddDataUnconfirmed moved the
-            // entry into UnconfirmedData, a cancelled commitId must execute
-            // DeleteUnconfirmedData before any AddBlob. The delete tx itself
-            // must remain page-fault-free, otherwise we can reorder TXes and
-            // crash and that will lead to data corruption.
-            ExecuteTx<TDeleteUnconfirmedData>(
-                ctx,
-                CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
-                TVector<ui64>{args.CommitId});
+        SendPendingConfirmAddDataResponse(ctx, args.CommitId, args.Error);
+        if (!deletionInProgress) {
+            TABLET_VERIFY(TryReleaseCollectBarrier(args.CommitId));
         }
-
+    } else {
         LOG_TRACE(
             ctx,
             TFileStoreComponents::TABLET,
@@ -139,23 +125,22 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
             LogTag.c_str(),
             args.CommitId,
             args.NodeId);
-    }
 
-    // Check if ConfirmAddData was received while we were executing.
-    auto pendingIt = PendingConfirmation.find(args.CommitId);
-    if (pendingIt != PendingConfirmation.end()) {
-        if (!HasError(args.Error)) {
-            if (deleteOnTxComplete) {
-                // Keep deferred reply until DeleteUnconfirmedData completion.
-                return;
+        // If deletion in progress, do nothing. Deferred reply will be triggered
+        // in DeleteUnconfirmedData completion. At this point we could already
+        // pass ExecuteTx for DeleteUnconfirmed.
+        if (!deletionInProgress) {
+            UnconfirmedData.emplace(
+                args.CommitId,
+                std::move(inProgressIt->second));
+
+            // Check if ConfirmAddData was received while we were executing.
+            auto pendingIt = PendingConfirmation.find(args.CommitId);
+            if (pendingIt != PendingConfirmation.end()) {
+                // AddBlob Execute will send the deferred ConfirmAddData reply.
+                ConfirmData(args.CommitId, ctx);
             }
-
-            // AddBlob Execute will send the deferred ConfirmAddData reply.
-            ConfirmData(args.CommitId, ctx);
-            return;
         }
-
-        SendPendingConfirmAddDataResponse(ctx, args.CommitId, args.Error);
     }
 }
 

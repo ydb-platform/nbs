@@ -97,6 +97,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
     xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
     xxx(FlushBytesItemCountThresholdForBackpressure,   ui64,    500'000       )\
+    xxx(CollectGarbageThresholdForBackpressure,        ui64,    1_TB          )\
     xxx(BackpressureThresholdPercentageForBackgroundOpsPriority,  ui32,   90  )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
@@ -245,6 +246,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(InMemoryIndexCacheLoadSchedulePeriod,                                  \
         TDuration,                                                             \
         TDuration::Seconds(0)                                                 )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInMainTablet,     bool,       false     )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInShards,         bool,       false     )\
                                                                                \
     xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
                                                                                \

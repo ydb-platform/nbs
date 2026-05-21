@@ -308,18 +308,24 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
         .CompactionScore = ScaleCompactionThreshold(
             Config->GetCompactionThresholdForBackpressure()),
         .CleanupScore = Config->GetCleanupThresholdForBackpressure(),
+        .CollectGarbage = Config->GetCollectGarbageThresholdForBackpressure(),
     };
 }
 
 TIndexTabletState::TBackpressureValues
 TIndexTabletActor::GetBackpressureValues() const
 {
+    // explicitly checking this because CollectGarbageThresholdForBackpressure
+    // can be really big
+    static_assert(sizeof(GetGarbageQueueSize()) == sizeof(ui64));
+
     return {
         .Flush = GetFreshBlocksCount() * GetBlockSize(),
         .FlushBytes = GetFreshBytesCount(),
         .FlushBytesItemCount = GetFreshBytesItemCount(),
         .CompactionScore = GetRangeToCompact().Score,
         .CleanupScore = GetRangeToCleanup().Score,
+        .CollectGarbage = GetGarbageQueueSize(),
     };
 }
 
@@ -701,6 +707,9 @@ TBackgroundOpsBackpressureStatus
         .Cleanup = GetBackgroundOpBackpressureStatus(
             bpThresholds.CleanupScore,
             bpValues.CleanupScore),
+        .CollectGarbage = GetBackgroundOpBackpressureStatus(
+            bpThresholds.CollectGarbage,
+            bpValues.CollectGarbage),
     };
 }
 
@@ -754,20 +763,24 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
 {
     const auto& msg = *ev->Get();
 
+    // TODO (#4962) use proper session id
+    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
+
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s Server disconnected, sender: %s, client: %s, server: %s",
+        "%s Server disconnected, sender: %s, client: %s, server: %s, "
+        "matchedSessions: %zu",
         LogTag.c_str(),
         ev->Sender.ToString().c_str(),
         msg.ClientId.ToString().c_str(),
-        msg.ServerId.ToString().c_str());
+        msg.ServerId.ToString().c_str(),
+        sessionIds.size());
 
-    // TODO (#4962) use proper session id
-    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
     for (const auto& sessionId: sessionIds) {
         DeleteUnconfirmedDataForSession(sessionId, ctx);
     }
+    DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
     RemoveSessionByPipeServer(msg.ServerId);
 }
 
@@ -1305,6 +1318,9 @@ STFUNC(TIndexTabletActor::StateWork)
 bool TIndexTabletActor::HandleRequestsByAdapter(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
+        FILESTORE_SERVICE_ADAPTER_REQUESTS_PLAIN(
+            FILESTORE_HANDLE_REQUEST,
+            TEvService)
         FILESTORE_SERVICE_ADAPTER_REQUESTS(
             FILESTORE_HANDLE_ADAPTER_REQUEST,
             TEvService)

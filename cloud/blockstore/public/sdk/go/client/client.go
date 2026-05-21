@@ -251,14 +251,18 @@ func (client *Client) ListNVMeDevices(
 func (client *Client) AcquireNVMeDevice(
 	ctx context.Context,
 	serialNumber string,
-) error {
+) (*protos.TNVMeDeviceDesc, error) {
 
 	req := &protos.TAcquireNVMeDeviceRequest{
 		SerialNumber: serialNumber,
 	}
 
-	_, err := client.Impl.AcquireNVMeDevice(ctx, req)
-	return err
+	resp, err := client.Impl.AcquireNVMeDevice(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Device, nil
 }
 
 func (client *Client) ReleaseNVMeDevice(

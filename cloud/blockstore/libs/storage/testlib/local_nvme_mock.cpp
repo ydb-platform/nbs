@@ -37,7 +37,7 @@ public:
     }
 
     [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> final
+        -> TFuture<TResultOrError<NProto::TNVMeDevice>> final
     {
         const auto* disk = FindIfPtr(
             Devices,
@@ -45,10 +45,11 @@ public:
             { return disk.GetSerialNumber() == serialNumber; });
 
         if (disk) {
-            return MakeFuture(NProto::TError());
+            return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(
+                NProto::TError());
         }
 
-        return MakeFuture(MakeError(
+        return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(MakeError(
             E_NOT_FOUND,
             TStringBuilder()
                 << "Disk " << serialNumber.Quote() << " not found"));

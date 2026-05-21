@@ -3,6 +3,8 @@
 #include "helpers.h"
 #include "tablet_schema.h"
 
+#include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 
@@ -215,8 +217,6 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         WaitReadyRequests.pop_front();
     }
 
-    FastShard = NFastShard::CreateFileSystemShardStub();
-
     TThrottlerConfig config;
     Convert(args.FileSystem.GetPerformanceProfile(), config);
 
@@ -232,6 +232,14 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         args.ResponseLog,
         config);
     UpdateLogTag();
+
+    if (GetFileSystem().GetFastShardConfig().StorageGroupsSize() == 0) {
+        FastShard =
+            NFastShard::CreateMemFileSystemShard(GetFileSystem().GetShardNo());
+    } else {
+        // not supported yet
+        FastShard = NFastShard::CreateFileSystemShardStub();
+    }
 
     NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());

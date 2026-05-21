@@ -1083,15 +1083,18 @@ private:
     TTxPartition::TRangeCompaction& Args;
     const ui64 MaxCommitId;
     const TCompactionMap& CompactionMap;
+    const ui64 TabletId;
 
 public:
     TCompactionBlockVisitor(
             TTxPartition::TRangeCompaction& args,
             ui64 maxCommitId,
-            const TCompactionMap& compactionMap)
+            const TCompactionMap& compactionMap,
+            ui64 tabletId)
         : Args(args)
         , MaxCommitId(maxCommitId)
         , CompactionMap(compactionMap)
+        , TabletId(tabletId)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -1131,11 +1134,27 @@ public:
         ui16 blobOffset,
         ui8 compactionRangeCount) override
     {
+        auto& ab = Args.AffectedBlobs[blobId];
+
+        ab.MaxCommitIdInCompactionRange =
+            std::max(commitId, ab.MaxCommitIdInCompactionRange);
+        ab.MinCommitIdInCompactionRange =
+            std::min(commitId, ab.MinCommitIdInCompactionRange);
+
         if (commitId > MaxCommitId) {
             return true;
         }
 
-        auto& ab = Args.AffectedBlobs[blobId];
+        STORAGE_VERIFY_C(
+            ab.CompactionRangeCount == 0 ||
+                ab.CompactionRangeCount == compactionRangeCount,
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            TStringBuilder()
+                << "Compaction range count mismatch, BlobId: " << blobId
+                << ", expected: " << ab.CompactionRangeCount
+                << ", actual: " << compactionRangeCount);
+
         ab.CompactionRangeCount = compactionRangeCount;
 
         Args.MarkBlock(
@@ -1150,9 +1169,27 @@ public:
     bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
-        ab.CompactionRangeCount = CompactionMap.GetRangeIndex(blockRange.End) -
+        ab.MaxCommitIdInCompactionRange = blobId.CommitId();
+        ab.MinCommitIdInCompactionRange = blobId.CommitId();
+        ab.CompactionRangeCount =
+            CompactionMap.GetRangeIndex(blockRange.End) -
             CompactionMap.GetRangeIndex(blockRange.Start) + 1;
         return true;
+    }
+
+    void Finish()
+    {
+        TVector<TPartialBlobId> blobIdsToDelete;
+
+        for (const auto& [blobId, ab]: Args.AffectedBlobs) {
+            if (ab.MinCommitIdInCompactionRange > MaxCommitId) {
+                blobIdsToDelete.push_back(blobId);
+            }
+        }
+
+        for (const auto& blobId: blobIdsToDelete) {
+            Args.AffectedBlobs.erase(blobId);
+        }
     }
 };
 
@@ -1816,7 +1853,11 @@ void PrepareRangeCompaction(
     TTxPartition::TRangeCompaction& args,
     const TString& logTitle)
 {
-    TCompactionBlockVisitor visitor(args, commitId, state.GetCompactionMap());
+    TCompactionBlockVisitor visitor(
+        args,
+        commitId,
+        state.GetCompactionMap(),
+        tabletId);
     state.FindFreshBlocks(visitor, args.BlockRange, commitId);
     visitor.KeepTrackOfAffectedBlocks = true;
     ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);
@@ -1828,6 +1869,8 @@ void PrepareRangeCompaction(
         true,   // precharge
         state.GetMaxBlocksInBlob(),
         commitId);
+
+    visitor.Finish();
 
     if (ready && maxSkippedBlobs > 0) {
         THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> liveBlocks;
@@ -1931,7 +1974,11 @@ void PrepareRangeCompaction(
         const bool blobOnlyInOneCompactRange =
             kv.second.CompactionRangeCount == 1;
 
-        if (!blobOnlyInOneCompactRange ||
+        const bool blobFullyAvailableForRangeCompaction =
+            kv.second.MaxCommitIdInCompactionRange <= commitId &&
+            blobOnlyInOneCompactRange;
+
+        if (!blobFullyAvailableForRangeCompaction ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             state.IncrementBlockMaskReadDuringCompaction();

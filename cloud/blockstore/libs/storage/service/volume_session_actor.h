@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
+#include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -35,8 +36,11 @@ private:
     enum EVolumeRequest
     {
         NONE,
-        START_REQUEST,
-        STOP_REQUEST
+        START_REQUEST,             // Start volume tablet locally
+        STOP_REQUEST,              // Stop local volume tablet
+        RELEASE_TO_HIVE_REQUEST,   // Indirectly stop local volume tablet:
+                                   // let the hive boot new volume tablet first,
+                                   // then wait for local tablet demotion
     };
 
     struct TMountRequestProcResult
@@ -209,6 +213,10 @@ private:
         const TEvServicePrivate::TEvStopVolumeRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReleaseVolumeToHiveRequest(
+        const TEvServicePrivate::TEvReleaseVolumeToHiveRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleVolumeTabletStatus(
         const TEvServicePrivate::TEvVolumeTabletStatus::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -219,6 +227,10 @@ private:
 
     void HandleChangeVolumeBindingRequest(
         const TEvService::TEvChangeVolumeBindingRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUnlockTabletResponse(
+        const NCloud::NStorage::TEvHiveProxy::TEvUnlockTabletResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

@@ -1,7 +1,7 @@
 1. Install packer https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli
 2. Obtain token:
 ```
-export NEBIUS_TOKEN=$(nebius iam get-access-token)
+export NEBIUS_IAM_TOKEN=$(nebius iam get-access-token)
 export GITHUB_TOKEN=$(gh auth token)
 ```
 3. Set environmental variables:

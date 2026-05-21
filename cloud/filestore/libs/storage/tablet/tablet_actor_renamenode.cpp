@@ -98,18 +98,6 @@ NProto::TError TIndexTabletActor::HandleCrossShardRenameNodeImpl(
         return MakeError(E_ARGUMENT, std::move(message));
     }
 
-    if (newParentShardNo == 0
-            && record.GetNewParentId() != RootNodeId
-            && !GetFileSystem().GetForceDirectoryCreationInShards())
-    {
-        auto message = ReportInvalidShardNo(
-            TStringBuilder() << "RenameNode: "
-                << record.ShortDebugString() << " newParentShardNo"
-                << ": " << newParentShardNo << ", NewParentId: "
-                << record.GetNewParentId());
-        return MakeError(E_ARGUMENT, std::move(message));
-    }
-
     ExecuteTx<TPrepareRenameNodeInSource>(
         ctx,
         std::move(requestInfo),
@@ -777,8 +765,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
         if (op.HasUnlinkNodeInShardRequest()) {
-            // rename + unlink is pretty rare so let's keep INFO level here
-            LOG_INFO(
+            LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",

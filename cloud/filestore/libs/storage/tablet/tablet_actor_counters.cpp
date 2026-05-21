@@ -377,6 +377,12 @@ void TIndexTabletActor::UpdateMetrics(
     Store(
         Metrics.CleanupBackpressureThreshold,
         backpressureThresholds.CleanupScore);
+    Store(
+        Metrics.CollectGarbageBackpressureValue,
+        backpressureValues.CollectGarbage);
+    Store(
+        Metrics.CollectGarbageBackpressureThreshold,
+        backpressureThresholds.CollectGarbage);
 
     Store(Metrics.MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(Metrics.MaxWriteIops, performanceProfile.GetMaxWriteIops());
@@ -417,6 +423,18 @@ void TIndexTabletActor::UpdateMetrics(
     Store(Metrics.StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
     Store(Metrics.ActiveSessionsCount, sessionsStats.ActiveSessionsCount);
     Store(Metrics.OrphanSessionsCount, sessionsStats.OrphanSessionsCount);
+    Store(
+        Metrics.HandleStatsByNodeMaxSize,
+        sessionsStats.HandleStatsByNodeMaxSize);
+    Store(
+        Metrics.HandleStatsByNodeSumSize,
+        sessionsStats.HandleStatsByNodeSumSize);
+    Store(
+        Metrics.HandleStatsByNodeMaxTotalSize,
+        sessionsStats.HandleStatsByNodeMaxTotalSize);
+    Store(
+        Metrics.HandleStatsByNodeSumTotalSize,
+        sessionsStats.HandleStatsByNodeSumTotalSize);
     Store(Metrics.WritableChannelCount, channelsStats.WritableChannelCount);
     Store(Metrics.UnwritableChannelCount, channelsStats.UnwritableChannelCount);
     Store(Metrics.ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
@@ -572,24 +590,17 @@ void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
 
 void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
 {
-    TExecutorPoolStats poolStats;
-    TVector<TExecutorThreadStats> threadStats;
-    auto& actorSystem = *ctx.ExecutorThread.ActorSystem;
-    const ui32 poolId = ctx.SelfID.PoolID();
-    actorSystem.GetPoolStats(poolId, poolStats, threadStats);
-    i64 ticks = 0;
-    for (ui64 i = 0; i < threadStats.size(); ++i) {
-        ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType()];
-    }
-
-    const i64 curUsageMicros = ::NHPTimer::GetSeconds(ticks) * 1'000'000;
+    const i64 curUsageMicros =
+        Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
     const TInstant ts = ctx.Now();
     if (Metrics.PrevCPUUsageMicrosTs) {
         const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
         if (timeDiff) {
             const double usageDiff =
                 curUsageMicros - Metrics.PrevCPUUsageMicros;
-            Metrics.CPUUsageRate = 100 * (usageDiff / timeDiff.MicroSeconds());
+            Metrics.CPUUsageRate.store(
+                100 * (usageDiff / timeDiff.MicroSeconds()),
+                std::memory_order_relaxed);
         }
     }
 
@@ -859,7 +870,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::TABLET,
-                "%s Failed to updated shard balancer: %s",
+                "%s Failed to update shard balancer: %s",
                 LogTag.c_str(),
                 FormatError(error).Quote().c_str());
 

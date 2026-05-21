@@ -788,40 +788,20 @@ struct TStatsCalculator
 {
     ui64 WriteDataFlushCount = 0;
     ui64 FlushCount = 0;
-
-    struct TState
-    {
-        ui32 NodeId = 0;
-        bool Flushed = false;
-    };
-
-    TDeque<TState> Queue;
     THashMap<ui32, ui64> UnflushedRequestCount;
 
     void Write(ui32 nodeId)
     {
-        Queue.push_back({.NodeId = nodeId, .Flushed = false});
         UnflushedRequestCount[nodeId]++;
     }
 
     void Flush(ui32 nodeId)
     {
-        for (auto& stats: Queue) {
-            if (stats.NodeId != nodeId || stats.Flushed) {
-                continue;
-            }
-            stats.Flushed = true;
-        }
-
         auto it = UnflushedRequestCount.find(nodeId);
         if (it != UnflushedRequestCount.end()) {
             WriteDataFlushCount += it->second;
             FlushCount++;
             UnflushedRequestCount.erase(it);
-        }
-
-        while (!Queue.empty() && Queue.front().Flushed) {
-            Queue.pop_front();
         }
     }
 
@@ -832,27 +812,14 @@ struct TStatsCalculator
             WriteDataFlushCount += pair.second;
         }
 
-        Queue.clear();
         UnflushedRequestCount.clear();
-    }
-
-    void Unflush()
-    {
-        for (auto& stats: Queue) {
-            if (stats.Flushed) {
-                stats.Flushed = false;
-                UnflushedRequestCount[stats.NodeId]++;
-            }
-        }
     }
 
     ui64 GetUnflushedQueueRequestCount() const
     {
         ui64 res = 0;
-        for (const auto& stats: Queue) {
-            if (!stats.Flushed) {
-                res++;
-            }
+        for (auto [nodeId, count]: UnflushedRequestCount) {
+            res += count;
         }
         return res;
     }
@@ -1132,7 +1099,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             if (args.WithCacheRecreation && RandomNumber(20u) == 0) {
                 b.RecreateCache();
-                stats.Unflush();
                 // Stats are reset on cache recreation
                 stats.FlushCount = 0;
             }
