@@ -12,6 +12,11 @@ variable "RUNNER_VERSION" {
   default = "2.333.0"
 }
 
+variable "RUNNER_SHA256_X64" {
+  type    = string
+  default = env("RUNNER_SHA256_X64")
+}
+
 variable "USER_TO_CREATE" {
   type    = string
   default = "github"
@@ -50,9 +55,9 @@ variable "GITHUB_TOKEN" {
   default = env("GITHUB_TOKEN")
 }
 
-variable "NEBIUS_TOKEN" {
+variable "NEBIUS_IAM_TOKEN" {
   type    = string
-  default = env("NEBIUS_TOKEN")
+  default = env("NEBIUS_IAM_TOKEN")
 }
 
 variable "PARENT_ID" {
@@ -77,7 +82,7 @@ locals {
 source "nebius-image" "ubuntu2204-nbs-github-ci" {
   communicator = "ssh"
   ssh_username = "ubuntu"
-  token      = var.NEBIUS_TOKEN
+  token      = var.NEBIUS_IAM_TOKEN
   disk {
     size_gibibytes = 16
   }
@@ -117,9 +122,15 @@ build {
     destination = "${local.tmp_directory}/requirements.txt"
   }
 
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/actions-runner-job-completed-cleanup.sh"
+    destination = "${local.tmp_directory}/actions-runner-job-completed-cleanup.sh"
+  }
+
   provisioner "shell" {
     environment_vars = [
       "RUNNER_VERSION=${var.RUNNER_VERSION}",
+      "RUNNER_SHA256_X64=${var.RUNNER_SHA256_X64}",
       "USER_TO_CREATE=${var.USER_TO_CREATE}",
       "PASSWORD_HASH=${var.PASSWORD_HASH}",
       "GITHUB_TOKEN=${var.GITHUB_TOKEN}",
