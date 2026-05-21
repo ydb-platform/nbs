@@ -63,7 +63,7 @@ private:
     NProto::TError ReplicasCollectiveResponse;
     size_t RemainResponseCount = 0;
 
-    TChildLogTitle LogTitle;
+    const TChildLogTitle LogTitle;
 
 public:
     TMultiAgentWriteActor(
