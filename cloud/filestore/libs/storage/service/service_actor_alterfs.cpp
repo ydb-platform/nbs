@@ -441,6 +441,7 @@ void TAlterFileStoreActor::AlterShards(const TActorContext& ctx)
 {
     if (ShardsToAlter == 0) {
         CreateShards(ctx);
+        return;
     }
 
     for (ui32 i = 0; i < ShardsToAlter; ++i) {
@@ -718,7 +719,7 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
         TFileStoreComponents::SERVICE,
         "[%s] Created shard %s",
         FileSystemId.c_str(),
-        FileStoreConfig.ShardConfigs[ev->Cookie].GetFileSystemId().c_str());
+        GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str());
 
     Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
     if (--ShardsToCreate == 0) {
