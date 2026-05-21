@@ -1,5 +1,7 @@
 #include "protobuf_utils.h"
 
+#include <cloud/filestore/libs/storage/service/service_ut_helpers.h>
+
 #include "cloud/storage/core/libs/common/error.h"
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -10,15 +12,6 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace {
-
-TString GenerateValidateData(ui32 size, ui32 seed = 0)
-{
-    TString data(size, 0);
-    for (ui32 i = 0; i < size; ++i) {
-        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
-    }
-    return data;
-}
 
 TVector<TString> CreateIovecs(size_t num, size_t size)
 {

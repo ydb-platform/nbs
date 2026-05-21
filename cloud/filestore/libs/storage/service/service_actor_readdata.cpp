@@ -726,10 +726,11 @@ void TReadDataActor::HandleReadDataResponse(
                 ReadRequest.GetIovecs());
             if (!HasError(ret)) {
                 isResponseParsed = true;
-            }
-            else {
+            } else {
                 // report critical event and fallback to the default parser
                 ReportReadDataResponseParserFailed(FormatError(ret));
+                // Abort execution to detect parser failures in the tests
+                Y_DEBUG_ABORT_UNLESS(isResponseParsed);
             }
         }
     }

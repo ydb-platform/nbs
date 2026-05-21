@@ -19,14 +19,9 @@ NCloud::NProto::TError ParseReadDataResponse(
 
     input.PushLimit(size);
 
-    while (true) {
-        auto tag = input.ReadTag();
-
-        if (tag == 0) {
-            // end of message
-            break;
-        }
-
+    // A tag value of 0 indicates either an error or that the push limit has
+    // been reached.
+    while (auto tag = input.ReadTag()) {
         int field = WireFormatLite::GetTagFieldNumber(tag);
         auto wire = WireFormatLite::GetTagWireType(tag);
 
