@@ -434,6 +434,10 @@ void TIndexTabletActor::DeleteUnconfirmedData(
     enqueueCommitIdsToDelete(UnconfirmedData);
     enqueueCommitIdsToDelete(UnconfirmedDataInProgress);
 
+    if (commitIdsToDelete.empty()) {
+        return;
+    }
+
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
@@ -442,10 +446,6 @@ void TIndexTabletActor::DeleteUnconfirmedData(
         entityLogTag,
         entityLogValue.c_str(),
         commitIdsToDelete.size());
-
-    if (commitIdsToDelete.empty()) {
-        return;
-    }
 
     // Cleanup has the same ordering requirement as CancelAddData: once
     // commitIds are placed into DeletionQueue, DeleteUnconfirmedData must be

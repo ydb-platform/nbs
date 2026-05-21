@@ -782,6 +782,13 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
     // for the same logical session can be tracked with a separate data pipe
     // server id. Delete by session too.
     for (const auto& sessionId: sessionIds) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Deleting unconfirmed data for session: sessionId=%s",
+            LogTag.c_str(),
+            sessionId.Quote().c_str());
+
         DeleteUnconfirmedDataForSession(sessionId, ctx);
     }
 
