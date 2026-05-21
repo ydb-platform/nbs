@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 
 import yatest.common as common
 
@@ -39,13 +40,38 @@ def fill_fs(client, fs_id, items):
             client.ln(fs_id, item.path, "--symlink", item.data)
 
 
+def request_tablet(tablet_id, params, attempt_count=10):
+    mon_port = int(os.getenv("NFS_MON_PORT"))
+    ce = None
+    for i in range(attempt_count):
+        try:
+            response = requests.get(
+                url=f"http://localhost:{mon_port}/tablets/app?"
+                    f"TabletID={tablet_id}&{params}")
+            ce = None
+            response.raise_for_status()
+            err_msg = f"Tablet pipe with {tablet_id} is not connected" \
+                " with status: ERROR"
+            if err_msg not in response.text:
+                return response
+        except requests.exceptions.ConnectionError as e:
+            ce = e
+
+        time.sleep(1)
+
+    if ce:
+        raise Exception(f"connection error: {ce}")
+
+    raise Exception("tablet %s unreachable" % tablet_id)
+
+
 def fetch_dir_viewer_entries(tablet_id, node_id):
-    mon_port = os.getenv("NFS_MON_PORT")
-    response = requests.get(
-        url=f"http://localhost:{mon_port}/tablets/app?"
-            f"TabletID={tablet_id}&action=dirViewer&nodeId={node_id}")
-    response.raise_for_status()
-    entries = response.json()["entries"]
+    response = request_tablet(tablet_id, f"action=dirViewer&nodeId={node_id}")
+    try:
+        entries = response.json()["entries"]
+    except Exception as e:
+        raise Exception(f"invalid response, error: {e}, text: {response.text}")
+
     for entry in entries:
         del entry["node"]["shardNodeName"]
         del entry["node"]["id"]
@@ -53,9 +79,5 @@ def fetch_dir_viewer_entries(tablet_id, node_id):
 
 
 def fetch_locks(tablet_id):
-    mon_port = os.getenv("NFS_MON_PORT")
-    response = requests.get(
-        url=f"http://localhost:{mon_port}/tablets/app?"
-            f"TabletID={tablet_id}&action=locks&getContent=1")
-    response.raise_for_status()
+    response = request_tablet(tablet_id, "action=locks&getContent=1")
     return response.json()
