@@ -293,6 +293,8 @@ struct TCompactionMap::TImpl
                     group->Range = index;
                 }
             } else if (index == group->Range) {
+                // Score in the top range has decreased, need to recalculate the
+                // maximal score.
                 RecalculateGroupScore(group);
             }
         }

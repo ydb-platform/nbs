@@ -81,7 +81,6 @@ void DoUpdateRandomized(ui64 diskSize, benchmark::State& state)
     TCompressedBitmap usedBlocks(rangeCount * BlocksInRange);
     TVector<TCompactionCounter> counters(Reserve(rangeCount));
 
-
     for (size_t i = 0; i < rangeCount; ++i) {
         const ui16 blobCount =
             static_cast<ui16>(RandomNumber<ui32>(6)); // [0, 5]
