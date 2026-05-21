@@ -151,6 +151,12 @@ ELogPriority GetRequestLogPriority()
         : ELogPriority::TLOG_RESOURCES;
 }
 
+template <>
+ELogPriority GetRequestLogPriority<NProto::TExecuteActionRequest>()
+{
+    return ELogPriority::TLOG_RESOURCES;
+}
+
 #undef FILESTORE_REQUEST_CHECK
 
 ////////////////////////////////////////////////////////////////////////////////

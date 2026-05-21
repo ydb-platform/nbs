@@ -530,6 +530,7 @@ private:
                 RequestGenerator = CreateIndexRequestGenerator(
                     Config.GetIndexLoadSpec(),
                     Logging,
+                    Client,
                     Session,
                     FileSystemId,
                     headers);
