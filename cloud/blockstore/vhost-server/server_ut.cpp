@@ -152,7 +152,6 @@ public:
     std::shared_ptr<IServer> Server;
     TVector<TTempFileHandle> Files;
     IEncryptorPtr Encryptor;
-    ITaskQueuePtr ThreadPool;
 
     TOptions Options {
         .SocketPath = SocketPath,
@@ -178,11 +177,9 @@ public:
 
     void StartServer(bool addNonExistingDevice = false)
     {
-        if (ThreadCount > 0) {
-            ThreadPool = CreateThreadPool("Encryptor", ThreadCount);
-        }
-
-        Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging, ThreadPool));
+        Server = CreateServer(
+            Logging,
+            CreateAioBackend(Encryptor, Logging, ThreadCount));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
@@ -204,10 +201,6 @@ public:
             file.Resize(ChunkByteCount);
         }
 
-        if (ThreadPool) {
-            ThreadPool->Start();
-        }
-
         Server->Start(Options);
 
         ASSERT_TRUE(Client.Init());
@@ -217,13 +210,9 @@ public:
 
     void StartServerWithSplitDevices()
     {
-        if (ThreadCount > 0) {
-            ThreadPool = CreateThreadPool("Encryptor", ThreadCount);
-        }
-
         Server = CreateServer(
             Logging,
-            CreateAioBackend(Encryptor, Logging, ThreadPool));
+            CreateAioBackend(Encryptor, Logging, ThreadCount));
 
         // H - header
         // D - device
@@ -279,10 +268,6 @@ public:
             });
         }
 
-        if (ThreadPool) {
-            ThreadPool->Start();
-        }
-
         Server->Start(Options);
 
         ASSERT_TRUE(Client.Init());
@@ -304,10 +289,6 @@ public:
             Client.DeInit();
             Server->Stop();
             Server.reset();
-        }
-        if (ThreadPool) {
-            ThreadPool->Stop();
-            ThreadPool.reset();
         }
         Files.clear();
         Options.Layout.clear();

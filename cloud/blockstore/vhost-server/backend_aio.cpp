@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -124,8 +125,7 @@ class TAioBackend final: public IBackend
 {
 private:
     const ILoggingServicePtr Logging;
-    std::shared_ptr<TLog> SharedLog;
-    TLog& Log = *SharedLog;
+    TLog Log;
 
     IEncryptorPtr Encryptor;
     TVector<TAioDevice> Devices;
@@ -142,14 +142,13 @@ private:
 
     ITaskQueuePtr ThreadPool;
 
-    std::shared_ptr<std::atomic<ui64>> InflightTasksInThreadPool =
-        std::make_shared<std::atomic<ui64>>(0);
+    std::atomic<ui64> InflightTasksInThreadPool = 0;
 
 public:
     TAioBackend(
         IEncryptorPtr encryptor,
         ILoggingServicePtr logging,
-        ITaskQueuePtr threadPool);
+        ui64 threadPoolSize);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -191,14 +190,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAioBackend::TAioBackend(
-        IEncryptorPtr encryptor,
-        ILoggingServicePtr logging,
-        ITaskQueuePtr threadPool)
+    IEncryptorPtr encryptor,
+    ILoggingServicePtr logging,
+    ui64 threadPoolSize)
     : Logging{std::move(logging)}
-    , SharedLog(std::make_shared<TLog>(Logging->CreateLog("AIO")))
+    , Log(Logging->CreateLog("AIO"))
     , Encryptor(std::move(encryptor))
     , CompletionStats(CreateCompletionStats())
-    , ThreadPool(std::move(threadPool))
+    , ThreadPool(
+          threadPoolSize > 0 ? CreateThreadPool("ENCRYPTION", threadPoolSize)
+                             : nullptr)
 {}
 
 void TAioBackend::IoSetup()
@@ -349,6 +350,10 @@ void TAioBackend::Start()
 {
     STORAGE_INFO("Starting AIO backend");
 
+    if (ThreadPool) {
+        ThreadPool->Start();
+    }
+
     CompletionThread = std::thread([this] { CompletionThreadFunc(); });
 }
 
@@ -360,8 +365,12 @@ void TAioBackend::Stop()
     CompletionThread.join();
 
     TSpinWait spinWait;
-    while (InflightTasksInThreadPool->load() > 0) {
+    while (InflightTasksInThreadPool.load() > 0) {
         spinWait.Sleep();
+    }
+
+    if (ThreadPool) {
+        ThreadPool->Stop();
     }
 
     io_destroy(Io);
@@ -473,25 +482,19 @@ void TAioBackend::CompleteCompoundRequest(
         vhd_get_bdev_io(sub->GetParentRequest()->Io)->type == VHD_BDEV_READ &&
         result == VHD_BDEV_SUCCESS && ThreadPool;
 
-    InflightTasksInThreadPool->fetch_add(1);
+    InflightTasksInThreadPool.fetch_add(1);
     auto completeCompoundRequest =
-        [log = SharedLog,
-         encryptor = Encryptor,
-         inflightTasksInThreadPool = InflightTasksInThreadPool,
-         sub = std::move(sub),
-         result,
-         stats,
-         now]() mutable
+        [this, sub = std::move(sub), result, stats, now]() mutable
     {
         CompleteCompoundRequestImpl(
-            *log,
-            encryptor.get(),
+            Log,
+            Encryptor.get(),
             std::move(sub),
             result,
             *stats,
             now);
         stats->Completed += 1;
-        inflightTasksInThreadPool->fetch_sub(1);
+        InflightTasksInThreadPool.fetch_sub(1);
     };
 
     if (needToPostOnAnotherThread) {
@@ -513,25 +516,23 @@ void TAioBackend::CompleteRequest(
         Encryptor && bio->type == VHD_BDEV_READ && result == VHD_BDEV_SUCCESS &&
         ThreadPool;
 
-    InflightTasksInThreadPool->fetch_add(1);
+    InflightTasksInThreadPool.fetch_add(1);
     auto completeRequest =
-        [log = SharedLog,
-         encryptor = Encryptor,
-         inflightTasksInThreadPool = InflightTasksInThreadPool,
+        [this,
          req = std::move(req),
          result,
-         stats,
+         stats = std::move(stats),
          now]() mutable
     {
         CompleteRequestImpl(
-            *log,
-            encryptor.get(),
+            Log,
+            Encryptor.get(),
             std::move(req),
             result,
             *stats,
             now);
         stats->Completed += 1;
-        inflightTasksInThreadPool->fetch_sub(1);
+        InflightTasksInThreadPool.fetch_sub(1);
     };
 
     if (needToPostOnAnotherThread) {
@@ -636,12 +637,12 @@ void TAioBackend::CompletionThreadFunc()
 IBackendPtr CreateAioBackend(
     IEncryptorPtr encryptor,
     ILoggingServicePtr logging,
-    ITaskQueuePtr threadPool)
+    ui64 threadPoolSize)
 {
     return std::make_shared<TAioBackend>(
         std::move(encryptor),
         std::move(logging),
-        std::move(threadPool));
+        threadPoolSize);
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

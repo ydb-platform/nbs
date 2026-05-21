@@ -149,8 +149,7 @@ IEncryptorPtr CreateEncryptor(
 
 IBackendPtr CreateBackend(
     const TOptions& options,
-    NCloud::ILoggingServicePtr logging,
-    ITaskQueuePtr threadPool)
+    NCloud::ILoggingServicePtr logging)
 {
     auto encryptor = CreateEncryptor(options, logging);
 
@@ -158,7 +157,7 @@ IBackendPtr CreateBackend(
         return CreateAioBackend(
             std::move(encryptor),
             logging,
-            std::move(threadPool));
+            options.ThreadPoolSize);
     } else if (options.DeviceBackend == "rdma") {
         return CreateRdmaBackend(logging);
     } else if (options.DeviceBackend == "null") {
@@ -231,19 +230,10 @@ int main(int argc, char** argv)
     pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
 
     auto logService = CreateLogService(options);
-    NCloud::ITaskQueuePtr threadPool;
-    if (options.ThreadPoolSize > 0) {
-        threadPool =
-            NCloud::CreateThreadPool("USER_POOL", options.ThreadPoolSize);
-    }
-    auto backend = CreateBackend(options, logService, threadPool);
+    auto backend = CreateBackend(options, logService);
     auto server = CreateServer(logService, backend);
     auto Log = logService->CreateLog("SERVER");
     SetCriticalEventsLog(Log);
-
-    if (threadPool) {
-        threadPool->Start();
-    }
 
     server->Start(options);
 

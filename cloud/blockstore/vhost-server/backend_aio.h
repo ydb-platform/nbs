@@ -12,6 +12,6 @@ namespace NCloud::NBlockStore::NVHostServer {
 IBackendPtr CreateAioBackend(
     IEncryptorPtr encryptor,
     ILoggingServicePtr logging,
-    ITaskQueuePtr threadPool);
+    ui64 threadPoolSize);
 
 }   // namespace NCloud::NBlockStore::NVHostServer

@@ -11,12 +11,9 @@ namespace NCloud::NBlockStore::NVHostServer {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T, ui32 BucketShift = 7>
+    requires std::is_same_v<T, ui64> || std::is_same_v<T, std::atomic<ui64>>
 class THistogram
 {
-    static_assert(
-        std::is_same_v<T, ui64> || std::is_same_v<T, std::atomic<ui64>>,
-        "T must be ui64 or std::atomic<ui64>");
-
     static constexpr ui32 BucketLsb = 64 - BucketShift;
     static constexpr ui32 NumBucketsPerRange = 1ULL << BucketShift;
     static constexpr ui32 BucketMask = NumBucketsPerRange - 1;
