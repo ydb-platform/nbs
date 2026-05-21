@@ -68,6 +68,9 @@ message THeaders
 
         // Source of control plane request.
         EControlRequestSource ControlSource = 5;
+
+        // Peer address of the request sender.
+        string Peer = 6;
     }
 
     // These headers must not be set by end clients. They will be overwritten

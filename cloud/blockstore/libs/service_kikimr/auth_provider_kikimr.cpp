@@ -43,6 +43,7 @@ private:
     const EBlockStoreRequest RequestType;
     const TDuration RequestTimeout;
     const TString DiskId;
+    const TString Peer;
 
     bool RequestCompleted = false;
 
@@ -54,7 +55,8 @@ public:
             TCallContextPtr callContext,
             EBlockStoreRequest requestType,
             TDuration requestTimeout,
-            TString diskId)
+            TString diskId,
+            TString peer)
         : Permissions(permissions)
         , AuthToken(std::move(authToken))
         , Response(std::move(response))
@@ -62,6 +64,7 @@ public:
         , RequestType(requestType)
         , RequestTimeout(requestTimeout)
         , DiskId(std::move(diskId))
+        , Peer(std::move(peer))
     {}
 
     ~TRequestActor() override
@@ -159,7 +162,7 @@ private:
         if (FAILED(msg->GetStatus())) {
             LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
                 TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-                << " unauthorized request");
+                << " unauthorized request, peer: " << Peer);
         }
 
         CompleteRequest(ctx, msg->Error);
@@ -173,7 +176,7 @@ private:
 
         LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-            << " request timed out");
+            << " request timed out, peer: " << Peer);
 
         NProto::TError error;
         error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT
@@ -211,7 +214,8 @@ public:
         TString authToken,
         EBlockStoreRequest requestType,
         TDuration requestTimeout,
-        TString diskId) override
+        TString diskId,
+        TString peer) override
     {
         auto response = NewPromise<NProto::TError>();
 
@@ -222,7 +226,8 @@ public:
             std::move(callContext),
             requestType,
             requestTimeout,
-            std::move(diskId)));
+            std::move(diskId),
+            std::move(peer)));
 
         return response.GetFuture();
     }
