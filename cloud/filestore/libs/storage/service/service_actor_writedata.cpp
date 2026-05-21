@@ -185,31 +185,32 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
+        try {
+            if (Session && ShmClient) {
+                auto request =
+                    std::make_shared<NProto::TWriteDataRequest>(WriteRequest);
+
+                ui64 shmOffset = 0;
+                shmOffset = ShmClient->PrepareWrite(*request);
+
+                auto response =
+                    Session->WriteData(RequestInfo->CallContext, request)
+                        .GetValue(TDuration::Seconds(10));
+
+                ShmClient->FreeOffset(shmOffset);
+
+                if (!HasError(response)) {
+                    ReplyAndDie(ctx, std::move(response));
+                    return;
+                }
+            }
+        } catch (std::exception& e) {
+        }
+
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
             RequestInfo->CallContext,
             "GenerateBlobIds");
-
-        if (Session && ShmClient) {
-            auto request = std::make_shared<NProto::TWriteDataRequest>(WriteRequest);
-
-            ui64 shmOffset = 0;
-            shmOffset = ShmClient->PrepareWrite(*request);
-
-            auto response =
-                Session->WriteData(RequestInfo->CallContext, request)
-                    .GetValue(TDuration::Seconds(10));
-
-            ShmClient->FreeOffset(shmOffset);
-
-            if (HasError(response)) {
-                HandleError(ctx, response.GetError());
-                return;
-            }
-
-            ReplyAndDie(ctx, std::move(response));
-            return;
-        }
 
         Rope = CreateRope(WriteRequest.GetIovecs());
 
