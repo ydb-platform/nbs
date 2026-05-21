@@ -6,7 +6,6 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/threading/future/async.h>
 
 #include <util/generic/map.h>
@@ -16,6 +15,9 @@
 #include <util/system/file.h>
 #include <util/system/info.h>
 #include <util/thread/pool.h>
+
+#include <atomic>
+#include <latch>
 
 namespace NCloud::NBlockStore {
 
@@ -35,8 +37,8 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
-    TAtomic ExitCode = 0;
-    TAtomic ShouldStop = 0;
+    std::atomic<int> ExitCode;
+    std::atomic_flag ShouldStop;
 
     TVector<TTestExecutorConfigPtr> ExecutorsConfigs;
     TVector<ITestExecutorPtr> Executors;
@@ -103,17 +105,16 @@ int TTest::Run()
     }
 
     STORAGE_INFO("Terminating...");
-    return AtomicGet(ExitCode);
+    return ExitCode.load();
 }
 
 void TTest::Stop(int exitCode)
 {
-    if (ShouldStop) {
+    if (ShouldStop.test_and_set()) {
         return;
     }
 
-    AtomicSet(ExitCode, exitCode);
-    AtomicSet(ShouldStop, 1);
+    ExitCode.store(exitCode);
 
     for (auto& executor: Executors) {
         executor->Stop();
@@ -176,8 +177,8 @@ void TTest::RunStage(const ETestExecutorType& type)
     CheckStopFlag();
 
     auto threadPool = CreateThreadPool(Options->IoDepth);
-    TAtomic waitingForStart = 0;
-    TAtomic shouldStart = 0;
+
+    std::latch waitingForStart{Options->IoDepth};
 
     TMap<TTestExecutorConfig, TFuture<TTestExecutorReport>> configToReport;
 
@@ -186,17 +187,11 @@ void TTest::RunStage(const ETestExecutorType& type)
             CreateTestExecutor(type, Options->FilePath, executorConfig));
 
         const auto report = Async([&, executor = Executors.back()]() mutable {
-            return executor->Run(waitingForStart, shouldStart);
+            return executor->Run(waitingForStart);
         }, *threadPool);
 
         configToReport[*executorConfig] = report;
     }
-
-    while (AtomicGet(waitingForStart) != Options->IoDepth) {
-        CheckStopFlag();
-    }
-
-    AtomicSet(shouldStart, 1);
 
     for (const auto& [config, reportFuture]: configToReport) {
         const auto& report = reportFuture.GetValueSync();
@@ -217,7 +212,7 @@ void TTest::DropCaches()
 
 void TTest::CheckStopFlag()
 {
-    if (AtomicGet(ShouldStop)) {
+    if (ShouldStop.test()) {
         throw TStopException();
     }
 }

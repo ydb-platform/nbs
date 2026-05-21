@@ -9,6 +9,8 @@
 #include <util/system/byteorder.h>
 #include <util/system/file.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -19,7 +21,7 @@ class TTestExecutorRead final
     : public ITestExecutor
 {
 private:
-    TAtomic ShouldStop = 0;
+    std::atomic_flag ShouldStop;
 
     TString FilePath;
     TTestExecutorConfigPtr Config;
@@ -30,9 +32,7 @@ public:
         , Config(std::move(config))
     {}
 
-    TTestExecutorReport Run(
-        TAtomic& waitingForStart,
-        TAtomic& shouldStart) override;
+    TTestExecutorReport Run(std::latch& waitingForStart) override;
 
     void Stop() override;
 };
@@ -43,7 +43,7 @@ class TTestExecutorWrite final
     : public ITestExecutor
 {
 private:
-    TAtomic ShouldStop = 0;
+    std::atomic_flag ShouldStop;
 
     TString FilePath;
     TTestExecutorConfigPtr Config;
@@ -54,9 +54,7 @@ public:
         , Config(std::move(config))
     {}
 
-    TTestExecutorReport Run(
-        TAtomic& waitingForStart,
-        TAtomic& shouldStart) override;
+    TTestExecutorReport Run(std::latch& waitingForStart) override;
 
     void Stop() override;
 };
@@ -69,7 +67,7 @@ TVector<ui64> GenerateOffsetsQueue(const TTestExecutorConfig& config)
         (config.EndOffset - config.StartOffset) / config.BlockSize;
     TVector<ui64> offsetsQueue;
 
-    for (ui64 i = 0u; i < blocksCount; i += config.Step) {
+    for (ui64 i = 0UL; i < blocksCount; i += config.Step) {
         offsetsQueue.push_back(config.BlockSize * i + config.StartOffset);
     }
     if (config.TestPattern == ETestPattern::Reverse) {
@@ -91,9 +89,9 @@ std::unique_ptr<char[]> GenerateData(
     static const ui32 multiplier = 53;
     ui32 coeff = 1;
 
-    std::unique_ptr<char[]> data(new char[blockSize]);
+    auto data = std::make_unique<char[]>(blockSize);
     if (testPattern == ETestPattern::CheckZero) {
-        memset(data.get(), '\0', blockSize);
+        memset(data.get(), 0, blockSize);
     } else {
         for (ui32 i = 0; i < blockSize; i++) {
             data[i] = (offset + i * coeff) % 256;
@@ -126,30 +124,28 @@ struct THexDataDump
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TTestExecutorReport TTestExecutorRead::Run(
-    TAtomic& waitingForStart,
-    TAtomic& shouldStart)
+TTestExecutorReport TTestExecutorRead::Run(std::latch& waitingForStart)
 {
     TFile file;
+    TVector<ui64> offsetsQueue;
 
     try {
         file = TFile(
             FilePath,
             GetOpenFlags(Config->DirectIo, EOpenModeFlag::RdOnly));
+
+        offsetsQueue = GenerateOffsetsQueue(*Config);
     } catch (...) {
-        AtomicAdd(waitingForStart, 1);
+        waitingForStart.count_down();
         throw;
     }
 
-    const auto offsetsQueue = GenerateOffsetsQueue(*Config);
-
-    AtomicAdd(waitingForStart, 1);
-    while (AtomicGet(shouldStart) != 1 && AtomicGet(ShouldStop) == 0) {}
+    waitingForStart.arrive_and_wait();
 
     auto startTime = Now();
 
     for (const auto offset: offsetsQueue) {
-        if (AtomicGet(ShouldStop)) {
+        if (ShouldStop.test()) {
             return {};
         }
 
@@ -157,7 +153,8 @@ TTestExecutorReport TTestExecutorRead::Run(
             offset,
             Config->BlockSize,
             Config->TestPattern);
-        std::unique_ptr<char[]> actualData(new char[Config->BlockSize]);
+
+        auto actualData = std::make_unique<char[]>(Config->BlockSize);
 
         std::fill_n(
             reinterpret_cast<ui32*>(actualData.get()),
@@ -183,35 +180,33 @@ TTestExecutorReport TTestExecutorRead::Run(
 
 void TTestExecutorRead::Stop()
 {
-    AtomicSet(ShouldStop, 1);
+    ShouldStop.test_and_set();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TTestExecutorReport TTestExecutorWrite::Run(
-    TAtomic& waitingForStart,
-    TAtomic& shouldStart)
+TTestExecutorReport TTestExecutorWrite::Run(std::latch& waitingForStart)
 {
     TFile file;
+    TVector<ui64> offsetsQueue;
 
     try {
         file = TFile(
             FilePath,
             GetOpenFlags(Config->DirectIo, EOpenModeFlag::WrOnly));
+
+        offsetsQueue = GenerateOffsetsQueue(*Config);
     } catch (...) {
-        AtomicAdd(waitingForStart, 1);
+        waitingForStart.count_down();
         throw;
     }
 
-    const auto offsetsQueue = GenerateOffsetsQueue(*Config);
-
-    AtomicAdd(waitingForStart, 1);
-    while (AtomicGet(shouldStart) != 1 && AtomicGet(ShouldStop) == 0) {}
+    waitingForStart.arrive_and_wait();
 
     auto startTime = Now();
 
     for (const auto offset: offsetsQueue) {
-        if (AtomicGet(ShouldStop)) {
+        if (ShouldStop.test()) {
             return {};
         }
 
@@ -228,7 +223,7 @@ TTestExecutorReport TTestExecutorWrite::Run(
 
 void TTestExecutorWrite::Stop()
 {
-    AtomicSet(ShouldStop, 1);
+    ShouldStop.test_and_set();
 }
 
 }   // namespace

@@ -15,7 +15,6 @@ PEERDIR(
 
     library/cpp/getopt
     library/cpp/threading/future
-    library/cpp/deprecated/atomic
 )
 
 SPLIT_DWARF()
