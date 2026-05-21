@@ -105,8 +105,7 @@ std::unique_ptr<char[]> GenerateData(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EOpenMode GetOpenFlags(bool direct) {
-    EOpenMode flags = EOpenModeFlag::RdWr;
+EOpenMode GetOpenFlags(bool direct, EOpenMode flags) {
     if (direct) {
         flags |= EOpenModeFlag::DirectAligned;
         flags |= EOpenModeFlag::Sync;
@@ -131,7 +130,16 @@ TTestExecutorReport TTestExecutorRead::Run(
     TAtomic& waitingForStart,
     TAtomic& shouldStart)
 {
-    TFile file(FilePath, GetOpenFlags(Config->DirectIo));
+    TFile file;
+
+    try {
+        file = TFile(
+            FilePath,
+            GetOpenFlags(Config->DirectIo, EOpenModeFlag::RdOnly));
+    } catch (...) {
+        AtomicAdd(waitingForStart, 1);
+        throw;
+    }
 
     const auto offsetsQueue = GenerateOffsetsQueue(*Config);
 
@@ -184,7 +192,16 @@ TTestExecutorReport TTestExecutorWrite::Run(
     TAtomic& waitingForStart,
     TAtomic& shouldStart)
 {
-    TFile file(FilePath, GetOpenFlags(Config->DirectIo));
+    TFile file;
+
+    try {
+        file = TFile(
+            FilePath,
+            GetOpenFlags(Config->DirectIo, EOpenModeFlag::WrOnly));
+    } catch (...) {
+        AtomicAdd(waitingForStart, 1);
+        throw;
+    }
 
     const auto offsetsQueue = GenerateOffsetsQueue(*Config);
 

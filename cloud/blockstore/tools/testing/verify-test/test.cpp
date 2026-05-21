@@ -3,13 +3,16 @@
 #include "options.h"
 #include "test_executor.h"
 
+#include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/threading/future/async.h>
 
 #include <util/generic/map.h>
 #include <util/generic/scope.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/file.h>
 #include <util/system/info.h>
 #include <util/thread/pool.h>
@@ -28,17 +31,21 @@ class TTest final
     {};
 
 private:
+    const TOptionsPtr Options;
+    const ILoggingServicePtr Logging;
+    TLog Log;
+
     TAtomic ExitCode = 0;
     TAtomic ShouldStop = 0;
-
-    TOptionsPtr Options;
 
     TVector<TTestExecutorConfigPtr> ExecutorsConfigs;
     TVector<ITestExecutorPtr> Executors;
 
 public:
-    TTest(TOptionsPtr options)
+    TTest(TOptionsPtr options, ILoggingServicePtr logging)
         : Options(std::move(options))
+        , Logging(std::move(logging))
+        , Log(Logging->CreateLog("VERIFY"))
     {}
 
     int Run() override;
@@ -57,13 +64,16 @@ TStringBuilder BuildTestReport(
     const TTestExecutorConfig& config,
     const TTestExecutorReport& report)
 {
+    const auto dt = report.FinishTime - report.StartTime;
+
     return TStringBuilder()
         << "#StartOffset = " << config.StartOffset << " "
         << "#EndOffset = " << config.EndOffset << " "
         << "#TestPattern = " << config.TestPattern << " "
         << "#DirectIO = " << config.DirectIo << " "
         << "#StartTime = " << report.StartTime.ToString() << " "
-        << "#FinishTime = " << report.FinishTime.ToString();
+        << "#FinishTime = " << report.FinishTime.ToString()
+        << " [ " << FormatDuration(dt) << "]";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,32 +81,37 @@ TStringBuilder BuildTestReport(
 int TTest::Run()
 {
     try {
-        Cout << "Initializing executor configs..." << Endl;
+        STORAGE_INFO("Initializing executor configs...");
         InitExecutorsConfigs();
 
         if (!Options->CheckZero && !Options->ReadOnly) {
-            Cout << "Running write stage..." << Endl;
+            STORAGE_INFO("Running write stage...");
             RunStage(ETestExecutorType::Write);
 
-            Cout << "Dropping caches..." << Endl;
+            STORAGE_INFO("Dropping caches...");
             DropCaches();
 
-            Cout << "Sleeping..." << Endl;
+            STORAGE_INFO("Sleeping...");
             Sleep(TDuration::Seconds(30));
         }
 
-        Cout << "Running read stage..." << Endl;
+        STORAGE_INFO("Running read stage...");
         RunStage(ETestExecutorType::Read);
-    } catch (const TStopException&) {
+    } catch (const TStopException& e) {
         // proceed to termination
+        Y_UNUSED(e);
     }
 
-    Cout << "Terminating..." << Endl;
+    STORAGE_INFO("Terminating...");
     return AtomicGet(ExitCode);
 }
 
 void TTest::Stop(int exitCode)
 {
+    if (ShouldStop) {
+        return;
+    }
+
     AtomicSet(ExitCode, exitCode);
     AtomicSet(ShouldStop, 1);
 
@@ -167,8 +182,8 @@ void TTest::RunStage(const ETestExecutorType& type)
     TMap<TTestExecutorConfig, TFuture<TTestExecutorReport>> configToReport;
 
     for (const auto& executorConfig: ExecutorsConfigs) {
-        Executors.push_back(CreateTestExecutor(
-            type, Options->FilePath, executorConfig));
+        Executors.push_back(
+            CreateTestExecutor(type, Options->FilePath, executorConfig));
 
         const auto report = Async([&, executor = Executors.back()]() mutable {
             return executor->Run(waitingForStart, shouldStart);
@@ -177,7 +192,10 @@ void TTest::RunStage(const ETestExecutorType& type)
         configToReport[*executorConfig] = report;
     }
 
-    while (AtomicGet(waitingForStart) != Options->IoDepth) {}
+    while (AtomicGet(waitingForStart) != Options->IoDepth) {
+        CheckStopFlag();
+    }
+
     AtomicSet(shouldStart, 1);
 
     for (const auto& [config, reportFuture]: configToReport) {
@@ -208,9 +226,9 @@ void TTest::CheckStopFlag()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestPtr CreateTest(TOptionsPtr options)
+ITestPtr CreateTest(TOptionsPtr options, ILoggingServicePtr logging)
 {
-    return std::make_shared<TTest>(std::move(options));
+    return std::make_shared<TTest>(std::move(options), std::move(logging));
 }
 
 }   // namespace NCloud::NBlockStore
