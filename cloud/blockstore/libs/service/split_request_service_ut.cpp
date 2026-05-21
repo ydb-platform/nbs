@@ -871,6 +871,64 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             result.GetError().GetCode(),
             FormatError(result.GetError()));
     }
+
+    Y_UNIT_TEST(ShouldReplyErrorWithoutMount)
+    {
+        TTestEnvironment env;
+
+        auto range = TBlockRange64::WithLength(1, 10);
+
+        {
+            // Run ZeroBlocks request
+            auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+            env.SetupRequest(request, range);
+            auto future = env.SplitRequestService->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+        }
+
+        {
+            // Run ReadBlocks request
+
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            env.SetupRequest(request, range);
+            auto future = env.SplitRequestService->ReadBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+
+        }
+
+        {
+            // Run WriteBlocks request
+            const TString data = "abcdefghij";
+            auto range =
+                TBlockRange64::WithLength(1, data.size() / DefaultBlockSize);
+            auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+            env.SetupRequest(request, range, data);
+            auto future = env.SplitRequestService->WriteBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore

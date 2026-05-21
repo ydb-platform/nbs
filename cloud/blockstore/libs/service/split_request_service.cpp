@@ -492,7 +492,9 @@ TFuture<TResponse> TSplitRequestService::ExecuteRequestWithSplit(
 
     if (!config) {
         TResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "Volume not mounted");
+        *response.MutableError() = MakeError(
+            E_BS_INVALID_SESSION,
+            "Volume not mounted");
         return MakeFuture<TResponse>(std::move(response));
     }
 
