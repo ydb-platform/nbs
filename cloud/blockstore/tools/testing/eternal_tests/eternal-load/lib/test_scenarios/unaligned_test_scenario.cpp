@@ -83,7 +83,7 @@ struct Y_PACKED TFileHeader
     ui32 Crc32 = 0;
 
     // This is used as a marker that the header is properly initialized
-    static constexpr ui64 ExpectedMagic = 0x733c1dfaa5d2a452;
+    static constexpr ui64 ExpectedMagic = 0x6fb8e89a3a3ebfdd;
 };
 
 // Defines the expected content in the region
@@ -119,18 +119,27 @@ struct Y_PACKED TRegionMetadata
     }
 };
 
-// A region is split in blocks of size |RegionBlockByteCount|, each filled with
-// a generated pattern
-struct Y_PACKED TRegionDataBlock
+struct Y_PACKED TRegionDataBlockPart
 {
     ui64 SeqNum = 0;
     ui64 Offset = 0;
     ui64 TestStartTime = 0;
     ui64 WriteTime = 0;
-    // Data is filled with pseudo-random values generated from the above fields
-    // The array size is chosen to make the struct size = |RegionBlockByteCount|
-    // (there are 5 ui64 fields besides Data - need to subtract them)
-    std::array<ui64, (RegionBlockByteCount / sizeof(ui64)) - 5> Data = {};
+    // The four above fields are xor-ed with this value
+    ui64 Mask = 0;
+};
+
+// A region is split in blocks of size |RegionBlockByteCount|, each filled with
+// a generated pattern
+struct Y_PACKED TRegionDataBlock
+{
+    std::array<
+        TRegionDataBlockPart,
+        RegionBlockByteCount / sizeof(TRegionDataBlockPart)>
+        Parts = {};
+
+    ui64 Zero1 = 0;
+    ui64 Zero2 = 0;
     ui64 Crc32 = 0;
 
     TStringBuf AsStringBuf(size_t len) const
@@ -169,30 +178,28 @@ ui64 UpdateSeed(ui64 seed, ui64 nonce)
     return (seed * 397) + (nonce * 31) + 13;
 }
 
-ui64 NextValue(ui64* seed)
-{
-    *seed = UpdateSeed(*seed, 0);
-    return *seed;
-}
-
 void GenerateRegionData(
     const TRegionState& state,
     ui64 offset,
     TRegionDataBlock* regionData)
 {
-    regionData->SeqNum = state.SeqNum;
-    regionData->Offset = offset;
-    regionData->TestStartTime = state.TestStartTime;
-    regionData->WriteTime = state.LastWriteTime;
+    ui64 mask = 0;
 
-    ui64 seed = UpdateSeed(0, regionData->SeqNum);
-    seed = UpdateSeed(seed, regionData->Offset);
-    seed = UpdateSeed(seed, regionData->TestStartTime);
-    seed = UpdateSeed(seed, regionData->WriteTime);
+    for (auto& part: regionData->Parts) {
+        part.SeqNum = state.SeqNum ^ mask;
+        part.Offset = offset ^ mask;
+        part.TestStartTime = state.TestStartTime ^ mask;
+        part.WriteTime = state.LastWriteTime ^ mask;
+        part.Mask = mask;
 
-    for (auto& v: regionData->Data) {
-        v = NextValue(&seed);
+        mask = UpdateSeed(mask, part.SeqNum);
+        mask = UpdateSeed(mask, part.Offset);
+        mask = UpdateSeed(mask, part.TestStartTime);
+        mask = UpdateSeed(mask, part.WriteTime);
     }
+
+    regionData->Zero1 = 0;
+    regionData->Zero2 = 0;
 
     regionData->Crc32 = Crc32c(regionData, offsetof(TRegionDataBlock, Crc32));
 }
@@ -742,16 +749,16 @@ void TUnalignedTestScenario::ValidateReadDataRegion(
         }
 
         sb << "\nActual read data:";
-        if (fragment.size() >= offsetof(TRegionDataBlock, Data)) {
+        if (fragment.size() >= sizeof(TRegionDataBlockPart)) {
             TRegionDataBlock regionData;
             MemCopy(
                 reinterpret_cast<char*>(&regionData),
                 fragment.data(),
                 fragment.size());
             sb << " ("
-               << regionData.SeqNum << ", "
-               << regionData.TestStartTime << ", "
-               << regionData.WriteTime << ")";
+               << regionData.Parts[0].SeqNum << ", "
+               << regionData.Parts[0].TestStartTime << ", "
+               << regionData.Parts[0].WriteTime << ")";
         }
         sb << "\n  " << HexText(fragment);
 
