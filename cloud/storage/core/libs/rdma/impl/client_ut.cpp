@@ -1038,6 +1038,168 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
         wait(active, 6);
 }
 
+TEST(TRdmaClientTest, ShouldAbortWithRetryExceededWhenEnabled)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 1s;
+    clientConfig->MaxResponseDelay = 1s;
+    clientConfig->RetryExceededNotification = true;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client =
+        CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    TManualEvent sent;
+    testContext->PostSend = [&](auto* qp, auto* wr) {
+        Y_UNUSED(qp);
+        const auto* msg =
+            reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+        testContext->ReqIds.push_back(msg->ReqId);
+        testContext->CompletionHandle.Set();
+        sent.Signal();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+
+    struct TTestHandler: IClientHandler
+    {
+        TManualEvent Done;
+        NProto::TError Error;
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), status);
+            Error = ParseError(req->ResponseBuffer.Head(responseBytes));
+            Done.Signal();
+        }
+    };
+
+    auto handler = std::make_shared<TTestHandler>();
+    auto request = endpoint->AllocateRequest(
+        handler,
+        std::make_unique<TNullContext>(),
+        4096,
+        4096);
+    ASSERT_FALSE(HasError(request.GetError()));
+
+    endpoint->SendRequest(
+        request.ExtractResult(),
+        MakeIntrusive<TCallContextBase>(0u));
+
+    ASSERT_TRUE(sent.WaitT(5s));
+
+    // Trigger IBV_WC_RETRY_EXC_ERR on a recv WR to simulate remote
+    // side being unreachable.
+    with_lock (testContext->CompletionLock) {
+        testContext->HandleCompletionEvent = [](ibv_wc* wc) {
+            wc->status = IBV_WC_RETRY_EXC_ERR;
+        };
+
+        auto* wr = testContext->RecvEvents.front();
+        testContext->RecvEvents.pop_front();
+        testContext->ProcessedRecvEvents.push_back(wr);
+        testContext->CompletionHandle.Set();
+    }
+
+    ASSERT_TRUE(handler->Done.WaitT(5s));
+    ASSERT_EQ(E_RDMA_RETRY_EXCEEDED, handler->Error.GetCode());
+}
+
+TEST(TRdmaClientTest, ShouldAbortWithUnavailableWhenRetryExceededDisabled)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 1s;
+    clientConfig->MaxResponseDelay = 1s;
+    clientConfig->RetryExceededNotification = false;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client =
+        CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    TManualEvent sent;
+    testContext->PostSend = [&](auto* qp, auto* wr) {
+        Y_UNUSED(qp);
+        const auto* msg =
+            reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+        testContext->ReqIds.push_back(msg->ReqId);
+        testContext->CompletionHandle.Set();
+        sent.Signal();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+
+    struct TTestHandler: IClientHandler
+    {
+        TManualEvent Done;
+        NProto::TError Error;
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), status);
+            Error = ParseError(req->ResponseBuffer.Head(responseBytes));
+            Done.Signal();
+        }
+    };
+
+    auto handler = std::make_shared<TTestHandler>();
+    auto request = endpoint->AllocateRequest(
+        handler,
+        std::make_unique<TNullContext>(),
+        4096,
+        4096);
+    ASSERT_FALSE(HasError(request.GetError()));
+
+    endpoint->SendRequest(
+        request.ExtractResult(),
+        MakeIntrusive<TCallContextBase>(0u));
+
+    ASSERT_TRUE(sent.WaitT(5s));
+
+    // Trigger IBV_WC_RETRY_EXC_ERR but with notification disabled –
+    // should fall back to E_RDMA_UNAVAILABLE.
+    with_lock (testContext->CompletionLock) {
+        testContext->HandleCompletionEvent = [](ibv_wc* wc) {
+            wc->status = IBV_WC_RETRY_EXC_ERR;
+        };
+
+        auto* wr = testContext->RecvEvents.front();
+        testContext->RecvEvents.pop_front();
+        testContext->ProcessedRecvEvents.push_back(wr);
+        testContext->CompletionHandle.Set();
+    }
+
+    ASSERT_TRUE(handler->Done.WaitT(5s));
+    ASSERT_EQ(E_RDMA_UNAVAILABLE, handler->Error.GetCode());
+}
+
 TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
 {
     auto testContext = MakeIntrusive<NVerbs::TTestContext>();

@@ -177,6 +177,7 @@ enum EWellKnownResultCodes: ui32
     E_FS_THROTTLED               = MAKE_FILESTORE_ERROR(102),
 
     E_RDMA_UNAVAILABLE           = MAKE_RDMA_ERROR(1),
+    E_RDMA_RETRY_EXCEEDED        = MAKE_RDMA_ERROR(2),
 };
 
 ////////////////////////////////////////////////////////////////////////////////
