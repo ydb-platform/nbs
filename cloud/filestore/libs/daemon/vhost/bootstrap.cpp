@@ -36,6 +36,7 @@
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -430,6 +431,11 @@ void TBootstrapVhost::InitEndpoints()
 
     FileStoreEndpoints = std::move(endpoints);
 
+    auto fileMapMemoryLimiter = NCloud::CreateFileMapMemoryLimiter(
+        NCloud::TFileMapMemoryLimiterConfig{
+            .FileMapMemoryLimit =
+                Configs->VhostServiceConfig->GetFileMapMemoryLimit()});
+
     EndpointListener = NVhost::CreateEndpointListener(
         Logging,
         Timer,
@@ -473,7 +479,8 @@ void TBootstrapVhost::InitEndpoints()
                                    ->GetDirectoryHandlesInitialDataSize(),
             .MaxDataAreaStepSize =
                 Configs->VhostServiceConfig
-                    ->GetDirectoryHandlesMaxDataAreaStepSize()});
+                    ->GetDirectoryHandlesMaxDataAreaStepSize()},
+        std::move(fileMapMemoryLimiter));
 
     EndpointManager = CreateEndpointManager(
         Logging,

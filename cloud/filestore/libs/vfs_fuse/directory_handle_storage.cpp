@@ -4,6 +4,8 @@
 
 #include <util/generic/buffer.h>
 
+#include <utility>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,7 +16,8 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     ui64 recordsCount,
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
-    ui64 initialDataMoveBufferSize)
+    ui64 initialDataMoveBufferSize,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
     : Log(log)
 {
     Table = std::make_unique<TDirectoryHandleTable>(
@@ -24,22 +27,25 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
             .InitialDataAreaSize = initialDataAreaSize,
             .MaxDataAreaStepSize = maxDataAreaStepSize,
             .InitialDataMoveBufferSize = initialDataMoveBufferSize,
-        });
+        },
+        std::move(fileMapMemoryLimiter));
 }
 
 void TDirectoryHandleStorage::StoreHandle(
     ui64 handleId,
     const TDirectoryHandleChunk& initialHandleChunk)
 {
-    if (HandleIdToIndices.contains(handleId)) {
-        ReportDirectoryHandlesStorageError(
-            "Failed to store record with existing handle id");
-        return;
-    }
-
     TBuffer record = SerializeHandle(handleId, initialHandleChunk);
 
     TGuard guard(TableLock);
+
+    if (HandleIdToIndices.contains(handleId)) {
+        ReportDirectoryHandlesStorageError(
+            "Failed to store record with existing handle id");
+        RemoveRecords(handleId);
+        HandlesExcludedFromStorage.insert(handleId);
+        return;
+    }
 
     CreateRecord(handleId, record);
 }
@@ -51,6 +57,10 @@ void TDirectoryHandleStorage::UpdateHandle(
     TBuffer record = SerializeHandle(handleId, handleChunk);
 
     TGuard guard(TableLock);
+
+    if (HandlesExcludedFromStorage.contains(handleId)) {
+        return;
+    }
 
     // update can be called when handle already deleted, in this case just
     // log info and return
@@ -64,41 +74,40 @@ void TDirectoryHandleStorage::UpdateHandle(
     CreateRecord(handleId, record);
 }
 
-void TDirectoryHandleStorage::CreateRecord(
-    ui64 handleId,
-    const TBuffer& record)
+void TDirectoryHandleStorage::CreateRecord(ui64 handleId, const TBuffer& record)
 {
-    ui64 recordIndex = CreateRecord(record);
-
-    if (recordIndex == TDirectoryHandleTable::InvalidIndex) {
-        ReportDirectoryHandlesStorageError(
-            "Failed to create record for directory handle chunk");
+    auto result = CreateRecord(record);
+    if (HasError(result)) {
+        const auto it = HandleIdToIndices.find(handleId);
+        const size_t indexCount =
+            it == HandleIdToIndices.end() ? 0 : it->second.size();
+        STORAGE_WARN(
+            "Failed to create directory handle record for handle "
+            << handleId << ", indices count: " << indexCount << ": "
+            << FormatError(result.GetError()));
+        RemoveRecords(handleId);
+        HandlesExcludedFromStorage.insert(handleId);
         return;
     }
 
+    const ui64 recordIndex = result.GetResult();
     HandleIdToIndices[handleId].push_back(recordIndex);
 }
 
 void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
-    if (HandleIdToIndices.contains(handleId)) {
-        for (auto recordIndex: HandleIdToIndices[handleId]) {
-            if (!Table->DeleteRecord(recordIndex)) {
-                STORAGE_DEBUG(
-                    "failed to delete record for handle %lu using index %lu",
-                    handleId,
-                    recordIndex);
-            }
-        }
-    }
-    HandleIdToIndices.erase(handleId);
-    Table->TryDeallocateMemory();
+    HandlesExcludedFromStorage.erase(handleId);
+    RemoveRecords(handleId);
 }
 
 void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
+    if (HandlesExcludedFromStorage.contains(handleId)) {
+        return;
+    }
+
     if (HandleIdToIndices.contains(handleId)) {
         for (auto it = HandleIdToIndices[handleId].rbegin();
              it != std::prev(HandleIdToIndices[handleId].rend(), 1);
@@ -164,7 +173,7 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
                     std::make_shared<TDirectoryHandle>(chunk->Index);
             }
 
-            handles[handleId]->ConsumeChunk(*chunk);
+            handles[handleId]->ConsumeChunk(*chunk, Log);
 
             updateVersionInfo[handleId].ChunksCount++;
             if (chunk->UpdateVersion >
@@ -219,6 +228,7 @@ void TDirectoryHandleStorage::Clear()
     TGuard guard(TableLock);
     Table->Clear();
     HandleIdToIndices.clear();
+    HandlesExcludedFromStorage.clear();
 }
 
 // TODO: We can optimize this by counting size for serialization dynamically and
@@ -253,20 +263,42 @@ TDirectoryHandleChunkPair TDirectoryHandleStorage::DeserializeHandleChunk(
     return {handleId, chunk};
 }
 
-ui64 TDirectoryHandleStorage::CreateRecord(const TBuffer& record)
+TResultOrError<ui64> TDirectoryHandleStorage::CreateRecord(
+    const TBuffer& record)
 {
-    ui64 index = Table->AllocRecord(record.Size());
-    if (index == TDirectoryHandleTable::InvalidIndex) {
-        return TDirectoryHandleTable::InvalidIndex;
+    auto result = Table->AllocRecord(record.Size());
+    if (HasError(result)) {
+        return result.GetError();
     }
 
+    const ui64 index = result.GetResult();
     if (!Table->WriteRecordData(index, record.Data(), record.Size())) {
-        return TDirectoryHandleTable::InvalidIndex;
+        return MakeError(E_FAIL, "Failed to write table record");
     }
 
     Table->CommitRecord(index);
 
     return index;
+}
+
+void TDirectoryHandleStorage::RemoveRecords(ui64 handleId)
+{
+    auto it = HandleIdToIndices.find(handleId);
+    if (it == HandleIdToIndices.end()) {
+        return;
+    }
+
+    for (auto recordIndex: it->second) {
+        if (!Table->DeleteRecord(recordIndex)) {
+            STORAGE_WARN(
+                "failed to delete record for handle %lu using index %lu",
+                handleId,
+                recordIndex);
+        }
+    }
+
+    HandleIdToIndices.erase(it);
+    Table->TryDeallocateMemory();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -277,7 +309,8 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     ui64 recordsCount,
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
-    ui64 initialDataMoveBufferSize)
+    ui64 initialDataMoveBufferSize,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
     return std::make_unique<TDirectoryHandleStorage>(
         log,
@@ -285,7 +318,8 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
         recordsCount,
         initialDataAreaSize,
         maxDataAreaStepSize,
-        initialDataMoveBufferSize);
+        initialDataMoveBufferSize,
+        std::move(fileMapMemoryLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

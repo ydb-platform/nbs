@@ -19,6 +19,7 @@ SRCS(
     disjoint_interval_map.cpp
     error.cpp
     file_io_service.cpp
+    file_map_memory_limiter.cpp
     file_ring_buffer.cpp
     format.cpp
     guarded_sglist.cpp
