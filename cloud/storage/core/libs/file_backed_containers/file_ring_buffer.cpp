@@ -532,7 +532,7 @@ private:
     bool ValidateAccess(const char* name) const
     {
         if (IsCorrupted()) {
-            ReportAccessToCorruptedFileBackedContainerError(Sprintf(
+            ReportAccessToCorruptedFileRingBufferError(Sprintf(
                 "An attempt to access an entry in a corrupted TFileRingBuffer "
                 "from %s has been made",
                 name));
@@ -821,7 +821,7 @@ public:
     {
         if (!Corrupted) {
             Corrupted = true;
-            ReportFileBackedContainerCorruptionDetectedError(
+            ReportFileRingBufferCorruptionDetectedError(
                 "Corruption detected in FileRingBuffer, path: " +
                 Map.GetFile().GetName());
         }
