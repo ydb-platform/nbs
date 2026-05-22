@@ -8,10 +8,6 @@ SRCS(
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
     SPLIT_DWARF()
-ELSE()
-    PEERDIR(
-        library/cpp/terminate_handler
-    )
 ENDIF()
 
 IF (SANITIZER_TYPE)
@@ -23,6 +19,8 @@ PEERDIR(
     cloud/blockstore/libs/service
 
     cloud/storage/core/libs/daemon
+
+    util/terminate_handler
 )
 
 CHECK_DEPENDENT_DIRS(ALLOW_ONLY PEERDIRS
