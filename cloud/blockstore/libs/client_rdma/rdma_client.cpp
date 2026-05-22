@@ -99,7 +99,7 @@ public:
 
 private:
     const TCallContextPtr CallContext;
-    const std::shared_ptr<TRequest> Request;
+    std::shared_ptr<TRequest> Request;
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
@@ -149,6 +149,8 @@ public:
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
         StartTime = GetCycleCount();
+
+        Request->SetBlockSize(Request->BlockSize);
 
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
@@ -232,7 +234,7 @@ public:
 
 private:
     const TCallContextPtr CallContext;
-    const std::shared_ptr<TRequest> Request;
+    std::shared_ptr<TRequest> Request;
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
@@ -290,6 +292,8 @@ public:
 
             StartTime = GetCycleCount();
         }
+
+        Request->SetBlockSize(Request->BlockSize);
 
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
