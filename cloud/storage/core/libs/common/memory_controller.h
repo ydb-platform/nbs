@@ -27,8 +27,7 @@ using IMemoryControllerPtr = std::shared_ptr<IMemoryController>;
 
 struct TMemoryControllerConfig
 {
-    ui64 MemoryLimit = 0;
-    ui32 TmpfsMemoryLimitPercent = 0;
+    ui64 TmpfsMemoryLimit = 0;
 };
 
 // Returns nullptr when memory limiting is disabled.

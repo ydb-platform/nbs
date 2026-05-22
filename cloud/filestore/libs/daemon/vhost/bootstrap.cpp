@@ -433,9 +433,8 @@ void TBootstrapVhost::InitEndpoints()
 
     auto memoryController = NCloud::CreateMemoryController(
         NCloud::TMemoryControllerConfig{
-            .MemoryLimit = Configs->VhostServiceConfig->GetMemoryLimit(),
-            .TmpfsMemoryLimitPercent =
-                Configs->VhostServiceConfig->GetTmpfsMemoryLimitPercent()});
+            .TmpfsMemoryLimit =
+                Configs->VhostServiceConfig->GetTmpfsMemoryLimit()});
 
     EndpointListener = NVhost::CreateEndpointListener(
         Logging,

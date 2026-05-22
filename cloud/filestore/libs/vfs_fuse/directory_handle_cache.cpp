@@ -6,21 +6,46 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+struct TDirectoryHandleMetrics
+{
+    size_t SerializedSize = 0;
+    size_t ChunkCount = 0;
+};
+
+TDirectoryHandleMetrics GetDirectoryHandleMetrics(
+    const TDirectoryHandleMap& handles)
+{
+    TDirectoryHandleMetrics metrics;
+
+    for (const auto& [_, handle]: handles) {
+        if (handle) {
+            metrics.SerializedSize += handle->GetSerializedSize();
+            metrics.ChunkCount += handle->GetChunkCount();
+        }
+    }
+
+    return metrics;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 TDirectoryHandleCache::TDirectoryHandleCache(
     TLog log,
     TDirectoryHandleStatsPtr stats,
-    TDirectoryHandleStoragePtr memoryAwareStorage)
+    TDirectoryHandleStoragePtr storage)
     : Log(std::move(log))
-    , MemoryAwareStorage(std::move(memoryAwareStorage))
+    , Storage(std::move(storage))
     , Stats(std::move(stats))
 {
-    if (MemoryAwareStorage) {
-        MemoryAwareStorage->LoadHandles(Handles);
+    if (Storage) {
+        Storage->LoadHandles(Handles);
     }
 
-    for (const auto& [_, handle]: Handles) {
-        IncreaseStatsForHandle(handle);
-    }
+    IncreaseStatsForHandle(Handles);
 }
 
 ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
@@ -35,8 +60,8 @@ ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
 
         IncreaseStatsForHandle(handle);
 
-        if (MemoryAwareStorage) {
-            MemoryAwareStorage->StoreHandle(
+        if (Storage) {
+            Storage->StoreHandle(
                 handleId,
                 TDirectoryHandleChunk{.Index = ino});
         }
@@ -63,8 +88,8 @@ void TDirectoryHandleCache::RemoveHandle(ui64 handleId)
             Handles.erase(it);
         }
 
-        if (MemoryAwareStorage) {
-            MemoryAwareStorage->RemoveHandle(handleId);
+        if (Storage) {
+            Storage->RemoveHandle(handleId);
         }
     }
 }
@@ -82,8 +107,8 @@ bool TDirectoryHandleCache::RemoveHandle(ui64 handleId, fuse_ino_t ino)
             Handles.erase(it);
         }
 
-        if (MemoryAwareStorage) {
-            MemoryAwareStorage->RemoveHandle(handleId);
+        if (Storage) {
+            Storage->RemoveHandle(handleId);
         }
     }
 
@@ -104,8 +129,8 @@ void TDirectoryHandleCache::ResetHandle(
 
     IncreaseStatsForHandle(handle);
 
-    if (MemoryAwareStorage) {
-        MemoryAwareStorage->ResetHandle(handleId);
+    if (Storage) {
+        Storage->ResetHandle(handleId);
     }
 }
 
@@ -118,8 +143,8 @@ void TDirectoryHandleCache::AppendChunk(
         Stats->IncreaseChunkCount(1);
     }
 
-    if (MemoryAwareStorage) {
-        MemoryAwareStorage->UpdateHandle(handleId, handleChunk);
+    if (Storage) {
+        Storage->UpdateHandle(handleId, handleChunk);
     }
 }
 
@@ -127,9 +152,7 @@ void TDirectoryHandleCache::Clear()
 {
     with_lock (Lock) {
         STORAGE_DEBUG("clear directory cache of size %lu", Handles.size());
-        for (const auto& [_, handle]: Handles) {
-            DecreaseStatsForHandle(handle);
-        }
+        DecreaseStatsForHandle(Handles);
         Handles.clear();
     }
 }
@@ -138,13 +161,11 @@ void TDirectoryHandleCache::Reset()
 {
     with_lock (Lock) {
         STORAGE_DEBUG("reset directory cache of size %lu", Handles.size());
-        for (const auto& [_, handle]: Handles) {
-            DecreaseStatsForHandle(handle);
-        }
+        DecreaseStatsForHandle(Handles);
         Handles.clear();
 
-        if (MemoryAwareStorage) {
-            MemoryAwareStorage->Clear();
+        if (Storage) {
+            Storage->Clear();
         }
     }
 }
@@ -158,12 +179,32 @@ void TDirectoryHandleCache::IncreaseStatsForHandle(
     }
 }
 
+void TDirectoryHandleCache::IncreaseStatsForHandle(
+    const TDirectoryHandleMap& handles)
+{
+    if (Stats) {
+        const auto metrics = GetDirectoryHandleMetrics(handles);
+        Stats->IncreaseCacheSize(metrics.SerializedSize);
+        Stats->IncreaseChunkCount(metrics.ChunkCount);
+    }
+}
+
 void TDirectoryHandleCache::DecreaseStatsForHandle(
     const std::shared_ptr<TDirectoryHandle>& handle)
 {
     if (Stats && handle) {
         Stats->DecreaseCacheSize(handle->GetSerializedSize());
         Stats->DecreaseChunkCount(handle->GetChunkCount());
+    }
+}
+
+void TDirectoryHandleCache::DecreaseStatsForHandle(
+    const TDirectoryHandleMap& handles)
+{
+    if (Stats) {
+        const auto metrics = GetDirectoryHandleMetrics(handles);
+        Stats->DecreaseCacheSize(metrics.SerializedSize);
+        Stats->DecreaseChunkCount(metrics.ChunkCount);
     }
 }
 

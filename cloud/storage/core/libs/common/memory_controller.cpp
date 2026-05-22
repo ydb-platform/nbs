@@ -1,13 +1,11 @@
 #include "memory_controller.h"
 
-#include "numeric.h"
 #include "verify.h"
 
 #include <util/generic/strbuf.h>
 
 #include <atomic>
 #include <memory>
-#include <utility>
 
 namespace NCloud {
 namespace {
@@ -22,15 +20,18 @@ constexpr TStringBuf MemoryControllerEntityId = "file_map";
 class TMemoryController final: public IMemoryController
 {
 private:
-    const TMemoryControllerConfig Config;
     const ui64 FileMapLimit;
     std::atomic<ui64> FileMapMemoryUsage = 0;
 
 public:
     explicit TMemoryController(TMemoryControllerConfig config)
-        : Config(std::move(config))
-        , FileMapLimit(CalcFileMapLimit(Config))
-    {}
+        : FileMapLimit(config.TmpfsMemoryLimit)
+    {
+        STORAGE_VERIFY(
+            FileMapLimit,
+            MemoryControllerEntityType,
+            MemoryControllerEntityId);
+    }
 
     [[nodiscard]] bool CanIncreaseFileMapUsage(ui64 increaseSize) const override
     {
@@ -61,17 +62,6 @@ public:
             MemoryControllerEntityType,
             MemoryControllerEntityId);
     }
-
-private:
-    static ui64 CalcFileMapLimit(const TMemoryControllerConfig& config)
-    {
-        STORAGE_VERIFY(
-            config.MemoryLimit,
-            MemoryControllerEntityType,
-            MemoryControllerEntityId);
-
-        return PercentOf(config.MemoryLimit, config.TmpfsMemoryLimitPercent);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,11 +72,11 @@ private:
 
 IMemoryControllerPtr CreateMemoryController(TMemoryControllerConfig config)
 {
-    if (!config.MemoryLimit) {
+    if (!config.TmpfsMemoryLimit) {
         return nullptr;
     }
 
-    return std::make_shared<TMemoryController>(std::move(config));
+    return std::make_shared<TMemoryController>(config);
 }
 
 }   // namespace NCloud

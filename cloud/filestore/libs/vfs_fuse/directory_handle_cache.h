@@ -18,21 +18,23 @@ private:
 
     TAdaptiveLock Lock;
     TDirectoryHandleMap Handles;
-    TDirectoryHandleStoragePtr MemoryAwareStorage;
+    TDirectoryHandleStoragePtr Storage;
 
     TDirectoryHandleStatsPtr Stats;
 
 private:
     void IncreaseStatsForHandle(
         const std::shared_ptr<TDirectoryHandle>& handle);
+    void IncreaseStatsForHandle(const TDirectoryHandleMap& handles);
     void DecreaseStatsForHandle(
         const std::shared_ptr<TDirectoryHandle>& handle);
+    void DecreaseStatsForHandle(const TDirectoryHandleMap& handles);
 
 public:
     TDirectoryHandleCache(
         TLog log,
         TDirectoryHandleStatsPtr stats,
-        TDirectoryHandleStoragePtr memoryAwareStorage);
+        TDirectoryHandleStoragePtr storage);
 
     ui64 CreateHandle(fuse_ino_t ino);
 

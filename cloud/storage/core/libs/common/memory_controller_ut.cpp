@@ -8,25 +8,14 @@ namespace NCloud {
 
 Y_UNIT_TEST_SUITE(TMemoryControllerTest)
 {
-    Y_UNIT_TEST(ShouldReturnNullptrWhenMemoryLimitDisabled)
+    Y_UNIT_TEST(ShouldReturnNullptrWhenTmpfsMemoryLimitDisabled)
     {
-        UNIT_ASSERT(!CreateMemoryController(
-            {.MemoryLimit = 0, .TmpfsMemoryLimitPercent = 25}));
-    }
-
-    Y_UNIT_TEST(ShouldUseZeroLimitWhenTmpfsPercentDisabled)
-    {
-        auto controller = CreateMemoryController(
-            {.MemoryLimit = 1024, .TmpfsMemoryLimitPercent = 0});
-        UNIT_ASSERT(controller);
-
-        UNIT_ASSERT(!controller->CanIncreaseFileMapUsage(1));
+        UNIT_ASSERT(!CreateMemoryController({.TmpfsMemoryLimit = 0}));
     }
 
     Y_UNIT_TEST(ShouldLimitMemoryConsumption)
     {
-        auto controller = CreateMemoryController(
-            {.MemoryLimit = 100, .TmpfsMemoryLimitPercent = 25});
+        auto controller = CreateMemoryController({.TmpfsMemoryLimit = 25});
         UNIT_ASSERT(controller);
 
         UNIT_ASSERT(controller->CanIncreaseFileMapUsage(25));
@@ -39,15 +28,6 @@ Y_UNIT_TEST_SUITE(TMemoryControllerTest)
         controller->DecreaseFileMapUsage(10);
         UNIT_ASSERT(controller->CanIncreaseFileMapUsage(15));
         UNIT_ASSERT(!controller->CanIncreaseFileMapUsage(16));
-    }
-
-    Y_UNIT_TEST(ShouldUseRoundedDownLimitForSmallPercent)
-    {
-        auto controller = CreateMemoryController(
-            {.MemoryLimit = 1, .TmpfsMemoryLimitPercent = 1});
-        UNIT_ASSERT(controller);
-
-        UNIT_ASSERT(!controller->CanIncreaseFileMapUsage(1));
     }
 }
 

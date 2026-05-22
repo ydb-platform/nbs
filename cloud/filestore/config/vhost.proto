@@ -91,11 +91,9 @@ message TVhostServiceConfig
     // Max single growth step for DirectoryHandles persistent table data area.
     optional uint64 DirectoryHandlesMaxDataAreaStepSize = 22;
 
-    // Memory limit in bytes for vhost. Value 0 means that we will not use it.
-    optional uint64 MemoryLimit = 23;
-
-    // Percentage of MemoryLimit available for tmpfs-backed cache data.
-    optional uint32 TmpfsMemoryLimitPercent = 24;
+    // Memory limit in bytes for tmpfs-backed cache data.
+    // Value 0 means that memory controller will not be created.
+    optional uint64 TmpfsMemoryLimit = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1043,7 +1043,7 @@ private:
         const ui64 newFileMapSize = CalcFileSize(newDataAreaSize);
         // This is intentionally a growth admission check, not a reservation.
         // Usage is charged after ResizeAndRemap() succeeds.
-        if (auto error = CanResizeFileMap(newFileMapSize); HasError(error)) {
+        if (auto error = CanGrowFileMapSize(newFileMapSize); HasError(error)) {
             return error;
         }
 
@@ -1057,7 +1057,7 @@ private:
         return {};
     }
 
-    NProto::TError CanResizeFileMap(ui64 newFileMapSize) const
+    NProto::TError CanGrowFileMapSize(ui64 newFileMapSize) const
     {
         const ui64 fileMapSize = GetFileMapSize();
         if (!MemoryController || newFileMapSize <= fileMapSize) {
