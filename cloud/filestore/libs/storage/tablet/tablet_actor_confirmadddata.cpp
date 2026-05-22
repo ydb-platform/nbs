@@ -10,6 +10,7 @@
 #include <util/generic/cast.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -57,14 +58,16 @@ void TIndexTabletActor::SendPendingConfirmAddDataResponse(
         return;
     }
 
-    auto pending = std::move(pendingIt->second);
+    auto pendingRequests = std::move(pendingIt->second);
     PendingConfirmation.erase(pendingIt);
 
-    if (!HasError(error)) {
-        Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
-    }
+    for (auto& pending: pendingRequests) {
+        if (!HasError(error)) {
+            Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
+        }
 
-    SendDeferredConfirmAddDataResponse(ctx, std::move(pending), error);
+        SendDeferredConfirmAddDataResponse(ctx, std::move(pending), error);
+    }
 }
 
 void TIndexTabletActor::UnconfirmedAddBlobSafePointReached(
@@ -151,8 +154,26 @@ void TIndexTabletActor::HandleConfirmAddData(
         pending.DeferredTs = startedTs;
         pending.CallContext = msg->CallContext;
         pending.ProfileLogRequest = std::move(profileLogRequest);
-        PendingConfirmation[commitId] = std::move(pending);
+        PendingConfirmation[commitId].push_back(std::move(pending));
     };
+
+    // The client may retry ConfirmAddData with the same commit id after losing
+    // the previous response on a pipe disconnect. From the tablet's point of
+    // view, the first request can still be waiting while AddDataUnconfirmed is
+    // in progress, or while AddBlob is in flight but has not reached the safe
+    // point that sends the reply. Keep all waiters and complete them together
+    // when the commit reaches a terminal state.
+    if (PendingConfirmation.contains(commitId)) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Deferring duplicate ConfirmAddData: commitId=%lu",
+            LogTag.c_str(),
+            commitId);
+
+        deferReply();
+        return;
+    }
 
     if (auto unconfirmedIt = UnconfirmedData.find(commitId);
         unconfirmedIt != UnconfirmedData.end())
@@ -162,10 +183,8 @@ void TIndexTabletActor::HandleConfirmAddData(
             unconfirmedIt->second.Data.GetBlobIds(),
             msg->Record);
 
-        if (DeletionQueue.contains(commitId)) {
-            reply(ErrorUnconfirmedDataDeleted());
-        } else {
-            deferReply();
+        deferReply();
+        if (!DeletionQueue.contains(commitId)) {
             ConfirmData(commitId, ctx);
         }
         return;
@@ -253,7 +272,7 @@ void TIndexTabletActor::HandleCancelAddData(
     if (!DeletionQueue.contains(commitId)) {
         DeletionQueue.emplace(commitId);
         // We reply to CancelAddData immediately, so from this point forward we
-        // rely on DeleteUnconfirmedData  being executed ahead of any later
+        // rely on DeleteUnconfirmedData being executed ahead of any later
         // AddBlob TX. Keep this execute before the reply path,
         // and keep TDeleteUnconfirmedData page-fault-free, or a later execute
         // may reorder and revive data that was already cancelled.
@@ -390,16 +409,17 @@ void TIndexTabletActor::ConfirmData(ui64 commitId, const TActorContext& ctx)
 
 void TIndexTabletActor::DeleteUnconfirmedData(
     const TActorContext& ctx,
-    const char* deletionEntity,
-    const TString& entityId,
-    const std::function<bool(const TTrackedUnconfirmedData&)>& shouldDelete)
+    const char* entityLogTag,
+    const TString& entityLogValue,
+    const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+        shouldDelete)
 {
     TVector<ui64> commitIdsToDelete;
 
     auto enqueueCommitIdsToDelete = [&](const auto& data)
     {
         for (const auto& [commitId, trackedData]: data) {
-            if (!shouldDelete(trackedData)) {
+            if (!shouldDelete(commitId, trackedData)) {
                 continue;
             }
 
@@ -414,18 +434,18 @@ void TIndexTabletActor::DeleteUnconfirmedData(
     enqueueCommitIdsToDelete(UnconfirmedData);
     enqueueCommitIdsToDelete(UnconfirmedDataInProgress);
 
+    if (commitIdsToDelete.empty()) {
+        return;
+    }
+
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s Deleting unconfirmed data: %s=%s, deleteNow=%zu",
         LogTag.c_str(),
-        deletionEntity,
-        entityId.c_str(),
+        entityLogTag,
+        entityLogValue.c_str(),
         commitIdsToDelete.size());
-
-    if (commitIdsToDelete.empty()) {
-        return;
-    }
 
     // Cleanup has the same ordering requirement as CancelAddData: once
     // commitIds are placed into DeletionQueue, DeleteUnconfirmedData must be
@@ -448,7 +468,7 @@ void TIndexTabletActor::DeleteUnconfirmedDataForSession(
         ctx,
         "sessionId",
         sessionId.Quote(),
-        [&sessionId](const TTrackedUnconfirmedData& trackedData)
+        [&sessionId](ui64, const TTrackedUnconfirmedData& trackedData)
         { return trackedData.SessionId == sessionId; });
 }
 
@@ -458,10 +478,24 @@ void TIndexTabletActor::DeleteUnconfirmedDataForPipeServer(
 {
     DeleteUnconfirmedData(
         ctx,
-        "pipeServer",
+        "pipeServerId",
         pipeServerId.ToString(),
-        [&pipeServerId](const TTrackedUnconfirmedData& trackedData)
+        [&pipeServerId](ui64, const TTrackedUnconfirmedData& trackedData)
         { return trackedData.PipeServerId == pipeServerId; });
+}
+
+void TIndexTabletActor::HandleCancelUnconfirmedData(
+    const TEvIndexTabletPrivate::TEvCancelUnconfirmedData::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const ui64 commitId = ev->Get()->CommitId;
+
+    DeleteUnconfirmedData(
+        ctx,
+        "commitId",
+        ToString(commitId),
+        [commitId](ui64 trackedCommitId, const TTrackedUnconfirmedData&)
+        { return trackedCommitId == commitId; });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -475,7 +509,8 @@ bool TIndexTabletActor::PrepareTx_DeleteUnconfirmedData(
     Y_UNUSED(tx);
     Y_UNUSED(args);
 
-    // Nothing to prepare
+    // This TX must stay page-fault-free: after DeletionQueue is updated,
+    // AddBlob TXs must not overtake this cleanup.
     return true;
 }
 
