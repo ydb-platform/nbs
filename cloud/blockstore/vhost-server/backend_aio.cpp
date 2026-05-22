@@ -142,8 +142,6 @@ private:
 
     ITaskQueuePtr ThreadPool;
 
-    std::atomic<ui64> InflightTasksInThreadPool = 0;
-
 public:
     TAioBackend(
         IEncryptorPtr encryptor,
@@ -364,11 +362,6 @@ void TAioBackend::Stop()
     pthread_kill(CompletionThread.native_handle(), SIGUSR2);
     CompletionThread.join();
 
-    TSpinWait spinWait;
-    while (InflightTasksInThreadPool.load() > 0) {
-        spinWait.Sleep();
-    }
-
     if (ThreadPool) {
         ThreadPool->Stop();
     }
@@ -482,7 +475,6 @@ void TAioBackend::CompleteCompoundRequest(
         vhd_get_bdev_io(sub->GetParentRequest()->Io)->type == VHD_BDEV_READ &&
         result == VHD_BDEV_SUCCESS && ThreadPool;
 
-    InflightTasksInThreadPool.fetch_add(1);
     auto completeCompoundRequest =
         [this, sub = std::move(sub), result, stats, now]() mutable
     {
@@ -494,7 +486,6 @@ void TAioBackend::CompleteCompoundRequest(
             *stats,
             now);
         stats->Completed += 1;
-        InflightTasksInThreadPool.fetch_sub(1);
     };
 
     if (needToPostOnAnotherThread) {
@@ -516,7 +507,6 @@ void TAioBackend::CompleteRequest(
         Encryptor && bio->type == VHD_BDEV_READ && result == VHD_BDEV_SUCCESS &&
         ThreadPool;
 
-    InflightTasksInThreadPool.fetch_add(1);
     auto completeRequest =
         [this,
          req = std::move(req),
@@ -532,7 +522,6 @@ void TAioBackend::CompleteRequest(
             *stats,
             now);
         stats->Completed += 1;
-        InflightTasksInThreadPool.fetch_sub(1);
     };
 
     if (needToPostOnAnotherThread) {
@@ -558,6 +547,8 @@ void TAioBackend::CompletionThreadFunc()
 
     timespec timeout{.tv_sec = 1, .tv_nsec = 0};
 
+    ui64 ioFinishedCount = 0;
+
     for (;;) {
         // TODO: try AIO_RING_MAGIC trick
         // (https://github.com/axboe/fio/blob/master/engines/libaio.c#L272)
@@ -578,6 +569,8 @@ void TAioBackend::CompletionThreadFunc()
         }
 
         const TCpuCycles now = GetCycleCount();
+
+        ioFinishedCount += ret;
 
         for (int i = 0; i != ret; ++i) {
             if (events[i].data) {
@@ -627,6 +620,11 @@ void TAioBackend::CompletionThreadFunc()
 
             CompleteRequest(std::move(req), result, now, stats);
         }
+    }
+
+    TSpinWait spinWait;
+    while (ioFinishedCount != stats->Completed.load()) {
+        spinWait.Sleep();
     }
 }
 

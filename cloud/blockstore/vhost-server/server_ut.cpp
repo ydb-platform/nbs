@@ -1436,6 +1436,78 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
     }
 }
 
+TEST_P(TSlowEncryptorServerTest, ShouldWaitForAllThreadPoolTasksBeforeStop)
+{
+    StartServer();
+
+    const ui64 requestCount = ThreadCount * 5;
+
+    auto makePattern = [&](size_t block) -> TString
+    {
+        return TString(BlockSize, GetFillChar(block));
+    };
+
+    // Write blocks directly to the underlying devices. Encrypt them first so
+    // that when the server reads + decrypts, we get the original plaintext.
+    {
+        SetSleepTime(TDuration::Zero());
+
+        TString encrypted;
+        encrypted.resize(BlockSize);
+        for (ui64 i = 0; i < requestCount; ++i) {
+            const TString plaintext = makePattern(i);
+            const auto err = Encryptor->Encrypt(
+                TBlockDataRef(plaintext.data(), BlockSize),
+                TBlockDataRef(encrypted.data(), BlockSize),
+                i * SectorsPerBlock);
+            ASSERT_FALSE(HasError(err));
+            ASSERT_TRUE(SaveRawBlock(i, encrypted));
+        }
+    }
+
+    SetSleepTime(TDuration::MilliSeconds(100));
+
+    TVector<std::span<char>> readBuffers;
+    TVector<std::span<char>> statuses;
+    TVector<NThreading::TFuture<ui32>> futures;
+    for (ui64 i = 0; i < requestCount; ++i) {
+        std::span hdr = Hdr(
+            Memory,
+            {.type = VIRTIO_BLK_T_IN, .sector = i * SectorsPerBlock});
+        std::span readBuffer =
+            Memory.Allocate(BlockSize, Unaligned ? 1 : BlockSize);
+        std::span status = Memory.Allocate(1);
+        readBuffers.push_back(readBuffer);
+        statuses.push_back(status);
+        futures.push_back(
+            Client.WriteAsync(i % QueueCount, {hdr}, {readBuffer, status}));
+    }
+
+    // Give AIO time to complete the reads and enqueue decryption tasks onto
+    // the thread pool. Each decryption sleeps 100ms, so most tasks remain
+    // queued at this point.
+    Sleep(TDuration::MilliSeconds(200));
+
+    Server->Stop();
+
+    EXPECT_EQ(
+        TDuration::MilliSeconds(requestCount * 100),
+        GetTotalSleepTime());
+
+    for (size_t i = 0; i < futures.size(); ++i) {
+        ASSERT_TRUE(futures[i].HasValue())
+            << "future " << i << " did not resolve";
+        const ui32 len = futures[i].GetValueSync();
+        EXPECT_EQ(statuses[i].size() + readBuffers[i].size(), len);
+        EXPECT_EQ(VIRTIO_BLK_S_OK, statuses[i][0]);
+        TString readData(readBuffers[i].data(), readBuffers[i].size());
+        EXPECT_EQ(makePattern(i), readData);
+    }
+
+    Client.DeInit();
+    Server.reset();
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ,
     TSlowEncryptorServerTest,
