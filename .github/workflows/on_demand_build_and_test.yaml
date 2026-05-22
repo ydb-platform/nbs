@@ -181,11 +181,9 @@ jobs:
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
-          org: ydb-platform
-          team: nbs
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+          nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
@@ -245,7 +243,7 @@ jobs:
     needs:
       - provide-runner # required to get output from the start-runner job
       - build-and-test # required to wait when the main job is done
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
     steps:
       - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests  || '0' }}s if build failed
         shell: bash
@@ -263,7 +261,7 @@ jobs:
       - build-and-test  # required to wait when the main job is done
       - sleep-if-needed # required to wait until all debug is done
     runs-on: ubuntu-latest
-    if: always() && needs.provide-runner.outputs.instance-id != ''
+    if: always()
     steps:
       - name: checkout PR
         uses: actions/checkout@v6
@@ -303,7 +301,7 @@ jobs:
         env:
           ANY_CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
           REMOVE_CANCELLED_VMS: ${{ vars.NEBIUS_REMOVE_CANCELLED_VMS }}
-          AUTO_CANCEL_EVENTS: ${{ vars.AUTO_CANCEL_EVENTS || 'pull_request,pull_request_target' }}
+          AUTO_CANCEL_EVENTS: 'pull_request,pull_request_target'
         with:
           script: |
             const anyCancelled = (process.env.ANY_CANCELLED || '') === 'true';
@@ -362,9 +360,10 @@ jobs:
         if: ${{ steps.decider.outputs.result == 'true' }}
         timeout-minutes: 60
         with:
-          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
+          nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}
+          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}

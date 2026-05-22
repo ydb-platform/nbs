@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -665,6 +666,7 @@ struct TEvIndexTabletPrivate
         NProto::TProfileLogRequestInfo ProfileLogRequest;
         const bool NodeAlreadyExists;
         const ui32 CreateNodeRetryCount;
+        const TNodeRefKey OriginalNodeRefKey;
 
         TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
@@ -675,7 +677,8 @@ struct TEvIndexTabletPrivate
                 TCreateNodeInShardResult result,
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 bool nodeAlreadyExists,
-                ui32 createNodeRetryCount)
+                ui32 createNodeRetryCount,
+                TNodeRefKey originalNodeRefKey)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -685,6 +688,7 @@ struct TEvIndexTabletPrivate
             , ProfileLogRequest(std::move(profileLogRequest))
             , NodeAlreadyExists(nodeAlreadyExists)
             , CreateNodeRetryCount(createNodeRetryCount)
+            , OriginalNodeRefKey(std::move(originalNodeRefKey))
         {
         }
     };

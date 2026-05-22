@@ -43,7 +43,6 @@ private:
 
     // Set before receiving requests, so used without lock.
     ui32 BlockSize = 0;
-    TString DiskId;
 
     TAdaptiveLock Lock;
     ui64 RequestIdGenerator = 0;
@@ -305,7 +304,7 @@ TFuture<NProto::TWriteBlocksResponse> TOverlappingRequestsGuard::WriteBlocks(
     if (!BlockSize) {
         NProto::TWriteBlocksResponse error;
         *error.MutableError() = MakeError(
-            E_REJECTED,
+            E_BS_INVALID_SESSION,
             "Need to mount volume before execute WriteBlocks");
         return MakeFuture<NProto::TWriteBlocksResponse>(std::move(error));
     }
@@ -365,7 +364,6 @@ TFuture<NProto::TMountVolumeResponse> TOverlappingRequestsGuard::MountVolume(
             }
             if (auto self = weakSelf.lock()) {
                 self->BlockSize = response.GetVolume().GetBlockSize();
-                self->DiskId = response.GetVolume().GetDiskId();
             }
         });
     return result;
@@ -378,8 +376,6 @@ TFuture<TResponse> TOverlappingRequestsGuard::DoExecuteRequest(
     std::shared_ptr<TRequest> request)
 {
     auto guard = Guard(Lock);
-
-    Y_ABORT_UNLESS(DiskId == request->GetDiskId());
 
     auto overlapping = InflightRequests.FindFirstOverlapping(range);
 

@@ -1,7 +1,9 @@
 import argparse
 import math
 import os
+from pathlib import Path
 import random
+import shlex
 import string
 import time
 import grpc
@@ -9,12 +11,25 @@ from typing import Optional
 import asyncio
 import requests
 import yaml
-import functools
-from .helpers import setup_logger, github_output, KeyValueAction, SENSITIVE_DATA_VALUES
+from .helpers import (
+    setup_logger,
+    github_output,
+    KeyValueAction,
+    SENSITIVE_DATA_VALUES,
+    truthy,
+    retry,
+    GITHUB_API_RETRY_ATTEMPTS,
+    GITHUB_API_RETRY_INTERVAL_SEC,
+    GITHUB_API_TIMEOUT_SEC,
+    GITHUB_RUNNER_LATEST_VERSION,
+    format_github_response_debug,
+    resolve_github_runner_release,
+)
 from github import Auth as GithubAuth
 from github import Github
 
 from nebius.sdk import SDK
+from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
 from nebius.api.nebius.common.v1 import ResourceMetadata, GetByNameRequest
 from nebius.api.nebius.compute.v1 import (
@@ -30,6 +45,7 @@ from nebius.api.nebius.compute.v1 import (
     PublicIPAddress,
     ResourcesSpec,
     GetInstanceRequest,
+    ListInstancesRequest,
     DeleteInstanceRequest,
     DeleteDiskRequest,
     ExistingDisk,
@@ -38,6 +54,13 @@ from nebius.api.nebius.compute.v1 import (
 logger = setup_logger()
 
 DISK_NAME_PREFIX = "disk-"
+CLOUD_INIT_SCRIPT_TEMPLATE = (
+    Path(__file__).parent / "templates" / "nebius_runner_cloud_init.sh"
+)
+RUNNER_REGISTRATION_RETRY_ATTEMPTS = 60
+RUNNER_REGISTRATION_RETRY_INTERVAL_SEC = 10
+CREATE_VM_RETRY_ATTEMPTS = 30 * 60 // 5
+CREATE_VM_RETRY_INTERVAL_SEC = 5
 PRESETS = {
     "cpu-d3": [
         "4vcpu-16gb",
@@ -97,6 +120,33 @@ def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):
     return ssh_keys
 
 
+def shell_quote_template_value(value) -> str:
+    if isinstance(value, bool):
+        value = "true" if value else "false"
+    return shlex.quote(str(value))
+
+
+def render_cloud_init_runner_script(
+    owner: str,
+    repo: str,
+    token: str,
+    version: str,
+    sha256_by_arch: dict[str, str],
+    override_existing_runner: bool,
+    label: str,
+) -> str:
+    template = CLOUD_INIT_SCRIPT_TEMPLATE.read_text()
+    return template.format(
+        override_existing_runner=shell_quote_template_value(override_existing_runner),
+        version=shell_quote_template_value(version),
+        sha256_x64=shell_quote_template_value(sha256_by_arch.get("x64", "")),
+        sha256_arm64=shell_quote_template_value(sha256_by_arch.get("arm64", "")),
+        label=shell_quote_template_value(label),
+        repo_url=shell_quote_template_value(f"https://github.com/{owner}/{repo}"),
+        token=shell_quote_template_value(token),
+    )
+
+
 def generate_cloud_init_script(
     user: str,
     ssh_keys: list[str],
@@ -104,6 +154,7 @@ def generate_cloud_init_script(
     repo: str,
     token: str,
     version: str,
+    sha256_by_arch: dict[str, str],
     override_existing_runner: bool,
     label: str,
 ):
@@ -116,70 +167,20 @@ def generate_cloud_init_script(
         if os.environ.get(item):
             label += f",{item}_{os.environ[item]}"
 
-    script = f"""
-set -x
-
-export UPDATE_RUNNER="{override_existing_runner}"
-echo "fixing /etc/hosts"
-echo "::1 localhost" | tee -a /etc/hosts
-grep localhost /etc/hosts
-
-if [ -d /actions-runner ] && [ "$UPDATE_RUNNER" != "true" ]; then
-    echo "Runner already installed and doesn't require update, skipping installation"
-    cd /actions-runner
-else
-    mkdir -p /actions-runner && cd /actions-runner
-    case $(uname -m) in
-        aarch64) ARCH="arm64" ;;
-        amd64|x86_64) ARCH="x64";;
-    esac
-    export FILENAME=runner-v{version}.tar.gz
-    # https://github.com/actions/runner/releases/download/v2.314.1/actions-runner-linux-x64-2.314.1.tar.gz
-    exit_code=1
-    i=0
-    url="https://github.com/actions/runner/releases/download/v{version}/actions-runner-linux-${{ARCH}}-{version}.tar.gz"
-    until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
-        [ -f "$FILENAME" ] || curl --connect-timeout 5 -L "$url" -o "$FILENAME"
-        exit_code=$?
-        i=$((i+1))
-        [ $exit_code -eq 0 ] || rm -f "$FILENAME"
-        echo "$((date)) [$i] curl exited (or timed-out) with code $exit_code"
-    done
-    tar xzf "./$FILENAME" || exit 0
-fi
-export RUNNER_ALLOW_RUNASROOT=1
-
-# trying to catch registration error
-exit_code=1
-i=0
-until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
-    echo ./config.sh --labels {label} --url https://github.com/{owner}/{repo} --token XXX --unattended
-    set +x
-    timeout 60 ./config.sh --labels {label} --url https://github.com/{owner}/{repo} --token {token} --unattended
-    set -x
-    exit_code=$?
-    i=$((i+1))
-    echo "$((date)) [$i] config.sh exited (or timed-out) with code $exit_code"
-    [ $exit_code -eq 0 ] || find /actions-runner -name *.log -print -exec cat {{}} \; # noqa: W605
-done
-# true to skip the error and to boot vm correctly
-sed -i \\
-  '/^\[Install\]/i \\
-OOMPolicy=continue \\
-OOMScoreAdjust=-900 \\
-Delegate=yes \\
-TasksMax=infinity \\
-Restart=on-failure \\
-RestartSec=5s \\
-Slice=actions-runner.slice' \
-  ./bin/actions.runner.service.template
-./svc.sh install || true
-./svc.sh start || true
-"""
+    script = render_cloud_init_runner_script(
+        owner=owner,
+        repo=repo,
+        token=token,
+        version=version,
+        sha256_by_arch=sha256_by_arch,
+        override_existing_runner=override_existing_runner,
+        label=label,
+    )
 
     cloud_init = {
         "runcmd": [script],
         "manage_etc_hosts": "true",
+        "ssh_pwauth": False,
         "users": [
             {
                 "name": user,
@@ -206,17 +207,60 @@ Slice=actions-runner.slice' \
     )
 
 
+def resolve_runner_release_for_update(
+    version: str,
+    github_token: str,
+    override_existing_runner: str,
+) -> tuple[str, dict[str, str]]:
+    if not truthy(override_existing_runner):
+        logger.info("Runner update is disabled, skipping GitHub runner release lookup")
+        return "", {}
+
+    release = resolve_github_runner_release(version, github_token)
+    logger.info(
+        "Resolved GitHub runner release for update: version=%s sha256_by_arch=%s",
+        release.version,
+        release.sha256_by_arch,
+    )
+    return release.version, release.sha256_by_arch
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=(requests.exceptions.RequestException, ValueError),
+)
 def get_runner_token(
     github_repo_owner: str, github_repo: str, github_token: str
 ) -> str:
-    result = requests.post(
+    response = requests.post(
         f"https://api.github.com/repos/{github_repo_owner}/{github_repo}/actions/runners/registration-token",
         headers={
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
             "X-Github-Api-Version": "2022-11-28",
         },
-    ).json()
+        timeout=GITHUB_API_TIMEOUT_SEC,
+    )
+    logger.debug(
+        "GitHub runner registration token response status=%s content_type=%s",
+        response.status_code,
+        response.headers.get("content-type"),
+    )
+
+    try:
+        result = response.json()
+    except ValueError as e:
+        raise ValueError(
+            "Failed to parse GitHub runner registration token response "
+            f"({format_github_response_debug(response)}): {e}"
+        ) from None
+
+    if not response.ok:
+        raise ValueError(
+            "GitHub runner registration token request failed "
+            f"({format_github_response_debug(response)}): {result}"
+        )
 
     token = result.get("token")
     expires_at = result.get("expires_at")
@@ -224,41 +268,28 @@ def get_runner_token(
         # Mask the token in the logs
         print(f"::add-mask::{token}")
         SENSITIVE_DATA_VALUES["runner_token"] = token
-        logger.debug(
-            "Got runner registration token: %s (valid till: %s)", (token, expires_at)
-        )
+        logger.debug("Got runner registration token valid till: %s", expires_at)
         return token
     else:
-        raise ValueError(f"Failed to get runner registration token: {result}")
+        raise ValueError(
+            "Failed to get runner registration token "
+            f"({format_github_response_debug(response)}): {result}"
+        )
 
 
-def wait_for_runner_registration(
-    client: Github,
-    vm_id: str,
-    github_repo_owner: str,
-    github_repo: str,
-    timeout_sec: int = 10,
-    retries: int = 60,
-) -> Optional[str]:
-    logger.info(
-        "Waiting for runner registration every %d seconds x %d times",
-        timeout_sec,
-        retries,
-    )
-
-    for i in range(retries):
-        runner_id = find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
-        if runner_id is not None:
-            return runner_id
-        else:
-            time.sleep(timeout_sec)
-
-    return None
-
-
+@retry(
+    attempts=RUNNER_REGISTRATION_RETRY_ATTEMPTS,
+    interval_sec=RUNNER_REGISTRATION_RETRY_INTERVAL_SEC,
+    retry_result=lambda result: result is None,
+)
 def find_runner_by_name(
     client: Github, github_repo_owner: str, github_repo: str, vm_id: str
 ) -> Optional[str]:
+    logger.info(
+        "Checking whether VM %s is registered as Github Runner",
+        vm_id,
+    )
+
     runners = client.get_repo(
         f"{github_repo_owner}/{github_repo}"
     ).get_self_hosted_runners()
@@ -277,18 +308,32 @@ def find_runner_by_name(
     return runner_id
 
 
-async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
-    service = DiskServiceClient(sdk)
-    disk_request = CreateDiskRequest(
+def build_disk_request(
+    parent_id: str,
+    name: str,
+    disk_size: int,
+    image_id: str,
+) -> CreateDiskRequest:
+    return CreateDiskRequest(
         metadata=ResourceMetadata(
-            parent_id=args.parent_id,
-            name=DISK_NAME_PREFIX + args.name,
+            parent_id=parent_id,
+            name=DISK_NAME_PREFIX + name,
         ),
         spec=DiskSpec(
             type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
-            size_gibibytes=args.disk_size,
-            source_image_id=args.image_id,
+            size_gibibytes=disk_size,
+            source_image_id=image_id,
         ),
+    )
+
+
+async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
+    service = DiskServiceClient(sdk)
+    disk_request = build_disk_request(
+        parent_id=args.parent_id,
+        name=args.name,
+        disk_size=args.disk_size,
+        image_id=args.image_id,
     )
     if not args.apply:
         logger.info("Would create disk with request %s", disk_request)
@@ -307,8 +352,8 @@ async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
         logger.error("Failed to create disk with request: %s", disk_request)
         logger.error("Response: %s", str(e.status), exc_info=True)
         if request is not None:
-            logger.error("Removing created instance with ID %s", request.resource_id)
-            remove_vm_by_id(sdk, request.resource_id)
+            logger.error("Removing created disk with ID %s", request.resource_id)
+            await remove_disk_by_id(sdk, args, request.resource_id)
         raise
 
     logger.info(
@@ -320,59 +365,28 @@ async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     return request.resource_id
 
 
-def retry_create_vm(func: callable) -> callable:
-    @functools.wraps(func)
-    async def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
-        total_time_limit = 30 * 60
-        retry_interval = 5
-        start_time = time.time()
-        attempt = 0
-        while time.time() - start_time < total_time_limit:
-            try:
-                logger.info(
-                    "Trying to create VM at %s (attempt=%d)",
-                    time.ctime(time.time()),
-                    attempt,
-                )
-                result = await func(sdk, args, attempt)
-                logger.info("VM created successfully at %s", time.ctime(time.time()))
-                return result
-            except RequestError as e:
-                attempt += 1
-                if time.time() - start_time >= total_time_limit:
-                    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
-                        pr_number = int(os.environ.get("GITHUB_REF").split("/")[-1])
-                        repo_name = os.environ.get("GITHUB_REPOSITORY")
-                        github_token = os.environ.get("GITHUB_TOKEN")
-                        comment = f"VM creation failed after 30 minutes: {e}"
-                        gh = Github(auth=GithubAuth.Token(github_token))
-                        repo = gh.get_repo(repo_name)
-                        pr = repo.get_pull(pr_number)
-                        pr.create_issue_comment(comment)
-                    raise
-                next_run_time = time.time() + retry_interval
-                logger.error("Failed to create VM", exc_info=True)
-                logger.info("Next run will be at %s", time.ctime(next_run_time))
-                while (
-                    time.time() < next_run_time
-                    and time.time() - start_time < total_time_limit  # noqa: W503
-                ):
-                    await asyncio.sleep(1)
-            except Exception as e:
-                logger.error("Failed to create VM", exc_info=True)
-                raise e
-        raise Exception("Time limit exceeded while retrying function")
+def report_create_vm_final_failure(exception: BaseException) -> None:
+    if os.environ.get("GITHUB_EVENT_NAME") != "pull_request":
+        return
 
-    return wrapper
+    pr_number = int(os.environ.get("GITHUB_REF").split("/")[-1])
+    repo_name = os.environ.get("GITHUB_REPOSITORY")
+    github_token = os.environ.get("GITHUB_TOKEN")
+    comment = f"VM creation failed after 30 minutes: {exception}"
+    gh = Github(auth=GithubAuth.Token(github_token))
+    repo = gh.get_repo(repo_name)
+    pr = repo.get_pull(pr_number)
+    pr.create_issue_comment(comment)
 
 
-@retry_create_vm
-async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
-    # validate preset
-    if args.preset not in PRESETS.get(args.platform_id, []):
-        raise Exception(
-            f"Preset {args.preset} is not available for platform {args.platform_id}"
-        )
+def validate_create_args(
+    platform_id: str,
+    preset: str,
+    disk_type: str,
+    disk_size: int,
+) -> None:
+    if preset not in PRESETS.get(platform_id, []):
+        raise Exception(f"Preset {preset} is not available for platform {platform_id}")
 
     if os.environ.get("VM_USER_PASSWD") is None:
         raise Exception("VM_USER_PASSWD environment variable is not set")
@@ -381,16 +395,117 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         raise Exception("GITHUB_TOKEN environment variable is not set")
 
     if (
-        args.disk_type in ["network-ssd-nonreplicated", "network-ssd-io-m3"]
-        and args.disk_size % 93 != 0  # noqa: W503
+        disk_type in ["network-ssd-nonreplicated", "network-ssd-io-m3"]
+        and disk_size % 93 != 0  # noqa: W503
     ):
         raise ValueError(
             "Disk size must be a multiple of 93GB for the selected disk type"
         )
 
+
+def maybe_downgrade_preset(
+    platform_id: str,
+    preset: str,
+    allow_downgrade: bool,
+    downgrade_after: int,
+    attempt: int,
+) -> str:
+    # We will downgrade every N failed attempts:
+    # if our preset is 80cpu and downgrade_after is 2, on the third
+    # attempt it will be downgraded to 64cpu, then to 48cpu.
+    logger.info("Attempt %d", attempt)
+    logger.info("Current preset %s", preset)
+    logger.info("Downgrade after %d", downgrade_after)
+    logger.info("Allow downgrade %s", allow_downgrade)
+    logger.info("attempt mod downgrade_after = %d", attempt % downgrade_after)
+    logger.info("attempt > 0 = %s", attempt > 0)
+    if allow_downgrade and attempt % downgrade_after == 0 and attempt > 0:
+        current_preset_index = PRESETS[platform_id].index(preset)
+        if current_preset_index > 0:
+            preset = PRESETS[platform_id][current_preset_index - 1]
+            logger.info("Downgrading to %s preset", preset)
+    return preset
+
+
+def build_vm_labels(labels: dict, runner_github_label: str, runner_flavor: str) -> dict:
+    labels = dict(labels)
+    labels["runner-label"] = runner_github_label
+    labels["runner-flavor"] = runner_flavor
+    return labels
+
+
+def build_instance_request(
+    parent_id: str,
+    name: str,
+    platform_id: str,
+    preset: str,
+    subnet_id: str,
+    no_public_ip: bool,
+    disk_id: str,
+    user_data: str,
+    labels: dict,
+) -> CreateInstanceRequest:
+    return CreateInstanceRequest(
+        metadata=ResourceMetadata(
+            parent_id=parent_id,
+            name=name,
+            labels=labels,
+        ),
+        spec=InstanceSpec(
+            stopped=False,
+            cloud_init_user_data=user_data,
+            resources=ResourcesSpec(platform=platform_id, preset=preset),
+            boot_disk=AttachedDiskSpec(
+                attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
+                existing_disk=ExistingDisk(id=disk_id),
+                device_id="boot",
+            ),
+            network_interfaces=[
+                NetworkInterfaceSpec(
+                    name="eth0",
+                    subnet_id=subnet_id,
+                    ip_address=IPAddress(),
+                    public_ip_address=None if no_public_ip else PublicIPAddress(),
+                ),
+            ],
+        ),
+    )
+
+
+def extract_instance_ips(instance, no_public_ip: bool) -> tuple[str, Optional[str]]:
+    network_interface = instance.status.network_interfaces[0]
+    external_ipv4 = (
+        network_interface.public_ip_address.address.replace("/32", "")
+        if no_public_ip is False
+        else None
+    )
+    local_ipv4 = network_interface.ip_address.address.replace("/32", "")
+    return local_ipv4, external_ipv4
+
+
+@retry(
+    attempts=CREATE_VM_RETRY_ATTEMPTS,
+    interval_sec=CREATE_VM_RETRY_INTERVAL_SEC,
+    retry_exceptions=(RequestError,),
+    attempt_arg="attempt",
+    on_final_exception=report_create_vm_final_failure,
+)
+async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
+    logger.info(
+        "Trying to create VM at %s (attempt=%d)",
+        time.ctime(time.time()),
+        attempt,
+    )
+    validate_create_args(
+        platform_id=args.platform_id,
+        preset=args.preset,
+        disk_type=args.disk_type,
+        disk_size=args.disk_size,
+    )
+
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
-    gh = Github(GITHUB_TOKEN)
+    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
 
     runner_registration_token = get_runner_token(
         args.github_repo_owner, args.github_repo, GITHUB_TOKEN
@@ -406,23 +521,23 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
             "No GitHub organization or team specified, skipping SSH key fetching"
         )
 
-    # We will downgrade every N failed attempts
-    # if our preset is 80cpu and downgrade_after is 2 on third
-    # attempt it will be downgraded to 64cpu
-    # And on 4th attempt it will be downgraded to 48cpu
-    logger.info("Attempt %d", attempt)
-    logger.info("Current preset %s", args.preset)
-    logger.info("Downgrade after %d", args.downgrade_after)
-    logger.info("Allow downgrade %s", args.allow_downgrade)
-    logger.info("attempt mod args.downgrade_after = %d", attempt % args.downgrade_after)
-    logger.info("attempt > 0 = %s", attempt > 0)
-    if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
-        current_preset_index = PRESETS[args.platform_id].index(args.preset)
-        if current_preset_index > 0:
-            args.preset = PRESETS[args.platform_id][current_preset_index - 1]
-            logger.info("Downgrading to %s preset", args.preset)
+    args.preset = maybe_downgrade_preset(
+        platform_id=args.platform_id,
+        preset=args.preset,
+        allow_downgrade=args.allow_downgrade,
+        downgrade_after=args.downgrade_after,
+        attempt=attempt,
+    )
 
     runner_github_label = generate_github_label()
+    (
+        github_runner_version,
+        github_runner_sha256_by_arch,
+    ) = resolve_runner_release_for_update(
+        args.github_runner_version,
+        GITHUB_TOKEN,
+        args.github_override_existing_runner,
+    )
 
     user_data, ssh_keys = generate_cloud_init_script(
         args.user,
@@ -430,41 +545,26 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         args.github_repo_owner,
         args.github_repo,
         runner_registration_token,
-        args.github_runner_version,
+        github_runner_version,
+        github_runner_sha256_by_arch,
         args.github_override_existing_runner,
         runner_github_label + ",runner_" + args.runner_flavor,
     )
 
-    labels = args.labels
-    labels["runner-label"] = runner_github_label
-    labels["runner-flavor"] = args.runner_flavor
+    labels = build_vm_labels(args.labels, runner_github_label, args.runner_flavor)
 
     disk_id = await create_disk(sdk, args)
     service = InstanceServiceClient(sdk)
-    instance_request = CreateInstanceRequest(
-        metadata=ResourceMetadata(
-            parent_id=args.parent_id,
-            name=args.name,
-            labels=labels,
-        ),
-        spec=InstanceSpec(
-            stopped=False,
-            cloud_init_user_data=user_data,
-            resources=ResourcesSpec(platform=args.platform_id, preset=args.preset),
-            boot_disk=AttachedDiskSpec(
-                attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
-                existing_disk=ExistingDisk(id=disk_id),
-                device_id="boot",
-            ),
-            network_interfaces=[
-                NetworkInterfaceSpec(
-                    name="eth0",
-                    subnet_id=args.subnet_id,
-                    ip_address=IPAddress(),
-                    public_ip_address=None if args.no_public_ip else PublicIPAddress(),
-                ),
-            ],
-        ),
+    instance_request = build_instance_request(
+        parent_id=args.parent_id,
+        name=args.name,
+        platform_id=args.platform_id,
+        preset=args.preset,
+        subnet_id=args.subnet_id,
+        no_public_ip=args.no_public_ip,
+        disk_id=disk_id,
+        user_data=user_data,
+        labels=labels,
     )
     # Create the VM
     if not args.apply:
@@ -505,13 +605,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     name = instance.metadata.name
     logger.info("Created VM %s", instance)
 
-    network_interface = instance.status.network_interfaces[0]
-    external_ipv4 = (
-        network_interface.public_ip_address.address.replace("/32", "")
-        if args.no_public_ip is False
-        else None
-    )
-    local_ipv4 = network_interface.ip_address.address.replace("/32", "")
+    local_ipv4, external_ipv4 = extract_instance_ips(instance, args.no_public_ip)
     if instance_id:
         logger.info(
             "Created VM %s with ID %s and label %s",
@@ -528,15 +622,30 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         else:
             github_output(logger, "external-ipv4", "N/A")
 
-        logger.info("Waiting for VM to be registered as Github Runner")
-        runner_id = wait_for_runner_registration(
-            gh, instance_id, args.github_repo_owner, args.github_repo, 10, 60
-        )
+        # Here we will wait until the VM registers as a GitHub Runner,
+        # if it fails to do so within the timeout, we will delete the
+        # VM to avoid orphaned resources
+        try:
+            runner_id = find_runner_by_name(
+                gh, args.github_repo_owner, args.github_repo, instance_id
+            )
+        except Exception:
+            logger.error(
+                "Failed to check runner registration; removing VM %s and disk %s",
+                instance_id,
+                disk_id,
+                exc_info=True,
+            )
+            await remove_vm_by_id(sdk, instance_id)
+            await remove_disk_by_id(sdk, args, disk_id)
+            raise
 
         if runner_id is not None:
             logger.info("VM registered as Github Runner %s", runner_id)
         else:
             logger.error("Failed to register VM as Github Runner")
+            await remove_vm_by_id(sdk, instance_id)
+            await remove_disk_by_id(sdk, args, disk_id)
             raise ValueError("Failed to register VM as Github Runner")
     else:
         logger.error("Failed to create VM with request: %s", instance_request)
@@ -618,6 +727,32 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
     await remove_disk_by_id(sdk, args, disk_id)
 
 
+async def find_disk_by_instance_name(
+    sdk: SDK, args: argparse.Namespace, instance_name: str
+):
+    service = DiskServiceClient(sdk)
+    disk_name = DISK_NAME_PREFIX + instance_name
+    try:
+        request = GetByNameRequest(parent_id=args.parent_id, name=disk_name)
+        response = await service.get_by_name(request)
+    except Exception as e:
+        logger.exception(
+            "Failed to get Disk with name %s while searching fallback cleanup candidates",
+            disk_name,
+            exc_info=True,
+        )
+        logger.error("Disk lookup error: %s", e)
+        return None
+
+    disk_id = response.metadata.id
+    if disk_id is None:
+        logger.info("Disk with name %s was not found", disk_name)
+        return None
+
+    logger.info("Disk with name %s found: id=%s", disk_name, disk_id)
+    return response
+
+
 async def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = None):
     if not args.apply:
         logger.info("Would delete disk with ID %s", disk_id)
@@ -655,10 +790,110 @@ async def remove_vm_by_id(sdk: SDK, instance_id: int = None) -> str:
     return instance_name
 
 
+def labels_match(
+    candidate_labels: dict, expected_labels: dict
+) -> tuple[bool, list[str]]:
+    mismatches = []
+    for key, expected_value in expected_labels.items():
+        actual_value = candidate_labels.get(key)
+        if actual_value != expected_value:
+            mismatches.append(
+                f"{key}: expected {expected_value!r}, actual {actual_value!r}"
+            )
+    return not mismatches, mismatches
+
+
+async def search_vm_cleanup_candidates_by_labels(sdk: SDK, args: argparse.Namespace):
+    expected_labels = args.labels or {}
+    if not expected_labels:
+        logger.error(
+            "Cannot search for VM cleanup candidates: --id is empty and --labels is missing"
+        )
+        return []
+
+    logger.warning(
+        "VM id is empty. Searching for cleanup candidates by labels only. "
+        "This fallback is dry-run only and will not remove resources."
+    )
+    logger.info("Expected VM labels: %s", expected_labels)
+
+    service = InstanceServiceClient(sdk)
+    request = ListInstancesRequest(parent_id=args.parent_id)
+    candidates = []
+    page = 0
+
+    while True:
+        page += 1
+        logger.info(
+            "Listing VMs for parent_id=%s (page=%d, page_token=%s)",
+            args.parent_id,
+            page,
+            request.page_token or "<empty>",
+        )
+        response = await service.list(request)
+        instances = response.items
+        logger.info("Received %d VMs on page %d", len(instances), page)
+
+        for instance in instances:
+            metadata = instance.metadata
+            labels = dict(metadata.labels)
+            logger.info(
+                "Inspecting VM id=%s name=%s labels=%s",
+                metadata.id,
+                metadata.name,
+                labels,
+            )
+            matched, mismatches = labels_match(labels, expected_labels)
+            if not matched:
+                logger.info(
+                    "VM id=%s does not match expected labels: %s",
+                    metadata.id,
+                    "; ".join(mismatches),
+                )
+                continue
+
+            logger.warning(
+                "VM id=%s name=%s matches cleanup labels. Would remove this VM.",
+                metadata.id,
+                metadata.name,
+            )
+            disk = await find_disk_by_instance_name(sdk, args, metadata.name)
+            if disk is not None:
+                logger.warning(
+                    "Would remove disk id=%s name=%s for VM id=%s",
+                    disk.metadata.id,
+                    disk.metadata.name,
+                    metadata.id,
+                )
+            else:
+                logger.warning(
+                    "Would try to remove disk named %s%s for VM id=%s, but lookup did not find it",
+                    DISK_NAME_PREFIX,
+                    metadata.name,
+                    metadata.id,
+                )
+
+            candidates.append(instance)
+
+        if not response.next_page_token:
+            break
+        request.page_token = response.next_page_token
+
+    logger.warning(
+        "Found %d VM cleanup candidate(s) by labels. Dry-run fallback did not remove anything.",
+        len(candidates),
+    )
+    return candidates
+
+
 async def remove_vm(sdk: SDK, args: argparse.Namespace):
+    if not args.id:
+        await search_vm_cleanup_candidates_by_labels(sdk, args)
+        return
+
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
-    gh = Github(GITHUB_TOKEN)
+    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
 
     result = remove_runner_from_github(
         gh, args.github_repo_owner, args.github_repo, args.id, args.apply
@@ -723,8 +958,8 @@ async def main() -> None:
 
     create.add_argument(
         "--github-runner-version",
-        default="2.331.0",
-        help="GitHub Runner version",
+        default=GITHUB_RUNNER_LATEST_VERSION,
+        help="GitHub Runner version, or 'latest' to resolve it from GitHub",
     )
     create.add_argument(
         "--github-override-existing-runner",
@@ -732,11 +967,6 @@ async def main() -> None:
         help="Whether to update GitHub Runner if it's already installed",
     )
 
-    create.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account key file",
-    )
     create.add_argument(
         "--parent-id",
         required=True,
@@ -812,11 +1042,6 @@ async def main() -> None:
 
     remove = subparsers.add_parser("remove", help="Remove an existing VM")
     remove.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account key file",
-    )
-    remove.add_argument(
         "--parent-id",
         required=True,
         default="project-e00gg2f58gw75edn7x",
@@ -836,6 +1061,12 @@ async def main() -> None:
         default="nbs",
         help="GitHub repository name",
     )
+    remove.add_argument(
+        "--labels",
+        action=KeyValueAction,
+        default={},
+        help="Labels used to find VM cleanup candidates when --id is empty (k=v,k2=v2)",
+    )
 
     remove.add_argument("--retry-time", default=10, help="How often to retry (seconds)")
     remove.add_argument(
@@ -848,7 +1079,7 @@ async def main() -> None:
 
     args = parser.parse_args()
 
-    sdk = SDK(credentials_file_name=args.service_account_key)
+    sdk = SDK(config_reader=Config())
 
     if hasattr(args, "func"):
         await args.func(sdk, args)

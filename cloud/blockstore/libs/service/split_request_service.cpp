@@ -195,6 +195,11 @@ public:
             return MakeFuture(std::move(response));
         }
 
+        // Acquire the future before subscribing to sub-request callbacks.
+        // A sub-request can be completed synchronously and swapped with another
+        // Promise inside the OnSubResponse() function.
+        auto future = Promise.GetFuture();
+
         for (size_t i = 0; i < SubRequests.size(); ++i) {
             auto subFuture = TBlockStoreAdapter::Execute(
                 service,
@@ -209,7 +214,7 @@ public:
                 });
         }
 
-        return Promise.GetFuture();
+        return future;
     }
 
 private:
@@ -244,7 +249,6 @@ private:
             promise.SetValue(
                 hasError ? std::move(response)
                          : MergeReadResponses(SubResponses));
-
         } else {
             promise.SetValue(std::move(response));
         }
@@ -488,7 +492,9 @@ TFuture<TResponse> TSplitRequestService::ExecuteRequestWithSplit(
 
     if (!config) {
         TResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "Volume not mounted");
+        *response.MutableError() = MakeError(
+            E_BS_INVALID_SESSION,
+            "Volume not mounted");
         return MakeFuture<TResponse>(std::move(response));
     }
 
