@@ -218,6 +218,8 @@ void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log)
 
     const size_t chunkSize = chunk.GetSerializedSize();
     size_t serializedSizeDelta = 0;
+    // The handle already counts BaseSerializedSize for the first chunk.
+    // Add only the extra bytes for the first chunk. Count later chunks in full
     if (chunk.UpdateVersion == 0) {
         serializedSizeDelta = chunkSize - BaseSerializedSize;
     } else {
