@@ -309,7 +309,7 @@ struct TCompactionMap::TImpl
             const auto newGarbageIgnoringZeroed =
                 compacted ? 0 : group->Stats[index].GarbageIgnoringZeroed();
 
-            if (prev.GarbageIgnoringZeroed() < newGarbageIgnoringZeroed) {
+            if (prev.GarbageIgnoringZeroed() <= newGarbageIgnoringZeroed) {
                 if (GetGarbageIgnoringZeroed(*group) < newGarbageIgnoringZeroed)
                 {
                     group->GarbageIgnoringZeroed = newGarbageIgnoringZeroed;
@@ -317,6 +317,9 @@ struct TCompactionMap::TImpl
             } else if (
                 prev.GarbageIgnoringZeroed() == group->GarbageIgnoringZeroed)
             {
+                // GarbageIgnoringZeroed block count in the top range has
+                // decreased, need to recalculate the maximal
+                // GarbageIgnoringZeroed block count.
                 RecalculateGroupGarbageIgnoringZeroed(group);
             }
         }
