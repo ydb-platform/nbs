@@ -376,6 +376,11 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.Barriers.erase(it);
     }
 
+    // Fail all pending requests in the case of E_FS_NOSPC
+    if (error.GetCode() == E_FS_NOSPC) {
+        FailPendingRequests(error);
+    }
+
     if (nodeState.Handles.size() == nodeState.HandleToReleaseCount) {
         // All handles with active WriteData requests are to be released
         // Drop node data on flush failure
@@ -799,6 +804,41 @@ void TWriteBackCacheState::DropCachedData(
     nodeState.HandleToReleaseCount = 0;
 
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+}
+
+void TWriteBackCacheState::FailPendingRequests(
+    const NCloud::NProto::TError& error)
+{
+    while (auto* request = RequestManager.TryPopFrontPendingRequest()) {
+        const ui64 nodeId = request->GetRequest().GetNodeId();
+        auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+        auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
+
+        // The same request lives in two queues:
+        // - all pending requests
+        // - pending requests associated with the node
+        // Both queues are ordered with respect to their SequenceId
+        Y_ABORT_UNLESS(pendingRequest.get() == request);
+
+        QueuedOperations.FailWriteDataPromise(
+            std::move(request->AccessPromise()),
+            error);
+
+        // Since no data loss has taken place and errors have been already
+        // reported by failing WriteData requests, we respond to Flush and
+        // ReleaseHandle with success
+        RemoveActiveRequestFromHandleState(
+            nodeState,
+            request->GetRequest().GetHandle());
+
+        TriggerFlushCompletions(nodeState);
+
+        if (nodeState.CanBeDeleted()) {
+            Nodes.DeleteNodeState(nodeId);
+        } else {
+            CheckAndAcquireBarriers(nodeState);
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

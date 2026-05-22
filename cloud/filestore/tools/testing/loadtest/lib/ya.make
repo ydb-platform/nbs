@@ -20,6 +20,7 @@ PEERDIR(
     cloud/filestore/libs/diagnostics/events
     cloud/filestore/libs/service
     cloud/filestore/libs/service_local
+    cloud/filestore/private/api/protos
     cloud/filestore/public/api/protos
     cloud/filestore/tools/analytics/libs/event-log
     cloud/filestore/tools/testing/loadtest/protos

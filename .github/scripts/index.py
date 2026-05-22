@@ -12,23 +12,14 @@ from jinja2 import Environment, FileSystemLoader
 from datetime import datetime, timedelta, timezone
 
 try:
-    from .helpers import parse_s3_path, set_logging_level, ttl_to_seconds
+    from .helpers import convert_size, parse_s3_path, set_logging_level, ttl_to_seconds
 except ImportError:
-    from helpers import parse_s3_path, set_logging_level, ttl_to_seconds
+    from helpers import convert_size, parse_s3_path, set_logging_level, ttl_to_seconds
 
 FORCE_TEXT_PLAIN_PATTERNS = (
     r".*stdout.*",
     r".*stderr.*",
 )
-
-
-def sizeof_fmt(num, suffix="B"):
-    """Convert file size to a human-readable format."""
-    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
-        if abs(num) < 1024.0:
-            return f"{num:3.1f}{unit}{suffix}"
-        num /= 1024.0
-    return f"{num:.1f}Yi{suffix}"
 
 
 def list_files(client, bucket, prefix):
@@ -176,7 +167,7 @@ def generate_index_html(
             )
             expiry_date = f["LastModified"] + timedelta(seconds=ttl)
             expiry_date_str = expiry_date.strftime("%Y-%m-%d %H:%M:%S")
-            file_size = sizeof_fmt(f["Size"])
+            file_size = convert_size(f["Size"])
             entries.append(
                 {
                     "name": os.path.basename(file_key),

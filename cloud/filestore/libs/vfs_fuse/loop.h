@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/vfs/public.h>
 
+#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -22,7 +23,8 @@ NVFS::IFileSystemLoopPtr CreateFuseLoop(
     ISchedulerPtr scheduler,
     ITimerPtr timer,
     IProfileLogPtr profileLog,
-    NClient::ISessionPtr session);
+    NClient::ISessionPtr session,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter);
 
 NVFS::IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     ILoggingServicePtr logging,

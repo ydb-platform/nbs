@@ -16,6 +16,7 @@
 #include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -122,7 +123,8 @@ TStarter::TStarter()
         Scheduler,
         Timer,
         CreateProfileLogStub(),
-        std::move(session));
+        std::move(session),
+        CreateFileMapMemoryLimiterStub());
 }
 
 

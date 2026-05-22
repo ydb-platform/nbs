@@ -67,8 +67,17 @@ bool TCacheReadBypass::ShouldBypassRead(ui64 nodeId, ui64 commitId) const
         return false;
     }
 
-    // Otherwise, ensure that all writes with commit ids up to the current
-    // commit are already in the cache.
+    // Commit ids are generated monotonically when unconfirmed data is
+    // materialized by AddBlob, and this queue is activated/deactivated in the
+    // same order. Thus the front item is the oldest write that may still be
+    // missing from in-memory caches.
+    //
+    // A read at "commitId" can observe only writes with commit ids <=
+    // "commitId". If the oldest active write is newer than the read snapshot,
+    // all other active writes are newer as well and the cache cannot miss any
+    // data visible to this read. Otherwise at least one visible write is still
+    // active, so the read must bypass the cache and go through the database
+    // path to keep the snapshot consistent.
     const ui64 frontCommitId = it->second.front();
     // The InvalidCommitId comparison handles the CommitIdOverflow case.
     return frontCommitId == InvalidCommitId || frontCommitId <= commitId;

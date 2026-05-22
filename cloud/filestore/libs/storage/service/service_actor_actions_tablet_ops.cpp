@@ -293,4 +293,19 @@ IActorPtr TStorageServiceActor::CreateGetResponseLogEntryActor(
         std::move(input));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ListNodes[Internal]
+
+IActorPtr TStorageServiceActor::CreateListNodesInternalActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TListNodesInternalActor = TTabletActionActor<
+        TEvIndexTablet::TEvListNodesInternalRequest,
+        TEvIndexTablet::TEvListNodesInternalResponse>;
+    return std::make_unique<TListNodesInternalActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

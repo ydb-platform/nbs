@@ -21,7 +21,7 @@ cryptography
 pyOpenSSL==24.2.1
 packaging
 rapidgzip
-PyGithub==2.6.1
-nebius==0.2.34
+PyGithub==2.9.1
+nebius==0.3.59
 tabulate
 numpy

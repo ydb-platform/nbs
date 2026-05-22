@@ -21,6 +21,7 @@ enum EAction
     ACTION_ACCESS_NODE = 8;
     ACTION_LIST_NODES = 9;
     ACTION_FLUSH = 10;
+    ACTION_LIST_NODES_INTERNAL = 11;
 
     // DATA
     ACTION_WRITE = 101;
@@ -36,6 +37,7 @@ message TIndexLoadSpec
     }
 
     repeated TAction Actions = 1;
+    uint64 MaxNodes = 2;
 }
 
 message TDataLoadSpec

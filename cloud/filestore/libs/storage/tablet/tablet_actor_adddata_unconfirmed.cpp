@@ -126,9 +126,10 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
             args.CommitId,
             args.NodeId);
 
-        // If deletion in progress, do nothing. Deferred reply will be triggered
-        // in DeleteUnconfirmedData completion. At this point we could already
-        // pass ExecuteTx for DeleteUnconfirmed.
+        // If deletion is in progress, do nothing. DeleteUnconfirmedData owns
+        // cleanup from this point and is kept page-fault-free so it cannot be
+        // overtaken by later AddBlob TXs. The deferred reply will be triggered
+        // in DeleteUnconfirmedData completion.
         if (!deletionInProgress) {
             UnconfirmedData.emplace(
                 args.CommitId,

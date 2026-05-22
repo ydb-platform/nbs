@@ -107,6 +107,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
         TBlockRangeComparator>
         ZeroBlocksPromises;
 
+    std::optional<NProto::TError> SyncZeroBlocksError;
+
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
         Y_UNUSED(bytesCount);
@@ -172,6 +174,12 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
         Y_UNUSED(callContext);
+
+        if (SyncZeroBlocksError) {
+            NProto::TZeroBlocksResponse response;
+            *response.MutableError() = *SyncZeroBlocksError;
+            return MakeFuture(std::move(response));
+        }
 
         auto range = TBlockRangeHelper::GetRange(*request, DefaultBlockSize);
         auto& info =
@@ -798,6 +806,37 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             FormatError(result.GetError()));
     }
 
+    Y_UNIT_TEST(ShouldNotFailWhenSubRequestCompletesSynchronously)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        // Make every ZeroBlocks sub-request complete synchronously with an
+        // error.
+        testBlockStore.SyncZeroBlocksError = MakeError(E_REJECTED, "sync fail");
+
+        // Request that crosses a stripe boundary -> will be split.
+        auto range = TBlockRange64::WithLength(1, 10);
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        env.SetupRequest(request, range);
+
+        TFuture<NProto::TZeroBlocksResponse> future;
+        UNIT_ASSERT_NO_EXCEPTION(
+            future = env.SplitRequestService->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request)));
+
+        // Future must be valid and already carry the propagated error.
+        UNIT_ASSERT(future.Initialized());
+        UNIT_ASSERT(future.HasValue());
+        const auto& result = future.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
+    }
+
     Y_UNIT_TEST(ShouldForwardRequestIfSplittingIsNotRequired)
     {
         TTestEnvironment env;
@@ -831,6 +870,64 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             S_OK,
             result.GetError().GetCode(),
             FormatError(result.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldReplyErrorWithoutMount)
+    {
+        TTestEnvironment env;
+
+        auto range = TBlockRange64::WithLength(1, 10);
+
+        {
+            // Run ZeroBlocks request
+            auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+            env.SetupRequest(request, range);
+            auto future = env.SplitRequestService->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+        }
+
+        {
+            // Run ReadBlocks request
+
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            env.SetupRequest(request, range);
+            auto future = env.SplitRequestService->ReadBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+
+        }
+
+        {
+            // Run WriteBlocks request
+            const TString data = "abcdefghij";
+            auto range =
+                TBlockRange64::WithLength(1, data.size() / DefaultBlockSize);
+            auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+            env.SetupRequest(request, range, data);
+            auto future = env.SplitRequestService->WriteBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+
+        }
     }
 }
 

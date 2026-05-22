@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/client/public.h>
 
+#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -32,7 +33,8 @@ struct IFileSystemLoopFactory
 
     virtual IFileSystemLoopPtr Create(
         TVFSConfigPtr config,
-        NClient::ISessionPtr session) = 0;
+        NClient::ISessionPtr session,
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter) = 0;
 };
 
 }   // namespace NCloud::NFileStore::NVFS

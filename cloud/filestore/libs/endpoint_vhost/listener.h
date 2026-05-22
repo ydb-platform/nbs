@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/vfs/public.h>
 
+#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -52,6 +53,7 @@ IEndpointListenerPtr CreateEndpointListener(
     NVFS::IFileSystemLoopFactoryPtr loopFactory,
     THandleOpsQueueConfig handleOpsQueueConfig,
     TWriteBackCacheConfig writeBackCacheConfig,
-    TDirectoryHandleStorageConfig directoryHandleStorageConfig);
+    TDirectoryHandleStorageConfig directoryHandleStorageConfig,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter);
 
 }   // namespace NCloud::NFileStore::NVhost

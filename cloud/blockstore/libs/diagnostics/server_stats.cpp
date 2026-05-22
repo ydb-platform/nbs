@@ -314,7 +314,8 @@ void TServerStats::RequestStarted(
             req.DiskId,
             req.ClientId,
             RequestInstanceId)
-        << " REQUEST " << message);
+        << " REQUEST " << message
+        << ", peer: " << req.Peer);
 
     LWTRACK(
         RequestStarted,
@@ -567,6 +568,7 @@ void TServerStats::RequestCompleted(
         << ", unaligned: " << req.Unaligned
         << maxTimeSuppressedMessage
         << ", error: " << FormatError(error)
+        << ", peer: " << req.Peer
         << ")");
 }
 

@@ -954,6 +954,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     int(NProto::SOURCE_FD_CONTROL_CHANNEL),
                     int(request->GetHeaders().GetInternal().GetRequestSource())
                 );
+                UNIT_ASSERT(!request->GetHeaders().GetInternal().GetPeer().empty());
                 return MakeFuture<NProto::TListEndpointsResponse>();
             };
 
