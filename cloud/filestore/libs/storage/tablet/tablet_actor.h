@@ -544,6 +544,12 @@ private:
     void CompleteResponse(
         typename TMethod::TResponse::ProtoRecordType& response,
         const TCallContextPtr& callContext,
+        bool* builtTraceInfo);
+
+    template <typename TMethod>
+    void CompleteResponse(
+        typename TMethod::TResponse::ProtoRecordType& response,
+        const TCallContextPtr& callContext,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
