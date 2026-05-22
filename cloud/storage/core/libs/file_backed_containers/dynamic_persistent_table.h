@@ -20,6 +20,7 @@
 #include <util/system/filemap.h>
 #include <util/system/yassert.h>
 
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 
@@ -359,6 +360,7 @@ public:
             return false;
         }
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         DescriptorsPtr[index].State = ERecordState::Stored;
 
         return true;
@@ -445,6 +447,7 @@ public:
             DescriptorsPtr[index].DataSize = size;
         }
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         DescriptorsPtr[index].Crc32 =
             Crc32c(recordData, DescriptorsPtr[index].DataSize);
 
@@ -492,11 +495,14 @@ private:
         // currentIndex but before setting newOffset, since in that
         // scenario the data will simply be copied back to the old
         // location.
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->DataMoveRecordIndex = currentIndex;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         DescriptorsPtr[currentIndex].DataOffset = dstOffset;
 
         std::memcpy(FilePtr + dstOffset, DataMoveBufferPtr, dataSize);
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->DataMoveRecordIndex = InvalidIndex;
     }
 
@@ -509,10 +515,13 @@ private:
         }
 
         HeaderPtr->ListOperationState = EListOperationState::MoveHeadToTail;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->ListOperationPrevIndex = TailDataIndex;
         HeaderPtr->ListOperationNextIndex =
             DescriptorsPtr[HeadDataIndex].NextDataIndex;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->ListOperationIndex = HeadDataIndex;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
     }
 
     void FinishMoveHeadToTail()
@@ -526,9 +535,12 @@ private:
 
         Y_DEFER
         {
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationState = EListOperationState::None;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationPrevIndex = InvalidIndex;
             HeaderPtr->ListOperationNextIndex = InvalidIndex;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationIndex = InvalidIndex;
         };
 
@@ -599,7 +611,9 @@ private:
 
         std::memset(&DescriptorsPtr[MaxRecords], 0, expansionBytes);
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->MaxRecords = targetMaxRecords;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         MaxRecords = targetMaxRecords;
         DataAreaOffset = targetDataAreaOffset;
         // The expanded record area consumes the reserved data-area prefix.
@@ -614,9 +628,12 @@ private:
     void PrepareAddRecord(ui64 index)
     {
         HeaderPtr->ListOperationState = EListOperationState::Add;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         // currently we add records only to the end of the list
         HeaderPtr->ListOperationPrevIndex = TailDataIndex;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->ListOperationIndex = index;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
     }
 
     void FinishAddRecord()
@@ -629,8 +646,11 @@ private:
 
         Y_DEFER
         {
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationState = EListOperationState::None;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationPrevIndex = InvalidIndex;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationIndex = InvalidIndex;
         };
 
@@ -664,9 +684,12 @@ private:
     void PrepareRemoveRecord(ui64 index)
     {
         HeaderPtr->ListOperationState = EListOperationState::Remove;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->ListOperationPrevIndex = DescriptorsPtr[index].PrevDataIndex;
         HeaderPtr->ListOperationNextIndex = DescriptorsPtr[index].NextDataIndex;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->ListOperationIndex = index;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
     }
 
     void FinishRemoveRecord()
@@ -679,9 +702,12 @@ private:
 
         Y_DEFER
         {
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationState = EListOperationState::None;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationPrevIndex = InvalidIndex;
             HeaderPtr->ListOperationNextIndex = InvalidIndex;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             HeaderPtr->ListOperationIndex = InvalidIndex;
         };
 
@@ -733,12 +759,13 @@ private:
             HeaderPtr->Version = Version;
             HeaderPtr->HeaderSize = sizeof(THeader);
             HeaderPtr->RecordDescriptorSize = sizeof(TRecordDescriptor);
-            HeaderPtr->MaxRecords = MaxRecords;
             HeaderPtr->NextFreeRecordIndex = 0;
             HeaderPtr->DataAreaSize = DataAreaSize;
             HeaderPtr->DataMoveBufferSize = Config.InitialDataMoveBufferSize;
             HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
             HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
+            HeaderPtr->MaxRecords = MaxRecords;
         }
 
         // TODO remove Version==1 after migration is done
@@ -832,6 +859,7 @@ private:
         }
 
         NextFreeRecordIndex = writeRecordIndex;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->NextFreeRecordIndex = NextFreeRecordIndex;
     }
 
@@ -842,6 +870,7 @@ private:
         // and set at least one of the indexes to InvalidIndex value
         HeaderPtr->CompactedRecordSrcIndex = srcIndex;
         HeaderPtr->CompactedRecordDstIndex = dstIndex;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
     }
 
     void FinishCompactRecord()
@@ -869,6 +898,8 @@ private:
             &DescriptorsPtr[HeaderPtr->CompactedRecordSrcIndex],
             sizeof(TRecordDescriptor));
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+
         DescriptorsPtr[HeaderPtr->CompactedRecordSrcIndex].State =
             ERecordState::Free;
         DescriptorsPtr[HeaderPtr->CompactedRecordDstIndex].State =
@@ -888,6 +919,7 @@ private:
                 HeaderPtr->CompactedRecordDstIndex;
         }
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
         HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
     }
@@ -1022,8 +1054,10 @@ private:
             DataMoveBufferPtr,
             DescriptorsPtr[currentIndex].DataSize);
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->DataMoveRecordIndex = InvalidIndex;
 
+        std::atomic_signal_fence(std::memory_order_seq_cst);
         HeaderPtr->DataMoveBufferSize = Config.InitialDataMoveBufferSize;
     }
 
