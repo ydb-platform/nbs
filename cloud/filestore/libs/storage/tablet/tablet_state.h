@@ -208,6 +208,7 @@ struct TTrackedUnconfirmedData
 {
     NProto::TUnconfirmedData Data;
     TString SessionId;
+    // Tablet-pipe server actor that accepted GenerateBlobIds for this data.
     NActors::TActorId PipeServerId;
 };
 
@@ -261,7 +262,7 @@ protected:
     THashSet<ui64> DeletionQueue;
     // ConfirmAddData requests that arrived before internal AddData completed.
     // Used for all requests until (#5353)
-    THashMap<ui64, TPendingConfirmAddData> PendingConfirmation;
+    THashMap<ui64, TVector<TPendingConfirmAddData>> PendingConfirmation;
 
     // Recovery gate for data operations: true when startup unconfirmed flow
     // has completed recovery confirmation.

@@ -3,9 +3,9 @@
 #include "directory_handle_storage.h"
 #include "fs.h"
 
-#include <memory>
-
 #include <util/system/spinlock.h>
+
+#include <memory>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -21,6 +21,14 @@ private:
     TDirectoryHandleStoragePtr Storage;
 
     TDirectoryHandleStatsPtr Stats;
+
+private:
+    void IncreaseStatsForHandle(
+        const std::shared_ptr<TDirectoryHandle>& handle);
+    void IncreaseStatsForHandles(const TDirectoryHandleMap& handles);
+    void DecreaseStatsForHandle(
+        const std::shared_ptr<TDirectoryHandle>& handle);
+    void DecreaseStatsForHandles(const TDirectoryHandleMap& handles);
 
 public:
     TDirectoryHandleCache(

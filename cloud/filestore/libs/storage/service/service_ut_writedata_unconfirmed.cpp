@@ -173,8 +173,12 @@ ReadData(TTestSetup& setup, ui64 offset, ui64 bytes)
 
 enum class EShardPipeToDisconnect
 {
-    Session,
-    Write,
+    // Pipe between the main filesystem tablet and the shard tablet, used for
+    // shard control requests such as CreateSession.
+    Control,
+    // Pipe between the service write actor and the shard tablet, used by the
+    // data write path such as GenerateBlobIds.
+    Data,
 };
 
 void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
@@ -207,16 +211,16 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
     const TString targetClientId = "client";
 
     TMap<TActorId, TActorId> shardPipeClientsByServer;
-    TActorId shardSessionPipeServer;
-    TActorId shardSessionClient;
-    TActorId shardWritePipeServer;
-    TActorId shardWriteClient;
+    TActorId shardControlPipeServer;
+    TActorId shardControlClient;
+    TActorId shardDataPipeServer;
+    TActorId shardDataClient;
     TActorId writeActor;
-    TString shardSessionId;
-    TString shardWriteSessionId;
+    TString shardControlSessionId;
+    TString shardDataSessionId;
     TAutoPtr<IEventHandle> blockedPutResult;
 
-    // Capture the shard session pipe and the independent shard write pipe.
+    // Capture the shard control pipe and the independent shard data pipe.
     // The blob put result is held to keep the write actor alive while the test
     // disconnects one of those pipes.
     auto prevFilter = runtime.SetEventFilter(
@@ -251,11 +255,11 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
                     if (msg->Record.GetFileSystemId() == fsConfig.Shard1Id &&
                         msg->Record.GetHeaders().GetClientId() ==
                             targetClientId &&
-                        !shardSessionPipeServer)
+                        !shardControlPipeServer)
                     {
-                        shardSessionPipeServer = event->Recipient;
-                        shardSessionClient = event->Sender;
-                        shardSessionId =
+                        shardControlPipeServer = event->Recipient;
+                        shardControlClient = event->Sender;
+                        shardControlSessionId =
                             msg->Record.GetHeaders().GetSessionId();
                     }
 
@@ -277,9 +281,9 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
                         break;
                     }
 
-                    shardWritePipeServer = event->Recipient;
-                    shardWriteClient = event->Sender;
-                    shardWriteSessionId =
+                    shardDataPipeServer = event->Recipient;
+                    shardDataClient = event->Sender;
+                    shardDataSessionId =
                         msg->Record.GetHeaders().GetSessionId();
                     break;
                 }
@@ -317,7 +321,7 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
 
     // Create a file on the shard and write through the service. The write
     // service is placed on a node different from the main tablet node, so the
-    // write uses a different tablet pipe than the shard session creation path.
+    // data path uses a different tablet pipe than the shard control path.
     const ui32 serviceNodeIdx = env.AddDynamicNode();
     UNIT_ASSERT_VALUES_UNEQUAL(
         mainTabletActorId.NodeId(),
@@ -354,8 +358,8 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
                 .CustomFinalCondition =
                     [&]()
                 {
-                    return !!blockedPutResult && !!shardSessionPipeServer &&
-                           !!shardWritePipeServer;
+                    return !!blockedPutResult && !!shardControlPipeServer &&
+                           !!shardDataPipeServer;
                 }},
             TDuration::Seconds(5)),
         "Timed out waiting for blocked write and shard pipe capture");
@@ -364,40 +368,40 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
     // use: same logical session, different tablet pipe servers.
     UNIT_ASSERT_C(blockedPutResult, "Write blob result was not blocked");
     UNIT_ASSERT_C(
-        shardSessionPipeServer,
-        "Shard session creation request to tablet pipe was not observed");
+        shardControlPipeServer,
+        "Shard control pipe CreateSession request was not observed");
     UNIT_ASSERT_C(
-        shardWritePipeServer,
-        "Shard WriteData GenerateBlobIds request was not observed");
-    UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, shardSessionId);
-    UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, shardWriteSessionId);
+        shardDataPipeServer,
+        "Shard data pipe GenerateBlobIds request was not observed");
+    UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, shardControlSessionId);
+    UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, shardDataSessionId);
     UNIT_ASSERT_C(
-        shardSessionPipeServer != shardWritePipeServer,
+        shardControlPipeServer != shardDataPipeServer,
         TStringBuilder()
-            << "Shard session creation and WriteData used the same pipe "
-            << "server: " << shardSessionPipeServer);
+            << "Shard control path and data path used the same pipe server: "
+            << shardControlPipeServer);
     UNIT_ASSERT_VALUES_EQUAL(
         mainTabletActorId.NodeId(),
-        shardSessionClient.NodeId());
+        shardControlClient.NodeId());
     UNIT_ASSERT_VALUES_EQUAL(
         runtime.GetNodeId(serviceNodeIdx),
-        shardWriteClient.NodeId());
+        shardDataClient.NodeId());
 
-    const auto sessionPipeClientIt =
-        shardPipeClientsByServer.find(shardSessionPipeServer);
+    const auto controlPipeClientIt =
+        shardPipeClientsByServer.find(shardControlPipeServer);
     UNIT_ASSERT_C(
-        sessionPipeClientIt != shardPipeClientsByServer.end(),
+        controlPipeClientIt != shardPipeClientsByServer.end(),
         TStringBuilder()
-            << "Pipe client for shard session pipe server was not observed: "
-            << shardSessionPipeServer);
+            << "Pipe client for shard control pipe server was not observed: "
+            << shardControlPipeServer);
 
-    const auto writePipeClientIt =
-        shardPipeClientsByServer.find(shardWritePipeServer);
+    const auto dataPipeClientIt =
+        shardPipeClientsByServer.find(shardDataPipeServer);
     UNIT_ASSERT_C(
-        writePipeClientIt != shardPipeClientsByServer.end(),
+        dataPipeClientIt != shardPipeClientsByServer.end(),
         TStringBuilder()
-            << "Pipe client for shard write pipe server was not observed: "
-            << shardWritePipeServer);
+            << "Pipe client for shard data pipe server was not observed: "
+            << shardDataPipeServer);
 
     TIndexTabletClient shardTablet(
         runtime,
@@ -407,13 +411,13 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
         false /* updateConfig */);
 
     // At this point the write actor is blocked on blob storage, so the
-    // unconfirmed entry must stay visible until either the write pipe or the
-    // session pipe is disconnected.
+    // unconfirmed entry must stay visible until either the data pipe or the
+    // control pipe is disconnected.
     UNIT_ASSERT_VALUES_EQUAL(
         1,
         GetStorageStats(shardTablet).GetUnconfirmedDataCount());
 
-    // Select either the shard session pipe or the active write pipe.
+    // Select either the shard control pipe or the active data pipe.
     struct TPipeToDisconnect
     {
         TActorId Server;
@@ -421,19 +425,19 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
         ui32 NodeIdx = 0;
     };
 
-    const TPipeToDisconnect sessionPipeToDisconnect{
-        shardSessionPipeServer,
-        sessionPipeClientIt->second,
+    const TPipeToDisconnect controlPipeToDisconnect{
+        shardControlPipeServer,
+        controlPipeClientIt->second,
         fsNodeIdx};
-    const TPipeToDisconnect writePipeToDisconnect{
-        shardWritePipeServer,
-        writePipeClientIt->second,
+    const TPipeToDisconnect dataPipeToDisconnect{
+        shardDataPipeServer,
+        dataPipeClientIt->second,
         serviceNodeIdx};
 
     const TPipeToDisconnect pipeToDisconnectInfo =
-        pipeToDisconnect == EShardPipeToDisconnect::Session
-            ? sessionPipeToDisconnect
-            : writePipeToDisconnect;
+        pipeToDisconnect == EShardPipeToDisconnect::Control
+            ? controlPipeToDisconnect
+            : dataPipeToDisconnect;
 
     runtime.ClosePipe(
         pipeToDisconnectInfo.Client,
@@ -1356,16 +1360,16 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
     // Sharding tests
     // =========================================================================
 
-    Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceWritePipeDisconnect)
+    Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceDataPipeDisconnect)
     {
         DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
-            EShardPipeToDisconnect::Write);
+            EShardPipeToDisconnect::Data);
     }
 
-    Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceSessionPipeDisconnect)
+    Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceControlPipeDisconnect)
     {
         DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
-            EShardPipeToDisconnect::Session);
+            EShardPipeToDisconnect::Control);
     }
 
     // =========================================================================

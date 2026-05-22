@@ -4,7 +4,7 @@
 
 #include <cloud/filestore/libs/vfs_fuse/protos/queue_entry.pb.h>
 
-#include <cloud/storage/core/libs/common/file_ring_buffer.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
 
 namespace NCloud::NFileStore::NFuse {
 

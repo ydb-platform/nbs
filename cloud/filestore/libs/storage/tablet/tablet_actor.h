@@ -660,6 +660,9 @@ private:
     void HandleReleaseCollectBarrier(
         const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
         const NActors::TActorContext& ctx);
+    void HandleCancelUnconfirmedData(
+        const TEvIndexTabletPrivate::TEvCancelUnconfirmedData::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandleReadDataCompleted(
         const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
@@ -768,9 +771,9 @@ private:
 
     void DeleteUnconfirmedData(
         const NActors::TActorContext& ctx,
-        const char* deletionEntity,
-        const TString& entityId,
-        const std::function<bool(const TTrackedUnconfirmedData&)>&
+        const char* entityLogTag,
+        const TString& entityLogValue,
+        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
             shouldDelete);
 
     void DeleteUnconfirmedDataForSession(

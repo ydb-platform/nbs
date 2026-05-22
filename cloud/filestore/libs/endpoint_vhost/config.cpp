@@ -46,6 +46,7 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(DirectoryHandlesInitialDataSize,            ui64,       16_MB         )\
     xxx(PermanentActorCount,                        ui32,       0             )\
     xxx(DirectoryHandlesMaxDataAreaStepSize,        ui64,       1_GB          )\
+    xxx(FileMapMemoryLimit,                         ui64,       0             )\
 // VHOST_SERVICE_CONFIG
 
 #define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \

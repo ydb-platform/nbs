@@ -794,23 +794,10 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotReportZeroCounters)
+    static void CheckRequestCountersInitialization(
+        TDynamicCountersPtr fsCounters,
+        IRequestStatsPtr stats)
     {
-
-
-        TBootstrap bootstrap;
-
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
-        UNIT_ASSERT(counters);
-        counters = counters->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(counters);
-
-        auto stats =
-            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
-        UNIT_ASSERT(stats);
-        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
-
         // non lazy-init request
         auto readData = fsCounters->FindSubgroup("request", "ReadData");
         UNIT_ASSERT(readData);
@@ -822,6 +809,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         // these ones should always be present
         auto readDataCount = readData->FindCounter("Count");
         auto readDataErrors = readData->FindCounter("Errors");
+        auto readDataRequestBytes = readData->FindCounter("RequestBytes");
 
         // non lazy-init counters
         auto createHandleCount = createHandle->FindCounter("Count");
@@ -834,6 +822,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, readDataCount->Val());
         UNIT_ASSERT(readDataErrors);
         UNIT_ASSERT_VALUES_EQUAL(0, readDataErrors->Val());
+        UNIT_ASSERT(readDataRequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, readDataRequestBytes->Val());
         UNIT_ASSERT(createHandleCount);
         UNIT_ASSERT_VALUES_EQUAL(0, createHandleCount->Val());
         UNIT_ASSERT(createHandleErrorsFatal);
@@ -863,6 +853,61 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             // and now we successfully registered an error
             UNIT_ASSERT_VALUES_EQUAL(1, createHandleErrors->Val());
             UNIT_ASSERT_VALUES_EQUAL(1, createHandleCount->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotReportZeroCounters)
+    {
+        // service (global total)
+        {
+            TBootstrap bootstrap;
+            CheckRequestCountersInitialization(
+                bootstrap.Counters->FindSubgroup("component", METRIC_COMPONENT),
+                bootstrap.Registry->GetRequestStats());
+        }
+
+        // service/type/ssd
+        {
+            TBootstrap bootstrap;
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
+            bootstrap.Registry->SetFileSystemMediaKind(
+                FS,
+                CLIENT,
+                NProto::STORAGE_MEDIA_SSD);
+            CheckRequestCountersInitialization(
+                bootstrap.Counters->FindSubgroup("component", METRIC_COMPONENT)
+                    ->FindSubgroup("type", "ssd"),
+                bootstrap.Registry->GetRequestStats());
+        }
+
+        // service/type/hdd
+        {
+            TBootstrap bootstrap;
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
+            bootstrap.Registry->SetFileSystemMediaKind(
+                FS,
+                CLIENT,
+                NProto::STORAGE_MEDIA_HDD);
+            CheckRequestCountersInitialization(
+                bootstrap.Counters->FindSubgroup("component", METRIC_COMPONENT)
+                    ->FindSubgroup("type", "hdd"),
+                bootstrap.Registry->GetRequestStats());
+        }
+
+        // service_fs (per-filesystem)
+        {
+            TBootstrap bootstrap;
+            auto stats = bootstrap.Registry
+                             ->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
+            auto fsCounters = GetFsCounters(
+                bootstrap.Counters
+                    ->FindSubgroup("component", METRIC_FS_COMPONENT)
+                    ->FindSubgroup("host", "cluster"),
+                FS,
+                CLIENT,
+                CLOUD,
+                FOLDER);
+            CheckRequestCountersInitialization(fsCounters, stats);
         }
     }
 

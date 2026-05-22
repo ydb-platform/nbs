@@ -49,6 +49,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -430,6 +431,11 @@ void TBootstrapVhost::InitEndpoints()
 
     FileStoreEndpoints = std::move(endpoints);
 
+    auto fileMapMemoryLimiter = NCloud::CreateFileMapMemoryLimiter(
+        NCloud::TFileMapMemoryLimiterConfig{
+            .FileMapMemoryLimit =
+                Configs->VhostServiceConfig->GetFileMapMemoryLimit()});
+
     EndpointListener = NVhost::CreateEndpointListener(
         Logging,
         Timer,
@@ -473,7 +479,8 @@ void TBootstrapVhost::InitEndpoints()
                                    ->GetDirectoryHandlesInitialDataSize(),
             .MaxDataAreaStepSize =
                 Configs->VhostServiceConfig
-                    ->GetDirectoryHandlesMaxDataAreaStepSize()});
+                    ->GetDirectoryHandlesMaxDataAreaStepSize()},
+        std::move(fileMapMemoryLimiter));
 
     EndpointManager = CreateEndpointManager(
         Logging,

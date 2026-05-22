@@ -8,7 +8,7 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/persistent_table.h>
+#include <cloud/storage/core/libs/file_backed_containers/persistent_table.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/guid.h>

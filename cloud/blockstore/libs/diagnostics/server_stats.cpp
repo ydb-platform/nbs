@@ -314,7 +314,8 @@ void TServerStats::RequestStarted(
             req.DiskId,
             req.ClientId,
             RequestInstanceId)
-        << " REQUEST " << message);
+        << " REQUEST " << message
+        << ", peer: " << req.Peer);
 
     LWTRACK(
         RequestStarted,

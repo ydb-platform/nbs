@@ -6,6 +6,7 @@
 #include "write_data_request.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
@@ -61,7 +62,7 @@ struct TBootstrap
     std::shared_ptr<TTestStorage> Storage;
     TProcessor Processor;
     std::unique_ptr<TWriteBackCacheState> State;
-    TWriteBackCacheStateMetrics Metrics;
+    TWriteBackCacheMetrics Metrics;
 
     TBootstrap()
         : Timer(std::make_shared<TTestTimer>())
@@ -85,6 +86,21 @@ struct TBootstrap
 
         return future.Apply([](const auto& result)
                             { return !HasError(result.GetValue()); });
+    }
+
+    auto AddAndGetError(ui64 nodeId, ui64 handle, ui64 offset, TString data)
+        -> NThreading::TFuture<NProto::TError>
+    {
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(nodeId);
+        request->SetHandle(handle);
+        request->SetOffset(offset);
+        *request->MutableBuffer() = std::move(data);
+
+        auto future = State->AddWriteDataRequest(std::move(request));
+
+        return future.Apply([](const auto& result)
+                            { return result.GetValue().GetError(); });
     }
 
     bool Recreate()
@@ -1165,6 +1181,77 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
         UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
         UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldHandleNoSpaceError)
+    {
+        TBootstrap b;
+
+        b.Storage->SetCapacity(3);
+
+        b.Add(1000, 1000, 0, "xyz");
+
+        b.Add(1, 101, 0, "abc");
+        b.Add(2, 201, 0, "def");
+
+        // Existing node - different handle
+        auto w1 = b.AddAndGetError(1, 102, 0, "ghi");
+
+        // Existing node - same handle
+        auto w2 = b.AddAndGetError(2, 201, 0, "jkl");
+
+        // New node
+        auto w3 = b.AddAndGetError(3, 301, 0, "mno");
+
+        auto f1 = b.State->AddFlushRequest(1);
+        auto f2 = b.State->AddFlushRequest(2);
+        auto f3 = b.State->AddFlushRequest(3);
+
+        auto r1 = b.State->AddReleaseHandleRequest(1, 101);
+        auto r2 = b.State->AddReleaseHandleRequest(2, 201);
+        auto r3 = b.State->AddReleaseHandleRequest(3, 301);
+
+        auto b1 = b.State->AcquireBarrier(1);
+        auto b2 = b.State->AcquireBarrier(2);
+        auto b3 = b.State->AcquireBarrier(3);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
+
+        // Only E_FS_NOSPC should trigger pending requests failure
+        b.State->FlushFailed(1000, MakeError(E_FAIL));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
+
+        auto error = ErrorNoSpaceLeft();
+        b.State->FlushFailed(1000, error);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+
+        // All pending requests should be failed
+        UNIT_ASSERT(w1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, w1.GetValue());
+
+        UNIT_ASSERT(w2.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, w2.GetValue());
+
+        UNIT_ASSERT(w3.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, w3.GetValue());
+
+        // Flush, ReleaseHandle and AcquireBarrier should be completed normally
+        UNIT_ASSERT(!f1.HasValue());
+        UNIT_ASSERT(!f2.HasValue());
+        UNIT_ASSERT(f3.HasValue());
+        UNIT_ASSERT(!HasError(f3.GetValue()));
+
+        UNIT_ASSERT(!r1.HasValue());
+        UNIT_ASSERT(!r2.HasValue());
+        UNIT_ASSERT(r3.HasValue());
+        UNIT_ASSERT(!HasError(r3.GetValue()));
+
+        UNIT_ASSERT(!b1.HasValue());
+        UNIT_ASSERT(!b2.HasValue());
+        UNIT_ASSERT(b3.HasValue());
+        UNIT_ASSERT(!HasError(b3.GetValue().GetError()));
     }
 }
 
