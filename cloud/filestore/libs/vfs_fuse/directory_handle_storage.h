@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 #include <util/system/spinlock.h>
@@ -25,6 +26,9 @@ using TDirectoryHandleChunkPair =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Storage with the provided memory controller may drop records when the
+// memory limit is reached. Drops happen at handle granularity: for each
+// handle we either keep all of its data or none of it.
 class TDirectoryHandleStorage
 {
 private:
@@ -37,10 +41,11 @@ private:
 
     TLog Log;
 
-    // Mutex for Table and HandleIdToIndices
+    // Mutex for Table, HandleIdToIndices, and HandlesExcludedFromStorage
     TAdaptiveLock TableLock;
     std::unique_ptr<TDirectoryHandleTable> Table;
     THashMap<ui64, std::vector<ui64>> HandleIdToIndices;
+    THashSet<ui64> HandlesExcludedFromStorage;
 
 public:
     explicit TDirectoryHandleStorage(
@@ -49,7 +54,8 @@ public:
         ui64 recordsCount,
         ui64 initialDataAreaSize,
         ui64 maxDataAreaStepSize,
-        ui64 initialDataMoveBufferSize);
+        ui64 initialDataMoveBufferSize,
+        IMemoryControllerPtr memoryController);
 
     void StoreHandle(
         ui64 handleId,
@@ -66,8 +72,9 @@ private:
         const TDirectoryHandleChunk& handleChunk) const;
     TDirectoryHandleChunkPair DeserializeHandleChunk(const TStringBuf& buffer);
 
-    ui64 CreateRecord(const TBuffer& record);
-    void CreateRecord(ui64 handleId, const TBuffer& record);
+    TResultOrError<ui64> CreateRecord(const TBuffer& record);
+    NProto::TError CreateRecord(ui64 handleId, const TBuffer& record);
+    void RemoveRecords(ui64 handleId);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,6 +85,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     ui64 recordsCount,
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
-    ui64 initialDataMoveBufferSize);
+    ui64 initialDataMoveBufferSize,
+    IMemoryControllerPtr memoryController = nullptr);
 
 }   // namespace NCloud::NFileStore::NFuse

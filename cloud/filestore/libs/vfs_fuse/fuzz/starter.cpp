@@ -122,7 +122,8 @@ TStarter::TStarter()
         Scheduler,
         Timer,
         CreateProfileLogStub(),
-        std::move(session));
+        std::move(session),
+        nullptr);
 }
 
 

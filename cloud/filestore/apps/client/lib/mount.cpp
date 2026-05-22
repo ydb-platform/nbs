@@ -77,7 +77,8 @@ public:
             Scheduler,
             Timer,
             CreateProfileLogStub(),
-            session);
+            session,
+            nullptr);
     }
 
     void Start() override

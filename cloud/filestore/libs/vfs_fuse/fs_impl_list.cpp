@@ -222,7 +222,7 @@ void TFileSystem::ReadDir(
 
                 auto handleChunk = handle->UpdateContent(
                     size,
-                    offset,
+                    static_cast<size_t>(offset),
                     builder.Finish(),
                     version,
                     response.GetCookie());

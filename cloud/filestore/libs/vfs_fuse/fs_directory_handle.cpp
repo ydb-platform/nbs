@@ -216,6 +216,16 @@ void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
 {
     Y_ABORT_UNLESS(Index == chunk.Index);
 
+    const auto chunkSize = chunk.GetSerializedSize();
+    size_t serializedSizeDelta = 0;
+    if (chunk.UpdateVersion == 0) {
+        serializedSizeDelta = chunkSize - BaseSerializedSize;
+    } else {
+        serializedSizeDelta = chunkSize;
+    }
+
+    SerializedSize += serializedSizeDelta;
+
     if (chunk.UpdateVersion > UpdateVersion) {
         UpdateVersion = chunk.UpdateVersion;
         Cookie = std::move(chunk.Cookie);

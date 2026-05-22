@@ -70,6 +70,7 @@ private:
     const THandleOpsQueueConfig HandleOpsQueueConfig;
     const TWriteBackCacheConfig WriteBackCacheConfig;
     const TDirectoryHandleStorageConfig DirectoryHandleStorageConfig;
+    const IMemoryControllerPtr MemoryController;
 
     TLog Log;
 
@@ -82,7 +83,8 @@ public:
             IFileSystemLoopFactoryPtr loopFactory,
             THandleOpsQueueConfig handleOpsQueueConfig,
             TWriteBackCacheConfig writeBackCacheConfig,
-            TDirectoryHandleStorageConfig directoryHandleStorageConfig)
+            TDirectoryHandleStorageConfig directoryHandleStorageConfig,
+            IMemoryControllerPtr memoryController)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -92,6 +94,7 @@ public:
         , WriteBackCacheConfig(std::move(writeBackCacheConfig))
         , DirectoryHandleStorageConfig(
               std::move(directoryHandleStorageConfig))
+        , MemoryController(std::move(memoryController))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -150,7 +153,8 @@ public:
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(
             std::move(vFSConfig),
-            std::move(session));
+            std::move(session),
+            MemoryController);
 
         return std::make_shared<TEndpoint>(std::move(Loop));
     }
@@ -168,7 +172,8 @@ IEndpointListenerPtr CreateEndpointListener(
     IFileSystemLoopFactoryPtr loopFactory,
     THandleOpsQueueConfig handleOpsQueueConfig,
     TWriteBackCacheConfig writeBackCacheConfig,
-    TDirectoryHandleStorageConfig directoryHandleStorageConfig)
+    TDirectoryHandleStorageConfig directoryHandleStorageConfig,
+    IMemoryControllerPtr memoryController)
 {
     return std::make_shared<TEndpointListener>(
         std::move(logging),
@@ -178,7 +183,8 @@ IEndpointListenerPtr CreateEndpointListener(
         std::move(loopFactory),
         std::move(handleOpsQueueConfig),
         std::move(writeBackCacheConfig),
-        std::move(directoryHandleStorageConfig));
+        std::move(directoryHandleStorageConfig),
+        std::move(memoryController));
 }
 
 }   // namespace NCloud::NFileStore::NVhost
