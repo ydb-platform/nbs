@@ -7,14 +7,13 @@
 #include <exception>
 
 namespace {
-// Avoid infinite recursion if std::terminate is triggered anew by the
-// FancyTerminateHandler.
+// Avoid recursion if std::terminate is triggered inside TerminateHandler
 thread_local int TerminateCount = 0;
 
 void TerminateHandler() noexcept
 {
     if (++TerminateCount != 1) {
-        Cerr << "FancyTerminateHandler called recursively" << Endl;
+        Cerr << "TerminateHandler is called recursively" << Endl;
         std::abort();
     }
 
