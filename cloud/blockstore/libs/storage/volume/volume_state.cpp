@@ -932,6 +932,12 @@ NProto::TError TVolumeState::RemoveClient(
     clientInfo.RemovePipe(pipeServerActorId, TInstant());
 
     if (!clientInfo.AnyPipeAlive()) {
+        // Drop any residual ClientIdsByPipeServerId entries (e.g. pointing to
+        // DEACTIVATED pipes of the same client) to keep the invariant that
+        // every clientId in ClientIdsByPipeServerId exists in
+        // ClientInfosByClientId.
+        UnmapClientFromPipeServerId({}, clientId);
+
         ClientInfosByClientId.erase(it);
     }
 
