@@ -87,7 +87,8 @@ class Qemu:
                  shared_nic_port=0,
                  use_virtiofs_server=False,
                  num_request_queues=1,
-                 is_arm=False):
+                 is_arm=False,
+                 reconnect=1):
 
         self.ssh_port = 0
         self.qmp = None
@@ -107,6 +108,7 @@ class Qemu:
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
         self.is_arm = is_arm
+        self.reconnect = 0 if self.is_arm else reconnect
         self.migration = "" if self.is_arm else ",migration=external"
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
@@ -147,7 +149,7 @@ class Qemu:
             raise QemuException("Cannot find nfs vhost socket path")
 
         cmd = ["-chardev",
-               "socket,id=vhost0,path={},reconnect=1".format(vhost_socket)]
+               "socket,id=vhost0,path={},reconnect={}".format(vhost_socket, self.reconnect)]
         cmd += [
             "-device",
             "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
@@ -279,7 +281,7 @@ class Qemu:
         for tag, path, vhost_socket in self.mount_paths:
             if self.use_virtiofs_server:
                 cmd += ["-chardev",
-                        "socket,id={},path={},reconnect=1".format(tag, vhost_socket)]
+                        "socket,id={},path={},reconnect={}".format(tag, vhost_socket, self.reconnect)]
                 cmd += [
                     "-device",
                     "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},"
