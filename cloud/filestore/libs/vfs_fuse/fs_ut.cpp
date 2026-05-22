@@ -107,13 +107,13 @@ bool WaitForCondition(TDuration timeout, F&& predicate)
     return true;
 }
 
-struct TTestMemoryController final
-    : public IMemoryController
+struct TTestFileMapMemoryLimiter final
+    : public IFileMapMemoryLimiter
 {
     std::atomic<bool> CanIncreaseResult = true;
     std::atomic<ui64> Current = 0;
 
-    bool CanIncreaseFileMapUsage(ui64 value) const override
+    bool CanIncrease(ui64 value) const override
     {
         if (!value) {
             return true;
@@ -126,14 +126,14 @@ struct TTestMemoryController final
         return true;
     }
 
-    void IncreaseFileMapUsage(ui64 value) override
+    void Increase(ui64 value) override
     {
         if (value) {
             Current.fetch_add(value, std::memory_order_release);
         }
     }
 
-    void DecreaseFileMapUsage(ui64 value) override
+    void Decrease(ui64 value) override
     {
         if (!value) {
             return;
@@ -179,7 +179,8 @@ struct TBootstrap
             ui64 writeBackCacheCapacity = WriteBackCacheCapacity,
             ui64 directoryHandlesInitialDataSize = 0,
             ui64 directoryHandlesMaxDataAreaStepSize = 0,
-            std::shared_ptr<TTestMemoryController> memoryController = nullptr)
+            IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
+                CreateFileMapMemoryLimiterStub())
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -275,9 +276,6 @@ struct TBootstrap
             writeBackCacheAutomaticFlushPeriodMs);
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
-        if (!memoryController) {
-            memoryController = std::make_shared<TTestMemoryController>();
-        }
         Loop = NFuse::CreateFuseLoop(
             config,
             Logging,
@@ -288,7 +286,7 @@ struct TBootstrap
             Timer,
             CreateProfileLogStub(),
             Session,
-            std::move(memoryController));
+            std::move(fileMapMemoryLimiter));
     }
 
     NMonitoring::TDynamicCountersPtr GetDirectoryHandleCounters() const
@@ -384,7 +382,8 @@ struct TBootstrap
     static TBootstrap CreateWithHandleStorage(
         ui64 directoryHandlesInitialDataSize = 0,
         ui64 directoryHandlesMaxDataAreaStepSize = 0,
-        std::shared_ptr<TTestMemoryController> memoryController = nullptr)
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
+            CreateFileMapMemoryLimiterStub())
     {
         NProto::TFileStoreFeatures features;
         features.SetDirectoryHandlesStorageEnabled(true);
@@ -397,7 +396,7 @@ struct TBootstrap
             WriteBackCacheCapacity,
             directoryHandlesInitialDataSize,
             directoryHandlesMaxDataAreaStepSize,
-            std::move(memoryController));
+            std::move(fileMapMemoryLimiter));
     }
 };
 
@@ -1014,7 +1013,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     Y_UNIT_TEST(ShouldDropStoredDirectoryHandleWhenStorageExpansionIsRejected)
     {
         const TString sessionId = CreateGuidAsString();
-        auto controller = std::make_shared<TTestMemoryController>();
+        auto limiter = std::make_shared<TTestFileMapMemoryLimiter>();
 
         NProto::TFileStoreFeatures features;
         features.SetDirectoryHandlesStorageEnabled(true);
@@ -1039,7 +1038,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         {
             auto bootstrap =
-                TBootstrap::CreateWithHandleStorage(128, 128, controller);
+                TBootstrap::CreateWithHandleStorage(128, 128, limiter);
 
             bootstrap.Service->CreateSessionHandler = createSessionHandler;
             bootstrap.Service->ListNodesHandler =
@@ -1081,7 +1080,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                  sessionId / "directory_handles_storage")
                     .GetPath();
 
-            controller->CanIncreaseResult.store(
+            limiter->CanIncreaseResult.store(
                 false,
                 std::memory_order_release);
 
@@ -1114,7 +1113,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 128,
                 128,
                 1024 * 1024,
-                nullptr);
+                CreateFileMapMemoryLimiterStub());
 
             TDirectoryHandleMap handles;
             storage->LoadHandles(handles);

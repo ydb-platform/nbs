@@ -26,7 +26,7 @@ using TDirectoryHandleChunkPair =
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Storage with the provided memory controller may drop records when the
+// Storage with the provided file map memory limiter may drop records when the
 // memory limit is reached. Drops happen at handle granularity: for each
 // handle we either keep all of its data or none of it.
 class TDirectoryHandleStorage
@@ -55,7 +55,7 @@ public:
         ui64 initialDataAreaSize,
         ui64 maxDataAreaStepSize,
         ui64 initialDataMoveBufferSize,
-        IMemoryControllerPtr memoryController);
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter);
 
     void StoreHandle(
         ui64 handleId,
@@ -86,6 +86,6 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
     ui64 initialDataMoveBufferSize,
-    IMemoryControllerPtr memoryController = nullptr);
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter);
 
 }   // namespace NCloud::NFileStore::NFuse

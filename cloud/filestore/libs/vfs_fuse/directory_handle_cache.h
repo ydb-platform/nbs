@@ -25,10 +25,10 @@ private:
 private:
     void IncreaseStatsForHandle(
         const std::shared_ptr<TDirectoryHandle>& handle);
-    void IncreaseStatsForHandle(const TDirectoryHandleMap& handles);
+    void IncreaseStatsForHandles(const TDirectoryHandleMap& handles);
     void DecreaseStatsForHandle(
         const std::shared_ptr<TDirectoryHandle>& handle);
-    void DecreaseStatsForHandle(const TDirectoryHandleMap& handles);
+    void DecreaseStatsForHandles(const TDirectoryHandleMap& handles);
 
 public:
     TDirectoryHandleCache(

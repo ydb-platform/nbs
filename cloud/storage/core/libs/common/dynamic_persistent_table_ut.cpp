@@ -112,9 +112,14 @@ using TTableConfig = TDynamicPersistentTableConfig;
 TTable CreateTable(
     const TString& fileName,
     const TTableConfig& config,
-    IMemoryControllerPtr memoryController = nullptr)
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
-    return TTable(fileName, config, memoryController);
+    return TTable(fileName, config, fileMapMemoryLimiter);
+}
+
+TTable CreateTable(const TString& fileName, const TTableConfig& config)
+{
+    return CreateTable(fileName, config, CreateFileMapMemoryLimiterStub());
 }
 
 TTable
@@ -127,26 +132,27 @@ CreateTable(const TString& fileName, ui64 maxRecords, ui64 initialDataAreaSize)
             .InitialDataAreaSize = initialDataAreaSize,
             .MaxDataAreaStepSize = 1_GB,
             .InitialDataMoveBufferSize = 100,
-        });
+        },
+        CreateFileMapMemoryLimiterStub());
 }
 
-struct TTestMemoryController final: public IMemoryController
+struct TTestFileMapMemoryLimiter final: public IFileMapMemoryLimiter
 {
     ui64 Current = 0;
     bool CanIncreaseResult = true;
 
-    bool CanIncreaseFileMapUsage(ui64 value) const override
+    bool CanIncrease(ui64 value) const override
     {
         Y_UNUSED(value);
         return CanIncreaseResult;
     }
 
-    void IncreaseFileMapUsage(ui64 value) override
+    void Increase(ui64 value) override
     {
         Current += value;
     }
 
-    void DecreaseFileMapUsage(ui64 value) override
+    void Decrease(ui64 value) override
     {
         UNIT_ASSERT(Current >= value);
         Current -= value;
@@ -349,7 +355,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TString tablePath = tempDir.Path() / "test.table";
 
         auto fileMapSizeController =
-            std::make_shared<TTestMemoryController>();
+            std::make_shared<TTestFileMapMemoryLimiter>();
         ui64 initialFileMapSize = 0;
         {
             auto table = CreateTable(
@@ -407,7 +413,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TString tablePath = tempDir.Path() / "test.table";
 
         auto fileMapSizeController =
-            std::make_shared<TTestMemoryController>();
+            std::make_shared<TTestFileMapMemoryLimiter>();
 
         auto table = CreateTable(
             tablePath,
@@ -423,7 +429,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto result = table.AllocRecord(256);
         UNIT_ASSERT(HasError(result));
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, result.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, result.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(0, table.CountRecords());
 
         fileMapSizeController->CanIncreaseResult = true;
@@ -434,7 +440,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         fileMapSizeController->CanIncreaseResult = false;
         result = table.AllocRecord(payload.size());
         UNIT_ASSERT(HasError(result));
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, result.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, result.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, table.CountRecords());
         UNIT_ASSERT_VALUES_EQUAL(1, GetTableHeader(table)->MaxRecords);
 
@@ -2426,7 +2432,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                     .MaxDataAreaStepSize = 1_GB,
                     .InitialDataMoveBufferSize = 100,
                 },
-                nullptr);
+                CreateFileMapMemoryLimiterStub());
         };
 
         restore();

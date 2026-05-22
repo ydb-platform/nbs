@@ -70,7 +70,7 @@ private:
     const THandleOpsQueueConfig HandleOpsQueueConfig;
     const TWriteBackCacheConfig WriteBackCacheConfig;
     const TDirectoryHandleStorageConfig DirectoryHandleStorageConfig;
-    const IMemoryControllerPtr MemoryController;
+    const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
 
     TLog Log;
 
@@ -84,7 +84,7 @@ public:
             THandleOpsQueueConfig handleOpsQueueConfig,
             TWriteBackCacheConfig writeBackCacheConfig,
             TDirectoryHandleStorageConfig directoryHandleStorageConfig,
-            IMemoryControllerPtr memoryController)
+            IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -94,7 +94,7 @@ public:
         , WriteBackCacheConfig(std::move(writeBackCacheConfig))
         , DirectoryHandleStorageConfig(
               std::move(directoryHandleStorageConfig))
-        , MemoryController(std::move(memoryController))
+        , FileMapMemoryLimiter(std::move(fileMapMemoryLimiter))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -154,7 +154,7 @@ public:
         auto Loop = LoopFactory->Create(
             std::move(vFSConfig),
             std::move(session),
-            MemoryController);
+            FileMapMemoryLimiter);
 
         return std::make_shared<TEndpoint>(std::move(Loop));
     }
@@ -173,7 +173,7 @@ IEndpointListenerPtr CreateEndpointListener(
     THandleOpsQueueConfig handleOpsQueueConfig,
     TWriteBackCacheConfig writeBackCacheConfig,
     TDirectoryHandleStorageConfig directoryHandleStorageConfig,
-    IMemoryControllerPtr memoryController)
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
     return std::make_shared<TEndpointListener>(
         std::move(logging),
@@ -184,7 +184,7 @@ IEndpointListenerPtr CreateEndpointListener(
         std::move(handleOpsQueueConfig),
         std::move(writeBackCacheConfig),
         std::move(directoryHandleStorageConfig),
-        std::move(memoryController));
+        std::move(fileMapMemoryLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NVhost

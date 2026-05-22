@@ -4,15 +4,17 @@
 
 namespace NCloud::NFileStore::NFuse {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TDirectoryHandleMetrics
 {
     size_t SerializedSize = 0;
     size_t ChunkCount = 0;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 TDirectoryHandleMetrics GetDirectoryHandleMetrics(
     const TDirectoryHandleMap& handles)
@@ -45,7 +47,7 @@ TDirectoryHandleCache::TDirectoryHandleCache(
         Storage->LoadHandles(Handles);
     }
 
-    IncreaseStatsForHandle(Handles);
+    IncreaseStatsForHandles(Handles);
 }
 
 ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
@@ -61,9 +63,7 @@ ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
         IncreaseStatsForHandle(handle);
 
         if (Storage) {
-            Storage->StoreHandle(
-                handleId,
-                TDirectoryHandleChunk{.Index = ino});
+            Storage->StoreHandle(handleId, TDirectoryHandleChunk{.Index = ino});
         }
     }
 
@@ -138,10 +138,8 @@ void TDirectoryHandleCache::AppendChunk(
     ui64 handleId,
     const TDirectoryHandleChunk& handleChunk)
 {
-    if (Stats) {
-        Stats->IncreaseCacheSize(handleChunk.GetSerializedSize());
-        Stats->IncreaseChunkCount(1);
-    }
+    Stats->IncreaseCacheSize(handleChunk.GetSerializedSize());
+    Stats->IncreaseChunkCount(1);
 
     if (Storage) {
         Storage->UpdateHandle(handleId, handleChunk);
@@ -152,7 +150,7 @@ void TDirectoryHandleCache::Clear()
 {
     with_lock (Lock) {
         STORAGE_DEBUG("clear directory cache of size %lu", Handles.size());
-        DecreaseStatsForHandle(Handles);
+        DecreaseStatsForHandles(Handles);
         Handles.clear();
     }
 }
@@ -161,7 +159,7 @@ void TDirectoryHandleCache::Reset()
 {
     with_lock (Lock) {
         STORAGE_DEBUG("reset directory cache of size %lu", Handles.size());
-        DecreaseStatsForHandle(Handles);
+        DecreaseStatsForHandles(Handles);
         Handles.clear();
 
         if (Storage) {
@@ -173,39 +171,35 @@ void TDirectoryHandleCache::Reset()
 void TDirectoryHandleCache::IncreaseStatsForHandle(
     const std::shared_ptr<TDirectoryHandle>& handle)
 {
-    if (Stats && handle) {
+    if (handle) {
         Stats->IncreaseCacheSize(handle->GetSerializedSize());
         Stats->IncreaseChunkCount(handle->GetChunkCount());
     }
 }
 
-void TDirectoryHandleCache::IncreaseStatsForHandle(
+void TDirectoryHandleCache::IncreaseStatsForHandles(
     const TDirectoryHandleMap& handles)
 {
-    if (Stats) {
-        const auto metrics = GetDirectoryHandleMetrics(handles);
-        Stats->IncreaseCacheSize(metrics.SerializedSize);
-        Stats->IncreaseChunkCount(metrics.ChunkCount);
-    }
+    const auto metrics = GetDirectoryHandleMetrics(handles);
+    Stats->IncreaseCacheSize(metrics.SerializedSize);
+    Stats->IncreaseChunkCount(metrics.ChunkCount);
 }
 
 void TDirectoryHandleCache::DecreaseStatsForHandle(
     const std::shared_ptr<TDirectoryHandle>& handle)
 {
-    if (Stats && handle) {
+    if (handle) {
         Stats->DecreaseCacheSize(handle->GetSerializedSize());
         Stats->DecreaseChunkCount(handle->GetChunkCount());
     }
 }
 
-void TDirectoryHandleCache::DecreaseStatsForHandle(
+void TDirectoryHandleCache::DecreaseStatsForHandles(
     const TDirectoryHandleMap& handles)
 {
-    if (Stats) {
-        const auto metrics = GetDirectoryHandleMetrics(handles);
-        Stats->DecreaseCacheSize(metrics.SerializedSize);
-        Stats->DecreaseChunkCount(metrics.ChunkCount);
-    }
+    const auto metrics = GetDirectoryHandleMetrics(handles);
+    Stats->DecreaseCacheSize(metrics.SerializedSize);
+    Stats->DecreaseChunkCount(metrics.ChunkCount);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

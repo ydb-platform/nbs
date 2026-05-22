@@ -17,7 +17,7 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
     ui64 initialDataMoveBufferSize,
-    IMemoryControllerPtr memoryController)
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
     : Log(log)
 {
     Table = std::make_unique<TDirectoryHandleTable>(
@@ -28,7 +28,7 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
             .MaxDataAreaStepSize = maxDataAreaStepSize,
             .InitialDataMoveBufferSize = initialDataMoveBufferSize,
         },
-        std::move(memoryController));
+        std::move(fileMapMemoryLimiter));
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -319,7 +319,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     ui64 initialDataAreaSize,
     ui64 maxDataAreaStepSize,
     ui64 initialDataMoveBufferSize,
-    IMemoryControllerPtr memoryController)
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
     return std::make_unique<TDirectoryHandleStorage>(
         log,
@@ -328,7 +328,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
         initialDataAreaSize,
         maxDataAreaStepSize,
         initialDataMoveBufferSize,
-        std::move(memoryController));
+        std::move(fileMapMemoryLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

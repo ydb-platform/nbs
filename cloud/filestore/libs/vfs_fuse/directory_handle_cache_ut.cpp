@@ -16,23 +16,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestMemoryController final: public IMemoryController
+struct TTestFileMapMemoryLimiter final: public IFileMapMemoryLimiter
 {
     bool CanIncreaseResult = true;
     ui64 Current = 0;
 
-    bool CanIncreaseFileMapUsage(ui64 value) const override
+    bool CanIncrease(ui64 value) const override
     {
         Y_UNUSED(value);
         return CanIncreaseResult;
     }
 
-    void IncreaseFileMapUsage(ui64 value) override
+    void Increase(ui64 value) override
     {
         Current += value;
     }
 
-    void DecreaseFileMapUsage(ui64 value) override
+    void Decrease(ui64 value) override
     {
         UNIT_ASSERT(Current >= value);
         Current -= value;
@@ -57,7 +57,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
     {
         auto logging = CreateLoggingService("console");
         auto log = logging->CreateLog("DIR_HANDLE_CACHE_TEST");
-        auto controller = std::make_shared<TTestMemoryController>();
+        auto limiter = std::make_shared<TTestFileMapMemoryLimiter>();
 
         TTempDir tempDir;
         const TString storagePath = tempDir.Path() / "directory_handles";
@@ -71,7 +71,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
                 128,
                 128,
                 64,
-                controller);
+                limiter);
 
             TDirectoryHandleCache cache(
                 log,
@@ -82,7 +82,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
             auto handle = cache.FindHandle(id);
             UNIT_ASSERT(handle);
 
-            controller->CanIncreaseResult = false;
+            limiter->CanIncreaseResult = false;
             auto chunk = handle->UpdateContent(
                 1024,
                 0,
@@ -91,7 +91,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
                 "next");
             cache.AppendChunk(id, chunk);
 
-            controller->CanIncreaseResult = true;
+            limiter->CanIncreaseResult = true;
             chunk = handle->UpdateContent(
                 1024,
                 1024,
@@ -110,7 +110,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
             128,
             128,
             64,
-            controller);
+            limiter);
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
@@ -150,7 +150,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
     {
         auto logging = CreateLoggingService("console");
         auto log = logging->CreateLog("DIR_HANDLE_CACHE_TEST");
-        auto controller = std::make_shared<TTestMemoryController>();
+        auto limiter = std::make_shared<TTestFileMapMemoryLimiter>();
 
         TTempDir tempDir;
         const TString storagePath = tempDir.Path() / "directory_handles";
@@ -164,7 +164,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
                 128,
                 128,
                 64,
-                controller);
+                limiter);
 
             TDirectoryHandleCache cache(
                 log,
@@ -191,7 +191,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
             128,
             128,
             64,
-            controller);
+            limiter);
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "error.h"
-#include "memory_controller.h"
+#include "file_map_memory_limiter.h"
 #include "numeric.h"
 
 #include <library/cpp/digest/crc32c/crc32c.h>
@@ -145,7 +145,7 @@ private:
 
     TString FileName;
     const TDynamicPersistentTableConfig Config;
-    const IMemoryControllerPtr MemoryController;
+    const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
     ui64 MaxRecords = 0;
     ui64 LowMemoryOps = 0;
 
@@ -263,13 +263,14 @@ public:
     TDynamicPersistentTable(
         const TString& fileName,
         const TDynamicPersistentTableConfig& config,
-        IMemoryControllerPtr memoryController)
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
         : FileName(fileName)
         , Config(config)
-        , MemoryController(memoryController)
+        , FileMapMemoryLimiter(fileMapMemoryLimiter)
         , MaxRecords(config.MaxRecords)
         , DataAreaSize(config.InitialDataAreaSize)
     {
+        Y_ABORT_UNLESS(FileMapMemoryLimiter);
         Y_ABORT_UNLESS(Config.MaxRecords != 0, "MaxRecords must not be zero");
         Y_ABORT_UNLESS(
             Config.InitialDataAreaSize != 0,
@@ -726,7 +727,8 @@ private:
         FileMap = std::make_unique<TFileMap>(FileName, TMemoryMapCommon::oRdWr);
         FileMap->Map(0, sizeof(THeader));
         // Startup/restore mappings are always accounted but are not rejected by
-        // the memory controller. The limit is applied only to later growth.
+        // the file map memory limiter. The limit is applied only to later
+        // growth.
         UpdateFileMapSize(0, GetFileMapSize());
 
         HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
@@ -1060,17 +1062,17 @@ private:
     NProto::TError CanGrowFileMapSize(ui64 newFileMapSize) const
     {
         const ui64 fileMapSize = GetFileMapSize();
-        if (!MemoryController || newFileMapSize <= fileMapSize) {
+        if (newFileMapSize <= fileMapSize) {
             return {};
         }
 
         const ui64 increaseSize = newFileMapSize - fileMapSize;
-        if (MemoryController->CanIncreaseFileMapUsage(increaseSize)) {
+        if (FileMapMemoryLimiter->CanIncrease(increaseSize)) {
             return {};
         }
 
         return MakeError(
-            E_REJECTED,
+            E_FS_NOSPC,
             TStringBuilder()
                 << "MemoryNotEnough: failed to increase file map size by "
                 << increaseSize << " bytes");
@@ -1078,16 +1080,10 @@ private:
 
     void UpdateFileMapSize(ui64 oldFileMapSize, ui64 newFileMapSize)
     {
-        if (!MemoryController) {
-            return;
-        }
-
         if (newFileMapSize > oldFileMapSize) {
-            MemoryController->IncreaseFileMapUsage(
-                newFileMapSize - oldFileMapSize);
+            FileMapMemoryLimiter->Increase(newFileMapSize - oldFileMapSize);
         } else if (newFileMapSize < oldFileMapSize) {
-            MemoryController->DecreaseFileMapUsage(
-                oldFileMapSize - newFileMapSize);
+            FileMapMemoryLimiter->Decrease(oldFileMapSize - newFileMapSize);
         }
     }
 
