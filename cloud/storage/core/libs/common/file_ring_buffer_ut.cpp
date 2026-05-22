@@ -1031,6 +1031,32 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL("", Dump(*rb));
         UNIT_ASSERT_VALUES_EQUAL(0, rb->Size());
     }
+
+    Y_UNIT_TEST(ShouldSupportFreeBetweenAllocAndCommit)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        const TString data = "efgh";
+
+        UNIT_ASSERT(rb->PushBack("abcd"));   // 12 bytes
+
+        auto alloc = rb->Alloc(4);
+        UNIT_ASSERT(!HasError(alloc));
+        data.copy(alloc.GetResult(), data.size());
+
+        rb->PopFront();
+
+        UNIT_ASSERT(rb->Commit());
+
+        UNIT_ASSERT_VALUES_EQUAL(data, rb->Front());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        UNIT_ASSERT(!rb->IsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(data, rb->Front());
+    }
 }
 
 }   // namespace NCloud
