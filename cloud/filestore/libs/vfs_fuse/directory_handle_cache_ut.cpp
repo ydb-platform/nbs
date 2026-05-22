@@ -47,42 +47,60 @@ TBufferPtr CreateContent(size_t size, char value)
     return content;
 }
 
+struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
+{
+    ILoggingServicePtr Logging = CreateLoggingService("console");
+    TLog Log = Logging->CreateLog("DIR_HANDLE_CACHE_TEST");
+
+    std::shared_ptr<TTestFileMapMemoryLimiter> Limiter =
+        std::make_shared<TTestFileMapMemoryLimiter>();
+    TTempDir TempDir;
+    TString StoragePath = TempDir.Path() / "directory_handles";
+
+    TDirectoryHandleStoragePtr CreateStorage()
+    {
+        return CreateDirectoryHandleStorage(
+            Log,
+            StoragePath,
+            32,
+            128,
+            128,
+            64,
+            Limiter);
+    }
+
+    TDirectoryHandleCache CreateCache(
+        TDirectoryHandleStoragePtr storage = nullptr)
+    {
+        return TDirectoryHandleCache(
+            Log,
+            CreateDirectoryHandleStats(CreateWallClockTimer()),
+            std::move(storage));
+    }
+
+    TDirectoryHandleCache CreateStoredCache()
+    {
+        return CreateCache(CreateStorage());
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
+Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 {
     Y_UNIT_TEST(ShouldBypassStorageAfterUpdateFailure)
     {
-        auto logging = CreateLoggingService("console");
-        auto log = logging->CreateLog("DIR_HANDLE_CACHE_TEST");
-        auto limiter = std::make_shared<TTestFileMapMemoryLimiter>();
-
-        TTempDir tempDir;
-        const TString storagePath = tempDir.Path() / "directory_handles";
-
         const ui64 handleId = [&]
         {
-            auto storage = CreateDirectoryHandleStorage(
-                log,
-                storagePath,
-                32,
-                128,
-                128,
-                64,
-                limiter);
-
-            TDirectoryHandleCache cache(
-                log,
-                CreateDirectoryHandleStats(CreateWallClockTimer()),
-                std::move(storage));
+            auto cache = CreateStoredCache();
 
             const ui64 id = cache.CreateHandle(42);
             auto handle = cache.FindHandle(id);
             UNIT_ASSERT(handle);
 
-            limiter->CanIncreaseResult = false;
+            Limiter->CanIncreaseResult = false;
             auto chunk = handle->UpdateContent(
                 1024,
                 0,
@@ -91,7 +109,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
                 "next");
             cache.AppendChunk(id, chunk);
 
-            limiter->CanIncreaseResult = true;
+            Limiter->CanIncreaseResult = true;
             chunk = handle->UpdateContent(
                 1024,
                 1024,
@@ -103,14 +121,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
             return id;
         }();
 
-        auto storage = CreateDirectoryHandleStorage(
-            log,
-            storagePath,
-            32,
-            128,
-            128,
-            64,
-            limiter);
+        auto storage = CreateStorage();
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
@@ -121,13 +132,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
 
     Y_UNIT_TEST(ShouldReturnChunkForClosedHandleContentUpdate)
     {
-        auto logging = CreateLoggingService("console");
-        auto log = logging->CreateLog("DIR_HANDLE_CACHE_TEST");
-
-        TDirectoryHandleCache cache(
-            log,
-            CreateDirectoryHandleStats(CreateWallClockTimer()),
-            nullptr);
+        auto cache = CreateCache();
 
         const ui64 id = cache.CreateHandle(42);
         auto handle = cache.FindHandle(id);
@@ -148,28 +153,9 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
 
     Y_UNIT_TEST(ShouldNotStoreClosedHandleContentUpdate)
     {
-        auto logging = CreateLoggingService("console");
-        auto log = logging->CreateLog("DIR_HANDLE_CACHE_TEST");
-        auto limiter = std::make_shared<TTestFileMapMemoryLimiter>();
-
-        TTempDir tempDir;
-        const TString storagePath = tempDir.Path() / "directory_handles";
-
         ui64 id = 0;
         {
-            auto storage = CreateDirectoryHandleStorage(
-                log,
-                storagePath,
-                32,
-                128,
-                128,
-                64,
-                limiter);
-
-            TDirectoryHandleCache cache(
-                log,
-                CreateDirectoryHandleStats(CreateWallClockTimer()),
-                std::move(storage));
+            auto cache = CreateStoredCache();
 
             id = cache.CreateHandle(42);
             auto handle = cache.FindHandle(id);
@@ -184,14 +170,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleCacheTest)
             UNIT_ASSERT_VALUES_EQUAL(1024, chunk.DirectoryContent.GetSize());
         }
 
-        auto storage = CreateDirectoryHandleStorage(
-            log,
-            storagePath,
-            32,
-            128,
-            128,
-            64,
-            limiter);
+        auto storage = CreateStorage();
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);

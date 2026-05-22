@@ -212,7 +212,7 @@ size_t TDirectoryHandle::GetChunkCount() const
     return UpdateVersion + 1;
 }
 
-void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
+void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log)
 {
     Y_ABORT_UNLESS(Index == chunk.Index);
 
@@ -232,9 +232,15 @@ void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
     }
 
     if (chunk.Key) {
-        Content.emplace(
+        const auto insertResult = Content.emplace(
             chunk.Key.value(),
             std::move(chunk.DirectoryContent.Content));
+        if (!insertResult.second) {
+            STORAGE_WARN(
+                "directory handle " << Index << " already contains chunk key "
+                                    << chunk.Key.value() << ", update version "
+                                    << chunk.UpdateVersion);
+        }
     }
 }
 

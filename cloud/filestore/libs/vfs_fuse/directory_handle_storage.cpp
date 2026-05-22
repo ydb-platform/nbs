@@ -47,14 +47,7 @@ void TDirectoryHandleStorage::StoreHandle(
         return;
     }
 
-    auto error = CreateRecord(handleId, record);
-    if (HasError(error)) {
-        STORAGE_WARN(
-            "Failed to store directory handle " << handleId << ": "
-                                                << FormatError(error));
-        HandlesExcludedFromStorage.insert(handleId);
-        return;
-    }
+    CreateRecord(handleId, record);
 }
 
 void TDirectoryHandleStorage::UpdateHandle(
@@ -78,29 +71,27 @@ void TDirectoryHandleStorage::UpdateHandle(
         return;
     }
 
-    auto error = CreateRecord(handleId, record);
-    if (HasError(error)) {
-        STORAGE_WARN(
-            "Failed to update directory handle " << handleId << ": "
-                                                 << FormatError(error));
-        RemoveRecords(handleId);
-        HandlesExcludedFromStorage.insert(handleId);
-    }
+    CreateRecord(handleId, record);
 }
 
-NProto::TError TDirectoryHandleStorage::CreateRecord(
-    ui64 handleId,
-    const TBuffer& record)
+void TDirectoryHandleStorage::CreateRecord(ui64 handleId, const TBuffer& record)
 {
     auto result = CreateRecord(record);
     if (HasError(result)) {
-        return result.GetError();
+        const auto it = HandleIdToIndices.find(handleId);
+        const size_t indexCount =
+            it == HandleIdToIndices.end() ? 0 : it->second.size();
+        STORAGE_WARN(
+            "Failed to create directory handle record for handle "
+            << handleId << ", indices count: " << indexCount << ": "
+            << FormatError(result.GetError()));
+        RemoveRecords(handleId);
+        HandlesExcludedFromStorage.insert(handleId);
+        return;
     }
 
     const ui64 recordIndex = result.GetResult();
     HandleIdToIndices[handleId].push_back(recordIndex);
-
-    return {};
 }
 
 void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
@@ -182,7 +173,7 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
                     std::make_shared<TDirectoryHandle>(chunk->Index);
             }
 
-            handles[handleId]->ConsumeChunk(*chunk);
+            handles[handleId]->ConsumeChunk(*chunk, Log);
 
             updateVersionInfo[handleId].ChunksCount++;
             if (chunk->UpdateVersion >

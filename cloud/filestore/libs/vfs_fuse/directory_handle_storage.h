@@ -73,7 +73,7 @@ private:
     TDirectoryHandleChunkPair DeserializeHandleChunk(const TStringBuf& buffer);
 
     TResultOrError<ui64> CreateRecord(const TBuffer& record);
-    NProto::TError CreateRecord(ui64 handleId, const TBuffer& record);
+    void CreateRecord(ui64 handleId, const TBuffer& record);
     void RemoveRecords(ui64 handleId);
 };
 

@@ -324,10 +324,6 @@ public:
             index = NextFreeRecordIndex++;
         }
 
-        if (index == InvalidIndex) {
-            return MakeError(E_FAIL, "Invalid record index");
-        }
-
         HeaderPtr->NextFreeRecordIndex = NextFreeRecordIndex;
 
         if (NextDataOffset + dataSize > DataAreaSize) {
