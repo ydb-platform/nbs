@@ -1,6 +1,6 @@
 #include "file_map_memory_limiter.h"
 
-#include "verify.h"
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <util/generic/strbuf.h>
 #include <util/system/yassert.h>
