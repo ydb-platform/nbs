@@ -101,9 +101,9 @@ ui32 CalculateWriteRequestBlockCount(
     const NProto::TWriteBlocksLocalRequest& request,
     const ui32 blockSize)
 {
-    if (blockSize != request.BlockSize) {
+    if (blockSize != request.GetBlockSize()) {
         [[maybe_unused]] ui64 sglistSize = 0;
-        [[maybe_unused]] ui64 sglistBlockSize = 0;
+        [[maybe_unused]] ui64 sglistBlockSize = blockSize;
         {
             auto guard = request.Sglist.Acquire();
             if (guard && guard.Get().size()) {
@@ -117,7 +117,7 @@ ui32 CalculateWriteRequestBlockCount(
             "blockSize %u != request.BlockSize %u, request.BlocksCount=%u"
             ", sglist size=%lu, sglist buffer size=%lu",
             blockSize,
-            request.BlockSize,
+            request.GetBlockSize(),
             request.BlocksCount,
             sglistSize,
             sglistBlockSize);

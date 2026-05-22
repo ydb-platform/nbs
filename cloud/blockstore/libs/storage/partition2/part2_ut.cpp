@@ -545,9 +545,9 @@ public:
 
         auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         request->Record.SetStartIndex(writeRange.Start);
+        request->Record.SetBlockSize(blockContent.size() / writeRange.Size());
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.BlocksCount = writeRange.Size();
-        request->Record.BlockSize = blockContent.size() / writeRange.Size();
         return request;
     }
 
@@ -627,9 +627,9 @@ public:
         request->Record.SetCheckpointId(checkpointId);
         request->Record.SetStartIndex(readRange.Start);
         request->Record.SetBlocksCount(readRange.Size());
+        request->Record.SetBlockSize(SgListGetSize(sglist) / readRange.Size());
 
         request->Record.Sglist = TGuardedSgList(sglist);
-        request->Record.BlockSize = SgListGetSize(sglist) / readRange.Size();
         return request;
     }
 

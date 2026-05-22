@@ -1306,7 +1306,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetBlocksCount(blocksCount);
-            request->BlockSize = blockSize;
+            request->SetBlockSize(blockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = endpoint->ReadBlocksLocal(
@@ -1328,8 +1328,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             memset(const_cast<char*>(buffer.data()), content, blocksCount * blockSize);
 
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+            request->SetBlockSize(blockSize);
             request->BlocksCount = blocksCount;
-            request->BlockSize = blockSize;
             request->Sglist = TGuardedSgList({{buffer.data(), buffer.size()}});
 
             auto future = endpoint->WriteBlocksLocal(

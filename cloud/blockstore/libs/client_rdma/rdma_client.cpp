@@ -129,8 +129,8 @@ public:
 
     size_t GetResponseSize() const
     {
-        return MAX_PROTO_SIZE +
-            (static_cast<size_t>(Request->BlockSize) * Request->GetBlocksCount());
+        return MAX_PROTO_SIZE + (static_cast<size_t>(Request->GetBlockSize()) *
+                                 Request->GetBlocksCount());
     }
 
     TFuture<TResponse> GetResponse() const
@@ -273,7 +273,8 @@ public:
     {
         return NRdma::TProtoMessageSerializer::MessageByteSize(
             *Request,
-            static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
+            static_cast<size_t>(Request->GetBlockSize()) *
+                Request->BlocksCount);
     }
 
     size_t GetResponseSize() const

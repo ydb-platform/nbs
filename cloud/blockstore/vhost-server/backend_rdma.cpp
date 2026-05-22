@@ -373,7 +373,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
 
     request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
     request->SetBlocksCount(bio->total_sectors >> SectorsToBlockShift);
-    request->BlockSize = BlockSize;
+    request->SetBlockSize(BlockSize);
     request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
 
     STORAGE_DEBUG(
@@ -381,7 +381,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
         reqHeaders->GetRequestId(),
         request->GetStartIndex(),
         request->GetBlocksCount(),
-        request->BlockSize);
+        request->GetBlockSize());
     auto future =
         DataClient->ReadBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
@@ -414,8 +414,8 @@ void TRdmaBackend::ProcessWriteRequest(
     reqHeaders->SetClientId(ClientId);
 
     request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
+    request->SetBlockSize(BlockSize);
     request->BlocksCount = bio->total_sectors >> SectorsToBlockShift;
-    request->BlockSize = BlockSize;
     request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
 
     STORAGE_DEBUG(
@@ -423,7 +423,7 @@ void TRdmaBackend::ProcessWriteRequest(
         reqHeaders->GetRequestId(),
         request->GetStartIndex(),
         request->BlocksCount,
-        request->BlockSize);
+        request->GetBlockSize());
     auto future =
         DataClient->WriteBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(

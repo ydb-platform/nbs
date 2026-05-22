@@ -188,7 +188,8 @@ public:
     {
         return Serializer->MessageByteSize(
             Proto,
-            Request->BlockSize * Request->BlocksCount);
+            static_cast<size_t>(Request->GetBlockSize()) *
+                Request->BlocksCount);
     }
 
     size_t GetResponseSize() const
