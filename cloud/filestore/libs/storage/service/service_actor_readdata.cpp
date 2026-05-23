@@ -268,6 +268,14 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
         MainInFlightRequest->CallContext->RequestId);
     describeCallContext->SetRequestStartedCycles(GetCycleCount());
     describeCallContext->RequestType = EFileStoreRequest::DescribeData;
+    if (!MainInFlightRequest->CallContext->LWOrbit.Fork(
+            describeCallContext->LWOrbit))
+    {
+        FILESTORE_TRACK(
+            ForkFailed,
+            MainInFlightRequest->CallContext,
+            GetFileStoreRequestName(EFileStoreRequest::DescribeData));
+    }
     InFlightRequest.emplace(
         Sender,
         Cookie,
@@ -275,6 +283,7 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
         ProfileLog,
         MediaKind,
         RequestStats);
+    request->CallContext = InFlightRequest->CallContext;
 
     InFlightRequest->Start(ctx.Now());
     InitProfileLogRequestInfo(
@@ -366,16 +375,12 @@ void TReadDataActor::HandleDescribeDataResponse(
 
     SERVICE_VERIFY(InFlightRequest);
 
+    MainInFlightRequest->CallContext->LWOrbit.Join(
+        InFlightRequest->CallContext->LWOrbit);
     FinalizeProfileLogRequestInfo(
         InFlightRequest->AccessProfileLogRequest(),
         msg->Record);
     InFlightRequest->Complete(ctx.Now(), error);
-    HandleServiceTraceInfo(
-        "DescribeData",
-        ctx,
-        TraceSerializer,
-        MainInFlightRequest->CallContext,
-        msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         if (error.GetCode() != E_FS_THROTTLED) {
@@ -690,6 +695,7 @@ void TReadDataActor::ReadData(
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);
     request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+    request->CallContext = MainInFlightRequest->CallContext;
     TraceSerializer->BuildTraceRequest(
         *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
         MainInFlightRequest->CallContext->LWOrbit);
@@ -707,12 +713,6 @@ void TReadDataActor::HandleReadDataResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    HandleServiceTraceInfo(
-        "ReadData",
-        ctx,
-        TraceSerializer,
-        MainInFlightRequest->CallContext,
-        msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         HandleError(ctx, msg->GetError());
@@ -851,7 +851,6 @@ void TReadDataActor::SendResponseAndDie(
 
     CompleteRequestImpl<TEvService::TReadDataMethod>(
         ctx,
-        TraceSerializer,
         response->Record,
         MainInFlightRequest,
         *InFlightRequests,
