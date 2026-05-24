@@ -98,6 +98,7 @@ private:
         THashMap<TNodeId, THashMap<THandle, TRequestMap>> Data;
     };
 
+    const TString FileSystemId;
     const TString LogTag;
     const ILoggingServicePtr Logging;
     TLog Log;
@@ -134,6 +135,11 @@ private:
     static bool IsFSync(const TItem& item);
 
     static bool NotifyAndEraseLatest(TRequestMap& map);
+
+    NThreading::TFuture<NProto::TError>
+    WaitForShardMeta(TShard& shard, TRequestId reqId);
+    NThreading::TFuture<NProto::TError>
+    WaitForShardData(TShard& shard, TRequestId reqId);
 
     NThreading::TFuture<NProto::TError> WaitForGlobalMeta(TRequestId reqId);
     NThreading::TFuture<NProto::TError> WaitForGlobalData(TRequestId reqId);
