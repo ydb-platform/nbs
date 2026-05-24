@@ -35,19 +35,43 @@ NKikimrSchemeOp::TModifyScheme CreateDir(const TString& path)
     return modifyScheme;
 }
 
+TStorageConfigPtr CreateStorageConfig(
+    bool useSchemeCache,
+    NProto::TStorageConfig config = {})
+{
+    config.SetUseSchemeCache(useSchemeCache);
+    return CreateTestStorageConfig(std::move(config));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define FILESTORE_SS_PROXY_UNIT_TEST(name)                                     \
+    void name(bool useSchemeCache);                                            \
+    Y_UNIT_TEST(name##WithoutSchemeCache)                                      \
+    {                                                                          \
+        name(false);                                                           \
+    }                                                                          \
+    Y_UNIT_TEST(name##WithSchemeCache)                                         \
+    {                                                                          \
+        name(true);                                                            \
+    }                                                                          \
+    void name(bool useSchemeCache)
+
 Y_UNIT_TEST_SUITE(TSSProxyTest)
 {
-    Y_UNIT_TEST(ShouldCreateDirectories)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldCreateDirectories)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         ssProxy.ModifyScheme(CreateDir("/local/nfs/foo"));
         ssProxy.ModifyScheme(CreateDir("/local/nfs/bar"));
 
@@ -55,13 +79,17 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         ssProxy.DescribeScheme("/local/nfs/bar");
     }
 
-    Y_UNIT_TEST(ShouldCreateFileStore)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldCreateFileStore)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         ssProxy.CreateFileStore("test1", 1000);
         ssProxy.CreateFileStore("test2", 2000);
 
@@ -72,24 +100,32 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         ssProxy.DestroyFileStore("test2");
     }
 
-    Y_UNIT_TEST(ShouldDestroyNonExistentFilestore)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldDestroyNonExistentFilestore)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         auto response = ssProxy.DestroyFileStore("nonexistent");
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), S_FALSE);
     }
 
-    Y_UNIT_TEST(ShouldReturnERejectedIfIfSchemeShardDetectsPathIdVersionMismatch)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldReturnERejectedIfIfSchemeShardDetectsPathIdVersionMismatch)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         ssProxy.CreateFileStore("test", 2000);
 
         auto describe = ssProxy.DescribeFileStore("test");
@@ -147,13 +183,17 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             modifyResponse->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldReturnConcurrentModificationErrorIfSchemeShardDetectsWrongVersion)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldReturnConcurrentModificationErrorIfSchemeShardDetectsWrongVersion)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         ssProxy.CreateFileStore("test", 2000);
 
         auto describe = ssProxy.DescribeFileStore("test");
@@ -210,13 +250,17 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             modifyResponse->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldFailFSCreationIfDescribeSchemeFails)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldFailFSCreationIfDescribeSchemeFails)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         ssProxy.CreateFileStore("test", 2000);
 
         auto& runtime = env.GetRuntime();
@@ -247,25 +291,38 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(response->GetErrorReason(), error.GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldFailDecsribeVolumeIfSSTimesOut)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldFailDescribeVolumeIfSSTimesOut)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
         auto& runtime = env.GetRuntime();
+
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
+        ssProxy.CreateFileStore("test", 1000);
+
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvTxUserProxy::EvNavigate: {
-                        return TTestActorRuntime::EEventAction::DROP;
+                if (useSchemeCache) {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvTxProxySchemeCache::EvNavigateKeySet: {
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                } else {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvTxUserProxy::EvNavigate: {
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
-
-        ssProxy.CreateFileStore("test", 1000);
         ssProxy.SendDescribeFileStoreRequest("test");
 
         auto response = ssProxy.RecvDescribeFileStoreResponse();
@@ -278,13 +335,17 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         );
     }
 
-    Y_UNIT_TEST(ShouldReturnERejectedIfIndexTabletIdIsZero)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldReturnERejectedIfIndexTabletIdIsZero)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         ssProxy.CreateFileStore("test", 2000);
 
         auto& runtime = env.GetRuntime();
@@ -311,13 +372,17 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, describe->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldFailRequestIfWrongPathTypeIsReturnedFromSS)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldFailRequestIfWrongPathTypeIsReturnedFromSS)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
+
         ssProxy.CreateFileStore("test", 2000);
 
         auto& runtime = env.GetRuntime();
@@ -344,7 +409,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, describe->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldDescribeFileStoreInFallbackMode)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldDescribeFileStoreInFallbackMode)
     {
         TString backupFilePath =
             "ShouldDescribeFileStoreInFallbackMode.path_description_backup";
@@ -359,8 +424,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         {
             TSSProxyClient ssProxy(
-                CreateTestStorageConfig(config),
-                runtime,
+                CreateStorageConfig(useSchemeCache, config),
+                env.GetRuntime(),
                 nodeIdx);
 
             ssProxy.CreateFileStore("test", 2000);
@@ -378,8 +443,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             config.SetSSProxyFallbackMode(true);
 
             TSSProxyClient ssProxy(
-                CreateTestStorageConfig(config),
-                runtime,
+                CreateStorageConfig(useSchemeCache, config),
+                env.GetRuntime(),
                 nodeIdx);
 
             ssProxy.DescribeFileStore("test");
@@ -395,13 +460,16 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReturnCorrectErrorForNonExistentFilestore)
+    FILESTORE_SS_PROXY_UNIT_TEST(ShouldReturnCorrectErrorForNonExistentFilestore)
     {
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();
 
-        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        TSSProxyClient ssProxy(
+            CreateStorageConfig(useSchemeCache),
+            env.GetRuntime(),
+            nodeIdx);
 
         {
             const ui64 blocksCount = 1000;
@@ -423,5 +491,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         }
     }
 }
+
+#undef FILESTORE_SS_PROXY_UNIT_TEST
 
 }   // namespace NCloud::NFileStore::NStorage

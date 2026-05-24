@@ -770,4 +770,6 @@ message TStorageConfig
     // Use custom protobuf parser for TReadDataResponse
     // to optimize TReadDataActor performance.
     optional bool UseCustomReadDataResponseParser = 498;
+
+    optional bool UseSchemeCache = 499;
 }
