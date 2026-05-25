@@ -99,7 +99,7 @@ public:
 
 private:
     const TCallContextPtr CallContext;
-    const std::shared_ptr<TRequest> Request;
+    std::shared_ptr<TRequest> Request;
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
@@ -138,7 +138,7 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
@@ -149,6 +149,8 @@ public:
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
         StartTime = GetCycleCount();
+
+        Request->SetBlockSize(Request->BlockSize);
 
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
@@ -174,7 +176,12 @@ public:
         localResponse.CopyFrom(responseMsg);
 
         if (!HasError(responseMsg.GetError())) {
-            CopyData(Request->Sglist, response.Data);
+            auto result = CopyData(Request->Sglist, response.Data);
+            if (HasError(result.GetError())) {
+                *localResponse.MutableError() = std::move(result.GetError());
+                Response.SetValue(std::move(localResponse));
+                return;
+            }
         }
 
         if (CallContext->LWOrbit.HasShuttles()) {
@@ -200,10 +207,16 @@ public:
     }
 
 private:
-    static void CopyData(TGuardedSgList& guardedSgList, TStringBuf data)
+    static TResultOrError<void> CopyData(
+        TGuardedSgList& guardedSgList,
+        TStringBuf data)
     {
         auto guard = guardedSgList.Acquire();
-        Y_ENSURE(guard);
+        if (!guard) {
+            return TErrorResponse(
+                E_CANCELLED,
+                "failed to acquire sglist in Rdma ReadBlock handler");
+        }
 
         const char* ptr = data.data();
         size_t bytesLeft = data.length();
@@ -218,6 +231,8 @@ private:
         }
 
         Y_ENSURE(bytesLeft == 0);
+
+        return {};
     }
 };
 
@@ -232,7 +247,7 @@ public:
 
 private:
     const TCallContextPtr CallContext;
-    const std::shared_ptr<TRequest> Request;
+    std::shared_ptr<TRequest> Request;
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
@@ -271,10 +286,14 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
     {
         auto guard = Request->Sglist.Acquire();
-        Y_ENSURE(guard);
+        if (!guard) {
+            return TErrorResponse(
+                E_CANCELLED,
+                "failed to acquire sglist in Rdma WriteBlock handler");
+        }
 
         const auto& sglist = guard.Get();
 
@@ -290,6 +309,8 @@ public:
 
             StartTime = GetCycleCount();
         }
+
+        Request->SetBlockSize(Request->BlockSize);
 
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
@@ -385,7 +406,7 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
@@ -515,7 +536,7 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
 
@@ -753,7 +774,11 @@ TFuture<typename T::TResponse> TRdmaDataEndpoint::HandleRequest(
         return MakeFuture<typename T::TResponse>(TErrorResponse(err));
     }
 
-    handler->PrepareRequest(req->RequestBuffer);
+    auto result = handler->PrepareRequest(req->RequestBuffer);
+    if (HasError(result.GetError())) {
+        return MakeFuture<typename T::TResponse>(
+            TErrorResponse(std::move(result.GetError())));
+    }
     auto response = handler->GetResponse();
     req->Context = std::move(handler);
     Endpoint->SendRequest(std::move(req), std::move(callContext));
