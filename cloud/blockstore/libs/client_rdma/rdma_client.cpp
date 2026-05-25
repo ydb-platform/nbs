@@ -4,12 +4,14 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
@@ -212,7 +214,7 @@ public:
     }
 
 private:
-    static NProto::TError CopyData(
+    NProto::TError CopyData(
         TGuardedSgList& guardedSgList,
         TStringBuf data)
     {
@@ -223,10 +225,34 @@ private:
                 "failed to acquire sglist in Rdma ReadBlocks handler");
         }
 
-        const char* ptr = data.data();
-        size_t bytesLeft = data.length();
+        size_t expectedSize =
+            static_cast<size_t>(Request->GetBlocksCount()) * Request->BlockSize;
+        size_t srcSize = data.length();
 
-        for (auto buffer: guard.Get()) {
+        if (srcSize != expectedSize) {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "invalid response size (expected: " << expectedSize
+                << ", actual: " << srcSize << ")");
+        }
+
+        const auto& dst = guard.Get();
+        auto dstSize = SgListGetSize(dst);
+
+        if (dstSize < srcSize) {
+            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+                << "invalid buffer size (expected: " << srcSize
+                << ", actual: " << dstSize << ")");
+        }
+
+        STORAGE_VERIFY(
+            dstSize >= srcSize,
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request->GetDiskId()));
+
+        const char* ptr = data.data();
+        size_t bytesLeft = srcSize;
+
+        for (auto buffer: dst) {
             size_t len = Min(bytesLeft, buffer.Size());
             Y_ENSURE(len);
 
@@ -234,8 +260,6 @@ private:
             ptr += len;
             bytesLeft -= len;
         }
-
-        Y_ENSURE(bytesLeft == 0);
 
         return {};
     }
@@ -306,7 +330,16 @@ public:
                 "failed to acquire sglist in Rdma WriteBlock handler");
         }
 
-        const auto& sglist = guard.Get();
+        const auto& src = guard.Get();
+        auto srcSize = SgListGetSize(src);
+
+        size_t expectedSize =
+            static_cast<size_t>(Request->BlocksCount) * Request->GetBlockSize();
+        if (srcSize != expectedSize) {
+            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+                << "invalid buffer size (expected: " << expectedSize
+                << ", actual: " << srcSize << ")");
+        }
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
@@ -315,12 +348,19 @@ public:
 
         StartTime = GetCycleCount();
 
-        return NRdma::TProtoMessageSerializer::SerializeWithData(
+        auto msgSize = NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             flags,
             *Request,
-            sglist);
+            src);
+
+        STORAGE_VERIFY(
+            msgSize <= buffer.length(),
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request));
+
+        return msgSize;
     }
 
     void HandleResponse(TStringBuf buffer) override

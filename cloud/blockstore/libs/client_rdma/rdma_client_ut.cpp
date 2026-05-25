@@ -58,7 +58,6 @@ struct TTestClientEndpoint: public NRdma::IClientEndpoint
 {
     using TReadBlocksRequestCallback =
         std::function<void(NProto::TReadBlocksRequest*)>;
-
     using TWriteBlocksRequestCallback =
         std::function<void(NProto::TWriteBlocksRequest*)>;
 
@@ -93,7 +92,7 @@ struct TTestClientEndpoint: public NRdma::IClientEndpoint
 
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(req->RequestBuffer);
-        UNIT_ASSERT_VALUES_EQUAL(false, HasError(err));
+        UNIT_ASSERT_C(!HasError(err), err.GetMessage());
 
         size_t responseBytes = 0;
         switch (result.MsgId) {
@@ -243,7 +242,7 @@ struct TTestEnv
             Config);
         UNIT_ASSERT_C(future.HasValue(), "Value not set");
         auto result = future.GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(false, HasError(result.GetError()));
+        UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError().GetMessage());
         return result.GetResult();
     }
 };
@@ -275,18 +274,24 @@ std::shared_ptr<NProto::TReadBlocksLocalRequest> MakeReadRequest(
 
 std::shared_ptr<NProto::TWriteBlocksLocalRequest> MakeWriteRequest(
     ui64 startIndex,
-    ui32 blocksCount,
-    const TVector<TString>& blocks)
+    const TVector<TString>& data)
 {
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
-    request->BlocksCount = blocksCount;
     request->BlockSize = DefaultBlockSize;
 
     TSgList sglist;
-    for (const auto& b: blocks) {
+    size_t bytesCount = 0;
+    for (const auto& b: data) {
         sglist.emplace_back(b.data(), b.size());
+        bytesCount += b.size();
     }
+
+    UNIT_ASSERT_C(
+        bytesCount % request->BlockSize == 0,
+        "WriteBlocks request is not multiple of BlockSize");
+
+    request->BlocksCount = static_cast<ui32>(bytesCount / DefaultBlockSize);
     request->Sglist = TGuardedSgList(std::move(sglist));
 
     return request;
@@ -306,13 +311,13 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         env.Client->Endpoint->ReadBlocksCheck =
             [] (NProto::TReadBlocksRequest* request)
             {
-                UNIT_ASSERT_VALUES_UNEQUAL(0, request->GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, request->GetBlockSize());
             };
 
         env.Client->Endpoint->WriteBlocksCheck =
             [] (NProto::TWriteBlocksRequest* request)
             {
-                UNIT_ASSERT_VALUES_UNEQUAL(0, request->GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, request->GetBlockSize());
             };
 
         {
@@ -330,7 +335,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         {
             TVector<TString> blocks;
             blocks.push_back(TString(DefaultBlockSize, 'q'));
-            auto request = MakeWriteRequest(0, 1, blocks);
+            auto request = MakeWriteRequest(0,  blocks);
             auto future = endpoint->WriteBlocksLocal(
                 MakeIntrusive<TCallContext>(),
                 std::move(request));
@@ -367,7 +372,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         TVector<TString> blocks;
         blocks.push_back(TString(DefaultBlockSize, 'w'));
-        auto request = MakeWriteRequest(0, 1, blocks);
+        auto request = MakeWriteRequest(0,  blocks);
         request->Sglist.Close();
 
         auto future = endpoint->WriteBlocksLocal(
