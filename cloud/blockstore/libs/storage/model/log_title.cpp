@@ -243,6 +243,17 @@ TChildLogTitle TLogTitle::GetChildWithTags(
     return GetChildWithTags(startTime, std::span(additionalTags));
 }
 
+TChildLogTitle TChildLogTitle::MakeChild(
+    std::initializer_list<std::pair<TString, TString>> additionalTags) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+    for (const auto& [key, value]: additionalTags) {
+        childPrefix << " " << key << ":" << value;
+    };
+    return {childPrefix, StartTime};
+}
+
 TString TLogTitle::Get(EDetails details) const
 {
     TStringBuilder result;

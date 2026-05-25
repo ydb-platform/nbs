@@ -156,11 +156,10 @@ void TMirrorPartitionActor::MirrorRequest(
                 State.GetReplicaActors(),
                 std::move(msg->Record),
                 range,
-                State.GetReplicaInfos()[0].Config->GetName(),   // diskId
                 SelfId(),                                       // parentActorId
                 requestIdentityKey,
                 MultiAgentWriteRoundRobinSeed++,
-                LogTitle.GetChild(GetCycleCount()));
+                LogTitle);
             return;
         }
     }
@@ -170,9 +169,9 @@ void TMirrorPartitionActor::MirrorRequest(
         std::move(requestInfo),
         State.GetReplicaActors(),
         std::move(msg->Record),
-        State.GetReplicaInfos()[0].Config->GetName(),   // diskId
-        SelfId(),                                       // parentActorId
-        requestIdentityKey);
+        SelfId(),   // parentActorId
+        requestIdentityKey,
+        LogTitle.GetChild(GetCycleCount()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

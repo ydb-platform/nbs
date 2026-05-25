@@ -51,10 +51,10 @@ private:
     const TRequestInfoPtr RequestInfo;
     typename TMethod::TRequest::ProtoRecordType Request;
     const TBlockRange64 Range;
-    const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 NonreplicatedRequestCounter;
     const size_t RoundRobinSeed;
+    const TChildLogTitle LogTitle;
 
     TVector<TReplicaDiscovery> ReplicasDiscovery;
     size_t DiscoveryResponseCount = 0;
@@ -63,19 +63,16 @@ private:
     NProto::TError ReplicasCollectiveResponse;
     size_t RemainResponseCount = 0;
 
-    const TChildLogTitle LogTitle;
-
 public:
     TMultiAgentWriteActor(
         TRequestInfoPtr requestInfo,
         TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
         TBlockRange64 range,
-        TString diskId,
         NActors::TActorId parentActorId,
         ui64 nonreplicatedRequestCounter,
         size_t roundRobinSeed,
-        TChildLogTitle logTitle);
+        const TLogTitle& logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -129,19 +126,19 @@ TMultiAgentWriteActor<TMethod>::TMultiAgentWriteActor(
         TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
         TBlockRange64 range,
-        TString diskId,
         NActors::TActorId parentActorId,
         ui64 nonreplicatedRequestCounter,
         size_t roundRobinSeed,
-        TChildLogTitle logTitle)
+        const TLogTitle& logTitle)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , Range(range)
-    , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , RoundRobinSeed(roundRobinSeed)
-    , LogTitle(std::move(logTitle))
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"part_mirror", "multi_agent"}}))
 {
     Y_DEBUG_ABORT_UNLESS(!replicas.empty());
 
@@ -329,9 +326,9 @@ void TMultiAgentWriteActor<TMethod>::Fallback(const NActors::TActorContext& ctx)
         std::move(RequestInfo),
         std::move(replicas),
         std::move(Request),
-        DiskId,
         ParentActorId,
-        NonreplicatedRequestCounter);
+        NonreplicatedRequestCounter,
+        LogTitle);
     TBase::Die(ctx);
 }
 

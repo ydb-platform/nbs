@@ -140,6 +140,10 @@ public:
         std::initializer_list<std::pair<TString, TString>> additionalTags)
         const;
 
+    [[nodiscard]] TChildLogTitle MakeChild(
+        std::initializer_list<std::pair<TString, TString>> additionalTags)
+        const;
+
     [[nodiscard]] TString Get(EDetails details) const;
 
     [[nodiscard]] TString GetWithTime() const;
@@ -165,6 +169,10 @@ private:
 
 public:
     [[nodiscard]] TString GetWithTime() const;
+
+    TChildLogTitle MakeChild(
+        std::initializer_list<std::pair<TString, TString>> additionalTags)
+        const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
