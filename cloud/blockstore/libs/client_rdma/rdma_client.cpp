@@ -36,6 +36,11 @@ constexpr size_t MAX_PROTO_SIZE = 4*1024;
 
 ///////////////////////////////////////////////////////////////////////////////
 
+// Size of the serialized message or error if unable to serialize
+using TPrepareResult = TResultOrError<size_t>;
+
+///////////////////////////////////////////////////////////////////////////////
+
 class TEndpointBase: public TBlockStoreImpl<TEndpointBase, IBlockStore>
 {
 public:
@@ -120,6 +125,11 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        Request->SetBlockSize(Request->BlockSize);
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+
     }
 
     size_t GetRequestSize() const
@@ -138,16 +148,13 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        TraceSerializer->BuildTraceRequest(
-            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-            CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
@@ -175,8 +182,8 @@ public:
 
         if (!HasError(responseMsg.GetError())) {
             auto result = CopyData(Request->Sglist, response.Data);
-            if (HasError(result.GetError())) {
-                *localResponse.MutableError() = std::move(result.GetError());
+            if (HasError(result)) {
+                *localResponse.MutableError() = std::move(result);
                 Response.SetValue(std::move(localResponse));
                 return;
             }
@@ -205,15 +212,15 @@ public:
     }
 
 private:
-    static TResultOrError<void> CopyData(
+    static NProto::TError CopyData(
         TGuardedSgList& guardedSgList,
         TStringBuf data)
     {
         auto guard = guardedSgList.Acquire();
         if (!guard) {
-            return TErrorResponse(
+            return MakeError(
                 E_CANCELLED,
-                "failed to acquire sglist in Rdma ReadBlock handler");
+                "failed to acquire sglist in Rdma ReadBlocks handler");
         }
 
         const char* ptr = data.data();
@@ -265,7 +272,12 @@ public:
         , Request(std::move(request))
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
-    {}
+    {
+        Request->SetBlockSize(Request->BlockSize);
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+    }
 
     size_t GetRequestSize() const
     {
@@ -285,7 +297,7 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         auto guard = Request->Sglist.Acquire();
         if (!guard) {
@@ -301,13 +313,7 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        if (TraceSerializer) {
-            TraceSerializer->BuildTraceRequest(
-                *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-                CallContext->LWOrbit);
-
-            StartTime = GetCycleCount();
-        }
+        StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
@@ -386,6 +392,9 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
     }
 
     size_t GetRequestSize() const
@@ -403,16 +412,13 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        TraceSerializer->BuildTraceRequest(
-            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-            CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
@@ -533,7 +539,7 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
 
@@ -776,6 +782,7 @@ TFuture<typename T::TResponse> TRdmaDataEndpoint::HandleRequest(
         return MakeFuture<typename T::TResponse>(
             TErrorResponse(std::move(result.GetError())));
     }
+
     auto response = handler->GetResponse();
     req->Context = std::move(handler);
     Endpoint->SendRequest(std::move(req), std::move(callContext));
