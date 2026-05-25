@@ -178,21 +178,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    auto error = MakeDescribeSchemeError(record);
-
-    if (HasError(error)) {
-        auto status = STATUS_FROM_CODE(error.GetCode());
-
-        if (status == NKikimrScheme::StatusNotAvailable) {
-            error.SetCode(E_REJECTED);
-        }
-
-        if (status == NKikimrScheme::StatusPathDoesNotExist) {
-            SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
-        }
-    }
-
-    if (HandleError(ctx, error)) {
+    if (HandleError(ctx, MakeDescribeSchemeError(record))) {
         return;
     }
 
