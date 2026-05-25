@@ -37,8 +37,6 @@ struct TWellKnownEntityTypes
     static constexpr TStringBuf FILESYSTEM = "Filesystem";
     static constexpr TStringBuf AGENT = "Agent";
     static constexpr TStringBuf YDB_TABLE = "Ydb Table";
-    static constexpr TStringBuf TLS_CERTIFICATE_PROVIDER =
-        "TlsCertificateProvider";
 };
 
 }   // namespace NCloud

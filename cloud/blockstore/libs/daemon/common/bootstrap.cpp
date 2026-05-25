@@ -313,13 +313,9 @@ void TBootstrapBase::Init()
         });
     }
 
-    CertificateProvider = CreateCertificateProvider(
-        Logging,
-        "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
-        serverGroup,
+    CertificateProvider = CreateStaticCertificateProvider(
         Configs->ServerConfig->GetRootCertsFile(),
-        std::move(certPathList),
-        Configs->ServerConfig->GetRefreshCertsPeriod());
+        std::move(certPathList));
 
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(

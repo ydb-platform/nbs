@@ -118,7 +118,6 @@ constexpr TDuration Seconds(int s)
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
     xxx(EnableOverlappingRequestsGuard,  bool,               false            )\
     xxx(EnableRequestSplitter,       bool,                   false            )\
-    xxx(RefreshCertsPeriod,          TDuration,              Seconds(0)       )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on

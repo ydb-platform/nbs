@@ -119,13 +119,9 @@ void TBootstrapServer::InitComponents()
     }
 
     if (!certPathList.empty()) {
-        CertificateProvider = CreateCertificateProvider(
-            Logging,
-            "FILESTORE_TLS_CERTIFICATE_PROVIDER",
-            serverCounters,
+        CertificateProvider = CreateStaticCertificateProvider(
             Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
+            std::move(certPathList));
     }
 
     Server = NServer::CreateServer(

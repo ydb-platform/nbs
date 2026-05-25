@@ -36,7 +36,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CLIENT)                                                                \
     xxx(AUTH)                                                                  \
     xxx(USER_STATS)                                                            \
-    xxx(TLS_CERTIFICATE_PROVIDER)                                              \
 // FILESTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////
