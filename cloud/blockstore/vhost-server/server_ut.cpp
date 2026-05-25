@@ -1410,19 +1410,11 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
 
         auto expectedSleepTime = (GetTotalSleepTime() / ThreadCount) * 1.1;
 
-#if (defined(__has_feature) && __has_feature(undefined_behavior_sanitizer)) || \
-    (defined(__SANITIZE_UNDEFINED__) && __SANITIZE_UNDEFINED__)
-#define UBSAN_BUILD 1
-#else
-#define UBSAN_BUILD 0
-#endif
-
-#if !defined(__SANITIZE_MEMORY__) && !defined(__SANITIZE_ADDRESS__) && \
-    !defined(__SANITIZE_THREAD__) && !UBSAN_BUILD
+#if !defined(_san_enabled_)
         EXPECT_LT(duration, expectedSleepTime);
 #else
-    Y_UNUSED(duration);
-    Y_UNUSED(expectedSleepTime);
+        Y_UNUSED(duration);
+        Y_UNUSED(expectedSleepTime);
 #endif
     }
 
