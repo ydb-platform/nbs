@@ -48,7 +48,10 @@ struct IFreshBlockVisitor
 {
     virtual ~IFreshBlockVisitor() = default;
 
-    virtual void Visit(const TBlock& block, TStringBuf blockContent) = 0;
+    virtual void Visit(
+        const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& blobId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -394,7 +397,8 @@ public:
 
     void WriteFreshBlock(
         const TBlock& block,
-        TBlockDataRef blockContent);
+        TBlockDataRef blockContent,
+        TPartialBlobId blobId = {});
 
     bool DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 

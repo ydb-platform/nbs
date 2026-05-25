@@ -143,14 +143,16 @@ void TPartitionFreshBlocksState::FindFreshBlocks(
 void TPartitionFreshBlocksState::WriteFreshBlocks(
     const TBlockRange32& writeRange,
     ui64 commitId,
-    TSgList sglist)
+    TSgList sglist,
+    TPartialBlobId blobId)
 {
     Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
 
     WriteFreshBlocksImpl(
         writeRange,
         commitId,
-        [&](ui32 index) { return sglist[index]; });
+        [&](ui32 index) { return sglist[index]; },
+        blobId);
 }
 
 void TPartitionFreshBlocksState::ZeroFreshBlocks(
@@ -180,7 +182,8 @@ void TPartitionFreshBlocksState::DeleteFreshBlock(
 void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     const TBlockRange32& writeRange,
     ui64 commitId,
-    auto getBlockContent)
+    auto getBlockContent,
+    TPartialBlobId blobId)
 {
     TVector<ui64> checkpoints;
     CommitIdsState.GetCheckpointCommitIds(checkpoints);
@@ -228,7 +231,8 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
             blockIndex,
             commitId,
             false,   // isStoredInDb
-            blockContent.AsStringBuf());
+            blockContent.AsStringBuf(),
+            blobId);
 
         existingCommitIds.clear();
         garbage.clear();

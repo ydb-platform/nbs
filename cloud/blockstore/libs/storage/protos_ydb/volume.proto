@@ -160,6 +160,51 @@ message TDescribeBlocksResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// DescribeBlocksIndex request/response.
+
+message TDescribeBlocksIndexRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to describe from.
+    string DiskId = 2;
+
+    // Starting block index.
+    uint32 StartIndex = 3;
+
+    // Number of blocks to describe.
+    uint32 BlocksCount = 4;
+}
+
+message TDescribeBlocksIndexEntry
+{
+    // Commit identifier of the write that produced this entry.
+    uint64 CommitId = 1;
+
+    // Blob identifier.
+    NKikimrProto.TLogoBlobID BlobId = 2;
+
+    // Block offset within the blob.
+    uint32 BlobOffset = 3;
+}
+
+message TDescribeBlocksIndexResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Block index entries for the requested range.
+    repeated TDescribeBlocksIndexEntry Entries = 2;
+
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // TRemoveOperation
 
 message TRemoveClientOperation

@@ -2024,6 +2024,35 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents(options);
 
     }
+    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequest)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        const auto range = TBlockRange64::WithLength(0, 5);
+        volume.WriteBlocks(range, clientInfo.GetClientId(), 'A');
+
+        auto request = volume.CreateDescribeBlocksIndexRequest(
+            range,
+            clientInfo.GetClientId());
+        volume.SendToPipe(std::move(request));
+        auto response =
+            volume.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(5, response->Record.EntriesSize());
+
+        for (const auto& entry : response->Record.GetEntries()) {
+            UNIT_ASSERT(entry.GetCommitId() > 0);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

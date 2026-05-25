@@ -221,6 +221,10 @@ TBlockRange64 BuildRequestBlockRange(
     const ui32 blockSize);
 
 TBlockRange64 BuildRequestBlockRange(
+    const TEvVolume::TEvDescribeBlocksIndexRequest& request,
+    const ui32 blockSize);
+
+TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvGetChangedBlocksRequest& request,
     const ui32 blockSize);
 

@@ -37,7 +37,8 @@ constexpr bool IsReadOrWriteMethod =
 
 template <typename T>
 constexpr bool IsDescribeBlocksMethod =
-    std::is_same_v<T, TEvVolume::TDescribeBlocksMethod>;
+    std::is_same_v<T, TEvVolume::TDescribeBlocksMethod> ||
+    std::is_same_v<T, TEvVolume::TDescribeBlocksIndexMethod>;
 
 template <typename TMethod>
 constexpr bool IsCheckpointMethod =
@@ -67,6 +68,7 @@ template <typename TMethod>
 constexpr bool RequiresThrottling =
     IsReadOrWriteMethod<TMethod> ||
     std::is_same_v<TMethod, TEvVolume::TDescribeBlocksMethod>;
+    // Note: TDescribeBlocksIndexMethod is intentionally not throttled
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -76,6 +78,7 @@ constexpr bool RejectRequestIfNotReady =
       std::is_same_v<TMethod, TEvService::TDeleteCheckpointMethod> ||
       std::is_same_v<TMethod, TEvVolume::TDeleteCheckpointDataMethod> ||
       std::is_same_v<TMethod, TEvVolume::TDescribeBlocksMethod> ||
+      std::is_same_v<TMethod, TEvVolume::TDescribeBlocksIndexMethod> ||
       std::is_same_v<TMethod, TEvVolume::TGetPartitionInfoMethod> ||
       std::is_same_v<TMethod, TEvVolume::TCompactRangeMethod> ||
       std::is_same_v<TMethod, TEvVolume::TGetCompactionStatusMethod>);

@@ -1,4 +1,5 @@
 RECURSE(
+    blobid
     configurator
     ssh
 )

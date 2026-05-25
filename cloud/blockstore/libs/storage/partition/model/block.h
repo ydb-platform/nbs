@@ -47,10 +47,12 @@ struct TFreshBlock
 {
     TBlock Meta;
     TStringBuf Content;
+    TPartialBlobId BlobId;
 
-    TFreshBlock(TBlock meta, TStringBuf content)
+    TFreshBlock(TBlock meta, TStringBuf content, TPartialBlobId blobId = {})
         : Meta(meta)
         , Content(content)
+        , BlobId(blobId)
     {
     }
 };

@@ -1081,6 +1081,31 @@ BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,          TEvService)
 BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,         TEvService)
 
 BLOCKSTORE_FORWARD_REQUEST(DescribeBlocks,           TEvVolume)
+
+void TVolumeActor::HandleDescribeBlocksIndex(
+    const TEvVolume::TEvDescribeBlocksIndexRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_VOLUME_COUNTER(DescribeBlocksIndex);
+
+    if (State->IsDiskRegistryMediaKind()) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksIndexResponse>(
+            MakeError(
+                E_INVALID_STATE,
+                "DescribeBlocksIndex is not supported for disk-registry based volumes"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    ForwardRequest<TEvVolume::TDescribeBlocksIndexMethod>(ctx, ev);
+}
+
+void TVolumeActor::HandleDescribeBlocksIndexResponse(
+    const TEvVolume::TEvDescribeBlocksIndexResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardResponse<TEvVolume::TDescribeBlocksIndexMethod>(ctx, ev);
+}
 BLOCKSTORE_FORWARD_REQUEST(GetUsedBlocks,            TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(GetPartitionInfo,         TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(CompactRange,             TEvVolume)

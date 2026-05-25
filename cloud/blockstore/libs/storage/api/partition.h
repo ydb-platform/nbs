@@ -39,6 +39,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 // requests forwarded from volume to partion
 #define BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(xxx, ...)                     \
     xxx(DescribeBlocks,           __VA_ARGS__)                                 \
+    xxx(DescribeBlocksIndex,      __VA_ARGS__)                                 \
     xxx(GetUsedBlocks,            __VA_ARGS__)                                 \
     xxx(GetPartitionInfo,         __VA_ARGS__)                                 \
     xxx(CompactRange,             __VA_ARGS__)                                 \

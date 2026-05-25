@@ -240,6 +240,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateDescribeBlocksIndexActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateCheckBlobActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

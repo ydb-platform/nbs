@@ -39,7 +39,8 @@ public:
         ui32 blockIndex,
         ui64 commitId,
         bool isStoredInDb,
-        TStringBuf blockContent);
+        TStringBuf blockContent,
+        TPartialBlobId blobId = {});
 
     bool RemoveBlock(ui32 blockIndex, ui64 commitId, bool isStoredInDb);
 

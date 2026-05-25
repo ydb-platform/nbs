@@ -202,6 +202,15 @@ public:
         const TBlockRange32& range,
         const TString& checkpointId = "");
 
+    std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
+    CreateDescribeBlocksIndexRequest(
+        ui32 startIndex,
+        ui32 blockCount);
+
+    std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
+    CreateDescribeBlocksIndexRequest(
+        const TBlockRange32& range);
+
     std::unique_ptr<TEvVolume::TEvGetUsedBlocksRequest>
     CreateGetUsedBlocksRequest();
 

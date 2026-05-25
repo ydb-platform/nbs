@@ -20,6 +20,7 @@ SRCS(
     part_actor_deletegarbage.cpp
     part_actor_deleteunconfirmedblobs.cpp
     part_actor_describeblocks.cpp
+    part_actor_describe_blocks_index.cpp
     part_actor_flush.cpp
     part_actor_getusedblocks.cpp
     part_actor_initschema.cpp

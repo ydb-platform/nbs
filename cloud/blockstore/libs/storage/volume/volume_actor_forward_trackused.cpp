@@ -203,6 +203,7 @@ GENERATE_NO_IMPL(DeleteCheckpoint,    TEvService)
 GENERATE_NO_IMPL(GetCheckpointStatus, TEvService)
 
 GENERATE_NO_IMPL(DescribeBlocks,           TEvVolume)
+GENERATE_NO_IMPL(DescribeBlocksIndex,      TEvVolume)
 GENERATE_NO_IMPL(GetUsedBlocks,            TEvVolume)
 GENERATE_NO_IMPL(GetPartitionInfo,         TEvVolume)
 GENERATE_NO_IMPL(CompactRange,             TEvVolume)

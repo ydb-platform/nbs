@@ -773,7 +773,10 @@ public:
         , Args(args)
     {}
 
-    void Visit(const TBlock& block, TStringBuf blockContent) override
+    void Visit(
+        const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& /*blobId*/) override
     {
         if (AddBlock(block, {}, 0, 0)) {
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(BlockSize);

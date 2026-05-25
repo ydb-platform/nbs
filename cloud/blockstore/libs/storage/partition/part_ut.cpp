@@ -6050,6 +6050,84 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldForbidDescribeBlocksIndexWithEmptyRange)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto request = partition.CreateDescribeBlocksIndexRequest(0, 0);
+        partition.SendToPipe(std::move(request));
+        auto response =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestWithOutOfBoundsRange)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range =
+            TBlockRange32::MakeClosedInterval(Max<ui32>() - 2, Max<ui32>() - 1);
+        auto request = partition.CreateDescribeBlocksIndexRequest(range);
+        partition.SendToPipe(std::move(request));
+        auto response =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.EntriesSize());
+    }
+
+    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestWhenBlocksAreFresh)
+    {
+        NProto::TStorageServiceConfig config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(std::move(config));
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 5);
+        partition.WriteBlocks(range, char(1));
+
+        auto request = partition.CreateDescribeBlocksIndexRequest(range);
+        partition.SendToPipe(std::move(request));
+        auto response =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(5, response->Record.EntriesSize());
+
+        for (const auto& entry : response->Record.GetEntries()) {
+            UNIT_ASSERT(entry.GetCommitId() > 0);
+            const auto blobId = LogoBlobIDFromLogoBlobID(entry.GetBlobId());
+            UNIT_ASSERT(blobId.IsValid());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestAfterFlush)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 5);
+        partition.WriteBlocks(range, char(1));
+        partition.Flush();
+
+        auto request = partition.CreateDescribeBlocksIndexRequest(range);
+        partition.SendToPipe(std::move(request));
+        auto response =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(5, response->Record.EntriesSize());
+
+        for (const auto& entry : response->Record.GetEntries()) {
+            UNIT_ASSERT(entry.GetCommitId() > 0);
+            const auto blobId = LogoBlobIDFromLogoBlobID(entry.GetBlobId());
+            UNIT_ASSERT(blobId.IsValid());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyCalculateUsedBlocksCount)
     {
         constexpr ui32 blockCount = 1024 * 1024;

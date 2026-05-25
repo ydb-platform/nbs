@@ -398,6 +398,24 @@ TPartitionClient::CreateDescribeBlocksRequest(
     return CreateDescribeBlocksRequest(range.Start, range.Size(), checkpointId);
 }
 
+std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
+TPartitionClient::CreateDescribeBlocksIndexRequest(
+    ui32 startIndex,
+    ui32 blockCount)
+{
+    auto request = std::make_unique<TEvVolume::TEvDescribeBlocksIndexRequest>();
+    request->Record.SetStartIndex(startIndex);
+    request->Record.SetBlocksCount(blockCount);
+    return request;
+}
+
+std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
+TPartitionClient::CreateDescribeBlocksIndexRequest(
+    const TBlockRange32& range)
+{
+    return CreateDescribeBlocksIndexRequest(range.Start, range.Size());
+}
+
 std::unique_ptr<TEvVolume::TEvGetUsedBlocksRequest>
 TPartitionClient::CreateGetUsedBlocksRequest()
 {
