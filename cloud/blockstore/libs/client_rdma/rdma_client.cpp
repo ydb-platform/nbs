@@ -129,8 +129,8 @@ public:
 
     size_t GetResponseSize() const
     {
-        return MAX_PROTO_SIZE +
-            (static_cast<size_t>(Request->BlockSize) * Request->GetBlocksCount());
+        return MAX_PROTO_SIZE + (static_cast<size_t>(Request->GetBlockSize()) *
+                                 Request->GetBlocksCount());
     }
 
     TFuture<TResponse> GetResponse() const
@@ -149,8 +149,6 @@ public:
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
         StartTime = GetCycleCount();
-
-        Request->SetBlockSize(Request->BlockSize);
 
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
@@ -273,7 +271,8 @@ public:
     {
         return NRdma::TProtoMessageSerializer::MessageByteSize(
             *Request,
-            static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
+            static_cast<size_t>(Request->GetBlockSize()) *
+                Request->BlocksCount);
     }
 
     size_t GetResponseSize() const
@@ -309,8 +308,6 @@ public:
 
             StartTime = GetCycleCount();
         }
-
-        Request->SetBlockSize(Request->BlockSize);
 
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,

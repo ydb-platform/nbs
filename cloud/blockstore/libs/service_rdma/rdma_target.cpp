@@ -220,7 +220,6 @@ private:
 
         auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
         req->CopyFrom(*request);
-        req->BlockSize = request->GetBlockSize();
 
         req->Sglist = guardedSgList;
 
@@ -315,8 +314,8 @@ private:
         req->CopyFrom(*request);
 
         req->Sglist = guardedSgList;
-        req->BlockSize = request->GetBlockSize();
-        req->BlocksCount = requestData.length() / req->BlockSize;
+        req->SetBlockSize(request->GetBlockSize());
+        req->BlocksCount = requestData.length() / req->GetBlockSize();
 
         auto future = Service->WriteBlocksLocal(callContext, std::move(req));
 

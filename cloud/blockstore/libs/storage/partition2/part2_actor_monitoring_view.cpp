@@ -110,9 +110,9 @@ void THttpReadBlockActor::ReadBlocks(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(BlockIndex);
     request->Record.SetBlocksCount(1);
+    request->Record.SetBlockSize(BufferHolder.Get().size());
     request->Record.Sglist = BufferHolder.GetGuardedSgList();
     request->Record.CommitId = CommitId;
-    request->Record.BlockSize = BufferHolder.Get().size();
 
     NCloud::Send(
         ctx,

@@ -36,7 +36,6 @@ TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() cons
     // Copy non-protobuf fields
     copiedRecord.Sglist = Sglist;
     copiedRecord.BlocksCount = BlocksCount;
-    copiedRecord.BlockSize = BlockSize;
 
     return copiedRecord;
 }

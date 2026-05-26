@@ -668,7 +668,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
                 request->Clear();
                 request->CommitId = 0;
-                request->BlockSize = 0;
+                request->SetBlockSize(0);
                 request->Sglist = TGuardedSgList();
 
                 NProto::TReadBlocksLocalResponse response;
@@ -693,7 +693,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
                 request->Clear();
                 request->BlocksCount = 0;
-                request->BlockSize = 0;
+                request->SetBlockSize(0);
                 request->Sglist = TGuardedSgList();
 
                 NProto::TWriteBlocksLocalResponse response;
@@ -779,7 +779,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             request->SetDiskId(diskId);
             request->SetStartIndex(startIndex);
             request->SetBlocksCount(blocksCount);
-            request->BlockSize = DefaultBlockSize;
+            request->SetBlockSize(DefaultBlockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = durable->ReadBlocksLocal(
@@ -795,7 +795,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             request->SetDiskId(diskId);
             request->SetStartIndex(startIndex);
             request->BlocksCount = blocksCount;
-            request->BlockSize = DefaultBlockSize;
+            request->SetBlockSize(DefaultBlockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = durable->WriteBlocksLocal(

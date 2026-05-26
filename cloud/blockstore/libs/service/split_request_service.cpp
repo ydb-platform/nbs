@@ -66,12 +66,12 @@ TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
         subRequest->CopyFrom(*request);
         subRequest->SetStartIndex(subRange.Start);
         subRequest->SetBlocksCount(subRange.Size());
-        subRequest->BlockSize = request->BlockSize;
 
         auto subSgList = CreateSgListSubRange(
             srcSgList,
-            (subRange.Start - request->GetStartIndex()) * request->BlockSize,
-            subRange.Size() * request->BlockSize);
+            (subRange.Start - request->GetStartIndex()) *
+                request->GetBlockSize(),
+            subRange.Size() * request->GetBlockSize());
         subRequest->Sglist =
             request->Sglist.CreateDepender(std::move(subSgList));
 
@@ -137,12 +137,12 @@ TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> CreateSubRequests(
         subRequest->CopyFrom(*request);
         subRequest->SetStartIndex(subRange.Start);
         subRequest->BlocksCount = subRange.Size();
-        subRequest->BlockSize = request->BlockSize;
+        subRequest->SetBlockSize(request->GetBlockSize());
 
         auto subSgList = CreateSgListSubRange(
             srcSgList,
-            (subRange.Start - request->GetStartIndex()) * request->BlockSize,
-            subRange.Size() * request->BlockSize);
+            (subRange.Start - request->GetStartIndex()) * request->GetBlockSize(),
+            subRange.Size() * request->GetBlockSize());
 
         if (request->ChecksumsSize() > 0) {
             subRequest->MutableChecksums()->Clear();

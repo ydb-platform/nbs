@@ -159,7 +159,7 @@ Y_CPU_BENCHMARK(ClientTest, iface)
     auto context = MakeIntrusive<TCallContext>();
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->BlocksCount = 32;
-    request->BlockSize = bootstrap.BlockSize;
+    request->SetBlockSize(bootstrap.BlockSize);
 
     TVector<TString> blocks;
     request->Sglist = TGuardedSgList(ResizeBlocks(
@@ -182,7 +182,7 @@ Y_CPU_BENCHMARK(DurableClientTest, iface)
     auto context = MakeIntrusive<TCallContext>();
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->BlocksCount = 32;
-    request->BlockSize = bootstrap.BlockSize;
+    request->SetBlockSize(bootstrap.BlockSize);
 
     TVector<TString> blocks;
     request->Sglist = TGuardedSgList(ResizeBlocks(
@@ -208,7 +208,7 @@ Y_CPU_BENCHMARK(SessionDurableClientTest, iface)
     auto context = MakeIntrusive<TCallContext>();
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->BlocksCount = 32;
-    request->BlockSize = bootstrap.BlockSize;
+    request->SetBlockSize(bootstrap.BlockSize);
 
     TVector<TString> blocks;
     request->Sglist = TGuardedSgList(ResizeBlocks(
@@ -233,7 +233,7 @@ Y_CPU_BENCHMARK(SessionClientTest, iface)
     auto context = MakeIntrusive<TCallContext>();
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->BlocksCount = 32;
-    request->BlockSize = bootstrap.BlockSize;
+    request->SetBlockSize(bootstrap.BlockSize);
 
     TVector<TString> blocks;
     request->Sglist = TGuardedSgList(ResizeBlocks(
@@ -260,7 +260,7 @@ Y_CPU_BENCHMARK(EncryptionClientTest, iface)
     auto context = MakeIntrusive<TCallContext>();
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->BlocksCount = 32;
-    request->BlockSize = bootstrap.BlockSize;
+    request->SetBlockSize(bootstrap.BlockSize);
 
     TVector<TString> blocks;
     request->Sglist = TGuardedSgList(ResizeBlocks(
