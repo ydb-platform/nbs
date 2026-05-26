@@ -150,8 +150,6 @@ public:
             CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
-        Request->SetBlockSize(Request->BlockSize);
-
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
@@ -310,8 +308,6 @@ public:
 
             StartTime = GetCycleCount();
         }
-
-        Request->SetBlockSize(Request->BlockSize);
 
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
