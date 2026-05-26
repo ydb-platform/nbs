@@ -54,7 +54,6 @@ void CalculateResponseChecksums(
 template<typename TMethod>
 void CompleteRequestImpl(
     const TActorContext& ctx,
-    const ITraceSerializerPtr& traceSerializer,
     typename TMethod::TResponse::ProtoRecordType& record,
     TInFlightRequest *request,
     TInFlightRequestStorage& requestStorage,
@@ -76,12 +75,6 @@ void CompleteRequestImpl(
     }
 
     FinalizeProfileLogRequestInfo(request->AccessProfileLogRequest(), record);
-    HandleServiceTraceInfo(
-        TMethod::Name,
-        ctx,
-        traceSerializer,
-        request->CallContext,
-        record);
     HandleThrottlerInfo(*request->CallContext, record);
 
     FILESTORE_TRACK(
@@ -126,7 +119,6 @@ void TStorageServiceActor::CompleteRequest(
 
     CompleteRequestImpl<TMethod>(
         ctx,
-        TraceSerializer,
         msg->Record,
         request,
         *InFlightRequests,
