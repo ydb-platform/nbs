@@ -138,8 +138,9 @@ struct Y_PACKED TRegionDataBlock
         RegionBlockByteCount / sizeof(TRegionDataBlockPart)>
         Parts = {};
 
-    ui64 Zero1 = 0;
-    ui64 Zero2 = 0;
+    // Padding to ensure the block size is 1024 bytes
+    ui64 Padding1 = 0;
+    ui64 Padding2 = 0;
     ui64 Crc32 = 0;
 
     TStringBuf AsStringBuf(size_t len) const
@@ -198,8 +199,8 @@ void GenerateRegionData(
         mask = UpdateSeed(mask, part.WriteTime);
     }
 
-    regionData->Zero1 = 0;
-    regionData->Zero2 = 0;
+    regionData->Padding1 = 0;
+    regionData->Padding2 = 0;
 
     regionData->Crc32 = Crc32c(regionData, offsetof(TRegionDataBlock, Crc32));
 }
