@@ -244,20 +244,12 @@ private:
                 << ", actual: " << dstSize << ")");
         }
 
-        const char* ptr = data.data();
-        size_t bytesLeft = srcSize;
-
-        for (auto buffer: dst) {
-            size_t len = Min(bytesLeft, buffer.Size());
-            Y_ENSURE(len);
-
-            memcpy((char*)buffer.Data(), ptr, len);
-            ptr += len;
-            bytesLeft -= len;
-        }
+        auto bytesRead = SgListCopy(
+            TBlockDataRef{data.data(), data.length()},
+            dst);
 
         STORAGE_VERIFY(
-            bytesLeft == 0,
+            bytesRead == dstSize,
             TWellKnownEntityTypes::DISK,
             GetDiskId(Request->GetDiskId()));
 
