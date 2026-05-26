@@ -205,8 +205,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
-    xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
-    xxx(MaxCompactionExecTimePerSecondHard, TDuration, TDuration::Zero()      )\
+    xxx(MaxCompactionExecTimePerSecond,          TDuration, TDuration::Zero() )\
+    xxx(MaxCompactionExecTimePerSecondForZeroed, TDuration, TDuration::Zero() )\
     xxx(CompactionScoreHistorySize,             ui32,   10                    )\
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\

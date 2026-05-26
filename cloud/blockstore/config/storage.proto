@@ -1595,5 +1595,5 @@ message TStorageServiceConfig
     // Max Compaction per second (in ms). Should be less than
     // MaxCompactionExecTimePerSecond. Used for GarbageCompaction in case when
     // IgnoringZeroedCompactionEnabled is on.
-    optional uint32 MaxCompactionExecTimePerSecondHard = 502;
+    optional uint32 MaxCompactionExecTimePerSecondForZeroed = 502;
 }

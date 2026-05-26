@@ -1402,15 +1402,19 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     auto maxCompactionExecTimePerSecond =
-        (Config->GetIgnoringZeroedCompactionEnabled() &&
-         info->Mode == TEvPartitionPrivate::GarbageCompaction)
-            ? Config->GetMaxCompactionExecTimePerSecondHard()
-            : Config->GetMaxCompactionExecTimePerSecond();
+        Config->GetMaxCompactionExecTimePerSecond();
+    if (Config->GetIgnoringZeroedCompactionEnabled() &&
+        info->Mode == TEvPartitionPrivate::GarbageCompaction &&
+        Config->GetMaxCompactionExecTimePerSecondForZeroed())
+    {
+        maxCompactionExecTimePerSecond =
+            Config->GetMaxCompactionExecTimePerSecondForZeroed();
+    }
 
     if (info->ThrottlingAllowed && Config->GetMaxCompactionDelay()) {
         const auto execTime =
             State->GetCompactionExecTimeForLastSecond(ctx.Now());
-        const auto delay = Config->GetMinCompactionDelay();
+        auto delay = Config->GetMinCompactionDelay();
         if (maxCompactionExecTimePerSecond) {
             const auto throttlingFactor =
                 static_cast<double>(execTime.GetValue()) /

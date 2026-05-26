@@ -100,7 +100,7 @@ public:
     TDuration GetMaxCompactionDelay() const;
     TDuration GetMinCompactionDelay() const;
     TDuration GetMaxCompactionExecTimePerSecond() const;
-    TDuration GetMaxCompactionExecTimePerSecondHard() const;
+    TDuration GetMaxCompactionExecTimePerSecondForZeroed() const;
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
     ui64 GetTargetCompactionBytesPerOp() const;
