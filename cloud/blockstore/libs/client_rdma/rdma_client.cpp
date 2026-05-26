@@ -4,12 +4,14 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
@@ -33,6 +35,11 @@ namespace {
 constexpr TDuration WAIT_TIMEOUT = TDuration::Seconds(10);
 
 constexpr size_t MAX_PROTO_SIZE = 4*1024;
+
+///////////////////////////////////////////////////////////////////////////////
+
+// Size of the serialized message or error if unable to serialize
+using TPrepareResult = TResultOrError<size_t>;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -120,6 +127,10 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+
     }
 
     size_t GetRequestSize() const
@@ -138,16 +149,13 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        TraceSerializer->BuildTraceRequest(
-            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-            CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
@@ -175,8 +183,8 @@ public:
 
         if (!HasError(responseMsg.GetError())) {
             auto result = CopyData(Request->Sglist, response.Data);
-            if (HasError(result.GetError())) {
-                *localResponse.MutableError() = std::move(result.GetError());
+            if (HasError(result)) {
+                *localResponse.MutableError() = std::move(result);
                 Response.SetValue(std::move(localResponse));
                 return;
             }
@@ -205,30 +213,45 @@ public:
     }
 
 private:
-    static TResultOrError<void> CopyData(
+    NProto::TError CopyData(
         TGuardedSgList& guardedSgList,
         TStringBuf data)
     {
         auto guard = guardedSgList.Acquire();
         if (!guard) {
-            return TErrorResponse(
+            return MakeError(
                 E_CANCELLED,
-                "failed to acquire sglist in Rdma ReadBlock handler");
+                "failed to acquire sglist in Rdma ReadBlocks handler");
         }
 
-        const char* ptr = data.data();
-        size_t bytesLeft = data.length();
+        size_t expectedSize =
+            static_cast<size_t>(Request->GetBlocksCount())
+            * Request->GetBlockSize();
+        size_t srcSize = data.length();
 
-        for (auto buffer: guard.Get()) {
-            size_t len = Min(bytesLeft, buffer.Size());
-            Y_ENSURE(len);
-
-            memcpy((char*)buffer.Data(), ptr, len);
-            ptr += len;
-            bytesLeft -= len;
+        if (srcSize != expectedSize) {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "invalid response size (expected: " << expectedSize
+                << ", actual: " << srcSize << ")");
         }
 
-        Y_ENSURE(bytesLeft == 0);
+        const auto& dst = guard.Get();
+        auto dstSize = SgListGetSize(dst);
+
+        if (dstSize < srcSize) {
+            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+                << "invalid buffer size (expected: " << srcSize
+                << ", actual: " << dstSize << ")");
+        }
+
+        auto bytesRead = SgListCopy(
+            TBlockDataRef{data.data(), data.length()},
+            dst);
+
+        STORAGE_VERIFY(
+            bytesRead == dstSize,
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request->GetDiskId()));
 
         return {};
     }
@@ -265,7 +288,11 @@ public:
         , Request(std::move(request))
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
-    {}
+    {
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+    }
 
     size_t GetRequestSize() const
     {
@@ -285,7 +312,7 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         auto guard = Request->Sglist.Acquire();
         if (!guard) {
@@ -294,27 +321,37 @@ public:
                 "failed to acquire sglist in Rdma WriteBlock handler");
         }
 
-        const auto& sglist = guard.Get();
+        const auto& src = guard.Get();
+        auto srcSize = SgListGetSize(src);
+
+        size_t expectedSize =
+            static_cast<size_t>(Request->BlocksCount) * Request->GetBlockSize();
+        if (srcSize != expectedSize) {
+            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+                << "invalid buffer size (expected: " << expectedSize
+                << ", actual: " << srcSize << ")");
+        }
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        if (TraceSerializer) {
-            TraceSerializer->BuildTraceRequest(
-                *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-                CallContext->LWOrbit);
+        StartTime = GetCycleCount();
 
-            StartTime = GetCycleCount();
-        }
-
-        return NRdma::TProtoMessageSerializer::SerializeWithData(
+        auto msgSize = NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             flags,
             *Request,
-            sglist);
+            src);
+
+        STORAGE_VERIFY(
+            msgSize <= buffer.length(),
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request));
+
+        return msgSize;
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -386,6 +423,9 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
     }
 
     size_t GetRequestSize() const
@@ -403,16 +443,13 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        TraceSerializer->BuildTraceRequest(
-            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-            CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
@@ -533,7 +570,7 @@ public:
         return Response.GetFuture();
     }
 
-    TResultOrError<size_t> PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
 
@@ -776,6 +813,7 @@ TFuture<typename T::TResponse> TRdmaDataEndpoint::HandleRequest(
         return MakeFuture<typename T::TResponse>(
             TErrorResponse(std::move(result.GetError())));
     }
+
     auto response = handler->GetResponse();
     req->Context = std::move(handler);
     Endpoint->SendRequest(std::move(req), std::move(callContext));
