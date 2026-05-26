@@ -9,8 +9,8 @@
 namespace NCloud::NFileStore {
 
 NCloud::NProto::TError ParseReadDataResponse(
-    NActors::TEventSerializedData& buffer,
+    const NActors::TEventSerializedData& buffer,
     NProto::TReadDataResponse& response,
-    const ::google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs);
+    ::google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs);
 
 }   // namespace NCloud::NFileStore

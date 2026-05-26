@@ -723,7 +723,7 @@ void TReadDataActor::HandleReadDataResponse(
             auto ret = ParseReadDataResponse(
                 *buffer,
                 response->Record,
-                ReadRequest.GetIovecs());
+                *ReadRequest.MutableIovecs());
             if (!HasError(ret)) {
                 isResponseParsed = true;
             } else {

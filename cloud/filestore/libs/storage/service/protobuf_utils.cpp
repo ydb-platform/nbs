@@ -4,13 +4,18 @@
 
 namespace NCloud::NFileStore {
 
+////////////////////////////////////////////////////////////////////////////////
+
 NCloud::NProto::TError ParseReadDataResponse(
-    NActors::TEventSerializedData& buffer,
+    const NActors::TEventSerializedData& buffer,
     NProto::TReadDataResponse& response,
-    const ::google::protobuf::RepeatedPtrField<
-        ::NCloud::NFileStore::NProto::TIovec>& iovecs)
+    ::google::protobuf::RepeatedPtrField< ::NCloud::NFileStore::NProto::TIovec>&
+        iovecs)
 {
     using namespace google::protobuf::internal;
+
+    Y_DEBUG_ABORT_UNLESS(
+        NProto::TReadDataResponse::GetDescriptor()->field_count() == 5);
 
     TRope::TConstIterator iter = buffer.GetBeginIter();
     ui64 size = buffer.GetSize();
@@ -46,12 +51,12 @@ NCloud::NProto::TError ParseReadDataResponse(
                 auto oldLimit = input.PushLimit(len);
                 if (!response.MutableError()->ParseFromCodedStream(&input)) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to parse error field in ReadData response");
                 }
                 if (!input.ConsumedEntireMessage()) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to consume entire error message in ReadData "
                         "response");
                 }
@@ -63,7 +68,7 @@ NCloud::NProto::TError ParseReadDataResponse(
             case NProto::TReadDataResponse::kBufferFieldNumber: {
                 if (wire != WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Invalid wire type "
                         "for buffer field in ReadData response: %d",
                         wire);
@@ -72,7 +77,7 @@ NCloud::NProto::TError ParseReadDataResponse(
                 ui32 len = 0;
                 if (!input.ReadVarint32(&len)) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to read length for buffer field in ReadData "
                         "response");
                 }
@@ -88,7 +93,7 @@ NCloud::NProto::TError ParseReadDataResponse(
                             reinterpret_cast<char*>(iovec.GetBase());
                         if (!input.ReadRaw(targetData, dataToWrite)) {
                             return MakeError(
-                                E_FAIL,
+                                E_ARGUMENT,
                                 "Failed to read buffer data in ReadData "
                                 "response");
                         }
@@ -100,7 +105,7 @@ NCloud::NProto::TError ParseReadDataResponse(
 
                 if (currentOffset < len) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to consume entire buffer in ReadData response");
                 }
                 break;
@@ -109,7 +114,7 @@ NCloud::NProto::TError ParseReadDataResponse(
             case NProto::TReadDataResponse::kHeadersFieldNumber: {
                 if (wire != WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Invalid wire type "
                         "for headers field in ReadData response: %d",
                         wire);
@@ -118,7 +123,7 @@ NCloud::NProto::TError ParseReadDataResponse(
                 ui32 len = 0;
                 if (!input.ReadVarint32(&len)) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to read length for headers field in ReadData "
                         "response");
                 }
@@ -126,12 +131,12 @@ NCloud::NProto::TError ParseReadDataResponse(
                 auto oldLimit = input.PushLimit(len);
                 if (!response.MutableHeaders()->ParseFromCodedStream(&input)) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to parse headers field in ReadData response");
                 }
                 if (!input.ConsumedEntireMessage()) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to consume entire headers message in ReadData "
                         "response");
                 }
@@ -142,7 +147,7 @@ NCloud::NProto::TError ParseReadDataResponse(
             case NProto::TReadDataResponse::kBufferOffsetFieldNumber: {
                 if (wire != WireFormatLite::WIRETYPE_VARINT) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Invalid wire type "
                         "for buffer offset field in ReadData response: %d",
                         wire);
@@ -151,7 +156,7 @@ NCloud::NProto::TError ParseReadDataResponse(
                 ui32 bufferOffset = 0;
                 if (!input.ReadVarint32(&bufferOffset)) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to read buffer offset in ReadData "
                         "response");
                 }
@@ -162,7 +167,7 @@ NCloud::NProto::TError ParseReadDataResponse(
             default:
                 if (!WireFormatLite::SkipField(&input, tag)) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to skip field in ReadData response");
                 }
         }

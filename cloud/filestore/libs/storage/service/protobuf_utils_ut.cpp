@@ -9,9 +9,9 @@
 
 namespace NCloud::NFileStore::NStorage {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 TVector<TString> CreateIovecs(size_t num, size_t size)
 {
@@ -22,6 +22,8 @@ TVector<TString> CreateIovecs(size_t num, size_t size)
     }
     return iovecs;
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
 {
@@ -43,6 +45,8 @@ TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
     return buf;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void FillIovecs(
     ::google::protobuf::RepeatedPtrField<NProto::TIovec>& protoIovecs,
     const TVector<TString>& iovecs)
@@ -54,10 +58,12 @@ void FillIovecs(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 auto TestParseReadDataResponse(
     TString input,
     NProto::TReadDataResponse& outputResponse,
-    const ::google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
+    ::google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
 {
     TRope rope(std::move(input));
 
@@ -125,7 +131,7 @@ Y_UNIT_TEST_SUITE(TProtobufUtilsTest)
         auto ret = TestParseReadDataResponse(
             expectedResponse.SerializeAsString(),
             actualResponse,
-            request.GetIovecs());
+            *request.MutableIovecs());
         UNIT_ASSERT(!HasError(ret));
         UNIT_ASSERT_VALUES_EQUAL(1_MB, actualResponse.GetLength());
 
@@ -174,7 +180,7 @@ Y_UNIT_TEST_SUITE(TProtobufUtilsTest)
         TestParseReadDataResponse(
             std::move(serializedData),
             actualResponse,
-            request.GetIovecs());
+            *request.MutableIovecs());
     }
 }
 
