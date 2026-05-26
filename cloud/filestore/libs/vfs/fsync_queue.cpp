@@ -75,8 +75,9 @@ void TFSyncQueue::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
             FileSystemId,
             TStringBuilder() << "FSync at head of meta map for nodeId="
                              << ToUnderlying(nodeId) << " before Enqueue");
+        const bool metaEmplaced = metaMap.emplace(reqId, item).second;
         STORAGE_VERIFY_C(
-            metaMap.emplace(reqId, item).second,
+            metaEmplaced,
             TWellKnownEntityTypes::FILESYSTEM,
             FileSystemId,
             TStringBuilder() << "Duplicate requestId: " << reqId
@@ -91,8 +92,9 @@ void TFSyncQueue::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
                 TStringBuilder() << "FSync at head of data map for nodeId="
                                  << ToUnderlying(nodeId) << " handle="
                                  << ToUnderlying(handle) << " before Enqueue");
+            const bool dataEmplaced = dataMap.emplace(reqId, item).second;
             STORAGE_VERIFY_C(
-                dataMap.emplace(reqId, item).second,
+                dataEmplaced,
                 TWellKnownEntityTypes::FILESYSTEM,
                 FileSystemId,
                 TStringBuilder() << "Duplicate requestId: " << reqId
@@ -125,8 +127,9 @@ void TFSyncQueue::Dequeue(
             metaNodeIt != shard.Meta.end(),
             TWellKnownEntityTypes::FILESYSTEM,
             FileSystemId);
+        const bool metaErased = metaNodeIt->second.erase(reqId);
         STORAGE_VERIFY_C(
-            metaNodeIt->second.erase(reqId),
+            metaErased,
             TWellKnownEntityTypes::FILESYSTEM,
             FileSystemId,
             TStringBuilder() << "Cannot find requestId: " << reqId
@@ -148,8 +151,9 @@ void TFSyncQueue::Dequeue(
                 handleIt != dataNodeIt->second.end(),
                 TWellKnownEntityTypes::FILESYSTEM,
                 FileSystemId);
+            const bool dataErased = handleIt->second.erase(reqId);
             STORAGE_VERIFY_C(
-                handleIt->second.erase(reqId),
+                dataErased,
                 TWellKnownEntityTypes::FILESYSTEM,
                 FileSystemId,
                 TStringBuilder() << "Cannot find requestId: " << reqId
@@ -191,8 +195,9 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
             .Promise = NewPromise<NProto::TError>(),
         };
         future = item.Promise.GetFuture();
+        const bool emplaced = it->second.emplace(reqId, std::move(item)).second;
         STORAGE_VERIFY_C(
-            it->second.emplace(reqId, std::move(item)).second,
+            emplaced,
             TWellKnownEntityTypes::FILESYSTEM,
             FileSystemId,
             TStringBuilder() << "Duplicate requestId: " << reqId
@@ -243,8 +248,10 @@ TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
             .Promise = NewPromise<NProto::TError>(),
         };
         future = item.Promise.GetFuture();
+        const bool emplaced =
+            handleIt->second.emplace(reqId, std::move(item)).second;
         STORAGE_VERIFY_C(
-            handleIt->second.emplace(reqId, std::move(item)).second,
+            emplaced,
             TWellKnownEntityTypes::FILESYSTEM,
             FileSystemId,
             TStringBuilder() << "Duplicate requestId: " << reqId
@@ -282,8 +289,9 @@ TFuture<NProto::TError> TFSyncQueue::WaitForShardMeta(
                     .Promise = NewPromise<NProto::TError>(),
                 };
                 leafFutures.push_back(item.Promise.GetFuture());
+                const bool emplaced = map.emplace(reqId, std::move(item)).second;
                 STORAGE_VERIFY_C(
-                    map.emplace(reqId, std::move(item)).second,
+                    emplaced,
                     TWellKnownEntityTypes::FILESYSTEM,
                     FileSystemId,
                     TStringBuilder() << "Duplicate requestId: " << reqId
@@ -320,8 +328,10 @@ TFuture<NProto::TError> TFSyncQueue::WaitForShardData(
                             .Promise = NewPromise<NProto::TError>(),
                         };
                         leafFutures.push_back(item.Promise.GetFuture());
+                        const bool emplaced =
+                            map.emplace(reqId, std::move(item)).second;
                         STORAGE_VERIFY_C(
-                            map.emplace(reqId, std::move(item)).second,
+                            emplaced,
                             TWellKnownEntityTypes::FILESYSTEM,
                             FileSystemId,
                             TStringBuilder()
