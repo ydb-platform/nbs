@@ -10,32 +10,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TRequestProto>
-ui64 GetRequestBytes(const TRequestProto& r)
-{
-    Y_UNUSED(r);
-    return 0;
-}
-
-ui64 GetRequestBytes(const NProto::TWriteDataRequest& r)
-{
-    if (r.GetIovecs().empty()) {
-        return r.GetBuffer().size() - r.GetBufferOffset();
-    }
-
-    ui64 bytes = 0;
-    for (const auto& iovec: r.GetIovecs()) {
-        bytes += iovec.GetLength();
-    }
-
-    return bytes;
-}
-
-ui64 GetRequestBytes(const NProto::TReadDataRequest& r)
-{
-    return r.GetLength();
-}
-
 template <typename TMethod>
 void UpdateAdapterMetrics(TTabletMetrics& m, ui64 requestBytes, TDuration d)
 {
@@ -94,7 +68,7 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
     }                                                                          \
                                                                                \
     TInstant startedTs = ctx.Now();                                            \
-    const ui64 requestBytes = GetRequestBytes(msg->Record);                    \
+    const ui64 requestBytes = CalculateByteCount(msg->Record);                 \
     auto sender = ev->Sender;                                                  \
     ui64 cookie = ev->Cookie;                                                  \
     auto* ass = ctx.ActorSystem();                                             \
