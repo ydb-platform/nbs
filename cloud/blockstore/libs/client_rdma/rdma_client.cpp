@@ -244,11 +244,6 @@ private:
                 << ", actual: " << dstSize << ")");
         }
 
-        STORAGE_VERIFY(
-            dstSize >= srcSize,
-            TWellKnownEntityTypes::DISK,
-            GetDiskId(Request->GetDiskId()));
-
         const char* ptr = data.data();
         size_t bytesLeft = srcSize;
 
@@ -260,6 +255,11 @@ private:
             ptr += len;
             bytesLeft -= len;
         }
+
+        STORAGE_VERIFY(
+            bytesLeft == 0,
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request->GetDiskId()));
 
         return {};
     }
