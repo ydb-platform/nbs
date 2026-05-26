@@ -49,6 +49,11 @@ public:
         TNodeId nodeId,
         THandle handle = {}) = 0;
 
+    // Callbacks attached to futures returned by WaitFor* run asynchronously
+    // inside Dequeue while the implementation holds an internal lock. Callers
+    // must not invoke any IFSyncQueue method from such a callback, otherwise
+    // the non-reentrant lock will deadlock.
+
     // Meta requests.
     virtual NThreading::TFuture<NProto::TError> WaitForRequests(
         TRequestId reqId,
@@ -91,7 +96,7 @@ private:
 
     using TRequestMap = TMap<TRequestId, TItem>;
 
-    struct alignas(64) TShard
+    struct Y_CACHE_ALIGNED TShard
     {
         TAdaptiveLock Lock;
         THashMap<TNodeId, TRequestMap> Meta;
@@ -130,11 +135,11 @@ public:
         THandle handle) override;
 
 private:
-    TShard& GetShard(TNodeId nodeId);
+    TShard& AccessShard(TNodeId nodeId);
 
     static bool IsFSync(const TItem& item);
 
-    static bool NotifyAndEraseLatest(TRequestMap& map);
+    static bool NotifyAndEraseLeadingFSyncs(TRequestMap& map);
 
     NThreading::TFuture<NProto::TError>
     WaitForShardMeta(TShard& shard, TRequestId reqId);
