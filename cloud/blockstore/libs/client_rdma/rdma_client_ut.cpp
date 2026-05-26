@@ -257,7 +257,7 @@ std::shared_ptr<NProto::TReadBlocksLocalRequest> MakeReadRequest(
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blocksCount);
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
 
     TSgList sglist;
     blocks.resize(blocksCount);
@@ -278,7 +278,7 @@ std::shared_ptr<NProto::TWriteBlocksLocalRequest> MakeWriteRequest(
 {
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
 
     TSgList sglist;
     size_t bytesCount = 0;
@@ -288,7 +288,7 @@ std::shared_ptr<NProto::TWriteBlocksLocalRequest> MakeWriteRequest(
     }
 
     UNIT_ASSERT_C(
-        bytesCount % request->BlockSize == 0,
+        bytesCount % request->GetBlockSize() == 0,
         "WriteBlocks request is not multiple of BlockSize");
 
     request->BlocksCount = static_cast<ui32>(bytesCount / DefaultBlockSize);

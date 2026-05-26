@@ -127,7 +127,6 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
-        Request->SetBlockSize(Request->BlockSize);
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
@@ -226,7 +225,8 @@ private:
         }
 
         size_t expectedSize =
-            static_cast<size_t>(Request->GetBlocksCount()) * Request->BlockSize;
+            static_cast<size_t>(Request->GetBlocksCount())
+            * Request->GetBlockSize();
         size_t srcSize = data.length();
 
         if (srcSize != expectedSize) {
@@ -297,7 +297,6 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
-        Request->SetBlockSize(Request->BlockSize);
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
