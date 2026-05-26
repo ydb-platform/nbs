@@ -130,6 +130,14 @@ namespace NDnsResolver {
         std::atomic<size_t> Activations{ 0 };
     };
 
+    static TString AddTrailingDot(TString&& name, bool addTrailingDot) noexcept
+    {
+        if (addTrailingDot && !name.empty() && name.back() != '.') {
+            name += ".";
+        }
+        return name;
+    }
+
     class TSimpleDnsResolver
         : public TActor<TSimpleDnsResolver>
         , private TAresLibraryInitBase
@@ -290,6 +298,7 @@ namespace NDnsResolver {
             memset(&hints, 0, sizeof(hints));
             hints.ai_flags = ARES_AI_NOSORT;
             hints.ai_family = family;
+            name = AddTrailingDot(std::move(name), reqCtx->Self->Options.AddTrailingDot);
             ares_getaddrinfo(AresChannel, name.c_str(), nullptr, &hints, &TThis::GetAddrInfoAresCallback, reqCtx.Get());
         }
 
