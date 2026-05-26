@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -50,6 +51,13 @@ func (t *transferFromSnapshotToFilesystemTask) snapshotID() string {
 
 func (t *transferFromSnapshotToFilesystemTask) filesystemID() string {
 	return t.request.GetFilesystem().GetFilesystemId()
+}
+
+func (t *transferFromSnapshotToFilesystemTask) traversalID(
+	execCtx tasks.ExecutionContext,
+) string {
+
+	return fmt.Sprintf("restore_%s_%s", t.snapshotID(), execCtx.GetTaskID())
 }
 
 func (t *transferFromSnapshotToFilesystemTask) getParentIDsInDestinationFs(
@@ -143,7 +151,7 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 	)
 
 	traverser := traversal.NewFilesystemTraverser(
-		t.snapshotID(),
+		t.traversalID(execCtx),
 		t.filesystemID(),
 		t.snapshotID(), //  use snapshotID as checkpointID to read nodes from snapshot storage
 		filesystemListerFactory,
@@ -346,11 +354,9 @@ func (t *transferFromSnapshotToFilesystemTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	snapshotID := t.snapshotID()
-
 	err := t.traversalStorage.ClearDirectoryListingQueue(
 		ctx,
-		snapshotID,
+		t.traversalID(execCtx),
 	)
 	if err != nil {
 		return err
@@ -358,7 +364,7 @@ func (t *transferFromSnapshotToFilesystemTask) Cancel(
 
 	return t.nodesStorage.CleanupRestorationNodeIDsMapping(
 		ctx,
-		snapshotID,
+		t.snapshotID(),
 		t.filesystemID(),
 	)
 }
