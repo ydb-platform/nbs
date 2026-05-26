@@ -174,6 +174,50 @@ func (f *fixture) newSlowConfig() *snapshot_config.FilesystemSnapshotConfig {
 	}
 }
 
+func (f *fixture) newTransferFromFilesystemToSnapshotTask(
+	config *snapshot_config.FilesystemSnapshotConfig,
+	filesystemID string,
+	snapshotID string,
+) *transferFromFilesystemToSnapshotTask {
+
+	return &transferFromFilesystemToSnapshotTask{
+		config:           config,
+		factory:          f.factory,
+		traversalStorage: f.traversalStorage,
+		nodesStorage:     f.nodesStorage,
+		request: &snapshot_protos.CreateFilesystemSnapshotRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: filesystemID,
+			},
+			SnapshotId: snapshotID,
+		},
+		state: &snapshot_protos.TransferFromFilesystemToSnapshotTaskState{},
+	}
+}
+
+func (f *fixture) newTransferFromSnapshotToFilesystemTask(
+	config *snapshot_config.FilesystemSnapshotConfig,
+	filesystemID string,
+	snapshotID string,
+) *transferFromSnapshotToFilesystemTask {
+
+	return &transferFromSnapshotToFilesystemTask{
+		config:           config,
+		factory:          f.factory,
+		traversalStorage: f.traversalStorage,
+		nodesStorage:     f.nodesStorage,
+		request: &snapshot_protos.TransferFromSnapshotToFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: filesystemID,
+			},
+			SnapshotId: snapshotID,
+		},
+		state: &snapshot_protos.TransferFromSnapshotToFilesystemTaskState{},
+	}
+}
+
 type cancelOnListNodesStorage struct {
 	nodes_storage.Storage
 	cancelAt int
@@ -320,20 +364,11 @@ func TestTransferFromFilesystemToSnapshotAndBack(t *testing.T) {
 	execCtx.On("GetTaskID").Return("transfer-to-snapshot-task")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 
-	toSnapshotTask := &transferFromFilesystemToSnapshotTask{
-		config:           config,
-		factory:          f.factory,
-		traversalStorage: f.traversalStorage,
-		nodesStorage:     f.nodesStorage,
-		request: &snapshot_protos.CreateFilesystemSnapshotRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: filesystemID,
-			},
-			SnapshotId: snapshotID,
-		},
-		state: &snapshot_protos.TransferFromFilesystemToSnapshotTaskState{},
-	}
+	toSnapshotTask := f.newTransferFromFilesystemToSnapshotTask(
+		config,
+		filesystemID,
+		snapshotID,
+	)
 
 	err := toSnapshotTask.Run(f.ctx, execCtx)
 	require.NoError(t, err)
@@ -346,20 +381,11 @@ func TestTransferFromFilesystemToSnapshotAndBack(t *testing.T) {
 	restoreExecCtx.On("GetTaskID").Return("transfer-from-snapshot-task")
 	restoreExecCtx.On("SaveState", mock.Anything).Return(nil)
 
-	fromSnapshotTask := &transferFromSnapshotToFilesystemTask{
-		config:           config,
-		factory:          f.factory,
-		traversalStorage: f.traversalStorage,
-		nodesStorage:     f.nodesStorage,
-		request: &snapshot_protos.TransferFromSnapshotToFilesystemRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: dstFilesystemID,
-			},
-			SnapshotId: snapshotID,
-		},
-		state: &snapshot_protos.TransferFromSnapshotToFilesystemTaskState{},
-	}
+	fromSnapshotTask := f.newTransferFromSnapshotToFilesystemTask(
+		config,
+		dstFilesystemID,
+		snapshotID,
+	)
 
 	err = fromSnapshotTask.Run(f.ctx, restoreExecCtx)
 	require.NoError(t, err)
@@ -407,20 +433,11 @@ func TestTransferFromFilesystemToSnapshotAndBackWithNemesis(t *testing.T) {
 	execCtx.On("GetTaskID").Return("nemesis-to-snapshot")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 
-	toSnapshotTask := &transferFromFilesystemToSnapshotTask{
-		config:           config,
-		factory:          f.factory,
-		traversalStorage: f.traversalStorage,
-		nodesStorage:     f.nodesStorage,
-		request: &snapshot_protos.CreateFilesystemSnapshotRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: filesystemID,
-			},
-			SnapshotId: snapshotID,
-		},
-		state: &snapshot_protos.TransferFromFilesystemToSnapshotTaskState{},
-	}
+	toSnapshotTask := f.newTransferFromFilesystemToSnapshotTask(
+		config,
+		filesystemID,
+		snapshotID,
+	)
 
 	err := util.WithNemesis(
 		f.ctx,
@@ -440,20 +457,11 @@ func TestTransferFromFilesystemToSnapshotAndBackWithNemesis(t *testing.T) {
 	restoreExecCtx.On("GetTaskID").Return("nemesis-from-snapshot")
 	restoreExecCtx.On("SaveState", mock.Anything).Return(nil)
 
-	fromSnapshotTask := &transferFromSnapshotToFilesystemTask{
-		config:           config,
-		factory:          f.factory,
-		traversalStorage: f.traversalStorage,
-		nodesStorage:     f.nodesStorage,
-		request: &snapshot_protos.TransferFromSnapshotToFilesystemRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: dstFilesystemID,
-			},
-			SnapshotId: snapshotID,
-		},
-		state: &snapshot_protos.TransferFromSnapshotToFilesystemTaskState{},
-	}
+	fromSnapshotTask := f.newTransferFromSnapshotToFilesystemTask(
+		config,
+		dstFilesystemID,
+		snapshotID,
+	)
 
 	err = util.WithNemesis(
 		f.ctx,
@@ -514,20 +522,12 @@ func TestTransferFromFilesystemToSnapshotCancelDeletesData(t *testing.T) {
 	execCtx.On("GetTaskID").Return("cancel-to-snapshot")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 
-	task := &transferFromFilesystemToSnapshotTask{
-		config:           config,
-		factory:          cancelFactory,
-		traversalStorage: f.traversalStorage,
-		nodesStorage:     f.nodesStorage,
-		request: &snapshot_protos.CreateFilesystemSnapshotRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: filesystemID,
-			},
-			SnapshotId: snapshotID,
-		},
-		state: &snapshot_protos.TransferFromFilesystemToSnapshotTaskState{},
-	}
+	task := f.newTransferFromFilesystemToSnapshotTask(
+		config,
+		filesystemID,
+		snapshotID,
+	)
+	task.factory = cancelFactory
 
 	err := task.Run(runCtx, execCtx)
 	require.Error(t, err)
@@ -601,20 +601,11 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 	toSnapshotExecCtx.On("GetTaskID").Return("setup-to-snapshot")
 	toSnapshotExecCtx.On("SaveState", mock.Anything).Return(nil)
 
-	toSnapshotTask := &transferFromFilesystemToSnapshotTask{
-		config:           f.newConfig(),
-		factory:          f.factory,
-		traversalStorage: f.traversalStorage,
-		nodesStorage:     f.nodesStorage,
-		request: &snapshot_protos.CreateFilesystemSnapshotRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: filesystemID,
-			},
-			SnapshotId: snapshotID,
-		},
-		state: &snapshot_protos.TransferFromFilesystemToSnapshotTaskState{},
-	}
+	toSnapshotTask := f.newTransferFromFilesystemToSnapshotTask(
+		f.newConfig(),
+		filesystemID,
+		snapshotID,
+	)
 
 	err := toSnapshotTask.Run(f.ctx, toSnapshotExecCtx)
 	require.NoError(t, err)
@@ -652,20 +643,12 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 		cancel:   cancel,
 	}
 
-	fromSnapshotTask := &transferFromSnapshotToFilesystemTask{
-		config:           config,
-		factory:          f.factory,
-		traversalStorage: f.traversalStorage,
-		nodesStorage:     cancelStorage,
-		request: &snapshot_protos.TransferFromSnapshotToFilesystemRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: dstFilesystemID,
-			},
-			SnapshotId: snapshotID,
-		},
-		state: &snapshot_protos.TransferFromSnapshotToFilesystemTaskState{},
-	}
+	fromSnapshotTask := f.newTransferFromSnapshotToFilesystemTask(
+		config,
+		dstFilesystemID,
+		snapshotID,
+	)
+	fromSnapshotTask.nodesStorage = cancelStorage
 
 	err = fromSnapshotTask.Run(runCtx, restoreExecCtx)
 	require.Error(t, err)
