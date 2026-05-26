@@ -1592,7 +1592,8 @@ message TStorageServiceConfig
     // Enables compaction by garbage ignoring zeroed blocks.
     optional bool IgnoringZeroedCompactionEnabled = 501;
 
-    // Max Compaction per second. Should be less MaxCompactionExecTimePerSecond.
-    // Used for GarbageCompaction in case when IgnoringZeroedCompactionEnabled is on.
-    optional uint32 MaxCompactionExecTimePerSecondHard = 502;  // in ms
+    // Max Compaction per second (in ms). Should be less than
+    // MaxCompactionExecTimePerSecond. Used for GarbageCompaction in case when
+    // IgnoringZeroedCompactionEnabled is on.
+    optional uint32 MaxCompactionExecTimePerSecondHard = 502;
 }

@@ -651,7 +651,8 @@ public:
 
     ui32 GetCompactionIgnoringZeroedScore() const
     {
-        return CompactionMap.GetTopByGarbageIgnoringZeroed().Stat.GarbageIgnoringZeroed();
+        return CompactionMap.GetTopByGarbageIgnoringZeroed()
+            .Stat.GarbageIgnoringZeroed();
     }
 
     float GetCompactionScore() const

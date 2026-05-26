@@ -3456,8 +3456,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     void DoShouldAutomaticallyRunGarbageCompactionForSuperDirtyRanges(
         bool ignoringZeroedCompactionEnabled)
     {
-        Y_UNUSED(ignoringZeroedCompactionEnabled);
-
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
         config.SetV1GarbageCompactionEnabled(true);

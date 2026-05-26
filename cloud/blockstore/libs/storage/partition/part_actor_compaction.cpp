@@ -1300,6 +1300,7 @@ void IncrementCompactionCounterByTriggerKind(
             ByIgnoringZeroedPerRange:
             partCounters->Cumulative.CompactionByIgnoringZeroedPerRange
                 .Increment(1);
+            break;
     }
 }
 
@@ -1407,11 +1408,13 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
             : Config->GetMaxCompactionExecTimePerSecond();
 
     if (info->ThrottlingAllowed && Config->GetMaxCompactionDelay()) {
-        auto execTime = State->GetCompactionExecTimeForLastSecond(ctx.Now());
-        auto delay = Config->GetMinCompactionDelay();
+        const auto execTime =
+            State->GetCompactionExecTimeForLastSecond(ctx.Now());
+        const auto delay = Config->GetMinCompactionDelay();
         if (maxCompactionExecTimePerSecond) {
-            auto throttlingFactor = double(execTime.GetValue()) /
-                                    maxCompactionExecTimePerSecond.GetValue();
+            const auto throttlingFactor =
+                static_cast<double>(execTime.GetValue()) /
+                maxCompactionExecTimePerSecond.GetValue();
             const auto throttleDelay =
                 (TDuration::Seconds(1) - execTime) * throttlingFactor;
 
