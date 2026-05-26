@@ -174,6 +174,109 @@ func (f *fixture) newSlowConfig() *snapshot_config.FilesystemSnapshotConfig {
 	}
 }
 
+type cancelOnListNodesStorage struct {
+	nodes_storage.Storage
+	cancelAt int
+	cancel   context.CancelFunc
+	calls    int
+}
+
+func (s *cancelOnListNodesStorage) ListNodes(
+	ctx context.Context,
+	snapshotID string,
+	parentNodeID uint64,
+	cookie string,
+	limit int,
+) ([]nfs.Node, string, error) {
+
+	s.calls++
+	if s.calls == s.cancelAt {
+		s.cancel()
+		return nil, "", context.Canceled
+	}
+
+	return s.Storage.ListNodes(
+		ctx,
+		snapshotID,
+		parentNodeID,
+		cookie,
+		limit,
+	)
+}
+
+type cancelOnListNodesSession struct {
+	nfs.Session
+	factory *cancelOnListNodesFactory
+}
+
+func (s *cancelOnListNodesSession) ListNodes(
+	ctx context.Context,
+	parentNodeID uint64,
+	cookie string,
+	maxBytes uint32,
+	unsafe bool,
+) ([]nfs.Node, string, error) {
+
+	s.factory.calls++
+	if s.factory.calls == s.factory.cancelAt {
+		s.factory.cancel()
+		return nil, "", context.Canceled
+	}
+
+	return s.Session.ListNodes(ctx, parentNodeID, cookie, maxBytes, unsafe)
+}
+
+type cancelOnListNodesClient struct {
+	nfs.Client
+	factory *cancelOnListNodesFactory
+}
+
+func (c *cancelOnListNodesClient) CreateSession(
+	ctx context.Context,
+	fileSystemID string,
+	checkpointID string,
+	readonly bool,
+) (nfs.Session, error) {
+
+	session, err := c.Client.CreateSession(
+		ctx,
+		fileSystemID,
+		checkpointID,
+		readonly,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cancelOnListNodesSession{
+		Session: session,
+		factory: c.factory,
+	}, nil
+}
+
+type cancelOnListNodesFactory struct {
+	nfs.Factory
+	cancelAt int
+	cancel   context.CancelFunc
+	calls    int
+}
+
+func (f *cancelOnListNodesFactory) NewClient(
+	ctx context.Context,
+	zoneID string,
+) (nfs.Client, error) {
+
+	client, err := f.Factory.NewClient(ctx, zoneID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cancelOnListNodesClient{
+		Client:  client,
+		factory: f,
+	}, nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestTransferFromFilesystemToSnapshotAndBack(t *testing.T) {
@@ -399,6 +502,13 @@ func TestTransferFromFilesystemToSnapshotCancelDeletesData(t *testing.T) {
 
 	config := f.newSlowConfig()
 	snapshotID := "snapshot-cancel-to"
+	runCtx, cancel := context.WithCancel(f.ctx)
+
+	cancelFactory := &cancelOnListNodesFactory{
+		Factory:  f.factory,
+		cancelAt: 5,
+		cancel:   cancel,
+	}
 
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	execCtx.On("GetTaskID").Return("cancel-to-snapshot")
@@ -406,7 +516,7 @@ func TestTransferFromFilesystemToSnapshotCancelDeletesData(t *testing.T) {
 
 	task := &transferFromFilesystemToSnapshotTask{
 		config:           config,
-		factory:          f.factory,
+		factory:          cancelFactory,
 		traversalStorage: f.traversalStorage,
 		nodesStorage:     f.nodesStorage,
 		request: &snapshot_protos.CreateFilesystemSnapshotRequest{
@@ -419,12 +529,10 @@ func TestTransferFromFilesystemToSnapshotCancelDeletesData(t *testing.T) {
 		state: &snapshot_protos.TransferFromFilesystemToSnapshotTaskState{},
 	}
 
-	runCtx, cancel := context.WithCancel(f.ctx)
-	time.AfterFunc(100*time.Millisecond, cancel)
-
 	err := task.Run(runCtx, execCtx)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, context.Canceled))
+	require.Equal(t, 5, cancelFactory.calls)
 
 	queueEntries, err := f.traversalStorage.SelectNodesToList(
 		f.ctx,
@@ -434,6 +542,16 @@ func TestTransferFromFilesystemToSnapshotCancelDeletesData(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, queueEntries)
+
+	savedNodes, _, err := f.nodesStorage.ListNodes(
+		f.ctx,
+		snapshotID,
+		nfs.RootNodeID,
+		"",
+		100,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, savedNodes)
 
 	err = task.Cancel(f.ctx, execCtx)
 	require.NoError(t, err)
@@ -446,6 +564,16 @@ func TestTransferFromFilesystemToSnapshotCancelDeletesData(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, queueEntries)
+
+	savedNodes, _, err = f.nodesStorage.ListNodes(
+		f.ctx,
+		snapshotID,
+		nfs.RootNodeID,
+		"",
+		100,
+	)
+	require.NoError(t, err)
+	require.Empty(t, savedNodes)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -491,6 +619,24 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 	err := toSnapshotTask.Run(f.ctx, toSnapshotExecCtx)
 	require.NoError(t, err)
 
+	srcRootNodes, _, err := f.nodesStorage.ListNodes(
+		f.ctx,
+		snapshotID,
+		nfs.RootNodeID,
+		"",
+		100,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, srcRootNodes)
+
+	var srcDirectoryNodeIDs []uint64
+	for _, node := range srcRootNodes {
+		if node.Type.IsDirectory() {
+			srcDirectoryNodeIDs = append(srcDirectoryNodeIDs, node.NodeID)
+		}
+	}
+	require.NotEmpty(t, srcDirectoryNodeIDs)
+
 	dstFilesystemID := filesystemID + "_restored"
 	f.prepareFilesystem(t, dstFilesystemID)
 	defer f.cleanupFilesystem(t, dstFilesystemID)
@@ -499,11 +645,18 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 	restoreExecCtx.On("GetTaskID").Return("cancel-from-snapshot")
 	restoreExecCtx.On("SaveState", mock.Anything).Return(nil)
 
+	runCtx, cancel := context.WithCancel(f.ctx)
+	cancelStorage := &cancelOnListNodesStorage{
+		Storage:  f.nodesStorage,
+		cancelAt: 5,
+		cancel:   cancel,
+	}
+
 	fromSnapshotTask := &transferFromSnapshotToFilesystemTask{
 		config:           config,
 		factory:          f.factory,
 		traversalStorage: f.traversalStorage,
-		nodesStorage:     f.nodesStorage,
+		nodesStorage:     cancelStorage,
 		request: &snapshot_protos.TransferFromSnapshotToFilesystemRequest{
 			Filesystem: &types.Filesystem{
 				ZoneId:       "zone",
@@ -514,16 +667,14 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 		state: &snapshot_protos.TransferFromSnapshotToFilesystemTaskState{},
 	}
 
-	runCtx, cancel := context.WithCancel(f.ctx)
-	time.AfterFunc(100*time.Millisecond, cancel)
-
 	err = fromSnapshotTask.Run(runCtx, restoreExecCtx)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, context.Canceled))
+	require.Equal(t, 5, cancelStorage.calls)
 
 	queueEntries, err := f.traversalStorage.SelectNodesToList(
 		f.ctx,
-		snapshotID,
+		fromSnapshotTask.traversalID(restoreExecCtx),
 		map[uint64]struct{}{},
 		100,
 	)
@@ -533,27 +684,40 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 		f.ctx,
 		snapshotID,
 		dstFilesystemID,
-		[]uint64{nfs.RootNodeID},
+		srcDirectoryNodeIDs,
 	)
 	require.NoError(t, err)
-	require.True(
-		t,
-		len(queueEntries) > 0 || len(mappings) > 0,
-		"expected some data to be written before cancellation",
-	)
+	require.NotEmpty(t, queueEntries)
+	require.NotEmpty(t, mappings)
 
 	err = fromSnapshotTask.Cancel(f.ctx, restoreExecCtx)
 	require.NoError(t, err)
 
 	queueEntries, err = f.traversalStorage.SelectNodesToList(
 		f.ctx,
-		snapshotID,
+		fromSnapshotTask.traversalID(restoreExecCtx),
 		map[uint64]struct{}{},
 		100,
 	)
 	require.NoError(t, err)
 	require.Empty(t, queueEntries)
 
-	err = f.nodesStorage.DeleteSnapshotData(f.ctx, snapshotID)
+	mappings, err = f.nodesStorage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcDirectoryNodeIDs,
+	)
 	require.NoError(t, err)
+	require.Empty(t, mappings)
+
+	snapshotNodes, _, err := f.nodesStorage.ListNodes(
+		f.ctx,
+		snapshotID,
+		nfs.RootNodeID,
+		"",
+		100,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, snapshotNodes)
 }
