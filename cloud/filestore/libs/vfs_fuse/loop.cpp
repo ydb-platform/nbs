@@ -1088,32 +1088,40 @@ private:
             }
 
             TDirectoryHandleStoragePtr directoryHandleStorage;
-            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled() &&
-                Config->GetDirectoryHandlesStoragePath())
-            {
-                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
-                            FileSystemConfig->GetFileSystemId() / SessionId;
+            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
+                if (Config->GetDirectoryHandlesStoragePath()) {
+                    auto path =
+                        TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                        FileSystemConfig->GetFileSystemId() / SessionId;
 
-                auto error = CreateAndLockFile(
-                    path,
-                    DirectoryHandleStorageFileName,
-                    DirectoryHandleStorageFileLock);
+                    auto error = CreateAndLockFile(
+                        path,
+                        DirectoryHandleStorageFileName,
+                        DirectoryHandleStorageFileLock);
 
-                if (HasError(error)) {
-                    ReportDirectoryHandlesStorageError(error.GetMessage());
-                    return error;
+                    if (HasError(error)) {
+                        ReportDirectoryHandlesStorageError(error.GetMessage());
+                        return error;
+                    }
+
+                    directoryHandleStorage = CreateDirectoryHandleStorage(
+                        Log,
+                        path / DirectoryHandleStorageFileName,
+                        FileSystemConfig->GetDirectoryHandlesTableSize(),
+                        Config->GetDirectoryHandlesInitialDataSize(),
+                        Config->GetDirectoryHandlesMaxDataAreaStepSize(),
+                        FileSystemConfig->GetMaxBufferSize(),
+                        FileMapMemoryLimiter);
+
+                    DirectoryHandleStorageInitialized = true;
+                } else {
+                    STORAGE_ERROR(
+                        "[f:%s][c:%s] Error initializing "
+                        "DirectoryHandleStorage: DirectoryHandlesStoragePath "
+                        "is not set",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str());
                 }
-
-                directoryHandleStorage = CreateDirectoryHandleStorage(
-                    Log,
-                    path / DirectoryHandleStorageFileName,
-                    FileSystemConfig->GetDirectoryHandlesTableSize(),
-                    Config->GetDirectoryHandlesInitialDataSize(),
-                    Config->GetDirectoryHandlesMaxDataAreaStepSize(),
-                    FileSystemConfig->GetMaxBufferSize(),
-                    FileMapMemoryLimiter);
-
-                DirectoryHandleStorageInitialized = true;
             }
 
             DirectoryHandleStats = CreateDirectoryHandleStats(Timer);

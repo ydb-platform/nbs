@@ -163,9 +163,9 @@ public:
         auto request =
             std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         request->Record.SetStartIndex(writeRange.Start);
+        request->Record.SetBlockSize(blockSize);
         request->Record.Sglist = std::move(sglist);
         request->Record.BlocksCount = writeRange.Size();
-        request->Record.BlockSize = blockSize;
         return request;
     }
 

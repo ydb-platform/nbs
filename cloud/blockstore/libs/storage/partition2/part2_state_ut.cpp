@@ -1416,7 +1416,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             freshBlocks.emplace_back(TBlock{i, 1, 1, false}, ToString(i));
         }
         state.InitFreshBlocks(freshBlocks);
-        state.GetCompactionMap().Update(0, 10, 10, 10, false);
+        state.GetCompactionMap().Update(0, 10, 10, 10, 0, false);
         state.AddBlobUpdateByFresh({TBlockRange32::WithLength(0, 1024), 1, 1});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
@@ -1429,7 +1429,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             freshBlocks.emplace_back(TBlock{i, 1, 1, false}, ToString(i));
         }
         state.InitFreshBlocks(freshBlocks);
-        state.GetCompactionMap().Update(0, 30, 30, 30, false);
+        state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
         state.AddBlobUpdateByFresh({TBlockRange32::WithLength(1024, 1024), 2, 2});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
@@ -1437,7 +1437,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CompactionScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CleanupScore, 1e-5);
 
-        state.GetCompactionMap().Update(0, 100, 100, 100, false);
+        state.GetCompactionMap().Update(0, 100, 100, 100, 0, false);
 
         const auto maxBackpressure2 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure2.CompactionScore, 1e-5);
@@ -1459,7 +1459,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultIndexCachingConfig()
         );
 
-        state.GetCompactionMap().Update(0, 30, 30, 30, false);
+        state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
 
         const auto bp = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_VALUES_EQUAL(0, bp.CompactionScore);

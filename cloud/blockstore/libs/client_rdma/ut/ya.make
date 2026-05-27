@@ -1,13 +1,12 @@
-LIBRARY()
+UNITTEST_FOR(cloud/blockstore/libs/client_rdma)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
-    protocol.cpp
-    rdma_client.cpp
+    rdma_client_ut.cpp
 )
 
 PEERDIR(
-    cloud/blockstore/libs/common
-    cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
 
     cloud/storage/core/libs/common
@@ -16,5 +15,3 @@ PEERDIR(
 )
 
 END()
-
-RECURSE_FOR_TESTS(ut)

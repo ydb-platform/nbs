@@ -3343,6 +3343,81 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
     }
 
+    Y_UNIT_TEST(ShouldDrainRequestsWhileStopping)
+    {
+        TBootstrap bootstrap;
+
+        auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto) {
+            writeDataCalled++;
+            return writeDataPromise.GetFuture();
+        };
+
+        bootstrap.Service->ReadDataHandler = [&](auto, auto)
+        {
+            return MakeFuture(NProto::TReadDataResponse());
+        };
+
+        bootstrap.Start();
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+
+        UNIT_ASSERT(
+            WaitForCondition(
+                WaitTimeout, [&]() { return writeDataCalled.load(); }));
+
+        auto stopFuture = bootstrap.StopAsync();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadRequest>(nodeId, handleId, 0, 10);
+        // Request started after StopAsync, expect the request to be cancelled
+        UNIT_ASSERT_EXCEPTION(read.GetValue(WaitTimeout), yexception);
+
+        UNIT_ASSERT(!write.HasValue());
+        writeDataPromise.SetValue({});
+        UNIT_ASSERT(write.GetValueSync());
+
+        UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldHandleDoubleInit)
+    {
+        TBootstrap bootstrap;
+
+        auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto) {
+            return writeDataPromise.GetFuture();
+        };
+
+        bootstrap.Start(/* sendInitRequest = */ false);
+
+        auto init = bootstrap.Fuse->SendRequest<TInitRequest>();
+        UNIT_ASSERT_NO_EXCEPTION(init.GetValueSync());
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+
+        init = bootstrap.Fuse->SendRequest<TInitRequest>();
+        UNIT_ASSERT_NO_EXCEPTION(init.GetValueSync());
+
+        // TODO(svartmetal): it looks like it is better to drain in-flight
+        // requests from the previous boot (sent after the first init and
+        // before re-init)
+        UNIT_ASSERT(!write.HasValue());
+        writeDataPromise.SetValue({});
+        UNIT_ASSERT(write.GetValueSync());
+    }
+
     Y_UNIT_TEST(ShouldRaiseCritEventWhenErrorWasSentToGuest)
     {
         TBootstrap bootstrap;

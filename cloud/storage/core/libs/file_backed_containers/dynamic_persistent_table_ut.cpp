@@ -672,56 +672,6 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldMigrateLegacyRelativeDataOffsetsOnStartup)
-    {
-        TTempDir tempDir;
-        TString tablePath = tempDir.Path() / "test.table";
-
-        TVector<TString> payloads = {
-            TString("first_payload"),
-            TString("second_payload"),
-            TString("third_payload")};
-        TVector<ui64> indices;
-
-        {
-            auto table = CreateTable(tablePath, 32, 1024);
-
-            for (const auto& payload: payloads) {
-                indices.push_back(AllocAndCommitRecord(table, payload));
-            }
-
-            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
-
-            for (ui64 index: indices) {
-                UNIT_ASSERT_C(
-                    descriptorsPtr[index].DataOffset >=
-                        CalcDataAreaOffset(tableHeader),
-                    "Expected absolute data offset");
-                descriptorsPtr[index].DataOffset -=
-                    CalcDataAreaOffset(tableHeader);
-            }
-
-            tableHeader->Version = 1;
-        }
-
-        {
-            auto table = CreateTable(tablePath, 32, 1024);
-            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
-
-            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
-            UNIT_ASSERT_VALUES_EQUAL(payloads.size(), table.CountRecords());
-
-            for (size_t i = 0; i < indices.size(); ++i) {
-                TStringBuf record = table.GetRecordWithValidation(indices[i]);
-                UNIT_ASSERT_VALUES_EQUAL(payloads[i], TString(record));
-                UNIT_ASSERT_C(
-                    descriptorsPtr[indices[i]].DataOffset >=
-                        CalcDataAreaOffset(tableHeader),
-                    "Expected migrated absolute data offset");
-            }
-        }
-    }
-
     Y_UNIT_TEST(ShouldCompactCorrectly)
     {
         TTempDir tempDir;

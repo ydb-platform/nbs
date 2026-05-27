@@ -510,7 +510,7 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
             "Failed to acquire sglist in LaggingAgentsReplicaProxyActor");
     }
 
-    TSgListBlockRange src(guard.Get(), msg->Record.BlockSize);
+    TSgListBlockRange src(guard.Get(), msg->Record.GetBlockSize());
 
     for (const auto& deviceRequest: deviceRequests) {
         auto request =
@@ -522,7 +522,7 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.BlocksCount = deviceRequest.BlockRange.Size();
-        request->Record.BlockSize = msg->Record.BlockSize;
+        request->Record.SetBlockSize(msg->Record.GetBlockSize());
 
         Y_DEBUG_ABORT_UNLESS(src.HasNext());
         TSgList sglist = src.Next(deviceRequest.BlockRange.Size());

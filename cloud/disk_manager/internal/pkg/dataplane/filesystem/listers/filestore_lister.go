@@ -21,7 +21,7 @@ func (l *filestoreLister) ListNodes(
 	cookie string,
 ) ([]nfs.Node, string, error) {
 
-	nodes, cookcookie, err := l.session.ListNodes(
+	nodes, nextCookie, err := l.session.ListNodes(
 		ctx,
 		nodeID,
 		cookie,
@@ -29,7 +29,7 @@ func (l *filestoreLister) ListNodes(
 		l.unsafe,
 	)
 	if err == nil {
-		return nodes, cookcookie, nil
+		return nodes, nextCookie, nil
 	}
 
 	if !l.ignoreNotFound {

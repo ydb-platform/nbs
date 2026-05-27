@@ -74,11 +74,11 @@ NProto::TError CompleteReadBlocksLocalRequest(
     NProto::TReadBlocksLocalRequest& request,
     const NProto::TReadBlocksLocalResponse& response)
 {
-    if (request.BlockSize == 0) {
+    if (request.GetBlockSize() == 0) {
         return TErrorResponse(E_ARGUMENT, "block size is zero");
     }
 
-    auto sgListOrError = GetSgList(response, request.BlockSize);
+    auto sgListOrError = GetSgList(response, request.GetBlockSize());
     if (HasError(sgListOrError)) {
         return sgListOrError.GetError();
     }
@@ -86,7 +86,7 @@ NProto::TError CompleteReadBlocksLocalRequest(
     auto src = sgListOrError.ExtractResult();
     size_t srcSize = SgListGetSize(src);
 
-    size_t expectedSize = request.GetBlocksCount() * request.BlockSize;
+    size_t expectedSize = request.GetBlocksCount() * request.GetBlockSize();
     if (srcSize != expectedSize) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
             << "invalid response size (expected: " << expectedSize
@@ -122,7 +122,7 @@ using TWriteBlocksRequestPtr = std::shared_ptr<NProto::TWriteBlocksRequest>;
 TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
     const NProto::TWriteBlocksLocalRequest& localRequest)
 {
-    if (localRequest.BlockSize == 0) {
+    if (localRequest.GetBlockSize() == 0) {
         return TErrorResponse(E_ARGUMENT, "block size is zero");
     }
 
@@ -135,7 +135,7 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
     const auto& src = guard.Get();
     auto srcSize = SgListGetSize(src);
 
-    size_t expectedSize = localRequest.BlocksCount * localRequest.BlockSize;
+    size_t expectedSize = localRequest.BlocksCount * localRequest.GetBlockSize();
     if (srcSize < expectedSize) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
             << "invalid buffer size (expected: " << expectedSize
@@ -147,7 +147,7 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
     auto dst = ResizeIOVector(
         *request->MutableBlocks(),
         localRequest.BlocksCount,
-        localRequest.BlockSize);
+        localRequest.GetBlockSize());
 
     size_t bytesWritten = SgListCopy(src, dst);
     STORAGE_VERIFY(

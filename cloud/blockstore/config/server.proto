@@ -288,6 +288,9 @@ message TServerConfig
 
     // Drop all discard requests without processing them.
     optional bool DropDiscardRequests = 132;
+
+    // Size of the thread pool for the external vhost server.
+    optional uint32 ExternalVhostServerThreadPoolSize = 133;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

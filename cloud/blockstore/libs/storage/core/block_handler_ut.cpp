@@ -28,8 +28,8 @@ IWriteBlocksHandlerPtr CreateTestWriteBlocksHandler(
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.Sglist = TGuardedSgList(std::move(sglist));
     request->Record.SetStartIndex(range.Start);
+    request->Record.SetBlockSize(content.size() / range.Size());
     request->Record.BlocksCount = range.Size();
-    request->Record.BlockSize = content.size() / range.Size();
 
     return CreateWriteBlocksHandler(range, std::move(request));
 }

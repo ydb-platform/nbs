@@ -343,7 +343,7 @@ NProto::TError ReadBlocksLocal(const IBlockStorePtr& clientEndpoint)
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(0);
     request->SetBlocksCount(blocksCount);
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
     request->Sglist = TGuardedSgList(sglist);
 
     auto future = clientEndpoint->ReadBlocksLocal(
@@ -366,8 +366,8 @@ NProto::TError WriteBlocksLocal(const IBlockStorePtr& clientEndpoint)
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(0);
+    request->SetBlockSize(DefaultBlockSize);
     request->BlocksCount = blocksCount;
-    request->BlockSize = DefaultBlockSize;
     request->Sglist = TGuardedSgList(sglist);
 
     auto future = clientEndpoint->WriteBlocksLocal(
@@ -473,8 +473,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         {
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             request->SetStartIndex(startIndex);
+            request->SetBlockSize(DefaultBlockSize);
             request->BlocksCount = blocksCount;
-            request->BlockSize = DefaultBlockSize;
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = bootstrap->GetClientEndpoint()->WriteBlocksLocal(
@@ -489,7 +489,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetStartIndex(startIndex);
             request->SetBlocksCount(blocksCount);
-            request->BlockSize = DefaultBlockSize;
+            request->SetBlockSize(DefaultBlockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = bootstrap->GetClientEndpoint()->ReadBlocksLocal(
