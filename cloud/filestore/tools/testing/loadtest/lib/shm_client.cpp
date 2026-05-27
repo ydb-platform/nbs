@@ -148,13 +148,10 @@ public:
             SlotSize);
         outOffset = AllocateShmOffset();
 
-        request.ClearIovecs();
         auto* iovec = request.AddIovecs();
         iovec->SetBase(outOffset);
         iovec->SetLength(len);
         request.SetRegionId(RegionId);
-
-        request.SetHandle(InvalidHandle);
 
         return static_cast<char*>(LocalAddr) + outOffset;
     }
