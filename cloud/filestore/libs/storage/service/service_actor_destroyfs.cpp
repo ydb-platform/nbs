@@ -30,7 +30,7 @@ private:
     const bool AllowFileStoreDestroyWithOrphanSessions;
     TVector<TString> ShardIds;
     ui32 DestroyedShardCount = 0;
-    ui32 ForceDestroySizeThreshold = 0;
+    ui64 ForceDestroySizeThreshold = 0;
     NProto::TFileStore FileStore;
 
 public:
@@ -39,7 +39,7 @@ public:
         TString fileSystemId,
         bool forceDestroy,
         bool allowFileStoreDestroyWithOrphanSessions,
-        ui32 forceDestroySizeThreshold);
+        ui64 forceDestroySizeThreshold);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -84,7 +84,7 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
         TString fileSystemId,
         bool forceDestroy,
         bool allowFileStoreDestroyWithOrphanSessions,
-        ui32 forceDestroySizeThreshold)
+        ui64 forceDestroySizeThreshold)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)

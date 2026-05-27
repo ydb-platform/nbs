@@ -333,7 +333,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
                                                                                \
-    xxx(ForceDestroySizeThreshold,          ui32,       0                     )\
+    xxx(ForceDestroySizeThreshold,          ui64,       0                     )\
                                                                                \
     xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
