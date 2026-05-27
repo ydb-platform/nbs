@@ -13,7 +13,10 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
-#include <util/system/mutex.h>
+#include <util/generic/vector.h>
+#include <util/system/spinlock.h>
+
+#include <array>
 
 namespace NCloud::NFileStore::NVFS {
 
@@ -38,15 +41,18 @@ public:
 
     virtual ~IFSyncQueue() = default;
 
-    virtual void Enqueue(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle = {}) = 0;
+    virtual void
+    Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle = {}) = 0;
     virtual void Dequeue(
         TRequestId reqId,
         const NProto::TError& error,
         TNodeId nodeId,
         THandle handle = {}) = 0;
+
+    // Callbacks attached to futures returned by WaitFor* run asynchronously
+    // inside Dequeue while the implementation holds an internal lock. Callers
+    // must not invoke any IFSyncQueue method from such a callback, otherwise
+    // the non-reentrant lock will deadlock.
 
     // Meta requests.
     virtual NThreading::TFuture<NProto::TError> WaitForRequests(
@@ -54,20 +60,34 @@ public:
         TNodeId nodeId = {}) = 0;
 
     // Data requests.
-    virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) = 0;
     virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle) = 0;
+        TRequestId reqId) = 0;
+    virtual NThreading::TFuture<NProto::TError>
+    WaitForDataRequests(TRequestId reqId, TNodeId nodeId, THandle handle) = 0;
 };
 
-class TFSyncCache
+////////////////////////////////////////////////////////////////////////////////
+
+class TFSyncQueue final: public IFSyncQueue
 {
 public:
     using TRequestId = IFSyncQueue::TRequestId;
     using TRequest = IFSyncQueue::TRequest;
 
 private:
+    // Sharding by NodeId. Hot-path Enqueue/Dequeue and per-node WaitFor*
+    // acquire exactly one shard lock; no global lock exists. Global fsync
+    // (WaitFor*(reqId) without nodeId) fans out across all shards.
+    //
+    // Enqueue is the ordering admission point. ReqIds order requests that
+    // have already reached this queue, but multi-queue virtiofs assigns
+    // fuse_req_unique before dispatching across queues, so lower unique ids
+    // can be admitted to this code after higher ones by a different loop
+    // thread. The reqId-keyed TMap re-sorts them. Global fsync therefore
+    // waits for the per-map state visible when each shard is scanned; it
+    // is not a global fuse_req_unique resequencer.
+    static constexpr ui32 ShardCount = 16;
+
     struct TItem
     {
         TRequest Request;
@@ -76,56 +96,25 @@ private:
 
     using TRequestMap = TMap<TRequestId, TItem>;
 
-    using TMetaMap = THashMap<TNodeId, TRequestMap>;
-    using TDataMap = THashMap<TNodeId, THashMap<THandle, TRequestMap>>;
+    struct Y_CACHE_ALIGNED TShard
+    {
+        TAdaptiveLock Lock;
+        THashMap<TNodeId, TRequestMap> Meta;
+        THashMap<TNodeId, THashMap<THandle, TRequestMap>> Data;
+    };
 
-private:
+    const TString FileSystemId;
     const TString LogTag;
     const ILoggingServicePtr Logging;
     TLog Log;
 
-    TMetaMap Meta;
-    TRequestMap GlobalMeta;
-
-    TDataMap Data;
-    TRequestMap GlobalData;
-
-public:
-    TFSyncCache(TString logTag, ILoggingServicePtr logging);
-
-    void AddRequest(const TRequest& request);
-    NThreading::TFuture<NProto::TError> AddFSyncRequest(const TRequest& request);
-
-    void RemoveRequest(const TRequest& request);
-
-private:
-    void CheckFSyncNotifications();
-    bool NotifyAndEraseLatest(TRequestMap& map);
-    void Notify(
-        const TRequest& request,
-        NThreading::TPromise<NProto::TError>&& promise);
-
-    bool IsFSync(const TItem& item) const;
-};
-
-class TFSyncQueue final
-    : public IFSyncQueue
-{
-private:
-    const TString LogTag;
-    const ILoggingServicePtr Logging;
-    TLog Log;
-
-    TFSyncCache CurrentState;
-    TAdaptiveLock StateLock;
+    std::array<TShard, ShardCount> Shards;
 
 public:
     TFSyncQueue(const TString& fileSystemId, ILoggingServicePtr logging);
 
-    void Enqueue(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle = {}) override;
+    void
+    Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle = {}) override;
     void Dequeue(
         TRequestId reqId,
         const NProto::TError& error,
@@ -138,21 +127,36 @@ public:
         TNodeId nodeId = {}) override;
 
     // Data requests.
-    NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) override;
+    NThreading::TFuture<NProto::TError> WaitForDataRequests(
+        TRequestId reqId) override;
     NThreading::TFuture<NProto::TError> WaitForDataRequests(
         TRequestId reqId,
         TNodeId nodeId,
         THandle handle) override;
+
+private:
+    TShard& AccessShard(TNodeId nodeId);
+
+    static bool IsFSync(const TItem& item);
+
+    static bool NotifyAndEraseLeadingFSyncs(TRequestMap& map);
+
+    NThreading::TFuture<NProto::TError>
+    WaitForShardMeta(TShard& shard, TRequestId reqId);
+    NThreading::TFuture<NProto::TError>
+    WaitForShardData(TShard& shard, TRequestId reqId);
+
+    NThreading::TFuture<NProto::TError> WaitForGlobalMeta(TRequestId reqId);
+    NThreading::TFuture<NProto::TError> WaitForGlobalData(TRequestId reqId);
 };
 
-class TFSyncQueueStub final
-    : public IFSyncQueue
+////////////////////////////////////////////////////////////////////////////////
+
+class TFSyncQueueStub final: public IFSyncQueue
 {
 public:
-    void Enqueue(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle = {}) override;
+    void
+    Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle = {}) override;
     void Dequeue(
         TRequestId reqId,
         const NProto::TError& error,
@@ -165,7 +169,8 @@ public:
         TNodeId nodeId = {}) override;
 
     // Data requests.
-    NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) override;
+    NThreading::TFuture<NProto::TError> WaitForDataRequests(
+        TRequestId reqId) override;
     NThreading::TFuture<NProto::TError> WaitForDataRequests(
         TRequestId reqId,
         TNodeId nodeId,
