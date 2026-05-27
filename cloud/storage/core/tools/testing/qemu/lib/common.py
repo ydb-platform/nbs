@@ -114,3 +114,15 @@ def get_qemu_firmware():
         _unpack_qemu_bindir(bindir)
 
     return qemu_firmware
+
+
+def get_qemu_bios():
+    if not is_arm():
+        return None
+
+    bindir = _get_qemu_bindir()
+    qemu_bios = os.path.join(bindir, "usr", "share", "qemu-efi-aarch64", "QEMU_EFI.fd")
+    if not os.path.exists(qemu_bios):
+        _unpack_qemu_bindir(bindir)
+
+    return qemu_bios

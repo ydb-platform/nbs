@@ -88,7 +88,8 @@ class Qemu:
                  use_virtiofs_server=False,
                  num_request_queues=1,
                  is_arm=False,
-                 reconnect=1):
+                 reconnect=1,
+                 qemu_bios=None):
 
         self.ssh_port = 0
         self.qmp = None
@@ -98,6 +99,7 @@ class Qemu:
 
         self.qemu_kvm = qemu_kvm
         self.qemu_firmware = qemu_firmware
+        self.qemu_bios = qemu_bios
         self.rootfs = rootfs
         self.kernel = kernel
         self.kcmdline = kcmdline
@@ -248,6 +250,9 @@ class Qemu:
             "-L", self.qemu_firmware,
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),
         ]
+
+        if self.qemu_bios:
+            cmd += ["-bios", self.qemu_bios]
 
         if self.is_arm:
             cmd += ["-machine", "virt"]
