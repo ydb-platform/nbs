@@ -211,20 +211,6 @@ TReadDataActor::TReadDataActor(
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
-    if (UseTwoStageRead) {
-        if (ReadRequest.GetIovecs().empty()) {
-            // BlockBuffer should not be initialized in constructor, because
-            // creating a block buffer leads to memory allocation (and
-            // initialization) which is heavy and we would like to execute that
-            // on a separate thread (instead of this actor's parent thread)
-            BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
-            TargetBuffers =
-                CreateRope(BlockBuffer->begin(), BlockBuffer->size());
-        } else {
-            TargetBuffers = CreateRope(ReadRequest.GetIovecs());
-        }
-    }
-
     // Registering InFlightRequest here for the same reason - it's quite
     // expensive so we don't want to do it in TStorageServiceActor
     MainInFlightRequest = InFlightRequests->Register(
@@ -243,45 +229,59 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     MainInFlightRequest->AccessProfileLogRequest().SetClientId(
         std::move(ClientId));
 
-    if (Session) {
+    if (Session && ShmClient) {
         auto request = std::make_shared<NProto::TReadDataRequest>(ReadRequest);
         request->ClearIovecs();
-        request->SetHandle(InvalidHandle);
+        //request->SetHandle(InvalidHandle);
 
         ui64 outOffset = 0;
-        char* shmPtr = nullptr;
-        if (ShmClient) {
-            shmPtr = ShmClient->PrepareRead(*request, outOffset);
-        }
-        auto resp = Session->ReadData(CallContext, std::move(request)).GetValue(TDuration::Seconds(10));
-        if (HasError(resp)) {
-            if (ShmClient) {
-                ShmClient->FreeOffset(outOffset);
-            }
-            HandleError(ctx, resp.GetError());
-            return;
-        }
-
-        auto response =
-            std::make_unique<TEvService::TEvReadDataResponse>();
-        response->Record = std::move(resp);
-
+        char* shmPtr = ShmClient->PrepareRead(*request, outOffset);
         if (shmPtr) {
-            MoveShmToIovecs(ctx, response->Record, shmPtr);
-        }
+            auto resp = Session->ReadData(CallContext, std::move(request))
+                            .GetValue(TDuration::Seconds(10));
+            if (HasError(resp)) {
+                ShmClient->FreeOffset(outOffset);
+                std::cerr << "MYAGKOV: Read requests via shm failed: "
+                          << FormatError(resp.GetError()) << std::endl;
+                HandleError(ctx, resp.GetError());
+                return;
+            } else {
+                auto response =
+                    std::make_unique<TEvService::TEvReadDataResponse>();
+                response->Record = std::move(resp);
 
-        if (ShmClient) {
-            ShmClient->FreeOffset(outOffset);
-        }
+                MoveShmToIovecs(ctx, response->Record, shmPtr);
+                ShmClient->FreeOffset(outOffset);
 
-        SendResponseAndDie(ctx, std::move(response));
-        return;
-    } else {
-        if (UseTwoStageRead) {
-            DescribeData(ctx);
+                std::cerr << "MYAGKOV: Read requests handled via shm"
+                          << std::endl;
+
+                SendResponseAndDie(ctx, std::move(response));
+                return;
+            }
         } else {
-            ReadData(ctx, {} /* fallbackReason */);
+            std::cerr << "MYAGKOV: no available shm slots" << std::endl;
         }
+    }
+
+    if (UseTwoStageRead) {
+        if (ReadRequest.GetIovecs().empty()) {
+            // BlockBuffer should not be initialized in constructor, because
+            // creating a block buffer leads to memory allocation (and
+            // initialization) which is heavy and we would like to execute that
+            // on a separate thread (instead of this actor's parent thread)
+            BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
+            TargetBuffers =
+                CreateRope(BlockBuffer->begin(), BlockBuffer->size());
+        } else {
+            TargetBuffers = CreateRope(ReadRequest.GetIovecs());
+        }
+    }
+
+    if (UseTwoStageRead) {
+        DescribeData(ctx);
+    } else {
+        ReadData(ctx, {} /* fallbackReason */);
     }
     Become(&TThis::StateWork);
 }
