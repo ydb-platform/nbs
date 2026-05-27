@@ -2,15 +2,15 @@
 
 Pools keep reusable base disks for images.
 
-An overlay disk created from an image does not need to copy all image data into
-its own disk. It can point to a base disk checkpoint and store only its own
-changes on top. The pool subsystem keeps enough base disks ready, or close to
-ready, so overlay disk creation can use those base disks instead of creating a
-full copy every time.
+NBS supports copy-on-write overlay disks: an overlay disk can use a base disk
+checkpoint as its read-only source and store only its own changes. Disk Manager
+pools pre-create reusable base disks for image-backed disk creation. Many
+overlay disks can share the same base disk, so disk-from-image creation can be
+faster than creating a full copy for every disk.
 
-A pool belongs to one `(image_id, zone_id)` pair. It answers one question: how
-many overlay disks can still be created from this image in this zone without
-first creating more base disk capacity?
+A pool is scoped to one `(image_id, zone_id)`. It tracks the base disks that can
+serve overlays for that image in that zone and the slot/unit counters used to
+decide when more base disks should be scheduled.
 
 The core code is in [internal/pkg/services/pools](../../../cloud/disk_manager/internal/pkg/services/pools).
 The storage interface is in
@@ -50,8 +50,9 @@ schema entry used by configuration and by the base disk scheduler.
 
 Primary key: `(image_id, zone_id, kind)`.
 
-`capacity` is in slots. It is not bytes, units, base disks, or number of API
-requests.
+`capacity` is the desired number of spare overlay-disk reservations for this
+pool. One overlay disk reserves one slot, so `capacity=1000` means "keep enough
+base disk slot capacity for about 1000 future overlay disks in this image/zone".
 
 ### `pools`
 
@@ -62,20 +63,38 @@ entry used whenever the code decides whether the pool has enough capacity.
 | --- | --- | --- |
 | `image_id` | `Utf8` | Image id. Part of the primary key. |
 | `zone_id` | `Utf8` | Zone id. Part of the primary key. |
-| `size` | `Uint64` | Current free or reserved pool slot capacity. This is compared with `configs.capacity`. |
+| `size` | `Uint64` | Current pool slot capacity already accounted by base disks. This is compared with `configs.capacity`. |
 | `free_units` | `Uint64` | Current free weighted units on base disks that still belong to the pool. |
-| `acquired_units` | `Uint64` | Weighted units reserved by overlay slots. |
+| `acquired_units` | `Uint64` | Weighted units currently reserved by acquired overlay slot reservations. |
 | `base_disks_inflight` | `Uint64` | Base disks in `scheduling` or `creating`. |
-| `lock_id` | `Utf8` | Pool lock used by retirement and deletion paths. |
+| `lock_id` | `Utf8` | Task-owned lock string used to block pool deletion during some retirement flows. |
 | `status` | `Int64` | `ready` or `deleted`. |
-| `created_at` | `Timestamp` | Pool creation time, used by optimization age checks. |
+| `created_at` | `Timestamp` | Pool row creation time. `pools.OptimizeBaseDisks` uses it for age checks. |
 
 Primary key: `(image_id, zone_id)`.
 
-`pool.size` is in slots. Scheduling a base disk increases it by that base disk's
-free slot count. Acquiring an overlay slot decreases it through base disk
-transition accounting. Releasing an overlay slot increases it through the same
-transition accounting.
+`pool.size` is measured in slots. Scheduling a base disk adds that base disk's
+free slot count to `pool.size` immediately, even before the physical NBS disk is
+ready. Acquiring a slot subtracts from `pool.size`; releasing a slot adds back
+to `pool.size` if the base disk still belongs to the pool.
+
+A unit is the weighted accounting cost of an overlay reservation. It is derived
+from overlay disk size and disk kind in
+[computeAllottedUnits](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go):
+one unit size is 32 GiB, SSD overlays are weighted more heavily than HDD
+overlays, and every acquired slot reserves at least one unit.
+
+`acquired` means the pool has committed an acquired `slots` row and has added
+that slot's units to the base disk's `active_units`. This happens in
+`pools.AcquireBaseDisk` before the NBS overlay disk is created. If acquire finds
+no usable base disk and only enables on-demand capacity, no slot or unit is
+acquired yet. During rebase, source and target reservations can both exist, so
+both can contribute to `acquired_units` until the rebase is finalized.
+
+`lock_id` is not a database lock object. It is a string stored in the pool row,
+usually the `pools.RetireBaseDisks` task id. While it is set, `DeletePool`
+interrupts instead of deleting the pool; `UnlockPool` clears it only when the
+caller provides the same lock id.
 
 That means the scheduler is not looking at "how many create disk requests are
 waiting". It is looking at:
@@ -90,8 +109,11 @@ written into `base_disks` and `slots` affects `pools.size`.
 ## Base Disks, Slots, and Units
 
 A base disk is an NBS disk populated from an image snapshot or from another base
-disk. Overlay disks acquire slots on base disks. One overlay disk consumes one
-slot and some number of units.
+disk. A slot is one reservation on a base disk for one overlay disk. The pool
+uses slots as the countable placement capacity for overlays: a base disk with
+640 free slots can accept up to 640 overlay reservations by slot count, unless
+it runs out of units first. One overlay disk reserves one slot and some number
+of units.
 
 Code:
 [common.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go),
@@ -143,9 +165,13 @@ stateDiagram-v2
     deleted --> [*]: ClearDeletedBaseDisks removes storage rows
 ```
 
-`creation_failed` is treated as doomed capacity. It can still temporarily have
-active units if an overlay acquired a slot while the base disk was `creating`.
-When those active units are released, invariants move it to `deleting`.
+In code, a doomed base disk is a disk whose status is `deleting`, `deleted`, or
+`creation_failed`. `freeSlots()` returns zero for doomed disks, so they do not
+contribute capacity to the pool.
+
+`creation_failed` is one doomed state. It can still temporarily have active
+units if an overlay acquired a slot while the base disk was `creating`. When
+those active units are released, invariants move it to `deleting`.
 
 ### `slots`
 
@@ -161,25 +187,25 @@ entry used by acquire, release, rebase, relocation, and released-slot cleanup.
 | `image_id` | `Utf8` | Image id for the current source slot. |
 | `zone_id` | `Utf8` | Zone id for the current source slot. |
 | `status` | `Int64` | `acquired` or `released`. |
-| `allotted_slots` | `Uint64` | Current source slot reservation. |
-| `allotted_units` | `Uint64` | Current source unit reservation. |
+| `allotted_slots` | `Uint64` | Number of source slots reserved by this overlay disk. Normal acquired slots reserve `1`. |
+| `allotted_units` | `Uint64` | Number of source units reserved by this overlay disk. |
 | `released_at` | `Timestamp` | Timestamp for released slot tombstones. |
 | `target_zone_id` | `Utf8` | Target zone during rebase or relocation. |
 | `target_base_disk_id` | `Utf8` | Target base disk during rebase or relocation. |
-| `target_allotted_slots` | `Uint64` | Target slot reservation during rebase or relocation. |
-| `target_allotted_units` | `Uint64` | Target unit reservation during rebase or relocation. |
+| `target_allotted_slots` | `Uint64` | Number of target slots temporarily reserved during rebase or relocation. |
+| `target_allotted_units` | `Uint64` | Number of target units temporarily reserved during rebase or relocation. |
 | `generation` | `Uint64` | Slot generation used to reject stale rebase completions. |
 
 Primary key: `overlay_disk_id`.
 
-Every overlay disk takes exactly one slot:
+Every overlay disk reserves exactly one source slot:
 
 ```go
 slot.allottedSlots = 1
 disk.activeSlots++
 ```
 
-It also takes units:
+It also reserves units:
 
 ```go
 slot.allottedUnits = computeAllottedUnits(slot)
@@ -214,11 +240,18 @@ exhausted.
 
 ## Derived Tables and Invariants
 
-The secondary tables are derived indexes. They make regular tasks and acquire
-paths cheap, but they should not be treated as independent truth. Their schema
-entries are listed once in the sections that use them: `scheduling` in base disk
-scheduling, `free` and `released` in acquire/release, `overlay_disk_ids` in
-rebase/retirement, and `deleting`/`deleted` in physical deletion.
+The secondary tables are indexes for faster access. They are maintained from
+`base_disks` and `slots`, so code should check or rebuild them from those source
+rows when consistency matters.
+
+| Table | What it indexes | Used by |
+| --- | --- | --- |
+| `scheduling` | Base disks whose create task still needs to be scheduled or confirmed. | `pools.ScheduleBaseDisks` |
+| `free` | Base disks that currently have at least one free slot. | Acquire, rebase, relocation |
+| `released` | Released slot tombstones ordered by release time. | `pools.ClearReleasedSlots` |
+| `overlay_disk_ids` | Overlay disk ids attached to each base disk. | Retirement and rebase |
+| `deleting` | Base disks whose physical NBS disk should be deleted. | `pools.DeleteBaseDisks` |
+| `deleted` | Base disks already deleted in NBS and waiting for row cleanup. | `pools.ClearDeletedBaseDisks` |
 
 Code:
 [common.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go),
@@ -229,7 +262,7 @@ Important invariants:
 
 * `base_disks` and `slots` are the source rows.
 * `free`, `scheduling`, `deleting`, `deleted`, `released`, and
-  `overlay_disk_ids` are updated from transitions.
+  `overlay_disk_ids` are indexes maintained from source row updates.
 * A base disk that is not `from_pool` contributes zero free slots.
 * A doomed base disk contributes zero free slots.
 * A base disk from a deleted pool is forced out of the pool by setting
@@ -240,9 +273,16 @@ Important invariants:
   inflight.
 * `base_disks_inflight` increases only when a new base disk enters
   `scheduling` or `creating`, and decreases when it leaves those states.
-* `pool.size`, `pool.free_units`, and `pool.acquired_units` are computed from
-  base disk transition diffs. They are not independently decremented by the
-  acquire task or incremented by the release task.
+* `pool.size`, `pool.free_units`, and `pool.acquired_units` are updated through
+  the base disk transition mechanism described below.
+
+A base disk transition is an old/new pair: the base disk row before an operation
+and the base disk row after that operation. Storage uses that pair to derive the
+pool counter changes. The central path is
+[updateBaseDisks](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go),
+which is called through helpers such as `updateBaseDisk`,
+`updateBaseDisksAndSlots`, and `updateBaseDiskAndSlot` from acquire, release,
+rebase, creation, deletion, and retirement paths.
 
 The transition pipeline for a base disk update is:
 
@@ -271,15 +311,21 @@ freeUnitsDiff = newBaseDisk.freeUnits() - oldBaseDisk.freeUnits()
 acquiredUnitsDiff = newBaseDisk.activeUnits - oldBaseDisk.activeUnits
 ```
 
-This is why there is no separate "decrease pool size" operation in acquire
-code. The acquire changes `active_slots` and `active_units` on a base disk. The
-pool update is then derived from how many free slots and units the base disk had
-before and after the transition.
+So acquire/release do not own separate pool counter operations. Acquire changes
+`active_slots` and `active_units` on a base disk; release changes them back.
+Then the transition code compares old and new `freeSlots()`, `freeUnits()`, and
+`activeUnits` and applies the resulting `poolAction`.
 
 ## APIs and Tasks
 
-External users usually call image and disk APIs. Pool APIs are internal/private
-operations scheduled as tasks.
+The pool API is private. Public image and disk APIs reach it indirectly through
+tasks; operators can also invoke private pool operations directly through
+`PrivateService` or `disk-manager-admin`.
+
+In public flows, pools are used during image creation, disk-from-image creation,
+image deletion, and disk deletion. Disk-from-image creation uses pools only when
+the disk service selects the overlay path; otherwise it falls back to a regular
+copy from image.
 
 Code:
 [private_service.proto](../../../cloud/disk_manager/internal/api/private_service.proto),
@@ -313,23 +359,45 @@ The main callers are:
 
 ## Image Creation and Pool Configuration
 
-An image can configure pools automatically during image creation, or a caller can
-configure a pool explicitly through the private API.
+Pools can be configured in two ways:
+
+* automatically during public image creation, from image service config;
+* explicitly through the private API or `disk-manager-admin configure-pool`.
 
 Code:
 [images/common.go](../../../cloud/disk_manager/internal/pkg/services/images/common.go),
 [images/service.go](../../../cloud/disk_manager/internal/pkg/services/images/service.go),
 [configure_pool_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/configure_pool_task.go),
-[storage_ydb_impl.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go).
+[storage_ydb_impl.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go),
+[common.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go),
+[create_base_disk_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/create_base_disk_task.go).
 
 ### Explicit configuration
 
 `ConfigurePool(image_id, zone_id, capacity, use_image_size)` schedules
 `pools.ConfigurePool`.
 
-The task reads image metadata. If `use_image_size=false`, it writes
-`image_size=0`. If `use_image_size=true`, it writes the image metadata size.
-Then storage upserts the `configs` row.
+The task reads image metadata. If `use_image_size=false`, it stores
+`configs.image_size=0`, which means "use default-sized base disks". If
+`use_image_size=true`, it stores the image metadata size in `configs.image_size`,
+which means "size future base disks from this image's logical size". Then
+storage upserts the `configs` row.
+
+The stored image size is the snapshot/image logical size written by image
+creation. The default-sized mode is not a different image size; it is the
+special value `image_size=0`. The two modes affect base disk creation like this:
+
+| Config mode | `generateBaseDisk` result | `CreateBaseDisk` result |
+| --- | --- | --- |
+| `image_size=0` | `baseDisk.size=0`, `units=MaxBaseDiskUnits`, `max_active_slots=MaxActiveSlots`. | Creates the default 4 TiB SSD base disk from `defaultBaseDiskBlockCount * 4096`. |
+| `image_size>0` | Rounds image size up to 32 GiB, stores that as `baseDisk.size`, computes units from rounded image size, and sets slots to `min(units, MaxActiveSlots)`. | Creates an SSD base disk with `BaseDiskSize / 4096` blocks. |
+
+Code links: `ConfigurePool` reads image metadata in
+[configure_pool_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/configure_pool_task.go),
+base disk shape is computed in
+[generateBaseDisk](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go),
+and the NBS disk block count is chosen in
+[create_base_disk_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/create_base_disk_task.go).
 
 ```mermaid
 sequenceDiagram
@@ -355,14 +423,21 @@ sequenceDiagram
 
 ### Automatic configuration during image creation
 
-Image creation can configure pools automatically. `images.service` fills
-`DiskPools` from `DefaultDiskPoolConfigs` when the request is pooled or when
-`ConfigurePoolsByDefault` is enabled. After the image is created, the image task
-schedules one `pools.ConfigurePool` task per zone.
+Image creation configures pools automatically when either the create-image
+request has `pooled=true` or `ImagesConfig.ConfigurePoolsByDefault` is enabled.
+In that case `images.service` copies `ImagesConfig.DefaultDiskPoolConfigs` into
+the image task request. Each config entry supplies the `zone_id` and `capacity`
+for one pool. If `DefaultDiskPoolConfigs` is empty, no pool is configured.
 
-The automatic image creation path does not pass `UseImageSize`, so these pools
-are configured with `image_size=0` unless a later explicit configuration or
-optimization changes them.
+After the image snapshot and image metadata are created, the image task
+schedules one `pools.ConfigurePool` task per copied `DiskPool`. The automatic
+path passes `capacity` from `DefaultDiskPoolConfigs` and does not pass
+`UseImageSize`, so these pools use `image_size=0` unless a later explicit
+configuration or optimization changes them.
+
+If the configured capacity is `0`, the row is still useful: it marks the pool as
+configured but on-demand. The first acquire that finds no usable base disk
+changes that existing zero-capacity config to `capacity=1`.
 
 ```mermaid
 sequenceDiagram
@@ -374,7 +449,7 @@ sequenceDiagram
     participant ConfigureTask as ConfigurePool
 
     Client->>Images: CreateImage(..., pooled)
-    Images->>Images: choose DiskPools from request or config
+    Images->>Images: copy DiskPools from DefaultDiskPoolConfigs
     Images->>Scheduler: ScheduleTask(images.CreateImage)
     Scheduler->>ImageTask: create snapshot and image metadata
     ImageTask->>Pools: ConfigurePool(image, zone, capacity)
@@ -387,7 +462,9 @@ sequenceDiagram
 
 If an overlay acquire finds no usable base disk, storage calls
 `createPoolIfNecessary`. A configured pool with `capacity=0` is treated as
-on-demand and is changed to `capacity=1`.
+on-demand and is changed to `capacity=1` by writing the `configs` row. This
+does not acquire a slot; it only gives the regular scheduler one slot of desired
+capacity so it can create the first base disk.
 
 This path does not set `image_size`, so it uses default-sized base disks.
 
@@ -404,11 +481,11 @@ Code:
 [storage_ydb_impl.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go),
 [register.go](../../../cloud/disk_manager/internal/pkg/services/pools/register.go).
 
-Schema entry used here: `scheduling(image_id: Utf8, zone_id: Utf8,
-base_disk_id: Utf8)`, with primary key
-`(image_id, zone_id, base_disk_id)`. It is derived from
-`base_disks.status == scheduling` and means that a base disk row exists but the
-create task id still needs to be scheduled or confirmed.
+Schema entry used here:
+
+| Table | Columns | Primary key | Derived from | Meaning |
+| --- | --- | --- | --- | --- |
+| `scheduling` | `image_id: Utf8`, `zone_id: Utf8`, `base_disk_id: Utf8` | `(image_id, zone_id, base_disk_id)` | `base_disks.status == scheduling` | A base disk row exists, but the create task id still needs to be scheduled or confirmed. |
 
 The scheduler does this:
 
@@ -500,9 +577,22 @@ Code:
 [create_base_disk_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/create_base_disk_task.go),
 [storage_ydb_impl.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go).
 
-If the base disk has `SrcDisk`, data is copied from that source disk. This is
-used during retirement when replacements are cloned from existing base disks.
-Otherwise data is copied from the image snapshot.
+Base disk size is decided before `pools.CreateBaseDisk` runs:
+
+1. `TakeBaseDisksToSchedule` reads `configs.image_size`.
+2. `generateBaseDisk` builds a base disk template.
+3. If `image_size=0`, the template stores `size=0`. `CreateBaseDisk` interprets
+   that as the default size: `1 << 30` blocks of 4096 bytes, which is 4 TiB.
+4. If `image_size>0`, `generateBaseDisk` rounds the image size up to a 32 GiB
+   boundary and stores that value in `size`. `CreateBaseDisk` creates exactly
+   that many bytes by dividing `BaseDiskSize` by the 4096-byte block size.
+
+If the base disk has `SrcDisk`, data is copied from that source disk checkpoint
+instead of from the image snapshot. Retirement uses this when the replacement
+base disk should be cloned from the old base disk. That lets the system drain an
+old base disk even when the image snapshot should no longer be the source of new
+replacement disks, for example during image deletion or optimization. If
+`SrcDisk` is empty, data is copied from the image snapshot.
 
 ```mermaid
 sequenceDiagram
@@ -541,10 +631,11 @@ Code:
 [storage_ydb_impl.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go),
 [common.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go).
 
-Schema entry used by acquire: `free(image_id: Utf8, zone_id: Utf8,
-base_disk_id: Utf8)`, with primary key `(image_id, zone_id, base_disk_id)`.
-It is derived from `base_disks.freeSlots() != 0` and means that the base disk
-currently has capacity that acquire may try to reserve.
+Schema entry used by acquire:
+
+| Table | Columns | Primary key | Derived from | Meaning |
+| --- | --- | --- | --- | --- |
+| `free` | `image_id: Utf8`, `zone_id: Utf8`, `base_disk_id: Utf8` | `(image_id, zone_id, base_disk_id)` | `base_disks.freeSlots() != 0` | The base disk currently has capacity that acquire may try to reserve. |
 
 Acquire does this:
 
@@ -556,8 +647,8 @@ Acquire does this:
 5. Add one active slot and computed active units to the base disk.
 6. Update pool accounting from the base disk transition.
 7. If the chosen base disk is still `creating`, wait for its create task.
-8. If no base disk can be used, configure on-demand capacity if needed and
-   return `InterruptExecutionError`.
+8. If no base disk can be used, change an existing zero-capacity pool config to
+   `capacity=1` if needed, then return `InterruptExecutionError`.
 
 For a normal acquire, the accounting looks like this:
 
@@ -595,7 +686,7 @@ flowchart TD
     J --> K{Base disk ready?}
     K -- yes --> L[Acquire task completes]
     K -- no --> M[Wait for CreateBaseDisk task]
-    F -- no --> N[createPoolIfNecessary]
+    F -- no --> N[set zero-capacity config to capacity 1]
     N --> O[Return InterruptExecutionError]
 
     click A "../../../cloud/disk_manager/internal/pkg/services/pools/acquire_base_disk_task.go" "pools.AcquireBaseDisk task"
@@ -609,10 +700,11 @@ releases target units and slots if a rebase or relocation target was already
 reserved. Released slot rows are kept as tombstones for a short time to avoid
 races between overlay deletion and recreation with the same disk id.
 
-Schema entry used by release cleanup: `released(released_at: Timestamp,
-overlay_disk_id: Utf8)`, with primary key `(released_at, overlay_disk_id)`.
-It is derived from `slots.status == released` and lets
-`pools.ClearReleasedSlots` scan old slot tombstones by timestamp.
+Schema entry used by release cleanup:
+
+| Table | Columns | Primary key | Derived from | Meaning |
+| --- | --- | --- | --- | --- |
+| `released` | `released_at: Timestamp`, `overlay_disk_id: Utf8` | `(released_at, overlay_disk_id)` | `slots.status == released` | Lets `pools.ClearReleasedSlots` scan old slot tombstones by timestamp. |
 
 ### Overlay Disk API Flow
 
@@ -653,8 +745,34 @@ sequenceDiagram
 
 Rebase moves an overlay slot from one base disk to another.
 
-Retirement uses rebase to drain a base disk before deleting it or before
-switching the pool to a different base disk size mode.
+Retirement is the mechanism for removing old base disks without breaking
+overlay disks that still depend on them. It drains base disks: every overlay
+slot currently placed on the retiring base disk gets a target slot on another
+base disk, then an NBS rebase moves the overlay to that target. After all source
+slots are gone, the old base disk can be deleted.
+
+There are two task levels:
+
+* `pools.RetireBaseDisk` drains one base disk.
+* `pools.RetireBaseDisks` lists the ready base disks for one `(image_id,
+  zone_id)` and schedules `RetireBaseDisk` for each of those listed base disks.
+
+So yes, `RetireBaseDisks` is used when the goal is to move overlays away from
+all current ready base disks in a pool/image-zone and let those old base disks
+be deleted. It does not delete them synchronously, and it may create replacement
+base disks to receive the rebased overlays. Those replacement disks are not the
+old set being retired.
+
+Common reasons:
+
+* Image deletion: active overlays may still use base disks created from the
+  image. Retirement moves those overlays to replacement base disks so the old
+  image-backed base disks can disappear.
+* Explicit/private retirement: an operator can drain selected base disks from
+  the private API or admin CLI.
+* Base disk optimization: `pools.OptimizeBaseDisks` changes the desired base
+  disk size mode and retires the old base disks so replacements use the new
+  mode.
 
 Code:
 [retire_base_disks_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/retire_base_disks_task.go),
@@ -662,15 +780,16 @@ Code:
 [rebase_overlay_disk_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/rebase_overlay_disk_task.go),
 [storage_ydb_impl.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go).
 
-Schema entry used here: `overlay_disk_ids(base_disk_id: Utf8,
-overlay_disk_id: Utf8)`, with primary key `(base_disk_id, overlay_disk_id)`.
-It is derived from acquired slot source base disks and lets retirement find
-overlay disks attached to a base disk.
+Schema entry used here:
 
-Retirement flow:
+| Table | Columns | Primary key | Derived from | Meaning |
+| --- | --- | --- | --- | --- |
+| `overlay_disk_ids` | `base_disk_id: Utf8`, `overlay_disk_id: Utf8` | `(base_disk_id, overlay_disk_id)` | Acquired slot source base disks | Lets retirement find overlay disks attached to a base disk. |
 
-1. `pools.RetireBaseDisks` lists base disks for one image/zone.
-2. It schedules one `pools.RetireBaseDisk` task per base disk.
+Retirement flow for one old base disk:
+
+1. `pools.RetireBaseDisks` lists ready base disks for one image/zone.
+2. It schedules one `pools.RetireBaseDisk` task per listed base disk.
 3. `RetireBaseDisk` reserves target slots for all acquired slots on the old
    base disk.
 4. If existing target base disks do not have enough capacity, storage generates
@@ -717,6 +836,13 @@ promotes the target reservation to the main reservation.
 `pools.OptimizeBaseDisks` decides whether a ready pool should use default-sized
 or image-sized base disks.
 
+The purpose is to keep the base disk shape appropriate for the actual usage of
+the pool. Default-sized base disks are large and can hold many overlay
+reservations; they are better when many overlays are attached to the image.
+Image-sized base disks follow the image's logical size and can be cheaper or
+smaller for images with low overlay usage. The optimization task switches mode
+when `acquired_units` crosses configured thresholds.
+
 Code:
 [optimize_base_disks_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/optimize_base_disks_task.go),
 [optimize_base_disks_task.proto](../../../cloud/disk_manager/internal/pkg/services/pools/protos/optimize_base_disks_task.proto),
@@ -726,10 +852,11 @@ The task runs regularly when `RegularBaseDiskOptimizationEnabled` is true. By
 default it runs every 15 minutes and only considers pools older than
 `MinOptimizedPoolAge`.
 
-It does not resize existing NBS base disks in place.
-
-It changes the pool config, then retires the old base disks. Replacement base
-disks are created later using the new config.
+It does not resize existing NBS base disks in place. Instead, it changes the
+pool config and then calls `RetireBaseDisks` for that image/zone. The old base
+disks are drained through rebase and eventually deleted. Replacement base disks
+are created with the new config, so after retirement the pool converges to the
+new base disk size mode.
 
 Decision logic:
 
@@ -902,7 +1029,7 @@ flowchart TD
     O --> P[Clear deleted rows]
 ```
 
-## Performance Bottlenecks
+## Capacity Notes
 
 ### Capacity is not request backlog
 
@@ -929,63 +1056,12 @@ That one base disk can serve many overlays, but after it is consumed the next
 replenishment depends on the next scheduler run and on what `pool.size` says at
 that moment.
 
-### MaxBaseDisksInflight is a cap, not a batch size
+### Scheduler cadence still matters
 
-The default `MaxBaseDisksInflight` is 5. The scheduler still creates only the
-number needed by the current capacity deficit.
-
-If the deficit is one base disk, one base disk is scheduled. If the deficit is
-ten base disks and no disks are inflight, five are scheduled.
-
-### A scheduling disk can serialize a pool
-
-`TakeBaseDisksToSchedule` first reads the `scheduling` table. If a pool already
-has a base disk in `scheduling`, the scheduler returns that disk for idempotent
-task scheduling and skips generating more for that pool in that pass.
-
-That is useful for avoiding duplicate create tasks. It can also serialize
-progress if a base disk remains in `scheduling` longer than expected.
-
-### Creating is usable, scheduling is not
-
-New base disks can appear in the `free` index while they are still
-`scheduling`. Acquire reads `free`, but accepts only `creating` or `ready` base
-disks.
-
-So a base disk stuck in `scheduling` can look like capacity in indexes but still
-not be acquirable.
-
-### Scheduler cadence still matters when creation is fast
-
-Base disk creation can take only seconds, but `ScheduleBaseDisks` is a regular
-task. The default interval is one minute. If the pool is fully consumed right
-after a scheduler pass, new capacity may wait for the next pass.
-
-### Units can exhaust before slots
-
-Every overlay takes one slot, but units depend on size and disk kind. Large SSD
-overlays can exhaust `active_units` before `active_slots` reaches
-`max_active_slots`.
-
-When units are exhausted, `freeSlots()` returns zero and the base disk no longer
-contributes to `pool.size` or the `free` index.
-
-### Rebase and optimization create extra work
-
-Optimization changes config and retires old base disks. Retirement reserves
-target capacity and schedules one rebase task per overlay slot.
-
-During rebase, source and target reservations can exist at the same time. This
-temporarily increases capacity pressure and task load.
-
-### Deletion is deliberately delayed
-
-Deleting a pool or retiring a base disk does not immediately remove every row
-and NBS disk. Deletion goes through regular tasks, batch limits, and expiration
-timeouts.
-
-Deletion lag does not mean capacity is usable. Base disks outside the pool or in
-deleting/deleted states contribute zero free slots.
+Base disk creation can be fast, but new base disk scheduling still goes through
+the regular `pools.ScheduleBaseDisks` task. With the default one-minute
+interval, a pool that is consumed just after a scheduler run may wait until the
+next run before new base disks are scheduled.
 
 ## Operational Rules
 
@@ -997,8 +1073,7 @@ deleting/deleted states contribute zero free slots.
   much weighted overlay size can fit.
 * `pool.size >= capacity` means the scheduler is satisfied, even if many
   overlay tasks are still waiting and have not reserved slots.
-* Fast base disk creation does not remove scheduler interval, inflight cap, or
-  `scheduling` state effects.
+* Fast base disk creation does not remove the `ScheduleBaseDisks` interval.
 * Optimization changes future replacement shape. It does not resize an existing
   NBS base disk in place.
 
@@ -1012,12 +1087,12 @@ new disk.
 
 **Is `pool.size` in slots?**
 
-Yes. `pool.size` is current free or reserved slot capacity for the pool.
+Yes. `pool.size` is current slot capacity already accounted for the pool.
 
-**Does an overlay disk take one slot?**
+**Does an overlay disk reserve one slot?**
 
-Yes. One overlay disk takes exactly one slot on one base disk. It also takes
-some units based on overlay size and disk kind.
+Yes. One overlay disk reserves exactly one slot on one base disk. It also
+reserves units based on overlay size and disk kind.
 
 **How many slots and units are in one base disk?**
 
