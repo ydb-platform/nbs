@@ -178,6 +178,38 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT(!handles.contains(id));
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
     }
+
+    Y_UNIT_TEST(ShouldDropStoredHandleWithMissingOrDuplicatedUpdateVersion)
+    {
+        const ui64 handleId = 42;
+        {
+            auto storage = CreateStorage();
+
+            storage->StoreHandle(handleId, TDirectoryHandleChunk{.Index = 100});
+
+            TDirectoryHandleChunk chunk1{
+                .Key = 1024,
+                .UpdateVersion = 2,
+                .Index = 100,
+                .DirectoryContent = {CreateContent(1024, 'x'), 0, 1024}};
+            storage->UpdateHandle(handleId, chunk1);
+
+            TDirectoryHandleChunk chunk2{
+                .Key = 2048,
+                .UpdateVersion = 2,
+                .Index = 100,
+                .DirectoryContent = {CreateContent(1024, 'y'), 0, 1024}};
+            storage->UpdateHandle(handleId, chunk2);
+        }
+
+        auto storage = CreateStorage();
+
+        TDirectoryHandleMap handles;
+        storage->LoadHandles(handles);
+
+        UNIT_ASSERT(!handles.contains(handleId));
+        UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

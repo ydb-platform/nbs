@@ -132,19 +132,12 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
     // a crash during the reset or removal process can lead to inconsistent
     // chunks order. We detect this inconsistency during the load phase and
     // clean data for this handle.
-    struct TUpdateVersionInfo
-    {
-        ui64 LargestUpdateVersion = 0;
-        ui64 ChunksCount = 0;
-    };
-
     struct TChunkInfo
     {
         ui64 UpdateVersion = 0;
         ui64 StorageIndex = 0;
     };
 
-    TMap<ui64, TUpdateVersionInfo> updateVersionInfo;
     TMap<ui64, TVector<TChunkInfo>> chunksInfo;
 
     {
@@ -153,8 +146,10 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
         for (auto it = Table->begin(); it != Table->end(); ++it) {
             TStringBuf record = *it;
             if (record.empty()) {
-                STORAGE_TRACE(
-                    "bad record from storage during load directory handles");
+                STORAGE_ERROR(
+                    "bad record from storage during load directory handles, "
+                    "record index: %lu",
+                    it.GetIndex());
                 continue;
             }
 
@@ -168,23 +163,15 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
                 continue;
             }
 
+            chunksInfo[handleId].push_back(
+                TChunkInfo{chunk->UpdateVersion, it.GetIndex()});
+
             if (!handles.contains(handleId)) {
                 handles[handleId] =
                     std::make_shared<TDirectoryHandle>(chunk->Index);
             }
 
             handles[handleId]->ConsumeChunk(*chunk, Log);
-
-            updateVersionInfo[handleId].ChunksCount++;
-            if (chunk->UpdateVersion >
-                updateVersionInfo[handleId].LargestUpdateVersion)
-            {
-                updateVersionInfo[handleId].LargestUpdateVersion =
-                    chunk->UpdateVersion;
-            }
-
-            chunksInfo[handleId].push_back(
-                TChunkInfo{chunk->UpdateVersion, it.GetIndex()});
         }
     }
 
@@ -200,25 +187,27 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
             { return a.UpdateVersion < b.UpdateVersion; });
 
         HandleIdToIndices[handleId].reserve(chunks.size());
-        for (const auto& chunkInfo: chunks) {
-            HandleIdToIndices[handleId].push_back(chunkInfo.StorageIndex);
+        for (const auto& chunk: chunks) {
+            HandleIdToIndices[handleId].push_back(chunk.StorageIndex);
         }
     }
 
-    for (auto [handleId, updateVersionInfo]: updateVersionInfo) {
-        if (updateVersionInfo.ChunksCount !=
-            updateVersionInfo.LargestUpdateVersion + 1)
-        {
-            ReportDirectoryHandlesStorageError(
-                TStringBuilder()
-                << "Corrupted data for handle " << handleId
-                << ": total chunks count " << updateVersionInfo.ChunksCount
-                << " is not equal to largest update version "
-                << updateVersionInfo.LargestUpdateVersion << " + 1");
+    for (const auto& [handleId, chunks]: chunksInfo) {
+        for (size_t i = 0; i < chunks.size(); ++i) {
+            const ui64 expectedVersion = i;
+            const auto& chunk = chunks[i];
 
-            RemoveHandle(handleId);
-            handles.erase(handleId);
-            continue;
+            if (chunk.UpdateVersion != expectedVersion) {
+                ReportDirectoryHandlesStorageError(
+                    TStringBuilder()
+                    << "Corrupted data for handle " << handleId
+                    << ": expected update version " << expectedVersion
+                    << ", got " << chunk.UpdateVersion);
+
+                RemoveHandle(handleId);
+                handles.erase(handleId);
+                break;
+            }
         }
     }
 }
