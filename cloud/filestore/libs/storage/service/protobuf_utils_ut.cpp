@@ -121,7 +121,8 @@ Y_UNIT_TEST_SUITE(TProtobufUtilsTest)
         auto iovecs = CreateIovecs(1_MB / 4_KB, 4_KB);
         FillIovecs(*request.MutableIovecs(), iovecs);
         expectedResponse.SetBuffer(std::move(buffer));
-        expectedResponse.SetBufferOffset(100);
+        expectedResponse.SetBufferOffset(0);
+        expectedResponse.SetLength(0);
         expectedResponse.MutableHeaders()
             ->MutableBackendInfo()
             ->SetIsOverloaded(true);
@@ -138,6 +139,44 @@ Y_UNIT_TEST_SUITE(TProtobufUtilsTest)
         auto actualBuffer =
             GetBufferFromIovecs(iovecs, actualResponse.GetLength());
         UNIT_ASSERT_VALUES_EQUAL(expectedResponse.GetBuffer(), actualBuffer);
+    }
+
+      Y_UNIT_TEST(ShouldFailOnNonZeroBufferOffset)
+    {
+        NProto::TReadDataRequest request;
+        NProto::TReadDataResponse expectedResponse;
+        TString buffer = GenerateValidateData(1_MB, 0);
+        auto iovecs = CreateIovecs(1_MB / 4_KB, 4_KB);
+        FillIovecs(*request.MutableIovecs(), iovecs);
+        expectedResponse.SetBuffer(std::move(buffer));
+        expectedResponse.SetBufferOffset(100);
+
+        NProto::TReadDataResponse actualResponse;
+
+        auto ret = TestParseReadDataResponse(
+            expectedResponse.SerializeAsString(),
+            actualResponse,
+            *request.MutableIovecs());
+        UNIT_ASSERT(HasError(ret));
+    }
+
+    Y_UNIT_TEST(ShouldFailOnNonZeroLength)
+    {
+        NProto::TReadDataRequest request;
+        NProto::TReadDataResponse expectedResponse;
+        TString buffer = GenerateValidateData(1_MB, 0);
+        auto iovecs = CreateIovecs(1_MB / 4_KB, 4_KB);
+        FillIovecs(*request.MutableIovecs(), iovecs);
+        expectedResponse.SetBuffer(std::move(buffer));
+        expectedResponse.SetLength(expectedResponse.GetBuffer().size());
+
+        NProto::TReadDataResponse actualResponse;
+
+        auto ret = TestParseReadDataResponse(
+            expectedResponse.SerializeAsString(),
+            actualResponse,
+            *request.MutableIovecs());
+        UNIT_ASSERT(HasError(ret));
     }
 
     Y_UNIT_TEST(ShouldNotCrash)

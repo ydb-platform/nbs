@@ -34,7 +34,7 @@ NCloud::NProto::TError ParseReadDataResponse(
             case NProto::TReadDataResponse::kErrorFieldNumber: {
                 if (wire != WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Invalid wire type "
                         "for error field in ReadData response: %d",
                         wire);
@@ -43,7 +43,7 @@ NCloud::NProto::TError ParseReadDataResponse(
                 ui32 len = 0;
                 if (!input.ReadVarint32(&len)) {
                     return MakeError(
-                        E_FAIL,
+                        E_ARGUMENT,
                         "Failed to read length for error field in ReadData "
                         "response");
                 }
@@ -106,7 +106,12 @@ NCloud::NProto::TError ParseReadDataResponse(
                 if (currentOffset < len) {
                     return MakeError(
                         E_ARGUMENT,
-                        "Failed to consume entire buffer in ReadData response");
+                        TStringBuilder()
+                            << "Failed to consume entire buffer in ReadData "
+                               "response. "
+                               "Consumed length: "
+                            << currentOffset << ", buffer length: ",
+                        len);
                 }
                 break;
             }
@@ -160,7 +165,38 @@ NCloud::NProto::TError ParseReadDataResponse(
                         "Failed to read buffer offset in ReadData "
                         "response");
                 }
-                response.SetBufferOffset(bufferOffset);
+
+                if (bufferOffset != 0) {
+                    return MakeError(
+                        E_ARGUMENT,
+                        "A non-zero buffer offset is being returned from the "
+                        "tablet");
+                }
+                break;
+            }
+            case NProto::TReadDataResponse::kLengthFieldNumber: {
+                if (wire != WireFormatLite::WIRETYPE_VARINT) {
+                    return MakeError(
+                        E_ARGUMENT,
+                        "Invalid wire type "
+                        "for buffer length field in ReadData response: %d",
+                        wire);
+                }
+
+                ui64 bufferLength = 0;
+                if (!input.ReadVarint64(&bufferLength)) {
+                    return MakeError(
+                        E_ARGUMENT,
+                        "Failed to read buffer length in ReadData "
+                        "response");
+                }
+
+                if (bufferLength != 0) {
+                    return MakeError(
+                        E_ARGUMENT,
+                        "A non-zero buffer length is being returned from the "
+                        "tablet");
+                }
                 break;
             }
 
@@ -175,7 +211,7 @@ NCloud::NProto::TError ParseReadDataResponse(
 
     if (!input.ConsumedEntireMessage()) {
         return MakeError(
-            E_FAIL,
+            E_ARGUMENT,
             "Failed to consume entire ReadData response message");
     }
 
