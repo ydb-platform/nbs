@@ -297,6 +297,7 @@ private:
         THPTimer timer;
 
         int e = 0;
+        TFileStat stat;
         for (ui32 i = 0; i < Options.CreateFileAttemptCount; ++i) {
             timer.Reset();
             TFileHandle f(filePath, OpenMode);
@@ -323,15 +324,28 @@ private:
                 written += r;
             }
 
-            if (e != EBADF) {
-                break;
-            }
-
             Y_ABORT_UNLESS(
                 e || written == content.size(),
                 "written=%lu, content.size()=%lu",
                 written,
                 content.size());
+
+            if (!e) {
+                if (f.Flush()) {
+                    timer.Reset();
+                    stat = TFileStat(f);
+                    if (stat.INode) {
+                        Stats.Stat.Register(0 /* weight */, timer.Passed());
+                        break;
+                    }
+                }
+
+                e = errno;
+            }
+
+            if (e != EBADF) {
+                break;
+            }
         }
 
         if (e) {
@@ -340,10 +354,6 @@ private:
                 << ", error: " << e);
             return;
         }
-
-        timer.Reset();
-        TFileStat stat(filePath);
-        Stats.Stat.Register(0 /* weight */, timer.Passed());
 
         Files.push_back({
             fileName,
