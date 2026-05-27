@@ -43,9 +43,9 @@ private:
 
 public:
     TStaticCertificateProvider(
-            TString rootCertPath,
+            const TString& rootCertPath,
             TVector<TCertificateFiles> certificates)
-        : RootCert(ReadFile(rootCertPath))
+        : RootCert(rootCertPath ? ReadFile(rootCertPath) : "")
     {
         for (size_t i = 0; i < certificates.size(); ++i) {
             const auto& cert = certificates[i];
@@ -127,11 +127,11 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 ICertificateProviderPtr CreateStaticCertificateProvider(
-    TString rootCertPath,
+    const TString& rootCertPath,
     TVector<TCertificateFiles> certificates)
 {
     return std::make_shared<TStaticCertificateProvider>(
-        std::move(rootCertPath),
+        rootCertPath,
         std::move(certificates));
 }
 

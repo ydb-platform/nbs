@@ -37,7 +37,7 @@ struct ICertificateProvider
 };
 
 ICertificateProviderPtr CreateStaticCertificateProvider(
-    TString rootCertPath,
+    const TString& rootCertPath,
     TVector<TCertificateFiles> certificates);
 
 ICertificateProviderPtr CreateCertificateProviderStub();

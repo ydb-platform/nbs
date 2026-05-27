@@ -82,13 +82,12 @@ ICertificateProviderPtr CreateClientCertificateProvider(
         return CreateStaticCertificateProvider({}, {});
     }
 
-    TVector<TCertificateFiles> certPathList;
-    if (config->GetCertFile() && config->GetCertPrivateKeyFile()) {
-        certPathList.push_back({
-            config->GetCertPrivateKeyFile(),
-            config->GetCertFile()
-        });
-    }
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
 
     return CreateStaticCertificateProvider(
         config->GetRootCertsFile(),
