@@ -331,13 +331,8 @@ TVector<TCertificate> TServerAppConfig::GetCertsWithLegacyFallback() const
         return certs;
     }
 
-    auto certFile = GetCertFile();
-    if (certFile) {
-        certs.push_back({
-            std::move(certFile),
-            GetCertPrivateKeyFile(),
-        });
-    }
+    certs.push_back({GetCertFile(), GetCertPrivateKeyFile()});
+
     return certs;
 }
 

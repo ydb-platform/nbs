@@ -88,13 +88,12 @@ ICertificateProviderPtr CreateClientCertificateProvider(
     auto appConfig = std::make_shared<TClientAppConfig>(
         config->GetGrpcClientConfig());
 
-    TVector<NCloud::TCertificateFiles> certPathList;
-    if (appConfig->GetCertFile() || appConfig->GetCertPrivateKeyFile()) {
-        certPathList.push_back({
-            appConfig->GetCertPrivateKeyFile(),
-            appConfig->GetCertFile()
-        });
-    }
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = appConfig->GetCertPrivateKeyFile(),
+            .CertChainPath = appConfig->GetCertFile()
+        }
+    };
 
     return CreateStaticCertificateProvider(
         appConfig->GetRootCertsFile(),
@@ -106,18 +105,13 @@ ICertificateProviderPtr CreateServerCertificateProvider(
 {
     TVector<NCloud::TCertificateFiles> certPathList;
     for (const auto& cert: config->GetCerts()) {
-        if (cert.CertFile && cert.CertPrivateKeyFile) {
-            certPathList.push_back({
-                cert.CertPrivateKeyFile,
-                cert.CertFile
-            });
-        }
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
     }
 
-    if (certPathList.empty() &&
-        config->GetCertFile() &&
-        config->GetCertPrivateKeyFile())
-    {
+    if (certPathList.empty()) {
         certPathList.push_back({
             config->GetCertPrivateKeyFile(),
             config->GetCertFile()

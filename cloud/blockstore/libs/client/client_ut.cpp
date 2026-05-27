@@ -45,7 +45,7 @@ Y_UNIT_TEST_SUITE(TClientTest)
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             CreateServerStatsStub(),
-            CreateStaticCertificateProvider({}, {}));
+            CreateCertificateProviderStub());
 
         auto client = result.ExtractResult();
         UNIT_ASSERT_C(client, FormatError(result.GetError()));

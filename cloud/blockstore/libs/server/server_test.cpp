@@ -51,18 +51,13 @@ ICertificateProviderPtr CreateServerCertificateProvider(
 {
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: config->GetCerts()) {
-        if (cert.CertFile && cert.CertPrivateKeyFile) {
-            certPathList.push_back({
-                cert.CertPrivateKeyFile,
-                cert.CertFile
-            });
-        }
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
     }
 
-    if (certPathList.empty() &&
-        config->GetCertFile() &&
-        config->GetCertPrivateKeyFile())
-    {
+    if (certPathList.empty()) {
         certPathList.push_back({
             config->GetCertPrivateKeyFile(),
             config->GetCertFile()
@@ -79,7 +74,7 @@ ICertificateProviderPtr CreateClientCertificateProvider(
     ILoggingServicePtr /*logging*/)
 {
     if (!config->GetSecurePort()) {
-        return CreateStaticCertificateProvider({}, {});
+        return CreateCertificateProviderStub();
     }
 
     TVector<NCloud::TCertificateFiles> certPathList {
