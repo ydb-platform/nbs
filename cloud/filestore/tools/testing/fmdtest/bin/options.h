@@ -16,6 +16,7 @@ struct TOptions
     ui32 UnlinkPercentage{};
     TDuration ProducerSleepDuration;
     ui32 FileSize{};
+    ui32 CreateFileAttemptCount{};
 
     ui32 StealerThreads{};
     TDuration StealerSleepDuration;
@@ -25,6 +26,8 @@ struct TOptions
 
     TDuration TestDuration;
     TString ReportPath;
+
+    bool SkipFileValidation = false;
 
     void Parse(int argc, char** argv);
 };
