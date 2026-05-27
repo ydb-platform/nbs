@@ -51,8 +51,8 @@ NJson::TJsonValue TZeroRangesStat::TZeroRanges::Dump() const
 
     NJson::TJsonValue result;
     result["Known"] = known;
-    result["Zero"] = nonZero;
-    result["Fraction"] = 100.0 * zero / known;
+    result["Zero"] = zero;
+    result["Fraction"] = known ? 100.0 * zero / known : 0.0;
     return result;
 }
 
