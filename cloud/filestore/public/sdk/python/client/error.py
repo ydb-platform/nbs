@@ -58,6 +58,7 @@ class ClientError(RuntimeError):
             EResult.E_REJECTED.value,
             EResult.E_TIMEOUT.value,
             EResult.E_FS_OUT_OF_SPACE.value,
+            EResult.E_TRANSPORT_ERROR.value,
         ]:
             return True
 
