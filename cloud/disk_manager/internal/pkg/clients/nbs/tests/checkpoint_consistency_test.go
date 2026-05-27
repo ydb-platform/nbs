@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"sync/atomic"
@@ -154,8 +153,8 @@ func goWriteBlocksWithRequestLog(
 		cancel()
 		<-finished
 		err := <-writeDone
-		if err != nil && !errors.Is(err, context.Canceled) {
-			return requestLog, err
+		if err != nil {
+			return nil, err
 		}
 		return requestLog, nil
 	}
