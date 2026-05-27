@@ -3346,12 +3346,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     Y_UNIT_TEST(ShouldDrainRequestsWhileStopping)
     {
         TBootstrap bootstrap;
-        bootstrap.Start();
-
-        bootstrap.Service->ReadDataHandler = [&](auto, auto)
-        {
-            return MakeFuture(NProto::TReadDataResponse());
-        };
 
         auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
         std::atomic<int> writeDataCalled = 0;
@@ -3360,6 +3354,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             writeDataCalled++;
             return writeDataPromise.GetFuture();
         };
+
+        bootstrap.Service->ReadDataHandler = [&](auto, auto)
+        {
+            return MakeFuture(NProto::TReadDataResponse());
+        };
+
+        bootstrap.Start();
 
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
@@ -3389,6 +3390,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         TBootstrap bootstrap;
 
+        auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto) {
+            return writeDataPromise.GetFuture();
+        };
+
         bootstrap.Start(/* sendInitRequest = */ false);
 
         auto init = bootstrap.Fuse->SendRequest<TInitRequest>();
@@ -3396,12 +3403,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
-
-        auto writeDataPromise = NewPromise<NProto::TWriteDataResponse>();
-
-        bootstrap.Service->WriteDataHandler = [&](auto, auto) {
-            return writeDataPromise.GetFuture();
-        };
 
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
             nodeId, handleId, 0, CreateBuffer(4096, 'a'));
