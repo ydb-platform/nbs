@@ -39,6 +39,7 @@ THiveProxyActor::THiveProxyActor(
         NMonitoring::TDynamicCounterPtr counters)
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
+    , ExternalBootRequestIdleTimeout(config.ExternalBootRequestIdleTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
     , UseBinaryFormatForTabletBootInfoBackup(config.UseBinaryFormatForTabletBootInfoBackup)
@@ -551,6 +552,12 @@ STFUNC(THiveProxyActor::StateWork)
         HFunc(TEvHiveProxyPrivate::TEvSendTabletMetrics, HandleSendTabletMetrics);
 
         HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
+        HFunc(
+            TEvHiveProxyPrivate::TEvBootExternalCompleted,
+            HandleBootExternalCompleted);
+        HFunc(
+            TEvHiveProxyPrivate::TEvBootExternalTimeout,
+            HandleBootExternalTimeout);
 
         default:
             if (!HandleRequests(ev)) {

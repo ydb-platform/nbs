@@ -472,7 +472,8 @@ struct TTestEnv
 
     TTestEnv(
             TTestActorRuntime& runtime,
-            EExternalBootOptions externalBootOptions)
+            EExternalBootOptions externalBootOptions,
+            TDuration externalBootRequestIdleTimeout = TDuration::Zero())
         : Runtime(runtime)
         , HiveState(MakeIntrusive<THiveMockState>())
     {
@@ -486,7 +487,7 @@ struct TTestEnv
 
         BootHiveMock(Runtime, FakeHiveTablet, HiveState, externalBootOptions);
 
-        SetupHiveProxy("", false, 0);
+        SetupHiveProxy("", false, 0, externalBootRequestIdleTimeout);
     }
 
     ~TTestEnv()
@@ -521,12 +522,14 @@ struct TTestEnv
     void SetupHiveProxy(
         TString tabletBootInfoBackupFilePath,
         bool fallbackMode,
-        ui64 tenantHive)
+        ui64 tenantHive,
+        TDuration externalBootRequestIdleTimeout = TDuration::Zero())
     {
         THiveProxyConfig config{
             .PipeClientRetryCount = 4,
             .PipeClientMinRetryTime = TDuration::Seconds(1),
             .HiveLockExpireTimeout = TDuration::Seconds(30),
+            .ExternalBootRequestIdleTimeout = externalBootRequestIdleTimeout,
             .LogComponent = 0,
             .TabletBootInfoBackupFilePath = tabletBootInfoBackupFilePath,
             .FallbackMode = fallbackMode,
@@ -636,21 +639,57 @@ struct TTestEnv
         return *msg;
     }
 
+    void SendBootExternalRequestAsync(const TActorId& sender, ui64 tabletId)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvBootExternalRequest(tabletId)));
+    }
+
+    void SendBootExternalRequestAsync(
+        const TActorId& sender,
+        ui64 tabletId,
+        TDuration requestTimeout)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvBootExternalRequest(
+                tabletId,
+                requestTimeout)));
+    }
+
+    struct TBootExternalResult
+    {
+        NProto::TError Error;
+        TEvHiveProxy::TBootExternalResponse Response;
+
+        ui32 GetStatus() const
+        {
+            return Error.GetCode();
+        }
+    };
+
+    TBootExternalResult GrabBootExternalResponse(const TActorId& sender)
+    {
+        auto ev = Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(
+            sender);
+        UNIT_ASSERT(ev);
+        const auto* msg = ev->Get();
+        return {msg->GetError(), *msg};
+    }
+
     TEvHiveProxy::TBootExternalResponse SendBootExternalRequest(
         const TActorId& sender,
         ui64 tabletId,
         ui32 errorCode,
         TDuration requestTimeout)
     {
-        Runtime.Send(new IEventHandle(
-            MakeHiveProxyServiceId(),
-            sender,
-            new TEvHiveProxy::TEvBootExternalRequest(tabletId, requestTimeout)));
-        auto ev = Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(sender);
-        UNIT_ASSERT(ev);
-        const auto* msg = ev->Get();
-        UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
-        return *msg;
+        SendBootExternalRequestAsync(sender, tabletId, requestTimeout);
+        const auto result = GrabBootExternalResponse(sender);
+        UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), errorCode);
+        return result.Response;
     }
 
     TEvHiveProxy::TReassignTabletResponse SendReassignTabletRequest(
@@ -1343,7 +1382,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         auto result = env.SendBootExternalRequest(
             sender,
             FakeTablet2,
-            MAKE_KIKIMR_ERROR(NKikimrProto::TRYLATER),
+            E_REJECTED,
             TDuration::Seconds(1));
         UNIT_ASSERT(!result.StorageInfo);
     }
@@ -1878,6 +1917,768 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
             env.SendListTabletBootInfoBackups(sender, S_OK);
         }
+    }
+
+    Y_UNIT_TEST(ShouldDedupConcurrentBootRequests)
+    {
+        // While a single TEvBootExternalRequest is in flight for tabletId X,
+        // any new TEvBootExternalRequest for the same tabletId must attach
+        // to the existing in-flight call rather than spawn a duplicate
+        // TEvInitiateTabletExternalBoot to HIVE.
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, EExternalBootOptions::IGNORE);
+
+        int hiveBootRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::EvInitiateTabletExternalBoot) {
+                    ++hiveBootRequests;
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        auto sender2 = runtime.AllocateEdgeActor();
+        auto sender3 = runtime.AllocateEdgeActor();
+
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender2,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender3,
+            FakeTablet2,
+            TDuration::Minutes(10));
+
+        // Let proxy/actor dispatch all queued events.
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+    }
+
+    Y_UNIT_TEST(ShouldSendSuccessToAllWaiters)
+    {
+        // Several callers wait on the same tabletId. When HIVE replies once
+        // (PROCESS mode), every waiter receives the same successful response.
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        // Hold TEvInitiateTabletExternalBoot in flight until we've queued
+        // all three TEvBootExternalRequest events so dedup actually kicks in
+        // (otherwise HIVE may reply to request #1 before #2/#3 reach proxy).
+        int bootCompleted = 0;
+        int hiveBootRequests = 0;
+        TVector<TAutoPtr<IEventHandle>> heldHiveRequests;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvInitiateTabletExternalBoot: {
+                        ++hiveBootRequests;
+                        heldHiveRequests.emplace_back(ev.Release());
+                        return true;
+                    }
+                    case TEvHiveProxyPrivate::EvBootExternalCompleted: {
+                        ++bootCompleted;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        auto sender2 = runtime.AllocateEdgeActor();
+        auto sender3 = runtime.AllocateEdgeActor();
+
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender2,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender3,
+            FakeTablet2,
+            TDuration::Minutes(10));
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        // Only one HIVE boot was dispatched.
+        UNIT_ASSERT_VALUES_EQUAL(0, bootCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1u, heldHiveRequests.size());
+
+        // Release the held HIVE request — HIVE will now reply once.
+        runtime.Send(heldHiveRequests.front().Release());
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, bootCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        // All three waiters receive the same successful response.
+        auto r1 = env.GrabBootExternalResponse(sender1);
+        auto r2 = env.GrabBootExternalResponse(sender2);
+        auto r3 = env.GrabBootExternalResponse(sender3);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, r1.GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, r2.GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, r3.GetStatus());
+
+        UNIT_ASSERT(r1.Response.StorageInfo);
+        UNIT_ASSERT(r2.Response.StorageInfo);
+        UNIT_ASSERT(r3.Response.StorageInfo);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected->TabletID,
+            r1.Response.StorageInfo->TabletID);
+        UNIT_ASSERT_VALUES_EQUAL(
+            r1.Response.StorageInfo->TabletID,
+            r2.Response.StorageInfo->TabletID);
+        UNIT_ASSERT_VALUES_EQUAL(
+            r1.Response.StorageInfo->TabletID,
+            r3.Response.StorageInfo->TabletID);
+
+        // Only one HIVE generation bump — the request was not duplicated.
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            env.HiveState->KnownGenerations[FakeTablet2]);
+    }
+
+    Y_UNIT_TEST(ShouldSendErrorToAllWaiters)
+    {
+        // When HIVE replies with an error, every deduped waiter for that
+        // tabletId receives the same error.
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        int bootCompleted = 0;
+        int hiveBootRequests = 0;
+        TVector<TAutoPtr<IEventHandle>> heldHiveRequests;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvInitiateTabletExternalBoot: {
+                        ++hiveBootRequests;
+                        heldHiveRequests.emplace_back(ev.Release());
+                        return true;
+                    }
+                    case TEvHiveProxyPrivate::EvBootExternalCompleted: {
+                        ++bootCompleted;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        auto sender2 = runtime.AllocateEdgeActor();
+
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender2,
+            FakeTablet2,
+            TDuration::Minutes(10));
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(0, bootCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        runtime.Send(heldHiveRequests.front().Release());
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(1, bootCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        auto r1 = env.GrabBootExternalResponse(sender1);
+        auto r2 = env.GrabBootExternalResponse(sender2);
+
+        UNIT_ASSERT(FAILED(r1.GetStatus()));
+        UNIT_ASSERT(FAILED(r2.GetStatus()));
+        UNIT_ASSERT(!r1.Response.StorageInfo);
+        UNIT_ASSERT(!r2.Response.StorageInfo);
+    }
+
+    Y_UNIT_TEST(ShouldKeepActorAliveAfterWaiterTimeout)
+    {
+        // After a waiter's deadline elapses we reply E_REJECTED, but the
+        // underlying TBootRequestActor must stay alive so that a subsequent
+        // TEvBootExternalRequest reuses the in-flight HIVE call instead of
+        // creating a new one. This is what actually defuses the retry storm.
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, EExternalBootOptions::IGNORE);
+
+        int hiveBootRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::EvInitiateTabletExternalBoot) {
+                    ++hiveBootRequests;
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Seconds(1));
+
+        // Sender1 must time out (REJECTED).
+        auto r1 = env.GrabBootExternalResponse(sender1);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, r1.GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        // Right after the timeout the actor is still alive. A second caller
+        // attaches as a waiter and the HIVE request is NOT re-sent.
+        auto sender2 = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            sender2,
+            FakeTablet2,
+            TDuration::Seconds(1));
+        auto r2 = env.GrabBootExternalResponse(sender2);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, r2.GetStatus());
+
+        // No additional TEvInitiateTabletExternalBoot was sent to HIVE.
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+    }
+
+    Y_UNIT_TEST(ShouldNotDedupAcrossTablets)
+    {
+        // Sanity check: dedup is per-tabletId. Two different tabletIds
+        // produce two separate TEvInitiateTabletExternalBoot calls.
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, EExternalBootOptions::IGNORE);
+
+        int hiveBootRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::EvInitiateTabletExternalBoot) {
+                    ++hiveBootRequests;
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        auto sender2 = runtime.AllocateEdgeActor();
+
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender2,
+            FakeTablet3,
+            TDuration::Minutes(10));
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, hiveBootRequests);
+    }
+
+    Y_UNIT_TEST(ShouldStartFreshActorAfterHiveResponse)
+    {
+        // After HIVE replies, the inflight entry is cleared and the actor
+        // dies. A new TEvBootExternalRequest must spawn a fresh actor (and
+        // a fresh TEvInitiateTabletExternalBoot to HIVE).
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        int hiveBootRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::EvInitiateTabletExternalBoot) {
+                    ++hiveBootRequests;
+                }
+                return false;
+            });
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto r1 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(1u, r1.SuggestedGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        auto r2 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(2u, r2.SuggestedGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(2, hiveBootRequests);
+    }
+
+    Y_UNIT_TEST(ShouldExpireOnlyTimedOutWaiters)
+    {
+        // Three waiters share the same in-flight HIVE call. The waiter with the
+        // shorter deadline must receive E_REJECTED, then the waiter with the
+        // longer deadline must receive E_REJECTED and once HIVE finally replies
+        // the remaining waiter must receive the successful response.
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        int hiveBootRequests = 0;
+        TVector<TAutoPtr<IEventHandle>> heldHiveRequests;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::EvInitiateTabletExternalBoot) {
+                    ++hiveBootRequests;
+                    heldHiveRequests.emplace_back(ev.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        auto shortSender = runtime.AllocateEdgeActor();
+        auto longSender = runtime.AllocateEdgeActor();
+        auto infinitySender = runtime.AllocateEdgeActor();
+
+        env.SendBootExternalRequestAsync(infinitySender, FakeTablet2);
+        env.SendBootExternalRequestAsync(
+            shortSender,
+            FakeTablet2,
+            TDuration::Seconds(1));
+        env.SendBootExternalRequestAsync(
+            longSender,
+            FakeTablet2,
+            TDuration::Minutes(10));
+
+        // Both requests must attach to the same in-flight HIVE call.
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1u, heldHiveRequests.size());
+
+        // Short waiter must time out with E_REJECTED while HIVE is still silent.
+        auto shortResult = env.GrabBootExternalResponse(shortSender);
+        UNIT_ASSERT(
+            !runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(
+                longSender,
+                TDuration::MilliSeconds(50)));
+        UNIT_ASSERT(
+            !runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(
+                infinitySender,
+                TDuration::MilliSeconds(50)));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, shortResult.GetStatus());
+        UNIT_ASSERT(!shortResult.Response.StorageInfo);
+
+        // No extra HIVE request was issued — the long waiter still rides on the
+        // original in-flight call.
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + TDuration::Minutes(10));
+        auto longResult = env.GrabBootExternalResponse(longSender);
+        UNIT_ASSERT(
+            !runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(
+                infinitySender,
+                TDuration::MilliSeconds(50)));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, longResult.GetStatus());
+        UNIT_ASSERT(!longResult.Response.StorageInfo);
+
+        // Release the held HIVE request — HIVE will now reply success.
+        runtime.Send(heldHiveRequests.front().Release());
+
+        auto infResult = env.GrabBootExternalResponse(infinitySender);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, infResult.GetStatus());
+        UNIT_ASSERT(infResult.Response.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected->TabletID,
+            infResult.Response.StorageInfo->TabletID);
+        UNIT_ASSERT_VALUES_EQUAL(1u, infResult.Response.SuggestedGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+    }
+
+    Y_UNIT_TEST(ShouldNotResendHiveRequestOnPipeReset)
+    {
+        // Pipe reset between HIVE and the proxy must not cause the in-flight
+        // boot request to be split into per-waiter HIVE calls: the single
+        // shared actor re-issues exactly one TEvInitiateTabletExternalBoot.
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, EExternalBootOptions::IGNORE);
+
+        int hiveBootRequests = 0;
+        int bootCompleted = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvInitiateTabletExternalBoot:
+                        ++hiveBootRequests;
+                        break;
+                    case TEvHiveProxyPrivate::EvBootExternalCompleted:
+                        ++bootCompleted;
+                        break;
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        auto sender2 = runtime.AllocateEdgeActor();
+        auto sender3 = runtime.AllocateEdgeActor();
+
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender2,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        env.SendBootExternalRequestAsync(
+            sender3,
+            FakeTablet2,
+            TDuration::Minutes(10));
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        // Pre-reset state: one HIVE request shared by three waiters,
+        // no completions yet.
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+        UNIT_ASSERT_VALUES_EQUAL(0, bootCompleted);
+
+        // Force pipe reset between proxy and HIVE. The proxy must send
+        // TEvChangeTabletClient to its actor, which re-bootstraps and re-sends
+        // a single TEvInitiateTabletExternalBoot.
+        env.EnableTabletResolverScheduling();
+        env.RebootHive();
+
+        const int hiveBootRequestsBefore = hiveBootRequests;
+        for (int retries = 0;
+             retries < 5 && hiveBootRequests == hiveBootRequestsBefore;
+             ++retries)
+        {
+            // Pipe to hive may take a long time to reconnect.
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        }
+
+        // Exactly one extra TEvInitiateTabletExternalBoot per pipe reset.
+        UNIT_ASSERT_VALUES_EQUAL(2, hiveBootRequests);
+
+        // No completion has been delivered to the proxy: so all three waiters
+        // keep riding the in-flight request.
+        UNIT_ASSERT_VALUES_EQUAL(0, bootCompleted);
+    }
+
+    Y_UNIT_TEST(ShouldStopNoWaitersActorAfterIdleTimeout)
+    {
+        const auto idleTimeout = TDuration::Seconds(30);
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, EExternalBootOptions::IGNORE, idleTimeout);
+
+        int hiveBootRequests = 0;
+        TVector<TAutoPtr<IEventHandle>> heldHiveRequests;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::EvInitiateTabletExternalBoot) {
+                    ++hiveBootRequests;
+                    heldHiveRequests.emplace_back(ev.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Seconds(1));
+
+        // Sender1 must time out (REJECTED).
+        auto r1 = env.GrabBootExternalResponse(sender1);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, r1.GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + idleTimeout - TDuration::Seconds(5));
+
+        auto sender2 = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            sender2,
+            FakeTablet2,
+            TDuration::Seconds(1));
+        auto r2 = env.GrabBootExternalResponse(sender2);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, r2.GetStatus());
+        // No additional TEvInitiateTabletExternalBoot was sent to HIVE.
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveBootRequests);
+
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + TDuration::Seconds(5));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + idleTimeout + TDuration::Seconds(1));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        // After the idle timeout the actor must be stopped. A second caller
+        // creates new HIVE request.
+        auto sender3 = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            sender3,
+            FakeTablet2,
+            TDuration::Seconds(1));
+        auto r3 = env.GrabBootExternalResponse(sender3);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, r3.GetStatus());
+
+        // No additional TEvInitiateTabletExternalBoot was sent to HIVE.
+        UNIT_ASSERT_VALUES_EQUAL(2, hiveBootRequests);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreStaleBootTimeoutAfterCompletion)
+    {
+        // A waiter supplies a finite RequestTimeout, but HIVE replies before
+        // it. The scheduled TEvBootExternalTimeout cannot be cancelled and
+        // fires after HandleBootExternalCompleted has already erased the entry.
+        // The proxy must ignore it (no ABORT / crash).
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);   // PROCESS: HIVE replies normally
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        // Finite timeout => a TEvBootExternalTimeout gets scheduled at +5s.
+        auto r1 = env.SendBootExternalRequest(
+            sender1,
+            FakeTablet2,
+            S_OK,
+            TDuration::Seconds(5));
+        UNIT_ASSERT(r1.StorageInfo);   // HIVE replied, inflight entry erased
+
+        // Fire the now-orphan timeout. Must not crash.
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + TDuration::Seconds(10));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        // The proxy is still functional: a fresh boot still succeeds.
+        auto sender2 = runtime.AllocateEdgeActor();
+        auto r2 = env.SendBootExternalRequest(
+            sender2,
+            FakeTablet2,
+            S_OK,
+            TDuration::Seconds(5));
+        UNIT_ASSERT(r2.StorageInfo);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreStaleBootCompletedAfterIdleTeardown)
+    {
+        // Waiter times out -> actor becomes idle -> idle teardown erases the
+        // entry and poisons the actor. But the actor had already produced a
+        // TEvBootExternalCompleted (HIVE replied) that is still queued. When it
+        // reaches the proxy the entry is gone -> must be ignored, not abort.
+
+        TTestBasicRuntime runtime;
+        const auto idleTimeout = TDuration::Seconds(5);
+        TTestEnv env(runtime, EExternalBootOptions::PROCESS, idleTimeout);
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        TVector<TAutoPtr<IEventHandle>> heldHiveBoots;
+        TVector<TAutoPtr<IEventHandle>> heldCompleted;
+        bool holdHiveBoots = true;
+        bool holdCompleted = true;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvInitiateTabletExternalBoot:
+                        if (holdHiveBoots) {
+                            heldHiveBoots.emplace_back(ev.Release());
+                            return true;
+                        }
+                        break;
+                    case TEvHiveProxyPrivate::EvBootExternalCompleted:
+                        if (holdCompleted) {
+                            heldCompleted.emplace_back(ev.Release());
+                            return true;
+                        }
+                        break;
+                }
+                return false;
+            });
+
+        auto sender1 = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Seconds(1));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(1u, heldHiveBoots.size());
+
+        // Waiter times out -> E_REJECTED, entry idle, NoWaitersDeadline=+idle.
+        auto r1 = env.GrabBootExternalResponse(sender1);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, r1.GetStatus());
+
+        // Let HIVE process the boot now: actor emits a (held) completion,
+        // then dies.
+        holdHiveBoots = false;
+        runtime.Send(heldHiveBoots.front().Release());
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(1u, heldCompleted.size());
+
+        // Idle teardown fires first and erases the entry.
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + idleTimeout + TDuration::Seconds(1));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        // Deliver the stale completion to an entry that no longer exists.
+        holdCompleted = false;
+        runtime.Send(heldCompleted.front().Release());
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        // No crash; proxy still works.
+        auto sender2 = runtime.AllocateEdgeActor();
+        auto r2 = env.SendBootExternalRequest(
+            sender2,
+            FakeTablet2,
+            S_OK,
+            TDuration::Seconds(5));
+        UNIT_ASSERT(r2.StorageInfo);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreStaleBootCompletedFromPreviousEpoch)
+    {
+        // After idle teardown erases episode N, a new request creates episode
+        // N+1 (new actor, new generation). The OLD actor's completion (generation N)
+        // then arrives. With generations the proxy ignores it, so episode N+1's
+        // waiter is NOT served the stale result and keeps waiting for its own.
+
+        TTestBasicRuntime runtime;
+        const auto idleTimeout = TDuration::Seconds(5);
+        TTestEnv env(runtime, EExternalBootOptions::PROCESS, idleTimeout);
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        TVector<TAutoPtr<IEventHandle>> heldHiveBoots;
+        TVector<TAutoPtr<IEventHandle>> heldCompleted;
+        bool holdHiveBoots = true;
+        bool holdCompleted = true;
+        int responsesToNew = 0;
+        TActorId newSender;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvInitiateTabletExternalBoot:
+                        if (holdHiveBoots) {
+                            heldHiveBoots.emplace_back(ev.Release());
+                            return true;
+                        }
+                        break;
+                    case TEvHiveProxyPrivate::EvBootExternalCompleted:
+                        if (holdCompleted) {
+                            heldCompleted.emplace_back(ev.Release());
+                            return true;
+                        }
+                        break;
+                    case TEvHiveProxy::EvBootExternalResponse:
+                        if (newSender &&
+                            ev->GetRecipientRewrite() == newSender) {
+                            ++responsesToNew;
+                        }
+                        break;
+                }
+                return false;
+            });
+
+        // Episode N: a waiter that times out; actor becomes idle.
+        auto sender1 = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            sender1,
+            FakeTablet2,
+            TDuration::Seconds(1));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(1u, heldHiveBoots.size());
+
+        auto r1 = env.GrabBootExternalResponse(sender1);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, r1.GetStatus());
+
+        // Episode N actor replies (HIVE); its completion is held.
+        runtime.Send(
+            heldHiveBoots.front().Release());   // holdHiveBoots still true
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(1u, heldCompleted.size());
+
+        // Idle teardown erases episode N entry (actor already dead).
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + idleTimeout + TDuration::Seconds(1));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+
+        // Episode N+1: a fresh waiter for the same tabletId.
+        newSender = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequestAsync(
+            newSender,
+            FakeTablet2,
+            TDuration::Minutes(10));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2u,
+            heldHiveBoots.size());   // new actor boot held
+
+        // Deliver the STALE completion from episode N. Generation mismatch =>
+        // ignored; the new waiter must NOT receive any response yet.
+        holdCompleted = false;
+        runtime.Send(heldCompleted.front().Release());
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(50));
+        UNIT_ASSERT_VALUES_EQUAL(0, responsesToNew);
+
+        // Let episode N+1's HIVE boot through -> the new waiter gets its own
+        // (correct) response.
+        holdHiveBoots = false;
+        runtime.Send(heldHiveBoots.back().Release());
+        auto rNew = env.GrabBootExternalResponse(newSender);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, rNew.GetStatus());
+        UNIT_ASSERT(rNew.Response.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(1, responsesToNew);
     }
 }
 

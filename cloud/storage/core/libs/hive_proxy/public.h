@@ -14,6 +14,9 @@ struct THiveProxyConfig
     ui32 PipeClientRetryCount = 0;
     TDuration PipeClientMinRetryTime;
     TDuration HiveLockExpireTimeout;
+    // Timeout for an external-boot actor that has no waiters left.
+    // 0 keeps the worker until HIVE replies.
+    TDuration ExternalBootRequestIdleTimeout;
     int LogComponent = 0;
     TString TabletBootInfoBackupFilePath;
     bool UseBinaryFormatForTabletBootInfoBackup = false;

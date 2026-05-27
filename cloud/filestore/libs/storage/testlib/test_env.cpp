@@ -257,13 +257,16 @@ ui32 TTestEnv::AddDynamicNode()
         nodeIdx);
 
     auto hiveProxy = CreateHiveProxy({
-        StorageConfig->GetPipeClientRetryCount(),
-        StorageConfig->GetPipeClientMinRetryTime(),
-        TDuration::Seconds(1),  // HiveLockExpireTimeout - does not matter
-        TFileStoreComponents::HIVE_PROXY,
-        /*TabletBootInfoBackupFilePath=*/"",
-        /*UseBinaryFormatForTabletBootInfoBackup=*/false,
-        /*FallbackMode=*/false,
+        .PipeClientRetryCount = StorageConfig->GetPipeClientRetryCount(),
+        .PipeClientMinRetryTime = StorageConfig->GetPipeClientMinRetryTime(),
+        .HiveLockExpireTimeout = TDuration::Seconds(1),   // does not matter
+        .ExternalBootRequestIdleTimeout =
+            StorageConfig->GetExternalBootRequestIdleTimeout(),
+        .LogComponent = TFileStoreComponents::HIVE_PROXY,
+        .TabletBootInfoBackupFilePath = {},
+        .UseBinaryFormatForTabletBootInfoBackup = false,
+        .FallbackMode = false,
+        .TenantHiveTabletId = 0,
     });
     auto hiveProxyId = Runtime.Register(
         hiveProxy.release(),

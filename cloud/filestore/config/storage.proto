@@ -790,4 +790,11 @@ message TStorageConfig
     // mode tablets register their IFileSystemShard with this server,
     // allowing direct TCP access to shard operations.
     optional uint32 FastShardServerPort = 503;
+
+    // How long a deduplicated external-boot actor is kept alive after its
+    // last waiter has expired (in milliseconds). Within this window a new
+    // TEvBootExternalRequest for the same tabletId reuses the still-pending
+    // HIVE call instead of issuing a new one.
+    // 0 - the worker is kept until HIVE replies.
+    optional uint32 ExternalBootRequestIdleTimeout = 504;
 }

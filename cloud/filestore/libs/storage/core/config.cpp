@@ -353,6 +353,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UseSchemeCache,                         bool,   false                 )\
                                                                                \
     xxx(FastShardServerPort,                    ui32,   0                     )\
+                                                                               \
+    xxx(ExternalBootRequestIdleTimeout,     TDuration, TDuration::Seconds(30) )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
