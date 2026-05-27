@@ -747,14 +747,6 @@ void TReadDataActor::HandleReadDataResponse(
     }
 
     auto& record = response->Record;
-
-    HandleServiceTraceInfo(
-        "ReadData",
-        ctx,
-        TraceSerializer,
-        MainInFlightRequest->CallContext,
-        record);
-
     if (HasError(record)) {
         HandleError(ctx, record.GetError());
         return;
