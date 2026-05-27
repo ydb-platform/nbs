@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sync/atomic"
@@ -116,10 +117,12 @@ func goWriteBlocksWithRequestLog(
 		})
 	}
 
+	writeDone := make(chan error, 1)
 	go func() {
-		_ = eg.Wait()
+		err := eg.Wait()
 		session.Close(ctx)
 		close(requests)
+		writeDone <- err
 	}()
 
 	requestLog := make([]writeRequest, 1, 10000)
@@ -150,6 +153,10 @@ func goWriteBlocksWithRequestLog(
 	stopWrites := func() ([]writeRequest, error) {
 		cancel()
 		<-finished
+		err := <-writeDone
+		if err != nil && !errors.Is(err, context.Canceled) {
+			return requestLog, err
+		}
 		return requestLog, nil
 	}
 
