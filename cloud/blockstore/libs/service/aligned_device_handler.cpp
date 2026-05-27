@@ -202,7 +202,6 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     request->SetStartIndex(blocksInfo.Range.Start);
     request->SetBlocksCount(requestBlockCount);
     request->SetBlockSize(BlockSize);
-    request->BlockSize = BlockSize;
 
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
@@ -291,7 +290,6 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     request->SetStartIndex(blocksInfo.Range.Start);
     request->SetBlockSize(BlockSize);
     request->BlocksCount = requestBlockCount;
-    request->BlockSize = BlockSize;
 
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.

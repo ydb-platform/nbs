@@ -206,6 +206,7 @@ public:
             EFileStoreRequest::GenerateBlobIds,
             request->Record,
             false /* addWriteRangeInfo */);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -265,16 +266,12 @@ private:
 
         SERVICE_VERIFY(InFlightRequest);
 
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), error);
-        HandleServiceTraceInfo(
-            "GenerateBlobIds",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(error)) {
             if (error.GetCode() != E_FS_THROTTLED) {
@@ -514,6 +511,12 @@ private:
             RequestInfo->CallContext->RequestId);
         callContext->SetRequestStartedCycles(GetCycleCount());
         callContext->RequestType = requestType;
+        if (!RequestInfo->CallContext->LWOrbit.Fork(callContext->LWOrbit)) {
+            FILESTORE_TRACK(
+                ForkFailed,
+                RequestInfo->CallContext,
+                GetFileStoreRequestName(requestType));
+        }
         InFlightRequest.ConstructInPlace(
             TRequestInfo(
                 RequestInfo->Sender,
@@ -572,6 +575,7 @@ private:
             EFileStoreRequest::AddData,
             request->Record,
             false /* addWriteRangeInfo */);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -590,16 +594,12 @@ private:
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(InFlightRequest);
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
-        HandleServiceTraceInfo(
-            "AddData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
             WriteData(ctx, msg->GetError());
@@ -631,6 +631,7 @@ private:
             EFileStoreRequest::ConfirmAddData,
             request->Record,
             true);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -661,6 +662,7 @@ private:
             EFileStoreRequest::CancelAddData,
             request->Record,
             true);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -679,16 +681,12 @@ private:
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(InFlightRequest);
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
-        HandleServiceTraceInfo(
-            "ConfirmAddData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
             if (ev->Sender == MakeIndexTabletProxyServiceId()) {
@@ -714,16 +712,12 @@ private:
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(InFlightRequest);
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
-        HandleServiceTraceInfo(
-            "CancelAddData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
             if (ev->Sender == MakeIndexTabletProxyServiceId()) {
@@ -826,6 +820,7 @@ private:
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
         request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        request->CallContext = RequestInfo->CallContext;
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
         TraceSerializer->BuildTraceRequest(
@@ -841,12 +836,6 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-        HandleServiceTraceInfo(
-            "WriteData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
             HandleError(ctx, msg->GetError());

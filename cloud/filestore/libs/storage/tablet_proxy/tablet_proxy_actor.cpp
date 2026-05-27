@@ -1,7 +1,9 @@
 #include "tablet_proxy_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 
 #include <util/datetime/base.h>
 
@@ -10,6 +12,8 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 
 using namespace NKikimr;
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 namespace {
 
@@ -41,13 +45,51 @@ TString GetFileSystemId(const TProtoRequestEvent<TArgs, EventId>& request)
     return request.Record.GetFileSystemId();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+void HandleServiceTraceInfo(
+    const char* methodName,
+    const NActors::TActorContext& ctx,
+    const ITraceSerializerPtr& traceSerializer,
+    const TCallContextBasePtr& callContext,
+    T& record)
+{
+    const bool handled =
+        HandleTraceInfo(traceSerializer, callContext, record);
+    if (handled) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_PROXY,
+            "%s: trace handled",
+            methodName);
+        return;
+    }
+
+    if constexpr (HasResponseHeaders<T>()) {
+        if (record.GetHeaders().HasTrace()) {
+            const auto& trace = record.GetHeaders().GetTrace();
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET_PROXY,
+                "%s: trace not handled: %s",
+                methodName,
+                trace.Utf8DebugString().Quote().c_str(),
+                handled);
+        }
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TIndexTabletProxyActor::TIndexTabletProxyActor(TStorageConfigPtr config)
+TIndexTabletProxyActor::TIndexTabletProxyActor(
+        TStorageConfigPtr config,
+        ITraceSerializerPtr traceSerializer)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
+    , TraceSerializer(std::move(traceSerializer))
     , ClientCache(CreateTabletPipeClientCache(*Config))
 {}
 
@@ -166,10 +208,11 @@ void TIndexTabletProxyActor::ForwardRequest(
 {
     auto clientId = ClientCache->Prepare(ctx, conn.TabletId);
     ui64 requestId = ++RequestId;
+    auto callContext = ev->Get()->CallContext;
 
     LOG_TRACE(ctx, TFileStoreComponents::TABLET_PROXY,
         "Forward request %lu as %lu to file store: %lu (remote: %s)",
-        ev->Get()->CallContext->RequestId,
+        callContext->RequestId,
         requestId,
         conn.TabletId,
         ToString(clientId).c_str());
@@ -189,7 +232,10 @@ void TIndexTabletProxyActor::ForwardRequest(
 
     ActiveRequests.emplace(
         requestId,
-        TActiveRequest(conn.Id, IEventHandlePtr(ev.Release())));
+        TActiveRequest(
+            conn.Id,
+            IEventHandlePtr(ev.Release()),
+            std::move(callContext)));
 }
 
 void TIndexTabletProxyActor::DescribeFileStore(
@@ -317,6 +363,10 @@ void TIndexTabletProxyActor::HandleRequest(
     }
 
     const auto* msg = ev->Get();
+    FILESTORE_TRACK(
+        RequestReceived_TabletProxy,
+        msg->CallContext,
+        TMethod::Name);
 
     TString fileSystemId = GetFileSystemId(*msg);
     // Some filestore names can point to another filestore, set by storage config
@@ -351,6 +401,7 @@ void TIndexTabletProxyActor::HandleRequest(
     }
 }
 
+template <typename TMethod>
 void TIndexTabletProxyActor::HandleResponse(
     const TActorContext& ctx,
     TAutoPtr<IEventHandle>& ev)
@@ -390,6 +441,19 @@ void TIndexTabletProxyActor::HandleResponse(
             nullptr);
     }
 
+    auto* x = reinterpret_cast<TMethod::TResponse::TPtr*>(&event);
+    HandleServiceTraceInfo(
+        TMethod::Name,
+        ctx,
+        TraceSerializer,
+        it->second.CallContext,
+        x->Get()->Get()->Record);
+
+    FILESTORE_TRACK(
+        ResponseSent_TabletProxy,
+        it->second.CallContext,
+        TMethod::Name);
+
     auto* conn = ConnectionById[it->second.ConnectionId];
     Y_ABORT_UNLESS(conn);
 
@@ -420,7 +484,7 @@ bool TIndexTabletProxyActor::HandleRequests(STFUNC_SIG)
         break;                                                                 \
     }                                                                          \
     case ns::TEv##name##Response::EventType: {                                 \
-        HandleResponse(ctx, ev);                                               \
+        HandleResponse<ns::T##name##Method>(ctx, ev);                          \
         break;                                                                 \
     }                                                                          \
 // FILESTORE_HANDLE_METHOD

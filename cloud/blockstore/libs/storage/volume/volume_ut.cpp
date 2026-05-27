@@ -5579,9 +5579,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
             request->Record.SetStartIndex(range.Start);
             request->Record.MutableHeaders()->SetClientId(clientInfo.GetClientId());
+            request->Record.SetBlockSize(DefaultBlockSize);
             request->Record.Sglist = glist;
             request->Record.BlocksCount = range.Size();
-            request->Record.BlockSize = DefaultBlockSize;
 
             glist.Close();
 
@@ -7074,9 +7074,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             request->Record.SetStartIndex(range.Start);
             request->Record.MutableHeaders()->SetClientId(
                 clientInfo.GetClientId());
+            request->Record.SetBlockSize(DefaultBlockSize);
             request->Record.Sglist = glist;
             request->Record.BlocksCount = range.Size();
-            request->Record.BlockSize = DefaultBlockSize;
 
             volume.SendToPipe(std::move(request));
 
@@ -7299,9 +7299,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             request->Record.SetStartIndex(range.Start);
             request->Record.MutableHeaders()->SetClientId(
                 clientInfo.GetClientId());
+            request->Record.SetBlockSize(DefaultBlockSize);
             request->Record.Sglist = glist;
             request->Record.BlocksCount = range.Size();
-            request->Record.BlockSize = DefaultBlockSize;
 
             volume.SendToPipe(std::move(request));
 

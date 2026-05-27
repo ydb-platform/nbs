@@ -1,6 +1,6 @@
 #pragma once
 
-#include "error.h"
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

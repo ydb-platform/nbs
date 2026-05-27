@@ -7,9 +7,9 @@
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/vfs/public.h>
 
-#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
 
 namespace NCloud::NFileStore::NVhost {
 

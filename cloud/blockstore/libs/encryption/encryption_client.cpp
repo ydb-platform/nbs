@@ -407,18 +407,18 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
-    if (request->GetBlocksCount() == 0 || request->BlockSize == 0) {
+    if (request->GetBlocksCount() == 0 || request->GetBlockSize() == 0) {
         return MakeFutureErrorResponse<NProto::TReadBlocksLocalResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
     }
 
     ui64 bufferSize = static_cast<ui64>(request->GetBlocksCount()) *
-        request->BlockSize;
+        request->GetBlockSize();
     auto buffer = AllocateStorageBuffer(*Client, bufferSize);
     auto sgListOrError = SgListNormalize(
         { buffer.get(), bufferSize },
-        request->BlockSize);
+        request->GetBlockSize());
 
     if (HasError(sgListOrError)) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
@@ -478,7 +478,7 @@ NProto::TReadBlocksLocalResponse TEncryptionClient::HandleReadBlocksLocalRespons
             "failed to acquire sglist in EncryptionClient");
     }
 
-    auto sgListOrError = SgListNormalize(guard.Get(), request.BlockSize);
+    auto sgListOrError = SgListNormalize(guard.Get(), request.GetBlockSize());
     if (HasError(sgListOrError)) {
         return TErrorResponse(sgListOrError.GetError());
     }
@@ -508,7 +508,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
-    if (request->BlocksCount == 0 || request->BlockSize == 0) {
+    if (request->BlocksCount == 0 || request->GetBlockSize() == 0) {
         return MakeFutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
@@ -522,14 +522,14 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
     }
 
     ui64 bufferSize = static_cast<ui64>(request->BlocksCount) *
-        request->BlockSize;
+        request->GetBlockSize();
     auto buffer = AllocateStorageBuffer(*Client, bufferSize);
 
     TSgList encryptedSglist;
     {
         auto sgListOrError = SgListNormalize(
             { buffer.get(), bufferSize },
-            request->BlockSize);
+            request->GetBlockSize());
 
         if (HasError(sgListOrError)) {
             return MakeFuture<NProto::TWriteBlocksLocalResponse>(
@@ -540,7 +540,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
 
     TSgList srcSglist;
     {
-        auto sgListOrError = SgListNormalize(guard.Get(), request->BlockSize);
+        auto sgListOrError =
+            SgListNormalize(guard.Get(), request->GetBlockSize());
         if (HasError(sgListOrError)) {
             return MakeFuture<NProto::TWriteBlocksLocalResponse>(
                 TErrorResponse(sgListOrError.GetError()));
@@ -606,8 +607,8 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     writeRequest->SetStartIndex(request->GetStartIndex());
     writeRequest->SetFlags(request->GetFlags());
     writeRequest->SetSessionId(request->GetSessionId());
+    writeRequest->SetBlockSize(BlockSize);
     writeRequest->BlocksCount = request->GetBlocksCount();
-    writeRequest->BlockSize = BlockSize;
     writeRequest->Sglist = guardedSgList;
 
     auto future = WriteBlocksLocal(
@@ -976,7 +977,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TSnapshotEncryptionClient::ReadBlocksL
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
     auto requestSglist = request->Sglist;
-    auto blockSize = request->BlockSize;
+    auto blockSize = request->GetBlockSize();
 
     auto future = Client->ReadBlocksLocal(
         std::move(callContext),

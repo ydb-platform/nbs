@@ -338,7 +338,7 @@ NProto::TError ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
         );
 
         request.Event->Record.BlocksCount = blocksCount;
-        request.Event->Record.BlockSize = blockSize;
+        request.Event->Record.SetBlockSize(blockSize);
     }
 
     return MakeError(S_OK);
@@ -383,7 +383,7 @@ NProto::TError ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
 
         request.Event->Record.SetBlocksCount(blocksCount);
         request.Event->Record.SetCheckpointId(proto.GetCheckpointId());
-        request.Event->Record.BlockSize = blockSize;
+        request.Event->Record.SetBlockSize(blockSize);
         request.Event->Record.ShouldReportFailedRangesOnFailure =
             ev->Get()->Record.ShouldReportFailedRangesOnFailure;
     }

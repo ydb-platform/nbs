@@ -1734,6 +1734,76 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_C(clients.end() == it, "Client was not removed");
     }
 
+    Y_UNIT_TEST(ShouldNotLeaveStalePipeServerEntriesAfterClientRemoval)
+    {
+        // Regression: if a client is removed via a specific pipe while
+        // having other DEACTIVATED pipes, ClientIdsByPipeServerId must not
+        // retain stale (pipeServerId -> clientId) entries pointing at the
+        // already-erased client. Otherwise SetServiceDisconnected for the
+        // remaining pipe server would hit Y_ABORT_UNLESS(clientInfo).
+        auto volumeState = CreateVolumeState();
+        auto clientId = CreateGuidAsString();
+        auto serverActor1 = CreateActor(1);
+        auto serverActor2 = CreateActor(2);
+
+        auto info1 = CreateVolumeClientInfo(
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
+
+        auto info2 = CreateVolumeClientInfo(
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        auto res = volumeState.AddClient(info1, serverActor1);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        res = volumeState.AddClient(info2, serverActor2);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        auto& clients = volumeState.AccessClients();
+        UNIT_ASSERT_VALUES_EQUAL(1, clients.size());
+        auto& client = clients[clientId];
+
+        // Activate serverActor2, then serverActor1 — serverActor2 ends up
+        // DEACTIVATED while serverActor1 becomes ACTIVE.
+        auto checkRes = client.CheckPipeRequest(serverActor2, true, "", "");
+        UNIT_ASSERT_C(!FAILED(checkRes.GetCode()), checkRes);
+
+        checkRes = client.CheckPipeRequest(serverActor1, true, "", "");
+        UNIT_ASSERT_C(!FAILED(checkRes.GetCode()), checkRes);
+
+        CheckPipeState(
+            client,
+            serverActor1,
+            TVolumeClientState::EPipeState::ACTIVE);
+        CheckPipeState(
+            client,
+            serverActor2,
+            TVolumeClientState::EPipeState::DEACTIVATED);
+
+        // Remove the client via the ACTIVE pipe. The remaining pipe is
+        // DEACTIVATED, so AnyPipeAlive() == false and the client is erased
+        // from ClientInfosByClientId.
+        {
+            auto removeRes =
+                volumeState.RemoveClient(clientId, serverActor1);
+            UNIT_ASSERT_C(!FAILED(removeRes.GetCode()), removeRes);
+        }
+
+        // ClientIdsByPipeServerId must be cleaned up too — otherwise the
+        // assertion in SetServiceDisconnected would fire.
+        const auto& pipeServerId2ClientId =
+            volumeState.GetPipeServerId2ClientId();
+        UNIT_ASSERT_VALUES_EQUAL(0, pipeServerId2ClientId.size());
+
+        UNIT_ASSERT(clients.find(clientId) == clients.end());
+
+        // Must not crash on Y_ABORT_UNLESS(clientInfo).
+        volumeState.SetServiceDisconnected(serverActor2, TInstant::Now());
+    }
+
     Y_UNIT_TEST(TestStartPartitionsNeeded)
     {
         auto volumeState = CreateVolumeState();

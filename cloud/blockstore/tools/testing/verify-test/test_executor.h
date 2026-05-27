@@ -3,7 +3,8 @@
 #include "private.h"
 
 #include <util/datetime/base.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <latch>
 
 namespace NCloud::NBlockStore {
 
@@ -72,9 +73,7 @@ struct ITestExecutor
 {
     virtual ~ITestExecutor() = default;
 
-    virtual TTestExecutorReport Run(
-        TAtomic& waitingForStart,
-        TAtomic& shouldStart) = 0;
+    virtual TTestExecutorReport Run(std::latch& waitingForStart) = 0;
 
     virtual void Stop() = 0;
 };

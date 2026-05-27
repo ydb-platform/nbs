@@ -4,8 +4,8 @@
 
 #include <cloud/filestore/libs/client/public.h>
 
-#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
 
 #include <library/cpp/threading/future/future.h>
 

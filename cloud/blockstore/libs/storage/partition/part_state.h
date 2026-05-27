@@ -721,6 +721,8 @@ public:
         return BlockMaskReadDuringCompaction;
     }
 
+    ui32 CalculateNewlyZeroedBlocks(ui32 blockIndex, ui64 usedBlockCount) const;
+
 private:
     void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);
 

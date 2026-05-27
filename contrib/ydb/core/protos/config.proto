@@ -165,6 +165,7 @@ message TStaticNameserviceConfig {
     optional ENameserviceType Type = 5;
     optional bool KeepSocket = 6 [default = true];
     optional bool ForceTcp = 7 [default = false];
+    optional bool AddTrailingDot = 9 [default = false];
 }
 
 message TDynamicNameserviceConfig {

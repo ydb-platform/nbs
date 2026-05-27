@@ -133,7 +133,7 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
 {
     NProto::TWriteDeviceBlocksRequest result;
     *result.MutableHeaders() = request.GetHeaders();
-    result.SetBlockSize(request.BlockSize);
+    result.SetBlockSize(request.GetBlockSize());
 
     for (const auto& deviceInfo: request.DevicesAndRanges) {
         auto* replicationTarget = result.AddReplicationTargets();
@@ -150,7 +150,8 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
     if (auto checksum = CombineChecksums(request.GetChecksums());
         checksum.GetByteCount() > 0)
     {
-        if (checksum.GetByteCount() == request.Range.Size() * request.BlockSize)
+        if (checksum.GetByteCount() ==
+            request.Range.Size() * request.GetBlockSize())
         {
             *result.MutableChecksum() = std::move(checksum);
         } else {
@@ -160,7 +161,7 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
                 {{"range", request.Range.Print()},
                  {"request range length", request.Range.Size()},
                  {"checksum length",
-                  checksum.GetByteCount() / request.BlockSize},
+                  checksum.GetByteCount() / request.GetBlockSize()},
                  {"disk id", partConfig->GetName().Quote()}});
         }
     }
@@ -275,7 +276,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         std::make_unique<TDeviceRequestRdmaContext>(deviceRequest.DeviceIdx),
         NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
             writeDeviceBlocksRequest,
-            blockRange.Size() * msg->Record.BlockSize),
+            blockRange.Size() * msg->Record.GetBlockSize()),
         4_KB);
 
     if (HasError(err)) {

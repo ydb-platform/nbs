@@ -248,7 +248,7 @@ void TTestRunner::SendReadRequest(const TBlockRange64& range)
     request->SetStartIndex(range.Start);
     request->SetBlocksCount(range.Size());
     request->SetCheckpointId(CheckpointId);
-    request->BlockSize = Volume.GetBlockSize();
+    request->SetBlockSize(Volume.GetBlockSize());
     request->Sglist = guardedSgList;
 
     auto future = Session->ReadBlocksLocal(
@@ -308,8 +308,8 @@ void TTestRunner::SendWriteRequest(const TBlockRange64& range)
     auto started = TInstant::Now();
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(range.Start);
+    request->SetBlockSize(Volume.GetBlockSize());
     request->BlocksCount = range.Size();
-    request->BlockSize = Volume.GetBlockSize();
     request->Sglist = guardedSgList;
 
     auto future = Session->WriteBlocksLocal(

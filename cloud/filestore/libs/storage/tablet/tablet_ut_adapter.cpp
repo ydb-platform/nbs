@@ -256,6 +256,44 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             UNIT_ASSERT_VALUES_EQUAL(7_KB, node.GetSize());
         }
 
+        auto registry = env.GetRegistry();
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "ReadData.RequestBytes"},
+                {"filesystem", "test"}}, 13_KB},
+            {{
+                {"sensor", "ReadData.Count"},
+                {"filesystem", "test"}}, 2},
+            {{
+                {"sensor", "WriteData.RequestBytes"},
+                {"filesystem", "test"}}, 3_KB},
+            {{
+                {"sensor", "WriteData.Count"},
+                {"filesystem", "test"}}, 2},
+            {{
+                {"sensor", "GetNodeAttr.Count"},
+                {"filesystem", "test"}}, 5},
+            {{
+                {"sensor", "CreateHandle.Count"},
+                {"filesystem", "test"}}, 3},
+            {{
+                {"sensor", "DestroyHandle.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "CreateNode.Count"},
+                {"filesystem", "test"}}, 2},
+            {{
+                {"sensor", "UnlinkNode.Count"},
+                {"filesystem", "test"}}, 2},
+            {{
+                {"sensor", "GetNodeXAttr.Count"},
+                {"filesystem", "test"}}, 0},
+        });
+
         tablet.DestroySession();
     }
 }

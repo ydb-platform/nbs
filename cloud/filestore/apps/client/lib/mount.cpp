@@ -10,7 +10,7 @@
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs_fuse/loop.h>
 
-#include <cloud/storage/core/libs/common/file_map_memory_limiter.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
 
 namespace NCloud::NFileStore::NClient {
 

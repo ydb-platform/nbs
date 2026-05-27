@@ -69,7 +69,7 @@ void TMirrorPartitionResyncFastPathActor::ReadBlocks(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    request->Record.BlockSize = BlockSize;
+    request->Record.SetBlockSize(BlockSize);
     request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();

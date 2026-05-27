@@ -225,8 +225,8 @@ void TMultiAgentWriteActor<TMethod>::SendMultiagentWriteRequest(
     auto& rec = request->Record;
 
     *rec.MutableHeaders() = Request.GetHeaders();
-    rec.BlockSize =
-        ReplicasDiscovery[0].DiscoveryResult.PartConfig->GetBlockSize();
+    rec.SetBlockSize(
+        ReplicasDiscovery[0].DiscoveryResult.PartConfig->GetBlockSize());
     rec.Range = Range;
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         rec.MutableChecksums()->CopyFrom(Request.GetChecksums());
@@ -246,7 +246,10 @@ void TMultiAgentWriteActor<TMethod>::SendMultiagentWriteRequest(
         }
         SgListCopy(
             guard.Get(),
-            ResizeIOVector(*rec.MutableBlocks(), Range.Size(), rec.BlockSize));
+            ResizeIOVector(
+                *rec.MutableBlocks(),
+                Range.Size(),
+                rec.GetBlockSize()));
 
     } else {
         rec.MutableBlocks()->Swap(Request.MutableBlocks());

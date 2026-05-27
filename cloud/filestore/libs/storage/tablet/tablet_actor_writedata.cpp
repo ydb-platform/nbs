@@ -435,11 +435,10 @@ void TIndexTabletActor::CompleteTx_WriteData(
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
-        Metrics.WriteData.Count.fetch_add(1, std::memory_order_relaxed);
-        Metrics.WriteData.RequestBytes.fetch_add(
+        Metrics.WriteData.Update(
+            1,
             args.ByteRange.Length,
-            std::memory_order_relaxed);
-        Metrics.WriteData.Time.Record(ctx.Now() - args.RequestInfo->StartedTs);
+            ctx.Now() - args.RequestInfo->StartedTs);
 
         return;
     }

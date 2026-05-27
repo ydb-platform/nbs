@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/encryption/encryptor.h>
 
 #include <cloud/storage/core/libs/common/future_helper.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -152,7 +154,10 @@ IBackendPtr CreateBackend(
     auto encryptor = CreateEncryptor(options, logging);
 
     if (options.DeviceBackend == "aio") {
-        return CreateAioBackend(std::move(encryptor), logging);
+        return CreateAioBackend(
+            std::move(encryptor),
+            logging,
+            options.ThreadPoolSize);
     } else if (options.DeviceBackend == "rdma") {
         return CreateRdmaBackend(logging);
     } else if (options.DeviceBackend == "null") {
