@@ -81,13 +81,12 @@ bool IsHostVersionNewer(const BlockPluginHost* host, ui32 major, ui32 minor)
 ICertificateProviderPtr CreateCertificateProvider(
     const TClientAppConfigPtr& config)
 {
-    TVector<NCloud::TCertificateFiles> certPathList;
-    if (config->GetCertFile() || config->GetCertPrivateKeyFile()) {
-        certPathList.push_back({
-            config->GetCertPrivateKeyFile(),
-            config->GetCertFile()
-        });
-    }
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
 
     return CreateStaticCertificateProvider(
         config->GetRootCertsFile(),
