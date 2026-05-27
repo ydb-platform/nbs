@@ -332,7 +332,8 @@ public:
             TryCompactDataArea(dataSize);
             const ui64 requiredSize = NextDataOffset + dataSize;
             if (requiredSize > DataAreaSize) {
-                if (auto error = ExpandDataArea(requiredSize); HasError(error)) {
+                if (auto error = ExpandDataArea(requiredSize); HasError(error))
+                {
                     FreeRecordIndexes.push_back(index);
                     return error;
                 }
@@ -455,23 +456,6 @@ public:
     }
 
 private:
-    // TODO remove after migration is done
-    void MigrateDataOffsetsToAbsolute()
-    {
-        if (HeaderPtr->Version != 1) {
-            return;
-        }
-
-        for (ui64 index = 0; index < NextFreeRecordIndex; ++index) {
-            if (DescriptorsPtr[index].State == ERecordState::Free) {
-                continue;
-            }
-            DescriptorsPtr[index].DataOffset += DataAreaOffset;
-        }
-
-        HeaderPtr->Version = Version;
-    }
-
     ui64 CalcDataAreaOffset(ui64 maxRecords) const
     {
         return sizeof(THeader) + maxRecords * sizeof(TRecordDescriptor);
@@ -768,9 +752,8 @@ private:
             HeaderPtr->MaxRecords = MaxRecords;
         }
 
-        // TODO remove Version==1 after migration is done
         Y_ABORT_UNLESS(
-            HeaderPtr->Version == Version || HeaderPtr->Version == 1,
+            HeaderPtr->Version == Version,
             "Invalid header version %d",
             HeaderPtr->Version);
         Y_ABORT_UNLESS(
@@ -790,8 +773,6 @@ private:
         DataAreaSize = HeaderPtr->DataAreaSize;
 
         ResizeAndRemap();
-
-        MigrateDataOffsetsToAbsolute();
 
         ResetShrinkState();
 
