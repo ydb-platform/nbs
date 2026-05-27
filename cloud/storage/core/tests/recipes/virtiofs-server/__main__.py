@@ -1,5 +1,4 @@
 import os
-import errno
 import logging
 import signal
 import uuid
@@ -103,10 +102,10 @@ def stop_server(args, index):
             logger.info("will kill virtiofs-server with pid `%s`", pid)
             try:
                 os.kill(int(pid), signal.SIGTERM)
-            except OSError as e:
-                if e.errno == errno.ESRCH:
-                    logger.info("virtiofs-server pid `%s` already exited", pid)
-                    continue
+            except ProcessLookupError:
+                logger.info("virtiofs-server pid `%s` already exited", pid)
+                continue
+            except OSError:
                 logger.exception("While killing pid `%s`", pid)
                 raise
 
