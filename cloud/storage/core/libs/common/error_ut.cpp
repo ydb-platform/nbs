@@ -173,6 +173,14 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCorrectlyInterpretErrorKindForTransportError)
+    {
+        NProto::TError e;
+        e.SetCode(E_TRANSPORT_ERROR);
+
+        UNIT_ASSERT_VALUES_EQUAL(EErrorKind::ErrorRetriable, GetErrorKind(e));
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyInterpretErrorKindForSystemErrors)
     {
         constexpr std::array FatalSystemErrors = {EIO, EREMOTEIO, ENODATA};
