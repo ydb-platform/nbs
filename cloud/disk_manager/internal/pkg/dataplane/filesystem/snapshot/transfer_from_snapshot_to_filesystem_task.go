@@ -30,21 +30,6 @@ type transferFromSnapshotToFilesystemTask struct {
 	state            *snapshot_protos.TransferFromSnapshotToFilesystemTaskState
 }
 
-func (t *transferFromSnapshotToFilesystemTask) Save() ([]byte, error) {
-	return proto.Marshal(t.state)
-}
-
-func (t *transferFromSnapshotToFilesystemTask) Load(request, state []byte) error {
-	t.request = &snapshot_protos.TransferFromSnapshotToFilesystemRequest{}
-	err := proto.Unmarshal(request, t.request)
-	if err != nil {
-		return err
-	}
-
-	t.state = &snapshot_protos.TransferFromSnapshotToFilesystemTaskState{}
-	return proto.Unmarshal(state, t.state)
-}
-
 func (t *transferFromSnapshotToFilesystemTask) snapshotID() string {
 	return t.request.GetSnapshotId()
 }
@@ -113,123 +98,6 @@ func (t *transferFromSnapshotToFilesystemTask) getAlreadyCreatedNodes(
 		t.snapshotID(),
 		t.filesystemID(),
 		srcNodeIDs,
-	)
-}
-
-func (t *transferFromSnapshotToFilesystemTask) Run(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	filesystem := t.request.GetFilesystem()
-
-	client, err := t.factory.NewClient(ctx, filesystem.GetZoneId())
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	session, err := client.CreateSession(
-		ctx,
-		t.filesystemID(),
-		"",    // checkpointID
-		false, // readOnly
-	)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err := session.Close(ctx)
-		if err != nil {
-			logging.Warn(ctx, "failed to close session: %v", err)
-		}
-	}()
-
-	filesystemListerFactory := nodes_storage.NewNodeStorageListerFactory(
-		t.nodesStorage,
-		int(t.config.GetFetchNodesFromStorageLimit()),
-	)
-
-	traverser := traversal.NewFilesystemTraverser(
-		t.traversalID(execCtx),
-		t.filesystemID(),
-		t.snapshotID(), //  use snapshotID as checkpointID to read nodes from snapshot storage
-		filesystemListerFactory,
-		t.traversalStorage,
-		func(ctx context.Context) error {
-			t.state.RootNodeScheduled = true
-			return execCtx.SaveState(ctx)
-		},
-		t.config.GetTraversalConfig(),
-		t.state.GetRootNodeScheduled(),
-		nfs.RootNodeID,
-	)
-
-	err = traverser.Traverse(ctx, func(
-		ctx context.Context,
-		nodes []nfs.Node,
-		filesystemLister listers.FilesystemLister,
-	) error {
-		srcParentID := nodes[0].ParentID
-
-		parentMapping, err := t.nodesStorage.GetDestinationNodeIDs(
-			ctx,
-			t.snapshotID(),
-			t.filesystemID(),
-			[]uint64{srcParentID},
-		)
-		if err != nil {
-			return err
-		}
-
-		dirMapping := make(map[uint64]uint64)
-
-		for _, node := range nodes {
-			if node.Links >= 2 {
-				continue
-			}
-
-			if dstParentID, ok := parentMapping[node.ParentID]; ok {
-				node.ParentID = dstParentID
-			}
-
-			dstNodeID, err := session.CreateNodeIdempotent(ctx, node)
-			if err != nil {
-				return err
-			}
-
-			if node.Type.IsDirectory() {
-				dirMapping[node.NodeID] = dstNodeID
-			}
-		}
-
-		if len(dirMapping) > 0 {
-			err = t.nodesStorage.UpdateRestorationNodeIDMapping(
-				ctx,
-				t.snapshotID(),
-				t.filesystemID(),
-				dirMapping,
-			)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	err = t.restoreHardlinks(ctx, execCtx, session)
-	if err != nil {
-		return err
-	}
-
-	return t.nodesStorage.CleanupRestorationNodeIDsMapping(
-		ctx,
-		t.snapshotID(),
-		t.filesystemID(),
 	)
 }
 
@@ -347,6 +215,141 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinks(
 
 		offset += batchSize
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *transferFromSnapshotToFilesystemTask) Save() ([]byte, error) {
+	return proto.Marshal(t.state)
+}
+
+func (t *transferFromSnapshotToFilesystemTask) Load(request, state []byte) error {
+	t.request = &snapshot_protos.TransferFromSnapshotToFilesystemRequest{}
+	err := proto.Unmarshal(request, t.request)
+	if err != nil {
+		return err
+	}
+
+	t.state = &snapshot_protos.TransferFromSnapshotToFilesystemTaskState{}
+	return proto.Unmarshal(state, t.state)
+}
+
+
+func (t *transferFromSnapshotToFilesystemTask) Run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	filesystem := t.request.GetFilesystem()
+
+	client, err := t.factory.NewClient(ctx, filesystem.GetZoneId())
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	session, err := client.CreateSession(
+		ctx,
+		t.filesystemID(),
+		"",    // checkpointID
+		false, // readOnly
+	)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := session.Close(ctx)
+		if err != nil {
+			logging.Warn(ctx, "failed to close session: %v", err)
+		}
+	}()
+
+	filesystemListerFactory := nodes_storage.NewNodeStorageListerFactory(
+		t.nodesStorage,
+		int(t.config.GetFetchNodesFromStorageLimit()),
+	)
+
+	traverser := traversal.NewFilesystemTraverser(
+		t.traversalID(execCtx),
+		t.filesystemID(),
+		t.snapshotID(), //  use snapshotID as checkpointID to read nodes from snapshot storage
+		filesystemListerFactory,
+		t.traversalStorage,
+		func(ctx context.Context) error {
+			t.state.RootNodeScheduled = true
+			return execCtx.SaveState(ctx)
+		},
+		t.config.GetTraversalConfig(),
+		t.state.GetRootNodeScheduled(),
+		nfs.RootNodeID,
+	)
+
+	err = traverser.Traverse(ctx, func(
+		ctx context.Context,
+		nodes []nfs.Node,
+		filesystemLister listers.FilesystemLister,
+	) error {
+		srcParentID := nodes[0].ParentID
+
+		parentMapping, err := t.nodesStorage.GetDestinationNodeIDs(
+			ctx,
+			t.snapshotID(),
+			t.filesystemID(),
+			[]uint64{srcParentID},
+		)
+		if err != nil {
+			return err
+		}
+
+		dirMapping := make(map[uint64]uint64)
+
+		for _, node := range nodes {
+			if node.Links >= 2 {
+				continue
+			}
+
+			if dstParentID, ok := parentMapping[node.ParentID]; ok {
+				node.ParentID = dstParentID
+			}
+
+			dstNodeID, err := session.CreateNodeIdempotent(ctx, node)
+			if err != nil {
+				return err
+			}
+
+			if node.Type.IsDirectory() {
+				dirMapping[node.NodeID] = dstNodeID
+			}
+		}
+
+		if len(dirMapping) > 0 {
+			err = t.nodesStorage.UpdateRestorationNodeIDMapping(
+				ctx,
+				t.snapshotID(),
+				t.filesystemID(),
+				dirMapping,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	err = t.restoreHardlinks(ctx, execCtx, session)
+	if err != nil {
+		return err
+	}
+
+	return t.nodesStorage.CleanupRestorationNodeIDsMapping(
+		ctx,
+		t.snapshotID(),
+		t.filesystemID(),
+	)
 }
 
 func (t *transferFromSnapshotToFilesystemTask) Cancel(
