@@ -35,9 +35,9 @@ NCloud::NProto::TError ParseReadDataResponse(
                 if (wire != WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
                     return MakeError(
                         E_ARGUMENT,
-                        "Invalid wire type "
-                        "for error field in ReadData response: %d",
-                        wire);
+                        TStringBuilder() << "Invalid wire type for error field "
+                                            "in ReadData response: "
+                                         << static_cast<int>(wire));
                 }
 
                 ui32 len = 0;
@@ -69,9 +69,9 @@ NCloud::NProto::TError ParseReadDataResponse(
                 if (wire != WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
                     return MakeError(
                         E_ARGUMENT,
-                        "Invalid wire type "
-                        "for buffer field in ReadData response: %d",
-                        wire);
+                        TStringBuilder() << "Invalid wire type for buffer "
+                                            "field in ReadData response: "
+                                         << static_cast<int>(wire));
                 }
 
                 ui32 len = 0;
@@ -120,9 +120,9 @@ NCloud::NProto::TError ParseReadDataResponse(
                 if (wire != WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
                     return MakeError(
                         E_ARGUMENT,
-                        "Invalid wire type "
-                        "for headers field in ReadData response: %d",
-                        wire);
+                        TStringBuilder() << "Invalid wire type for headers "
+                                            "field in ReadData response: "
+                                         << static_cast<int>(wire));
                 }
 
                 ui32 len = 0;
@@ -153,9 +153,10 @@ NCloud::NProto::TError ParseReadDataResponse(
                 if (wire != WireFormatLite::WIRETYPE_VARINT) {
                     return MakeError(
                         E_ARGUMENT,
-                        "Invalid wire type "
-                        "for buffer offset field in ReadData response: %d",
-                        wire);
+                        TStringBuilder()
+                            << "Invalid wire type for buffer offset field in "
+                               "ReadData response: "
+                            << static_cast<int>(wire));
                 }
 
                 ui32 bufferOffset = 0;
@@ -178,9 +179,10 @@ NCloud::NProto::TError ParseReadDataResponse(
                 if (wire != WireFormatLite::WIRETYPE_VARINT) {
                     return MakeError(
                         E_ARGUMENT,
-                        "Invalid wire type "
-                        "for buffer length field in ReadData response: %d",
-                        wire);
+                        TStringBuilder()
+                            << "Invalid wire type for buffer length field in "
+                               "ReadData response: "
+                            << static_cast<int>(wire));
                 }
 
                 ui64 bufferLength = 0;
