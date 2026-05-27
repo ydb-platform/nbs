@@ -75,13 +75,13 @@ Y_UNIT_TEST_SUITE(TFileStoreClientTest)
             CreateProfileLogStub(),
             CreateSchedulerStub(),
             service,
-            CreateStaticCertificateProvider({}, {}));
+            CreateCertificateProviderStub());
         server->Start();
 
         auto client = CreateFileStoreClient(
             clientConfig,
             logging,
-            CreateStaticCertificateProvider({}, {}));
+            CreateCertificateProviderStub());
         client->Start();
 
         auto context = MakeIntrusive<TCallContext>();

@@ -68,13 +68,12 @@ static const TDuration WaitTimeout = TDuration::Seconds(10);
 ICertificateProviderPtr CreateClientCertificateProvider(
     const TClientAppConfigPtr& config)
 {
-    TVector<NCloud::TCertificateFiles> certPathList;
-    if (config->GetCertFile() || config->GetCertPrivateKeyFile()) {
-        certPathList.push_back({
-            config->GetCertPrivateKeyFile(),
-            config->GetCertFile()
-        });
-    }
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
 
     return CreateStaticCertificateProvider(
         config->GetRootCertsFile(),

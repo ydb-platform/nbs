@@ -40,4 +40,6 @@ ICertificateProviderPtr CreateStaticCertificateProvider(
     TString rootCertPath,
     TVector<TCertificateFiles> certificates);
 
+ICertificateProviderPtr CreateCertificateProviderStub();
+
 }   // namespace NCloud

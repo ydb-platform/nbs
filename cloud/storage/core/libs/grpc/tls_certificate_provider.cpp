@@ -11,21 +11,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ValidateCertificates(const TVector<TCertificateFiles>& certificates)
+bool IsEmptyPair(const TCertificateFiles& certPair)
 {
-    for (size_t i = 0; i < certificates.size(); ++i) {
-        const auto& certificate = certificates[i];
-        if (!certificate.PrivateKeyPath) {
-            ythrow yexception()
-                << "Empty PrivateKeyPath for certificate #"
-                << i;
-        }
-        if (!certificate.CertChainPath) {
-            ythrow yexception()
-                << "Empty CertChainPath for certificate #"
-                << i;
-        }
-    }
+    return !certPair.PrivateKeyPath && !certPair.CertChainPath;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,17 +29,48 @@ TString ReadFile(const TString& fileName)
 class TStaticCertificateProvider final
     : public ICertificateProvider
 {
+    struct TCertificatePair
+    {
+        TString PrivateKeyPath;
+        TString CertChainPath;
+        TString PrivateKey;
+        TString CertChain;
+    };
+
 private:
-    const TString RootCertPath;
-    const TVector<TCertificateFiles> Certificates;
+    const TString RootCert;
+    TVector<TCertificatePair> Certificates;
 
 public:
     TStaticCertificateProvider(
             TString rootCertPath,
             TVector<TCertificateFiles> certificates)
-        : RootCertPath(std::move(rootCertPath))
-        , Certificates(std::move(certificates))
-    {}
+        : RootCert(ReadFile(rootCertPath))
+    {
+        for (size_t i = 0; i < certificates.size(); ++i) {
+            const auto& cert = certificates[i];
+            if (IsEmptyPair(cert)) {
+                continue;
+            }
+            if (!cert.PrivateKeyPath) {
+                ythrow yexception()
+                    << "Empty PrivateKeyPath for certificate #"
+                    << i;
+            }
+            if (!cert.CertChainPath) {
+                ythrow yexception()
+                    << "Empty CertChainPath for certificate #"
+                    << i;
+            }
+            TCertificatePair certificate {
+                .PrivateKeyPath = cert.PrivateKeyPath,
+                .CertChainPath = cert.CertChainPath,
+                .PrivateKey = ReadFile(cert.PrivateKeyPath),
+                .CertChain = ReadFile(cert.CertChainPath)
+            };
+            Certificates.push_back(std::move(certificate));
+        }
+    }
 
     NThreading::TFuture<void> UpdateCertificates() override
     {
@@ -62,14 +81,14 @@ public:
         CreateSecureClientCredentials() override
     {
         grpc::SslCredentialsOptions sslOptions;
-        if (RootCertPath) {
-            sslOptions.pem_root_certs = ReadFile(RootCertPath);
+        if (RootCert) {
+            sslOptions.pem_root_certs = RootCert;
         }
 
         if (!Certificates.empty()) {
             const auto& cert = Certificates.front();
-            sslOptions.pem_cert_chain = ReadFile(cert.CertChainPath);
-            sslOptions.pem_private_key = ReadFile(cert.PrivateKeyPath);
+            sslOptions.pem_cert_chain = cert.CertChain;
+            sslOptions.pem_private_key = cert.PrivateKey;
         }
 
         return grpc::SslCredentials(sslOptions);
@@ -82,14 +101,14 @@ public:
         sslOptions.client_certificate_request =
             GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
 
-        if (RootCertPath) {
-            sslOptions.pem_root_certs = ReadFile(RootCertPath);
+        if (RootCert) {
+            sslOptions.pem_root_certs = RootCert;
         }
 
         for (const auto& cert: Certificates) {
             grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-            keyCert.cert_chain = ReadFile(cert.CertChainPath);
-            keyCert.private_key = ReadFile(cert.PrivateKeyPath);
+            keyCert.cert_chain = cert.CertChain;
+            keyCert.private_key = cert.PrivateKey;
             sslOptions.pem_key_cert_pairs.push_back(std::move(keyCert));
         }
 
@@ -111,11 +130,14 @@ ICertificateProviderPtr CreateStaticCertificateProvider(
     TString rootCertPath,
     TVector<TCertificateFiles> certificates)
 {
-    ValidateCertificates(certificates);
-
     return std::make_shared<TStaticCertificateProvider>(
         std::move(rootCertPath),
         std::move(certificates));
+}
+
+ICertificateProviderPtr CreateCertificateProviderStub()
+{
+    return CreateStaticCertificateProvider({}, {});
 }
 
 }   // namespace NCloud

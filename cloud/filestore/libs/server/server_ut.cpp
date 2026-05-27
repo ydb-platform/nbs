@@ -63,7 +63,7 @@ ICertificateProviderPtr CreateClientCertificateProvider(
     ILoggingServicePtr /*logging*/)
 {
     if (!config->GetSecurePort()) {
-        return CreateStaticCertificateProvider({}, {});
+        return CreateCertificateProviderSub();
     }
 
     TVector<TCertificateFiles> certPathList;
