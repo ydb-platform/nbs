@@ -67,7 +67,7 @@ entry used whenever the code decides whether the pool has enough capacity.
 | `free_units` | `Uint64` | Current free weighted units on base disks that still belong to the pool. |
 | `acquired_units` | `Uint64` | Weighted units currently reserved by acquired overlay slot reservations. |
 | `base_disks_inflight` | `Uint64` | Base disks in `scheduling` or `creating`. |
-| `lock_id` | `Utf8` | Task-owned lock string used to block pool deletion during some retirement flows. |
+| `lock_id` | `Utf8` | ID of the task that currently locks the pool. |
 | `status` | `Int64` | `ready` or `deleted`. |
 | `created_at` | `Timestamp` | Pool row creation time. `pools.OptimizeBaseDisks` uses it for age checks. |
 
@@ -84,20 +84,20 @@ from overlay disk size and disk kind in
 one unit size is 32 GiB, SSD overlays are weighted more heavily than HDD
 overlays, and every acquired slot reserves at least one unit.
 
-`acquired` means the pool has committed an acquired `slots` row and has added
-that slot's units to the base disk's `active_units`. This happens in
-`pools.AcquireBaseDisk` before the NBS overlay disk is created. If acquire finds
-no usable base disk and only enables on-demand capacity, no slot or unit is
-acquired yet. During rebase, source and target reservations can both exist, so
-both can contribute to `acquired_units` until the rebase is finalized.
+For `acquired_units`, an acquired overlay slot is a row in `slots` with
+`status=acquired`. `pools.AcquireBaseDisk` writes that row and increments the
+base disk's `active_units` in one transaction, before the NBS overlay disk is
+created. If acquire finds no usable base disk and only enables on-demand
+capacity, no slot row is acquired and no units are added. During rebase, source
+and target reservations can both exist, so both can contribute to
+`acquired_units` until the rebase is finalized.
 
-`lock_id` is not a database lock object. It is a string stored in the pool row,
-usually the `pools.RetireBaseDisks` task id. While it is set, `DeletePool`
-interrupts instead of deleting the pool; `UnlockPool` clears it only when the
-caller provides the same lock id.
+`lock_id` stores the task id that locked the pool, usually the
+`pools.RetireBaseDisks` task id. While it is set, `DeletePool` interrupts
+instead of deleting the pool. `UnlockPool` clears the field only when the caller
+provides the same lock id.
 
-That means the scheduler is not looking at "how many create disk requests are
-waiting". It is looking at:
+The scheduler compares desired spare capacity with current pool accounting:
 
 ```text
 configs.capacity - pools.size
@@ -108,7 +108,7 @@ written into `base_disks` and `slots` affects `pools.size`.
 
 ## Base Disks, Slots, and Units
 
-A base disk is an NBS disk populated from an image snapshot or from another base
+A base disk is an NBS disk populated from image storage or from another base
 disk. A slot is one reservation on a base disk for one overlay disk. The pool
 uses slots as the countable placement capacity for overlays: a base disk with
 640 free slots can accept up to 640 overlay reservations by slot count, unless
@@ -132,7 +132,7 @@ deletion.
 | `id` | `Utf8` | Base disk id. Primary key. |
 | `image_id` | `Utf8` | Image id for the pool this base disk belongs to. |
 | `zone_id` | `Utf8` | Zone id for the pool this base disk belongs to. |
-| `src_disk_zone_id` | `Utf8` | Source disk zone for replacement base disks cloned during retirement. Empty for image snapshot base disks. |
+| `src_disk_zone_id` | `Utf8` | Source disk zone for replacement base disks cloned during retirement. Empty for base disks created from image storage. |
 | `src_disk_id` | `Utf8` | Source disk id for replacement base disks cloned during retirement. |
 | `src_disk_checkpoint_id` | `Utf8` | Source checkpoint for replacement base disks cloned during retirement. |
 | `checkpoint_id` | `Utf8` | Base disk checkpoint id. The code uses the image id as checkpoint id. |
@@ -588,11 +588,11 @@ Base disk size is decided before `pools.CreateBaseDisk` runs:
    that many bytes by dividing `BaseDiskSize` by the 4096-byte block size.
 
 If the base disk has `SrcDisk`, data is copied from that source disk checkpoint
-instead of from the image snapshot. Retirement uses this when the replacement
+instead of from image storage. Retirement uses this when the replacement
 base disk should be cloned from the old base disk. That lets the system drain an
-old base disk even when the image snapshot should no longer be the source of new
+old base disk even when image storage should no longer be the source of new
 replacement disks, for example during image deletion or optimization. If
-`SrcDisk` is empty, data is copied from the image snapshot.
+`SrcDisk` is empty, data is copied from image storage.
 
 ```mermaid
 sequenceDiagram
@@ -608,7 +608,7 @@ sequenceDiagram
     CreateTask->>NBS: Create base disk
     alt SrcDisk is set
         CreateTask->>Dataplane: TransferFromDiskToDisk
-    else image snapshot
+    else image storage
         CreateTask->>Dataplane: TransferFromSnapshotToDisk
     end
     CreateTask->>NBS: CreateCheckpoint(base_disk, image_id)
