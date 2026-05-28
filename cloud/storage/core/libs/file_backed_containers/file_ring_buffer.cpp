@@ -97,7 +97,12 @@ public:
 //  Structure contract:
 //
 //  1. Empty buffer:
-//    - ReadPos = WritePos = 0
+//    - ReadPos == WritePos
+//  or
+//    - ReadPos points to a slack space
+//    - WritePos == 0
+//    This may happen when Alloc was terminated in the middle of the operation.
+//    ReadPos is corrected to 0 during validation.
 //
 //  2. Non-empty buffer:
 //    - ReadPos != WritePos
@@ -379,9 +384,19 @@ private:
     {
         TEntryInfo cur = GetFrontEntry();
 
-        if (cur.IsInvalid() || cur.ActualPos != Header()->ReadPos) {
+        if (cur.IsInvalid()) {
             SetCorrupted();
             return;
+        }
+
+        if (cur.ActualPos != Header()->ReadPos) {
+            if (cur.ActualPos == 0 && Header()->WritePos == 0) {
+                // Valid situation when Alloc was interrupted for empty buffer
+                Header()->ReadPos = 0;
+            } else {
+                SetCorrupted();
+                return;
+            }
         }
 
         while (cur.HasValue()) {
@@ -496,12 +511,18 @@ private:
             front = GetNextEntry(front);
         }
 
-        if (front.HasValue()) {
-            Header()->ReadPos = front.ActualPos;
+        if (front.IsInvalid()) {
+            SetCorrupted();
         } else {
-            // All entries deleted, ring buffer should be emptied
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
+            Header()->ReadPos = front.ActualPos;
+        }
+    }
+
+    void WriteSlackSpaceMarker(ui64 pos)
+    {
+        auto* eh = Data.GetEntryHeader(pos);
+        if (eh != nullptr) {
+            eh->SetDataSize(0);
         }
     }
 
@@ -600,7 +621,23 @@ public:
         }
         auto writePos = Header()->WritePos;
 
-        if (!Empty()) {
+        if (Empty()) {
+            if (Header()->WritePos != 0) {
+                // In order to fully utilize space when the buffer is empty,
+                // we need to reset read and write positions and ensure that
+                // the state can be restored from the intermediate state
+                WriteSlackSpaceMarker(Header()->WritePos);
+
+                // A compiler-only fence is sufficient here because there is no
+                // concurrent access to the memory and we just need to ensure
+                // that a compiler does not reorder writes.
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+                Header()->WritePos = 0;
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+                Header()->ReadPos = 0;
+                writePos = 0;
+            }
+        } else {
             // checking that we have a contiguous chunk of sz + 1 bytes
             // 1 extra byte is needed to distinguish between an empty buffer
             // and a buffer which is completely full
@@ -612,10 +649,7 @@ public:
                         // out of space
                         return nullptr;
                     }
-                    auto* eh = Data.GetEntryHeader(Header()->WritePos);
-                    if (eh != nullptr) {
-                        eh->SetDataSize(0);
-                    }
+                    WriteSlackSpaceMarker(Header()->WritePos);
                     writePos = 0;
                 }
             } else {
@@ -650,9 +684,10 @@ public:
         CurrentAllocation->SetChecksum(
             Crc32c(ptr, CurrentAllocation->GetDataSize()));
 
-        // We need to ensure that all previous writes are visible before
-        // updating the write position
-        std::atomic_thread_fence(std::memory_order_release);
+        // A compiler-only fence is sufficient here because there is no
+        // concurrent access to the memory and we just need to ensure
+        // that a compiler does not reorder writes.
+        std::atomic_signal_fence(std::memory_order_seq_cst);
 
         auto writePos = Data.GetEntryPos(CurrentAllocation);
         auto sz = sizeof(TEntryHeader) + CurrentAllocation->GetDataSize();

@@ -93,7 +93,7 @@ MakeWriteBlocksLocalRequest(
     auto result = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     result->Record.SetDiskId(diskId);
     result->Record.SetStartIndex(startIndex);
-    result->Record.BlockSize = blockSize;
+    result->Record.SetBlockSize(blockSize);
     result->Record.BlocksCount = blocksContent.size();
     result->Record.Sglist = TGuardedSgList(std::move(sglist));
 

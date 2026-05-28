@@ -35,6 +35,7 @@ struct TOptions
     ui32 QueueCount = 0;
     ui64 PteFlushByteThreshold = 0;
     ui32 SocketAccessMode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
+    ui64 ThreadPoolSize = 0;
 
     TString LogType = "json";
     TString VerboseLevel = "info";

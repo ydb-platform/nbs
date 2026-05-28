@@ -100,13 +100,13 @@ auto SplitReadRequest(
     result.reserve(requestBlockRanges.size());
 
     auto sglistBlockRange =
-        TSgListBlockRange(originalSglist, originalRequest.BlockSize);
+        TSgListBlockRange(originalSglist, originalRequest.GetBlockSize());
     for (const auto& blockRange: requestBlockRanges) {
         auto blocksNeeded = blockRange.Size();
 
         auto newSglist = sglistBlockRange.Next(blocksNeeded);
         if (SgListGetSize(newSglist) !=
-            blocksNeeded * originalRequest.BlockSize)
+            blocksNeeded * originalRequest.GetBlockSize())
         {
             // It means that we doesn't have enough buffers in original request,
             // so it is incorrect.

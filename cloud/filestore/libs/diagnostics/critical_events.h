@@ -56,6 +56,7 @@ namespace NCloud::NFileStore{
     xxx(ConfirmBlobsFailed)                                                    \
     xxx(UnconfirmedFlowProxyRetryThresholdReached)                             \
     xxx(HardLinkFromShardDirToMainTabletNode)                                  \
+    xxx(ReadDataResponseParserFailed)                                          \
     xxx(MalformedShardNodeRef)                                                 \
     xxx(MalformedEncodedShardNodeRef)                                          \
 // FILESTORE_CRITICAL_EVENTS

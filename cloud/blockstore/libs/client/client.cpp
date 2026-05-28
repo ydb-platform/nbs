@@ -74,11 +74,11 @@ NProto::TError CompleteReadBlocksLocalRequest(
     NProto::TReadBlocksLocalRequest& request,
     const NProto::TReadBlocksLocalResponse& response)
 {
-    if (request.BlockSize == 0) {
+    if (request.GetBlockSize() == 0) {
         return TErrorResponse(E_ARGUMENT, "block size is zero");
     }
 
-    auto sgListOrError = GetSgList(response, request.BlockSize);
+    auto sgListOrError = GetSgList(response, request.GetBlockSize());
     if (HasError(sgListOrError)) {
         return sgListOrError.GetError();
     }
@@ -86,7 +86,7 @@ NProto::TError CompleteReadBlocksLocalRequest(
     auto src = sgListOrError.ExtractResult();
     size_t srcSize = SgListGetSize(src);
 
-    size_t expectedSize = request.GetBlocksCount() * request.BlockSize;
+    size_t expectedSize = request.GetBlocksCount() * request.GetBlockSize();
     if (srcSize != expectedSize) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
             << "invalid response size (expected: " << expectedSize
@@ -122,7 +122,7 @@ using TWriteBlocksRequestPtr = std::shared_ptr<NProto::TWriteBlocksRequest>;
 TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
     const NProto::TWriteBlocksLocalRequest& localRequest)
 {
-    if (localRequest.BlockSize == 0) {
+    if (localRequest.GetBlockSize() == 0) {
         return TErrorResponse(E_ARGUMENT, "block size is zero");
     }
 
@@ -135,7 +135,7 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
     const auto& src = guard.Get();
     auto srcSize = SgListGetSize(src);
 
-    size_t expectedSize = localRequest.BlocksCount * localRequest.BlockSize;
+    size_t expectedSize = localRequest.BlocksCount * localRequest.GetBlockSize();
     if (srcSize < expectedSize) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
             << "invalid buffer size (expected: " << expectedSize
@@ -147,7 +147,7 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
     auto dst = ResizeIOVector(
         *request->MutableBlocks(),
         localRequest.BlocksCount,
-        localRequest.BlockSize);
+        localRequest.GetBlockSize());
 
     size_t bytesWritten = SgListCopy(src, dst);
     STORAGE_VERIFY(
@@ -243,6 +243,7 @@ struct TAppContext
     TClientAppConfigPtr Config;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
+    ICertificateProviderPtr CertificateProvider;
     TLog Log;
 
     IMonitoringServicePtr Monitoring;
@@ -562,6 +563,7 @@ public:
         TClientAppConfigPtr config,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
+        ICertificateProviderPtr certificateProvider,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         IServerStatsPtr clientStats);
@@ -676,6 +678,7 @@ TClientBase::TClientBase(
     TClientAppConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
+    ICertificateProviderPtr certificateProvider,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     IServerStatsPtr clientStats)
@@ -683,6 +686,7 @@ TClientBase::TClientBase(
     Config = std::move(config);
     Timer = std::move(timer);
     Scheduler = std::move(scheduler);
+    CertificateProvider = std::move(certificateProvider);
     Log = logging->CreateLog("BLOCKSTORE_CLIENT");
     Monitoring = std::move(monitoring);
     ClientStats = std::move(clientStats);
@@ -730,7 +734,8 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
 {
     auto credentials = CreateTcpClientChannelCredentials(
         secureEndpoint,
-        *Config);
+        *Config,
+        CertificateProvider);
 
     STORAGE_INFO("Connect to " << address);
 
@@ -1263,7 +1268,8 @@ TResultOrError<IClientPtr> CreateClient(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    IServerStatsPtr clientStats)
+    IServerStatsPtr clientStats,
+    ICertificateProviderPtr certificateProvider)
 {
     if (!config->GetClientId()) {
         return MakeError(E_ARGUMENT, "ClientId not set");
@@ -1273,6 +1279,7 @@ TResultOrError<IClientPtr> CreateClient(
         std::move(config),
         std::move(timer),
         std::move(scheduler),
+        std::move(certificateProvider),
         std::move(logging),
         std::move(monitoring),
         std::move(clientStats));
@@ -1286,12 +1293,14 @@ TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    IServerStatsPtr clientStats)
+    IServerStatsPtr clientStats,
+    ICertificateProviderPtr certificateProvider)
 {
     IMultiHostClientPtr client = std::make_shared<TMultiHostClient>(
         std::move(config),
         std::move(timer),
         std::move(scheduler),
+        std::move(certificateProvider),
         std::move(logging),
         std::move(monitoring),
         std::move(clientStats));

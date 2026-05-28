@@ -510,10 +510,9 @@ struct TRequestCounters::TStatCounters
         Count = counters.GetCounter("Count", true);
         ErrorsFatal = counters.GetCounter("Errors/Fatal", true);
         Time = counters.GetCounter("Time", true);
-        if (ReportControlPlaneHistogram) {
-            TimeHist.Register(counters);
-        } else {
-            TimePercentiles.Register(counters);
+
+        if (IsReadWriteRequest) {
+            RequestBytes = counters.GetCounter("RequestBytes", true);
         }
     }
 
@@ -544,13 +543,20 @@ struct TRequestCounters::TStatCounters
         ErrorsSession = counters.GetCounter("Errors/Session", true);
         Retries = counters.GetCounter("Retries", true);
 
+        if (!IsReadWriteRequest) {
+            if (ReportControlPlaneHistogram) {
+                TimeHist.Register(counters);
+            } else {
+                TimePercentiles.Register(counters);
+            }
+        }
+
         if (IsReadWriteRequest) {
             ErrorsSilent = counters.GetCounter("Errors/Silent", true);
 
             MaxSize = counters.GetCounter("MaxSize");
             MaxCount = counters.GetCounter("MaxCount");
 
-            RequestBytes = counters.GetCounter("RequestBytes", true);
             MaxRequestBytes = counters.GetCounter("MaxRequestBytes");
 
             InProgressBytes = counters.GetCounter("InProgressBytes");

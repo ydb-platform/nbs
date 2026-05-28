@@ -176,7 +176,7 @@ void TCompareDataActionRunner::ReadBlocks(
     request->SetStartIndex(blockIndex);
     request->SetBlocksCount(blocksCount);
     request->SetCheckpointId(checkpointId);
-    request->BlockSize = TestContext.Volume.GetBlockSize();
+    request->SetBlockSize(TestContext.Volume.GetBlockSize());
     request->Sglist = TGuardedSgList({{buffer->data(), buffer->size()}});
     auto guardedSgList = request->Sglist;
 

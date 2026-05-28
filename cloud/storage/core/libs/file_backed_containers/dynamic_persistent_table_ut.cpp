@@ -109,9 +109,17 @@ struct TTestData
 using TTable = TDynamicPersistentTable<TTestHeader>;
 using TTableConfig = TDynamicPersistentTableConfig;
 
+TTable CreateTable(
+    const TString& fileName,
+    const TTableConfig& config,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
+{
+    return TTable(fileName, config, fileMapMemoryLimiter);
+}
+
 TTable CreateTable(const TString& fileName, const TTableConfig& config)
 {
-    return TTable(fileName, config);
+    return CreateTable(fileName, config, CreateFileMapMemoryLimiterStub());
 }
 
 TTable
@@ -124,8 +132,32 @@ CreateTable(const TString& fileName, ui64 maxRecords, ui64 initialDataAreaSize)
             .InitialDataAreaSize = initialDataAreaSize,
             .MaxDataAreaStepSize = 1_GB,
             .InitialDataMoveBufferSize = 100,
-        });
+        },
+        CreateFileMapMemoryLimiterStub());
 }
+
+struct TTestFileMapMemoryLimiter final: public IFileMapMemoryLimiter
+{
+    ui64 Current = 0;
+    bool CanIncreaseResult = true;
+
+    bool CanIncrease(ui64 value) const override
+    {
+        Y_UNUSED(value);
+        return CanIncreaseResult;
+    }
+
+    void Increase(ui64 value) override
+    {
+        Current += value;
+    }
+
+    void Decrease(ui64 value) override
+    {
+        UNIT_ASSERT(Current >= value);
+        Current -= value;
+    }
+};
 
 // Helper functions for accessing internal table structures
 TTable::THeader* GetTableHeader(TTable& table)
@@ -155,9 +187,16 @@ ui64 CalcDataAreaOffset(const TTable::THeader* tableHeader)
            tableHeader->MaxRecords * tableHeader->RecordDescriptorSize;
 }
 
+ui64 AllocRecord(TTable& table, ui64 dataSize)
+{
+    auto result = table.AllocRecord(dataSize);
+    UNIT_ASSERT(!HasError(result));
+    return result.GetResult();
+}
+
 ui64 AllocAndCommitRecord(TTable& table, const TString& data)
 {
-    ui64 index = table.AllocRecord(data.size());
+    const ui64 index = AllocRecord(table, data.size());
     UNIT_ASSERT_VALUES_UNEQUAL(TTable::InvalidIndex, index);
     UNIT_ASSERT(table.WriteRecordData(index, data.data(), data.size()));
     UNIT_ASSERT(table.CommitRecord(index));
@@ -310,6 +349,110 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldTrackFileMapSizeLifecycle)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        auto fileMapSizeController =
+            std::make_shared<TTestFileMapMemoryLimiter>();
+        ui64 initialFileMapSize = 0;
+        {
+            auto table = CreateTable(
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = 32,
+                    .InitialDataAreaSize = 128,
+                    .MaxDataAreaStepSize = 128,
+                    .InitialDataMoveBufferSize = 100,
+                },
+                fileMapSizeController);
+
+            const auto* tableHeader = GetTableHeader(table);
+            initialFileMapSize = CalcDataAreaOffset(tableHeader) +
+                                 tableHeader->DataAreaSize +
+                                 tableHeader->DataMoveBufferSize;
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialFileMapSize,
+                fileMapSizeController->Current);
+
+            const TString data(96, 'a');
+
+            ui64 firstIndex = AllocRecord(table, data.size());
+            UNIT_ASSERT(
+                table.WriteRecordData(firstIndex, data.data(), data.size()));
+            UNIT_ASSERT(table.CommitRecord(firstIndex));
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialFileMapSize,
+                fileMapSizeController->Current);
+
+            ui64 secondIndex = AllocRecord(table, data.size());
+            UNIT_ASSERT(
+                table.WriteRecordData(secondIndex, data.data(), data.size()));
+            UNIT_ASSERT(table.CommitRecord(secondIndex));
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialFileMapSize + 128,
+                fileMapSizeController->Current);
+
+            UNIT_ASSERT(table.DeleteRecord(firstIndex));
+            UNIT_ASSERT(table.DeleteRecord(secondIndex));
+            table.TryDeallocateMemory();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialFileMapSize,
+                fileMapSizeController->Current);
+        }
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, initialFileMapSize);
+        UNIT_ASSERT_VALUES_EQUAL(0, fileMapSizeController->Current);
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorWhenFileMapSizeCannotIncrease)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        auto fileMapSizeController =
+            std::make_shared<TTestFileMapMemoryLimiter>();
+
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 1,
+                .InitialDataAreaSize = 128,
+                .MaxDataAreaStepSize = 128,
+                .InitialDataMoveBufferSize = 100,
+            },
+            fileMapSizeController);
+
+        fileMapSizeController->CanIncreaseResult = false;
+
+        auto result = table.AllocRecord(256);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, result.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, table.CountRecords());
+
+        fileMapSizeController->CanIncreaseResult = true;
+        const TString payload(32, 'r');
+        AllocAndCommitRecord(table, payload);
+        UNIT_ASSERT_VALUES_EQUAL(1, table.CountRecords());
+
+        fileMapSizeController->CanIncreaseResult = false;
+        result = table.AllocRecord(payload.size());
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, result.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, table.CountRecords());
+        UNIT_ASSERT_VALUES_EQUAL(1, GetTableHeader(table)->MaxRecords);
+
+        fileMapSizeController->CanIncreaseResult = true;
+        result = table.AllocRecord(payload.size());
+        UNIT_ASSERT(!HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(2, table.CountRecords());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1 + TTable::RecordAreaExpansionStep,
+            GetTableHeader(table)->MaxRecords);
+    }
+
     Y_UNIT_TEST(ShouldAllocAndStoreVariableSizeRecords)
     {
         TTempDir tempDir;
@@ -326,7 +469,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TString smallSerialized = smallData.Serialize();
         TString largeSerialized = largeData.Serialize();
 
-        ui64 smallIndex = table.AllocRecord(smallSerialized.size());
+        ui64 smallIndex = AllocRecord(table, smallSerialized.size());
         UNIT_ASSERT(
             smallIndex != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
         UNIT_ASSERT(table.WriteRecordData(
@@ -335,7 +478,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             smallSerialized.size()));
         table.CommitRecord(smallIndex);
 
-        ui64 largeIndex = table.AllocRecord(largeSerialized.size());
+        ui64 largeIndex = AllocRecord(table, largeSerialized.size());
         UNIT_ASSERT(
             largeIndex != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
         UNIT_ASSERT(table.WriteRecordData(
@@ -374,7 +517,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TVector<ui64> indices;
         for (const auto& testData: testRecords) {
             TString serialized = testData.Serialize();
-            ui64 index = table.AllocRecord(serialized.size());
+            ui64 index = AllocRecord(table, serialized.size());
             UNIT_ASSERT(
                 index != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
             UNIT_ASSERT(table.WriteRecordData(
@@ -415,14 +558,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TString serialized1 = data1.Serialize();
         TString serialized2 = data2.Serialize();
 
-        ui64 index1 = table.AllocRecord(serialized1.size());
+        ui64 index1 = AllocRecord(table, serialized1.size());
         UNIT_ASSERT(table.WriteRecordData(
             index1,
             serialized1.data(),
             serialized1.size()));
         table.CommitRecord(index1);
 
-        ui64 index2 = table.AllocRecord(serialized2.size());
+        ui64 index2 = AllocRecord(table, serialized2.size());
         UNIT_ASSERT(table.WriteRecordData(
             index2,
             serialized2.data(),
@@ -452,7 +595,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 TStringBuilder() << "item" << i,
                 {static_cast<ui32>(i)}};
             TString serialized = data.Serialize();
-            ui64 index = table.AllocRecord(serialized.size());
+            ui64 index = AllocRecord(table, serialized.size());
             UNIT_ASSERT(
                 index != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
             UNIT_ASSERT(table.WriteRecordData(
@@ -470,7 +613,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         TTestData extraData{999, "extra", {999}};
         TString extraSerialized = extraData.Serialize();
-        ui64 newIndex = table.AllocRecord(extraSerialized.size());
+        ui64 newIndex = AllocRecord(table, extraSerialized.size());
         UNIT_ASSERT(
             newIndex != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
         UNIT_ASSERT_VALUES_EQUAL(indices[1], newIndex);
@@ -491,7 +634,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
-                ui64 index = table.AllocRecord(serialized.size());
+                ui64 index = AllocRecord(table, serialized.size());
                 UNIT_ASSERT(table.WriteRecordData(
                     index,
                     serialized.data(),
@@ -529,56 +672,6 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldMigrateLegacyRelativeDataOffsetsOnStartup)
-    {
-        TTempDir tempDir;
-        TString tablePath = tempDir.Path() / "test.table";
-
-        TVector<TString> payloads = {
-            TString("first_payload"),
-            TString("second_payload"),
-            TString("third_payload")};
-        TVector<ui64> indices;
-
-        {
-            auto table = CreateTable(tablePath, 32, 1024);
-
-            for (const auto& payload: payloads) {
-                indices.push_back(AllocAndCommitRecord(table, payload));
-            }
-
-            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
-
-            for (ui64 index: indices) {
-                UNIT_ASSERT_C(
-                    descriptorsPtr[index].DataOffset >=
-                        CalcDataAreaOffset(tableHeader),
-                    "Expected absolute data offset");
-                descriptorsPtr[index].DataOffset -=
-                    CalcDataAreaOffset(tableHeader);
-            }
-
-            tableHeader->Version = 1;
-        }
-
-        {
-            auto table = CreateTable(tablePath, 32, 1024);
-            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
-
-            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
-            UNIT_ASSERT_VALUES_EQUAL(payloads.size(), table.CountRecords());
-
-            for (size_t i = 0; i < indices.size(); ++i) {
-                TStringBuf record = table.GetRecordWithValidation(indices[i]);
-                UNIT_ASSERT_VALUES_EQUAL(payloads[i], TString(record));
-                UNIT_ASSERT_C(
-                    descriptorsPtr[indices[i]].DataOffset >=
-                        CalcDataAreaOffset(tableHeader),
-                    "Expected migrated absolute data offset");
-            }
-        }
-    }
-
     Y_UNIT_TEST(ShouldCompactCorrectly)
     {
         TTempDir tempDir;
@@ -597,7 +690,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             table.HeaderData()->Val = 123;
 
             TString serialized = testData[0].Serialize();
-            index1 = table.AllocRecord(serialized.size());
+            index1 = AllocRecord(table, serialized.size());
             UNIT_ASSERT(table.WriteRecordData(
                 index1,
                 serialized.data(),
@@ -605,7 +698,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             table.CommitRecord(index1);
 
             serialized = testData[1].Serialize();
-            index2 = table.AllocRecord(serialized.size());
+            index2 = AllocRecord(table, serialized.size());
             UNIT_ASSERT(table.WriteRecordData(
                 index2,
                 serialized.data(),
@@ -615,7 +708,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             table.DeleteRecord(index1);
 
             serialized = testData[2].Serialize();
-            ui64 index3 = table.AllocRecord(serialized.size());
+            ui64 index3 = AllocRecord(table, serialized.size());
             UNIT_ASSERT(table.WriteRecordData(
                 index3,
                 serialized.data(),
@@ -661,7 +754,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 TVector<ui32>(100, i)};
 
             TString serialized = data.Serialize();
-            ui64 index = table.AllocRecord(serialized.size());
+            ui64 index = AllocRecord(table, serialized.size());
             UNIT_ASSERT(
                 index != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
             UNIT_ASSERT(table.WriteRecordData(
@@ -701,7 +794,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 {static_cast<ui32>(i)}};
             TString serialized = data.Serialize();
 
-            ui64 index = table.AllocRecord(serialized.size());
+            ui64 index = AllocRecord(table, serialized.size());
             if (index == TDynamicPersistentTable<TTestHeader>::InvalidIndex) {
                 break;
             }
@@ -742,7 +835,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}};
         TString originalSerialized = originalData.Serialize();
 
-        ui64 index = table.AllocRecord(originalSerialized.size());
+        ui64 index = AllocRecord(table, originalSerialized.size());
         UNIT_ASSERT_VALUES_UNEQUAL(
             TDynamicPersistentTable<TTestHeader>::InvalidIndex,
             index);
@@ -791,7 +884,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 {static_cast<ui32>(i), static_cast<ui32>(i + 1)}};
             TString serialized = data.Serialize();
 
-            ui64 index = table.AllocRecord(serialized.size());
+            ui64 index = AllocRecord(table, serialized.size());
             if (index == TDynamicPersistentTable<TTestHeader>::InvalidIndex) {
                 break;
             }
@@ -822,7 +915,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             TVector<ui32>(20, 999)};
         TString largeSerialized = largeData.Serialize();
 
-        ui64 newIndex = table.AllocRecord(largeSerialized.size());
+        ui64 newIndex = AllocRecord(table, largeSerialized.size());
         UNIT_ASSERT(
             newIndex != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
         UNIT_ASSERT(table.WriteRecordData(
@@ -923,14 +1016,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
         auto table = CreateTable(tablePath, 32, 1024);
 
-        ui64 index = table.AllocRecord(0);
-        UNIT_ASSERT(
-            index == TDynamicPersistentTable<TTestHeader>::InvalidIndex);
+        auto result = table.AllocRecord(0);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
 
         TTestData emptyData{42, "", {}};
         TString emptySerialized = emptyData.Serialize();
 
-        ui64 emptyIndex = table.AllocRecord(emptySerialized.size());
+        ui64 emptyIndex = AllocRecord(table, emptySerialized.size());
         UNIT_ASSERT(
             emptyIndex != TDynamicPersistentTable<TTestHeader>::InvalidIndex);
         UNIT_ASSERT(table.WriteRecordData(
@@ -950,7 +1043,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         TTestData normalData{99, "normal", {1, 2, 3}};
         TString normalSerialized = normalData.Serialize();
 
-        ui64 normalIndex = table.AllocRecord(normalSerialized.size());
+        ui64 normalIndex = AllocRecord(table, normalSerialized.size());
         UNIT_ASSERT(!table.WriteRecordData(
             normalIndex,
             nullptr,
@@ -1507,7 +1600,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
-                ui64 index = table.AllocRecord(serialized.size());
+                ui64 index = AllocRecord(table, serialized.size());
                 UNIT_ASSERT(table.WriteRecordData(
                     index,
                     serialized.data(),
@@ -1612,7 +1705,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
-                ui64 index = table.AllocRecord(serialized.size());
+                ui64 index = AllocRecord(table, serialized.size());
                 UNIT_ASSERT(table.WriteRecordData(
                     index,
                     serialized.data(),
@@ -1698,7 +1791,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
-                ui64 index = table.AllocRecord(serialized.size());
+                ui64 index = AllocRecord(table, serialized.size());
                 UNIT_ASSERT(table.WriteRecordData(
                     index,
                     serialized.data(),
@@ -1791,7 +1884,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
-                ui64 index = table.AllocRecord(serialized.size());
+                ui64 index = AllocRecord(table, serialized.size());
                 UNIT_ASSERT(table.WriteRecordData(
                     index,
                     serialized.data(),
@@ -1891,7 +1984,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
-                ui64 index = table.AllocRecord(serialized.size());
+                ui64 index = AllocRecord(table, serialized.size());
                 UNIT_ASSERT(table.WriteRecordData(
                     index,
                     serialized.data(),
@@ -2144,7 +2237,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             auto table = CreateTable(tablePath, 32, 1024);
 
             TString serialized1 = testData1.Serialize();
-            ui64 index1 = table.AllocRecord(serialized1.size());
+            ui64 index1 = AllocRecord(table, serialized1.size());
             UNIT_ASSERT(table.WriteRecordData(
                 index1,
                 serialized1.data(),
@@ -2155,7 +2248,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             // Simulate crash during add operation before state change, but
             // after index list was set
-            ui64 index2 = table.AllocRecord(serialized2.size());
+            ui64 index2 = AllocRecord(table, serialized2.size());
 
             auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
 
@@ -2205,7 +2298,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
 
             for (const auto& data: testData) {
                 TString serialized = data.Serialize();
-                ui64 index = table.AllocRecord(serialized.size());
+                ui64 index = AllocRecord(table, serialized.size());
                 UNIT_ASSERT(table.WriteRecordData(
                     index,
                     serialized.data(),
@@ -2282,7 +2375,14 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         auto restore = [&]()
         {
             table = std::make_unique<TTable>(
-                CreateTable(tablePath, tableSize, 1024));
+                tablePath,
+                TTableConfig{
+                    .MaxRecords = tableSize,
+                    .InitialDataAreaSize = 1024,
+                    .MaxDataAreaStepSize = 1_GB,
+                    .InitialDataMoveBufferSize = 100,
+                },
+                CreateFileMapMemoryLimiterStub());
         };
 
         restore();
@@ -2303,7 +2403,7 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 }
 
                 TString serialized = testData.Serialize();
-                ui64 tableIndex = table->AllocRecord(serialized.size());
+                ui64 tableIndex = AllocRecord(*table, serialized.size());
                 ui64 riIndex = ri.AllocRecord(serialized.size());
 
                 UNIT_ASSERT_VALUES_EQUAL(riIndex, tableIndex);

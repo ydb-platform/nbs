@@ -124,7 +124,7 @@ struct THashTableStorage final
 
         while (b < e) {
             auto& block = Blocks[b];
-            block.resize(request->BlockSize);
+            block.resize(request->GetBlockSize());
             dst[b - request->GetStartIndex()] = {block.data(), block.size()};
             ++b;
         }

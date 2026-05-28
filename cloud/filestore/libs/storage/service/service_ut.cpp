@@ -4423,6 +4423,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
         TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 8_KB));
     }
@@ -4433,6 +4434,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(false);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
     }
 
@@ -4442,6 +4444,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
         TestZeroCopyWrite(config, 0, std::vector<ui64>(64, 5000));
     }
@@ -4452,6 +4455,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
     }
 
@@ -4465,7 +4469,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
@@ -4491,7 +4495,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(false);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
@@ -4513,7 +4517,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         auto iovecSizes = std::vector<ui64>(32, 4_KB);
         iovecSizes[10] = 0;
         iovecSizes[20] = 0;
@@ -4527,7 +4531,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -4555,10 +4559,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
-    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
+    void testReadDataRequestWithIovecs(NProto::TStorageConfig config)
     {
-        TTestEnv env;
-
+        TTestEnv env({}, std::move(config));
         ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -4595,17 +4598,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetBufferFromIovecs(iovecs, data.size()),
             data);
+    }
 
-        // Passing less target data than requested size should fail
-        iovecs.pop_back();
-        service.AssertReadDataFailed(
-            headers,
-            fs,
-            nodeId,
-            handle,
-            0,
-            data.size(),
-            iovecs);
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
+    {
+        testReadDataRequestWithIovecs({});
+    }
+
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequestWithTwoStageRead)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        testReadDataRequestWithIovecs(std::move(config));
+    }
+
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequestWithCustomParserEnabled)
+    {
+        NProto::TStorageConfig config;
+        config.SetUseCustomReadDataResponseParser(true);
+        config.SetTwoStageReadEnabled(false);
+        testReadDataRequestWithIovecs(std::move(config));
     }
 
     Y_UNIT_TEST(ShouldHandleToggleServiceState)

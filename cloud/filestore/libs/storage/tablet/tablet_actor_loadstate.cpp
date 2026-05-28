@@ -233,12 +233,14 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         config);
     UpdateLogTag();
 
-    if (GetFileSystem().GetFastShardConfig().StorageGroupsSize() == 0) {
-        FastShard =
-            NFastShard::CreateMemFileSystemShard(GetFileSystem().GetShardNo());
-    } else {
+    const auto& fastShardConfig = GetFileSystem().GetFastShardConfig();
+    if (fastShardConfig.HasPersistentConfig()) {
         // not supported yet
         FastShard = NFastShard::CreateFileSystemShardStub();
+    } else {
+        FastShard = NFastShard::CreateMemFileSystemShard(
+            GetFileSystem().GetShardNo(),
+            fastShardConfig.GetMemConfig());
     }
 
     NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());

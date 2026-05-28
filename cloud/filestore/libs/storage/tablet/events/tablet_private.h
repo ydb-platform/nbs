@@ -1155,6 +1155,19 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // Cancel unconfirmed data
+    //
+
+    struct TCancelUnconfirmedData
+    {
+        ui64 CommitId;
+
+        explicit TCancelUnconfirmedData(ui64 commitId)
+            : CommitId(commitId)
+        {}
+    };
+
+    //
     // Generate commit id
     //
 
@@ -1215,6 +1228,7 @@ struct TEvIndexTabletPrivate
         EvAddDataCompleted,
 
         EvReleaseCollectBarrier,
+        EvCancelUnconfirmedData,
 
         EvForcedRangeOperationProgress,
 
@@ -1254,6 +1268,9 @@ struct TEvIndexTabletPrivate
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
+    using TEvCancelUnconfirmedData = TRequestEvent<
+        TCancelUnconfirmedData,
+        EvCancelUnconfirmedData>;
 
     using TEvReadDataCompleted =
         TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;

@@ -106,6 +106,18 @@ int GetSvnRevision()
     return GetProgramBuildTimestamp();
 }
 
+/**
+ * Expected 'branch' format ([] - optional part):
+ *
+ *      "<prefix>-<major>-<minor>-<tag>[-<hotfix>]"
+ *
+ * where:
+ *
+ *      <prefix> - string (without '-' symbol),
+ *                 must be == StablePrefix ('-' included)
+ *
+ *      <major>, <minor>, <tag>, <hotfix> - version parts, unsigned decimal
+ */
 int GetRevisionFromBranch(const TString& branch)
 {
     if (!branch.StartsWith(StablePrefix)) {
@@ -119,15 +131,16 @@ int GetRevisionFromBranch(const TString& branch)
         return -1;
     }
 
-    size_t n = 1;
-    auto major = FromString<ui32>(splitted[n++]);
-    auto minor = FromString<ui32>(splitted[n++]);
-    auto tag = FromString<ui32>(splitted[n++]);
-    auto hotfix = n < splitted.size() ? FromString<ui32>(splitted[n++]) : 0;
+    try {
+        size_t n = 1;
+        auto major = FromString<ui32>(splitted[n++]);
+        auto minor = FromString<ui32>(splitted[n++]);
+        auto tag = FromString<ui32>(splitted[n++]);
+        auto hotfix = n < splitted.size() ? FromString<ui32>(splitted[n++]) : 0;
 
-    if (splitted.size() != n) {
-        return -1;
-    }
+        if (splitted.size() != n) {
+            return -1;
+        }
 
 #define ADD_VERSION_COMPONENT(component, symbolCount)                          \
     if (component > pow(10, symbolCount)) {                                    \
@@ -135,13 +148,18 @@ int GetRevisionFromBranch(const TString& branch)
     }                                                                          \
     version = version * pow(10, symbolCount) + component;
 
-    int version = major;
-    ADD_VERSION_COMPONENT(minor, 2);
-    ADD_VERSION_COMPONENT(tag, 3);
-    ADD_VERSION_COMPONENT(hotfix, 1);
+        int version = major;
+        ADD_VERSION_COMPONENT(minor, 2);
+        ADD_VERSION_COMPONENT(tag, 3);
+        ADD_VERSION_COMPONENT(hotfix, 1);
 
 #undef ADD_VERSION_COMPONENT
-    return version;
+
+        return version;
+
+    } catch (...) {
+        return -1;
+    }
 }
 
 const TString& GetFullVersionString()

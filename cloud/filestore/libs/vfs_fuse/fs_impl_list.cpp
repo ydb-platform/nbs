@@ -3,6 +3,8 @@
 #include "fs_directory_content_format.h"
 #include "fs_directory_handle.h"
 
+#include <util/generic/cast.h>
+
 #include <sys/stat.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -222,7 +224,7 @@ void TFileSystem::ReadDir(
 
                 auto handleChunk = handle->UpdateContent(
                     size,
-                    offset,
+                    SafeIntegerCast<size_t>(offset),
                     builder.Finish(),
                     version,
                     response.GetCookie());

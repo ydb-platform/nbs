@@ -228,7 +228,9 @@ ui32 TTestEnv::AddDynamicNode()
 
     CreateAndRegisterStorageService(nodeIdx);
 
-    auto tabletProxy = CreateIndexTabletProxy(StorageConfig);
+    auto tabletProxy = CreateIndexTabletProxy(
+        StorageConfig,
+        TraceSerializer);
     auto tabletProxyId = Runtime.Register(
         tabletProxy.release(),
         nodeIdx,

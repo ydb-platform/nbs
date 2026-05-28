@@ -216,6 +216,18 @@ Y_UNIT_TEST_SUITE(TVersionTest)
             auto revision = GetRevisionFromBranch(branch);
             UNIT_ASSERT_VALUES_EQUAL(-1, revision);
         }
+
+        {
+            TString branch = "stable-20-invalid-5-6";
+            auto revision = GetRevisionFromBranch(branch);
+            UNIT_ASSERT_VALUES_EQUAL(-1, revision);
+        }
+
+        {
+            TString branch = "stable-20-4-5-invalid";
+            auto revision = GetRevisionFromBranch(branch);
+            UNIT_ASSERT_VALUES_EQUAL(-1, revision);
+        }
     }
 
     Y_UNIT_TEST(ShouldGetFullVersionString)

@@ -700,6 +700,7 @@ private:
     const ITimerPtr Timer;
     const IProfileLogPtr ProfileLog;
     const ISessionPtr Session;
+    const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
 
     TLog Log;
 
@@ -733,7 +734,8 @@ public:
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             IProfileLogPtr profileLog,
-            ISessionPtr session)
+            ISessionPtr session,
+            IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
@@ -743,6 +745,7 @@ public:
         , Timer(std::move(timer))
         , ProfileLog(std::move(profileLog))
         , Session(std::move(session))
+        , FileMapMemoryLimiter(std::move(fileMapMemoryLimiter))
     {
         Log = Logging->CreateLog("NFS_FUSE");
     }
@@ -1085,31 +1088,40 @@ private:
             }
 
             TDirectoryHandleStoragePtr directoryHandleStorage;
-            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled() &&
-                Config->GetDirectoryHandlesStoragePath())
-            {
-                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
-                            FileSystemConfig->GetFileSystemId() / SessionId;
+            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
+                if (Config->GetDirectoryHandlesStoragePath()) {
+                    auto path =
+                        TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                        FileSystemConfig->GetFileSystemId() / SessionId;
 
-                auto error = CreateAndLockFile(
-                    path,
-                    DirectoryHandleStorageFileName,
-                    DirectoryHandleStorageFileLock);
+                    auto error = CreateAndLockFile(
+                        path,
+                        DirectoryHandleStorageFileName,
+                        DirectoryHandleStorageFileLock);
 
-                if (HasError(error)) {
-                    ReportDirectoryHandlesStorageError(error.GetMessage());
-                    return error;
+                    if (HasError(error)) {
+                        ReportDirectoryHandlesStorageError(error.GetMessage());
+                        return error;
+                    }
+
+                    directoryHandleStorage = CreateDirectoryHandleStorage(
+                        Log,
+                        path / DirectoryHandleStorageFileName,
+                        FileSystemConfig->GetDirectoryHandlesTableSize(),
+                        Config->GetDirectoryHandlesInitialDataSize(),
+                        Config->GetDirectoryHandlesMaxDataAreaStepSize(),
+                        FileSystemConfig->GetMaxBufferSize(),
+                        FileMapMemoryLimiter);
+
+                    DirectoryHandleStorageInitialized = true;
+                } else {
+                    STORAGE_ERROR(
+                        "[f:%s][c:%s] Error initializing "
+                        "DirectoryHandleStorage: DirectoryHandlesStoragePath "
+                        "is not set",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str());
                 }
-
-                directoryHandleStorage = CreateDirectoryHandleStorage(
-                    Log,
-                    path / DirectoryHandleStorageFileName,
-                    FileSystemConfig->GetDirectoryHandlesTableSize(),
-                    Config->GetDirectoryHandlesInitialDataSize(),
-                    Config->GetDirectoryHandlesMaxDataAreaStepSize(),
-                    FileSystemConfig->GetMaxBufferSize());
-
-                DirectoryHandleStorageInitialized = true;
             }
 
             DirectoryHandleStats = CreateDirectoryHandleStats(Timer);
@@ -1777,7 +1789,8 @@ struct TFileSystemLoopFactory
 
     IFileSystemLoopPtr Create(
         TVFSConfigPtr config,
-        ISessionPtr session) override
+        ISessionPtr session,
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter) override
     {
         return CreateFuseLoop(
             std::move(config),
@@ -1788,7 +1801,8 @@ struct TFileSystemLoopFactory
             Scheduler,
             Timer,
             ProfileLog,
-            std::move(session));
+            std::move(session),
+            std::move(fileMapMemoryLimiter));
     }
 };
 
@@ -1805,7 +1819,8 @@ IFileSystemLoopPtr CreateFuseLoop(
     ISchedulerPtr scheduler,
     ITimerPtr timer,
     IProfileLogPtr profileLog,
-    ISessionPtr session)
+    ISessionPtr session,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
     return std::make_shared<TFileSystemLoop>(
         std::move(config),
@@ -1816,7 +1831,8 @@ IFileSystemLoopPtr CreateFuseLoop(
         std::move(scheduler),
         std::move(timer),
         std::move(profileLog),
-        std::move(session));
+        std::move(session),
+        std::move(fileMapMemoryLimiter));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

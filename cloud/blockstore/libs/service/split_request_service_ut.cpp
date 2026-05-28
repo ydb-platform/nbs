@@ -268,7 +268,7 @@ struct TTestEnvironment
         request->SetDiskId(DefaultDiskId);
         request->SetStartIndex(range.Start);
         request->SetBlocksCount(range.Size());
-        request->BlockSize = DefaultBlockSize;
+        request->SetBlockSize(DefaultBlockSize);
         request->Sglist = TGuardedSgList(
             {TBlockDataRef(data->data(), range.Size() * DefaultBlockSize)});
         UNIT_ASSERT_VALUES_EQUAL(range.Size() * DefaultBlockSize, data->size());
@@ -295,7 +295,7 @@ struct TTestEnvironment
     {
         request->SetDiskId(DefaultDiskId);
         request->SetStartIndex(range.Start);
-        request->BlockSize = DefaultBlockSize;
+        request->SetBlockSize(DefaultBlockSize);
         request->BlocksCount = range.Size();
 
         TSgList sglist;

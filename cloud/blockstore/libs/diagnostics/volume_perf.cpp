@@ -29,7 +29,7 @@ template <typename T>
     requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
 [[nodiscard]] T SafeMultiply(T a, double m)
 {
-    if (m >= 1.0 && static_cast<T>(std::numeric_limits<T>::max() / m) <= a) {
+    if (m > 1.0 && static_cast<T>(std::numeric_limits<T>::max() / m) <= a) {
         return std::numeric_limits<T>::max();
     }
     return a * m;

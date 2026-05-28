@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -49,7 +50,8 @@ TResultOrError<IClientPtr> CreateClient(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    IServerStatsPtr clientStats);
+    IServerStatsPtr clientStats,
+    ICertificateProviderPtr certificateProvider);
 
 TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
     TClientAppConfigPtr config,
@@ -57,6 +59,7 @@ TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    IServerStatsPtr clientStats);
+    IServerStatsPtr clientStats,
+    ICertificateProviderPtr certificateProvider);
 
 }   // namespace NCloud::NBlockStore::NClient

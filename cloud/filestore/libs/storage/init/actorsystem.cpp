@@ -104,7 +104,9 @@ public:
         // IndexTabletProxy
         //
 
-        auto tabletProxy = CreateIndexTabletProxy(Args.StorageConfig);
+        auto tabletProxy = CreateIndexTabletProxy(
+            Args.StorageConfig,
+            Args.TraceSerializer);
 
         setup->LocalServices.emplace_back(
             MakeIndexTabletProxyServiceId(),

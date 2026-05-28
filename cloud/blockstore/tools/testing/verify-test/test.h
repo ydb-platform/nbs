@@ -2,6 +2,8 @@
 
 #include "private.h"
 
+#include <cloud/storage/core/libs/diagnostics/public.h>
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,6 +18,6 @@ struct ITest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestPtr CreateTest(TOptionsPtr options);
+ITestPtr CreateTest(TOptionsPtr options, ILoggingServicePtr logging);
 
 }   // namespace NCloud::NBlockStore

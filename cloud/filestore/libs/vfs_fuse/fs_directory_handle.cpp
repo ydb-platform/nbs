@@ -212,9 +212,26 @@ size_t TDirectoryHandle::GetChunkCount() const
     return UpdateVersion + 1;
 }
 
-void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
+void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log)
 {
     Y_ABORT_UNLESS(Index == chunk.Index);
+
+    const size_t chunkSize = chunk.GetSerializedSize();
+    size_t serializedSizeDelta = 0;
+    // The handle already counts BaseSerializedSize for the first chunk.
+    // Add only the extra bytes for the first chunk. Count later chunks in full.
+    if (chunk.UpdateVersion == 0) {
+        Y_ABORT_UNLESS(
+            chunkSize >= BaseSerializedSize,
+            "Chunk size %zu is smaller than base serialized size %zu",
+            chunkSize,
+            BaseSerializedSize);
+        serializedSizeDelta = chunkSize - BaseSerializedSize;
+    } else {
+        serializedSizeDelta = chunkSize;
+    }
+
+    SerializedSize += serializedSizeDelta;
 
     if (chunk.UpdateVersion > UpdateVersion) {
         UpdateVersion = chunk.UpdateVersion;
@@ -222,9 +239,15 @@ void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
     }
 
     if (chunk.Key) {
-        Content.emplace(
+        const auto insertResult = Content.emplace(
             chunk.Key.value(),
             std::move(chunk.DirectoryContent.Content));
+        if (!insertResult.second) {
+            STORAGE_WARN(
+                "directory handle " << Index << " already contains chunk key "
+                                    << chunk.Key.value() << ", update version "
+                                    << chunk.UpdateVersion);
+        }
     }
 }
 

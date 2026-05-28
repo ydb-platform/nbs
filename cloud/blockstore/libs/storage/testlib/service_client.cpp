@@ -289,8 +289,8 @@ std::unique_ptr<TEvService::TEvReadBlocksLocalRequest> TServiceClient::CreateRea
     request->Record.SetSessionId(sessionId);
     request->Record.SetBlocksCount(1);
     request->Record.SetCheckpointId(checkpointId);
+    request->Record.SetBlockSize(DefaultBlockSize);
     request->Record.Sglist = std::move(sglist);
-    request->Record.BlockSize = DefaultBlockSize;
     return request;
 }
 

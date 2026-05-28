@@ -118,6 +118,7 @@ constexpr TDuration Seconds(int s)
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
     xxx(EnableOverlappingRequestsGuard,  bool,               false            )\
     xxx(EnableRequestSplitter,       bool,                   false            )\
+    xxx(ExternalVhostServerThreadPoolSize, ui64,             0                )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on
@@ -322,6 +323,18 @@ const ::NCloud::NProto::TRdmaClient&
 TServerAppConfig::DeprecatedGetRdmaClientConfig() const
 {
     return ServerConfig->GetRdmaClientConfig();
+}
+
+TVector<TCertificate> TServerAppConfig::GetCertsWithLegacyFallback() const
+{
+    auto certs = GetCerts();
+    if (!certs.empty()) {
+        return certs;
+    }
+
+    certs.push_back({GetCertFile(), GetCertPrivateKeyFile()});
+
+    return certs;
 }
 
 }   // namespace NCloud::NBlockStore::NServer

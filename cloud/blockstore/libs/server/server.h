@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -34,6 +35,7 @@ IServerPtr CreateServer(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IBlockStorePtr udsService,
-    TServerOptions options);
+    TServerOptions options,
+    ICertificateProviderPtr certificateProvider);
 
 }   // namespace NCloud::NBlockStore::NServer
