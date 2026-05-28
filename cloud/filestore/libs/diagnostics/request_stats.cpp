@@ -39,11 +39,6 @@ bool IsReadWriteRequest(EFileStoreRequest rt)
         || rt == EFileStoreRequest::ReadData;
 }
 
-const auto REQUEST_COUNTERS_OPTIONS =
-    TRequestCounters::EOption::ReportDataPlaneHistogram |
-    TRequestCounters::EOption::ReportControlPlaneHistogram |
-    TRequestCounters::EOption::LazyRequestInitialization;
-
 TRequestCountersPtr MakeRequestCounters(
     ITimerPtr timer,
     TDynamicCounters& counters,
@@ -165,28 +160,29 @@ class TRequestStats final
 
 public:
     TRequestStats(
-            TDynamicCountersPtr counters,
-            ITimerPtr timer,
-            TDuration executionTimeThreshold,
-            TDuration totalTimeThreshold,
-            EHistogramCounterOptions histogramCounterOptions)
+        TDynamicCountersPtr counters,
+        ITimerPtr timer,
+        TDuration executionTimeThreshold,
+        TDuration totalTimeThreshold,
+        EHistogramCounterOptions histogramCounterOptions,
+        TRequestCounters::EOptions counterOptions)
         : TRequestLogger(executionTimeThreshold, totalTimeThreshold)
         , RootCounters(std::move(counters))
         , TotalCounters(MakeRequestCounters(
-            timer,
-            *RootCounters,
-            REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+              timer,
+              *RootCounters,
+              counterOptions,
+              histogramCounterOptions))
         , SsdCounters(MakeRequestCounters(
-            timer,
-            *RootCounters->GetSubgroup("type", "ssd"),
-            REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+              timer,
+              *RootCounters->GetSubgroup("type", "ssd"),
+              counterOptions,
+              histogramCounterOptions))
         , HddCounters(MakeRequestCounters(
-            timer,
-            *RootCounters->GetSubgroup("type", "hdd"),
-            REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+              timer,
+              *RootCounters->GetSubgroup("type", "hdd"),
+              counterOptions,
+              histogramCounterOptions))
     {
         auto revisionGroup =
             RootCounters->GetSubgroup("revision", GetFullVersionString());
@@ -442,26 +438,27 @@ private:
 
 public:
     TFileSystemStats(
-            TString fileSystemId,
-            TString clientId,
-            TString cloudId,
-            TString folderId,
-            ITimerPtr timer,
-            TDynamicCountersPtr counters,
-            IPostponeTimePredictorPtr predictor,
-            TDuration executionTimeThreshold,
-            TDuration totalTimeThreshold,
-            EHistogramCounterOptions histogramCounterOptions)
+        TString fileSystemId,
+        TString clientId,
+        TString cloudId,
+        TString folderId,
+        ITimerPtr timer,
+        TDynamicCountersPtr counters,
+        IPostponeTimePredictorPtr predictor,
+        TDuration executionTimeThreshold,
+        TDuration totalTimeThreshold,
+        EHistogramCounterOptions histogramCounterOptions,
+        TRequestCounters::EOptions counterOptions)
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
         , CloudId{std::move(cloudId)}
         , FolderId{std::move(folderId)}
         , Counters{MakeRequestCounters(
-            timer,
-            *counters,
-            REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions)}
+              timer,
+              *counters,
+              counterOptions,
+              histogramCounterOptions)}
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
     {}
@@ -715,6 +712,7 @@ private:
     NMonitoring::TDynamicCountersPtr RootCounters;
     ITimerPtr Timer;
 
+    TRequestCounters::EOptions CounterOptions;
     std::shared_ptr<TRequestStats> RequestStats;
 
     IFsCountersProviderPtr FsCountersProvider;
@@ -724,15 +722,22 @@ private:
 
 public:
     TRequestStatsRegistry(
-            TString component,
-            TDiagnosticsConfigPtr diagnosticsConfig,
-            NMonitoring::TDynamicCountersPtr rootCounters,
-            ITimerPtr timer,
-            std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
-            IFsCountersProviderPtr fsCountersProvider)
+        TString component,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        NMonitoring::TDynamicCountersPtr rootCounters,
+        ITimerPtr timer,
+        std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
+        IFsCountersProviderPtr fsCountersProvider)
         : DiagnosticsConfig(std::move(diagnosticsConfig))
         , RootCounters(std::move(rootCounters))
         , Timer(std::move(timer))
+        , CounterOptions(
+              TRequestCounters::EOption::ReportDataPlaneHistogram |
+              TRequestCounters::EOption::ReportControlPlaneHistogram |
+              TRequestCounters::EOption::LazyRequestInitialization |
+              (DiagnosticsConfig->GetThrottlingMetricsDisabled()
+                   ? TRequestCounters::EOption::ThrottlingMetricsDisabled
+                   : TRequestCounters::EOptions{}))
         , FsCountersProvider(std::move(fsCountersProvider))
         , UserCounters(std::move(userCounters))
     {
@@ -744,7 +749,8 @@ public:
             Timer,
             DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
             DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            DiagnosticsConfig->GetHistogramCounterOptions(),
+            CounterOptions);
     }
 
     IRequestStatsPtr GetFileSystemStats(
@@ -778,7 +784,8 @@ public:
                 DiagnosticsConfig->GetPostponeTimePredictorMaxTime(),
                 DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
                 DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
-                DiagnosticsConfig->GetHistogramCounterOptions());
+                DiagnosticsConfig->GetHistogramCounterOptions(),
+                CounterOptions);
             it = StatsMap.emplace(
                 key,
                 TFileSystemStatsHolder{std::move(counters), stats}).first;
@@ -887,7 +894,8 @@ private:
         TMaybe<TDuration> delayMaxTime,
         TDuration executionTimeThreshold,
         TDuration totalTimeThreshold,
-        EHistogramCounterOptions histogramCounterOptions) const
+        EHistogramCounterOptions histogramCounterOptions,
+        TRequestCounters::EOptions counterOptions) const
     {
         Y_UNUSED(delayWindowInterval);
         Y_UNUSED(delayWindowPercentage);
@@ -910,7 +918,8 @@ private:
             std::move(predictor),
             executionTimeThreshold,
             totalTimeThreshold,
-            histogramCounterOptions);
+            histogramCounterOptions,
+            counterOptions);
     }
 };
 

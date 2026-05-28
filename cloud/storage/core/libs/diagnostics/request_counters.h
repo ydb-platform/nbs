@@ -37,6 +37,7 @@ public:
         AddSpecialCounters          = (1 << 3),
         LazyRequestInitialization   = (1 << 4),
         OnlyStartEndpointRequests   = (1 << 5),
+        ThrottlingMetricsDisabled   = (1 << 6),
     };
 
     using TRequestType = TDiagnosticsRequestType;
