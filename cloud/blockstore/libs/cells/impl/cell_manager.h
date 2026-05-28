@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/service.h>
 
+#include <cloud/storage/core/libs/grpc/public.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
 
 namespace NCloud::NBlockStore::NCells {
@@ -20,6 +21,7 @@ ICellManagerPtr CreateCellManager(
     IMonitoringServicePtr monitoring,
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
+    ICertificateProviderPtr certificateProvider,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient);
 
 }   // namespace NCloud::NBlockStore::NCells

@@ -50,6 +50,7 @@
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 #include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -78,6 +79,23 @@ namespace {
 
 const TString VhostMetricsComponent = "client";
 const TString ServerMetricsComponent = "server";
+
+////////////////////////////////////////////////////////////////////////////////
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const NClient::TClientConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -156,7 +174,8 @@ public:
                 } else {
                     fileStore = NClient::CreateFileStoreClient(
                         clientConfig,
-                        Logging);
+                        Logging,
+                        CreateClientCertificateProvider(clientConfig));
                 }
                 break;
             }
@@ -343,13 +362,28 @@ void TBootstrapVhost::InitComponents()
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
 
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    if (!certPathList.empty()) {
+        CertificateProvider = CreateStaticCertificateProvider(
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList));
+    }
+
     Server = CreateServer(
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
         serverCounters,
         Scheduler,
-        EndpointManager);
+        EndpointManager,
+        CertificateProvider);
     RegisterServer(Server);
 
     if (LocalService) {
@@ -363,7 +397,8 @@ void TBootstrapVhost::InitComponents()
             serverCounters,
             ProfileLog,
             Scheduler,
-            LocalService);
+            LocalService,
+            CertificateProvider);
 
         STORAGE_INFO("initialized LocalServiceServer: %s",
             serverConfigProto.Utf8DebugString().Quote().c_str());

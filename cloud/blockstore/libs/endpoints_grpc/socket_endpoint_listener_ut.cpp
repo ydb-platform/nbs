@@ -17,6 +17,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
@@ -115,7 +116,8 @@ IClientPtr CreateClient(
         CreateSchedulerStub(),
         std::move(logging),
         std::move(monitoring),
-        std::move(clientStats));
+        std::move(clientStats),
+        CreateStaticCertificateProvider({}, {}));
 
     UNIT_ASSERT(!HasError(error));
     return client;
