@@ -421,7 +421,7 @@ void TIndexTabletState::WriteHasXAttrs(
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-// Functionsd that compress and decompress NodeRefs
+// Functions that compress and decompress NodeRefs
 
 bool TryToDecodeShardId(
     IIndexTabletDatabase::TNodeRef& nodeRef,
@@ -529,11 +529,7 @@ bool TIndexTabletState::ReadNodeRef(
     const TString& name,
     TMaybe<IIndexTabletDatabase::TNodeRef>& ref)
 {
-    bool ready = db.ReadNodeRef(
-        nodeId,
-        commitId,
-        name,
-        ref);
+    bool ready = db.ReadNodeRef(nodeId, commitId, name, ref);
 
     if (ref && !TryToDecodeShardId(ref.GetRef(), GetMainFileSystemId())) {
         ref.Clear();

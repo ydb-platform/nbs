@@ -977,7 +977,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     entries[1].Data.GetUnalignedDataRanges(1).GetContent());
             });
     }
-
 }
 
 }   // namespace NCloud::NFileStore::NStorage

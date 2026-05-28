@@ -688,17 +688,6 @@ public:
         ui64& nextNodeId,
         TString& nextCookie) override;
 
-    /*
-    void WriteNodeRef(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name,
-        ui64 childNode,
-        const TString& shardId,
-        const TString& shardNodeName,
-        bool markExhaustive,
-        bool compressShardId) override;
-    */
     void WriteNodeRef(const TNodeRef& nodeRef, bool markExhaustive) override;
 
     void DeleteNodeRef(ui64 nodeId, const TString& name) override;

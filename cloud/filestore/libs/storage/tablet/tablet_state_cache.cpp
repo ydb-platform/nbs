@@ -303,8 +303,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefs(
     bool noAutoPrecharge,
     NProto::EListNodesSizeMode sizeMode)
 {
-    // Not applicable to in-memory cache
-    Y_UNUSED(noAutoPrecharge);
+    Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
     }
@@ -369,13 +368,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefs(
     ui64& nextNodeId,
     TString& nextCookie)
 {
-    Y_UNUSED(
-        startNodeId,
-        startCookie,
-        maxCount,
-        refs,
-        nextNodeId,
-        nextCookie);
+    Y_UNUSED(startNodeId, startCookie, maxCount, refs, nextNodeId, nextCookie);
     // This method is supposed to be called only upon tablet load in order to
     // populate the cache with data from localDb. Thus implementing in via
     // in-memory cache is unnecessary.

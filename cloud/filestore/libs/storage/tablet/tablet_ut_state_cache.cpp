@@ -359,11 +359,8 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         cacheBypass.SetUnconfirmedRecoveryReady(true);
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
-        UNIT_ASSERT(!state.ReadNodeRef(
-            rootNodeIds[0],
-            commitId1,
-            nodeNames[0],
-            ref));
+        UNIT_ASSERT(
+            !state.ReadNodeRef(rootNodeIds[0], commitId1, nodeNames[0], ref));
 
         IInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
