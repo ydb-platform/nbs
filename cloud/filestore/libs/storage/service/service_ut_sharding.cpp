@@ -109,14 +109,14 @@ void CheckShardsSize(
         shard2Stats.GetStats().GetTotalBlocksCount());
 }
 
-NProtoPrivate::TUnsafeChangeTabletStateResponse SetCompressShardId(
+NProtoPrivate::TUnsafeChangeTabletStateResponse SetCompressNodeRef(
     const TString& fsId,
     TServiceClient& service,
-    const bool compressShardId)
+    const bool compressNodeRef)
 {
     NProtoPrivate::TUnsafeChangeTabletStateRequest request;
     request.SetFileSystemId(fsId);
-    request.SetCompressShardId(compressShardId);
+    request.SetCompressNodeRef(compressNodeRef);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
 
@@ -8773,7 +8773,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               0}});
     }
 
-    void DoShouldReadAndWriteCompressedShardId(
+    void DoShouldReadAndWriteCompressedNodeRef(
         NProto::TStorageConfig & config,
         bool directoryCreationInShards)
     {
@@ -8810,11 +8810,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto setCompress = [&](const bool compress) {
             // Change config in the main filesystem
-            SetCompressShardId(fsId, service, compress);
+            SetCompressNodeRef(fsId, service, compress);
             // Change config in shards
             if (directoryCreationInShards) {
                 for (ui64 shardNo = 1; shardNo < shardCount + 1; ++shardNo) {
-                    SetCompressShardId(
+                    SetCompressNodeRef(
                         TStringBuilder() << fsId << "_s" << shardNo,
                         service,
                         compress);
@@ -8999,10 +8999,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             ->GetAtomic());
     }
 
-    SERVICE_TEST(ShouldReadAndWriteCompressedShardId)
+    SERVICE_TEST(ShouldReadAndWriteCompressedNodeRef)
     {
-        DoShouldReadAndWriteCompressedShardId(config, false);
-        DoShouldReadAndWriteCompressedShardId(config, true);
+        DoShouldReadAndWriteCompressedNodeRef(config, false);
+        DoShouldReadAndWriteCompressedNodeRef(config, true);
     }
 
     SERVICE_TEST(ShouldValidateFilesystemIdDuringCreation)

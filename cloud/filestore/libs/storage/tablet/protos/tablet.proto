@@ -62,7 +62,7 @@ message TFileSystem
     NProtoPrivate.TFastShardConfig FastShardConfig = 24;
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
-    optional bool CompressShardId = 25;
+    optional bool CompressNodeRef = 25;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

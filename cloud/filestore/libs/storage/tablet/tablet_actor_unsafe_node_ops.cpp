@@ -905,8 +905,8 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
 
     TIndexTabletDatabase db(tx.DB);
 
-    if (args.Request.HasCompressShardId()) {
-        SetCompressShardId(db, args.Request.GetCompressShardId());
+    if (args.Request.HasCompressNodeRef()) {
+        SetCompressNodeRef(db, args.Request.GetCompressNodeRef());
     }
 
     if (args.Request.HasFrozen()) {

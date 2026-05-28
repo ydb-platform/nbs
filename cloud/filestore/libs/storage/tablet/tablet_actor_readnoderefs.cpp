@@ -1,4 +1,3 @@
-
 #include "tablet_actor.h"
 
 namespace NCloud::NFileStore::NStorage {

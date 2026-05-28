@@ -307,7 +307,7 @@ public:
 
     void SetFrozen(TIndexTabletDatabase& db, bool frozen);
 
-    void SetCompressShardId(TIndexTabletDatabase& db, bool compressShardId);
+    void SetCompressNodeRef(TIndexTabletDatabase& db, bool compressNodeRef);
 
     //
     // FileSystem
@@ -364,9 +364,9 @@ public:
         return FileSystem.GetNodesCount();
     }
 
-    bool GetCompressShardId() const
+    bool GetCompressNodeRef() const
     {
-        return FileSystem.GetCompressShardId();
+        return FileSystem.GetCompressNodeRef();
     }
 
     ui64 GetCurrentCommitId() const

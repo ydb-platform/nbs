@@ -484,7 +484,7 @@ void TIndexTabletState::CreateNodeRef(
         .MaxCommitId = InvalidCommitId
     };
 
-    if (GetCompressShardId() && !TryToEncodeShardId(
+    if (GetCompressNodeRef() && !TryToEncodeShardId(
             GetMainFileSystemId(),
             nodeRef))
     {

@@ -840,7 +840,7 @@ message TUnsafeChangeTabletStateRequest
     optional bool Frozen = 2;
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
-    optional bool CompressShardId = 3;
+    optional bool CompressNodeRef = 3;
 }
 
 message TUnsafeChangeTabletStateResponse

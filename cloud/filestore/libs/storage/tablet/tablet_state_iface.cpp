@@ -20,6 +20,8 @@ constexpr char ShardIdAsBinaryStream = 1;
 constexpr char MinPrintableChar = ' ';
 static_assert(ShardIdAsBinaryStream < MinPrintableChar);
 
+static_assert(sizeof(TGUID::dw) == 16);
+
 }   // namespace
 
 bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFs)
