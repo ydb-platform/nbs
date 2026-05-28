@@ -76,6 +76,7 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
             Scheduler = CreateScheduler();
             NProto::TClientConfig protoClientConfig;
             protoClientConfig.SetUnixSocketPath("/tmp/nfs.sock");
+            //protoClientConfig.SetUnixSocketPath("/run/nbsd/nfs0.sock");
             auto clientConfig = std::make_shared<NClient::TClientConfig>(
                 std::move(protoClientConfig));
             Logging = CreateLoggingService("nfs-client", {TLOG_DEBUG});
@@ -91,8 +92,10 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
             auto shmControl = CreateShmControlClient(clientConfig, Logging);
             ShmClient = NCloud::NFileStore::NLoadTest::CreateSharedMemoryClient(
                 "/tmp/",
+                //"/Berkanavt/nfs-vhost/shm/nfs-server-shm",
                 "shm.bin",
                 128_MB,
+                //2048_MB,
                 1_MB,
                 shmControl,
                 Scheduler,

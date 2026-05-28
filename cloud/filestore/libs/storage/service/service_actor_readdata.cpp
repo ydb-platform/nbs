@@ -89,6 +89,7 @@ private:
     const bool UseTwoStageRead;
     NClient::ISessionPtr Session;
     NLoadTest::IShmDataClientPtr ShmClient;
+    TString FsId;
 
 public:
     TReadDataActor(
@@ -111,7 +112,8 @@ public:
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead,
         NClient::ISessionPtr session,
-        NLoadTest::IShmDataClientPtr shmClient);
+        NLoadTest::IShmDataClientPtr shmClient,
+        TString fsId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -178,7 +180,8 @@ TReadDataActor::TReadDataActor(
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead,
         NClient::ISessionPtr session,
-        NLoadTest::IShmDataClientPtr shmClient)
+        NLoadTest::IShmDataClientPtr shmClient,
+        TString fsId)
     : ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
@@ -206,6 +209,7 @@ TReadDataActor::TReadDataActor(
     , UseTwoStageRead(useTwoStageRead)
     , Session(std::move(session))
     , ShmClient(std::move(shmClient))
+    , FsId(fsId)
 {
 }
 
@@ -234,6 +238,13 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
         request->ClearIovecs();
         //request->SetHandle(InvalidHandle);
 
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "MYAGKOV: TReadDataActor::Bootstrap: ReadRequest fs id: %s request fs id: %s" ,
+            ReadRequest.GetFileSystemId().c_str(),
+            request->GetFileSystemId().c_str());
+
         ui64 outOffset = 0;
         char* shmPtr = ShmClient->PrepareRead(*request, outOffset);
         if (shmPtr) {
@@ -241,8 +252,12 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
                             .GetValue(TDuration::Seconds(10));
             if (HasError(resp)) {
                 ShmClient->FreeOffset(outOffset);
-                std::cerr << "MYAGKOV: Read requests via shm failed: "
-                          << FormatError(resp.GetError()) << std::endl;
+                LOG_ERROR(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "MYAGKOV: Read requests via shm failed(fs: %s): %s",
+                    request->GetFileSystemId().c_str(),
+                    FormatError(resp.GetError()).c_str());
                 HandleError(ctx, resp.GetError());
                 return;
             } else {
@@ -253,14 +268,21 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
                 MoveShmToIovecs(ctx, response->Record, shmPtr);
                 ShmClient->FreeOffset(outOffset);
 
-                std::cerr << "MYAGKOV: Read requests handled via shm"
-                          << std::endl;
+                LOG_ERROR(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "MYAGKOV: Read requests handled via shm(fs: %s)",
+                    request->GetFileSystemId().c_str());
 
                 SendResponseAndDie(ctx, std::move(response));
                 return;
             }
         } else {
-            std::cerr << "MYAGKOV: no available shm slots" << std::endl;
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "MYAGKOV: no available shm slots(fs: %s)",
+                request->GetFileSystemId().c_str());
         }
     }
 
@@ -276,6 +298,10 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
         } else {
             TargetBuffers = CreateRope(ReadRequest.GetIovecs());
         }
+    }
+
+    if (!FsId.empty()) {
+        ReadRequest.SetFileSystemId(FsId);
     }
 
     if (UseTwoStageRead) {
@@ -1038,10 +1064,6 @@ void TStorageServiceActor::HandleReadData(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    if (fsId) {
-        msg->Record.SetFileSystemId(fsId);
-    }
-
     if (msg->Record.IovecsSize() > 0) {
         ui64 totalIovecLength = 0;
         for (const auto& iovec: msg->Record.GetIovecs()) {
@@ -1142,7 +1164,8 @@ void TStorageServiceActor::HandleReadData(
         session->MediaKind,
         useTwoStageRead,
         sendRequestToLocalServer ? Session : nullptr,
-        ShmClient);
+        ShmClient,
+        std::move(fsId));
 
     NCloud::Register(ctx, std::move(actor));
 }
