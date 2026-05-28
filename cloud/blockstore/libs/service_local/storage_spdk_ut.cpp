@@ -290,7 +290,7 @@ TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blocksCount);
-    request->BlockSize = blockSize;
+    request->SetBlockSize(blockSize);
     request->Sglist = std::move(sglist);
 
     return storage.ReadBlocksLocal(
@@ -309,8 +309,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
+    request->SetBlockSize(blockSize);
     request->BlocksCount = blocksCount;
-    request->BlockSize = blockSize;
     request->Sglist = std::move(sglist);
 
     return storage.WriteBlocksLocal(
@@ -609,7 +609,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             request->SetStartIndex(8);
             request->BlocksCount = sglist.size();
-            request->BlockSize = blockSize;
+            request->SetBlockSize(blockSize);
             request->Sglist = TGuardedSgList(std::move(sglist));
 
             auto future = storage->WriteBlocksLocal(
@@ -627,7 +627,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetStartIndex(8);
             request->SetBlocksCount(sglist.size());
-            request->BlockSize = blockSize;
+            request->SetBlockSize(blockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = storage->ReadBlocksLocal(

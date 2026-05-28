@@ -120,6 +120,12 @@ type ClientInterface interface {
 		name string,
 		unlinkDirectory bool,
 	) error
+
+	ExecuteAction(
+		ctx context.Context,
+		action string,
+		input []byte,
+	) ([]byte, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

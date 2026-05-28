@@ -186,6 +186,7 @@ struct TBackgroundOpsBackpressureStatus
     const EBackgroundOpBackpressureStatus FlushBytesItemCount;
     const EBackgroundOpBackpressureStatus Compaction;
     const EBackgroundOpBackpressureStatus Cleanup;
+    const EBackgroundOpBackpressureStatus CollectGarbage;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,6 +208,8 @@ struct TTrackedUnconfirmedData
 {
     NProto::TUnconfirmedData Data;
     TString SessionId;
+    // Tablet-pipe server actor that accepted GenerateBlobIds for this data.
+    NActors::TActorId PipeServerId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -259,11 +262,14 @@ protected:
     THashSet<ui64> DeletionQueue;
     // ConfirmAddData requests that arrived before internal AddData completed.
     // Used for all requests until (#5353)
-    THashMap<ui64, TPendingConfirmAddData> PendingConfirmation;
+    THashMap<ui64, TVector<TPendingConfirmAddData>> PendingConfirmation;
 
     // Recovery gate for data operations: true when startup unconfirmed flow
     // has completed recovery confirmation.
     bool UnconfirmedRecoveryReady = false;
+
+protected:
+    void SetUnconfirmedRecoveryReady(bool value);
 
 public:
     TIndexTabletState();
@@ -279,6 +285,7 @@ public:
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
         const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TVector<ui64>& orphanNodeIds,
+        const TVector<NProto::TOpLogEntry>& opLog,
         const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
         const TThrottlerConfig& throttlerConfig);
 
@@ -413,9 +420,16 @@ public:
 
     ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
 
-    NProto::TError SelectShard(ui64 fileSize, TString* shardId);
+    void InitInMemoryIndexState(const TStorageConfig& config);
 
-    void UpdateShardBalancer(const TVector<TShardStats>& stats);
+    NProto::TError SelectShard(
+        NProto::ENodeType nodeType,
+        ui64 fileSize,
+        TString* shardId);
+
+    void InitShardBalancer(const TStorageConfig& config);
+
+    NProto::TError UpdateShardBalancer(const TVector<TShardStats>& stats);
 
     TVector<IShardBalancer::TShardDescr> MakeOrderedShardList() const;
 
@@ -900,6 +914,19 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
         ui64 requestId);
 
     //
+    // OpLog
+    //
+
+public:
+    void WriteOpLogEntry(
+        TIndexTabletDatabase& db,
+        const NProto::TOpLogEntry& e);
+
+    void DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId);
+
+    ui64 GetOpLogEntryCount() const;
+
+    //
     // ResponseLog
     //
 
@@ -945,6 +972,7 @@ public:
         const ui64 FlushBytesItemCount;
         const ui64 CompactionScore;
         const ui64 CleanupScore;
+        const ui64 CollectGarbage;
     };
 
     using TBackpressureValues = TBackpressureThresholds;
@@ -967,6 +995,9 @@ public:
     bool HasDataOverlapWithUnconfirmed(
         ui64 nodeId,
         const TByteRange& requestRange) const;
+
+    void ActivateCacheReadBypass(ui64 nodeId, ui64 commitId);
+    void DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId);
 
     //
     // FreshBytes
@@ -1505,6 +1536,7 @@ public:
     bool TryFillDescribeResult(
         ui64 nodeId,
         ui64 handle,
+        ui64 commitId,
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
     TMaybe<TByteRange> RegisterDescribe(
@@ -1523,9 +1555,9 @@ public:
     // In-memory index state.
     //
 
-    IIndexTabletDatabase& AccessInMemoryIndexState();
+    IIndexTabletDatabase* AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(
-        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
+        const TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
     void MarkNodeRefsLoadComplete();
     void MarkNodeRefsExhaustive(ui64 nodeId);
     TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;

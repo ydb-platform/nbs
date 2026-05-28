@@ -149,35 +149,6 @@ bool SysKeyCtlUnlink(ui32 key, ui32 keyring)
     return res == 0;
 }
 
-ui32 SearchProcKeys(const TString& desc)
-{
-    static const TString KeysFilePath = "/proc/keys";
-    static const ui32 KeySerialColumn = 0;
-    static const ui32 KeyDescColumn = 8;
-
-    TIFStream file(KeysFilePath);
-
-    TString str;
-    while (file.ReadLine(str)) {
-        str = StripString(str);
-        if (str.empty())
-            continue;
-
-        TVector<TStringBuf> splitted;
-        StringSplitter(str).Split(' ').SkipEmpty().AddTo(&splitted);
-        const auto& keyStr = splitted.at(KeySerialColumn);
-        const auto& keyDesc = splitted.at(KeyDescColumn);
-
-        if (keyDesc.size() == desc.size() + 1 &&
-            keyDesc.back() == ':' &&
-            keyDesc.StartsWith(desc))
-        {
-            return std::strtoul(keyStr.data(), nullptr, 16);
-        }
-    }
-    return InvalidCode;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 ui32 GetRootKeySerial(TKeyring::ERootKeyring keyring)
@@ -219,6 +190,54 @@ bool TKeyring::operator==(const TKeyring& other) const
 TKeyring::operator bool() const
 {
     return KeySerial != InvalidCode;
+}
+
+ui32 TKeyring::SearchProcKeys(const TString& desc)
+{
+    static const TString KeysFilePath = "/proc/keys";
+
+    TIFStream file(KeysFilePath);
+
+    TString str;
+    while (file.ReadLine(str)) {
+        ui32 key = InvalidCode;
+        if (ParseProcKeysLine(str, desc, key)) {
+            return key;
+        }
+    }
+    return InvalidCode;
+}
+
+bool TKeyring::ParseProcKeysLine(
+    const TString& line,
+    const TString& desc,
+    ui32& key)
+{
+    constexpr ui32 KeySerialColumn = 0;
+    constexpr ui32 KeyDescColumn = 8;
+
+    auto str = StripString(line);
+    if (str.empty()) {
+        return false;
+    }
+
+    TVector<TStringBuf> splitted;
+    StringSplitter(str).Split(' ').SkipEmpty().AddTo(&splitted);
+    if (splitted.size() <= KeyDescColumn) {
+        return false;
+    }
+
+    const auto& keySerial = splitted[KeySerialColumn];
+    const auto& keyDesc = splitted[KeyDescColumn];
+
+    if (keyDesc.size() == desc.size() + 1 && keyDesc.back() == ':' &&
+        keyDesc.StartsWith(desc))
+    {
+        key = std::strtoul(keySerial.data(), nullptr, 16);
+        return true;
+    }
+
+    return false;
 }
 
 TKeyring TKeyring::Create(ui32 keySerial)

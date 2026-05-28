@@ -29,7 +29,8 @@ struct IAuthProvider
         TString authToken,
         EBlockStoreRequest requestType,
         TDuration requestTimeout,
-        TString diskId) = 0;
+        TString diskId,
+        TString peer) = 0;
 };
 
 }   // namespace NCloud::NBlockStore

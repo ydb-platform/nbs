@@ -97,6 +97,11 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TUnlinkNodeRequest,
 	) (*protos.TUnlinkNodeResponse, error)
+
+	ExecuteAction(
+		ctx context.Context,
+		req *protos.TExecuteActionRequest,
+	) (*protos.TExecuteActionResponse, error)
 }
 
 type EndpointClientIface interface {

@@ -646,7 +646,6 @@ struct TMultiAgentWriteRequest: public NProto::TWriteBlocksRequest
     using TGetDeviceForRangeResponse = NCloud::NBlockStore::NStorage::
         TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse;
 
-    ui32 BlockSize = 0;
     TBlockRange64 Range;
     TVector<TGetDeviceForRangeResponse> DevicesAndRanges;
 };

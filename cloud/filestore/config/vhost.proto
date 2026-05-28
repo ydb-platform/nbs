@@ -90,6 +90,13 @@ message TVhostServiceConfig
 
     // Max single growth step for DirectoryHandles persistent table data area.
     optional uint64 DirectoryHandlesMaxDataAreaStepSize = 22;
+
+    // Shared memory limit, in bytes, for file-map-backed caches.
+    // Consumers like DirectoryHandlesCache and WriteBackCache can
+    // use this limit as a growth guard and may reclaim, drop or restrict
+    // cached state instead of expanding file mappings.
+    // Value 0 disables the limit and uses a permissive stub limiter.
+    optional uint64 FileMapMemoryLimit = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -4,8 +4,8 @@
 
 #include "buffer.h"
 
-#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -42,6 +42,12 @@ struct TClientConfig
     TBufferPoolConfig BufferPool;
     ui32 SendQueueSize = 0;
     ui32 RecvQueueSize = 0;
+    TDuration ResolveTimeout = TDuration::Seconds(10);
+    TDuration FlushTimeout = TDuration::Seconds(10);
+    ui8 QpRetryCount = 7;
+    ui8 QpRnrRetryCount = 7;
+    ui8 QpTimeout = 0;
+    ui8 QpMinRnrTimer = 0;
 
     TClientConfig();
 

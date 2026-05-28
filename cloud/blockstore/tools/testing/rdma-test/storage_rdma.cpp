@@ -19,6 +19,7 @@
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
+using namespace NCloud::NStorage;
 
 LWTRACE_USING(BLOCKSTORE_TEST_PROVIDER);
 
@@ -30,7 +31,7 @@ constexpr size_t MAX_PROTO_SIZE = 4*1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IRequestHandler: public NCloud::NStorage::NRdma::TNullContext
+struct IRequestHandler: public NRdma::TNullContext
 {
     virtual void HandleResponse(TStringBuf buffer) = 0;
     virtual void HandleError(ui32 error, TString message) = 0;
@@ -47,7 +48,7 @@ private:
     TGuardedSgList GuardedSgList;
     TPromise<NProto::TError> Response;
 
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+    NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
@@ -62,9 +63,9 @@ public:
         , Response(std::move(response))
     {}
 
-    TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> PrepareRequest(
-        NCloud::NStorage::NRdma::IClientEndpoint& endpoint,
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler)
+    TResultOrError<NRdma::TClientRequestPtr> PrepareRequest(
+        NRdma::IClientEndpoint& endpoint,
+        NRdma::IClientHandlerPtr handler)
     {
         LWTRACK(
             RdmaPrepareRequest,
@@ -76,16 +77,14 @@ public:
         auto [req, err] = endpoint.AllocateRequest(
             handler,
             nullptr,
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
-                *Request,
-                0),
+            NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0),
             MAX_PROTO_SIZE + dataSize);
 
         if (HasError(err)) {
             return err;
         }
 
-        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadBlocksRequest,
             0,   // flags
@@ -141,7 +140,7 @@ private:
     TGuardedSgList GuardedSgList;
     TPromise<NProto::TError> Response;
 
-    NCloud::NStorage::NRdma::TProtoMessageSerializer* Serializer =
+    NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
 public:
@@ -156,17 +155,17 @@ public:
         , Response(std::move(response))
     {}
 
-    TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> PrepareRequest(
-        NCloud::NStorage::NRdma::IClientEndpoint& endpoint,
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler)
+    TResultOrError<NRdma::TClientRequestPtr> PrepareRequest(
+        NRdma::IClientEndpoint& endpoint,
+        NRdma::IClientHandlerPtr handler)
     {
         size_t dataSize = Request->GetBlockSize() * Request->GetBlocksCount();
 
         auto [req, err] = endpoint.AllocateRequest(
             std::move(handler),
             nullptr,
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
-                *Request, dataSize), MAX_PROTO_SIZE);
+            NRdma::TProtoMessageSerializer::MessageByteSize(*Request, dataSize),
+            MAX_PROTO_SIZE);
 
         if (HasError(err)) {
             return err;
@@ -176,7 +175,7 @@ public:
         Y_ABORT_UNLESS(guard);
 
         const auto& sglist = guard.Get();
-        NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
+        NRdma::TProtoMessageSerializer::SerializeWithData(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             0,   // flags
@@ -215,12 +214,12 @@ public:
 
 class TRdmaStorage final
     : public IStorage
-    , public NCloud::NStorage::NRdma::IClientHandler
+    , public NRdma::IClientHandler
     , public std::enable_shared_from_this<TRdmaStorage>
 {
 private:
     ITaskQueuePtr TaskQueue;
-    NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+    NRdma::IClientEndpointPtr Endpoint;
 
 public:
     static std::shared_ptr<TRdmaStorage> Create(ITaskQueuePtr taskQueue)
@@ -234,7 +233,7 @@ public:
         Stop();
     }
 
-    void Init(NCloud::NStorage::NRdma::IClientEndpointPtr endpoint)
+    void Init(NRdma::IClientEndpointPtr endpoint)
     {
         Endpoint = std::move(endpoint);
     }
@@ -276,7 +275,7 @@ private:
     {}
 
     void HandleResponse(
-        NCloud::NStorage::NRdma::TClientRequestPtr req,
+        NRdma::TClientRequestPtr req,
         ui32 status,
         size_t responseBytes) override
     {
@@ -290,10 +289,10 @@ private:
              handler = std::move(handler)]()
             {
                 auto buffer = req->ResponseBuffer.Head(responseBytes);
-                if (status == NCloud::NStorage::NRdma::RDMA_PROTO_OK) {
+                if (status == NRdma::RDMA_PROTO_OK) {
                     handler->HandleResponse(buffer);
                 } else {
-                    auto error = NCloud::NStorage::NRdma::ParseError(buffer);
+                    auto error = NRdma::ParseError(buffer);
                     handler->HandleError(error.GetCode(), error.GetMessage());
                 }
             });
@@ -342,7 +341,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStoragePtr CreateRdmaStorage(
-    NCloud::NStorage::NRdma::IClientPtr client,
+    NRdma::IClientPtr client,
     ITaskQueuePtr taskQueue,
     const TString& address,
     ui32 port,

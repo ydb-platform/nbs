@@ -1,23 +1,23 @@
-import os
-import signal
-import logging
 import argparse
-import yatest.common
-import yatest.common.network
+import logging
+import os
 import retrying
 import shlex
-import tarfile
+import signal
+import yatest.common
+import yatest.common.network
 
 import library.python.fs as fs
 from library.python.retry import retry
 import library.python.testing.recipe
 
 from .qemu import Qemu
-from .common import SshToGuest, get_mount_paths, env_with_guest_index
+from .common import SshToGuest, get_mount_paths, env_with_guest_index, get_qemu_kvm, get_qemu_firmware
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,
 )
+from .backtrace import setup_coredumps, process_coredumps
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def start_instance(args, inst_index):
 
     use_virtiofs_server = _get_vm_use_virtiofs_server(args)
 
-    qemu = Qemu(qemu_kmv=_get_qemu_kvm(args),
+    qemu = Qemu(qemu_kvm=_get_qemu_kvm(args),
                 qemu_firmware=_get_qemu_firmware(args),
                 rootfs=_get_rootfs(args),
                 kernel=_get_kernel(args),
@@ -141,7 +141,20 @@ def start_instance(args, inst_index):
         open(ready_flag_path, 'a')
 
 
+def _process_coredumps(args):
+    for instance in range(args.instance_count):
+        try:
+            port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance), 22)
+            ssh = SshToGuest(user=_get_ssh_user(args), port=int(port), key=os.getenv("QEMU_SSH_KEY"))
+            process_coredumps(ssh)
+        except Exception:
+            logger.exception(f"Failed to process instance #{instance} coredumps")
+
+
 def stop(argv):
+    args = _parse_args(argv)
+    _process_coredumps(args)
+
     with open(PID_FILE, "r") as f:
         pids = f.read().strip().splitlines()
         logger.info('Stopping qemu instances with pids: %s', ', '.join(pids))
@@ -209,23 +222,10 @@ def _parse_args(argv):
     return args
 
 
-def _get_bindir():
-    return yatest.common.build_path(
-        "cloud/storage/core/tools/testing/qemu/bin")
-
-
-def _unpack_qemu_bin(bindir):
-    with tarfile.open(os.path.join(bindir, "qemu-bin.tar.gz")) as tf:
-        tf.extractall(bindir)
-
-
 def _get_qemu_kvm(args):
     if not args.qemu_bin or args.qemu_bin == "$QEMU_BIN":
         # QEMU_BIN not defined externally, use the one from the resource
-        bindir = _get_bindir()
-        qemu_kvm = os.path.join(bindir, "usr", "bin", "qemu-system-x86_64")
-        if not os.path.exists(qemu_kvm):
-            _unpack_qemu_bin(bindir)
+        qemu_kvm = get_qemu_kvm()
     else:
         qemu_kvm = yatest.common.build_path(args.qemu_bin)
         if not os.path.exists(qemu_kvm):
@@ -241,10 +241,7 @@ def _get_qemu_kvm(args):
 def _get_qemu_firmware(args):
     if not args.qemu_firmware or args.qemu_firmware == "$QEMU_FIRMWARE":
         # QEMU_FIRMWARE not defined externally, use the one from the resource
-        bindir = _get_bindir()
-        qemu_firmware = os.path.join(bindir, "usr", "share", "qemu")
-        if not os.path.exists(qemu_firmware):
-            _unpack_qemu_bin(bindir)
+        qemu_firmware = get_qemu_firmware()
     else:
         qemu_firmware = yatest.common.build_path(args.qemu_firmware)
 
@@ -424,6 +421,8 @@ def _prepare_test_environment(ssh, virtio):
     else:
         raise QemuKvmRecipeException("Invalid virtio type")
 
+    setup_coredumps(ssh)
+
     library.python.testing.recipe.set_env(
         "TEST_ENV_WRAPPER", vm_env['TEST_ENV_WRAPPER'])
 
@@ -433,6 +432,10 @@ def _prepare_test_environment(ssh, virtio):
         ] + [
             "export {}={}".format(k, shlex.quote(v))
             for k, v in vm_env.items()
+        ] + [
+            # this should be a part of `setup_coredumps`, but there seems to be
+            # no portable way to do this globally
+            "ulimit -c unlimited"
         ] + [
             '"$@"',
             "exit_code=$?",

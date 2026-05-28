@@ -25,7 +25,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceStubTest)
 
         {
             auto future = service->AcquireNVMeDevice("foo");
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
 
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
         }

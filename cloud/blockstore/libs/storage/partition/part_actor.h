@@ -69,7 +69,6 @@ struct TIOCompanionClient;
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
     , public TTabletBase<TPartitionActor>
-    , private IRequestsInProgress
 {
     enum EState
     {
@@ -152,10 +151,6 @@ private:
     // Requests in-progress
     TRunningActors Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
-    TDrainActorCompanion DrainActorCompanion{
-        *this,
-        PartitionConfig.GetDiskId()};
-    ui32 WriteAndZeroRequestsInProgress = 0;
 
     TPartitionDiskCountersPtr PartCounters;
 
@@ -267,28 +262,6 @@ private:
         const NActors::TActorContext& ctx);
 
     void SendStatsToService(const NActors::TActorContext& ctx);
-
-    // IRequestsInProgress implementation:
-    bool WriteRequestInProgress() const override
-    {
-        return WriteAndZeroRequestsInProgress != 0;
-    }
-
-    bool OverlapsWithWrites(TBlockRange64 range) const override
-    {
-        Y_UNUSED(range);
-        Y_ABORT("Unimplemented");
-    }
-
-    void WaitForInFlightWrites() override
-    {
-        Y_ABORT("Unimplemented");
-    }
-
-    bool IsWaitingForInFlightWrites() const override
-    {
-        Y_ABORT("Unimplemented");
-    }
 
     template <typename TMethod>
     void HandleWriteBlocksRequest(

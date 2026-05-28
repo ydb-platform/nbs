@@ -52,6 +52,14 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(4096)
         .StoreResult(&FileSize);
 
+    opts.AddLongOption(
+            "create-file-attempt-count",
+            "the number of attempts to create+write each file, only EBADF is"
+            " retried")
+        .RequiredArgument("NUM")
+        .DefaultValue(1)
+        .StoreResult(&CreateFileAttemptCount);
+
     //
     // Stealer settings.
     //
@@ -99,6 +107,12 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .DefaultValue("bench-report.json")
         .StoreResult(&ReportPath);
+
+    opts.AddLongOption(
+            "skip-file-validation",
+            "skips file ino, size and content validation")
+        .NoArgument()
+        .SetFlag(&SkipFileValidation);
 
     TOptsParseResultException(&opts, argc, argv);
 }

@@ -24,6 +24,7 @@ namespace {
 class TDescribeRangeVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeRange& Args;
@@ -51,6 +52,19 @@ public:
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
+        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        Y_UNUSED(compactionRangeCount);
+
         Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
         return true;
     }

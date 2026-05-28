@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/diagnostics/tcmalloc_stats.h>
 #include <cloud/filestore/libs/endpoint/endpoint_manager.h>
 #include <cloud/filestore/libs/endpoint/listener.h>
 #include <cloud/filestore/libs/endpoint/service_auth.h>
@@ -40,6 +41,7 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/daemon/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -47,6 +49,8 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -75,6 +79,23 @@ namespace {
 
 const TString VhostMetricsComponent = "client";
 const TString ServerMetricsComponent = "server";
+
+////////////////////////////////////////////////////////////////////////////////
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const NClient::TClientConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -153,7 +174,8 @@ public:
                 } else {
                     fileStore = NClient::CreateFileStoreClient(
                         clientConfig,
-                        Logging);
+                        Logging,
+                        CreateClientCertificateProvider(clientConfig));
                 }
                 break;
             }
@@ -290,6 +312,16 @@ void TBootstrapVhost::InitComponents()
         BackgroundScheduler,
         ModuleStatsRegistry);
 
+    // Need tcmalloc metrics wrapper for local service since these are usually
+    // provided as part of actor system
+    if (Configs->Options->Service == NDaemon::EServiceKind::Local)
+    {
+        TcMallocStatsUpdater = CreateStatsUpdater(
+            Timer,
+            BackgroundScheduler,
+            CreateTcMallocStatsHandler(Monitoring->GetCounters()));
+    }
+
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
         case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
@@ -330,13 +362,28 @@ void TBootstrapVhost::InitComponents()
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
 
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    if (!certPathList.empty()) {
+        CertificateProvider = CreateStaticCertificateProvider(
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList));
+    }
+
     Server = CreateServer(
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
         serverCounters,
         Scheduler,
-        EndpointManager);
+        EndpointManager,
+        CertificateProvider);
     RegisterServer(Server);
 
     if (LocalService) {
@@ -350,7 +397,8 @@ void TBootstrapVhost::InitComponents()
             serverCounters,
             ProfileLog,
             Scheduler,
-            LocalService);
+            LocalService,
+            CertificateProvider);
 
         STORAGE_INFO("initialized LocalServiceServer: %s",
             serverConfigProto.Utf8DebugString().Quote().c_str());
@@ -418,6 +466,11 @@ void TBootstrapVhost::InitEndpoints()
 
     FileStoreEndpoints = std::move(endpoints);
 
+    auto fileMapMemoryLimiter = NCloud::CreateFileMapMemoryLimiter(
+        NCloud::TFileMapMemoryLimiterConfig{
+            .FileMapMemoryLimit =
+                Configs->VhostServiceConfig->GetFileMapMemoryLimit()});
+
     EndpointListener = NVhost::CreateEndpointListener(
         Logging,
         Timer,
@@ -461,7 +514,8 @@ void TBootstrapVhost::InitEndpoints()
                                    ->GetDirectoryHandlesInitialDataSize(),
             .MaxDataAreaStepSize =
                 Configs->VhostServiceConfig
-                    ->GetDirectoryHandlesMaxDataAreaStepSize()});
+                    ->GetDirectoryHandlesMaxDataAreaStepSize()},
+        std::move(fileMapMemoryLimiter));
 
     EndpointManager = CreateEndpointManager(
         Logging,
@@ -497,6 +551,7 @@ void TBootstrapVhost::InitLWTrace()
 void TBootstrapVhost::StartComponents()
 {
     FILESTORE_LOG_START_COMPONENT(ModuleStatsUpdater);
+    FILESTORE_LOG_START_COMPONENT(TcMallocStatsUpdater);
 
     NVhost::StartServer();
 
@@ -523,11 +578,22 @@ void TBootstrapVhost::StopComponents()
 
     NVhost::StopServer();
 
+    FILESTORE_LOG_STOP_COMPONENT(TcMallocStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ModuleStatsUpdater);
 }
 
 void TBootstrapVhost::Drain()
 {
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr &&
+        GetShouldContinue().PollState() != TProgramShouldContinue::Continue)
+    {
+        const int code = GetShouldContinue().GetReturnCode();
+        if (code == NodeLeaseExpirationExitCode) {
+            ythrow TAppShouldExitWithoutShutdownException()
+                << "Node lease is expired";
+        }
+    }
+
     if (EndpointManager) {
         EndpointManager->Drain();
     }

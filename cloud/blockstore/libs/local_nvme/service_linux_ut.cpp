@@ -178,6 +178,8 @@ struct TTestSysFs final: ISysFs
     THashMap<TString, TString> DeviceToCtrl;
     THashMap<TString, NProto::TNVMeDevice> AddrToDevice;
 
+    std::function<TString(const TString&)> GetVfioDeviceForPCIDeviceImpl;
+
     auto GetDriverForPCIDevice(const TString& pciAddr) -> TString final
     {
         return AddrToDriver.Value(pciAddr, TString());
@@ -201,6 +203,18 @@ struct TTestSysFs final: ISysFs
         const auto* device = AddrToDevice.FindPtr(pciAddr);
         Y_ENSURE(device);
         return *device;
+    }
+
+    auto GetVfioDeviceForPCIDevice(const TString& pciAddr) -> TString final
+    {
+        return GetVfioDeviceForPCIDeviceImpl
+                   ? GetVfioDeviceForPCIDeviceImpl(pciAddr)
+                   : TString{};
+    }
+
+    [[nodiscard]] auto IsVfioDevSupported() const -> bool final
+    {
+        return true;
     }
 };
 
@@ -481,6 +495,47 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldRetryGetVfioDevName, TFixture)
+    {
+        SetProviderReady();
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const TString vfioDev = "vfio0";
+        const auto& device = Devices[0];
+
+        const ui32 successfulAttempt = 3;
+        std::atomic<ui32> attempts = 0;
+        SysFs->GetVfioDeviceForPCIDeviceImpl =
+            [&](const TString& pciAddr) mutable -> TString
+        {
+            if (device.GetPCIAddress() != pciAddr) {
+                return {};
+            }
+
+            if (attempts != successfulAttempt) {
+                ++attempts;
+                return {};
+            }
+
+            return vfioDev;
+        };
+
+        auto future = Service->AcquireNVMeDevice(device.GetSerialNumber());
+
+        const auto& [r, error] = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(device.GetSerialNumber(), r.GetSerialNumber());
+        UNIT_ASSERT_VALUES_EQUAL(vfioDev, r.GetVfioDevName());
+        UNIT_ASSERT_VALUES_EQUAL(successfulAttempt, attempts.load());
+    }
+
     Y_UNIT_TEST_F(ShouldAcquireAndReleaseDevice, TFixture)
     {
         const auto& device = Devices[0];
@@ -490,7 +545,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         for (const auto& sn: {serialNumber, TString("UNK")}) {
             {
                 auto future = Service->AcquireNVMeDevice(sn);
-                const auto& error = future.GetValueSync();
+                const auto& [_, error] = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_REJECTED,
                     error.GetCode(),
@@ -510,16 +565,20 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         SetProviderReady();
 
         {
-            auto [_, error] = ListNVMeDevices();
+            auto [devices, error] = ListNVMeDevices();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+
+            for (const auto& device: devices) {
+                UNIT_ASSERT_VALUES_EQUAL("", device.GetVfioDevName());
+            }
         }
 
         {
             auto future = Service->AcquireNVMeDevice("UNK");
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
                 error.GetCode(),
@@ -538,12 +597,26 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
 
         {
+            const TString vfioDev = "vfio0";
+
+            SysFs->GetVfioDeviceForPCIDeviceImpl =
+                [&](const TString& pciAddr) -> TString
+            {
+                if (pciAddr == device.GetPCIAddress()) {
+                    return vfioDev;
+                }
+                return {};
+            };
+
             auto future = Service->AcquireNVMeDevice(serialNumber);
-            const auto& error = future.GetValueSync();
+            const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+
+            UNIT_ASSERT_VALUES_EQUAL(serialNumber, device.GetSerialNumber());
+            UNIT_ASSERT_VALUES_EQUAL(vfioDev, device.GetVfioDevName());
         }
 
         const TString ctrlPath = "/dev/nvme0";
@@ -622,7 +695,10 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                     TVector<TFuture<NProto::TError>> futures;
 
                     for (int i = 0; i != requestNum; ++i) {
-                        futures.push_back(Service->AcquireNVMeDevice("UNK"));
+                        futures.push_back(
+                            Service->AcquireNVMeDevice("UNK").Apply(
+                                [](const auto& future)
+                                { return future.GetValue().GetError(); }));
                         futures.push_back(Service->ReleaseNVMeDevice("UNK"));
                         Sleep(10ms);
                     }
@@ -681,20 +757,22 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         {
             auto future = Service->AcquireNVMeDevice("NVME_0");
-            const auto& error = future.GetValueSync();
+            const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL("NVME_0", device.GetSerialNumber());
         }
 
         {
             auto future = Service->AcquireNVMeDevice("NVME_2");
-            const auto& error = future.GetValueSync();
+            const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL("NVME_2", device.GetSerialNumber());
         }
 
         {
@@ -788,7 +866,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         {
             auto future =
                 Service->AcquireNVMeDevice(Devices[0].GetSerialNumber());
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),
@@ -798,7 +876,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         {
             auto future =
                 Service->AcquireNVMeDevice(Devices[1].GetSerialNumber());
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -808,7 +886,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         {
             auto future =
                 Service->AcquireNVMeDevice(Devices[2].GetSerialNumber());
-            const auto& error = future.GetValueSync();
+            const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),

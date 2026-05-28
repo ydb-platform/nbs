@@ -19,7 +19,6 @@ SRCS(
     disjoint_interval_map.cpp
     error.cpp
     file_io_service.cpp
-    file_ring_buffer.cpp
     format.cpp
     guarded_sglist.cpp
     helpers.cpp
@@ -29,8 +28,6 @@ SRCS(
     media.cpp
     numeric.cpp
     page_size.cpp
-    dynamic_persistent_table.cpp
-    persistent_table.cpp
     proto_helpers.cpp
     random.cpp
     ring_buffer.cpp

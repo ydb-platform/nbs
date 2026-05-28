@@ -700,6 +700,7 @@ private:
     const ITimerPtr Timer;
     const IProfileLogPtr ProfileLog;
     const ISessionPtr Session;
+    const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
 
     TLog Log;
 
@@ -733,7 +734,8 @@ public:
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             IProfileLogPtr profileLog,
-            ISessionPtr session)
+            ISessionPtr session,
+            IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
@@ -743,6 +745,7 @@ public:
         , Timer(std::move(timer))
         , ProfileLog(std::move(profileLog))
         , Session(std::move(session))
+        , FileMapMemoryLimiter(std::move(fileMapMemoryLimiter))
     {
         Log = Logging->CreateLog("NFS_FUSE");
     }
@@ -806,17 +809,21 @@ public:
             p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
-        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->Unmount()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_ERROR)
+            .Subscribe(
+                [onStop = std::move(onStop),
+                 scheduler = Scheduler](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->Unmount()
+                    scheduler->Schedule(
+                        TInstant::Zero(),
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }
@@ -852,17 +859,21 @@ public:
             s.SetValue();
         };
 
-        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->StopThread()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_SUSPEND)
+            .Subscribe(
+                [onStop = std::move(onStop),
+                 scheduler = Scheduler](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->StopThread()
+                    scheduler->Schedule(
+                        TInstant::Zero(),
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }
@@ -1053,6 +1064,13 @@ private:
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
 
+                    if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                        auto future = WriteBackCache.Drain();
+                        // Drain will run asynchronously in background
+                        // No need to wait for it
+                        Y_UNUSED(future);
+                    }
+
                     ModuleStatsRegistry->Register(
                         {.FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
@@ -1070,31 +1088,40 @@ private:
             }
 
             TDirectoryHandleStoragePtr directoryHandleStorage;
-            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled() &&
-                Config->GetDirectoryHandlesStoragePath())
-            {
-                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
-                            FileSystemConfig->GetFileSystemId() / SessionId;
+            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
+                if (Config->GetDirectoryHandlesStoragePath()) {
+                    auto path =
+                        TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                        FileSystemConfig->GetFileSystemId() / SessionId;
 
-                auto error = CreateAndLockFile(
-                    path,
-                    DirectoryHandleStorageFileName,
-                    DirectoryHandleStorageFileLock);
+                    auto error = CreateAndLockFile(
+                        path,
+                        DirectoryHandleStorageFileName,
+                        DirectoryHandleStorageFileLock);
 
-                if (HasError(error)) {
-                    ReportDirectoryHandlesStorageError(error.GetMessage());
-                    return error;
+                    if (HasError(error)) {
+                        ReportDirectoryHandlesStorageError(error.GetMessage());
+                        return error;
+                    }
+
+                    directoryHandleStorage = CreateDirectoryHandleStorage(
+                        Log,
+                        path / DirectoryHandleStorageFileName,
+                        FileSystemConfig->GetDirectoryHandlesTableSize(),
+                        Config->GetDirectoryHandlesInitialDataSize(),
+                        Config->GetDirectoryHandlesMaxDataAreaStepSize(),
+                        FileSystemConfig->GetMaxBufferSize(),
+                        FileMapMemoryLimiter);
+
+                    DirectoryHandleStorageInitialized = true;
+                } else {
+                    STORAGE_ERROR(
+                        "[f:%s][c:%s] Error initializing "
+                        "DirectoryHandleStorage: DirectoryHandlesStoragePath "
+                        "is not set",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str());
                 }
-
-                directoryHandleStorage = CreateDirectoryHandleStorage(
-                    Log,
-                    path / DirectoryHandleStorageFileName,
-                    FileSystemConfig->GetDirectoryHandlesTableSize(),
-                    Config->GetDirectoryHandlesInitialDataSize(),
-                    Config->GetDirectoryHandlesMaxDataAreaStepSize(),
-                    FileSystemConfig->GetMaxBufferSize());
-
-                DirectoryHandleStorageInitialized = true;
             }
 
             DirectoryHandleStats = CreateDirectoryHandleStats(Timer);
@@ -1300,19 +1327,19 @@ private:
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
-        if (WriteBackCache && !WriteBackCache.IsEmpty()) {
+        if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
-                "[f:%s][c:%s] WriteBackCache is not empty, starting "
-                "FlushAllData",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
+                "executing Drain()",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 
-            WriteBackCache.FlushAllData().Subscribe(
+            WriteBackCache.Drain().Subscribe(
                 [w = weak_from_this(),
                  s = std::move(stopCompleted)](const auto& f) mutable
                 {
                     if (auto p = w.lock()) {
-                        p->StopAsyncOnWriteBackCacheFlushed(
+                        p->StopAsyncOnWriteBackCacheDrained(
                             std::move(s),
                             f.GetValue());
                     } else {
@@ -1324,29 +1351,35 @@ private:
         }
     }
 
-    void StopAsyncOnWriteBackCacheFlushed(
+    void StopAsyncOnWriteBackCacheDrained(
         TPromise<void> stopCompleted,
         const NProto::TError& error)
     {
-        if (HasError(error)) {
+        if (WriteBackCache.IsDrained()) {
+            // It is possible for WriteBackCache to become drained after
+            // unsuccessful FlushAllData call. This may happen if the data is
+            // dropped by WriteBackCache itself (for example, if ReleaseHandle
+            // was called). In this case, we do not report FlushAllData error
+            // because it should have been already reported by WriteBackCache
+            STORAGE_INFO(
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is drained",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str());
+        } else if (HasError(error)) {
             STORAGE_WARN(
-                "[f:%s][c:%s] WriteBackCache::FlushAllData failed at "
-                "DestroySession, unflushed data will be lost. Error: %s",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained"
+                " because of Drain() error, unflushed data will be lost."
+                " Error: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 FormatError(error).c_str());
-        } else if (WriteBackCache && WriteBackCache.IsEmpty()) {
+        } else {
             ReportWriteBackCacheDataLossError(Sprintf(
-                "[f:%s][c:%s] WriteBackCache was not emptied after successful "
-                "FlushAllData at DestroySession, possible data loss",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained "
+                "after successful Drain(), unflushed data will be lost",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str()));
         }
-
-        STORAGE_INFO(
-            "[f:%s][c:%s] completed FlushAllData",
-            Config->GetFileSystemId().Quote().c_str(),
-            Config->GetClientId().Quote().c_str());
 
         StopAsyncDestroySession(std::move(stopCompleted));
     }
@@ -1756,7 +1789,8 @@ struct TFileSystemLoopFactory
 
     IFileSystemLoopPtr Create(
         TVFSConfigPtr config,
-        ISessionPtr session) override
+        ISessionPtr session,
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter) override
     {
         return CreateFuseLoop(
             std::move(config),
@@ -1767,7 +1801,8 @@ struct TFileSystemLoopFactory
             Scheduler,
             Timer,
             ProfileLog,
-            std::move(session));
+            std::move(session),
+            std::move(fileMapMemoryLimiter));
     }
 };
 
@@ -1784,7 +1819,8 @@ IFileSystemLoopPtr CreateFuseLoop(
     ISchedulerPtr scheduler,
     ITimerPtr timer,
     IProfileLogPtr profileLog,
-    ISessionPtr session)
+    ISessionPtr session,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
     return std::make_shared<TFileSystemLoop>(
         std::move(config),
@@ -1795,7 +1831,8 @@ IFileSystemLoopPtr CreateFuseLoop(
         std::move(scheduler),
         std::move(timer),
         std::move(profileLog),
-        std::move(session));
+        std::move(session),
+        std::move(fileMapMemoryLimiter));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

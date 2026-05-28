@@ -114,6 +114,8 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                     TABLEH() { out << "Model"; }
                     TABLEH() { out << "PCI"; }
                     TABLEH() { out << "IOMMU group"; }
+                    TABLEH() { out << "VFIO device"; }
+                    TABLEH() { out << "NUMA node"; }
                 }
 
                 for (const auto& d: devices) {
@@ -128,6 +130,16 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                         TABLED () {
                             if (d.HasIOMMUGroup()) {
                                 out << d.GetIOMMUGroup();
+                            }
+                        }
+                        TABLED () {
+                            if (d.HasVfioDevName()) {
+                                out << d.GetVfioDevName();
+                            }
+                        }
+                        TABLED () {
+                            if (d.HasNumaNode()) {
+                                out << d.GetNumaNode();
                             }
                         }
                     }

@@ -273,7 +273,7 @@ void TFreshBlocksWriterActor::WriteBlocks(
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
         writeRange.Size(),
@@ -359,8 +359,9 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
 
     Actors.Erase(ev->Sender);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
-    WriteAndZeroRequestsInProgress -= requestCount;
+    Y_DEBUG_ABORT_UNLESS(
+        SharedState->WriteAndZeroRequestsInProgress.load() >= requestCount);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(requestCount);
 
     SharedState->FinishFreshWrite(
         ctx,
@@ -368,8 +369,7 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
         blocksCount,
         HasError(msg->GetError()));
 
-    // TODO(issue-4875): process drain requests
-    // DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

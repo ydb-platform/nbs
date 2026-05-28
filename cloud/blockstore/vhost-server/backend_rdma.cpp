@@ -30,6 +30,8 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 using namespace NCloud::NBlockStore;
 using namespace NThreading;
+using NCloud::NStorage::NRdma::IClientPtr;
+using NCloud::NStorage::NRdma::TClientConfig;
 
 namespace {
 
@@ -122,7 +124,7 @@ class TRdmaBackend final: public IBackend
 private:
     const ILoggingServicePtr Logging;
     TLog Log;
-    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    IClientPtr RdmaClient;
     IStorageProviderPtr StorageProvider;
     IBlockStorePtr DataClient;
     ISchedulerPtr Scheduler;
@@ -184,8 +186,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig =
-        std::make_shared<NCloud::NStorage::NRdma::TClientConfig>();
+    auto rdmaClientConfig = std::make_shared<TClientConfig>();
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
@@ -372,7 +373,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
 
     request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
     request->SetBlocksCount(bio->total_sectors >> SectorsToBlockShift);
-    request->BlockSize = BlockSize;
+    request->SetBlockSize(BlockSize);
     request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
 
     STORAGE_DEBUG(
@@ -380,7 +381,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
         reqHeaders->GetRequestId(),
         request->GetStartIndex(),
         request->GetBlocksCount(),
-        request->BlockSize);
+        request->GetBlockSize());
     auto future =
         DataClient->ReadBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
@@ -413,8 +414,8 @@ void TRdmaBackend::ProcessWriteRequest(
     reqHeaders->SetClientId(ClientId);
 
     request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
+    request->SetBlockSize(BlockSize);
     request->BlocksCount = bio->total_sectors >> SectorsToBlockShift;
-    request->BlockSize = BlockSize;
     request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
 
     STORAGE_DEBUG(
@@ -422,7 +423,7 @@ void TRdmaBackend::ProcessWriteRequest(
         reqHeaders->GetRequestId(),
         request->GetStartIndex(),
         request->BlocksCount,
-        request->BlockSize);
+        request->GetBlockSize());
     auto future =
         DataClient->WriteBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(

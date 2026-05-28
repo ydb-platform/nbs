@@ -123,6 +123,7 @@ class EResult(enum.Enum):
     E_NOT_FOUND = make_error(6)
     E_UNAUTHORIZED = make_error(7)
     E_NOT_IMPLEMENTED = make_error(8)
+    E_TRANSPORT_ERROR = make_error(16)
 
     # grpc errors
     E_GRPC_CANCELLED = make_grpc_error(1)

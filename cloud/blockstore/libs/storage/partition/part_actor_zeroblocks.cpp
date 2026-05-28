@@ -301,7 +301,7 @@ void TPartitionActor::HandleZeroBlocks(
     // all small zero requests should be handled by TFreshBlocksWriter
     STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     LOG_TRACE(
         ctx,
@@ -411,10 +411,10 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
 
     Actors.Erase(sender);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-    --WriteAndZeroRequestsInProgress;
+    Y_DEBUG_ABORT_UNLESS(SharedState->WriteAndZeroRequestsInProgress.load() > 0);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
 }
 
@@ -503,11 +503,11 @@ void TPartitionActor::CompleteZeroBlocks(
 
     State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-    --WriteAndZeroRequestsInProgress;
+    Y_DEBUG_ABORT_UNLESS(SharedState->WriteAndZeroRequestsInProgress.load() > 0);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
     EnqueueFlushIfNeeded(ctx);
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
 }
 

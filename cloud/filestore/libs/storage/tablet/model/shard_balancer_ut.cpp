@@ -31,9 +31,13 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 }                                                                              \
 // ASSERT_ERROR
 
-constexpr ui32 BlockSize = 4_KB;
-constexpr ui64 PrecisionBytes = 1_GB;
-constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
+#define ASSERT_NO_ERROR(error)                                                 \
+    UNIT_ASSERT_C(!HasError(error), FormatError(error));                       \
+// ASSERT_NO_ERROR
+
+    constexpr ui32 BlockSize = 4_KB;
+    constexpr ui64 PrecisionBytes = 1_GB;
+    constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
     Y_UNIT_TEST(ShouldBalanceShardsRoundRobin)
     {
@@ -55,13 +59,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
         ASSERT_NO_SB_ERROR(0, "s4");
         ASSERT_NO_SB_ERROR(0, "s5");
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 3_TB / 4_KB, 0, 0},
-        });
+        }));
 
         // order changed: s1, s3, s4, s2, s5
 
@@ -78,13 +82,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
         // order changed: s1, s2, s3, s4, s5
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 4_TB / 4_KB, 0, 0},
-        });
+        }));
 
         ASSERT_NO_SB_ERROR(0, "s1");
         ASSERT_NO_SB_ERROR(0, "s2");
@@ -100,13 +104,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
         // one of the shards has less than desired free space
         // order changed: s1, s2, s3, s4
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 500_GB) / 4_KB, 0, 0},
-        });
+        }));
 
         ASSERT_NO_SB_ERROR(0, "s3");
         ASSERT_NO_SB_ERROR(0, "s4");
@@ -123,13 +127,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
         // order changed: s1, s4
         // tier 2: s3, s5
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 500_GB) / 4_KB, 0, 0},
-        });
+        }));
 
         ASSERT_NO_SB_ERROR(0, "s1");
         ASSERT_NO_SB_ERROR(0, "s4");
@@ -139,13 +143,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
         // 3 close to full shards, 2 full shards
         // order changed: s3, s1, s5
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, (4_TB + 400_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 500_GB) / 4_KB, 0, 0},
-        });
+        }));
 
         ASSERT_NO_SB_ERROR(0, "s5");
         ASSERT_NO_SB_ERROR(0, "s3");
@@ -157,26 +161,26 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
         // 1 close to full shard left: s3
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
-        });
+        }));
 
         ASSERT_NO_SB_ERROR(0, "s3");
         ASSERT_NO_SB_ERROR(0, "s3");
 
         // out of space
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 300_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
-        });
+        }));
 
         ASSERT_SB_ERROR(0, E_FS_NOSPC);
         ASSERT_SB_ERROR(0, E_FS_NOSPC);
@@ -257,13 +261,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
             1_GB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
 
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, 512_GB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, (1_TB + 1_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (1_TB + 1_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, 3_TB / 4_KB, 0, 0},
-        });
+        }));
 
         // 1 TiB can fit in any shard
 
@@ -336,13 +340,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
         UNIT_ASSERT_LE(count, iterations / shardCount + rangeToleration);
 
         // Now let's fill up last 3 shards to their limits
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, 0, 0, 0},
             {5_TB / 4_KB, 0, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
-        });
+        }));
 
         // 1 TiB can now fit only in s1 or s2
         hitCount.clear();
@@ -404,13 +408,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
         // Now let's fill up last 2 shards to their limits and leave first 3
         // shards 1:2:3 free space
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, (5_TB - 1_TB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 2_TB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 3_TB) / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
-        });
+        }));
 
         // It is expected that s1, s2, s3 will be selected with 1:2:3 ratio
         hitCount.clear();
@@ -443,14 +447,14 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
         // If we fill up all the shards with less than 1 TiB left it should not
         // be possible to select any shard
-        balancer.Update(
+        ASSERT_NO_ERROR(balancer.Update(
             TVector<TShardStats>(
                 shardCount,
                 TShardStats{
                     .TotalBlocksCount = 5_TB / 4_KB,
                     .UsedBlocksCount = (5_TB - 500_GB) / 4_KB,
                     .CurrentLoad = 0,
-                    .Suffer = 0}));
+                    .Suffer = 0})));
         for (ui64 i = 0; i < iterations; ++i) {
             ASSERT_SB_ERROR(1_TB, E_FS_NOSPC);
         }
@@ -461,13 +465,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
         // For a situation where in every shard there is less than 1 TiB left,
         // we should disregard additional 1 TiB reserve
-        balancer.Update({
+        ASSERT_NO_ERROR(balancer.Update({
             {5_TB / 4_KB, (5_TB - 1_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 2_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 3_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 4_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 5_GB) / 4_KB, 0, 0},
-        });
+        }));
         // Trying to allocate 3 GiB should result in s3, s4, s5 being selected
         // in a 3:4:5 ratio
         hitCount.clear();
@@ -518,9 +522,33 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
                 error.GetMessage());
         }
     }
+
+    Y_UNIT_TEST(ShouldReturnErrorUponUpdate)
+    {
+        TShardBalancerRoundRobin balancer(
+            BlockSize,
+            PrecisionBytes,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            1_GB /* minFreeSpaceReserve */,
+            {"s1", "s2", "s3", "s4", "s5"});
+
+        auto e = balancer.Update({
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            e.GetCode(),
+            FormatError(e));
+    }
 }
 
 #undef ASSERT_NO_SB_ERROR
 #undef ASSERT_SB_ERROR
+#undef ASSERT_NO_ERROR
 
 }   // namespace NCloud::NFileStore::NStorage

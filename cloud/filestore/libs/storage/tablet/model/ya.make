@@ -25,6 +25,7 @@ SRCS(
     group_by.cpp
     internal_request_id.cpp
     large_blocks.cpp
+    metadata_cache.cpp
     mixed_blocks.cpp
     node_ref.cpp
     node_session_stat.cpp

@@ -168,6 +168,16 @@ func (c *NfsClientMock) UnlinkNode(
 	return res, args.Error(1)
 }
 
+func (c *NfsClientMock) ExecuteAction(
+	ctx context.Context,
+	req *protos.TExecuteActionRequest,
+) (*protos.TExecuteActionResponse, error) {
+
+	args := c.Called(ctx, req)
+	res, _ := args.Get(0).(*protos.TExecuteActionResponse)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNfsClientMock() *NfsClientMock {

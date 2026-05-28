@@ -204,6 +204,17 @@ func (m *ClientInterfaceMock) UnlinkNode(
 	return args.Error(0)
 }
 
+func (m *ClientInterfaceMock) ExecuteAction(
+	ctx context.Context,
+	action string,
+	input []byte,
+) ([]byte, error) {
+
+	args := m.Called(ctx, action, input)
+	res, _ := args.Get(0).([]byte)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientInterfaceMock() *ClientInterfaceMock {

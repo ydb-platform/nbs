@@ -163,6 +163,11 @@ type PrivateClient interface {
 	// Used for testing.
 	ScheduleBlankOperation(ctx context.Context) (*disk_manager.Operation, error)
 
+	AcquireBaseDisk(
+		ctx context.Context,
+		req *api.AcquireBaseDiskRequest,
+	) (*disk_manager.Operation, error)
+
 	ReleaseBaseDisk(
 		ctx context.Context,
 		req *api.ReleaseBaseDiskRequest,
@@ -282,6 +287,14 @@ func (c *privateClient) ScheduleBlankOperation(
 ) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.ScheduleBlankOperation(ctx, &empty.Empty{})
+}
+
+func (c *privateClient) AcquireBaseDisk(
+	ctx context.Context,
+	req *api.AcquireBaseDiskRequest,
+) (*disk_manager.Operation, error) {
+
+	return c.privateServiceClient.AcquireBaseDisk(ctx, req)
 }
 
 func (c *privateClient) ReleaseBaseDisk(

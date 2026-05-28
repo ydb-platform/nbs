@@ -373,7 +373,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto sglist = ResizeBlocks(blocks, blocksCount, TString(blockSize, 0));
         auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         request->BlocksCount = blocksCount;
-        request->BlockSize = blockSize;
+        request->SetBlockSize(blockSize);
         request->Sglist = TGuardedSgList(sglist);
 
         for (size_t i = 0; i < sglist.size(); ++i) {
@@ -789,7 +789,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
         request->SetStartIndex(0);
         request->SetBlocksCount(blocksCount);
-        request->BlockSize = blockSize;
+        request->SetBlockSize(blockSize);
         request->Sglist = TGuardedSgList(sglist);
 
         auto future = encryptionClient->ReadBlocksLocal(
@@ -979,7 +979,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
         request->SetStartIndex(0);
         request->SetBlocksCount(blocksCount);
-        request->BlockSize = blockSize;
+        request->SetBlockSize(blockSize);
         request->Sglist = TGuardedSgList(sglist);
 
         auto future = encryptionClient->ReadBlocksLocal(
@@ -1100,7 +1100,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto ctx = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
         request->SetBlocksCount(blocksCount);
-        request->BlockSize = DefaultBlockSize;
+        request->SetBlockSize(DefaultBlockSize);
         request->Sglist = TGuardedSgList(sglist);
 
         bitmaskStr = TString(4, 0xFF);
@@ -1223,12 +1223,12 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         auto localReadRequest = std::make_shared<NProto::TReadBlocksLocalRequest>();
         localReadRequest->SetBlocksCount(blocksCount);
-        localReadRequest->BlockSize = DefaultBlockSize;
+        localReadRequest->SetBlockSize(DefaultBlockSize);
         localReadRequest->Sglist = TGuardedSgList(sglist);
 
         auto localWriteRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         localWriteRequest->BlocksCount = blocksCount;
-        localWriteRequest->BlockSize = DefaultBlockSize;
+        localWriteRequest->SetBlockSize(DefaultBlockSize);
         localWriteRequest->Sglist = TGuardedSgList(sglist);
 
         auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
@@ -1486,7 +1486,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                     std::make_shared<NProto::TReadBlocksLocalRequest>();
                 request->SetStartIndex(0);
                 request->SetBlocksCount(blockCount);
-                request->BlockSize = BlockSize;
+                request->SetBlockSize(BlockSize);
                 request->Sglist = TGuardedSgList(sglist);
 
                 auto future = encryptionClient->ReadBlocksLocal(
@@ -1587,7 +1587,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                     std::make_shared<NProto::TReadBlocksLocalRequest>();
                 request->SetStartIndex(0);
                 request->SetBlocksCount(blockCount);
-                request->BlockSize = BlockSize;
+                request->SetBlockSize(BlockSize);
                 request->Sglist = TGuardedSgList(sglist);
 
                 auto future = encryptionClient->ReadBlocksLocal(

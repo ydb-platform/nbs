@@ -1,29 +1,10 @@
 #include "helper.h"
 
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/impl/client.h>
 #include <cloud/storage/core/libs/rdma/impl/server.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
-#include <library/cpp/monlib/dynamic_counters/counters.h>
-
 namespace NCloud::NBlockStore::NRdma {
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-NMonitoring::TDynamicCountersPtr CreateRdmaCounters(
-    IMonitoringServicePtr monitoring,
-    TString component)
-{
-    return monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", std::move(component));
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -34,8 +15,12 @@ NCloud::NStorage::NRdma::IClientPtr CreateRdmaClient(
 {
     return NCloud::NStorage::NRdma::CreateClient(
         NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
-        logging->CreateLog("BLOCKSTORE_RDMA"),
-        CreateRdmaCounters(std::move(monitoring), "rdma_client"),
+        NCloud::NStorage::NRdma::TObservabilityProvider(
+            std::move(logging),
+            std::move(monitoring),
+            "BLOCKSTORE_RDMA",
+            "blockstore",
+            "rdma_client"),
         std::move(config));
 }
 
@@ -46,8 +31,12 @@ NCloud::NStorage::NRdma::IServerPtr CreateRdmaServer(
 {
     return NCloud::NStorage::NRdma::CreateServer(
         NCloud::NStorage::NRdma::NVerbs::CreateVerbs(),
-        logging->CreateLog("BLOCKSTORE_RDMA"),
-        CreateRdmaCounters(std::move(monitoring), "rdma_server"),
+        NCloud::NStorage::NRdma::TObservabilityProvider(
+            std::move(logging),
+            std::move(monitoring),
+            "BLOCKSTORE_RDMA",
+            "blockstore",
+            "rdma_server"),
         std::move(config));
 }
 

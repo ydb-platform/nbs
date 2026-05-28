@@ -53,7 +53,8 @@ using IShmDataClientPtr = std::shared_ptr<IShmDataClient>;
 ////////////////////////////////////////////////////////////////////////////////
 
 IShmDataClientPtr CreateSharedMemoryClient(
-    TString fullFilePath,
+    TString baseDir,
+    TString filePath,
     ui64 shmSize,
     ui64 slotSize,
     IShmControlPtr shmControl,

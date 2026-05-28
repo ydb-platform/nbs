@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -64,6 +65,12 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
     FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, __VA_ARGS__)                  \
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx,  __VA_ARGS__)                  \
+// FILESTORE_TABLET_REQUESTS_PRIVATE
+
+#define FILESTORE_TABLET_ADAPTER_REQUESTS_PRIVATE(xxx, ...)                    \
+    xxx(SyncSessions,                           __VA_ARGS__)                   \
+    xxx(CleanupSessions,                        __VA_ARGS__)                   \
+    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_DECLARE_PRIVATE_EVENT_IDS(name, ...)                         \
@@ -657,6 +664,9 @@ struct TEvIndexTabletPrivate
         const TString NodeName;
         TCreateNodeInShardResult Result;
         NProto::TProfileLogRequestInfo ProfileLogRequest;
+        const bool NodeAlreadyExists;
+        const ui32 CreateNodeRetryCount;
+        const TNodeRefKey OriginalNodeRefKey;
 
         TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
@@ -665,7 +675,10 @@ struct TEvIndexTabletPrivate
                 ui64 opLogEntryId,
                 TString nodeName,
                 TCreateNodeInShardResult result,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                bool nodeAlreadyExists,
+                ui32 createNodeRetryCount,
+                TNodeRefKey originalNodeRefKey)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -673,6 +686,9 @@ struct TEvIndexTabletPrivate
             , NodeName(std::move(nodeName))
             , Result(std::move(result))
             , ProfileLogRequest(std::move(profileLogRequest))
+            , NodeAlreadyExists(nodeAlreadyExists)
+            , CreateNodeRetryCount(createNodeRetryCount)
+            , OriginalNodeRefKey(std::move(originalNodeRefKey))
         {
         }
     };
@@ -1139,6 +1155,19 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // Cancel unconfirmed data
+    //
+
+    struct TCancelUnconfirmedData
+    {
+        ui64 CommitId;
+
+        explicit TCancelUnconfirmedData(ui64 commitId)
+            : CommitId(commitId)
+        {}
+    };
+
+    //
     // Generate commit id
     //
 
@@ -1199,6 +1228,7 @@ struct TEvIndexTabletPrivate
         EvAddDataCompleted,
 
         EvReleaseCollectBarrier,
+        EvCancelUnconfirmedData,
 
         EvForcedRangeOperationProgress,
 
@@ -1238,6 +1268,9 @@ struct TEvIndexTabletPrivate
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
+    using TEvCancelUnconfirmedData = TRequestEvent<
+        TCancelUnconfirmedData,
+        EvCancelUnconfirmedData>;
 
     using TEvReadDataCompleted =
         TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;

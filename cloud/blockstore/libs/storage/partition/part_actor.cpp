@@ -86,7 +86,9 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    SharedState = std::make_shared<TPartitionThreadSafeState>(TabletID());
+    SharedState = std::make_shared<TPartitionThreadSafeState>(
+        PartitionConfig.GetDiskId(),
+        TabletID());
 }
 
 TPartitionActor::~TPartitionActor()
@@ -869,14 +871,16 @@ void TPartitionActor::HandleDrain(
     const TEvPartition::TEvDrainRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    DrainActorCompanion.HandleDrain(ev, ctx);
+    SharedState->AccessDrainActorCompanion()->HandleDrain(ev, ctx);
 }
 
 void TPartitionActor::HandleWaitForInFlightWrites(
     const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+    SharedState->AccessDrainActorCompanion()->HandleWaitForInFlightWrites(
+        ev,
+        ctx);
 }
 
 void TPartitionActor::HandleLockAndDrainRange(
@@ -1254,6 +1258,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags);

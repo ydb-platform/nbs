@@ -7,6 +7,7 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -46,6 +47,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ConfigureAsShard,           __VA_ARGS__)                               \
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
     xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
+    xxx(ListNodesInternal,          __VA_ARGS__)                               \
     xxx(WriteCompactionMap,         __VA_ARGS__)                               \
     xxx(ForcedOperationStatus,      __VA_ARGS__)                               \
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
@@ -65,6 +67,26 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
+
+#define FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN(xxx, ...)                      \
+    xxx(WaitReady,                  __VA_ARGS__)                               \
+    xxx(CreateSession,              __VA_ARGS__)                               \
+    xxx(DestroySession,             __VA_ARGS__)                               \
+    xxx(GetStorageStats,            __VA_ARGS__)                               \
+    xxx(GetFileSystemConfig,        __VA_ARGS__)                               \
+    xxx(GetStorageConfigFields,     __VA_ARGS__)                               \
+    xxx(ChangeStorageConfig,        __VA_ARGS__)                               \
+    xxx(DescribeSessions,           __VA_ARGS__)                               \
+    xxx(ConfigureShards,            __VA_ARGS__)                               \
+    xxx(ConfigureAsShard,           __VA_ARGS__)                               \
+    xxx(GetStorageConfig,           __VA_ARGS__)                               \
+    xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
+    xxx(RestartTablet,              __VA_ARGS__)                               \
+// FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN
+
+#define FILESTORE_TABLET_ADAPTER_REQUESTS(xxx, ...)                            \
+    xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
+// FILESTORE_TABLET_ADAPTER_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -200,6 +222,9 @@ struct TEvIndexTablet
 
         EvUnsafeChangeTabletStateRequest = EvBegin + 81,
         EvUnsafeChangeTabletStateResponse,
+
+        EvListNodesInternalRequest = EvBegin + 83,
+        EvListNodesInternalResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out

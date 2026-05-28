@@ -47,6 +47,7 @@ public:
     ui64 GetDirectoryHandlesMaxDataAreaStepSize() const;
 
     ui32 GetPermanentActorCount() const;
+    ui64 GetFileMapMemoryLimit() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

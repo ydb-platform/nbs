@@ -112,6 +112,9 @@ TString PrintNodeInfo(
     TStringBuf handleLabel,
     TStringBuf sizeLabel,
     TStringBuf typeLabel,
+    TStringBuf aTimeLabel,
+    TStringBuf mTimeLabel,
+    TStringBuf cTimeLabel,
     const NProto::TProfileLogNodeInfo& nodeInfo)
 {
     TStringBuilder out;
@@ -147,6 +150,15 @@ TString PrintNodeInfo(
     }
     if (nodeInfo.HasType()) {
         out << PrintValue(typeLabel, nodeInfo.GetType()) << ", ";
+    }
+    if (nodeInfo.HasATime() && !aTimeLabel.empty()) {
+        out << PrintValue(aTimeLabel, nodeInfo.GetATime()) << ", ";
+    }
+    if (nodeInfo.HasMTime() && !mTimeLabel.empty()) {
+        out << PrintValue(mTimeLabel, nodeInfo.GetMTime()) << ", ";
+    }
+    if (nodeInfo.HasCTime() && !cTimeLabel.empty()) {
+        out << PrintValue(cTimeLabel, nodeInfo.GetCTime()) << ", ";
     }
 
     if (out.empty()) {
@@ -334,6 +346,9 @@ public:
                 "handle",
                 "size",
                 "type",
+                "atime",
+                "mtime",
+                "ctime",
                 request.GetNodeInfo()) << "\t";
         }
 
@@ -381,6 +396,10 @@ public:
                 << "\t";
         }
 
+        if (request.GetFlags()) {
+            out << PrintValue("request_flags", request.GetFlags()) << "\t";
+        }
+
         if (out.empty()) {
             out << "{no_info}";
         } else {
@@ -411,6 +430,9 @@ public:
                 "",
                 "",
                 "",
+                "",
+                "",
+                "",
                 request.GetNodeInfo());
         }
 
@@ -438,6 +460,9 @@ public:
                 "",
                 "version",
                 "",
+                "",
+                "",
+                "",
                 request.GetNodeInfo());
         }
 
@@ -457,6 +482,9 @@ public:
             return PrintNodeInfo(
                 "node_id",
                 "attr_name",
+                "",
+                "",
+                "",
                 "",
                 "",
                 "",
@@ -492,6 +520,9 @@ public:
                 "",
                 "",
                 "",
+                "",
+                "",
+                "",
                 request.GetNodeInfo());
         }
 
@@ -517,6 +548,9 @@ public:
                 "data_only",
                 "node_id",
                 "handle",
+                "",
+                "",
+                "",
                 "",
                 "",
                 request.GetNodeInfo());

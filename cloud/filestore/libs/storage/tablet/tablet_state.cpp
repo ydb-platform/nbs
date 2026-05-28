@@ -83,8 +83,96 @@ TIndexTabletState::~TIndexTabletState() = default;
 
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
+    Impl->CacheReadBypass.UpdateLogTag(tag);
     Impl->FreshBytes.UpdateLogTag(tag);
+    if (Impl->InMemoryIndexState) {
+        Impl->InMemoryIndexState->UpdateLogTag(tag);
+    }
     LogTag = std::move(tag);
+}
+
+void TIndexTabletState::InitInMemoryIndexState(const TStorageConfig& config)
+{
+    auto* alloc =
+        AllocatorRegistry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache);
+    const ui64 nodesCapacity = CalculateInMemoryIndexCacheCapacity(
+        config.GetInMemoryIndexCacheNodesCapacity(),
+        GetNodesCount(),
+        config.GetInMemoryIndexCacheNodesToNodesCapacityRatio());
+    const ui64 nodeAttrsCapacity = CalculateInMemoryIndexCacheCapacity(
+        config.GetInMemoryIndexCacheNodeAttrsCapacity(),
+        GetNodesCount(),
+        config.GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio());
+    const ui64 nodeRefsCapacity = CalculateInMemoryIndexCacheCapacity(
+        config.GetInMemoryIndexCacheNodeRefsCapacity(),
+        GetNodesCount(),
+        config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio());
+    const ui64 nodeRefsExhaustivenessCapacity =
+        config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity();
+
+    const bool useUnlimitedBTreeNodeRefsCache =
+        GetFileSystem().GetShardNo() == 0
+        && config.GetUseUnlimitedBTreeNodeRefsCacheInMainTablet()
+        || GetFileSystem().GetShardNo() != 0
+        && config.GetUseUnlimitedBTreeNodeRefsCacheInShards();
+
+    if (useUnlimitedBTreeNodeRefsCache) {
+        using TCacheImpl = TInMemoryIndexState<TUnlimitedBTreeNodeRefsCache>;
+        Impl->InMemoryIndexState = std::make_unique<TCacheImpl>(
+            alloc,
+            Impl->CacheReadBypass,
+            nodesCapacity,
+            nodeAttrsCapacity,
+            nodeRefsCapacity,
+            nodeRefsExhaustivenessCapacity);
+    } else {
+        using TCacheImpl = TStandardInMemoryIndexState;
+        Impl->InMemoryIndexState = std::make_unique<TCacheImpl>(
+            alloc,
+            Impl->CacheReadBypass,
+            nodesCapacity,
+            nodeAttrsCapacity,
+            nodeRefsCapacity,
+            nodeRefsExhaustivenessCapacity);
+    }
+}
+
+void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
+{
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    TVector<TString> balancerShardIds;
+
+    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    if (fileShardIds.size()) {
+        Impl->FileShardBalancer = CreateShardBalancer(
+            config.GetShardBalancerPolicy(),
+            GetBlockSize(),
+            config.GetShardBalancerPrecisionBytes(),
+            config.GetMaxFileBlocks(),
+            config.GetShardBalancerDesiredFreeSpaceReserve(),
+            config.GetShardBalancerMinFreeSpaceReserve(),
+            TVector<TString>(fileShardIds.begin(), fileShardIds.end()));
+
+        THashSet<TString> fileShardIdSet(
+            fileShardIds.begin(),
+            fileShardIds.end());
+        for (const auto& shardId: shardIds) {
+            if (!fileShardIdSet.contains(shardId)) {
+                balancerShardIds.push_back(shardId);
+            }
+        }
+    } else {
+        balancerShardIds.assign(shardIds.begin(), shardIds.end());
+    }
+
+    Impl->ShardBalancer = CreateShardBalancer(
+        config.GetShardBalancerPolicy(),
+        GetBlockSize(),
+        config.GetShardBalancerPrecisionBytes(),
+        config.GetMaxFileBlocks(),
+        config.GetShardBalancerDesiredFreeSpaceReserve(),
+        config.GetShardBalancerMinFreeSpaceReserve(),
+        std::move(balancerShardIds));
 }
 
 void TIndexTabletState::LoadState(
@@ -95,6 +183,7 @@ void TIndexTabletState::LoadState(
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
     const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TVector<ui64>& orphanNodeIds,
+    const TVector<NProto::TOpLogEntry>& opLog,
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
@@ -148,20 +237,10 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadCacheRangeSize(),
         config.GetReadAheadMaxGapPercentage(),
         config.GetReadAheadCacheMaxHandlesPerNode());
-    Impl->InMemoryIndexState.Reset(
-        CalculateInMemoryIndexCacheCapacity(
-            config.GetInMemoryIndexCacheNodesCapacity(),
-            GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodesCapacityRatio()),
-        CalculateInMemoryIndexCacheCapacity(
-            config.GetInMemoryIndexCacheNodeAttrsCapacity(),
-            GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio()),
-        CalculateInMemoryIndexCacheCapacity(
-            config.GetInMemoryIndexCacheNodeRefsCapacity(),
-            GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()),
-        config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity());
+
+    InitInMemoryIndexState(config);
+    Impl->InMemoryIndexState->UpdateLogTag(LogTag);
+
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
@@ -170,19 +249,15 @@ void TIndexTabletState::LoadState(
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
 
+    for (const auto& entry: opLog) {
+        Impl->OpLogEntryIds.insert(entry.GetEntryId());
+    }
+
     for (const auto& entry: responseLog) {
         CommitResponseLogEntry(entry);
     }
 
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer = CreateShardBalancer(
-        config.GetShardBalancerPolicy(),
-        GetBlockSize(),
-        config.GetShardBalancerPrecisionBytes(),
-        config.GetMaxFileBlocks(),
-        config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve(),
-        TVector<TString>(shardIds.begin(), shardIds.end()));
+    InitShardBalancer(config);
 }
 
 void TIndexTabletState::UpdateConfig(
@@ -199,15 +274,7 @@ void TIndexTabletState::UpdateConfig(
     Impl->RangeIdHasher = CreateHasher(fileSystem);
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
 
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer = CreateShardBalancer(
-        config.GetShardBalancerPolicy(),
-        GetBlockSize(),
-        config.GetShardBalancerPrecisionBytes(),
-        config.GetMaxFileBlocks(),
-        config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve(),
-        TVector<TString>(shardIds.begin(), shardIds.end()));
+    InitShardBalancer(config);
 }
 
 void TIndexTabletState::SetFrozen(TIndexTabletDatabase& db, bool frozen)
@@ -273,6 +340,27 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
     }
 
     return Max(currentShardCount, autoShardCount);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletState::WriteOpLogEntry(
+    TIndexTabletDatabase& db,
+    const NProto::TOpLogEntry& e)
+{
+    db.WriteOpLogEntry(e);
+    Impl->OpLogEntryIds.insert(e.GetEntryId());
+}
+
+void TIndexTabletState::DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId)
+{
+    db.DeleteOpLogEntry(entryId);
+    Impl->OpLogEntryIds.erase(entryId);
+}
+
+ui64 TIndexTabletState::GetOpLogEntryCount() const
+{
+    return Impl->OpLogEntryIds.size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

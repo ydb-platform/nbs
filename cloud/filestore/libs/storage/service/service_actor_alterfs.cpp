@@ -441,6 +441,7 @@ void TAlterFileStoreActor::AlterShards(const TActorContext& ctx)
 {
     if (ShardsToAlter == 0) {
         CreateShards(ctx);
+        return;
     }
 
     for (ui32 i = 0; i < ShardsToAlter; ++i) {
@@ -718,7 +719,7 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
         TFileStoreComponents::SERVICE,
         "[%s] Created shard %s",
         FileSystemId.c_str(),
-        FileStoreConfig.ShardConfigs[ev->Cookie].GetFileSystemId().c_str());
+        GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str());
 
     Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
     if (--ShardsToCreate == 0) {
@@ -929,11 +930,8 @@ void TAlterFileStoreActor::HandleAlterFileStoreForAlterResponse(
     if (HasError(error)) {
         LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
             "[%s] Altering of main filestore failed: %s",
-            GetOperationString(),
             FileSystemId.Quote().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
-
-        return;
     }
 
     ReplyAndDie(ctx, error);

@@ -66,12 +66,12 @@ TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
         subRequest->CopyFrom(*request);
         subRequest->SetStartIndex(subRange.Start);
         subRequest->SetBlocksCount(subRange.Size());
-        subRequest->BlockSize = request->BlockSize;
 
         auto subSgList = CreateSgListSubRange(
             srcSgList,
-            (subRange.Start - request->GetStartIndex()) * request->BlockSize,
-            subRange.Size() * request->BlockSize);
+            (subRange.Start - request->GetStartIndex()) *
+                request->GetBlockSize(),
+            subRange.Size() * request->GetBlockSize());
         subRequest->Sglist =
             request->Sglist.CreateDepender(std::move(subSgList));
 
@@ -137,12 +137,18 @@ TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> CreateSubRequests(
         subRequest->CopyFrom(*request);
         subRequest->SetStartIndex(subRange.Start);
         subRequest->BlocksCount = subRange.Size();
-        subRequest->BlockSize = request->BlockSize;
+        subRequest->SetBlockSize(request->GetBlockSize());
 
         auto subSgList = CreateSgListSubRange(
             srcSgList,
-            (subRange.Start - request->GetStartIndex()) * request->BlockSize,
-            subRange.Size() * request->BlockSize);
+            (subRange.Start - request->GetStartIndex()) * request->GetBlockSize(),
+            subRange.Size() * request->GetBlockSize());
+
+        if (request->ChecksumsSize() > 0) {
+            subRequest->MutableChecksums()->Clear();
+            subRequest->MutableChecksums()->Add(CalculateChecksum(subSgList));
+        }
+
         subRequest->Sglist =
             request->Sglist.CreateDepender(std::move(subSgList));
 
@@ -189,6 +195,11 @@ public:
             return MakeFuture(std::move(response));
         }
 
+        // Acquire the future before subscribing to sub-request callbacks.
+        // A sub-request can be completed synchronously and swapped with another
+        // Promise inside the OnSubResponse() function.
+        auto future = Promise.GetFuture();
+
         for (size_t i = 0; i < SubRequests.size(); ++i) {
             auto subFuture = TBlockStoreAdapter::Execute(
                 service,
@@ -203,7 +214,7 @@ public:
                 });
         }
 
-        return Promise.GetFuture();
+        return future;
     }
 
 private:
@@ -238,7 +249,6 @@ private:
             promise.SetValue(
                 hasError ? std::move(response)
                          : MergeReadResponses(SubResponses));
-
         } else {
             promise.SetValue(std::move(response));
         }
@@ -482,7 +492,9 @@ TFuture<TResponse> TSplitRequestService::ExecuteRequestWithSplit(
 
     if (!config) {
         TResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "Volume not mounted");
+        *response.MutableError() = MakeError(
+            E_BS_INVALID_SESSION,
+            "Volume not mounted");
         return MakeFuture<TResponse>(std::move(response));
     }
 

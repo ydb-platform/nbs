@@ -2,6 +2,7 @@
 
 #include "part_nonrepl_common.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -53,6 +54,7 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
+    , SplitterPolicy(Config->GetRequestSplitterPolicy())
     , DeviceStats(CreateDeviceStats(*PartConfig, this))
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
@@ -313,6 +315,14 @@ bool TNonreplicatedPartitionActor::InitRequests(
     }
 
     *deviceRequests = PartConfig->ToDeviceRequests(blockRange);
+
+    if (deviceRequests->size() > 1 &&
+        SplitterPolicy ==
+            NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT)
+    {
+        ReportCrossPartitionRequestDetected(
+            {{"disk", PartConfig->GetName()}, {"range", blockRange}});
+    }
 
     if (deviceRequests->empty()) {
         // block range contains only dummy devices

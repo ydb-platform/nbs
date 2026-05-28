@@ -1,0 +1,398 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import re
+import shutil
+import urllib.parse
+from typing import Any, Pattern, TextIO, TypeAlias
+from xml.etree import ElementTree as ET
+
+from ..helpers import setup_logger
+from .junit_utils import add_junit_link_property, is_faulty_testcase
+from .mute_utils import mute_target, pattern_to_re
+
+LOGGER = logging.getLogger(__name__)
+
+CompiledPatternPair: TypeAlias = tuple[Pattern[str], Pattern[str]]
+TraceKey: TypeAlias = tuple[str, str] | tuple[str, int, int]
+TraceEvent: TypeAlias = dict[str, Any]
+LogMap: TypeAlias = dict[str, str]
+
+
+class YaMuteCheck:
+    def __init__(self) -> None:
+        self.regexps: list[CompiledPatternPair] = []
+
+    def load(self, fn: str) -> None:
+        with open(fn, "r") as fp:
+            for line in fp:
+                line = line.strip()
+                try:
+                    testsuite, testcase = line.split(" ", maxsplit=1)
+                except ValueError:
+                    LOGGER.info("SKIP INVALID MUTE CONFIG LINE: %r", line)
+                    continue
+                self.populate(testsuite, testcase)
+
+    def populate(self, testsuite: str, testcase: str) -> None:
+        check: list[Pattern[str]] = []
+
+        for pattern in (pattern_to_re(testsuite), pattern_to_re(testcase)):
+            try:
+                check.append(re.compile(pattern))
+            except re.error:
+                LOGGER.info("Unable to compile regex %r", pattern)
+                return
+
+        self.regexps.append(tuple(check))
+
+    def __call__(self, suite_name: str, test_name: str, test_case: ET.Element) -> bool:
+        matching_tests_by_suite_regexps: list[Pattern[str]] = []
+        for ps, pt in self.regexps:
+            if ps.match(suite_name) and pt.match(test_name):
+                return True
+            if ps.match(suite_name):
+                matching_tests_by_suite_regexps.append(pt)
+
+        if len(matching_tests_by_suite_regexps) == 0:
+            return False
+
+        failure_found = test_case.find("failure")
+        if failure_found is None:
+            return False
+        failure_text = getattr(failure_found, "text", "")
+        failure_text_split = failure_text.split(
+            "List of the tests involved in the launch:",
+        )
+
+        if len(failure_text_split) != 2:
+            return False
+        failed_by_current_chunk_cases = []
+
+        for line in failure_text_split[1].splitlines():
+            line = line.lstrip()
+            if "::" not in line:
+                continue
+            if "duration:" not in line:
+                continue
+            test_case_name = line.replace("::", ".").split()[0]
+            failed_by_current_chunk_cases.append(test_case_name)
+
+        if len(failed_by_current_chunk_cases) == 0:
+            LOGGER.info(
+                "Error, no failed subtests found for the failed test case: %s %s",
+                suite_name,
+                test_name,
+            )
+
+        matched_test_cases = []
+        for test_case_name in failed_by_current_chunk_cases:
+            for pt in matching_tests_by_suite_regexps:
+                if pt.match(test_case_name):
+                    matched_test_cases.append(test_case_name)
+                    break
+
+        return set(matched_test_cases) == set(failed_by_current_chunk_cases)
+
+
+class YTestReportTrace:
+    def __init__(self, out_root: str) -> None:
+        self.out_root = out_root
+        self.traces: dict[TraceKey, TraceEvent] = {}
+
+    def load(self, subdir: str) -> None:
+        test_results_dir = os.path.join(self.out_root, f"{subdir}/test-results/")
+
+        if not os.path.isdir(test_results_dir):
+            LOGGER.info("Directory %s doesn't exist", test_results_dir)
+            return
+
+        for folder in os.listdir(test_results_dir):
+            fn = os.path.join(
+                self.out_root,
+                test_results_dir,
+                folder,
+                "ytest.report.trace",
+            )
+
+            if not os.path.isfile(fn):
+                continue
+
+            with open(fn, "r") as fp:
+                for line in fp:
+                    event = json.loads(line.strip())
+                    if event["name"] == "subtest-finished":
+                        event = event["value"]
+                        class_event = event["class"].replace("::", ".")
+                        subtest = event["subtest"]
+                        LOGGER.info("loaded (%s, %s)", class_event, subtest)
+                        self.traces[(class_event, subtest)] = event
+                    elif event["name"] == "chunk-event":
+                        event = event["value"]
+                        chunk_idx = event["chunk_index"]
+                        chunk_total = event["nchunks"]
+                        LOGGER.info(
+                            "loaded (%s, %s, %s)", subdir, chunk_idx, chunk_total
+                        )
+                        self.traces[(subdir, chunk_idx, chunk_total)] = event
+
+    def get_logs(self, class_event: str, name: str) -> LogMap:
+        trace = self.traces.get((class_event, name))
+        if not trace:
+            return {}
+
+        logs = trace["logs"]
+        result: LogMap = {}
+        for key, path in logs.items():
+            if key == "logsdir":
+                continue
+            result[key] = path.replace("$(BUILD_ROOT)", self.out_root)
+
+        return result
+
+    def get_logs_chunks(self, suite: str, idx: int, total: int) -> LogMap:
+        trace = self.traces.get((suite, idx, total))
+        if not trace:
+            return {}
+
+        logs = trace["logs"]
+        result: LogMap = {}
+        for key, path in logs.items():
+            if key == "logsdir":
+                continue
+            result[key] = path.replace("$(BUILD_ROOT)", self.out_root)
+
+        return result
+
+    def get_log_dir(self, class_event: str, name: str) -> str | None:
+        logs_dir = (
+            self.traces.get((class_event, name), {}).get("logs", {}).get("logsdir")
+        )
+
+        if logs_dir is None:
+            return None
+
+        return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
+
+    def get_log_dir_chunk(self, suite: str, idx: int, total: int) -> str | None:
+        logs_dir = (
+            self.traces.get((suite, idx, total), {}).get("logs", {}).get("logsdir")
+        )
+
+        if logs_dir is None:
+            return None
+
+        return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
+
+
+def filter_empty_logs(logs: LogMap) -> LogMap:
+    result: LogMap = {}
+    for key, value in logs.items():
+        if not os.path.isfile(value) or os.stat(value).st_size == 0:
+            LOGGER.info("skipping log file %s as empty or missing", value)
+            continue
+        result[key] = value
+    return result
+
+
+def save_log(
+    build_root: str,
+    fn: str,
+    out_dir: str | None,
+    log_url_prefix: str,
+    trunc_size: int,
+) -> str:
+    fpath = os.path.relpath(fn, build_root)
+
+    if out_dir is not None:
+        out_fn = os.path.join(out_dir, fpath)
+        fsize = os.stat(fn).st_size
+        out_fn_dir = os.path.dirname(out_fn)
+
+        if not os.path.isdir(out_fn_dir):
+            os.makedirs(out_fn_dir, 0o700)
+
+        if trunc_size and fsize > trunc_size:
+            with open(fn, "rb") as in_fp:
+                in_fp.seek(fsize - trunc_size)
+                LOGGER.info("truncate %s to %s", out_fn, trunc_size)
+                with open(out_fn, "wb") as out_fp:
+                    while 1:
+                        buf = in_fp.read(8192)
+                        if not buf:
+                            break
+                        out_fp.write(buf)
+        else:
+            if fn != out_fn:
+                shutil.copy(fn, out_fn)
+
+    quoted_fpath = urllib.parse.quote(fpath)
+    return f"{log_url_prefix}{quoted_fpath}"
+
+
+def transform(
+    fp: TextIO,
+    ya_mute_check: YaMuteCheck,
+    ya_out_dir: str,
+    save_inplace: bool,
+    log_url_prefix: str,
+    log_out_dir: str | None,
+    log_trunc_size: int,
+    output: str | None,
+    data_url_prefix: str,
+) -> None:
+    tree = ET.parse(fp)
+    root = tree.getroot()
+
+    for suite in root.findall("testsuite"):
+        suite_name = suite.get("name")
+        if suite_name is None:
+            continue
+        traces = YTestReportTrace(ya_out_dir)
+        traces.load(suite_name)
+
+        for case in suite.findall("testcase"):
+            test_name = case.get("name")
+            if test_name is None:
+                continue
+            case.set("classname", suite_name)
+
+            is_fail = is_faulty_testcase(case)
+            is_mute = False
+
+            if ya_mute_check(suite_name, test_name, case):
+                LOGGER.info("mute %s %s", suite_name, test_name)
+                mute_target(case)
+                is_mute = True
+
+            if not is_fail:
+                continue
+
+            if "." in test_name:
+                test_name = test_name.replace("kubernetes.io", "kubernetes::io")
+                test_cls, test_method = test_name.rsplit(".", maxsplit=1)
+                test_method = test_method.replace("kubernetes::io", "kubernetes.io")
+                logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
+                logs_directory = traces.get_log_dir(test_cls, test_method)
+            elif "chunk" in test_name:
+                if "sole" in test_name:
+                    chunk_idx = 0
+                    chunks_total = 1
+                else:
+                    match = re.search(r"\[(\d+)/(\d+)\]", test_name)
+                    if match is None:
+                        LOGGER.info(
+                            "Unable to parse chunk indices from test name: %r",
+                            test_name,
+                        )
+                        continue
+                    chunk_idx = int(match.group(1))
+                    chunks_total = int(match.group(2))
+                logs = filter_empty_logs(
+                    traces.get_logs_chunks(suite_name, chunk_idx, chunks_total)
+                )
+                logs_directory = traces.get_log_dir_chunk(
+                    suite_name,
+                    chunk_idx,
+                    chunks_total,
+                )
+            else:
+                continue
+
+            if logs_directory is not None and not is_mute:
+                add_junit_link_property(
+                    case,
+                    "logs_directory",
+                    f"{data_url_prefix}/{urllib.parse.quote(logs_directory)}",
+                )
+
+            for name, log_fn in logs.items():
+                url = save_log(
+                    ya_out_dir,
+                    log_fn,
+                    log_out_dir,
+                    log_url_prefix,
+                    log_trunc_size,
+                )
+                add_junit_link_property(case, name, url)
+
+    if save_inplace:
+        tree.write(fp.name)
+    elif output:
+        tree.write(output)
+    else:
+        ET.indent(root)
+        print(ET.tostring(root, encoding="unicode"))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i",
+        action="store_true",
+        dest="save_inplace",
+        default=False,
+        help="modify input file in-place",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output",
+        default=None,
+        help=(
+            "set output path. If -i specified this parameter will be ignored. "
+            "If -i not specified and this parameter also not specified everything will be dumped to stdout"
+        ),
+    )
+    parser.add_argument("-m", help="muted test list")
+    parser.add_argument("--log-url-prefix", default="./", help="url prefix for logs")
+    parser.add_argument(
+        "--data-url-prefix",
+        dest="data_url_prefix",
+        default="./",
+        help="Url prefix for test data, which stores all the additional logs",
+    )
+    parser.add_argument("--log-out-dir", help="symlink logs to specific directory")
+    parser.add_argument(
+        "--log-truncate-size",
+        dest="log_trunc_size",
+        type=int,
+        default=0,
+        help="truncate log after specific size, 0 disables truncation",
+    )
+    parser.add_argument(
+        "--ya-out",
+        help="ya make output dir (for searching logs and artifacts)",
+    )
+    parser.add_argument("in_file", type=argparse.FileType("r"))
+    return parser
+
+
+def main() -> None:
+    setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
+    parser = build_parser()
+    args = parser.parse_args()
+
+    ya_mute_check = YaMuteCheck()
+    if args.m:
+        ya_mute_check.load(args.m)
+
+    transform(
+        args.in_file,
+        ya_mute_check,
+        args.ya_out,
+        args.save_inplace,
+        args.log_url_prefix,
+        args.log_out_dir,
+        args.log_trunc_size,
+        args.output,
+        args.data_url_prefix,
+    )
+
+
+if __name__ == "__main__":
+    main()

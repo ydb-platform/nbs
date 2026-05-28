@@ -209,6 +209,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
+    xxx(MaxSkippedBlobsDuringCompactionHDD,     ui32,   3                     )\
     xxx(IncrementalCompactionEnabled,           bool,   false                 )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
@@ -508,6 +509,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxWriteBlobErrorsBeforeSuicide,           ui32,      1               )\
     xxx(RejectMountOnAddClientTimeout,             bool,      false           )\
     xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, Seconds(30)     )\
+                                                                               \
+    xxx(CoolDownTimeoutBeforeSecureErase,          TDuration, Seconds(0)      )\
     xxx(NonReplicatedSecureEraseTimeout,           TDuration, Minutes(10)     )\
     xxx(MaxDevicesToErasePerDeviceNameForDefaultPoolKind,   ui32,   100       )\
     xxx(MaxDevicesToErasePerDeviceNameForLocalPoolKind,     ui32,   100       )\
@@ -682,6 +685,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshBlocksWriterEnabled,             bool,        false              )\
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
+    xxx(MaxInFlightCmsRequests,               ui32,        0                  )\
     xxx(OverlappingRequestsPolicy,                                             \
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
@@ -692,6 +696,11 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
         bool,                                                                  \
         false                                                                 )\
+                                                                               \
+    xxx(VolumeBalancerGentlePreemptionEnabled,      bool,       false         )\
+    xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
+                                                                               \
+    xxx(SplitByCompactionRangeMaxBlobCount,   ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

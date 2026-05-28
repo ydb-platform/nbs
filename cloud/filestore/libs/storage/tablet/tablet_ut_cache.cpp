@@ -1467,6 +1467,106 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         });
     }
 
+    Y_UNIT_TEST(ShouldUseNodeRefsCacheIfOneIsExhaustiveWithUnlimitedBTree)
+    {
+        const ui64 nodeCount = 128;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(nodeCount + 1);
+        storageConfig.SetUseUnlimitedBTreeNodeRefsCacheInMainTablet(true);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(5); // shouldn't
+                                                                // matter
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStart(true);
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(
+            nodeCount + 1);
+        storageConfig.SetInMemoryIndexCacheLoadSchedulePeriod(1);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        TVector<TString> names;
+        for (ui32 i = 0; i < nodeCount; ++i) {
+            auto name = TStringBuilder() << "test" << i;
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, name));
+            names.push_back(std::move(name));
+        }
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // The noderefs cache is exhaustive thus list nodes should be a cache
+        // hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            names.size(),
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+        UNIT_ASSERT(statsAfter.IsExhaustive);
+
+        const ui64 loadNodeRefsCounterPrev = env.GetRuntime().GetCounter(
+            TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs);
+        const ui64 loadNodesCounterPrev = env.GetRuntime().GetCounter(
+            TEvIndexTabletPrivate::EEvents::EvLoadNodes);
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        ui64 loadNodeRefsCounter = 0;
+        ui64 loadNodesCounter = 0;
+
+        for (int i = 0; i < 100; ++i) {
+            tablet.AdvanceTime(TDuration::MilliSeconds(10));
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(10));
+
+            loadNodeRefsCounter = env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs)
+                - loadNodeRefsCounterPrev;
+            loadNodesCounter = env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodes)
+                - loadNodesCounterPrev;
+
+            // It will take 1 iteration to load all the nodeRefs
+            // It also will take 1 iteration to load all the nodes
+            if (loadNodeRefsCounter >= 1 && loadNodesCounter >= 1) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, loadNodeRefsCounter);
+        UNIT_ASSERT_VALUES_EQUAL(1, loadNodesCounter);
+
+        statsBefore = GetTxStats(env, tablet);
+
+        // The noderefs cache is exhaustive thus list nodes should be a cache
+        // hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            names.size(),
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+        UNIT_ASSERT(statsAfter.IsExhaustive);
+    }
+
     Y_UNIT_TEST(ShouldUseInMemoryCacheAndMixedBlocksCacheForReads)
     {
         NProto::TStorageConfig storageConfig;

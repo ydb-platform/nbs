@@ -239,6 +239,17 @@ auto TWriteDataRequestManager::TryProcessPendingRequest()
     return cachedRequest;
 }
 
+TPendingWriteDataRequest* TWriteDataRequestManager::TryPopFrontPendingRequest()
+{
+    if (PendingRequests.Empty()) {
+        return nullptr;
+    }
+
+    auto* pendingRequest = PendingRequests.Front();
+    PendingRequestsPopFront();
+    return pendingRequest;
+}
+
 void TWriteDataRequestManager::Remove(
     std::unique_ptr<TPendingWriteDataRequest> request)
 {

@@ -13,6 +13,7 @@ PEERDIR(
     cloud/filestore/config
     cloud/filestore/libs/service
     cloud/filestore/private/api/protos
+    cloud/filestore/private/api/unsafe_protos
     cloud/filestore/public/api/protos
     cloud/storage/core/libs/common
     cloud/storage/core/libs/kikimr

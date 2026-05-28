@@ -40,6 +40,11 @@ TNotifyConfig::TNotifyConfig(
     : Config(std::move(config))
 {}
 
+const NProto::TNotifyConfig* TNotifyConfig::GetConfig() const
+{
+    return &Config;
+}
+
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TNotifyConfig::Get##name() const                                          \
 {                                                                              \

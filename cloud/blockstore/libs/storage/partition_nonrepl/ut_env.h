@@ -445,7 +445,7 @@ public:
                 Min<ui32>(blocksInBuffer, (blockRange.Size() - i)) * BlockSize,
                 fill);
         }
-        request->Record.BlockSize = BlockSize;
+        request->Record.SetBlockSize(BlockSize);
         request->Record.Range = blockRange;
         request->Record.DevicesAndRanges = std::move(devicesAndRanges);
 
@@ -468,8 +468,8 @@ public:
         auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.SetStartIndex(range.Start);
+        request->Record.SetBlockSize(BlockSize);
         request->Record.BlocksCount = range.Size();
-        request->Record.BlockSize = BlockSize;
         Y_ABORT_UNLESS(BlockSize == content.size());
 
         return request;
@@ -481,7 +481,7 @@ public:
         request->Record.Sglist = std::move(sglist);
         request->Record.SetStartIndex(range.Start);
         request->Record.SetBlocksCount(range.Size());
-        request->Record.BlockSize = BlockSize;
+        request->Record.SetBlockSize(BlockSize);
 
         return request;
     }

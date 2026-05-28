@@ -212,14 +212,14 @@ type sessionWithReEstablish struct {
 func requestWithReEstablishSession[T any](
 	ctx context.Context,
 	s *sessionWithReEstablish,
-	callback func() (T, error),
+	doRequest func() (T, error),
 ) (T, error) {
 
 	var result T
 	var err error
 
 	for i := 0; i < SessionReEstablishMaxRetries+1; i++ {
-		result, err = callback()
+		result, err = doRequest()
 		if !isSessionInvalidError(err) {
 			return result, err
 		}

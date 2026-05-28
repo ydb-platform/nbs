@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
 SRCS(
     helpers_ut.cpp
+    protobuf_utils_ut.cpp
     service_ut.cpp
     service_ut_helpers.cpp
     service_ut_parentless.cpp
@@ -15,6 +16,7 @@ SRCS(
 PEERDIR(
     cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/testlib
+    cloud/filestore/private/api/unsafe_protos
 
     contrib/ydb/core/testlib
 )

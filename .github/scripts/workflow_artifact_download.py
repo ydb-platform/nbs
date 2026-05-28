@@ -1,5 +1,4 @@
 import os
-import logging
 import requests
 import zipfile
 import io
@@ -7,10 +6,12 @@ from github import Github
 from typing import List, Optional
 import argparse
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s: %(levelname)s: %(message)s"
-)
-logger = logging.getLogger(__name__)
+try:
+    from .helpers import setup_logger
+except ImportError:
+    from helpers import setup_logger
+
+logger = setup_logger(name=__name__)
 
 
 def download_and_extract_artifact(

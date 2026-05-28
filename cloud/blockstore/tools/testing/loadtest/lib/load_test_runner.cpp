@@ -394,7 +394,7 @@ void TLoadTestRunner::SetupTest(
                 request->SetStartIndex(blockIndex);
                 request->SetBlocksCount(requestSize);
                 request->SetCheckpointId(test.GetCheckpointId());
-                request->BlockSize = blockSize;
+                request->SetBlockSize(blockSize);
                 request->Sglist = TGuardedSgList(std::move(sglist));
                 auto guardedSgList = request->Sglist;
 

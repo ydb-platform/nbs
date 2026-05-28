@@ -3,6 +3,7 @@ LIBRARY(filestore-libs-storage-service)
 SRCS(
     helpers.cpp
     rope_utils.cpp
+    protobuf_utils.cpp
     service.cpp
     service_actor.cpp
     service_actor_actions_change_storage_config.cpp
@@ -51,6 +52,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
+    cloud/filestore/private/api/unsafe_protos
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics

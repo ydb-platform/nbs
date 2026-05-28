@@ -84,7 +84,7 @@ struct TEnvironment
 
     TFSyncQueue Queue = TFSyncQueue(FileSystemId, Logging);
 
-    std::atomic<TFSyncCache::TRequestId> CurrentRequestId = 1ul;
+    std::atomic<IFSyncQueue::TRequestId> CurrentRequestId = 1ul;
     std::atomic<TNodeId::TUnderlyingType> CurrentNodeId = 1ul;
 
     TMutex HandleMutex;
@@ -97,7 +97,7 @@ struct TEnvironment
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {}
 
-    TFSyncCache::TRequestId GetNextRequestId()
+    IFSyncQueue::TRequestId GetNextRequestId()
     {
         return CurrentRequestId.fetch_add(1ul);
     }
@@ -138,23 +138,23 @@ Y_UNIT_TEST_SUITE(TFSyncQueueStressTest)
         std::atomic<ui64> fsyncStarted = 0ul;
         std::atomic<ui64> fsyncCompleted = 0ul;
 
-        std::atomic<TFSyncCache::TRequestId> metaFsyncGlobal = 0ul;
-        std::atomic<TFSyncCache::TRequestId> dataFsyncGlobal = 0ul;
+        std::atomic<IFSyncQueue::TRequestId> metaFsyncGlobal = 0ul;
+        std::atomic<IFSyncQueue::TRequestId> dataFsyncGlobal = 0ul;
 
         TMutex metaFsyncMutex;
-        TMap<TNodeId, TFSyncCache::TRequestId> metaFsyncMap;
+        TMap<TNodeId, IFSyncQueue::TRequestId> metaFsyncMap;
 
         TMutex dataFsyncMutex;
         TMap<
             std::pair<TNodeId, THandle>,
-            TFSyncCache::TRequestId> dataFsyncMap;
+            IFSyncQueue::TRequestId> dataFsyncMap;
 
         TMutex metaMutex;
-        TMap<TFSyncCache::TRequestId, TNodeId> metaMap;
+        TMap<IFSyncQueue::TRequestId, TNodeId> metaMap;
 
         TMutex dataMutex;
         TMap<
-            TFSyncCache::TRequestId,
+            IFSyncQueue::TRequestId,
             std::pair<TNodeId, THandle>> dataMap;
 
         std::atomic_flag shouldStop(false);
@@ -189,7 +189,7 @@ Y_UNIT_TEST_SUITE(TFSyncQueueStressTest)
         const auto removeRandomMetaRequest = [&] {
             static auto localEng = CreateRandomEngine();
 
-            TFSyncCache::TRequestId reqId = 0ul;
+            IFSyncQueue::TRequestId reqId = 0ul;
             TNodeId nodeId;
             with_lock (metaMutex) {
                 const auto size = metaMap.size();
@@ -239,7 +239,7 @@ Y_UNIT_TEST_SUITE(TFSyncQueueStressTest)
         const auto removeRandomDataRequest = [&] {
             static auto localEng = CreateRandomEngine();
 
-            TFSyncCache::TRequestId reqId = 0ul;
+            IFSyncQueue::TRequestId reqId = 0ul;
             TNodeId nodeId;
             THandle handle;
             with_lock (dataMutex) {

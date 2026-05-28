@@ -12,7 +12,7 @@ void TIndexTabletActor::HandleWaitReady(
     const TEvIndexTablet::TEvWaitReadyRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (CurrentState != STATE_WORK) {
+    if (CurrentState != STATE_WORK && CurrentState != STATE_ADAPTER) {
         LOG_TRACE(ctx, TFileStoreComponents::TABLET,
             "%s WaitReady request delayed until partition is ready",
             LogTag.c_str());

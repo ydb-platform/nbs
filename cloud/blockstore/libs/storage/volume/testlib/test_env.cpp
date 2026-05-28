@@ -430,9 +430,9 @@ TVolumeClient::CreateReadBlocksLocalRequest(
     request->Record.SetStartIndex(readRange.Start);
     request->Record.SetBlocksCount(readRange.Size());
     request->Record.MutableHeaders()->SetClientId(clientId);
+    request->Record.SetBlockSize(DefaultBlockSize);
 
     request->Record.Sglist = sglist;
-    request->Record.BlockSize = DefaultBlockSize;
     return request;
 }
 
@@ -476,9 +476,9 @@ TVolumeClient::CreateWriteBlocksLocalRequest(
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(writeRange.Start);
     request->Record.MutableHeaders()->SetClientId(clientId);
+    request->Record.SetBlockSize(DefaultBlockSize);
     request->Record.Sglist = TGuardedSgList(std::move(sglist));
     request->Record.BlocksCount = writeRange.Size();
-    request->Record.BlockSize = DefaultBlockSize;
     return request;
 }
 

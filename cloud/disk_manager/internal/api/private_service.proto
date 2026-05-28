@@ -13,6 +13,8 @@ service PrivateService {
     // Schedules blank (no op) operation, used for testing.
     rpc ScheduleBlankOperation(google.protobuf.Empty) returns (cloud.disk_manager.Operation);
 
+    rpc AcquireBaseDisk(AcquireBaseDiskRequest) returns (cloud.disk_manager.Operation);
+
     rpc ReleaseBaseDisk(ReleaseBaseDiskRequest) returns (cloud.disk_manager.Operation);
 
     rpc RebaseOverlayDisk(RebaseOverlayDiskRequest) returns (cloud.disk_manager.Operation);
@@ -53,6 +55,13 @@ service PrivateService {
 
     rpc FinishExternalFilesystemCreation(FinishExternalFilesystemCreationRequest) returns (google.protobuf.Empty);
     rpc FinishExternalFilesystemDeletion(FinishExternalFilesystemDeletionRequest) returns (google.protobuf.Empty);
+}
+
+message AcquireBaseDiskRequest {
+    string src_image_id = 1;
+    cloud.disk_manager.DiskId overlay_disk_id = 2;
+    cloud.disk_manager.DiskKind overlay_disk_kind = 3;
+    uint64 overlay_disk_size = 4;
 }
 
 message ReleaseBaseDiskRequest {

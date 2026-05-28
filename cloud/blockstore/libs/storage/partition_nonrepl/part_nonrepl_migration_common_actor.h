@@ -4,6 +4,8 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/libs/storage/model/log_title.h>
+
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -201,6 +203,8 @@ protected:
 
     // PoisonPill
     TPoisonPillHelper PoisonPillHelper;
+
+    TLogTitle LogTitle;
 
 public:
     TNonreplicatedPartitionMigrationCommonActor(

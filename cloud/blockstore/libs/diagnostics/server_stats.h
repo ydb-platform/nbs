@@ -25,6 +25,7 @@ struct TMetricRequest
     const EBlockStoreRequest RequestType;
     TString ClientId;
     TString DiskId;
+    TString Peer;
     IVolumeInfoPtr VolumeInfo;
     ui64 StartIndex = 0;
     NCloud::NProto::EStorageMediaKind MediaKind

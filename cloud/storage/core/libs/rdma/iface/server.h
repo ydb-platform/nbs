@@ -34,6 +34,10 @@ struct TServerConfig
     TBufferPoolConfig BufferPool;
     ui32 SendQueueSize = 0;
     ui32 RecvQueueSize = 0;
+    ui8 QpRetryCount = 7;
+    ui8 QpRnrRetryCount = 7;
+    ui8 QpTimeout = 0;
+    ui8 QpMinRnrTimer = 0;
 
     TServerConfig();
 

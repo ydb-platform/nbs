@@ -267,7 +267,7 @@ void TPartitionActor::WriteBlocks(
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
         writeRange.Size(),
@@ -442,10 +442,11 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
         ScheduleYellowStateUpdate(ctx);
     }
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
-    WriteAndZeroRequestsInProgress -= requestCount;
+    Y_DEBUG_ABORT_UNLESS(
+        SharedState->WriteAndZeroRequestsInProgress.load() >= requestCount);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(requestCount);
 
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);

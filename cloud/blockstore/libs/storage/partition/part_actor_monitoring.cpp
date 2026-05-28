@@ -524,7 +524,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                             }
                             TABLER() {
                                 TABLED() { out << "Write and zero requests in progress"; }
-                                TABLED() { out << WriteAndZeroRequestsInProgress; }
+                                TABLED() { out << SharedState->WriteAndZeroRequestsInProgress.load(); }
                             }
                         }
                     }

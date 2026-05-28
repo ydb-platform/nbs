@@ -43,17 +43,43 @@ bool TWriteBackCacheState::Init(IPersistentStoragePtr persistentStorage)
         { AddRequest(std::move(request)); });
 }
 
-bool TWriteBackCacheState::HasUnflushedRequests() const
+void TWriteBackCacheState::SetDrainingMode()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    return RequestManager.HasPendingOrUnflushedRequests();
+    DrainingMode = true;
+}
+
+bool TWriteBackCacheState::IsDrained() const
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    return DrainingMode && !RequestManager.HasPendingOrUnflushedRequests();
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     std::shared_ptr<TWriteDataRequest> request)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
+
+    if (DrainingMode) {
+        // This may happen due to race condition that is valid scenario:
+        // - TWriteBackCache::Drain is called in one thread;
+        // - WriteData request is being processed in another thread.
+        //
+        // But currently, Drain is called only at session creation
+        // or destruction where WriteData requests are not expected.
+        // Therefore, we report an error.
+        ReportWriteBackCacheWritingNotAllowedInDrainingMode(
+            LogTag +
+            " Cached WriteData request received while WriteBackCache is "
+            "in draining mode");
+
+        return MakeFuture(
+            ErrorResponse<TWriteDataResponse>(
+                E_REJECTED,
+                "WriteBackCache doesn't accept new WriteData requests"));
+    }
 
     auto variant = RequestManager.AddRequest(std::move(request));
 
@@ -348,6 +374,11 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
             error);
 
         nodeState.Barriers.erase(it);
+    }
+
+    // Fail all pending requests in the case of E_FS_NOSPC
+    if (error.GetCode() == E_FS_NOSPC) {
+        FailPendingRequests(error);
     }
 
     if (nodeState.Handles.size() == nodeState.HandleToReleaseCount) {
@@ -773,6 +804,41 @@ void TWriteBackCacheState::DropCachedData(
     nodeState.HandleToReleaseCount = 0;
 
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+}
+
+void TWriteBackCacheState::FailPendingRequests(
+    const NCloud::NProto::TError& error)
+{
+    while (auto* request = RequestManager.TryPopFrontPendingRequest()) {
+        const ui64 nodeId = request->GetRequest().GetNodeId();
+        auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+        auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
+
+        // The same request lives in two queues:
+        // - all pending requests
+        // - pending requests associated with the node
+        // Both queues are ordered with respect to their SequenceId
+        Y_ABORT_UNLESS(pendingRequest.get() == request);
+
+        QueuedOperations.FailWriteDataPromise(
+            std::move(request->AccessPromise()),
+            error);
+
+        // Since no data loss has taken place and errors have been already
+        // reported by failing WriteData requests, we respond to Flush and
+        // ReleaseHandle with success
+        RemoveActiveRequestFromHandleState(
+            nodeState,
+            request->GetRequest().GetHandle());
+
+        TriggerFlushCompletions(nodeState);
+
+        if (nodeState.CanBeDeleted()) {
+            Nodes.DeleteNodeState(nodeId);
+        } else {
+            CheckAndAcquireBarriers(nodeState);
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

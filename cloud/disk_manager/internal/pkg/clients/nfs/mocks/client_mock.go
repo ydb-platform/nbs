@@ -111,6 +111,58 @@ func (c *ClientMock) CreateSessionWithClientID(
 	return res, args.Error(1)
 }
 
+func (c *ClientMock) UnsafeCreateNode(
+	ctx context.Context,
+	filesystemID string,
+	node nfs.Node,
+) error {
+
+	args := c.Called(ctx, filesystemID, node)
+	return args.Error(0)
+}
+
+func (c *ClientMock) UnsafeCreateNodeRef(
+	ctx context.Context,
+	filesystemID string,
+	parentID uint64,
+	name string,
+	childID uint64,
+	shardID string,
+	shardNodeName string,
+) error {
+
+	args := c.Called(
+		ctx,
+		filesystemID,
+		parentID,
+		name,
+		childID,
+		shardID,
+		shardNodeName,
+	)
+	return args.Error(0)
+}
+
+func (c *ClientMock) ConfigureAsShard(
+	ctx context.Context,
+	filesystemID string,
+	params nfs.ConfigureAsShardParams,
+) error {
+
+	args := c.Called(ctx, filesystemID, params)
+	return args.Error(0)
+}
+
+func (c *ClientMock) ConfigureShards(
+	ctx context.Context,
+	filesystemID string,
+	params nfs.ConfigureShardsParams,
+) error {
+
+	args := c.Called(ctx, filesystemID, params)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientMock() *ClientMock {

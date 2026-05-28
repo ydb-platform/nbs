@@ -107,6 +107,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
         TBlockRangeComparator>
         ZeroBlocksPromises;
 
+    std::optional<NProto::TError> SyncZeroBlocksError;
+
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
         Y_UNUSED(bytesCount);
@@ -172,6 +174,12 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
         Y_UNUSED(callContext);
+
+        if (SyncZeroBlocksError) {
+            NProto::TZeroBlocksResponse response;
+            *response.MutableError() = *SyncZeroBlocksError;
+            return MakeFuture(std::move(response));
+        }
 
         auto range = TBlockRangeHelper::GetRange(*request, DefaultBlockSize);
         auto& info =
@@ -260,7 +268,7 @@ struct TTestEnvironment
         request->SetDiskId(DefaultDiskId);
         request->SetStartIndex(range.Start);
         request->SetBlocksCount(range.Size());
-        request->BlockSize = DefaultBlockSize;
+        request->SetBlockSize(DefaultBlockSize);
         request->Sglist = TGuardedSgList(
             {TBlockDataRef(data->data(), range.Size() * DefaultBlockSize)});
         UNIT_ASSERT_VALUES_EQUAL(range.Size() * DefaultBlockSize, data->size());
@@ -287,7 +295,7 @@ struct TTestEnvironment
     {
         request->SetDiskId(DefaultDiskId);
         request->SetStartIndex(range.Start);
-        request->BlockSize = DefaultBlockSize;
+        request->SetBlockSize(DefaultBlockSize);
         request->BlocksCount = range.Size();
 
         TSgList sglist;
@@ -727,6 +735,108 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             FormatError(result.GetError()));
     }
 
+    Y_UNIT_TEST(ShouldRecalculateChecksumOnWriteBlocksLocalSplit)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        const TString data = "aabbccddeeffgghhjjkk";
+        auto range =
+            TBlockRange64::WithLength(1, data.size() / DefaultBlockSize);
+
+        auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        env.SetupRequest(request, range, data);
+
+        {
+            auto guard = request->Sglist.Acquire();
+            *request->MutableChecksums()->Add() =
+                CalculateChecksum(guard.Get());
+        }
+
+        auto future = env.SplitRequestService->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+        UNIT_ASSERT_VALUES_EQUAL(false, future.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            testBlockStore.WriteBlocksLocalPromises.size());
+        auto* firstWrite = testBlockStore.WriteBlocksLocalPromises.FindPtr(
+            TBlockRange64::WithLength(1, 5));
+        auto* secondWrite = testBlockStore.WriteBlocksLocalPromises.FindPtr(
+            TBlockRange64::WithLength(6, 5));
+        UNIT_ASSERT(firstWrite != nullptr);
+        UNIT_ASSERT(secondWrite != nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, firstWrite->Request->ChecksumsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, secondWrite->Request->ChecksumsSize());
+
+        TSgList firstSgList = {{data.data(), 5 * DefaultBlockSize}};
+        TSgList secondSgList = {
+            {data.data() + 5 * DefaultBlockSize, 5 * DefaultBlockSize}};
+        const auto expectedFirst = CalculateChecksum(firstSgList);
+        const auto expectedSecond = CalculateChecksum(secondSgList);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedFirst.GetChecksum(),
+            firstWrite->Request->GetChecksums(0).GetChecksum());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedSecond.GetChecksum(),
+            secondWrite->Request->GetChecksums(0).GetChecksum());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5 * DefaultBlockSize,
+            firstWrite->Request->GetChecksums(0).GetByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            5 * DefaultBlockSize,
+            secondWrite->Request->GetChecksums(0).GetByteCount());
+
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            firstWrite->Request->GetChecksums(0).GetChecksum(),
+            secondWrite->Request->GetChecksums(0).GetChecksum());
+
+        firstWrite->Promise.SetValue(NProto::TWriteBlocksLocalResponse());
+        secondWrite->Promise.SetValue(NProto::TWriteBlocksLocalResponse());
+
+        const auto& result = future.GetValue(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldNotFailWhenSubRequestCompletesSynchronously)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        // Make every ZeroBlocks sub-request complete synchronously with an
+        // error.
+        testBlockStore.SyncZeroBlocksError = MakeError(E_REJECTED, "sync fail");
+
+        // Request that crosses a stripe boundary -> will be split.
+        auto range = TBlockRange64::WithLength(1, 10);
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        env.SetupRequest(request, range);
+
+        TFuture<NProto::TZeroBlocksResponse> future;
+        UNIT_ASSERT_NO_EXCEPTION(
+            future = env.SplitRequestService->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request)));
+
+        // Future must be valid and already carry the propagated error.
+        UNIT_ASSERT(future.Initialized());
+        UNIT_ASSERT(future.HasValue());
+        const auto& result = future.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
+    }
+
     Y_UNIT_TEST(ShouldForwardRequestIfSplittingIsNotRequired)
     {
         TTestEnvironment env;
@@ -760,6 +870,64 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             S_OK,
             result.GetError().GetCode(),
             FormatError(result.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldReplyErrorWithoutMount)
+    {
+        TTestEnvironment env;
+
+        auto range = TBlockRange64::WithLength(1, 10);
+
+        {
+            // Run ZeroBlocks request
+            auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+            env.SetupRequest(request, range);
+            auto future = env.SplitRequestService->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+        }
+
+        {
+            // Run ReadBlocks request
+
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            env.SetupRequest(request, range);
+            auto future = env.SplitRequestService->ReadBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+
+        }
+
+        {
+            // Run WriteBlocks request
+            const TString data = "abcdefghij";
+            auto range =
+                TBlockRange64::WithLength(1, data.size() / DefaultBlockSize);
+            auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+            env.SetupRequest(request, range, data);
+            auto future = env.SplitRequestService->WriteBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& result = future.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+
+        }
     }
 }
 

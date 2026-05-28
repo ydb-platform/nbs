@@ -98,7 +98,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(CalculateCurrentBackpressure)
     {
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
+            std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             DefaultConfig(1, 1000),
             BuildDefaultCompactionPolicy(5),
@@ -127,7 +127,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
         state.IncrementUnflushedFreshBlobByteCount(100 * 4_KB);
-        state.GetCompactionMap().Update(0, 10, 10, 10, false);
+        state.GetCompactionMap().Update(0, 10, 10, 10, 0, false);
         state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
@@ -144,7 +144,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         }
 
         state.IncrementUnflushedFreshBlobByteCount(300 * 4_KB);
-        state.GetCompactionMap().Update(0, 30, 30, 30, false);
+        state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
         state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
@@ -152,7 +152,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CompactionScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CleanupScore, 1e-5);
 
-        state.GetCompactionMap().Update(0, 100, 100, 100, false);
+        state.GetCompactionMap().Update(0, 100, 100, 100, 0, false);
 
         const auto maxBackpressure2 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure2.CompactionScore, 1e-5);
@@ -168,7 +168,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(CompactionBackpressureShouldBeZeroIfNotRequiredByPolicy)
     {
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
+            std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             DefaultConfig(1, 1000),
             std::make_shared<TNoBackpressurePolicy>(),
@@ -190,7 +190,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             threadSafeState
         );
 
-        state.GetCompactionMap().Update(0, 30, 30, 30, false);
+        state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
 
         const auto bp = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_VALUES_EQUAL(0, bp.CompactionScore);
@@ -204,7 +204,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         config.MutableConfig()->SetBaseDiskCheckpointId("baseDiskCheckpointId");
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
+            std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -290,7 +290,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
+            std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -334,7 +334,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
+            std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -363,11 +363,11 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         constexpr ui32 rangeIdx = 0;
         TVector<TMixedBlock> blocks = {
-            { {1, 1}, 1, 1, 1 },
-            { {2, 2}, 2, 2, 2 },
-            { {3, 3}, 3, 3, 3 },
-            { {4, 4}, 4, 4, 4 },
-            { {5, 5}, 5, 5, 5 }
+            { {1, 1}, 1, 1, 1, 1},
+            { {2, 2}, 2, 2, 2, 2},
+            { {3, 3}, 3, 3, 3, 3},
+            { {4, 4}, 4, 4, 4, 4},
+            { {5, 5}, 5, 5, 5, 5}
         };
 
         auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs) {
@@ -385,7 +385,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         TVector<TMixedBlock> actual;
 
         struct TVisitor final
-            : public IBlocksIndexVisitor
+            : public IMixedBlocksIndexVisitor
         {
             TVector<TMixedBlock>& Blocks;
 
@@ -393,13 +393,19 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 : Blocks(blocks)
             {}
 
-            bool Visit(
+            bool VisitBlock(
                 ui32 blockIndex,
                 ui64 commitId,
                 const TPartialBlobId& blobId,
-                ui16 blobOffset) override
+                ui16 blobOffset,
+                ui8 compactionRangeCount) override
             {
-                Blocks.emplace_back(blobId, commitId, blockIndex, blobOffset);
+                Blocks.emplace_back(
+                    blobId,
+                    commitId,
+                    blockIndex,
+                    blobOffset,
+                    compactionRangeCount);
                 return true;
             }
 
@@ -468,7 +474,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto config = DefaultConfig(1, diskSize / DefaultBlockSize);
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
+            std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -502,7 +508,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
     {
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
+            std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             DefaultConfig(1, 1000),
             BuildDefaultCompactionPolicy(5),
@@ -543,6 +549,66 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             state.GetCleanupQueue().GetQueueBlocks());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateNewlyZeroedBlocks)
+    {
+        auto threadSafeState =
+            std::make_shared<TPartitionThreadSafeState>();
+        TPartitionState state(
+            DefaultConfig(1, DefaultBlockCount),
+            BuildDefaultCompactionPolicy(5),
+            0,  // compactionScoreHistorySize
+            0,  // cleanupScoreHistorySize
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            Max(),  // maxIORequestsInFlight
+            0,      // reassignChannelsPercentageThreshold
+            100,    // reassignFreshChannelsPercentageThreshold
+            100,    // reassignMixedChannelsPercentageThreshold
+            false,  // reassignSystemChannelsImmediately
+            5,      // channelCount
+            0,      // mixedIndexCacheSize
+            10000,  // allocationUnit
+            100,    // maxBlobsPerUnit
+            10,     // maxBlobsPerRange,
+            1,      // compactionRangeCountPerRun
+            threadSafeState
+        );
+
+        const ui32 blockIndex = 0;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 0));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 10));
+
+        state.GetCompactionMap().Update(
+            blockIndex,
+            1 /*blobCount=*/,
+            15 /*blockCount=*/,
+            10 /*usedBlockCount=*/,
+            5 /*newlyZeroedBlocks=*/,
+            false /*compacted=*/);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 10));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 13));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            7u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 8));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 30));
     }
 }
 

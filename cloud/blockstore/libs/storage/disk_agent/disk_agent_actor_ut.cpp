@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/device_integrity_check_actor.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
@@ -32,6 +33,7 @@ using namespace NServer;
 using namespace NThreading;
 
 using namespace NDiskAgentTest;
+using namespace NDiskAgent;
 
 using namespace std::chrono_literals;
 
@@ -7175,6 +7177,39 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 1,
                 FindProcessesWithOpenFile(device).size());
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectPartlabelMismatch, TFixture)
+    {
+        const TFsPath newDevice = DevPath / "nvme_new";
+        {
+            TFile file(newDevice, EOpenModeFlag::CreateNew);
+            file.Resize(DefaultFileSize);
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentDeviceSymlinkMismatch",
+            true);
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        // Simulate infra re-pointing NVMENBS01 to a different physical disk
+        PartLabels[0].DeleteIfExists();
+        const bool ok = NFs::SymLink(newDevice, PartLabels[0]);
+        UNIT_ASSERT(ok);
+
+        Runtime->AdvanceCurrentTime(DefaultSymlinkCheckInterval + 1s);
+        Runtime->DispatchEvents(TDispatchOptions(), 1s);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, mismatch->Val());
     }
 }
 }   // namespace NCloud::NBlockStore::NStorage

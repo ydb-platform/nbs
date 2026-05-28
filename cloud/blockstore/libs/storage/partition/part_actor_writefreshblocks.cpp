@@ -420,11 +420,11 @@ void TPartitionActor::CompleteWriteBlocks(
 
     State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);
     Y_DEBUG_ABORT_UNLESS(
-        WriteAndZeroRequestsInProgress >= args.Requests.size());
-    WriteAndZeroRequestsInProgress -= args.Requests.size();
+        SharedState->WriteAndZeroRequestsInProgress.load() >= args.Requests.size());
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(args.Requests.size());
 
     EnqueueFlushIfNeeded(ctx);
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
 }
 
@@ -464,7 +464,7 @@ void TPartitionActor::ZeroFreshBlocks(
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     LOG_TRACE(
         ctx,

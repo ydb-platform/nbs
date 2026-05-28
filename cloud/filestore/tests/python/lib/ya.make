@@ -22,6 +22,7 @@ PY_SRCS(
     common.py
     daemon_config.py
     endpoint.py
+    fastshard.py
     fs.py
     http_proxy.py
     kikimr.py

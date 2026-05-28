@@ -312,6 +312,12 @@ bool TIndexTabletState::IsWriteAllowed(
         return false;
     }
 
+    if (values.CollectGarbage >= thresholds.CollectGarbage) {
+        *message =
+            TStringBuilder() << "collectGarbage: " << values.CollectGarbage;
+        return false;
+    }
+
     return true;
 }
 
@@ -413,6 +419,22 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
     // Intentionally without DataInProgress as we need it currently only for
     // recovery phase.
     return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
+}
+
+void TIndexTabletState::ActivateCacheReadBypass(ui64 nodeId, ui64 commitId)
+{
+    Impl->CacheReadBypass.Activate(nodeId, commitId);
+}
+
+void TIndexTabletState::DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId)
+{
+    Impl->CacheReadBypass.Deactivate(nodeId, commitId);
+}
+
+void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
+{
+    UnconfirmedRecoveryReady = value;
+    Impl->CacheReadBypass.SetUnconfirmedRecoveryReady(value);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1499,9 +1521,14 @@ auto TIndexTabletState::FindForcedRangeOperation(
 bool TIndexTabletState::TryFillDescribeResult(
     ui64 nodeId,
     ui64 handle,
+    ui64 commitId,
     const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
+    if (Impl->CacheReadBypass.ShouldBypassRead(nodeId, commitId)) {
+        return false;
+    }
+
     return Impl->ReadAheadCache.TryFillResult(nodeId, handle, range, response);
 }
 
@@ -1535,9 +1562,17 @@ TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 ////////////////////////////////////////////////////////////////////////////////
 // Balancing
 
-NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
+NProto::TError TIndexTabletState::SelectShard(
+    NProto::ENodeType nodeType,
+    ui64 fileSize,
+    TString* shardId)
 {
-    auto e = Impl->ShardBalancer->SelectShard(fileSize, shardId);
+    auto* balancer = Impl->ShardBalancer.get();
+    if (nodeType == NProto::E_REGULAR_NODE && Impl->FileShardBalancer) {
+        balancer = Impl->FileShardBalancer.get();
+    }
+
+    auto e = balancer->SelectShard(fileSize, shardId);
     if (HasError(e)) {
         return e;
     }
@@ -1545,7 +1580,8 @@ NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
     return e;
 }
 
-void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
+NProto::TError TIndexTabletState::UpdateShardBalancer(
+    const TVector<TShardStats>& stats)
 {
     std::optional<ui64> desiredFreeSpaceReserve;
     std::optional<ui64> minFreeSpaceReserve;
@@ -1557,8 +1593,36 @@ void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
         minFreeSpaceReserve = 0;
     }
 
-    Impl->ShardBalancer->Update(
-        stats,
+    if (!Impl->FileShardBalancer) {
+        return Impl->ShardBalancer->Update(
+            stats,
+            desiredFreeSpaceReserve,
+            minFreeSpaceReserve);
+    }
+
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    THashSet<TString> fileShardIdSet(fileShardIds.begin(), fileShardIds.end());
+    TVector<TShardStats> filteredStats;
+    TVector<TShardStats> fileShardStats;
+    for (ui32 i = 0; i < Min<ui32>(shardIds.size(), stats.size()); ++i) {
+        if (fileShardIdSet.contains(shardIds[i])) {
+            fileShardStats.push_back(stats[i]);
+        } else {
+            filteredStats.push_back(stats[i]);
+        }
+    }
+
+    auto e = Impl->ShardBalancer->Update(
+        filteredStats,
+        desiredFreeSpaceReserve,
+        minFreeSpaceReserve);
+    if (HasError(e)) {
+        return e;
+    }
+
+    return Impl->FileShardBalancer->Update(
+        fileShardStats,
         desiredFreeSpaceReserve,
         minFreeSpaceReserve);
 }

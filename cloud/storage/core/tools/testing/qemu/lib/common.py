@@ -1,5 +1,6 @@
-import os
 import logging
+import os
+import tarfile
 import yatest.common as common
 
 logger = logging.getLogger(__name__)
@@ -69,4 +70,38 @@ def get_mount_paths(inst_index=0):
     if common.ram_drive_path():
         mounts.append(tuple(("tmpfs_path", common.ram_drive_path(), socket_path("tmpfs_path"))))
 
+    if common.runtime.gdb_path():
+        tool_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+            common.runtime.gdb_path())))
+        mounts.append(("gdb", tool_dir, socket_path("gdb")))
+
     return mounts
+
+
+def _get_qemu_bindir():
+    return common.build_path(
+        "cloud/storage/core/tools/testing/qemu/bin"
+    )
+
+
+def _unpack_qemu_bindir(bindir):
+    with tarfile.open(os.path.join(bindir, "qemu-bin.tar.gz")) as tf:
+        tf.extractall(bindir)
+
+
+def get_qemu_kvm():
+    bindir = _get_qemu_bindir()
+    qemu_kvm = os.path.join(bindir, "usr", "bin", "qemu-system-x86_64")
+    if not os.path.exists(qemu_kvm):
+        _unpack_qemu_bindir(bindir)
+
+    return qemu_kvm
+
+
+def get_qemu_firmware():
+    bindir = _get_qemu_bindir()
+    qemu_firmware = os.path.join(bindir, "usr", "share", "qemu")
+    if not os.path.exists(qemu_firmware):
+        _unpack_qemu_bindir(bindir)
+
+    return qemu_firmware

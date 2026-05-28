@@ -31,6 +31,10 @@ void LogUnexpectedEvent(
         location.c_str());
 }
 
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 void HandleUnexpectedEvent(
     const IEventHandle& ev,
     int component,
@@ -43,11 +47,6 @@ void HandleUnexpectedEvent(
         EventInfo(ev).c_str(),
         location.c_str()));
 }
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
 
 void HandleUnexpectedEvent(
     const TAutoPtr<IEventHandle>& ev,

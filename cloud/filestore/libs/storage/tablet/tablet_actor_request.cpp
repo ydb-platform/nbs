@@ -96,7 +96,7 @@ template <typename TMethod>
 void TIndexTabletActor::CompleteResponse(
     typename TMethod::TResponse::ProtoRecordType& response,
     const TCallContextPtr& callContext,
-    const NActors::TActorContext& ctx)
+    bool* builtTraceInfo)
 {
     if (HasError(response.GetError())) {
         auto* e = response.MutableError();
@@ -109,17 +109,10 @@ void TIndexTabletActor::CompleteResponse(
         callContext,
         TMethod::Name);
 
-    const bool builtTraceInfo = BuildTraceInfo(
+    *builtTraceInfo = BuildTraceInfo(
         TraceSerializer,
         callContext,
         response);
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s %s: #%lu completed (%s), trace-info: %d",
-        LogTag.c_str(),
-        TMethod::Name,
-        callContext->RequestId,
-        FormatError(response.GetError()).c_str(),
-        builtTraceInfo);
     BuildThrottlerInfo(*callContext, response);
     BuildBackendInfo(
         *Config,
@@ -134,6 +127,23 @@ void TIndexTabletActor::CompleteResponse(
     }
 
     Metrics.BusyIdleCalc.OnRequestCompleted();
+}
+
+template <typename TMethod>
+void TIndexTabletActor::CompleteResponse(
+    typename TMethod::TResponse::ProtoRecordType& response,
+    const TCallContextPtr& callContext,
+    const NActors::TActorContext& ctx)
+{
+    bool builtTraceInfo = false;
+    CompleteResponse<TMethod>(response, callContext, &builtTraceInfo);
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s %s: #%lu completed (%s), trace-info: %d",
+        LogTag.c_str(),
+        TMethod::Name,
+        callContext->RequestId,
+        FormatError(response.GetError()).c_str(),
+        builtTraceInfo);
 }
 
 #define FILESTORE_GENERATE_IMPL(name, ns)                                             \
@@ -166,6 +176,7 @@ FILESTORE_GENERATE_IMPL(GetNodeAttrBatch, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(RenameNodeInDestination, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(PrepareUnlinkDirectoryNodeInShard, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(AbortUnlinkDirectoryNodeInShard, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(ListNodesInternal, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL
 

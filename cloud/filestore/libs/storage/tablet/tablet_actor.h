@@ -15,6 +15,7 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
+#include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
@@ -115,6 +116,7 @@ class TIndexTabletActor final
         STATE_BOOT,
         STATE_INIT,
         STATE_WORK,
+        STATE_ADAPTER,
         STATE_ZOMBIE,
         STATE_BROKEN,
         STATE_MAX,
@@ -181,6 +183,8 @@ private:
     TVector<ui32> RangesWithEmptyCompactionScore;
 
     TProtoMessagePrinter ProtoMessagePrinter;
+
+    NFastShard::IFileSystemShardPtr FastShard;
 
 public:
     TIndexTabletActor(
@@ -372,7 +376,12 @@ private:
 
         // if we can execute the transaction using the in-memory index state,
         // we will do so and return immediately.
-        if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
+        auto* indexState = AccessInMemoryIndexState();
+        if (!indexState) {
+            ReportInMemoryIndexStateNotInitialized();
+        }
+
+        if (indexState && TryExecuteTx(ctx, *indexState, tx)) {
             Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
@@ -448,6 +457,10 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
+    //
+    // Helper actor factory funcs.
+    //
+
     void RegisterCreateNodeInShardActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
@@ -495,9 +508,17 @@ private:
         TString dstShardNodeName,
         bool isLocalRename);
 
+    //
+    // Misc.
+    //
+
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
+
+    void CompleteAdapterLoadState(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TLoadState& args);
 
     bool IsMainTablet() const;
     bool BehaveAsShard(const NProto::THeaders& headers) const;
@@ -518,6 +539,12 @@ private:
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
             const typename TMethod::TRequest::ProtoRecordType&)>& validator);
+
+    template <typename TMethod>
+    void CompleteResponse(
+        typename TMethod::TResponse::ProtoRecordType& response,
+        const TCallContextPtr& callContext,
+        bool* builtTraceInfo);
 
     template <typename TMethod>
     void CompleteResponse(
@@ -557,6 +584,18 @@ private:
         ui64 value) const;
     TBackgroundOpsBackpressureStatus GetBackgroundOpsBackpressureStatus() const;
 
+    void ReplyListNodes(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TListNodes& args);
+
+    void ReplyListNodesInternal(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TListNodes& args);
+
+    //
+    // Common event handlers.
+    //
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -564,6 +603,10 @@ private:
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    //
+    // Monpage handlers.
+    //
 
     void HandleHttpInfo(
         const NActors::NMon::TEvRemoteHttpInfo::TPtr& ev,
@@ -588,6 +631,10 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+
+    //
+    // Custom event handlers.
+    //
 
     void HandleSessionDisconnected(
         const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
@@ -618,6 +665,9 @@ private:
 
     void HandleReleaseCollectBarrier(
         const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleCancelUnconfirmedData(
+        const TEvIndexTabletPrivate::TEvCancelUnconfirmedData::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadDataCompleted(
@@ -705,6 +755,10 @@ private:
     std::unique_ptr<TEvIndexTabletPrivate::TEvAddBlobRequest>
     BuildAddBlobRequest(ui64 commitId, const NProto::TUnconfirmedData& entry);
 
+    //
+    // Unconfirmed flow.
+    //
+
     void AddBlobForUnconfirmedData(
         const NActors::TActorContext& ctx,
         ui64 commitId,
@@ -721,16 +775,32 @@ private:
         const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    void DeleteUnconfirmedData(
+        const NActors::TActorContext& ctx,
+        const char* entityLogTag,
+        const TString& entityLogValue,
+        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+            shouldDelete);
+
     void DeleteUnconfirmedDataForSession(
         const TString& sessionId,
+        const NActors::TActorContext& ctx);
+
+    void DeleteUnconfirmedDataForPipeServer(
+        const NActors::TActorId& pipeServerId,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     TCPUUsageTimer& AccessCPUUsageTimer();
 
+    //
+    // Request handlers.
+    //
+
     bool HandleRequests(STFUNC_SIG);
     bool HandleRequestsByFrozenTablet(STFUNC_SIG);
+    bool HandleRequestsByAdapter(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
     bool RejectRequestsByBrokenTablet(STFUNC_SIG);
 
@@ -739,9 +809,19 @@ private:
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTablet)
     FILESTORE_SERVICE_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvService)
+    FILESTORE_SERVICE_ADAPTER_REQUESTS(
+        FILESTORE_IMPLEMENT_ADAPTER_REQUEST,
+        TEvService)
+    FILESTORE_TABLET_ADAPTER_REQUESTS(
+        FILESTORE_IMPLEMENT_ADAPTER_REQUEST,
+        TEvIndexTablet)
 
-    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTabletPrivate)
-    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IMPLEMENT_ASYNC_REQUEST, TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(
+        FILESTORE_IMPLEMENT_REQUEST,
+        TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+        FILESTORE_IMPLEMENT_ASYNC_REQUEST,
+        TEvIndexTabletPrivate)
 
     FILESTORE_TABLET_RW_TRANSACTIONS(
         FILESTORE_IMPLEMENT_RW_TRANSACTION,
@@ -755,6 +835,7 @@ private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
     STFUNC(StateWork);
+    STFUNC(StateAdapter);
     STFUNC(StateZombie);
     STFUNC(StateBroken);
 

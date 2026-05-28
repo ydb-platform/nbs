@@ -47,7 +47,6 @@
 
 #include <util/generic/deque.h>
 #include <util/generic/hash_set.h>
-#include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/system/file.h>
@@ -151,15 +150,13 @@ ELogPriority GetRequestLogPriority()
         : ELogPriority::TLOG_RESOURCES;
 }
 
-#undef FILESTORE_REQUEST_CHECK
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ReadFile(const TString& fileName)
+template <>
+ELogPriority GetRequestLogPriority<NProto::TExecuteActionRequest>()
 {
-    TFileInput in(fileName);
-    return in.ReadAll();
+    return ELogPriority::TLOG_RESOURCES;
 }
+
+#undef FILESTORE_REQUEST_CHECK
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1526,6 +1523,7 @@ class TServer final
 private:
     const TGrpcInitializer GrpcInitializer;
     const TServerConfigPtr Config;
+    const ICertificateProviderPtr CertificateProvider;
     const ILoggingServicePtr Logging;
 
     TAppContext AppCtx;
@@ -1541,6 +1539,7 @@ public:
     template <typename T>
     TServer(
             TServerConfigPtr config,
+            ICertificateProviderPtr certificateProvider,
             ILoggingServicePtr logging,
             IRequestStatsPtr requestStats,
             NMonitoring::TDynamicCountersPtr counters,
@@ -1548,6 +1547,7 @@ public:
             ISchedulerPtr scheduler,
             T service)
         : Config(std::move(config))
+        , CertificateProvider(std::move(certificateProvider))
         , Logging(std::move(logging))
         , Scheduler(std::move(scheduler))
     {
@@ -1558,6 +1558,11 @@ public:
     }
 
 private:
+    std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials()
+    {
+        return CertificateProvider->CreateSecureServerCredentials();
+    }
+
     void InitializeAppContext(
         auto& ctx,
         auto& /*service*/,
@@ -1665,8 +1670,7 @@ public:
             auto address = Join(":", host, port);
             STORAGE_INFO("Listen on (secure control) " << address);
 
-            auto sslOptions = CreateSslOptions();
-            auto credentials = grpc::SslServerCredentials(sslOptions);
+            auto credentials = CreateSecureServerCredentials();
             credentials->SetAuthMetadataProcessor(
                 std::make_shared<TAuthMetadataProcessor>(
                     RequestSourceKinds,
@@ -1782,33 +1786,6 @@ public:
     }
 
 private:
-
-    grpc::SslServerCredentialsOptions CreateSslOptions()
-    {
-        grpc::SslServerCredentialsOptions sslOptions;
-        sslOptions.client_certificate_request = GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
-
-        if (const auto& rootCertsFile = Config->GetRootCertsFile()) {
-            sslOptions.pem_root_certs = ReadFile(rootCertsFile);
-        }
-
-        Y_ENSURE(Config->GetCerts().size(), "Empty Certs");
-
-        for (const auto& cert: Config->GetCerts()) {
-            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-
-            Y_ENSURE(cert.CertFile, "Empty CertFile");
-            keyCert.cert_chain = ReadFile(cert.CertFile);
-
-            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
-            keyCert.private_key = ReadFile(cert.CertPrivateKeyFile);
-
-            sslOptions.pem_key_cert_pairs.push_back(keyCert);
-        }
-
-        return sslOptions;
-    }
-
     void StartListenUnixSocket(
         const TString& unixSocketPath,
         ui32 backlog,
@@ -1859,10 +1836,12 @@ IServerPtr CreateServer(
     NMonitoring::TDynamicCountersPtr counters,
     IProfileLogPtr profileLog,
     ISchedulerPtr scheduler,
-    IFileStoreServicePtr service)
+    IFileStoreServicePtr service,
+    ICertificateProviderPtr certificateProvider)
 {
     return std::make_shared<TFileStoreServer>(
         std::move(config),
+        std::move(certificateProvider),
         std::move(logging),
         std::move(requestStats),
         std::move(counters),
@@ -1879,10 +1858,12 @@ IServerPtr CreateServer(
     IRequestStatsPtr requestStats,
     NMonitoring::TDynamicCountersPtr counters,
     ISchedulerPtr scheduler,
-    IEndpointManagerPtr service)
+    IEndpointManagerPtr service,
+    ICertificateProviderPtr certificateProvider)
 {
     return std::make_shared<TEndpointManagerServer>(
         std::move(config),
+        std::move(certificateProvider),
         std::move(logging),
         std::move(requestStats),
         std::move(counters),

@@ -33,6 +33,7 @@ using namespace NActors;
 using namespace NStorage;
 using namespace NThreading;
 using namespace std::chrono_literals;
+using namespace NCloud::NStorage;
 
 using TEndpointId = ui64;
 
@@ -52,7 +53,7 @@ struct TEvFakeRdmaClient
     {
         TEndpointId EndpointId = 0;
         TString AgentId;
-        TPromise<NCloud::NStorage::NRdma::IClientEndpointPtr> Promise;
+        TPromise<NRdma::IClientEndpointPtr> Promise;
     };
 
     struct TStopEndpoint
@@ -65,7 +66,7 @@ struct TEvFakeRdmaClient
     {
         TClientRequestId ClientReqId = 0;
         TEndpointId EndpointId = 0;
-        NCloud::NStorage::NRdma::TClientRequestPtr Request;
+        NRdma::TClientRequestPtr Request;
         TCallContextBasePtr RdmaCallContext;
     };
 
@@ -112,7 +113,7 @@ struct TEvFakeRdmaClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientRequest: public NCloud::NStorage::NRdma::TClientRequest
+struct TClientRequest: public NRdma::TClientRequest
 {
     TActorId RdmaActorId;
 
@@ -122,13 +123,11 @@ struct TClientRequest: public NCloud::NStorage::NRdma::TClientRequest
 public:
     TClientRequest(
         const TActorId& rdmaActorId,
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
-        std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
+        NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NRdma::TNullContext> context,
         ui32 requestSize,
         ui32 responseSize)
-        : NCloud::NStorage::NRdma::TClientRequest(
-              std::move(handler),
-              std::move(context))
+        : NRdma::TClientRequest(std::move(handler), std::move(context))
         , RdmaActorId(rdmaActorId)
         , RequestStorage(std::make_unique<char[]>(requestSize))
         , ResponseStorage(std::make_unique<char[]>(responseSize))
@@ -141,21 +140,20 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 void AbortRequest(
-    NCloud::NStorage::NRdma::TClientRequestPtr request,
+    NRdma::TClientRequestPtr request,
     ui32 error,
     TStringBuf message)
 {
-    const size_t len = NCloud::NStorage::NRdma::SerializeError(
-        error, message, request->ResponseBuffer);
+    const size_t len =
+        NRdma::SerializeError(error, message, request->ResponseBuffer);
 
     auto* handler = request->Handler.get();
-    handler->HandleResponse(
-        std::move(request), NCloud::NStorage::NRdma::RDMA_PROTO_FAIL, len);
+    handler->HandleResponse(std::move(request), NRdma::RDMA_PROTO_FAIL, len);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientEndpoint: public NCloud::NStorage::NRdma::IClientEndpoint
+class TClientEndpoint: public NRdma::IClientEndpoint
 {
 private:
     const TEndpointId EndpointId;
@@ -171,14 +169,14 @@ public:
         TEndpointId endpointId);
 
     auto AllocateRequest(
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
-        std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
+        NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes)
-        -> TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> override;
+        -> TResultOrError<NRdma::TClientRequestPtr> override;
 
     ui64 SendRequest(
-        NCloud::NStorage::NRdma::TClientRequestPtr req,
+        NRdma::TClientRequestPtr req,
         TCallContextBasePtr callContext) override;
 
     void CancelRequest(ui64 reqId) override;
@@ -205,10 +203,10 @@ TClientEndpoint::TClientEndpoint(
 {}
 
 auto TClientEndpoint::AllocateRequest(
-    NCloud::NStorage::NRdma::IClientHandlerPtr handler,
-    std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
-    size_t requestBytes, size_t responseBytes)
-    -> TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr>
+    NRdma::IClientHandlerPtr handler,
+    std::unique_ptr<NRdma::TNullContext> context,
+    size_t requestBytes,
+    size_t responseBytes) -> TResultOrError<NRdma::TClientRequestPtr>
 {
     auto req = std::make_unique<TClientRequest>(
         RdmaActorId,
@@ -217,11 +215,11 @@ auto TClientEndpoint::AllocateRequest(
         requestBytes,
         responseBytes);
 
-    return NCloud::NStorage::NRdma::TClientRequestPtr(std::move(req));
+    return NRdma::TClientRequestPtr(std::move(req));
 }
 
 ui64 TClientEndpoint::SendRequest(
-    NCloud::NStorage::NRdma::TClientRequestPtr req,
+    NRdma::TClientRequestPtr req,
     TCallContextBasePtr callContext)
 {
     auto request = std::make_unique<TEvFakeRdmaClient::TEvSendRequest>();
@@ -271,17 +269,17 @@ private:
     const TEndpointId EndpointId;
     const TActorId Parent;
     const ui32 NodeId;
-    NCloud::NStorage::NRdma::TClientRequestPtr Request;
+    NRdma::TClientRequestPtr Request;
     TCallContextPtr CallContext;
 
 public:
     TExecuteRequestActor(
-            TClientRequestId clientRequestId,
-            TEndpointId endpointId,
-            TActorId parent,
-            ui32 nodeId,
-            NCloud::NStorage::NRdma::TClientRequestPtr request,
-            TCallContextPtr callContext)
+        TClientRequestId clientRequestId,
+        TEndpointId endpointId,
+        TActorId parent,
+        ui32 nodeId,
+        NRdma::TClientRequestPtr request,
+        TCallContextPtr callContext)
         : ClientRequestId(clientRequestId)
         , EndpointId(endpointId)
         , Parent(parent)
@@ -622,16 +620,14 @@ private:
         const TResponse& response,
         ui32 msgId)
     {
-        size_t len =
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                Request->ResponseBuffer,
-                msgId,
-                0,   // flags
-                response);
+        size_t len = NRdma::TProtoMessageSerializer::Serialize(
+            Request->ResponseBuffer,
+            msgId,
+            0,   // flags
+            response);
 
         auto* handler = Request->Handler.get();
-        handler->HandleResponse(
-            std::move(Request), NCloud::NStorage::NRdma::RDMA_PROTO_OK, len);
+        handler->HandleResponse(std::move(Request), NRdma::RDMA_PROTO_OK, len);
 
         ReplyAndDie(ctx);
     }
@@ -665,16 +661,15 @@ private:
             parts.emplace_back(TBlockDataRef(buffer.data(), buffer.size()));
         }
 
-        size_t len =
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
-                Request->ResponseBuffer,
-                TBlockStoreProtocol::ReadDeviceBlocksResponse,
-                0,   // flags
-                proto, parts);
+        size_t len = NRdma::TProtoMessageSerializer::SerializeWithData(
+            Request->ResponseBuffer,
+            TBlockStoreProtocol::ReadDeviceBlocksResponse,
+            0,   // flags
+            proto,
+            parts);
 
         auto* handler = Request->Handler.get();
-        handler->HandleResponse(
-            std::move(Request), NCloud::NStorage::NRdma::RDMA_PROTO_OK, len);
+        handler->HandleResponse(std::move(Request), NRdma::RDMA_PROTO_OK, len);
 
         ReplyAndDie(ctx);
     }
@@ -1069,7 +1064,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeRdmaClient final: public NCloud::NStorage::NRdma::IClient
+class TFakeRdmaClient final: public NRdma::IClient
 {
 private:
     IActorSystemPtr ActorSystem;
@@ -1087,10 +1082,10 @@ public:
     void Start() override;
     void Stop() override;
 
-    // NCloud::NStorage::NRdma::IClient
+    // IClient
 
     auto StartEndpoint(TString host, ui32 port)
-        -> TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr> override;
+        -> TFuture<NRdma::IClientEndpointPtr> override;
 
     void DumpHtml(IOutputStream& out) const override;
 
@@ -1116,15 +1111,14 @@ void TFakeRdmaClient::Stop()
 }
 
 auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
-    -> TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
+    -> TFuture<NRdma::IClientEndpointPtr>
 {
     STORAGE_INFO("Start endpoint " << host << ":" << port);
 
     auto request = std::make_unique<TEvFakeRdmaClient::TEvStartEndpoint>();
     request->EndpointId = NextEndpointId++;
     request->AgentId = std::move(host);
-    request->Promise =
-        NewPromise<NCloud::NStorage::NRdma::IClientEndpointPtr>();
+    request->Promise = NewPromise<NRdma::IClientEndpointPtr>();
 
     auto future = request->Promise.GetFuture();
 
@@ -1147,8 +1141,7 @@ bool TFakeRdmaClient::IsAlignedDataEnabled() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NStorage::NRdma::IClientPtr CreateFakeRdmaClient(
-    IActorSystemPtr actorSystem)
+NRdma::IClientPtr CreateFakeRdmaClient(IActorSystemPtr actorSystem)
 {
     return std::make_shared<TFakeRdmaClient>(std::move(actorSystem));
 }

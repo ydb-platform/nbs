@@ -78,6 +78,10 @@ void TCellManager::Start()
 
 void TCellManager::Stop()
 {
+    for (auto& cell: Cells) {
+        cell.second->Stop();
+    }
+
     Bootstrap.GrpcClient->Stop();
 }
 
@@ -161,16 +165,20 @@ ICellManagerPtr CreateCellManager(
     IMonitoringServicePtr monitoring,
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
+    ICertificateProviderPtr certificateProvider,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient)
 {
+    auto appConfig = std::make_shared<NClient::TClientAppConfig>(
+        config->GetGrpcClientConfig());
+
     auto result = NClient::CreateMultiHostClient(
-        std::make_shared<NClient::TClientAppConfig>(
-            config->GetGrpcClientConfig()),
+        std::move(appConfig),
         timer,
         scheduler,
         logging,
         monitoring,
-        std::move(serverStats));
+        std::move(serverStats),
+        std::move(certificateProvider));
 
     if (HasError(result)) {
         STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "unable to create gRPC client";

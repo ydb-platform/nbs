@@ -379,15 +379,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return;
     }
 
-    if (!canUseUnconfirmed) {
-        // We schedule this event for the case if the client does not call
-        // AddData. Thus we ensure that the collect barrier will be released
-        // eventually.
-        ctx.Schedule(
-            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
-            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
-    }
-
     AcquireCollectBarrier(commitId);
 
     auto response =
@@ -401,6 +392,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             GenerateBlobId(commitId, length, blobIndex, &partialBlobId);
         if (!ok) {
             ReassignDataChannelsIfNeeded(ctx);
+
+            TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
 
             auto response =
                 std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>(
@@ -418,6 +411,21 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             partialBlobId.Channel(),
             partialBlobId.Generation()));
         offset += length;
+    }
+
+    if (canUseUnconfirmed) {
+        // If the client never confirms or cancels the operation, delete
+        // unconfirmed data and release the collect barrier eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvCancelUnconfirmedData(commitId));
+    } else {
+        // We schedule this event for the case if the client does not call
+        // AddData. Thus we ensure that the collect barrier will be released
+        // eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
     }
 
     response->Record.SetCommitId(commitId);
@@ -460,7 +468,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             commitId,
             TTrackedUnconfirmedData{
                 .Data = std::move(unconfirmedData),
-                .SessionId = GetSessionId(msg->Record)});
+                .SessionId = GetSessionId(msg->Record),
+                .PipeServerId = ev->Recipient});
         TABLET_VERIFY(inserted);
 
         NProto::TProfileLogRequestInfo profileLogRequest;

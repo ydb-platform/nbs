@@ -24,6 +24,7 @@ RECURSE_FOR_TESTS(
     fmdtest
     fs_posix_compliance
     guest_cache
+    lease_expiration
     loadtest
     profile_log
     registration

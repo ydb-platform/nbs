@@ -25,7 +25,7 @@ class FilestoreCliClient:
         vhost_port=None,
         verbose=False,
         cwd=".",
-        timeout=60,
+        timeout=200,
         config_path=None,
         auth_token=None,
         check_exit_code=True,
@@ -419,6 +419,18 @@ class FilestoreCliClient:
 
     @standard_command("ln")
     def ln(self, cmd):
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def readlink(self, fs, path=None, node=None):
+        cmd = [
+            self.__binary_path, "readlink",
+            "--filesystem", fs,
+        ]
+        if path is not None:
+            cmd += ["--path", path]
+        if node is not None:
+            cmd += ["--node", str(node)]
+        cmd += self.__cmd_opts()
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
 

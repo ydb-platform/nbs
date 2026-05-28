@@ -8,6 +8,7 @@
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
@@ -35,6 +36,11 @@ struct TTestProfileLog
     void Write(IProfileLog::TRecord record) override
     {
         Record = std::move(record);
+    }
+
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
     }
 };
 
@@ -364,10 +370,12 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     {
         const auto nodeId = 12;
         const auto name = "node";
+        const bool unlinkDirectory = true;
 
         NProto::TUnlinkNodeRequest req;
         req.SetNodeId(nodeId);
         req.SetName(name);
+        req.SetUnlinkDirectory(unlinkDirectory);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitProfileLogRequestInfo(profileLogRequest, req);
@@ -375,6 +383,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, profileLogRequest.RangesSize());
         UNIT_ASSERT(profileLogRequest.HasNodeInfo());
         UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(unlinkDirectory),
+            profileLogRequest.GetFlags());
 
         const auto& nodeInfo = profileLogRequest.GetNodeInfo();
         UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetParentNodeId());
@@ -506,7 +517,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     {
         const auto nodeId = 12;
         const auto mode = 56;
-        const auto flags = 78;
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_MODE);
+        SetProtoFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_UID);
 
         NProto::TSetNodeAttrRequest req;
         req.SetNodeId(nodeId);
@@ -529,6 +542,38 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(mode, nodeInfo.GetMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());
         UNIT_ASSERT(!nodeInfo.HasSize());
+        UNIT_ASSERT(!nodeInfo.HasATime());
+        UNIT_ASSERT(!nodeInfo.HasMTime());
+        UNIT_ASSERT(!nodeInfo.HasCTime());
+    }
+
+    Y_UNIT_TEST(ShouldSetNodeAttrRequestInitializeTimestampsCorrectly)
+    {
+        using F = NProto::TSetNodeAttrRequest;
+        const ui64 atime = 111;
+        const ui64 mtime = 222;
+        const ui64 ctime = 333;
+        ui32 flags = 0;
+        SetProtoFlag(flags, F::F_SET_ATTR_ATIME);
+        SetProtoFlag(flags, F::F_SET_ATTR_MTIME);
+        SetProtoFlag(flags, F::F_SET_ATTR_CTIME);
+
+        NProto::TSetNodeAttrRequest req;
+        req.SetFlags(flags);
+        req.MutableUpdate()->SetATime(atime);
+        req.MutableUpdate()->SetMTime(mtime);
+        req.MutableUpdate()->SetCTime(ctime);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitProfileLogRequestInfo(profileLogRequest, req);
+
+        const auto& nodeInfo = profileLogRequest.GetNodeInfo();
+        UNIT_ASSERT(nodeInfo.HasATime());
+        UNIT_ASSERT_VALUES_EQUAL(atime, nodeInfo.GetATime());
+        UNIT_ASSERT(nodeInfo.HasMTime());
+        UNIT_ASSERT_VALUES_EQUAL(mtime, nodeInfo.GetMTime());
+        UNIT_ASSERT(nodeInfo.HasCTime());
+        UNIT_ASSERT_VALUES_EQUAL(ctime, nodeInfo.GetCTime());
     }
 
     Y_UNIT_TEST(ShouldGetNodeAttrRequestInitializeFieldsCorrectly)

@@ -351,7 +351,9 @@ public:
     auto CreateConfigureAsShardRequest(
         ui32 shardNo,
         bool directoryCreationInShardsEnabled = false,
-        TVector<TString> shardIds = {})
+        TVector<TString> shardIds = {},
+        NProtoPrivate::TFastShardConfig fastShardConfig = {},
+        bool isFastShard = false)
     {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
@@ -361,6 +363,8 @@ public:
         for (auto& shardId: shardIds) {
             request->Record.AddShardFileSystemIds(std::move(shardId));
         }
+        *request->Record.MutableFastShardConfig() = std::move(fastShardConfig);
+        request->Record.SetIsFastShard(isFastShard);
 
         return request;
     }

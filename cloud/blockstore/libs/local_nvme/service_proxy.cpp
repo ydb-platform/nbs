@@ -8,6 +8,29 @@ namespace NCloud::NBlockStore {
 
 namespace {
 
+using namespace NThreading;
+
+////////////////////////////////////////////////////////////////////////////////
+
+auto GetDeviceDesc(const NProto::TNVMeDevice& device)
+{
+    NProto::TNVMeDeviceDesc desc;
+
+    desc.SetSerialNumber(device.GetSerialNumber());
+    desc.SetPCIAddress(device.GetPCIAddress());
+    if (device.HasIOMMUGroup()) {
+        desc.SetIOMMUGroup(device.GetIOMMUGroup());
+    }
+    if (device.HasVfioDevName()) {
+        desc.SetVfioDevName(device.GetVfioDevName());
+    }
+    if (device.HasNumaNode()) {
+        desc.SetNumaNode(device.GetNumaNode());
+    }
+
+    return desc;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalNVMeServiceProxy
@@ -41,7 +64,7 @@ public:
     }
 
     template <typename TMethod>
-    NThreading::TFuture<typename TMethod::TResponse> Execute(
+    TFuture<typename TMethod::TResponse> Execute(
         TCallContextPtr ctx,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
@@ -51,7 +74,7 @@ public:
             std::move(request));
     }
 
-    NThreading::TFuture<NProto::TListNVMeDevicesResponse> ListNVMeDevices(
+    TFuture<NProto::TListNVMeDevicesResponse> ListNVMeDevices(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TListNVMeDevicesRequest> request) override
     {
@@ -65,20 +88,15 @@ public:
 
                 NProto::TListNVMeDevicesResponse response;
                 response.MutableError()->CopyFrom(error);
-                for (const auto& src: devices) {
-                    auto* dst = response.AddDevices();
-                    dst->SetSerialNumber(src.GetSerialNumber());
-                    dst->SetPCIAddress(src.GetPCIAddress());
-                    if (src.HasIOMMUGroup()) {
-                        dst->SetIOMMUGroup(src.GetIOMMUGroup());
-                    }
+                for (const auto& device: devices) {
+                    *response.AddDevices() = GetDeviceDesc(device);
                 }
 
                 return response;
             });
     }
 
-    NThreading::TFuture<NProto::TAcquireNVMeDeviceResponse> AcquireNVMeDevice(
+    TFuture<NProto::TAcquireNVMeDeviceResponse> AcquireNVMeDevice(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TAcquireNVMeDeviceRequest> request) override
     {
@@ -88,13 +106,18 @@ public:
             .Apply(
                 [](const auto& future)
                 {
+                    const auto& [device, error] = future.GetValue();
+
                     NProto::TAcquireNVMeDeviceResponse response;
-                    response.MutableError()->CopyFrom(future.GetValue());
+                    response.MutableError()->CopyFrom(error);
+                    if (!HasError(error)) {
+                        *response.MutableDevice() = GetDeviceDesc(device);
+                    }
                     return response;
                 });
     }
 
-    NThreading::TFuture<NProto::TReleaseNVMeDeviceResponse> ReleaseNVMeDevice(
+    TFuture<NProto::TReleaseNVMeDeviceResponse> ReleaseNVMeDevice(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TReleaseNVMeDeviceRequest> request) override
     {

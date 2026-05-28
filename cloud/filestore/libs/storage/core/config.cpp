@@ -69,7 +69,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AutomaticallyCreatedShardSize,                          ui64,   5_TB  )\
     xxx(EnforceCorrectFileSystemShardCountUponSessionCreation,  bool,   false )\
                                                                                \
-    xxx(ShardIdSelectionInLeaderEnabled,                        bool,   false )\
     xxx(ShardBalancerDesiredFreeSpaceReserve,                   ui64,   1_TB  )\
     xxx(ShardBalancerMinFreeSpaceReserve,                       ui64,   1_MB  )\
     xxx(ShardBalancerPolicy,                                                   \
@@ -98,6 +97,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
     xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
     xxx(FlushBytesItemCountThresholdForBackpressure,   ui64,    500'000       )\
+    xxx(CollectGarbageThresholdForBackpressure,        ui64,    1_TB          )\
     xxx(BackpressureThresholdPercentageForBackgroundOpsPriority,  ui32,   90  )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
@@ -215,7 +215,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         TDuration,                                                             \
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
-    xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(AllowFileStoreDestroyWithOrphanSessions,        bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
@@ -247,6 +246,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(InMemoryIndexCacheLoadSchedulePeriod,                                  \
         TDuration,                                                             \
         TDuration::Seconds(0)                                                 )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInMainTablet,     bool,       false     )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInShards,         bool,       false     )\
                                                                                \
     xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
                                                                                \
@@ -327,6 +328,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ListNodesSizeMode,                                                     \
         NProto::EListNodesSizeMode,                                            \
         NProto::LNSM_NAME_ONLY                                                )\
+    xxx(UseListNodesInternal,              bool,      false                   )\
                                                                                \
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
@@ -337,6 +339,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
                                                                                \
     xxx(HideFileNamesInTabletDirectoryViewer,   bool,   false                 )\
+                                                                               \
+    xxx(UseCustomReadDataResponseParser,        bool,   false                 )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

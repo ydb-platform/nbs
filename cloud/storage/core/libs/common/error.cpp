@@ -62,6 +62,7 @@ EErrorKind GetErrorKind(const NProto::TError& e)
         case E_FS_INVALID_SESSION:
             return EErrorKind::ErrorSession;
         case E_ABORTED:
+        case E_TRANSPORT_ERROR:
             return EErrorKind::ErrorAborted;
     }
 

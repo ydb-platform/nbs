@@ -71,6 +71,8 @@ private:
     TIntrusiveList<TFlushRequest> FlushRequests;
     TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
 
+    bool DrainingMode = false;
+
 public:
     using TEntryVisitor = TFunctionRef<bool(const TCachedWriteDataRequest*)>;
     using TPin = ui64;
@@ -86,7 +88,15 @@ public:
     // Read state from the persistent storage
     bool Init(IPersistentStoragePtr persistentStorage);
 
-    bool HasUnflushedRequests() const;
+    // Prevent new WriteData requests from being added to the cache - they
+    // will fail with E_REJECTED error.
+    // Note: exiting from draining mode is not possible.
+    void SetDrainingMode();
+
+    // Returns true if the cache is in draining mode and there are no more
+    // unflushed requests.
+    // Note: only transition from false to true is possible.
+    bool IsDrained() const;
 
     // Add a WriteData request to the pending queue and completes the future
     // when the request is stored in the persistent storage and becomes cached
@@ -132,7 +142,8 @@ public:
     void FlushSucceeded(ui64 nodeId, size_t requestCount);
 
     // Inform that the flush has failed - the error should be propagated to
-    // Flush, FlushAll and ReleaseHandle requests
+    // Flush, FlushAll and ReleaseHandle requests.
+    // In the case of E_FS_NOSPC, pending requests will also be failed.
     EFlushRetryStatus FlushFailed(
         ui64 nodeId,
         const NCloud::NProto::TError& error);
@@ -183,6 +194,8 @@ private:
         ui64 nodeId,
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
+
+    void FailPendingRequests(const NCloud::NProto::TError& error);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

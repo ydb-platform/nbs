@@ -98,7 +98,7 @@ public:
     size_t GetChunkCount() const;
 
     // not thread safe, use only during restoration from storage
-    void ConsumeChunk(TDirectoryHandleChunk& chunk);
+    void ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

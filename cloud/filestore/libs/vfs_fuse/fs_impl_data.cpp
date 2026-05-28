@@ -480,21 +480,22 @@ void TFileSystem::Read(
         }
     };
 
-    const auto wbcState = GetServerWriteBackCacheState(fi);
-    switch (wbcState) {
-        case EServerWriteBackCacheState::Enabled: {
-            WriteBackCache.ReadData(callContext, std::move(request))
-                .Subscribe(std::move(callback));
-            break;
-        }
-        case EServerWriteBackCacheState::Disabled: {
+    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
+
+    switch (strategy) {
+        case EWriteBackCacheRequestStrategy::DoNotUse: {
             Session->ReadData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
-        case EServerWriteBackCacheState::Draining: {
+        case EWriteBackCacheRequestStrategy::UseDirect: {
             WriteBackCache
                 .ReadDataDirect(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EWriteBackCacheRequestStrategy::UseNonDirect: {
+            WriteBackCache.ReadData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
@@ -546,7 +547,7 @@ void TFileSystem::DoWrite(
     ui64 size,
     fuse_file_info* fi)
 {
-    const auto wbcState = GetServerWriteBackCacheState(fi);
+    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -561,7 +562,7 @@ void TFileSystem::DoWrite(
         const auto& response = future.GetValue();
         const auto& error = response.GetError();
 
-        if (wbcState != EServerWriteBackCacheState::Enabled) {
+        if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
             self->FSyncQueue
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
@@ -572,27 +573,27 @@ void TFileSystem::DoWrite(
             // that read node attributes.
             //
 
-            InvalidateNodeInCache(ino);
+            self->InvalidateNodeInCache(ino);
             self->ReplyWrite(*callContext, error, req, size);
         }
     };
 
-    if (wbcState != EServerWriteBackCacheState::Enabled) {
+    if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
         FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
     }
 
-    switch (wbcState) {
-        case EServerWriteBackCacheState::Enabled: {
+    switch (strategy) {
+        case EWriteBackCacheRequestStrategy::UseNonDirect: {
             WriteBackCache.WriteData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
-        case EServerWriteBackCacheState::Disabled: {
+        case EWriteBackCacheRequestStrategy::DoNotUse: {
             Session->WriteData(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
-        case EServerWriteBackCacheState::Draining: {
+        case EWriteBackCacheRequestStrategy::UseDirect: {
             WriteBackCache
                 .WriteDataDirect(std::move(callContext), std::move(request))
                 .Subscribe(std::move(callback));
@@ -1093,23 +1094,25 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheState(
+EWriteBackCacheRequestStrategy TFileSystem::GetWriteBackCacheRequestStrategy(
     const fuse_file_info* fi) const
 {
     if (!WriteBackCache) {
-        return EServerWriteBackCacheState::Disabled;
+        return EWriteBackCacheRequestStrategy::DoNotUse;
     }
 
-    if (!Config->GetServerWriteBackCacheEnabled()) {
-        return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
-                                        : EServerWriteBackCacheState::Draining;
-    }
+    switch (WriteBackCache.GetMode()) {
+        case EWriteBackCacheMode::Normal:
+            return fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)
+                       ? EWriteBackCacheRequestStrategy::UseDirect
+                       : EWriteBackCacheRequestStrategy::UseNonDirect;
 
-    if (fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)) {
-        return EServerWriteBackCacheState::Draining;
-    }
+        case EWriteBackCacheMode::Draining:
+            return EWriteBackCacheRequestStrategy::UseDirect;
 
-    return EServerWriteBackCacheState::Enabled;
+        case EWriteBackCacheMode::Drained:
+            return EWriteBackCacheRequestStrategy::DoNotUse;
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

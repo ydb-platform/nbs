@@ -386,6 +386,7 @@ public:
     //
     // Commits
     //
+
 public:
 
     ui64 GetLastCommitId() const
@@ -559,7 +560,8 @@ public:
     void WriteMixedBlocks(
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
-        const TVector<ui32>& blockIndices);
+        const TVector<ui32>& blockIndices,
+        ui8 compactionRangeCount);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,
@@ -568,7 +570,7 @@ public:
 
     bool FindMixedBlocksForCompaction(
         TPartitionDatabase& db,
-        IBlocksIndexVisitor& visitor,
+        IMixedBlocksIndexVisitor& visitor,
         ui32 rangeIndex);
 
     void RaiseRangeTemperature(ui32 rangeIndex);
@@ -592,6 +594,8 @@ private:
     const ui32 MaxBlobsPerRange;
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
+    ui64 BlobsProcessedDuringCompaction = 0;
+    ui64 BlockMaskReadDuringCompaction = 0;
 
 public:
     TOperationState& GetCompactionState(ECompactionType type);
@@ -696,6 +700,28 @@ public:
     void SetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
+
+    void IncrementBlobsProcessedDuringCompaction()
+    {
+        ++BlobsProcessedDuringCompaction;
+    }
+
+    void IncrementBlockMaskReadDuringCompaction()
+    {
+        ++BlockMaskReadDuringCompaction;
+    }
+
+    ui64 GetBlobsProcessedDuringCompaction() const
+    {
+        return BlobsProcessedDuringCompaction;
+    }
+
+    ui64 GetBlockMaskReadDuringCompaction() const
+    {
+        return BlockMaskReadDuringCompaction;
+    }
+
+    ui32 CalculateNewlyZeroedBlocks(ui32 blockIndex, ui64 usedBlockCount) const;
 
 private:
     void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);
@@ -863,6 +889,11 @@ public:
     }
 
     TCleanupQueue& GetCleanupQueue()
+    {
+        return CleanupQueue;
+    }
+
+    const TCleanupQueue& GetCleanupQueue() const
     {
         return CleanupQueue;
     }

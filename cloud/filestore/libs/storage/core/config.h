@@ -110,6 +110,7 @@ public:
     ui32 GetCompactionThresholdForBackpressure() const;
     ui64 GetFlushBytesThresholdForBackpressure() const;
     ui64 GetFlushBytesItemCountThresholdForBackpressure() const;
+    ui64 GetCollectGarbageThresholdForBackpressure() const;
     ui32 GetBackpressureThresholdPercentageForBackgroundOpsPriority() const;
 
     TString GetHDDSystemChannelPoolKind() const;
@@ -180,6 +181,7 @@ public:
     ui32 GetMaxResponseEntries() const;
     ui32 GetMaxBytesMultiplier() const;
     NProto::EListNodesSizeMode GetListNodesSizeMode() const;
+    bool GetUseListNodesInternal() const;
 
     ui32 GetDefaultNodesLimit() const;
     ui32 GetSizeToNodesRatio() const;
@@ -242,8 +244,6 @@ public:
 
     ui32 GetNodeIndexCacheMaxNodes() const;
 
-    bool GetMultiTabletForwardingEnabled() const;
-
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
     TDuration GetEnqueueBlobIndexOpIfNeededScheduleInterval() const;
 
@@ -265,6 +265,8 @@ public:
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInMainTablet() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
@@ -321,7 +323,6 @@ public:
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
 
-    bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
     NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
@@ -400,6 +401,8 @@ public:
     [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
 
     [[nodiscard]] bool GetHideFileNamesInTabletDirectoryViewer() const;
+
+    [[nodiscard]] bool GetUseCustomReadDataResponseParser() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -13,13 +14,17 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/digest/city.h>
+#include <util/generic/map.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -27,6 +32,16 @@ using namespace NActors;
 using namespace NKikimr;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TShardedFileSystemConfig
+{
+    const TString FsId = "test";
+    const TString Shard1Id = FsId + "_s1";
+    const ui64 ShardBlockCount = 1'000;
+    const ui64 MainFsBlockCount = ShardBlockCount;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -154,6 +169,306 @@ ReadData(TTestSetup& setup, ui64 offset, ui64 bytes)
         setup.Handle,
         offset,
         bytes);
+}
+
+enum class EShardPipeToDisconnect
+{
+    // Pipe between the main filesystem tablet and the shard tablet, used for
+    // shard control requests such as CreateSession.
+    Control,
+    // Pipe between the service write actor and the shard tablet, used by the
+    // data write path such as GenerateBlobIds.
+    Data,
+};
+
+void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
+    EShardPipeToDisconnect pipeToDisconnect)
+{
+    TShardedFileSystemConfig fsConfig;
+
+    NProto::TStorageConfig storageConfig;
+    storageConfig.SetAutomaticShardCreationEnabled(true);
+    storageConfig.SetAutomaticallyCreatedShardSize(1_GB);
+    storageConfig.SetShardAllocationUnit(1_GB);
+    storageConfig.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+    storageConfig.SetAddingUnconfirmedDataEnabled(true);
+    storageConfig.SetUnconfirmedDataCountHardLimit(100);
+    storageConfig.SetWriteBlobThreshold(128_KB);
+    storageConfig.SetThreeStageWriteEnabled(true);
+    storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+
+    TTestEnvConfig envConfig;
+    envConfig.DynamicNodes = 2;
+    TTestEnv env(envConfig, storageConfig);
+
+    const ui32 fsNodeIdx = env.AddDynamicNode();
+
+    TServiceClient fsService(env.GetRuntime(), fsNodeIdx);
+    fsService.CreateFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount);
+
+    auto& runtime = env.GetRuntime();
+    ui64 shardTabletId = 0;
+    const TString targetClientId = "client";
+
+    TMap<TActorId, TActorId> shardPipeClientsByServer;
+    TActorId shardControlPipeServer;
+    TActorId shardControlClient;
+    TActorId shardDataPipeServer;
+    TActorId shardDataClient;
+    TActorId writeActor;
+    TString shardControlSessionId;
+    TString shardDataSessionId;
+    TAutoPtr<IEventHandle> blockedPutResult;
+
+    // Capture the shard control pipe and the independent shard data pipe.
+    // The blob put result is held to keep the write actor alive while the test
+    // disconnects one of those pipes.
+    auto prevFilter = runtime.SetEventFilter(
+        [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvTabletPipe::EvClientConnected: {
+                    const auto* msg =
+                        event->Get<TEvTabletPipe::TEvClientConnected>();
+                    if (msg->Status == NKikimrProto::OK) {
+                        shardPipeClientsByServer[msg->ServerId] = msg->ClientId;
+                    }
+                    break;
+                }
+
+                case TEvTabletPipe::EvServerConnected: {
+                    const auto* msg =
+                        event->Get<TEvTabletPipe::TEvServerConnected>();
+                    shardPipeClientsByServer[msg->ServerId] = msg->ClientId;
+                    break;
+                }
+
+                case TEvIndexTablet::EvCreateSessionRequest: {
+                    if (event->Recipient == MakeIndexTabletProxyServiceId()) {
+                        break;
+                    }
+
+                    const auto* msg =
+                        event->Get<TEvIndexTablet::TEvCreateSessionRequest>();
+                    if (msg->Record.GetFileSystemId() == fsConfig.Shard1Id &&
+                        msg->Record.GetHeaders().GetClientId() ==
+                            targetClientId &&
+                        !shardControlPipeServer)
+                    {
+                        shardControlPipeServer = event->Recipient;
+                        shardControlClient = event->Sender;
+                        shardControlSessionId =
+                            msg->Record.GetHeaders().GetSessionId();
+                    }
+
+                    break;
+                }
+
+                case TEvIndexTablet::EvGenerateBlobIdsRequest: {
+                    const auto* msg =
+                        event->Get<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
+                    if (msg->Record.GetFileSystemId() != fsConfig.Shard1Id ||
+                        msg->Record.GetHeaders().GetClientId() !=
+                            targetClientId)
+                    {
+                        break;
+                    }
+
+                    if (event->Recipient == MakeIndexTabletProxyServiceId()) {
+                        writeActor = event->Sender;
+                        break;
+                    }
+
+                    shardDataPipeServer = event->Recipient;
+                    shardDataClient = event->Sender;
+                    shardDataSessionId =
+                        msg->Record.GetHeaders().GetSessionId();
+                    break;
+                }
+
+                case TEvBlobStorage::EvPutResult: {
+                    if (writeActor && event->Recipient == writeActor &&
+                        !blockedPutResult)
+                    {
+                        blockedPutResult = event.Release();
+                        return true;
+                    }
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+    fsService.ResizeFileStore(
+        fsConfig.FsId,
+        fsConfig.MainFsBlockCount,
+        false /* force */,
+        1 /* shardCount */);
+    WaitForTabletStart(fsService);
+
+    const auto mainTabletId = fsService.GetFileStoreInfo(fsConfig.FsId)
+                                  ->Record.GetFileStore()
+                                  .GetMainTabletId();
+    const auto mainTabletActorId = ResolveTablet(runtime, mainTabletId);
+
+    shardTabletId = fsService.GetFileStoreInfo(fsConfig.Shard1Id)
+                        ->Record.GetFileStore()
+                        .GetMainTabletId();
+    UNIT_ASSERT(shardTabletId);
+
+    // Create a file on the shard and write through the service. The write
+    // service is placed on a node different from the main tablet node, so the
+    // data path uses a different tablet pipe than the shard control path.
+    const ui32 serviceNodeIdx = env.AddDynamicNode();
+    UNIT_ASSERT_VALUES_UNEQUAL(
+        mainTabletActorId.NodeId(),
+        runtime.GetNodeId(serviceNodeIdx));
+    TServiceClient service(env.GetRuntime(), serviceNodeIdx);
+    auto headers = service.InitSession(fsConfig.FsId, targetClientId);
+
+    const auto nodeId =
+        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+    UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
+
+    const auto handle = service
+                            .CreateHandle(
+                                headers,
+                                fsConfig.FsId,
+                                nodeId,
+                                "",
+                                TCreateHandleArgs::RDWR)
+                            ->Record.GetHandle();
+
+    service.SendWriteDataRequest(
+        headers,
+        fsConfig.FsId,
+        nodeId,
+        handle,
+        0,
+        GenerateValidateData(256_KB));
+
+    UNIT_ASSERT_C(
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition =
+                    [&]()
+                {
+                    return !!blockedPutResult && !!shardControlPipeServer &&
+                           !!shardDataPipeServer;
+                }},
+            TDuration::Seconds(5)),
+        "Timed out waiting for blocked write and shard pipe capture");
+
+    // Verify that the test captured the exact two-pipe situation it is about to
+    // use: same logical session, different tablet pipe servers.
+    UNIT_ASSERT_C(blockedPutResult, "Write blob result was not blocked");
+    UNIT_ASSERT_C(
+        shardControlPipeServer,
+        "Shard control pipe CreateSession request was not observed");
+    UNIT_ASSERT_C(
+        shardDataPipeServer,
+        "Shard data pipe GenerateBlobIds request was not observed");
+    UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, shardControlSessionId);
+    UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, shardDataSessionId);
+    UNIT_ASSERT_C(
+        shardControlPipeServer != shardDataPipeServer,
+        TStringBuilder()
+            << "Shard control path and data path used the same pipe server: "
+            << shardControlPipeServer);
+    UNIT_ASSERT_VALUES_EQUAL(
+        mainTabletActorId.NodeId(),
+        shardControlClient.NodeId());
+    UNIT_ASSERT_VALUES_EQUAL(
+        runtime.GetNodeId(serviceNodeIdx),
+        shardDataClient.NodeId());
+
+    const auto controlPipeClientIt =
+        shardPipeClientsByServer.find(shardControlPipeServer);
+    UNIT_ASSERT_C(
+        controlPipeClientIt != shardPipeClientsByServer.end(),
+        TStringBuilder()
+            << "Pipe client for shard control pipe server was not observed: "
+            << shardControlPipeServer);
+
+    const auto dataPipeClientIt =
+        shardPipeClientsByServer.find(shardDataPipeServer);
+    UNIT_ASSERT_C(
+        dataPipeClientIt != shardPipeClientsByServer.end(),
+        TStringBuilder()
+            << "Pipe client for shard data pipe server was not observed: "
+            << shardDataPipeServer);
+
+    TIndexTabletClient shardTablet(
+        runtime,
+        serviceNodeIdx,
+        shardTabletId,
+        {},
+        false /* updateConfig */);
+
+    // At this point the write actor is blocked on blob storage, so the
+    // unconfirmed entry must stay visible until either the data pipe or the
+    // control pipe is disconnected.
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        GetStorageStats(shardTablet).GetUnconfirmedDataCount());
+
+    // Select either the shard control pipe or the active data pipe.
+    struct TPipeToDisconnect
+    {
+        TActorId Server;
+        TActorId Client;
+        ui32 NodeIdx = 0;
+    };
+
+    const TPipeToDisconnect controlPipeToDisconnect{
+        shardControlPipeServer,
+        controlPipeClientIt->second,
+        fsNodeIdx};
+    const TPipeToDisconnect dataPipeToDisconnect{
+        shardDataPipeServer,
+        dataPipeClientIt->second,
+        serviceNodeIdx};
+
+    const TPipeToDisconnect pipeToDisconnectInfo =
+        pipeToDisconnect == EShardPipeToDisconnect::Control
+            ? controlPipeToDisconnect
+            : dataPipeToDisconnect;
+
+    runtime.ClosePipe(
+        pipeToDisconnectInfo.Client,
+        TActorId(),
+        pipeToDisconnectInfo.NodeIdx);
+
+    // Wait until the shard observes the selected tablet pipe server
+    // disconnect.
+    TDispatchOptions disconnectOptions;
+    disconnectOptions.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+        [server = pipeToDisconnectInfo.Server](IEventHandle& event)
+        {
+            if (event.GetTypeRewrite() != TEvTabletPipe::EvServerDisconnected) {
+                return false;
+            }
+
+            const auto* msg = event.Get<TEvTabletPipe::TEvServerDisconnected>();
+            return msg->ServerId == server;
+        })};
+    UNIT_ASSERT_C(
+        runtime.DispatchEvents(disconnectOptions, TDuration::Seconds(5)),
+        TStringBuilder() << "Timed out waiting for shard pipe disconnect "
+                         << pipeToDisconnectInfo.Server);
+
+    // The disconnect dispatch can already execute and commit the cleanup tx.
+    // Querying stats after it is the synchronization point for the assertion.
+    UNIT_ASSERT_VALUES_EQUAL(
+        0,
+        GetStorageStats(shardTablet).GetUnconfirmedDataCount());
+
+    runtime.SetEventFilter(prevFilter);
 }
 
 }   // namespace
@@ -611,8 +926,11 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             profileLog);
         auto& runtime = setup.GetRuntime();
 
+        NActors::TActorId worker;
         bool enableWriteBlobErrorInjection = false;
         bool writeBlobErrorInjected = false;
+        bool targetCommitIdCaptured = false;
+        ui64 targetCommitId = 0;
         const ui32 confirmAddDataType =
             static_cast<ui32>(EFileStoreRequest::ConfirmAddData);
         const ui32 cancelAddDataType =
@@ -622,10 +940,32 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             {
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGenerateBlobIdsRequest: {
+                        if (enableWriteBlobErrorInjection && !worker) {
+                            worker = event->Sender;
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvGenerateBlobIdsResponse: {
+                        if (enableWriteBlobErrorInjection &&
+                            !targetCommitIdCaptured)
+                        {
+                            auto* msg = event->template Get<
+                                TEvIndexTablet::TEvGenerateBlobIdsResponse>();
+                            targetCommitId = msg->Record.GetCommitId();
+                            targetCommitIdCaptured = true;
+                        }
+                        break;
+                    }
+                    // Ensure that we corrupt needed Put and not random one.
                     case NKikimr::TEvBlobStorage::EvPutResult: {
                         auto* msg = event->template Get<
                             NKikimr::TEvBlobStorage::TEvPutResult>();
                         if (enableWriteBlobErrorInjection &&
+                            event->Recipient == worker &&
+                            targetCommitIdCaptured &&
+                            MakePartialBlobId(msg->Id).CommitId() ==
+                                targetCommitId &&
                             !writeBlobErrorInjected)
                         {
                             msg->Status = NKikimrProto::ERROR;
@@ -1014,6 +1354,22 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             CityHash64(data),
             CityHash64(actual),
             "Data mismatch");
+    }
+
+    // =========================================================================
+    // Sharding tests
+    // =========================================================================
+
+    Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceDataPipeDisconnect)
+    {
+        DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
+            EShardPipeToDisconnect::Data);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceControlPipeDisconnect)
+    {
+        DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
+            EShardPipeToDisconnect::Control);
     }
 
     // =========================================================================

@@ -22,6 +22,14 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NMonitoring::TDynamicCountersPtr GetServerCounters(
+    const IMonitoringServicePtr& monitoring)
+{
+    return monitoring->GetCounters()
+        ->GetSubgroup("counters", "rdma")
+        ->GetSubgroup("component", "server");
+}
+
 IServerPtr CreateTestServer(
     NVerbs::IVerbsPtr verbs,
     const ILoggingServicePtr& logging,
@@ -30,19 +38,13 @@ IServerPtr CreateTestServer(
 {
     return CreateServer(
         std::move(verbs),
-        logging->CreateLog("RDMA_TEST"),
-        monitoring->GetCounters()
-            ->GetSubgroup("counters", "rdma")
-            ->GetSubgroup("component", "server"),
+        TObservabilityProvider(
+            logging,
+            monitoring,
+            "RDMA_TEST",
+            "rdma",
+            "server"),
         std::move(config));
-}
-
-NMonitoring::TDynamicCountersPtr GetServerCounters(
-    const IMonitoringServicePtr& monitoring)
-{
-    return monitoring->GetCounters()
-        ->GetSubgroup("counters", "rdma")
-        ->GetSubgroup("component", "server");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -142,6 +144,75 @@ TEST(TRdmaServerTest, ShouldStartEndpointWithToS)
     ASSERT_EQ(42, testContext->ToS);
 
     server->Stop();
+}
+
+TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QpRetryCount = 2;
+    serverConfig->QpRnrRetryCount = 4;
+    serverConfig->QpTimeout = 6;
+    serverConfig->QpMinRnrTimer = 8;
+
+    std::atomic<bool> acceptCalled = false;
+    std::atomic<int> acceptRetryCount = -1;
+    std::atomic<int> acceptRnrRetryCount = -1;
+    std::atomic<bool> modifyCalled = false;
+
+    testContext->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
+        Y_UNUSED(id);
+        acceptRetryCount.store(param->retry_count);
+        acceptRnrRetryCount.store(param->rnr_retry_count);
+        acceptCalled.store(true);
+    };
+
+    testContext->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+
+        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
+
+        EXPECT_EQ(expectedMask, mask);
+        EXPECT_EQ(serverConfig->QpTimeout, attr->timeout);
+        EXPECT_EQ(serverConfig->QpMinRnrTimer, attr->min_rnr_timer);
+
+        modifyCalled.store(true);
+    };
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto endpoint =
+        server->StartEndpoint("::", 10020, std::make_shared<TServerHandler>());
+    Y_UNUSED(endpoint);
+
+    NVerbs::CreateConnection(testContext);
+
+    auto start = GetCycleCount();
+    while ((!acceptCalled.load() || !modifyCalled.load()) &&
+           CyclesToDurationSafe(GetCycleCount() - start) <
+               TDuration::Seconds(5))
+    {
+        SpinLockPause();
+    }
+
+    ASSERT_TRUE(acceptCalled.load());
+    ASSERT_EQ(serverConfig->QpRetryCount, acceptRetryCount.load());
+    ASSERT_EQ(serverConfig->QpRnrRetryCount, acceptRnrRetryCount.load());
+
+    ASSERT_TRUE(modifyCalled.load());
 }
 
 TEST(TRdmaServerTest, StartEndpointShouldNotThrow)
@@ -373,19 +444,21 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
     auto monitoring = CreateMonitoringServiceStub();
     auto serverConfig = std::make_shared<TServerConfig>();
     serverConfig->StrictValidation = true;
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 20;
+    serverConfig->RecvQueueSize = 40;
 
     context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size)
     {
         Y_UNUSED(id);
 
-        EXPECT_EQ(sizeof(TRejectMessage), size);
+        EXPECT_EQ(sizeof(TRejectMessage2), size);
 
-        const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
+        const auto* rejectMsg = static_cast<const TRejectMessage2*>(data);
         EXPECT_EQ(RDMA_PROTO_VERSION, ParseMessageHeader(rejectMsg));
         EXPECT_EQ(RDMA_PROTO_CONFIG_MISMATCH, rejectMsg->Status);
-        EXPECT_EQ(
-            serverConfig->SendQueueSize + serverConfig->RecvQueueSize,
-            rejectMsg->QueueSize);
+        EXPECT_EQ(serverConfig->SendQueueSize, rejectMsg->SendQueueSize);
+        EXPECT_EQ(serverConfig->RecvQueueSize, rejectMsg->RecvQueueSize);
         EXPECT_EQ(serverConfig->MaxBufferSize, rejectMsg->MaxBufferSize);
 
         if (++rejectCount == 3) {
@@ -412,14 +485,14 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
 
     NVerbs::CreateConnection(
         context,
-        static_cast<ui16>(serverConfig->SendQueueSize + 1),
+        static_cast<ui16>(serverConfig->RecvQueueSize + 1),
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
     NVerbs::CreateConnection(
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
-        static_cast<ui16>(serverConfig->RecvQueueSize - 1),
+        static_cast<ui16>(serverConfig->SendQueueSize - 1),
         serverConfig->MaxBufferSize);
 
     NVerbs::CreateConnection(

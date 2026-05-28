@@ -1,6 +1,7 @@
 PY3_LIBRARY()
 
 PY_SRCS(
+    backtrace.py
     common.py
     __init__.py
     qemu_with_migration.py

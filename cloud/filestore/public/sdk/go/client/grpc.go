@@ -453,6 +453,24 @@ func (client *grpcClient) UnlinkNode(
 	return resp.(*protos.TUnlinkNodeResponse), err
 }
 
+func (client *grpcClient) ExecuteAction(
+	ctx context.Context,
+	req *protos.TExecuteActionRequest,
+) (*protos.TExecuteActionResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ExecuteAction(ctx, req)
+		})
+
+	return resp.(*protos.TExecuteActionResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcEndpointClient struct {

@@ -340,6 +340,35 @@ func (f *FileSystemModel) CreateAllNodesRecursively() {
 	}
 }
 
+func (f *FileSystemModel) CollectStats() {
+	eg, ctx := errgroup.WithContext(f.ctx)
+	eg.SetLimit(10)
+	for index := range f.ExpectedNodes {
+		index := index
+		eg.Go(func() error {
+			node := f.ExpectedNodes[index]
+			nodeWithStats, err := f.session.GetNodeAttr(
+				ctx,
+				node.ParentID,
+				node.Name,
+			)
+			if err != nil {
+				return err
+			}
+
+			f.ExpectedNodes[index].Atime = nodeWithStats.Atime
+			f.ExpectedNodes[index].Mtime = nodeWithStats.Mtime
+			f.ExpectedNodes[index].Ctime = nodeWithStats.Ctime
+			f.ExpectedNodes[index].Size = nodeWithStats.Size
+			f.ExpectedNodes[index].Links = nodeWithStats.Links
+			f.ExpectedNodes[index].DevID = nodeWithStats.DevID
+			return nil
+		})
+	}
+
+	require.NoError(f.t, eg.Wait())
+}
+
 func (f *FileSystemModel) ListAllNodes(
 	parentNodeID uint64,
 	unsafe bool,
@@ -420,6 +449,7 @@ func (f *FileSystemModel) ListAllNodesRecursively(unsafe bool) []nfs.Node {
 
 func (f *FileSystemModel) RequireNodesEqual(
 	nodes []nfs.Node,
+	checkExactMatch bool,
 ) {
 
 	require.Equal(f.t, len(f.ExpectedNodes), len(nodes))
@@ -435,6 +465,14 @@ func (f *FileSystemModel) RequireNodesEqual(
 		require.Equal(f.t, expectedNode.UID, node.UID)
 		require.Equal(f.t, expectedNode.GID, node.GID)
 		require.Equal(f.t, expectedNode.LinkTarget, node.LinkTarget)
+		if checkExactMatch {
+			require.Equal(f.t, expectedNode.Atime, node.Atime)
+			require.Equal(f.t, expectedNode.Mtime, node.Mtime)
+			require.Equal(f.t, expectedNode.Ctime, node.Ctime)
+			require.Equal(f.t, expectedNode.Size, node.Size)
+			require.Equal(f.t, expectedNode.Links, node.Links)
+			require.Equal(f.t, expectedNode.DevID, node.DevID)
+		}
 	}
 }
 

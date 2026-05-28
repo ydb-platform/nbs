@@ -4,10 +4,14 @@ import json
 import logging
 import argparse
 import requests
+import re
+import asyncio
+import functools
+import time
 from dataclasses import dataclass
 import datetime
-from typing import List, Tuple
-
+from typing import Callable, List, Tuple
+from urllib.parse import urlparse
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -51,6 +55,23 @@ DEFAULT_TEST_TARGET = (
     "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
 )
 
+GITHUB_API_RETRY_ATTEMPTS = 3
+GITHUB_API_RETRY_INTERVAL_SEC = 5
+GITHUB_API_TIMEOUT_SEC = 30
+GITHUB_RUNNER_LATEST_VERSION = "latest"
+GITHUB_RUNNER_LATEST_RELEASE_URL = (
+    "https://api.github.com/repos/actions/runner/releases/latest"
+)
+GITHUB_RUNNER_RELEASE_BY_TAG_URL = (
+    "https://api.github.com/repos/actions/runner/releases/tags/v{version}"
+)
+
+
+@dataclass(frozen=True)
+class GithubRunnerRelease:
+    version: str
+    sha256_by_arch: dict[str, str]
+
 
 def truthy(v: str | None) -> bool:
     return (v or "").strip().lower() == "true"
@@ -70,6 +91,278 @@ def json_array(items: List[str]) -> str:
 
 def json_obj(obj) -> str:
     return json.dumps(obj, separators=(",", ":"))
+
+
+def retry(
+    attempts: int,
+    interval_sec: int,
+    retry_exceptions: tuple[type[BaseException], ...] = (Exception,),
+    retry_result: Callable[[object], bool] | None = None,
+    attempt_arg: str | None = None,
+    on_final_exception: Callable[[BaseException], None] | None = None,
+) -> callable:
+    def decorator(func: callable) -> callable:
+        def build_call_kwargs(kwargs: dict, attempt: int) -> dict:
+            call_kwargs = dict(kwargs)
+            if attempt_arg:
+                call_kwargs[attempt_arg] = attempt - 1
+            return call_kwargs
+
+        def should_retry_result(result) -> bool:
+            return retry_result is not None and retry_result(result)
+
+        logger = logging.getLogger(func.__module__)
+        operation = func.__name__
+
+        def log_final_exception(exception: BaseException) -> None:
+            logger.error(
+                "%s failed after %d attempts: %s",
+                operation,
+                attempts,
+                exception,
+            )
+
+        def log_retry_exception(attempt: int, exception: BaseException) -> None:
+            logger.warning(
+                "%s failed on attempt %d/%d: %s. Retrying in %d seconds",
+                operation,
+                attempt,
+                attempts,
+                exception,
+                interval_sec,
+            )
+            logger.debug("%s retryable failure details", operation, exc_info=True)
+
+        def log_retry_result(attempt: int) -> None:
+            logger.info(
+                "%s returned retryable result on attempt %d/%d. Retrying in %d seconds",
+                operation,
+                attempt,
+                attempts,
+                interval_sec,
+            )
+
+        if asyncio.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                for attempt in range(1, attempts + 1):
+                    try:
+                        result = await func(*args, **build_call_kwargs(kwargs, attempt))
+                    except retry_exceptions as e:
+                        if attempt == attempts:
+                            log_final_exception(e)
+                            if on_final_exception:
+                                on_final_exception(e)
+                            raise
+
+                        log_retry_exception(attempt, e)
+                        await asyncio.sleep(interval_sec)
+                        continue
+
+                    if not should_retry_result(result):
+                        return result
+
+                    if attempt == attempts:
+                        logger.error(
+                            "%s did not produce expected result after %d attempts",
+                            operation,
+                            attempts,
+                        )
+                        return result
+
+                    log_retry_result(attempt)
+                    await asyncio.sleep(interval_sec)
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, attempts + 1):
+                try:
+                    result = func(*args, **build_call_kwargs(kwargs, attempt))
+                except retry_exceptions as e:
+                    if attempt == attempts:
+                        log_final_exception(e)
+                        if on_final_exception:
+                            on_final_exception(e)
+                        raise
+
+                    log_retry_exception(attempt, e)
+                    time.sleep(interval_sec)
+                    continue
+
+                if not should_retry_result(result):
+                    return result
+
+                if attempt == attempts:
+                    logger.error(
+                        "%s did not produce expected result after %d attempts",
+                        operation,
+                        attempts,
+                    )
+                    return result
+
+                log_retry_result(attempt)
+                time.sleep(interval_sec)
+
+        return wrapper
+
+    return decorator
+
+
+def fetch_repo_variable(github_client, github_repository: str, variable_name: str):
+    repo = github_client.get_repo(github_repository)
+    return repo, repo.get_variable(variable_name)
+
+
+def format_github_response_debug(response: requests.Response) -> str:
+    content_type = response.headers.get("content-type", "<missing>")
+    body_preview = response.text[:1000].replace("\n", "\\n")
+    return (
+        f"status={response.status_code}, reason={response.reason!r}, "
+        f"content_type={content_type!r}, body_preview={body_preview!r}"
+    )
+
+
+def normalize_github_runner_version(version: str) -> str:
+    version = (version or "").strip()
+    if not version:
+        raise ValueError("GitHub runner version is empty")
+    return version.removeprefix("v")
+
+
+def github_api_headers(github_token: str | None = None) -> dict[str, str]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-Github-Api-Version": "2022-11-28",
+    }
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    return headers
+
+
+def extract_github_runner_sha256_from_body(body: str, platform: str) -> str:
+    pattern = (
+        rf"<!--\s*BEGIN SHA {re.escape(platform)}\s*-->\s*"
+        r"([0-9a-fA-F]{64})"
+        rf"\s*<!--\s*END SHA {re.escape(platform)}\s*-->"
+    )
+    match = re.search(pattern, body or "")
+    if not match:
+        raise ValueError(
+            f"GitHub runner release body is missing SHA-256 marker for {platform}"
+        )
+    return match.group(1).lower()
+
+
+def extract_github_runner_release(payload: dict) -> GithubRunnerRelease:
+    tag_name = payload.get("tag_name")
+    if not tag_name:
+        raise ValueError("GitHub runner release response is missing tag_name")
+
+    version = normalize_github_runner_version(tag_name)
+    body = payload.get("body", "")
+    sha256_by_arch = {}
+    platforms_by_arch = {
+        "x64": "linux-x64",
+        "arm64": "linux-arm64",
+    }
+    for arch, platform in platforms_by_arch.items():
+        asset_name = f"actions-runner-linux-{arch}-{version}.tar.gz"
+        matching_asset = next(
+            (
+                asset
+                for asset in payload.get("assets", [])
+                if asset.get("name") == asset_name
+            ),
+            None,
+        )
+        if matching_asset is None:
+            raise ValueError(
+                f"GitHub runner release {version} is missing asset {asset_name}"
+            )
+
+        sha256_by_arch[arch] = extract_github_runner_sha256_from_body(body, platform)
+
+    return GithubRunnerRelease(version=version, sha256_by_arch=sha256_by_arch)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=(requests.exceptions.RequestException, ValueError),
+)
+def get_github_runner_release(
+    version: str, github_token: str | None = None
+) -> GithubRunnerRelease:
+    normalized_version = normalize_github_runner_version(version)
+    response = requests.get(
+        GITHUB_RUNNER_RELEASE_BY_TAG_URL.format(version=normalized_version),
+        headers=github_api_headers(github_token),
+        timeout=GITHUB_API_TIMEOUT_SEC,
+    )
+    try:
+        result = response.json()
+    except ValueError as e:
+        raise ValueError(
+            "Failed to parse GitHub runner release response "
+            f"({format_github_response_debug(response)}): {e}"
+        ) from None
+
+    if not response.ok:
+        raise ValueError(
+            "GitHub runner release request failed "
+            f"({format_github_response_debug(response)}): {result}"
+        )
+
+    return extract_github_runner_release(result)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=(requests.exceptions.RequestException, ValueError),
+)
+def get_latest_github_runner_release(
+    github_token: str | None = None,
+) -> GithubRunnerRelease:
+    response = requests.get(
+        GITHUB_RUNNER_LATEST_RELEASE_URL,
+        headers=github_api_headers(github_token),
+        timeout=GITHUB_API_TIMEOUT_SEC,
+    )
+    try:
+        result = response.json()
+    except ValueError as e:
+        raise ValueError(
+            "Failed to parse GitHub runner latest release response "
+            f"({format_github_response_debug(response)}): {e}"
+        ) from None
+
+    if not response.ok:
+        raise ValueError(
+            "GitHub runner latest release request failed "
+            f"({format_github_response_debug(response)}): {result}"
+        )
+
+    return extract_github_runner_release(result)
+
+
+def get_latest_github_runner_version(github_token: str | None = None) -> str:
+    return get_latest_github_runner_release(github_token).version
+
+
+def resolve_github_runner_version(version: str, github_token: str | None = None) -> str:
+    return resolve_github_runner_release(version, github_token).version
+
+
+def resolve_github_runner_release(
+    version: str, github_token: str | None = None
+) -> GithubRunnerRelease:
+    if (version or "").strip().lower() in ("", GITHUB_RUNNER_LATEST_VERSION):
+        return get_latest_github_runner_release(github_token)
+    return get_github_runner_release(version, github_token)
 
 
 def vm_suffix_for_component(component: str) -> str:
@@ -110,26 +403,91 @@ class MaskingFormatter(logging.Formatter):
         return self.mask_sensitive_data(original)
 
 
-def setup_logger(loglevel=logging.INFO):
-    formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(loglevel)
-    console_handler.setFormatter(formatter)
-
-    logger = logging.getLogger()
+def setup_logger(
+    loglevel=logging.INFO,
+    name: str | None = None,
+    fmt: str = "%(asctime)s: %(levelname)s: %(message)s",
+):
+    formatter = MaskingFormatter(fmt)
+    logger = logging.getLogger(name)
     logger.setLevel(loglevel)
-    logger.addHandler(console_handler)
+    logger.propagate = False
+
+    if not logger.handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(loglevel)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    else:
+        for handler in logger.handlers:
+            handler.setLevel(loglevel)
+            handler.setFormatter(formatter)
+
     return logger
+
+
+def set_logging_level(
+    verbosity: int, fmt: str = "%(asctime)s - %(levelname)s - %(message)s"
+):
+    level = max(10, 40 - 10 * verbosity)
+    return setup_logger(level, fmt=fmt)
+
+
+def write_to_file_from_env(
+    logger: logging.Logger,
+    key: str,
+    value: str,
+    env_var: str,
+    is_secret: bool = False,
+):
+    output_path = os.environ.get(env_var)
+    if output_path:
+        with open(output_path, "a") as fp:
+            fp.write(f"{key}={value}\n")
+    logger.info(
+        'echo "%s=%s" >> $%s',
+        key,
+        "******" if is_secret else value,
+        env_var,
+    )
 
 
 def github_output(
     logger: logging.Logger, key: str, value: str, is_secret: bool = False
 ):
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if output_path:
-        with open(output_path, "a") as fp:
-            fp.write(f"{key}={value}\n")
-    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if is_secret else value)
+    write_to_file_from_env(logger, key, value, "GITHUB_OUTPUT", is_secret)
+
+
+def github_env(logger: logging.Logger, key: str, value: str, is_secret: bool = False):
+    write_to_file_from_env(logger, key, value, "GITHUB_ENV", is_secret)
+
+
+def ttl_to_days(ttl_str: str) -> int:
+    seconds = ttl_to_seconds(ttl_str)
+    return max(1, (seconds + 86399) // 86400)
+
+
+def ttl_to_seconds(ttl_str: str) -> int:
+    pattern = (
+        r"((?P<days>\d+)d)?((?P<hours>\d+)h)?((?P<minutes>\d+)m)?((?P<seconds>\d+)s)?"
+    )
+    matches = re.match(pattern, ttl_str)
+    time_parts = {
+        name: int(value) for name, value in matches.groupdict(default="0").items()
+    }
+    return (
+        time_parts["days"] * 86400  # noqa: W503
+        + time_parts["hours"] * 3600  # noqa: W503
+        + time_parts["minutes"] * 60  # noqa: W503
+        + time_parts["seconds"]  # noqa: W503
+    )
+
+
+def parse_s3_path(s3_path: str) -> tuple[str, str]:
+    parsed_url = urlparse(s3_path)
+    if parsed_url.scheme != "s3" or not parsed_url.netloc:
+        raise ValueError("URL must be an S3 URL (s3://bucket[/prefix])")
+    return parsed_url.netloc, parsed_url.path.lstrip("/")
 
 
 def convert_size(size_bytes):

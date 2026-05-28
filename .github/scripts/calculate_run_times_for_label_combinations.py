@@ -143,13 +143,10 @@ def iter_successful_runs(
 
     total_seen = 0
     yielded = 0
-    returned_from_api = 0  # count how many API runs we enumerated (for visibility)
 
     # We will iterate over all completed runs returned (newest-first),
     # and stop when created_at < cutoff.
-    for run in workflow.get_runs(status="completed"):
-        returned_from_api += 1
-        total_seen += 1
+    for total_seen, run in enumerate(workflow.get_runs(status="completed"), start=1):
         created = run.created_at
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
@@ -163,7 +160,6 @@ def iter_successful_runs(
             )
             break
 
-        returned_from_api += 0  # no-op place to keep variable in logs
         if getattr(run, "conclusion", None) == "success":
             yielded += 1
             LOG.debug(
@@ -196,8 +192,7 @@ def iter_jobs_for_run(run) -> Iterable[Union[dict, object]]:
     Prefer run.jobs() (PyGithub), else fallback to raw jobs endpoint with pagination.
     """
     try:
-        for job in run.jobs():
-            yield job
+        yield from run.jobs()
         return
     except Exception as e:
         LOG.debug(
@@ -213,8 +208,7 @@ def iter_jobs_for_run(run) -> Iterable[Union[dict, object]]:
         path = f"/repos/{owner}/{repo}/actions/runs/{run.id}/jobs?per_page=100"
         while path:
             data, headers = _req_json_and_headers(requester, path)
-            for j in data.get("jobs", []):
-                yield j
+            yield from data.get("jobs", [])
 
             link = headers.get("link") or headers.get("Link")
             next_url = None

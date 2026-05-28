@@ -47,6 +47,16 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(ToString(QueueSize))
         .StoreResult(&QueueSize);
 
+    opts.AddLongOption("send-queue-size")
+        .RequiredArgument("NUM")
+        .DefaultValue(SendQueueSize)
+        .StoreResult(&SendQueueSize);
+
+    opts.AddLongOption("recv-queue-size")
+        .RequiredArgument("NUM")
+        .DefaultValue(RecvQueueSize)
+        .StoreResult(&RecvQueueSize);
+
     opts.AddLongOption("poller-threads")
         .RequiredArgument("NUM")
         .DefaultValue(ToString(PollerThreads))
@@ -74,6 +84,36 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption("verbs-qp")
         .StoreTrue(&VerbsQP);
+
+    opts.AddLongOption("resolve-timeout")
+        .RequiredArgument("MSEC")
+        .DefaultValue(ResolveTimeout)
+        .StoreResult(&ResolveTimeout);
+
+    opts.AddLongOption("flush-timeout")
+        .RequiredArgument("MSEC")
+        .DefaultValue(FlushTimeout)
+        .StoreResult(&FlushTimeout);
+
+    opts.AddLongOption("qp-retry-count")
+        .RequiredArgument("NUM")
+        .DefaultValue(QpRetryCount)
+        .StoreResult(&QpRetryCount);
+
+    opts.AddLongOption("qp-rnr-retry-count")
+        .RequiredArgument("NUM")
+        .DefaultValue(QpRnrRetryCount)
+        .StoreResult(&QpRnrRetryCount);
+
+    opts.AddLongOption("qp-timeout")
+        .RequiredArgument("NUM")
+        .DefaultValue(QpTimeout)
+        .StoreResult(&QpTimeout);
+
+    opts.AddLongOption("qp-min-rnr-timer")
+        .RequiredArgument("NUM")
+        .DefaultValue(QpMinRnrTimer)
+        .StoreResult(&QpMinRnrTimer);
 
     // device geometry
     opts.AddLongOption("storage")

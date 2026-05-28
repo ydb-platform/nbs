@@ -103,8 +103,9 @@ void TFreshBlocksWriterActor::HandleZeroBlocksCompleted(
 
     Actors.Erase(ev->Sender);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-    --WriteAndZeroRequestsInProgress;
+    Y_DEBUG_ABORT_UNLESS(
+        SharedState->WriteAndZeroRequestsInProgress.load() > 0);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
     SharedState->FinishFreshWrite(
         ctx,

@@ -9,6 +9,7 @@ from cloud.blockstore.config.local_nvme_pb2 import TLocalNVMeConfig
 from cloud.blockstore.libs.local_nvme.protos.local_nvme_pb2 import \
     TNVMeDevice, TNVMeDeviceList, TLocalNVMeServiceState
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
+from cloud.blockstore.tests.python.lib.test_base import get_free_socket_path
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
 from contrib.ydb.tests.library.harness.kikimr_runner import \
@@ -88,12 +89,19 @@ def create_local_nvme_config():
         StateCacheFilePath=cacheFilePath)
 
 
+@pytest.fixture(name='nbs_socket')
+def get_nbs_socket_path():
+    return get_free_socket_path("nbs_socket")
+
+
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb, local_nvme_config):
+def start_nbs_daemon(ydb, local_nvme_config, nbs_socket):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
     cfg.files["local-nvme"] = local_nvme_config
     cfg.files["disk-agent"] = TDiskAgentConfig(Enabled=True)
+    cfg.files["server"].ServerConfig.UnixSocketPath = nbs_socket
+    cfg.files["server"].ServerConfig.AllowAllRequestsViaUDS = True  # for ExecuteAction
 
     nbs = daemon.start_nbs(cfg)
 
@@ -102,8 +110,14 @@ def start_nbs_daemon(ydb, local_nvme_config):
     nbs.stop()
 
 
-def test_local_nvme(ydb, nbs):
-    client = CreateTestClient(f"localhost:{nbs.port}")
+@pytest.mark.parametrize("transport", ["http", "uds"])
+def test_list_nvme_devices(nbs, nbs_socket, transport):
+
+    endpoint = f"localhost:{nbs.port}"
+    if transport == "uds":
+        endpoint = f"unix://{nbs_socket}"
+
+    client = CreateTestClient(endpoint)
 
     response = json.loads(client.execute_ListNVMeDevices())
 

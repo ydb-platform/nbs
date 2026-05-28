@@ -36,8 +36,8 @@ private:
     const TRequestInfoPtr RequestInfo;
     TVector<TSplitRequest> Requests;
     const NActors::TActorId ParentActorId;
-    const TString DiskId;
     const ui64 RequestId;
+    TChildLogTitle LogTitle;
 
     ui32 Responses = 0;
     typename TMethod::TResponse::ProtoRecordType Record;
@@ -50,8 +50,8 @@ public:
         TRequestInfoPtr requestInfo,
         TVector<TSplitRequest> requests,
         NActors::TActorId parentActorId,
-        TString diskId,
-        ui64 requestId);
+        ui64 requestId,
+        TChildLogTitle logTitle);
     ~TSplitRequestSenderActor() override = default;
 
     void Bootstrap(const NActors::TActorContext& ctx);
@@ -81,13 +81,13 @@ TSplitRequestSenderActor<TMethod>::TSplitRequestSenderActor(
         TRequestInfoPtr requestInfo,
         TVector<TSplitRequest> requests,
         NActors::TActorId parentActorId,
-        TString diskId,
-        ui64 requestId)
+        ui64 requestId,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
     , ParentActorId(parentActorId)
-    , DiskId(std::move(diskId))
     , RequestId(requestId)
+    , LogTitle(std::move(logTitle))
 {
     Y_DEBUG_ABORT_UNLESS(!Requests.empty());
     Y_DEBUG_ABORT_UNLESS(ParentActorId);
@@ -135,8 +135,8 @@ void TSplitRequestSenderActor<TMethod>::SendRequests(
         LOG_TRACE(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] Splitted %s request #%lu has been sent to %s",
-            DiskId.c_str(),
+            "%s Splitted %s request #%lu has been sent to %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             RequestId,
             request.DeviceUUID.c_str());
@@ -209,8 +209,8 @@ void TSplitRequestSenderActor<TMethod>::HandleUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s request %lu undelivered to some nonrepl partitions",
-        DiskId.c_str(),
+        "%s %s request %lu undelivered to some nonrepl partitions",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name,
         RequestId);
 
@@ -237,8 +237,8 @@ void TSplitRequestSenderActor<TMethod>::HandleResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s got error from nonreplicated partition: %s",
-            DiskId.c_str(),
+            "%s %s got error from nonreplicated partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }
@@ -300,7 +300,8 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
         TActorId nonreplPartitionActorId,
-        TActorId mirrorPartitionActorId)
+        TActorId mirrorPartitionActorId,
+        TChildLogTitle logTitle)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
@@ -312,6 +313,7 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
     , NonreplPartitionActorId(nonreplPartitionActorId)
     , MirrorPartitionActorId(mirrorPartitionActorId)
     , PoisonPillHelper(this)
+    , LogTitle(std::move(logTitle))
 {}
 
 TLaggingAgentsReplicaProxyActor::~TLaggingAgentsReplicaProxyActor() = default;
@@ -402,9 +404,9 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s request #%lu with range %s has been split into %u parts. %u "
+        "%s %s request #%lu with range %s has been split into %u parts. %u "
         "of them will be dropped.",
-        PartConfig->GetName().c_str(),
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name,
         GetRequestId(msg->Record),
         blockRange.Print().c_str(),
@@ -420,8 +422,8 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
             requestInfo,
             std::move(requests),
             SelfId(),
-            PartConfig->GetName(),
-            GetRequestId(msg->Record)));
+            GetRequestId(msg->Record),
+            LogTitle));
 }
 
 template <typename TMethod>
@@ -508,7 +510,7 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
             "Failed to acquire sglist in LaggingAgentsReplicaProxyActor");
     }
 
-    TSgListBlockRange src(guard.Get(), msg->Record.BlockSize);
+    TSgListBlockRange src(guard.Get(), msg->Record.GetBlockSize());
 
     for (const auto& deviceRequest: deviceRequests) {
         auto request =
@@ -520,7 +522,7 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.BlocksCount = deviceRequest.BlockRange.Size();
-        request->Record.BlockSize = msg->Record.BlockSize;
+        request->Record.SetBlockSize(msg->Record.GetBlockSize());
 
         Y_DEBUG_ABORT_UNLESS(src.HasNext());
         TSgList sglist = src.Next(deviceRequest.BlockRange.Size());
@@ -675,9 +677,9 @@ void TLaggingAgentsReplicaProxyActor::MarkBlocksAsDirty(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lower block range resolution %s -> %s and mark blocks as dirty "
+        "%s Lower block range resolution %s -> %s and mark blocks as dirty "
         "for lagging agent %s",
-        PartConfig->GetName().c_str(),
+        LogTitle.GetWithTime().c_str(),
         range.Print().c_str(),
         TBlockRange64::MakeClosedInterval(alignedStart, alignedEnd)
             .Print()
@@ -706,9 +708,9 @@ void TLaggingAgentsReplicaProxyActor::StartLaggingResync(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Starting lagging agent %s migration. Block count: %lu, dirty "
+        "%s Starting lagging agent %s migration. Block count: %lu, dirty "
         "block count: %lu",
-        PartConfig->GetName().c_str(),
+        LogTitle.GetWithTime().c_str(),
         agentId.Quote().c_str(),
         PartConfig->GetBlockCount(),
         PartConfig->GetBlockCount() - state->CleanBlocksMap->Count());
@@ -766,9 +768,9 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s went unavailable (lagging). Creating availability "
+        "%s Agent %s went unavailable (lagging). Creating availability "
         "monitor",
-        PartConfig->GetName().c_str(),
+        LogTitle.GetWithTime().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
 
     NCloud::Send(
@@ -808,9 +810,9 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lagging agent %s blocks map initialized. Block count: %lu, dirty "
+        "%s Lagging agent %s blocks map initialized. Block count: %lu, dirty "
         "block count: %lu",
-        PartConfig->GetName().c_str(),
+        LogTitle.GetWithTime().c_str(),
         laggingAgentId.Quote().c_str(),
         PartConfig->GetBlockCount(),
         PartConfig->GetBlockCount() - state.CleanBlocksMap->Count());
@@ -840,9 +842,9 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationDisabled(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lagging agent %s is a target for a migration. Writes to it are "
+        "%s Lagging agent %s is a target for a migration. Writes to it are "
         "disabled.",
-        PartConfig->GetName().c_str(),
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str());
 
     state->MigrationDisabled = true;
@@ -874,8 +876,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lagging agent %s is back online. Draining other partitions",
-        PartConfig->GetName().c_str(),
+        "%s Lagging agent %s is back online. Draining other partitions",
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str());
 
     NCloud::Send(
@@ -901,9 +903,9 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Preparing lagging agent %s migration. Block count: %lu, dirty "
+        "%s Preparing lagging agent %s migration. Block count: %lu, dirty "
         "block count: %lu",
-        PartConfig->GetName().c_str(),
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str(),
         PartConfig->GetBlockCount(),
         PartConfig->GetBlockCount() - cleanBlocksCopy.Count());
@@ -951,8 +953,8 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingAgentMigrationFinished(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lagging agent %s migration has been finished",
-        PartConfig->GetName().c_str(),
+        "%s Lagging agent %s migration has been finished",
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str());
 
     Y_DEBUG_ABORT_UNLESS(state.MigrationActorId);
@@ -991,8 +993,8 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] Failed to drain partitions for lagging agent %s: %s",
-            PartConfig->GetName().c_str(),
+            "%s Failed to drain partitions for lagging agent %s: %s",
+            LogTitle.GetWithTime().c_str(),
             agentId.Quote().c_str(),
             FormatError(msg->GetError()).c_str());
 
@@ -1017,8 +1019,8 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Drain is finished for lagging agent %s",
-        PartConfig->GetName().c_str(),
+        "%s Drain is finished for lagging agent %s",
+        LogTitle.GetWithTime().c_str(),
         agentId.Quote().c_str());
 
     state->DrainFinished = true;
@@ -1051,8 +1053,8 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationEnabled(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Migration to lagging agent %s is enabled",
-        PartConfig->GetName().c_str(),
+        "%s Migration to lagging agent %s is enabled",
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str());
 
     state->MigrationDisabled = false;

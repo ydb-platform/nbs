@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/features/features_config.h>
 
@@ -75,15 +76,6 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     UNIT_ASSERT_C(status.ok(), ToString(status.message()));
 
     return response;
-}
-
-void WaitForTabletStart(TServiceClient& service)
-{
-    TDispatchOptions options;
-    options.FinalEvents = {
-        TDispatchOptions::TFinalEventCondition(
-            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
-    service.AccessRuntime().DispatchEvents(options);
 }
 
 NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
@@ -232,22 +224,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetMultiTabletForwardingEnabled(true);
+            newConfig.SetThrottlingEnabled(true);
             const auto response = ExecuteChangeStorageConfig(
                 "fs0",
                 std::move(newConfig),
                 service);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetMultiTabletForwardingEnabled(),
+                response.GetStorageConfig().GetThrottlingEnabled(),
                 true);
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetMultiTabletForwardingEnabled(),
-                true);
+            UNIT_ASSERT_VALUES_EQUAL(response.GetThrottlingEnabled(), true);
         }
     }
 
@@ -271,24 +261,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetMultiTabletForwardingEnabled(true);
+            newConfig.SetThrottlingEnabled(true);
             ExecuteChangeStorageConfig("fs0", std::move(newConfig), service);
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service, false);
             UNIT_ASSERT_VALUES_EQUAL(42, response.GetReadAheadCacheMaxNodes());
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetMultiTabletForwardingEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(true, response.GetThrottlingEnabled());
         }
 
         {
             auto response = ExecuteGetStorageConfig("fs0", service, true);
             UNIT_ASSERT(!response.HasReadAheadCacheMaxNodes());
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetMultiTabletForwardingEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(true, response.GetThrottlingEnabled());
         }
     }
 
@@ -461,8 +447,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldPerformUnsafeNodeRefManipulations)
     {
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -473,6 +457,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession("test", "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         const ui64 parentId = RootNodeId;
         const TString name1 = "file1";
@@ -657,14 +643,62 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 r.GetNodes(0).GetShardNodeName());
         }
 
+        {
+            auto r = service.ListNodes(headers, fsId, parentId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(name2, r.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                r.GetNodes(0).GetShardFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName2,
+                r.GetNodes(0).GetShardNodeName());
+
+            NProtoPrivate::TListNodesInternalRequest request;
+            request.SetFileSystemId(fsId);
+            auto& originalRequest = *request.MutableOriginalRequest();
+            originalRequest.SetNodeId(parentId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("ListNodesInternal", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            NProtoPrivate::TListNodesInternalResponse lniResponse;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &lniResponse).ok());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, lniResponse.NameSizesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, lniResponse.ShardIdSizesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, lniResponse.ShardNodeNameSizesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                name2,
+                lniResponse.GetNameBuffer().substr(
+                    0,
+                    lniResponse.GetNameSizes(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                lniResponse.GetExternalRefBuffer().substr(
+                    0,
+                    lniResponse.GetShardIdSizes(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName2,
+                lniResponse.GetExternalRefBuffer().substr(
+                    lniResponse.GetShardIdSizes(0),
+                    lniResponse.GetShardNodeNameSizes(0)));
+        }
+
         service.DestroySession(headers);
     }
 
     Y_UNIT_TEST(ShouldPerformResponseLogEntryManipulations)
     {
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -678,6 +712,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession("test", "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         {
             NProtoPrivate::TWriteResponseLogEntryRequest request;
@@ -763,8 +799,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         //
 
         NProto::TStorageConfig config;
-        // being explicit
-        config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -793,6 +827,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.CreateFileStore(fsId, 1'000);
 
         auto headers = service.InitSession(fsId, "client");
+        // being explicit
+        headers.DisableMultiTabletForwarding = true;
 
         const ui64 nodeId = service.CreateNode(
             headers,
@@ -1005,7 +1041,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(1_GB);
         storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
-        storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
 
@@ -1197,7 +1233,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(2_GB);
         storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
-        storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
 

@@ -84,9 +84,6 @@ struct TConfigInitializerYdb final
 
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
 
-private:
-    void SetupStorageConfig(NProto::TStorageServiceConfig& config) const;
-
     void ApplyDiagnosticsConfig(const TString& text);
     void ApplyDiscoveryServiceConfig(const TString& text);
     void ApplyDiskAgentConfig(const TString& text);
@@ -108,6 +105,9 @@ private:
     void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);
     void ApplyAllowedKikimrFeatureFlags(
         const NKikimrConfig::TAppConfig& config);
+
+private:
+    void SetupStorageConfig(NProto::TStorageServiceConfig& config) const;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

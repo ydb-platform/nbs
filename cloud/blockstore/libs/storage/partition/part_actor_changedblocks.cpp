@@ -259,6 +259,7 @@ STFUNC(TGetChangedBlocksActor::StateWork)
 class TChangedBlocksVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TGetChangedBlocks& Args;
@@ -282,6 +283,20 @@ public:
     {
         Y_UNUSED(blobId);
         Y_UNUSED(blobOffset);
+        Args.MarkBlock(blockIndex, commitId);
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        Y_UNUSED(blobId);
+        Y_UNUSED(blobOffset);
+        Y_UNUSED(compactionRangeCount);
         Args.MarkBlock(blockIndex, commitId);
         return true;
     }

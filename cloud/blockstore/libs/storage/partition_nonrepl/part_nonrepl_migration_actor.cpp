@@ -115,8 +115,8 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationError(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Migration failed",
-        SrcConfig->GetName().c_str());
+        "%s Migration failed",
+        LogTitle.GetWithTime().c_str());
 }
 
 void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
@@ -163,8 +163,8 @@ void TNonreplicatedPartitionMigrationActor::FinishMigration(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Migration finished: %s -> %s",
-            SrcConfig->GetName().c_str(),
+            "%s Migration finished: %s -> %s",
+            LogTitle.GetWithTime().c_str(),
             m->GetSourceDeviceId().c_str(),
             m->GetTargetDeviceId().c_str());
     }
@@ -212,8 +212,8 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] migration disabled => aborted",
-            SrcConfig->GetName().c_str());
+            "%s migration disabled => aborted",
+            LogTitle.GetWithTime().c_str());
         return {};
     }
 
@@ -287,8 +287,8 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
 
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-            "[%s] Finish migration failed, error: %s",
-            SrcConfig->GetName().c_str(),
+            "%s Finish migration failed, error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {

@@ -62,11 +62,11 @@ struct TTestLocalNVMeService: public ILocalNVMeService
     }
 
     [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> override
+        -> TFuture<TResultOrError<NProto::TNVMeDevice>> override
     {
         Y_UNUSED(serialNumber);
 
-        return MakeFuture(MakeError(S_OK));
+        return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(MakeError(S_OK));
     }
 
     [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
@@ -100,6 +100,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                 SerialNumber: "NVME_0"
                 PCIAddress: "0000:f1:00.0"
                 IOMMUGroup: 10
+                VfioDevName: "vfio0"
                 VendorId: 0x100
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
@@ -166,6 +167,16 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceProxyTest)
                     expected.GetIOMMUGroup(),
                     device.GetIOMMUGroup());
             }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.HasVfioDevName(),
+                device.HasVfioDevName());
+
+            if (expected.HasVfioDevName()) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetVfioDevName(),
+                    device.GetVfioDevName());
+            }
         }
     }
 
@@ -176,7 +187,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceProxyTest)
         auto future = BlockStore->AcquireNVMeDevice(
             MakeIntrusive<TCallContext>(),
             request);
-        auto response = future.GetValueSync();
+        const auto& response = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
     }
 
@@ -187,7 +198,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceProxyTest)
         auto future = BlockStore->ReleaseNVMeDevice(
             MakeIntrusive<TCallContext>(),
             request);
-        auto response = future.GetValueSync();
+        const auto& response = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
     }
 }

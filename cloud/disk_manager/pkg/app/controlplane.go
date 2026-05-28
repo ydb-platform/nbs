@@ -419,12 +419,6 @@ func initControlplane(
 	var filesystemService filesystem.Service
 	var filesystemSnapshotService filesystem_snapshot.Service
 	if config.GetFilesystemConfig() != nil {
-		filesystemService = filesystem.NewService(
-			taskScheduler,
-			config.GetFilesystemConfig(),
-			nfsFactory,
-		)
-
 		filesystemSnapshotService = filesystem_snapshot.NewService(
 			taskScheduler,
 		)
@@ -476,6 +470,16 @@ func initControlplane(
 		nbsFactory,
 		nfsFactory,
 	)
+
+	if config.GetFilesystemConfig() != nil {
+		filesystemService = filesystem.NewService(
+			taskScheduler,
+			config.GetFilesystemConfig(),
+			nfsFactory,
+			resourceStorage,
+			filestoreCellsSelector,
+		)
+	}
 
 	err = registerControlplaneTasks(
 		ctx,

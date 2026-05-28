@@ -52,6 +52,22 @@ message TRdmaServer
 
     uint32 SendQueueSize = 15;
     uint32 RecvQueueSize = 16;
+    bool StrictValidation = 17;
+
+    // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 7].
+    uint32 QpRetryCount = 18;
+    // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 7].
+    uint32 QpRnrRetryCount = 19;
+    // Sets the "timeout" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 31].
+    // The resulting timeout is calculated as 4096*2^{QpTimeout} microseconds.
+    // 0 means infinite timeout.
+    uint32 QpTimeout = 20;
+    // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 31].
+    uint32 QpMinRnrTimer = 21;
 }
 
 message TRdmaClient
@@ -79,4 +95,27 @@ message TRdmaClient
 
     uint32 SendQueueSize = 14;
     uint32 RecvQueueSize = 15;
+
+    // Timeout for address/route resolution during connect:
+    // rdma_resolve_addr + rdma_resolve_route. (in milliseconds)
+    uint64 ResolveTimeout = 16;
+
+    // Maximum time we wait for in-flight requests to drain during endpoint
+    // flush/shutdown before considering flush "hung". (in milliseconds)
+    uint64 FlushTimeout = 17;
+
+    // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 7].
+    uint32 QpRetryCount = 18;
+    // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 7].
+    uint32 QpRnrRetryCount = 19;
+    // Sets the "timeout" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 31].
+    // The resulting timeout is calculated as 4096*2^{QpTimeout} microseconds.
+    // 0 means infinite timeout.
+    uint32 QpTimeout = 20;
+    // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
+    // "ibv_modify_qp()" function. Valid values are in range [0, 31].
+    uint32 QpMinRnrTimer = 21;
 }

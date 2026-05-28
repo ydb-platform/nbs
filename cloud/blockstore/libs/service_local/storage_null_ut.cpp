@@ -37,7 +37,7 @@ auto ReadBlocksLocal(IStorage& storage, TGuardedSgList sglist)
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(0);
     request->SetBlocksCount(1);
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
     request->Sglist = std::move(sglist);
 
     return storage.ReadBlocksLocal(
@@ -52,7 +52,7 @@ auto WriteBlocksLocal(IStorage& storage, TGuardedSgList sglist)
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(0);
     request->BlocksCount = 1;
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
     request->Sglist = std::move(sglist);
 
     return storage.WriteBlocksLocal(

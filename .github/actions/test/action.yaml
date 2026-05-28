@@ -344,7 +344,8 @@ runs:
             sudo -E -H -u github mkdir -p "$ARTIFACTS_DIR/${COMPONENT_DIR}"
             sudo -E -H -u github mkdir -p "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}"
             sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}orig_junit.${i}.xml.gz"
-            sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
+            sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+              python3 -m scripts.tests.transform_ya_junit -i \
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
               --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
@@ -360,7 +361,9 @@ runs:
             BUILD_FAILED_COUNT_TMP=$BUILD_FAILED_COUNT
             FAIL_CHECKER_TEMP_FILE=$(mktemp -p /home/github)
             set +e
-            (sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}"; echo $? > fail_checker_exit_code) |& tee fail-checker-output.log
+            (sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+              python3 -m scripts.tests.fail_checker "${JUNIT_REPORT_XML}.${i}"; \
+              echo $? > fail_checker_exit_code) |& tee fail-checker-output.log
             set -e
             if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
               BUILD_FAILED_COUNT=$(grep -E '^BUILD_FAILED_COUNT=' "$FAIL_CHECKER_TEMP_FILE" | cut -d '=' -f2) || true
@@ -379,7 +382,8 @@ runs:
             if [ "$FAIL_CHECKER_RC" -ne 0 ]; then
               NEED_COPYING=1
               echo "::group::Copy-failed-tests-data"
-              sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
+              sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                python3 -m scripts.tests.fail_checker "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
                 echo $path
                 find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
               done
@@ -438,11 +442,13 @@ runs:
 
           export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
           chown github:github $SUMMARY_OUT_ENV_PATH
-          sudo -E -H -u github .github/scripts/tests/generate-summary.py \
+          sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+            python3 -m scripts.tests.generate_summary \
             --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
             --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
             --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/" \
             --build-preset "${platform_name}-${BUILD_PRESET}" \
+            --workload-status in_progress \
             --test-target "${TEST_TARGET//\"/}" \
             --test-time $((TEST_END_TIME - TEST_START_TIME)) \
             "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
@@ -668,4 +674,3 @@ runs:
                                     $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
         chown -R root:root $GITHUB_WORKSPACE 
         echo "::endgroup::"
-
