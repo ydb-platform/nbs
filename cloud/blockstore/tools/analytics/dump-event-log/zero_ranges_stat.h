@@ -18,6 +18,7 @@ namespace NCloud::NBlockStore {
 // of disk occupancy with data.
 class TZeroRangesStat: public IProfileLogEventHandler
 {
+public:
     class TZeroRanges
     {
         TDynBitMap KnownRanges;
@@ -28,6 +29,7 @@ class TZeroRangesStat: public IProfileLogEventHandler
         [[nodiscard]] NJson::TJsonValue Dump() const;
     };
 
+private:
     class TZeroRangesBySegmentSize
     {
         TMap<ui64, TZeroRanges> BySegmentSize;
