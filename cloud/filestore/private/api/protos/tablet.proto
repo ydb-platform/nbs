@@ -831,19 +831,6 @@ message TUnsafeCreateHandleResponse
 ////////////////////////////////////////////////////////////////////////////////
 // UnsafeChangeTabletState request/response.
 
-enum EShardIdCompressionMode
-{
-    // Only uncompressed ShardId/ShardNodeName are read and written.
-    SICM_NO_COMPRESSION = 0;
-    // Both uncompressed and compressed forms are read.
-    SICM_READ = 1;
-    // SICM_READ + new ShardId/ShardNodeName are compressed.
-    SICM_READ_WRITE = 2;
-    // SICM_READ_WRITE + conversion from uncompress to compressed
-    // form is started when TIndexTabletActor tablet starts.
-    SICM_READ_WRITE_CONVERT = 3;
-}
-
 message TUnsafeChangeTabletStateRequest
 {
     // FileSystem identifier.
@@ -852,10 +839,8 @@ message TUnsafeChangeTabletStateRequest
     // If set, only unsafe ops will be allowed.
     optional bool Frozen = 2;
 
-    // The way we read and write compact ShardId and ShardNodeName from/to
-    // NodeRefs table.
-    optional EShardIdCompressionMode ShardIdCompressionMode = 3;
-    bool ForceSetShardIdCompressionMode = 4;
+    // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
+    optional bool CompressShardId = 3;
 }
 
 message TUnsafeChangeTabletStateResponse

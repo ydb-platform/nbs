@@ -109,29 +109,30 @@ void CheckShardsSize(
         shard2Stats.GetStats().GetTotalBlocksCount());
 }
 
-NProtoPrivate::TUnsafeChangeTabletStateResponse SetShardIdCompressionMode(
+NProtoPrivate::TUnsafeChangeTabletStateResponse SetCompressShardId(
     const TString& fsId,
     TServiceClient& service,
-    NProtoPrivate::EShardIdCompressionMode mode,
-    bool checkResult = true)
+    const bool compressShardId)
 {
     NProtoPrivate::TUnsafeChangeTabletStateRequest request;
     request.SetFileSystemId(fsId);
-    request.SetShardIdCompressionMode(mode);
+    request.SetCompressShardId(compressShardId);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
 
-    auto jsonResponse = service.SendAndRecvExecuteAction("UnsafeChangeTabletState", buf);
+    auto jsonResponse =
+        service.SendAndRecvExecuteAction("UnsafeChangeTabletState", buf);
 
-    if (checkResult) {
-        UNIT_ASSERT_C(
-            SUCCEEDED(jsonResponse->GetStatus()),
-            jsonResponse->GetErrorReason());
-    }
+    UNIT_ASSERT_C(
+        SUCCEEDED(jsonResponse->GetStatus()),
+        jsonResponse->GetErrorReason());
 
     NProtoPrivate::TUnsafeChangeTabletStateResponse response;
-    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-        jsonResponse->Record.GetOutput(), &response).ok());
+    UNIT_ASSERT(
+        google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(),
+            &response)
+            .ok());
 
     return response;
 }
@@ -8820,7 +8821,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               0}});
     }
 
-    void DoShouldReadAndWriteCompressedShardId(NProto::TStorageConfig& config, bool directoryCreationInShards)
+    void DoShouldReadAndWriteCompressedShardId(
+        NProto::TStorageConfig & config,
+        bool directoryCreationInShards)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 1024;
@@ -8853,37 +8856,77 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TVector<ui64> dirs;
         dirs.push_back(RootNodeId);
 
-        auto setMode = [&](const NProtoPrivate::EShardIdCompressionMode mode) {
+        auto setCompress = [&](const bool compress) {
             // Change config in the main filesystem
-            SetShardIdCompressionMode(fsId, service, mode);
+            SetCompressShardId(fsId, service, compress);
             // Change config in shards
             if (directoryCreationInShards) {
                 for (ui64 shardNo = 1; shardNo < shardCount + 1; ++shardNo) {
-                    SetShardIdCompressionMode(
+                    SetCompressShardId(
                         TStringBuilder() << fsId << "_s" << shardNo,
                         service,
-                        mode);
+                        compress);
                 }
             }
         };
 
-        // ShardId compression modes are ordered so that any ShardId written
-        // using a given mode can be read using the same or further mode.
-        TVector<NProtoPrivate::EShardIdCompressionMode> compressionModes = {
-            NProtoPrivate::SICM_NO_COMPRESSION,
-            NProtoPrivate::SICM_READ,
-            NProtoPrivate::SICM_READ_WRITE,
-            NProtoPrivate::SICM_READ_WRITE_CONVERT};
+        auto unsafeCreateNodeRef =
+            [&](const NProtoPrivate::TUnsafeCreateNodeRefRequest& request,
+                const bool isOk = true)
+        {
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+
+            //const auto actionResponse =
+            //    service.ExecuteAction("unsafecreatenoderef", buf);
+
+            auto actionResponse =
+                service.SendAndRecvExecuteAction("unsafecreatenoderef", buf);
+
+            bool succeded = SUCCEEDED(actionResponse->GetStatus());
+
+            UNIT_ASSERT_EQUAL_C(
+                isOk,
+                succeded,
+                actionResponse->GetErrorReason());
+
+            NProtoPrivate::TUnsafeCreateNodeRefResponse response;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                actionResponse->Record.GetOutput(),
+                &response);
+            UNIT_ASSERT(status.ok());
+        };
+
+        auto unsafeGetNodRef =
+            [&](const NProtoPrivate::TUnsafeGetNodeRefRequest& request,
+                const bool isOk = true)
+        {
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto actionResponse =
+                service.SendAndRecvExecuteAction("unsafegetnoderef", buf);
+
+            bool succeded = SUCCEEDED(actionResponse->GetStatus());
+
+            UNIT_ASSERT_EQUAL_C(
+                isOk,
+                succeded,
+                actionResponse->GetErrorReason());
+
+            NProtoPrivate::TUnsafeGetNodeRefResponse response;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                actionResponse->Record.GetOutput(),
+                &response);
+            UNIT_ASSERT(status.ok());
+
+            return response;
+        };
 
         // For each mode in compressionModes, we create several files. Then, for
         // every mode greater than or equal to the one in which the files were
         // created, we create handles to all of those files.
-        for (size_t writeModeNum = 0; writeModeNum < compressionModes.size();
-             ++writeModeNum)
-        {
-            const NProtoPrivate::EShardIdCompressionMode writeMode =
-                compressionModes[writeModeNum];
-            setMode(writeMode);
+        for (bool writeCompression: {false, true}) {
+            setCompress(writeCompression);
 
             // Create a directory for the the next batch of files
             const TString dirName = TStringBuilder() << "dir" << dirNum++;
@@ -8921,28 +8964,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             createNodeRefRequest.SetChildId(unsafeNodeNum++);
             createNodeRefRequest.SetShardId(fsId);
             createNodeRefRequest.SetShardNodeName(CreateGuidAsString());
+            unsafeCreateNodeRef(createNodeRefRequest);
 
-            {
-                TString buf;
-                google::protobuf::util::MessageToJsonString(
-                    createNodeRefRequest,
-                    &buf);
-                const auto actionResponse =
-                    service.ExecuteAction("unsafecreatenoderef", buf);
-                NProtoPrivate::TUnsafeCreateNodeRefResponse response;
-                auto status = google::protobuf::util::JsonStringToMessage(
-                    actionResponse->Record.GetOutput(),
-                    &response);
-                UNIT_ASSERT(status.ok());
-            }
-
-            for (size_t readModeNum = writeModeNum;
-                 readModeNum < compressionModes.size();
-                 ++readModeNum)
-            {
-                const NProtoPrivate::EShardIdCompressionMode readMode =
-                    compressionModes[readModeNum];
-                setMode(readMode);
+            for (bool readCompression: {false, true}) {
+                setCompress(readCompression);
 
                 // Check that we can resolve all the node in each dir
                 for (const auto& dir: dirs) {
@@ -8966,28 +8991,60 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 getNodeRefRequest.SetParentId(
                     createNodeRefRequest.GetParentId());
                 getNodeRefRequest.SetName(createNodeRefRequest.GetName());
+                const auto getNodeRefResponse =
+                    unsafeGetNodRef(getNodeRefRequest);
 
-                TString buf;
-                google::protobuf::util::MessageToJsonString(
-                    getNodeRefRequest,
-                    &buf);
-                const auto actionResponse =
-                    service.ExecuteAction("unsafegetnoderef", buf);
-                NProtoPrivate::TUnsafeGetNodeRefResponse response;
-                auto status = google::protobuf::util::JsonStringToMessage(
-                    actionResponse->Record.GetOutput(),
-                    &response);
-                UNIT_ASSERT(status.ok());
+                UNIT_ASSERT_EQUAL(
+                    createNodeRefRequest.GetShardId(),
+                    getNodeRefResponse.GetShardId());
+                UNIT_ASSERT_EQUAL(
+                    createNodeRefRequest.GetShardNodeName(),
+                    getNodeRefResponse.GetShardNodeName());
             }
         }
 
-        // Should get error when attempting to set NProtoPrivate::EShardIdCompressionMode::SICM_NO_COMPRESSION
-        const auto response = SetShardIdCompressionMode(fsId, service, NProtoPrivate::SICM_NO_COMPRESSION, false);
+        // Check that attempts to write and read malformed ShardId/ShardNodeName
+        // raise critical events.
+        setCompress(false);
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_ARGUMENT,
-            response.GetError().GetCode(),
-            response.GetError().GetMessage());
+        NProtoPrivate::TUnsafeCreateNodeRefRequest createNodeRefRequest;
+        createNodeRefRequest.SetFileSystemId(fsId);
+        createNodeRefRequest.SetParentId(12123123);
+        createNodeRefRequest.SetName(
+            TStringBuilder() << "UnsafeNodeName" << unsafeNodeNum);
+        createNodeRefRequest.SetChildId(unsafeNodeNum++);
+        createNodeRefRequest.SetShardId("\x03\x01\xFF");
+        createNodeRefRequest.SetShardNodeName("123456789ABCDEF");
+        unsafeCreateNodeRef(createNodeRefRequest);
+
+        NProtoPrivate::TUnsafeGetNodeRefRequest getNodeRefRequest;
+        getNodeRefRequest.SetFileSystemId(
+            createNodeRefRequest.GetFileSystemId());
+        getNodeRefRequest.SetParentId(
+            createNodeRefRequest.GetParentId());
+        getNodeRefRequest.SetName(createNodeRefRequest.GetName());
+        const auto getNodeRefResponse =
+            unsafeGetNodRef(getNodeRefRequest, false);
+
+        setCompress(true);
+        createNodeRefRequest.SetFileSystemId(fsId);
+        createNodeRefRequest.SetParentId(12123123);
+        createNodeRefRequest.SetName(
+            TStringBuilder() << "UnsafeNodeName" << unsafeNodeNum);
+        createNodeRefRequest.SetChildId(unsafeNodeNum++);
+        createNodeRefRequest.SetShardId(fsId + "_sabcd");
+        createNodeRefRequest.SetShardNodeName("123456789ABCDEF");
+        unsafeCreateNodeRef(createNodeRefRequest);
+
+        UNIT_ASSERT_EQUAL(1, env.GetCounters()
+            ->FindSubgroup("component", "service")
+            ->GetCounter("AppCriticalEvents/MalformedShardNodeRef")
+            ->GetAtomic());
+
+        UNIT_ASSERT_EQUAL(1, env.GetCounters()
+            ->FindSubgroup("component", "service")
+            ->GetCounter("AppCriticalEvents/MalformedEncodedShardNodeRef")
+            ->GetAtomic());
     }
 
     SERVICE_TEST(ShouldReadAndWriteCompressedShardId)
@@ -8996,16 +9053,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         DoShouldReadAndWriteCompressedShardId(config, true);
     }
 
-    SERVICE_TEST(ShouldNotCreateFilesystemWithNonPrintableID)
+    SERVICE_TEST(ShouldValidateFilesystemIdDuringCreation)
     {
         TTestEnv env({}, config);
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        for (const char* badFsName:
-             {"\rwq2e\n123123\t", "files\x88tore_s48", "fs_s1234"})
-        {
-            service.SendCreateFileStoreRequest(badFsName, 1024);
+        for (const auto& badFsId: {"\rwq2e123123", ""}) {
+            service.SendCreateFileStoreRequest(badFsId, 1024);
             auto response = service.RecvCreateFileStoreResponse();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -9014,10 +9069,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 response->GetErrorReason());
         }
 
-        for (const char* goodFsName:
-             {"nfs_shared", "_s", "fs_s1234_s", "testfs-fs98723rhfhnkJKid"})
+
+        for (const char* goodFsId:
+             {"nfs_shared",
+              "_s",
+              "fs_s1234_s",
+              "testfs-f_s98723rhfhnkJKid",
+              "fs_s1234",
+              "abcd\x03gefg"})
         {
-            service.SendCreateFileStoreRequest(goodFsName, 1024);
+            service.SendCreateFileStoreRequest(goodFsId, 1024);
             auto response = service.RecvCreateFileStoreResponse();
 
             UNIT_ASSERT_VALUES_EQUAL_C(

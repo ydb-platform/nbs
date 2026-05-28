@@ -191,14 +191,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     //
 
     virtual void WriteNodeRef(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name,
-        ui64 childNode,
-        const TString& shardId,
-        const TString& shardNodeName,
-        bool markExhaustive,
-        NProtoPrivate::EShardIdCompressionMode shardIdMode);
+        const TNodeRef& nodeRef,
+        bool markExhaustive);
 
     virtual void DeleteNodeRef(ui64 nodeId, const TString& name);
 
@@ -206,9 +200,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeRef>& ref,
-        NProtoPrivate::EShardIdCompressionMode shardIdMode,
-        const TString& mainFsId) override;
+        TMaybe<TNodeRef>& ref) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,
@@ -216,8 +208,6 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        NProtoPrivate::EShardIdCompressionMode,
-        const TString& mainFsId,
         TString* next,
         ui32* skippedRefs,
         bool noAutoPrecharge,
@@ -231,8 +221,6 @@ private:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        NProtoPrivate::EShardIdCompressionMode shardIdMode,
-        const TString& fsId,
         TString* next,
         ui32* skippedRefs,
         NProto::EListNodesSizeMode sizeMode);
@@ -244,9 +232,7 @@ public:
         ui64 maxCount,
         TVector<TNodeRef>& refs,
         ui64& nextNodeId,
-        TString& nextCookie,
-        NProtoPrivate::EShardIdCompressionMode shardIdMode,
-        const TString& fsId) override;
+        TString& nextCookie) override;
 
     bool PrechargeNodeRefs(
         ui64 nodeId,
@@ -681,9 +667,7 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeRef>& ref,
-        NProtoPrivate::EShardIdCompressionMode,
-        const TString& mainFsId) override;
+        TMaybe<TNodeRef>& ref) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,
@@ -691,8 +675,6 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        NProtoPrivate::EShardIdCompressionMode,
-        const TString& fsId,
         TString* next,
         ui32* skippedRefs,
         bool noAutoPrecharge,
@@ -704,10 +686,9 @@ public:
         ui64 maxCount,
         TVector<TNodeRef>& refs,
         ui64& nextNodeId,
-        TString& nextCookie,
-        NProtoPrivate::EShardIdCompressionMode shardIdMode,
-        const TString& fsId) override;
+        TString& nextCookie) override;
 
+    /*
     void WriteNodeRef(
         ui64 nodeId,
         ui64 commitId,
@@ -716,7 +697,9 @@ public:
         const TString& shardId,
         const TString& shardNodeName,
         bool markExhaustive,
-        NProtoPrivate::EShardIdCompressionMode shardIdMode) override;
+        bool compressShardId) override;
+    */
+    void WriteNodeRef(const TNodeRef& nodeRef, bool markExhaustive) override;
 
     void DeleteNodeRef(ui64 nodeId, const TString& name) override;
 

@@ -38,15 +38,14 @@ bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
         return false;   // not ready
     }
 
-    bool ready = db.ReadNodeRefs(
+    bool ready = ReadNodeRefs(
+        db,
         args.NodeId,
         args.Cookie,
         args.MaxNodeRefs,
         nodeRefs,
         args.NextNodeId,
-        args.NextCookie,
-        GetShardIdCompressionMode(),
-        GetMainFileSystemId());
+        args.NextCookie);
 
     LOG_DEBUG(
         ctx,

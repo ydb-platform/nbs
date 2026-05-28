@@ -27,38 +27,9 @@ NProto::TError ValidateCreateFileSystemRequest(
             << "missing file system identifier");
     }
 
-    for (const char ch: fileSystemId) {
-        if (!std::isprint(static_cast<ui8>(ch))) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "Can't create a filesystem with the ID that contains "
-                   "non-printable characters: "
-                << fileSystemId.Quote());
-        }
-    }
-
-    const auto shardPrefixPos = fileSystemId.find(ShardNumPrefix);
-    if (shardPrefixPos != TString::npos &&
-        shardPrefixPos + ShardNumPrefix.size() < fileSystemId.size())
-    {
-        bool hasOnlyDigits = true;
-        for (auto i = shardPrefixPos + ShardNumPrefix.size();
-             i < fileSystemId.size();
-             ++i)
-        {
-            if (!std::isdigit(fileSystemId[i])) {
-                hasOnlyDigits = false;
-                break;
-            }
-        }
-
-        if (hasOnlyDigits) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "Can't create a filesystem with the ID that ends with "
-                    << TString(ShardNumPrefix).Quote()
-                    << " followed by digits.");
-        }
+    NProto::TError fsIdErr = ValidateFilesystemId(fileSystemId);
+    if (HasError(fsIdErr)) {
+        return fsIdErr;
     }
 
     const auto& cloudId = request.GetCloudId();

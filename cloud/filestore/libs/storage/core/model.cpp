@@ -562,4 +562,20 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     return result;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ValidateFilesystemId(const TString& fsId)
+{
+    if (IsFilesystemIdEncoded(fsId)) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Can't create a filesystem with the ID that starts with a "
+                   "non-printable character: "
+                << fsId.Quote());
+    }
+
+    return {};
+}
+
 }   // namespace NCloud::NFileStore::NStorage

@@ -38,9 +38,7 @@ void ReadAndCheckNodeRef(
         request.NodeRefsKey.NodeId,
         request.NodeRefsRow.CommitId,
         request.NodeRefsKey.Name,
-        ref,
-        NProtoPrivate::SICM_NO_COMPRESSION,
-        ""));
+        ref));
     CheckNodeRef(request, *ref);
 }
 
@@ -360,17 +358,12 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         TStateImpl state(Alloc(), cacheBypass, 0, 0, 1, 0);
         cacheBypass.SetUnconfirmedRecoveryReady(true);
 
-        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
-            NProtoPrivate::SICM_NO_COMPRESSION;
-
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
         UNIT_ASSERT(!state.ReadNodeRef(
             rootNodeIds[0],
             commitId1,
             nodeNames[0],
-            ref,
-            defaultShardMode,
-            ""));
+            ref));
 
         IInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
@@ -395,8 +388,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             "",
             refs,
             Max<ui32>(),
-            defaultShardMode,
-            "",
             &next,
             nullptr,
             false));
@@ -411,9 +402,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             request.NodeRefsKey.NodeId,
             commitId1,
             request.NodeRefsKey.Name,
-            ref,
-            defaultShardMode,
-            ""));
+            ref));
         UNIT_ASSERT(ref.Empty());
     }
 
@@ -432,9 +421,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         TCacheReadBypass cacheBypass;
         TStandardInMemoryIndexState state(Alloc(), cacheBypass, 0, 0, 3, 0);
         cacheBypass.SetUnconfirmedRecoveryReady(true);
-
-        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
-            NProtoPrivate::SICM_NO_COMPRESSION;
 
         const TVector<IInMemoryIndexState::TWriteNodeRefsRequest> requests = {
             {
@@ -482,8 +468,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             requests[0].NodeRefsKey.Name,
             refs,
             Max<ui32>(),
-            defaultShardMode,
-            "",
             &nextName,
             nullptr,
             false));
@@ -513,9 +497,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             requests[0].NodeRefsKey.NodeId,
             requests[0].NodeRefsRow.CommitId,
             requests[0].NodeRefsKey.Name,
-            ref,
-            defaultShardMode,
-            ""));
+            ref));
         ReadAndCheckNodeRef(state, request3);
         ReadAndCheckNodeRef(state, requests[1]);
         ReadAndCheckNodeRef(state, requests[2]);
@@ -527,8 +509,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             requests[0].NodeRefsKey.Name,
             refs,
             Max<ui32>(),
-            defaultShardMode,
-            "",
             &nextName,
             nullptr,
             false));
@@ -554,9 +534,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         using TStateImpl = TInMemoryIndexState<TUnlimitedBTreeNodeRefsCache>;
         TStateImpl state(Alloc(), cacheBypass, 0, 0, 3, 0);
         cacheBypass.SetUnconfirmedRecoveryReady(true);
-
-        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
-            NProtoPrivate::SICM_NO_COMPRESSION;
 
         const TVector<IInMemoryIndexState::TWriteNodeRefsRequest> requests = {
             {
@@ -604,8 +581,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             requests[0].NodeRefsKey.Name,
             refs,
             Max<ui32>(),
-            defaultShardMode,
-            "",
             &nextName,
             nullptr,
             false));
@@ -642,8 +617,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             requests[0].NodeRefsKey.Name,
             refs,
             Max<ui32>(),
-            defaultShardMode,
-            "",
             &nextName,
             nullptr,
             false));
@@ -673,9 +646,6 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         TStateImpl state(Alloc(), cacheBypass, 0, 0, 1, 0);
         cacheBypass.SetUnconfirmedRecoveryReady(true);
 
-        constexpr NProtoPrivate::EShardIdCompressionMode defaultShardMode =
-            NProtoPrivate::SICM_NO_COMPRESSION;
-
         IInMemoryIndexState::TWriteNodeRefsRequest request = {
             .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
             .NodeRefsRow = {
@@ -692,9 +662,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
-            ref,
-            defaultShardMode,
-            ""));
+            ref));
         UNIT_ASSERT(ref.Defined());
 
         state.MarkNodeRefsLoadComplete();
@@ -703,9 +671,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
-            ref,
-            defaultShardMode,
-            ""));
+            ref));
         UNIT_ASSERT(ref.Defined());
 
         state.UpdateState({IInMemoryIndexState::TDeleteNodeRefsRequest{
@@ -717,9 +683,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
-            ref,
-            defaultShardMode,
-            ""));
+            ref));
         UNIT_ASSERT(ref.Empty());
     }
 

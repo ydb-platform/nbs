@@ -450,9 +450,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
                 args.CommitId,
                 {},
                 refs,
-                1,
-                GetShardIdCompressionMode(),
-                GetMainFileSystemId()))
+                1))
         {
             return false;
         }

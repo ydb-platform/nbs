@@ -1,3 +1,4 @@
+
 #include "tablet_actor.h"
 
 namespace NCloud::NFileStore::NStorage {
@@ -26,15 +27,15 @@ bool TIndexTabletActor::PrepareTx_ReadNodeRefs(
     IIndexTabletDatabase& db,
     TTxIndexTablet::TReadNodeRefs& args)
 {
-    bool ready = db.ReadNodeRefs(
+    bool ready = ReadNodeRefs(
+        db,
         args.NodeId,
         args.Cookie,
         args.Limit,
         args.Refs,
         args.NextNodeId,
-        args.NextCookie,
-        GetShardIdCompressionMode(),
-        GetMainFileSystemId());
+        args.NextCookie
+    );
 
     LOG_DEBUG(
         ctx,

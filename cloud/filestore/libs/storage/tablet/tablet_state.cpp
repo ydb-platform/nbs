@@ -283,11 +283,11 @@ void TIndexTabletState::SetFrozen(TIndexTabletDatabase& db, bool frozen)
     db.WriteFileSystem(FileSystem);
 }
 
-void TIndexTabletState::SetShardIdCompressionMode(
-        TIndexTabletDatabase& db,
-        NProtoPrivate::EShardIdCompressionMode mode)
+void TIndexTabletState::SetCompressShardId(
+    TIndexTabletDatabase& db,
+    bool compressShardId)
 {
-    FileSystem.SetShardIdCompressionMode(mode);
+    FileSystem.SetCompressShardId(compressShardId);
     db.WriteFileSystem(FileSystem);
 }
 

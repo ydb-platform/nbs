@@ -417,6 +417,50 @@ void TIndexTabletState::WriteHasXAttrs(
     SetHasXAttrs(db, static_cast<ui64>(hasXAttrs));
 }
 
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+// Functionsd that compress and decompress NodeRefs
+
+bool TryToDecodeShardId(
+    IIndexTabletDatabase::TNodeRef& nodeRef,
+    const TString& mainFsId)
+{
+    if (!nodeRef.TryToDecodeShardId(mainFsId)) {
+            // This is a kind of impossible situation meaning that data in
+            // the table is corrupted
+            ReportMalformedEncodedShardNodeRef(
+                TStringBuilder()
+                << "Filesystem: " << mainFsId
+                << ", encoded ShardId: " << nodeRef.ShardId.Quote()
+                << ", encoded ShardNodeName: "
+                << nodeRef.ShardNodeName.Quote());
+
+        return false;
+    }
+
+    return true;
+}
+
+bool TryToEncodeShardId(
+    const TString& mainFs,
+    IIndexTabletDatabase::TNodeRef& nodeRef)
+{
+    if (!nodeRef.TryToEncodeShardId(mainFs)) {
+        ReportMalformedShardNodeRef(
+            TStringBuilder()
+            << "ShardId: " << nodeRef.ShardId.Quote()
+            << ", ShardNodeName: " << nodeRef.ShardNodeName.Quote());
+
+        return false;
+    }
+
+    return true;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 // NodeRefs
 
@@ -430,15 +474,24 @@ void TIndexTabletState::CreateNodeRef(
     const TString& shardNodeName,
     bool markExhaustive)
 {
-    db.WriteNodeRef(
-        nodeId,
-        commitId,
-        childName,
-        childNodeId,
-        shardId,
-        shardNodeName,
-        markExhaustive,
-        GetShardIdCompressionMode());
+    IIndexTabletDatabase::TNodeRef nodeRef {
+        .NodeId = nodeId,
+        .Name = childName,
+        .ChildNodeId = childNodeId,
+        .ShardId = shardId,
+        .ShardNodeName = shardNodeName,
+        .MinCommitId = commitId,
+        .MaxCommitId = InvalidCommitId
+    };
+
+    if (GetCompressShardId() && !TryToEncodeShardId(
+            GetMainFileSystemId(),
+            nodeRef))
+    {
+        return;
+    }
+
+    db.WriteNodeRef(nodeRef, markExhaustive);
 }
 
 void TIndexTabletState::RemoveNodeRef(
@@ -480,9 +533,11 @@ bool TIndexTabletState::ReadNodeRef(
         nodeId,
         commitId,
         name,
-        ref,
-        GetShardIdCompressionMode(),
-        GetMainFileSystemId());
+        ref);
+
+    if (ref && !TryToDecodeShardId(ref.GetRef(), GetMainFileSystemId())) {
+        ref.Clear();
+    }
 
     if (ready && ref) {
         // fast path
@@ -507,8 +562,6 @@ bool TIndexTabletState::ReadNodeRefs(
     const TString& cookie,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui32 maxBytes,
-    NProtoPrivate::EShardIdCompressionMode shardIdMode,
-    const TString& mainFsId,
     TString* next,
     bool noAutoPrecharge,
     NProto::EListNodesSizeMode sizeMode)
@@ -519,12 +572,15 @@ bool TIndexTabletState::ReadNodeRefs(
         cookie,
         refs,
         maxBytes,
-        shardIdMode,
-        mainFsId,
         next,
         nullptr, // skippedRefs
         noAutoPrecharge,
         sizeMode);
+
+    std::erase_if(
+        refs,
+        [this](IIndexTabletDatabase::TNodeRef& ref)
+        { return !TryToDecodeShardId(ref, GetMainFileSystemId()); });
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
     if (checkpointId != InvalidCommitId) {
@@ -544,19 +600,22 @@ bool TIndexTabletState::ReadNodeRefs(
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui64& nextNodeId,
-    TString& nextCookie,
-    NProtoPrivate::EShardIdCompressionMode shardIdMode,
-    const TString& mainFsId)
+    TString& nextCookie)
 {
-    return db.ReadNodeRefs(
+    bool ready = db.ReadNodeRefs(
         startNodeId,
         startCookie,
         maxCount,
         refs,
         nextNodeId,
-        nextCookie,
-        shardIdMode,
-        mainFsId);
+        nextCookie);
+
+    std::erase_if(
+        refs,
+        [this](IIndexTabletDatabase::TNodeRef& ref)
+        { return !TryToDecodeShardId(ref, GetMainFileSystemId()); });
+
+    return ready;
 }
 
 bool TIndexTabletState::PrechargeNodeRefs(
