@@ -766,4 +766,8 @@ message TStorageConfig
     // These flags turn NodeRefs cache into a btree_map without capacity limits.
     optional bool UseUnlimitedBTreeNodeRefsCacheInMainTablet = 496;
     optional bool UseUnlimitedBTreeNodeRefsCacheInShards = 497;
+
+    // Restart index tablet on destroy with active sessions only if tablet
+    // uptime is greater than this threshold. Zero disables restarts.
+    optional uint32 RestartTabletUptimeThreshold = 498;
 }

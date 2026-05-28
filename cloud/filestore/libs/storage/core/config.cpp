@@ -334,6 +334,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
                                                                                \
     xxx(ForceDestroySizeThreshold,          ui64,       0                     )\
+    xxx(RestartTabletUptimeThreshold,       TDuration,  TDuration::Zero()     )\
                                                                                \
     xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\

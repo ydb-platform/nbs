@@ -28,10 +28,13 @@ private:
     const TString FileSystemId;
     const bool ForceDestroy;
     const bool AllowFileStoreDestroyWithOrphanSessions;
+    TDuration RestartTabletUptimeThreshold;
     TVector<TString> ShardIds;
     ui32 DestroyedShardCount = 0;
     ui64 ForceDestroySizeThreshold = 0;
     NProto::TFileStore FileStore;
+    TDuration TabletUptime;
+    NProto::TError ActiveSessionsError;
 
 public:
     TDestroyFileStoreActor(
@@ -39,7 +42,8 @@ public:
         TString fileSystemId,
         bool forceDestroy,
         bool allowFileStoreDestroyWithOrphanSessions,
-        ui64 forceDestroySizeThreshold);
+        ui64 forceDestroySizeThreshold,
+        TDuration restartTabletUptimeThreshold);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -47,7 +51,9 @@ private:
     STFUNC(StateWork);
 
     void DescribeFileStore(const TActorContext& ctx);
+    void GetStorageStats(const TActorContext& ctx);
     void DescribeSessions(const TActorContext& ctx);
+    void RestartTablet(const TActorContext& ctx);
     void GetFileSystemTopology(const TActorContext& ctx);
     void DestroyShards(const TActorContext& ctx);
     void DestroyFileStore(const TActorContext& ctx);
@@ -56,8 +62,16 @@ private:
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleGetStorageStatsResponse(
+        const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleDescribeSessionsResponse(
         const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleRestartTabletResponse(
+        const TEvIndexTablet::TEvRestartTabletResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleGetFileSystemTopologyResponse(
@@ -84,12 +98,14 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
         TString fileSystemId,
         bool forceDestroy,
         bool allowFileStoreDestroyWithOrphanSessions,
-        ui64 forceDestroySizeThreshold)
+        ui64 forceDestroySizeThreshold,
+        TDuration restartTabletUptimeThreshold)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)
     , AllowFileStoreDestroyWithOrphanSessions(
         allowFileStoreDestroyWithOrphanSessions)
+    , RestartTabletUptimeThreshold(restartTabletUptimeThreshold)
     , ForceDestroySizeThreshold(forceDestroySizeThreshold)
 {}
 
@@ -147,8 +163,40 @@ void TDestroyFileStoreActor::HandleDescribeFileStoreResponse(
     if (ForceDestroy || isBelowForceDestroyThreshold) {
         GetFileSystemTopology(ctx);
     } else {
-        DescribeSessions(ctx);
+        GetStorageStats(ctx);
     }
+}
+
+void TDestroyFileStoreActor::GetStorageStats(const TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+    request->Record.SetAllowCache(true);
+    request->Record.SetFileSystemId(FileSystemId);
+    request->Record.SetMode(NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
+
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
+}
+
+void TDestroyFileStoreActor::HandleGetStorageStatsResponse(
+    const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        if (msg->GetStatus() == E_NOT_FOUND) {
+            ReplyAndDie(
+                ctx,
+                MakeError(S_FALSE, FileSystemId.Quote() + " does not exist"));
+            return;
+        }
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    TabletUptime = TDuration::MilliSeconds(msg->Record.GetTabletUptimeMs());
+    DescribeSessions(ctx);
 }
 
 void TDestroyFileStoreActor::DescribeSessions(const TActorContext& ctx)
@@ -198,11 +246,57 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
         for (const auto& sessionInfo: msg->Record.GetSessions()) {
             message << " " << sessionInfo.GetClientId();
         }
+
+        if (RestartTabletUptimeThreshold &&
+            TabletUptime > RestartTabletUptimeThreshold)
+        {
+            ActiveSessionsError = MakeError(E_REJECTED, message);
+            RestartTablet(ctx);
+            return;
+        }
+
         ReplyAndDie(ctx, MakeError(E_REJECTED, message));
         return;
     }
 
     GetFileSystemTopology(ctx);
+}
+
+void TDestroyFileStoreActor::RestartTablet(const TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvIndexTablet::TEvRestartTabletRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Restarting the index tablet before destroying the filesystem"
+        " because the tablet may have false active sessions,"
+        " uptime is greater than %lu ms",
+        FileSystemId.c_str(),
+        RestartTabletUptimeThreshold.MilliSeconds());
+
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
+}
+
+void TDestroyFileStoreActor::HandleRestartTabletResponse(
+    const TEvIndexTablet::TEvRestartTabletResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] RestartTablet error: %s",
+            FileSystemId.c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    ReplyAndDie(ctx, ActiveSessionsError);
 }
 
 void TDestroyFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
@@ -357,8 +451,16 @@ STFUNC(TDestroyFileStoreActor::StateWork)
             HandleDescribeFileStoreResponse);
 
         HFunc(
+            TEvIndexTablet::TEvGetStorageStatsResponse,
+            HandleGetStorageStatsResponse);
+
+        HFunc(
             TEvIndexTablet::TEvDescribeSessionsResponse,
             HandleDescribeSessionsResponse);
+
+        HFunc(
+            TEvIndexTablet::TEvRestartTabletResponse,
+            HandleRestartTabletResponse);
 
         HFunc(
             TEvIndexTablet::TEvGetFileSystemTopologyResponse,
@@ -426,7 +528,8 @@ void TStorageServiceActor::HandleDestroyFileStore(
         msg->Record.GetFileSystemId(),
         forceDestroy,
         StorageConfig->GetAllowFileStoreDestroyWithOrphanSessions(),
-        StorageConfig->GetForceDestroySizeThreshold());
+        StorageConfig->GetForceDestroySizeThreshold(),
+        StorageConfig->GetRestartTabletUptimeThreshold());
 
     NCloud::Register(ctx, std::move(actor));
 }
