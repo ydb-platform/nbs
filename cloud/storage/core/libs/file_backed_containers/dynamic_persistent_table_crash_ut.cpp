@@ -210,7 +210,7 @@ public:
             }
 
             ++Mutations;
-            if ((Mutations & 0x3f) == 0) {
+            if (Mutations % 64 == 0) {
                 Table.TryDeallocateMemory();
             }
         }
