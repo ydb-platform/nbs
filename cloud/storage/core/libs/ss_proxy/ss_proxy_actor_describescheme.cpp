@@ -1,6 +1,7 @@
 #include "ss_proxy_actor.h"
 
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/ss_proxy/ss_proxy_events_private.h>
 
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
@@ -209,14 +210,12 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     Y_DEBUG_ABORT_UNLESS(record->ResultSet.size() == 1);
 
     if (record->ResultSet.size() != 1) {
-        HandleError(
-            ctx,
-            MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "SchemeCache ResultSet returned unexpected "
-                    << "number of entries: "
-                    << record->ResultSet.size()));
+        const TString message = TStringBuilder()
+            << "SchemeCache ResultSet returned unexpected "
+            << "number of entries: "
+            << record->ResultSet.size();
+        ReportSchemeCacheError(message);
+        HandleError(ctx, MakeError(E_REJECTED, message));
         return;
     }
 
@@ -237,14 +236,12 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
             }
 
             default: {
-                HandleError(
-                    ctx,
-                    MakeError(
-                        E_REJECTED,
-                        TStringBuilder()
-                            << "SchemeCache resolve failed with uncertain "
-                            << "result. Error Code: "
-                            << static_cast<ui32>(entry.Status)));
+                const TString message = TStringBuilder()
+                    << "SchemeCache resolve failed with uncertain "
+                    << "result. Error Code: "
+                    << static_cast<ui32>(entry.Status);
+                ReportSchemeCacheError(message);
+                HandleError(ctx, MakeError(E_REJECTED, message));
                 return;
             }
         }
@@ -263,13 +260,10 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
             auto pathType = ConvertSchemeCacheKind(child.Kind);
 
             if (!pathType) {
-                HandleError(
-                    ctx,
-                    MakeError(
-                        E_REJECTED,
-                        TStringBuilder()
-                            << "Unknown child path kind: "
-                            << child.Kind));
+                const TString message = TStringBuilder()
+                    << "Unknown child path kind: " << child.Kind;
+                ReportSchemeCacheError(message);
+                HandleError(ctx, MakeError(E_REJECTED, message));
                 return;
             }
 
@@ -310,15 +304,13 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
                 NKikimrSchemeOp::EPathTypeDir);
             break;
 
-        default:
-            HandleError(
-                ctx,
-                MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "Unknown path kind: "
-                        << entry.Kind));
+        default: {
+            const TString message = TStringBuilder()
+                << "Unknown path kind: " << entry.Kind;
+            ReportSchemeCacheError(message);
+            HandleError(ctx, MakeError(E_REJECTED, message));
             return;
+        }
     }
 
     if (PathDescriptionBackup) {
