@@ -7,7 +7,6 @@ from .common import (
     get_qemu_bios,
     get_qemu_firmware,
     get_qemu_kvm,
-    is_arm,
 )
 from .qemu import Qemu
 
@@ -34,7 +33,7 @@ class QemuWithMigration:
             vhost_socket="",
             enable_kvm=True,
             use_virtiofs_server=True,
-            is_arm=is_arm())
+        )
 
         self.socket_generator = socket_generator
 

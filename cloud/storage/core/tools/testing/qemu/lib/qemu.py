@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import platform
 import stat
 import time
 import uuid
@@ -87,7 +88,7 @@ class Qemu:
                  shared_nic_port=0,
                  use_virtiofs_server=False,
                  num_request_queues=1,
-                 is_arm=False,
+                 is_arm=None,
                  reconnect=1,
                  qemu_bios=None):
 
@@ -109,7 +110,7 @@ class Qemu:
         self.virtio = virtio
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
-        self.is_arm = is_arm
+        self.is_arm = platform.machine().lower() in ("aarch64", "arm64") if is_arm is None else is_arm
         self.reconnect = 0 if self.is_arm else reconnect
         self.migration = "" if self.is_arm else ",migration=external"
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
