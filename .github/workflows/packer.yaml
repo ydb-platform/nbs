@@ -106,10 +106,10 @@ jobs:
         if: inputs.image_id == '' && inputs.build_image == true
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          RUNNER_VERSION: ${{ vars.RUNNER_VERSION }}
+          RUNNER_VERSION: "latest"
         run: |
           export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-          python3 -m scripts.github_runner_release --version "${RUNNER_VERSION:-latest}"
+          python3 -m scripts.github_runner_release --version "${RUNNER_VERSION}"
 
       - name: set up packer
         if: inputs.image_id == '' && inputs.build_image == true
