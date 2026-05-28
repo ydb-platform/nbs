@@ -14,6 +14,7 @@ import (
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/test/filestore_client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,7 +74,7 @@ func copyFilesystemThroughSnapshot(
 
 func compareFindResults(
 	t *testing.T,
-	filestoreClient *testcommon.FilestoreClient,
+	filestoreClient *filestore_client.FilestoreClient,
 	srcFilesystemID string,
 	dstFilesystemID string,
 ) {
@@ -95,7 +96,7 @@ func TestFilesystemTraversalLargeDirectoryTree(t *testing.T) {
 	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
 	defer nfsClient.Close()
 
-	filestoreClient := testcommon.NewFilestoreClient(t)
+	filestoreClient := filestore_client.NewFilestoreClient(t)
 
 	srcFilesystemID := t.Name() + "_src"
 	dstFilesystemID := t.Name() + "_dst"
@@ -139,7 +140,7 @@ func TestFilesystemTraversalSmallTree(t *testing.T) {
 	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
 	defer nfsClient.Close()
 
-	filestoreClient := testcommon.NewFilestoreClient(t)
+	filestoreClient := filestore_client.NewFilestoreClient(t)
 
 	srcFilesystemID := t.Name() + "_src"
 	dstFilesystemID := t.Name() + "_dst"
@@ -240,7 +241,7 @@ func TestFilesystemTraversalHardlinks(t *testing.T) {
 	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
 	defer nfsClient.Close()
 
-	filestoreClient := testcommon.NewFilestoreClient(t)
+	filestoreClient := filestore_client.NewFilestoreClient(t)
 
 	srcFilesystemID := t.Name() + "_src"
 	dstFilesystemID := t.Name() + "_dst"

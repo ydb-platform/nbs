@@ -1,4 +1,4 @@
-package testcommon
+package filestore_client
 
 import (
 	"fmt"
