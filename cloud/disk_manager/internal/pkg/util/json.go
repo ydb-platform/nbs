@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	cells_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/protos"
 	filesystem_scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
+	filesystem_snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	disk_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	filesystem_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
@@ -35,6 +36,8 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"dataplane.DeleteSnapshotData":                  func() proto.Message { return &dataplane_protos.DeleteSnapshotDataRequest{} },
 	"dataplane.DeleteDiskFromIncremental":           func() proto.Message { return &dataplane_protos.DeleteDiskFromIncrementalRequest{} },
 	"dataplane.CreateDRBasedDiskCheckpoint":         func() proto.Message { return &dataplane_protos.CreateDRBasedDiskCheckpointRequest{} },
+	"dataplane.TransferFromFilesystemToSnapshot":    func() proto.Message { return &filesystem_snapshot_protos.CreateFilesystemSnapshotRequest{} },
+	"dataplane.TransferFromSnapshotToFilesystem":    func() proto.Message { return &filesystem_snapshot_protos.TransferFromSnapshotToFilesystemRequest{} },
 	"disks.CreateEmptyDisk":                         func() proto.Message { return &disk_protos.CreateDiskParams{} },
 	"disks.CreateOverlayDisk":                       func() proto.Message { return &disk_protos.CreateOverlayDiskRequest{} },
 	"disks.CreateDiskFromImage":                     func() proto.Message { return &disk_protos.CreateDiskFromImageRequest{} },
@@ -89,6 +92,8 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"dataplane.CreateDRBasedDiskCheckpoint":         func() proto.Message { return &dataplane_protos.CreateDRBasedDiskCheckpointTaskState{} },
 	"dataplane.MigrateSnapshotTask":                 func() proto.Message { return &dataplane_protos.MigrateSnapshotTaskState{} },
 	"dataplane.MigrateSnapshotDatabaseTask":         func() proto.Message { return &dataplane_protos.MigrateSnapshotDatabaseTaskState{} },
+	"dataplane.TransferFromFilesystemToSnapshot":    func() proto.Message { return &filesystem_snapshot_protos.TransferFromFilesystemToSnapshotTaskState{} },
+	"dataplane.TransferFromSnapshotToFilesystem":    func() proto.Message { return &filesystem_snapshot_protos.TransferFromSnapshotToFilesystemTaskState{} },
 	"disks.CreateEmptyDisk":                         func() proto.Message { return &disk_protos.CreateEmptyDiskTaskState{} },
 	"disks.CreateOverlayDisk":                       func() proto.Message { return &disk_protos.CreateOverlayDiskTaskState{} },
 	"disks.CreateDiskFromImage":                     func() proto.Message { return &disk_protos.CreateDiskFromImageTaskState{} },
