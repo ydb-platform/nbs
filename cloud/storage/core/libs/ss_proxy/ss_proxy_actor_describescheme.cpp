@@ -223,14 +223,20 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
 
     if (record->ErrorCount > 0) {
         switch (entry.Status) {
-            case TSchemeCacheNavigate::EStatus::PathErrorUnknown:
+            case TSchemeCacheNavigate::EStatus::PathErrorUnknown: {
+                auto error = MakeSchemeShardError(
+                    NKikimrScheme::StatusPathDoesNotExist,
+                    "SchemeCache PathErrorUnknown converted to StatusPathDoesNotExist");
+                SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
+                HandleError(ctx, error);
+                return;
+            }
+
             case TSchemeCacheNavigate::EStatus::RootUnknown: {
                 auto error = MakeSchemeShardError(
                     NKikimrScheme::StatusPathDoesNotExist,
-                    "Path doesn't exist");
-
+                    "SchemeCache RootUnknown converted to StatusPathDoesNotExist");
                 SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
-
                 HandleError(ctx, error);
                 return;
             }
