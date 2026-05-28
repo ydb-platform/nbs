@@ -594,6 +594,7 @@ jobs:
         continue-on-error: true
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements.txt
+        continue-on-error: true
       - name: finalize workload comments
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -603,6 +604,7 @@ jobs:
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
           python3 -m scripts.tests.finalize_workload_comments \
-              --matrix-include "$MATRIX_INCLUDE" \
-              --platform-name "$platform_name" \
-              --workload-status completed
+            --matrix-include "$MATRIX_INCLUDE" \
+            --platform-name "$platform_name" \
+            --workload-status completed
+        continue-on-error: true
