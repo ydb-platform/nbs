@@ -2290,7 +2290,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRef(
     const TString& name,
     TMaybe<TNodeRef>& ref)
 {
-    const bool result =
+    auto result =
         TIndexTabletDatabase::ReadNodeRef(nodeId, commitId, name, ref);
     if (result && ref) {
         // If ReadNodeRef was successful, it is reasonable to update the cache
@@ -2375,17 +2375,6 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     return result;
 }
 
-/*
-void TIndexTabletDatabaseProxy::WriteNodeRef(
-    ui64 nodeId,
-    ui64 commitId,
-    const TString& name,
-    ui64 childNode,
-    const TString& shardId,
-    const TString& shardNodeName,
-    bool markExhaustive,
-    bool compressShardId)
-*/
 void TIndexTabletDatabaseProxy::WriteNodeRef(
     const TNodeRef& nodeRef,
     bool markExhaustive)
