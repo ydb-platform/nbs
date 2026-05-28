@@ -27,6 +27,7 @@ import (
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	filesystem_scrubbing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
 	snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -723,6 +724,11 @@ func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
 func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
 	taskRegistry := tasks.NewRegistry()
 	err := filesystem_scrubbing.Register(taskRegistry)
+	if err != nil {
+		return nil, err
+	}
+
+	err = filesystem_snapshot.Register(taskRegistry)
 	if err != nil {
 		return nil, err
 	}

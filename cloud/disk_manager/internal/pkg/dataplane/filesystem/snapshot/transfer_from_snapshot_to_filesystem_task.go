@@ -234,7 +234,6 @@ func (t *transferFromSnapshotToFilesystemTask) Load(request, state []byte) error
 	return proto.Unmarshal(state, t.state)
 }
 
-
 func (t *transferFromSnapshotToFilesystemTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
