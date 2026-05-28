@@ -136,7 +136,7 @@ jobs:
           SUBNET_ID: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
         run: |
           cd .github/packer || exit
-          packer build github-runner.pkr.hcl
+          packer -var "RUNNER_VERSION=${RUNNER_VERSION}" -var "RUNNER_SHA256_X64=${RUNNER_SHA256_X64}" build github-runner.pkr.hcl
           cat reports/manifest.json
           echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' reports/manifest.json)" >> $GITHUB_OUTPUT
 
