@@ -74,6 +74,7 @@ TNodeRegistrationSettings
     TNodeRegistrationSettings settings;
     settings.MaxAttempts = StorageConfig->GetNodeRegistrationMaxAttempts();
     settings.LegacyRegistrationTimeout = StorageConfig->GetNodeRegistrationTimeout();
+    settings.DynamicNodeRegistrationTimeout = StorageConfig->GetDynamicNodeRegistrationTimeout(),
     settings.LoadConfigsFromCmsRetryMinDelay = StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
     settings.LoadConfigsFromCmsRetryMaxDelay = StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
     settings.LoadConfigsFromCmsTotalTimeout = StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
