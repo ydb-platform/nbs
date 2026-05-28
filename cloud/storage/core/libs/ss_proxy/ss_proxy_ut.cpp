@@ -676,7 +676,6 @@ void TestMkDir(
 ////////////////////////////////////////////////////////////////////////////////
 
 TSSProxyConfig CreateConfig(bool useSchemeCache)
-
 {
     TSSProxyConfig config;
     config.SchemeShardDir = "/MyRoot";

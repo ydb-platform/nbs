@@ -404,7 +404,7 @@ public:
 
     [[nodiscard]] bool GetUseCustomReadDataResponseParser() const;
 
-    bool GetUseSchemeCache() const;
+    [[nodiscard]] bool GetUseSchemeCache() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
