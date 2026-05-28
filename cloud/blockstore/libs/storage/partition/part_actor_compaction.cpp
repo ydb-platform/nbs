@@ -1213,6 +1213,12 @@ private:
         ui64 rangeGarbage = 0;
 
         if (isIgnoringZeroedCompaction) {
+            Y_DEBUG_ABORT_UNLESS(
+                State.GetUsedBlocksIgnoringZeroed() <= GetBlockCount());
+            Y_DEBUG_ABORT_UNLESS(
+                TopByGarbageIgnoringZeroed.UsedBlocksIgnoringZeroed() <=
+                TopByGarbageIgnoringZeroed.BlockCount);
+
             diskGarbage = GetPercentage(
                 State.GetUsedBlocksIgnoringZeroed(),
                 GetBlockCount());
