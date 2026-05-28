@@ -612,7 +612,7 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
                 minCommitId,
                 maxCommitId);
 
-            auto& ref = refs.back();
+            const auto& ref = refs.back();
             // TODO(#5148): consider other size calculation modes
             if (sizeMode == NProto::LNSM_FULL_ROW) {
                 bytes += ref.CalculateByteSize();

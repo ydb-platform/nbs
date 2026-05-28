@@ -1739,64 +1739,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldValidateShardConfiguration)
     {
-        const ui64 blockSize = 4_KB;
-        const ui64 shardBlockCount = 1024;
-        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
-        const ui64 shardCount = 3;
-        const ui64 fsSize =
-            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        config.SetMultiTabletForwardingEnabled(true);
-        config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(shardAllocationUnit);
-
-        const TString fsId = "test";
-        const TString shard1Id = TStringBuilder()
-                                 << fsId << ShardNumPrefix << 1;
-        const TString shard2Id = TStringBuilder()
-                                 << fsId << ShardNumPrefix << 2;
-        const TString shard3Id = TStringBuilder()
-                                 << fsId << ShardNumPrefix << 3;
-
-        TTestEnv env({}, config);
-        ui32 nodeIdx = env.AddDynamicNode();
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, fsSize);
-        WaitForTabletStart(service);
-
-        // Detach the third shard for later use
-        {
-            NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard1Id;
-            *request.AddShardFileSystemIds() = shard2Id;
-            request.SetForce(true);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureshards", buf);
-            NProtoPrivate::TConfigureShardsResponse response;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
-        }
-
-        {
-            NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(shard3Id);
-            request.SetForce(true);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureshards", buf);
-            NProtoPrivate::TConfigureShardsResponse response;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
-        }
+        const auto shard3Id = fsConfig.FsId + "_s3";
+        service.CreateFileStore(shard3Id, fsConfig.ShardBlockCount - 1);
 
         // ShardNo change not allowed
         {
             NProtoPrivate::TConfigureAsShardRequest request;
-            request.SetFileSystemId(shard1Id);
+            request.SetFileSystemId(fsConfig.Shard1Id);
             request.SetShardNo(2);
 
             TString buf;
@@ -1812,8 +1764,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Shard deletion not allowed
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard1Id;
+            request.SetFileSystemId(fsConfig.FsId);
+            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1828,9 +1780,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Shard reordering not allowed
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard2Id;
-            *request.AddShardFileSystemIds() = shard1Id;
+            request.SetFileSystemId(fsConfig.FsId);
+            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1858,9 +1810,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard1Id;
-            *request.AddShardFileSystemIds() = shard2Id;
+            request.SetFileSystemId(fsConfig.FsId);
+            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
+            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
             *request.AddShardFileSystemIds() = shard3Id;
 
             TString buf;
