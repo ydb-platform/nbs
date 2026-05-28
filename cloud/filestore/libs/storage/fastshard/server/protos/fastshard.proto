@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NStorage.NFastShard.NProtoSrv;
+
+import "cloud/filestore/private/api/protos/tablet.proto";
+import "cloud/filestore/public/api/protos/data.proto";
+import "cloud/filestore/public/api/protos/locks.proto";
+import "cloud/filestore/public/api/protos/node.proto";
+import "cloud/storage/core/protos/error.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+// Wire format:
+//   [4-byte big-endian length][TRequest or TResponse bytes]
+//
+// Each connection carries a single request/response exchange, then closes.
+
+message TRequest
+{
+    // Identifies which shard to route the request to.
+    string FileSystemId = 100;
+
+    oneof Body {
+        NCloud.NFileStore.NProto.TGetNodeAttrRequest GetNodeAttr = 1;
+        NCloud.NFileStore.NProto.TSetNodeAttrRequest SetNodeAttr = 2;
+        NCloud.NFileStore.NProto.TAccessNodeRequest AccessNode = 3;
+        NCloud.NFileStore.NProto.TCreateNodeRequest CreateNode = 4;
+        NCloud.NFileStore.NProto.TUnlinkNodeRequest UnlinkNode = 5;
+        NCloud.NFileStore.NProto.TCreateHandleRequest CreateHandle = 6;
+        NCloud.NFileStore.NProto.TDestroyHandleRequest DestroyHandle = 7;
+        NCloud.NFileStore.NProto.TAllocateDataRequest AllocateData = 8;
+        NCloud.NFileStore.NProto.TAcquireLockRequest AcquireLock = 9;
+        NCloud.NFileStore.NProto.TReleaseLockRequest ReleaseLock = 10;
+        NCloud.NFileStore.NProto.TTestLockRequest TestLock = 11;
+        NCloud.NFileStore.NProto.TWriteDataRequest WriteData = 12;
+        NCloud.NFileStore.NProto.TReadDataRequest ReadData = 13;
+        NCloud.NFileStore.NProto.TRemoveNodeXAttrRequest RemoveNodeXAttr = 14;
+        NCloud.NFileStore.NProto.TGetNodeXAttrRequest GetNodeXAttr = 15;
+        NCloud.NFileStore.NProto.TSetNodeXAttrRequest SetNodeXAttr = 16;
+        NCloud.NFileStore.NProto.TListNodeXAttrRequest ListNodeXAttr = 17;
+        NCloud.NFileStore.NProtoPrivate.TGetNodeAttrBatchRequest
+            GetNodeAttrBatch = 18;
+    }
+}
+
+message TResponse
+{
+    // Non-empty when the request could not be processed (e.g. unknown
+    // FileSystemId or dispatch failure).
+    NCloud.NProto.TError Error = 100;
+
+    oneof Body {
+        NCloud.NFileStore.NProto.TGetNodeAttrResponse GetNodeAttr = 1;
+        NCloud.NFileStore.NProto.TSetNodeAttrResponse SetNodeAttr = 2;
+        NCloud.NFileStore.NProto.TAccessNodeResponse AccessNode = 3;
+        NCloud.NFileStore.NProto.TCreateNodeResponse CreateNode = 4;
+        NCloud.NFileStore.NProto.TUnlinkNodeResponse UnlinkNode = 5;
+        NCloud.NFileStore.NProto.TCreateHandleResponse CreateHandle = 6;
+        NCloud.NFileStore.NProto.TDestroyHandleResponse DestroyHandle = 7;
+        NCloud.NFileStore.NProto.TAllocateDataResponse AllocateData = 8;
+        NCloud.NFileStore.NProto.TAcquireLockResponse AcquireLock = 9;
+        NCloud.NFileStore.NProto.TReleaseLockResponse ReleaseLock = 10;
+        NCloud.NFileStore.NProto.TTestLockResponse TestLock = 11;
+        NCloud.NFileStore.NProto.TWriteDataResponse WriteData = 12;
+        NCloud.NFileStore.NProto.TReadDataResponse ReadData = 13;
+        NCloud.NFileStore.NProto.TRemoveNodeXAttrResponse RemoveNodeXAttr = 14;
+        NCloud.NFileStore.NProto.TGetNodeXAttrResponse GetNodeXAttr = 15;
+        NCloud.NFileStore.NProto.TSetNodeXAttrResponse SetNodeXAttr = 16;
+        NCloud.NFileStore.NProto.TListNodeXAttrResponse ListNodeXAttr = 17;
+        NCloud.NFileStore.NProtoPrivate.TGetNodeAttrBatchResponse
+            GetNodeAttrBatch = 18;
+    }
+}
