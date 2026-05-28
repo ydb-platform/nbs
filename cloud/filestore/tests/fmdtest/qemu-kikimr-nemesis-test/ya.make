@@ -8,7 +8,8 @@ TEST_SRCS(
 )
 
 DEPENDS(
-    cloud/filestore/tools/testing/dirtree/bin
+    cloud/filestore/apps/client
+    cloud/filestore/tools/testing/fmdtest/bin
 )
 
 PEERDIR(
