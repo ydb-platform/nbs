@@ -372,6 +372,7 @@ struct TRequestCounters::TStatCounters
     bool IsReadWriteRequest = false;
     bool ReportDataPlaneHistogram = false;
     bool ReportControlPlaneHistogram = false;
+    bool ThrottlingMetricsDisabled = false;
 
     TIntrusivePtr<TDynamicCounters> CountersGroup;
 
@@ -496,7 +497,8 @@ struct TRequestCounters::TStatCounters
         TDynamicCountersPtr countersGroup,
         bool isReadWriteRequest,
         bool reportDataPlaneHistogram,
-        bool reportControlPlaneHistogram)
+        bool reportControlPlaneHistogram,
+        bool throttlingMetricsDisabled)
     {
         CountersGroup = std::move(countersGroup);
         auto& counters = *CountersGroup;
@@ -504,6 +506,7 @@ struct TRequestCounters::TStatCounters
         IsReadWriteRequest = isReadWriteRequest;
         ReportDataPlaneHistogram = reportDataPlaneHistogram;
         ReportControlPlaneHistogram = reportControlPlaneHistogram;
+        ThrottlingMetricsDisabled = throttlingMetricsDisabled;
 
         // always reporting the most important counters even when lazy
         // initialization is enabled and the values are zeroes
@@ -569,27 +572,33 @@ struct TRequestCounters::TStatCounters
 
                 SizeHist.Register(counters);
                 TimeHistUnaligned.Register(*unalignedClassGroup);
-                ExecutionTimeHist.Register(counters);
-                ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
+                if (!ThrottlingMetricsDisabled) {
+                    ExecutionTimeHist.Register(counters);
+                    ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
+                }
             } else {
                 SizePercentiles.Register(counters);
-                ExecutionTimePercentiles.Register(counters);
-                PostponedTimePercentiles.Register(counters);
-                BackoffTimePercentiles.Register(counters);
-                ShapingTimePercentiles.Register(counters);
+                if (!ThrottlingMetricsDisabled) {
+                    ExecutionTimePercentiles.Register(counters);
+                    PostponedTimePercentiles.Register(counters);
+                    BackoffTimePercentiles.Register(counters);
+                    ShapingTimePercentiles.Register(counters);
+                }
                 TimePercentiles.Register(counters);
             }
 
-            for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
-                auto sizeClassCounters = counters.GetSubgroup(
-                    "sizeclass",
-                    ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
-                if (ReportDataPlaneHistogram) {
-                    sizeClass.Value->ExecutionTimeHist.Register(
-                        *sizeClassCounters);
-                } else {
-                    sizeClass.Value->ExecutionTimePercentiles.Register(
-                        *sizeClassCounters);
+            if (!ThrottlingMetricsDisabled) {
+                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                    auto sizeClassCounters = counters.GetSubgroup(
+                        "sizeclass",
+                        ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
+                    if (ReportDataPlaneHistogram) {
+                        sizeClass.Value->ExecutionTimeHist.Register(
+                            *sizeClassCounters);
+                    } else {
+                        sizeClass.Value->ExecutionTimePercentiles.Register(
+                            *sizeClassCounters);
+                    }
                 }
             }
 
@@ -597,9 +606,11 @@ struct TRequestCounters::TStatCounters
                 ? TCountableBase::EVisibility::Public
                 : TCountableBase::EVisibility::Private;
 
-            PostponedTimeHist.Register(counters, visibleHistogram);
-            BackoffTimeHist.Register(counters, visibleHistogram);
-            ShapingTimeHist.Register(counters, visibleHistogram);
+            if (!ThrottlingMetricsDisabled) {
+                PostponedTimeHist.Register(counters, visibleHistogram);
+                BackoffTimeHist.Register(counters, visibleHistogram);
+                ShapingTimeHist.Register(counters, visibleHistogram);
+            }
             TimeHist.Register(counters, visibleHistogram);
 
             // Always enough only percentiles.
@@ -723,19 +734,21 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimeHistUnaligned.Increment(execTime);
             }
 
-            ExecutionTimeHist.Increment(execTime);
+            if (!ThrottlingMetricsDisabled) {
+                ExecutionTimeHist.Increment(execTime);
 
-            ExecutionTimeSizeClasses.VisitOverlapping(
-                requestBytes,
-                requestBytes + 1,
-                [&](TDisjointIntervalMap<
-                    ui64,
-                    std::unique_ptr<TSizeClassCounters>>::TIterator it)
-                { it->second.Value->ExecutionTimeHist.Increment(execTime); });
+                ExecutionTimeSizeClasses.VisitOverlapping(
+                    requestBytes,
+                    requestBytes + 1,
+                    [&](TDisjointIntervalMap<
+                        ui64,
+                        std::unique_ptr<TSizeClassCounters>>::TIterator it)
+                    { it->second.Value->ExecutionTimeHist.Increment(execTime); });
 
-            PostponedTimeHist.Increment(postponedTime);
-            BackoffTimeHist.Increment(backoffTime);
-            ShapingTimeHist.Increment(shapingTime);
+                PostponedTimeHist.Increment(postponedTime);
+                BackoffTimeHist.Increment(backoffTime);
+                ShapingTimeHist.Increment(shapingTime);
+            }
         }
     }
 
@@ -877,14 +890,16 @@ struct TRequestCounters::TStatCounters
             if (updatePercentiles && !ReportDataPlaneHistogram) {
                 SizePercentiles.Update();
                 TimePercentiles.Update();
-                ExecutionTimePercentiles.Update();
                 RequestCompletionTimePercentiles.Update();
-                PostponedTimePercentiles.Update();
-                BackoffTimePercentiles.Update();
-                ShapingTimePercentiles.Update();
+                if (!ThrottlingMetricsDisabled) {
+                    ExecutionTimePercentiles.Update();
+                    PostponedTimePercentiles.Update();
+                    BackoffTimePercentiles.Update();
+                    ShapingTimePercentiles.Update();
 
-                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
-                    sizeClass.Value->ExecutionTimePercentiles.Update();
+                    for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                        sizeClass.Value->ExecutionTimePercentiles.Update();
+                    }
                 }
             }
         } else if (updatePercentiles && !ReportControlPlaneHistogram) {
@@ -951,7 +966,8 @@ void TRequestCounters::Register(TDynamicCounters& counters)
                 std::move(requestGroup),
                 IsReadWriteRequestType(t),
                 Options & EOption::ReportDataPlaneHistogram,
-                Options & EOption::ReportControlPlaneHistogram);
+                Options & EOption::ReportControlPlaneHistogram,
+                Options & EOption::ThrottlingMetricsDisabled);
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all
