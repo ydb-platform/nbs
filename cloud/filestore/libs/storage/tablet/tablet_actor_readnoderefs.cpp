@@ -34,8 +34,7 @@ bool TIndexTabletActor::PrepareTx_ReadNodeRefs(
         args.Limit,
         args.Refs,
         args.NextNodeId,
-        args.NextCookie
-    );
+        args.NextCookie);
 
     LOG_DEBUG(
         ctx,
