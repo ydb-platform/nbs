@@ -585,14 +585,6 @@ func (s *storageYDB) deleteFromTable(
 		)
 	}
 
-	logging.Debug(
-		ctx,
-		"Deleted %v rows from %v for snapshot %v",
-		count,
-		table,
-		snapshotID,
-	)
-
 	return count, nil
 }
 
