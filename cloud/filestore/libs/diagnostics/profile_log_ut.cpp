@@ -442,7 +442,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             EventProcessor.FlatMessages[6]);
 
         // Testing counters
-        auto pg = Counters->GetSubgroup("component", "profile_log");
+        auto pg = Counters->GetSubgroup("counters", "profile_log");
         auto requests = pg->FindCounter("Count");
         auto bytes = pg->FindCounter("RequestBytes");
         auto flushes = pg->FindCounter("FlushCount");
@@ -502,7 +502,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         }
 
         // Testing counters
-        auto pg = env.Counters->GetSubgroup("component", "profile_log");
+        auto pg = env.Counters->GetSubgroup("counters", "profile_log");
         auto requests = pg->FindCounter("Count");
         auto bytes = pg->FindCounter("RequestBytes");
         auto flushes = pg->FindCounter("FlushCount");
