@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/client/config.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -20,6 +21,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <library/cpp/iterator/enumerate.h>
+
 
 #include <utility>
 
@@ -190,25 +192,42 @@ public:
             RequestInfo->CallContext,
             "GenerateBlobIds");
 
-        if (Session && ShmClient) {
-            auto request = std::make_shared<NProto::TWriteDataRequest>(WriteRequest);
+        try {
+            if (Session && ShmClient) {
+                auto request =
+                    std::make_shared<NProto::TWriteDataRequest>(WriteRequest);
 
-            ui64 shmOffset = 0;
-            shmOffset = ShmClient->PrepareWrite(*request);
+                ui64 shmOffset = 0;
+                shmOffset = ShmClient->PrepareWrite(*request);
 
-            auto response =
-                Session->WriteData(RequestInfo->CallContext, request)
-                    .GetValue(TDuration::Seconds(10));
+                auto response =
+                    Session->WriteData(RequestInfo->CallContext, request)
+                        .GetValue(TDuration::Seconds(10));
 
-            ShmClient->FreeOffset(shmOffset);
+                ShmClient->FreeOffset(shmOffset);
 
-            if (HasError(response)) {
-                HandleError(ctx, response.GetError());
-                return;
+                if (!HasError(response)) {
+                    LOG_ERROR(
+                        ctx,
+                        TFileStoreComponents::SERVICE,
+                        "MYAGKOV: write data request handled via shm");
+                    ReplyAndDie(ctx, std::move(response));
+                    return;
+                }
+
+                LOG_ERROR(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "MYAGKOV: failed to handle write data request via shm: %s",
+                    FormatError(response.GetError()).c_str());
             }
-
-            ReplyAndDie(ctx, std::move(response));
-            return;
+        } catch (std::exception& e) {
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "MYAGKOV: failed to handle write data request via shm. "
+                "Exception: %s",
+                e.what());
         }
 
         Rope = CreateRope(WriteRequest.GetIovecs());
@@ -1077,6 +1096,26 @@ void TStorageServiceActor::HandleWriteData(
 
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
+
+        if (Client) {
+            if (!Session) {
+                NProto::TSessionConfig proto;
+                proto.SetFileSystemId(filestore.filesystemid());
+
+                Session = NClient::CreateSession(
+                    Logging,
+                    Timer,
+                    Scheduler,
+                    Client,
+                    std::make_shared<NClient::TSessionConfig>(proto));
+
+                auto response =
+                    Session->CreateSession().GetValue(TDuration::Seconds(10));
+                if (HasError(response)) {
+                    Session.reset();
+                }
+            }
+        }
 
         bool sendRequestToLocalServer =
             bytesCount == 1_MB &&
