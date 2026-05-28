@@ -24,6 +24,7 @@
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -106,14 +107,32 @@ void TBootstrapServer::InitComponents()
             break;
     }
 
+    auto serverCounters =
+        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
+
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    if (!certPathList.empty()) {
+        CertificateProvider = CreateStaticCertificateProvider(
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList));
+    }
+
     Server = NServer::CreateServer(
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
-        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent),
+        serverCounters,
         ProfileLog,
         Scheduler,
-        Service);
+        Service,
+        CertificateProvider);
     RegisterServer(Server);
 
     InitLWTrace();

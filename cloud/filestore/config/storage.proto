@@ -767,8 +767,12 @@ message TStorageConfig
     optional bool UseUnlimitedBTreeNodeRefsCacheInMainTablet = 496;
     optional bool UseUnlimitedBTreeNodeRefsCacheInShards = 497;
 
+    // Use custom protobuf parser for TReadDataResponse
+    // to optimize TReadDataActor performance.
+    optional bool UseCustomReadDataResponseParser = 498;
+
     // Similar to `InMemoryIndexCacheLoadOnTabletStart`, but applies only to
     // the node refs table in filesystem shards. If
     // `InMemoryIndexCacheLoadOnTabletStart` is also set, it takes precedence.
-    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards = 498;
+    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards = 499;
 }

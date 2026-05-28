@@ -144,6 +144,7 @@ private:
     TVector<TString> UnlinkedFiles;
     TVector<TString> FailedToUnlinkFiles;
     ui64 FileNo = 0;
+    TVector<TString> CreateFileErrors;
 
 public:
     TProducerThread(
@@ -199,7 +200,10 @@ public:
     {
         STORAGE_INFO("Producer " << ThreadId << " validating...");
 
-        ui32 errors = 0;
+        ui32 errors = CreateFileErrors.size();
+        for (const auto& e: CreateFileErrors) {
+            STORAGE_ERROR(e);
+        }
 
         for (const auto& fileName: UnlinkedFiles) {
             TFsPath filePath = DirPath / fileName;
@@ -209,8 +213,15 @@ public:
                     OpenExisting | RdOnly | Seq;
                 TFileHandle f(filePath, OpenMode);
                 if (f.IsOpen()) {
-                    STORAGE_ERROR("Unlinked file still exists: " << filePath);
-                    ++errors;
+                    if (Options.SkipFileValidation) {
+                        STORAGE_WARN(
+                            "Unlinked file still exists: " << filePath);
+                    } else {
+                        STORAGE_ERROR(
+                            "Unlinked file still exists: " << filePath);
+                        ++errors;
+                    }
+
                     f.Close();
                 } else {
                     STORAGE_WARN("Unlinked file still exists: " << filePath
@@ -232,6 +243,10 @@ public:
             TFsPath filePath = DirPath / file.Name;
 
             if (NFs::Exists(filePath)) {
+                if (Options.SkipFileValidation) {
+                    continue;
+                }
+
                 TFileStat stat(filePath);
                 if (stat.INode != file.Ino) {
                     STORAGE_ERROR("Inode mismatch for " << filePath
@@ -280,16 +295,65 @@ private:
         TString content(Options.FileSize, 'a' + (ThreadId % ('z' - 'a' + 1)));
         static constexpr EOpenMode OpenMode = CreateAlways | WrOnly | Seq;
         THPTimer timer;
-        TFile f(filePath, OpenMode);
-        Stats.Create.Register(0 /* weight */, timer.Passed());
 
-        TOFStream os(f);
-        os.Write(content);
-        os.Flush();
+        int e = 0;
+        TFileStat stat;
+        for (ui32 i = 0; i < Options.CreateFileAttemptCount; ++i) {
+            timer.Reset();
+            TFileHandle f(filePath, OpenMode);
+            if (!f.IsOpen()) {
+                CreateFileErrors.push_back(TStringBuilder()
+                    << "failed to open " << filePath
+                    << ", error: " << errno);
+                return;
+            }
 
-        timer.Reset();
-        TFileStat stat(filePath);
-        Stats.Stat.Register(0 /* weight */, timer.Passed());
+            Stats.Create.Register(0 /* weight */, timer.Passed());
+
+            ui64 written = 0;
+            e = 0;
+            while (written < content.size()) {
+                int r =
+                    f.Write(content.data() + written, content.size() - written);
+                if (r == -1) {
+                    e = errno;
+                    break;
+                }
+
+                Y_ABORT_UNLESS(r > 0);
+                written += r;
+            }
+
+            Y_ABORT_UNLESS(
+                e || written == content.size(),
+                "written=%lu, content.size()=%lu",
+                written,
+                content.size());
+
+            if (!e) {
+                if (f.Flush()) {
+                    timer.Reset();
+                    stat = TFileStat(f);
+                    if (stat.INode) {
+                        Stats.Stat.Register(0 /* weight */, timer.Passed());
+                        break;
+                    }
+                }
+
+                e = errno;
+            }
+
+            if (e != EBADF) {
+                break;
+            }
+        }
+
+        if (e) {
+            CreateFileErrors.push_back(TStringBuilder()
+                << "failed to write to " << filePath
+                << ", error: " << e);
+            return;
+        }
 
         Files.push_back({
             fileName,
@@ -402,6 +466,22 @@ public:
             }
         }
 
+        if (!Options.SkipFileValidation) {
+            errors += ValidateStolenFiles(vc);
+        }
+
+        STORAGE_INFO("Stealer " << ThreadId << " validation complete");
+
+        return errors;
+    }
+
+private:
+    ui32 ValidateStolenFiles(const TValidationContext& vc)
+    {
+        STORAGE_INFO("Stealer " << ThreadId << " validating...");
+
+        ui32 errors = 0;
+
         for (auto& file: StolenFiles) {
             TFsPath filePath = DirPath / file.Name;
 
@@ -437,12 +517,9 @@ public:
             }
         }
 
-        STORAGE_INFO("Stealer " << ThreadId << " validation complete");
-
         return errors;
     }
 
-private:
     void StealRandomFile()
     {
         if (Producers.empty()) {

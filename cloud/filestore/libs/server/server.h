@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -32,7 +33,8 @@ IServerPtr CreateServer(
     NMonitoring::TDynamicCountersPtr counters,
     IProfileLogPtr profileLog,
     NCloud::ISchedulerPtr scheduler,
-    IFileStoreServicePtr service);
+    IFileStoreServicePtr service,
+    ICertificateProviderPtr certificateProvider);
 
 IServerPtr CreateServer(
     TServerConfigPtr config,
@@ -40,6 +42,7 @@ IServerPtr CreateServer(
     IRequestStatsPtr requestStats,
     NMonitoring::TDynamicCountersPtr counters,
     NCloud::ISchedulerPtr scheduler,
-    IEndpointManagerPtr service);
+    IEndpointManagerPtr service,
+    ICertificateProviderPtr certificateProvider);
 
 }   // namespace NCloud::NFileStore::NServer

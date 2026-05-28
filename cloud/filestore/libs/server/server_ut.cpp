@@ -18,6 +18,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -37,6 +38,43 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
+
+ICertificateProviderPtr CreateServerCertificateProvider(
+    const TServerConfigPtr& config,
+    ILoggingServicePtr /*logging*/)
+{
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: config->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientConfigPtr& config,
+    ILoggingServicePtr /*logging*/)
+{
+    if (!config->GetSecurePort()) {
+        return CreateCertificateProviderStub();
+    }
+
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 template <typename F>
 bool WaitFor(F&& event)
@@ -231,7 +269,13 @@ struct TServerSetup
         TClientConfigPtr config,
         ILoggingServicePtr logging)
     {
-        return CreateFileStoreClient(std::move(config), std::move(logging));
+        auto certificateProvider = CreateClientCertificateProvider(
+            config,
+            logging);
+        return CreateFileStoreClient(
+            std::move(config),
+            std::move(logging),
+            std::move(certificateProvider));
     }
 
     static IServerPtr CreateTestServer(
@@ -241,6 +285,9 @@ struct TServerSetup
         NMonitoring::TDynamicCountersPtr counters,
         IFileStoreServicePtr service)
     {
+        auto certificateProvider = CreateServerCertificateProvider(
+            config,
+            logging);
         return CreateServer(
             std::move(config),
             std::move(logging),
@@ -248,7 +295,8 @@ struct TServerSetup
             std::move(counters),
             CreateProfileLogStub(),
             CreateSchedulerStub(),
-            std::move(service));
+            std::move(service),
+            std::move(certificateProvider));
     }
 };
 
@@ -263,9 +311,13 @@ struct TVHostSetup
         TClientConfigPtr config,
         ILoggingServicePtr logging)
     {
+        auto certificateProvider = CreateClientCertificateProvider(
+            config,
+            logging);
         return CreateEndpointManagerClient(
             std::move(config),
-            std::move(logging));
+            std::move(logging),
+            std::move(certificateProvider));
     }
 
     static IServerPtr CreateTestServer(
@@ -275,13 +327,17 @@ struct TVHostSetup
         NMonitoring::TDynamicCountersPtr counters,
         IEndpointManagerPtr service)
     {
+        auto certificateProvider = CreateServerCertificateProvider(
+            config,
+            logging);
         return CreateServer(
             std::move(config),
             std::move(logging),
             std::move(requestStats),
             std::move(counters),
             CreateSchedulerStub(),
-            std::move(service));
+            std::move(service),
+            std::move(certificateProvider));
     }
 };
 

@@ -29,6 +29,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
 
@@ -75,6 +76,21 @@ bool IsHostVersionNewer(const BlockPluginHost* host, ui32 major, ui32 minor)
     return
         (host->version_major > major) ||
         (host->version_major == major && host->version_minor >= minor);
+}
+
+ICertificateProviderPtr CreateCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
 }
 
 }   // namespace
@@ -184,7 +200,8 @@ void TBootstrap::Init()
         Scheduler,
         Logging,
         Monitoring,
-        ClientStats);
+        ClientStats,
+        CreateCertificateProvider(ClientConfig));
 
     Y_ABORT_UNLESS(!HasError(error));
     Client = std::move(client);

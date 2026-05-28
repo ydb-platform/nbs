@@ -109,6 +109,9 @@ void FillFeatures(
         config.GetAddingUnconfirmedDataEnabled());
 
     features->SetUseListNodesInternal(config.GetUseListNodesInternal());
+
+    features->SetUseCustomReadDataResponseParser(
+        config.GetUseCustomReadDataResponseParser());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
