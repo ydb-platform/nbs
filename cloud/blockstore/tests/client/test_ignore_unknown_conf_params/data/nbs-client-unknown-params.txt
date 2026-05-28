@@ -3,8 +3,6 @@ ClientConfig {
   Host: "localhost"
   Port: 9767
   RetryTimeout: 86400000
-  SecurePort: 9768
-  RootCertsFile: "certs/server.crt"
   ThrottlingConfig {
     SOME_UNKNOWN_PARAM: 1
     NonreplThrottlingConfig {

@@ -106,10 +106,10 @@ jobs:
         if: inputs.image_id == '' && inputs.build_image == true
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          RUNNER_VERSION: ${{ vars.RUNNER_VERSION }}
+          RUNNER_VERSION: "latest"
         run: |
           export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-          python3 -m scripts.github_runner_release --version "${RUNNER_VERSION:-latest}"
+          python3 -m scripts.github_runner_release --version "${RUNNER_VERSION}"
 
       - name: set up packer
         if: inputs.image_id == '' && inputs.build_image == true
@@ -136,7 +136,7 @@ jobs:
           SUBNET_ID: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
         run: |
           cd .github/packer || exit
-          packer build github-runner.pkr.hcl
+          packer build -var "RUNNER_VERSION=${RUNNER_VERSION}" -var "RUNNER_SHA256_X64=${RUNNER_SHA256_X64}" github-runner.pkr.hcl
           cat reports/manifest.json
           echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' reports/manifest.json)" >> $GITHUB_OUTPUT
 
@@ -160,8 +160,13 @@ jobs:
 
       - name: Start runner
         id: start-runner
-        if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 !=
-          vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
+        if: >-
+          always() &&
+          (inputs.image_id != '' || inputs.build_image != true || steps.build-image.outcome == 'success') &&
+          steps.get-image-id.outputs.IMAGE_ID_2204 != '' &&
+          (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 ||
+          steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 ||
+          steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
@@ -183,8 +188,7 @@ jobs:
 
       - name: Stop runner
         uses: ./.github/actions/nebius_runner_remove
-        if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 !=
-          vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
+        if: always() && steps.start-runner.outcome != 'skipped'
         timeout-minutes: 60
         with:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}

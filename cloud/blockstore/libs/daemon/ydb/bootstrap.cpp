@@ -982,6 +982,7 @@ void TBootstrapYdb::SetupCellManager()
             Monitoring,
             GetTraceSerializer(),
             ServerStats,
+            CertificateProvider,
             RdmaClient);
     } else {
         CellManager = NCells::CreateCellManagerStub();

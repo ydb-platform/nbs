@@ -17,6 +17,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
@@ -79,6 +80,47 @@ TString GetTestFilePath(const TString& fileName)
 TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
 {
     return std::make_shared<TDiagnosticsConfig>();
+}
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TCellsConfigPtr& config)
+{
+    auto appConfig = std::make_shared<TClientAppConfig>(
+        config->GetGrpcClientConfig());
+
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = appConfig->GetCertPrivateKeyFile(),
+            .CertChainPath = appConfig->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        appConfig->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
+ICertificateProviderPtr CreateServerCertificateProvider(
+    const TServerAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList;
+    for (const auto& cert: config->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    if (certPathList.empty()) {
+        certPathList.push_back({
+            config->GetCertPrivateKeyFile(),
+            config->GetCertFile()
+        });
+    }
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -171,6 +213,8 @@ public:
             TestContext.ProfileLog,
             TestContext.RequestStats,
             TestContext.VolumeStats);
+        auto certificateProvider =
+            CreateServerCertificateProvider(serverConfig);
 
         auto server = CreateServer(
             std::move(serverConfig),
@@ -180,7 +224,8 @@ public:
             std::move(udsService),
             TServerOptions {
                 .CellId = TestContext.CellId
-            });
+            },
+            std::move(certificateProvider));
         return server;
     }
 };
@@ -270,13 +315,14 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         auto config = std::make_shared<TCellsConfig>(std::move(cfg));
 
         auto cellManager = CreateCellManager(
-            std::move(config),
+            config,
             testContext.Timer,
             testContext.Scheduler,
             testContext.Logging,
             testContext.Monitoring,
             testContext.TraceSerializer,
             testContext.ServerStats,
+            CreateClientCertificateProvider(config),
             nullptr);
 
         server->Start();
@@ -331,13 +377,14 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         auto config = std::make_shared<TCellsConfig>(std::move(cfg));
 
         auto cellManager = CreateCellManager(
-            std::move(config),
+            config,
             testContext.Timer,
             testContext.Scheduler,
             testContext.Logging,
             testContext.Monitoring,
             testContext.TraceSerializer,
             testContext.ServerStats,
+            CreateClientCertificateProvider(config),
             nullptr);
 
         server->Start();
