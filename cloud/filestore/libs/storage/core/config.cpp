@@ -242,7 +242,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         ui64,                                                                  \
         0                                                                     )\
     xxx(InMemoryIndexCacheLoadOnTabletStart,            bool,       false     )\
-    xxx(InMemoryIndexCacheNodeRefsLoadOnTabletStartForShards,                  \
+    xxx(InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards,                   \
         bool,                                                                  \
         false                                                                 )\
     xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       100'000   )\
