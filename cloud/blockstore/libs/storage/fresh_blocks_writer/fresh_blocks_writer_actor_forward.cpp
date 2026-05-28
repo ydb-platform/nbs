@@ -17,28 +17,32 @@ using namespace NPartition;
     }                                                                          \
 // BLOCKSTORE_FORWARD_TO_PARTITION
 
-    BLOCKSTORE_FORWARD_TO_PARTITION(ReadBlocks,               TEvService)
-    BLOCKSTORE_FORWARD_TO_PARTITION(CreateCheckpoint,         TEvService)
-    BLOCKSTORE_FORWARD_TO_PARTITION(DeleteCheckpoint,         TEvService)
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetChangedBlocks,         TEvService)
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetCheckpointStatus,      TEvService)
-    BLOCKSTORE_FORWARD_TO_PARTITION(ReadBlocksLocal,          TEvService)
+// Threre is code in the volume actor that skips fresh blocks writer actor
+// if the partition is the only one and the request is a read request and the
+// fresh blocks writer is enabled. So if we will change logic here, we need to
+// update the code in the volume actor.
+BLOCKSTORE_FORWARD_TO_PARTITION(ReadBlocks, TEvService)
+BLOCKSTORE_FORWARD_TO_PARTITION(ReadBlocksLocal, TEvService)
 
+BLOCKSTORE_FORWARD_TO_PARTITION(CreateCheckpoint, TEvService)
+BLOCKSTORE_FORWARD_TO_PARTITION(DeleteCheckpoint, TEvService)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetChangedBlocks, TEvService)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetCheckpointStatus, TEvService)
 
-    BLOCKSTORE_FORWARD_TO_PARTITION(DescribeBlocks,           TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetUsedBlocks,            TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetPartitionInfo,         TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(CompactRange,             TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetCompactionStatus,      TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(DeleteCheckpointData,     TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(RebuildMetadata,          TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetRebuildMetadataStatus, TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(ScanDisk,                 TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetScanDiskStatus,        TEvVolume)
-    BLOCKSTORE_FORWARD_TO_PARTITION(CheckRange,               TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(DescribeBlocks, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetUsedBlocks, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetPartitionInfo, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(CompactRange, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetCompactionStatus, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(DeleteCheckpointData, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(RebuildMetadata, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetRebuildMetadataStatus, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(ScanDisk, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetScanDiskStatus, TEvVolume)
+BLOCKSTORE_FORWARD_TO_PARTITION(CheckRange, TEvVolume)
 
-    BLOCKSTORE_FORWARD_TO_PARTITION(StatPartition, TEvPartition)
+BLOCKSTORE_FORWARD_TO_PARTITION(StatPartition, TEvPartition)
 
-    BLOCKSTORE_FORWARD_TO_PARTITION(GetPartCounters, TEvPartitionCommonPrivate)
+BLOCKSTORE_FORWARD_TO_PARTITION(GetPartCounters, TEvPartitionCommonPrivate)
 
 }   // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

@@ -78,6 +78,9 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
         IProfileLogPtr profileLog)
     : Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , EffectiveFreshThresholds(Config->GetEffectiveFreshThresholds(
+          static_cast<ui64>(PartitionConfig.GetBlocksCount()) *
+          PartitionConfig.GetBlockSize()))
     , StorageAccessMode(storageAccessMode)
     , PartitionTabletID(partitionTabletId)
     , PartitionActorId(partitionActorId)

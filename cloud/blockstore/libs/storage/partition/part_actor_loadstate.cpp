@@ -138,6 +138,11 @@ void TPartitionActor::CompleteLoadState(
 {
     const auto& partitionConfig = args.Meta->GetConfig();
 
+    const ui64 partitionDiskBytes = static_cast<ui64>(partitionConfig.GetBlocksCount()) *
+                                    partitionConfig.GetBlockSize();
+    const auto effectiveFreshThresholds =
+        Config->GetEffectiveFreshThresholds(partitionDiskBytes);
+
     // initialize state
     TBackpressureFeaturesConfig bpConfig {
         {
@@ -146,8 +151,8 @@ void TPartitionActor::CompleteLoadState(
             static_cast<double>(Config->GetCompactionScoreFeatureMaxValue()),
         },
         {
-            Config->GetFreshByteCountLimitForBackpressure(),
-            Config->GetFreshByteCountThresholdForBackpressure(),
+            effectiveFreshThresholds.FreshByteCountLimitForBackpressure,
+            effectiveFreshThresholds.FreshByteCountThresholdForBackpressure,
             static_cast<double>(Config->GetFreshByteCountFeatureMaxValue()),
         },
         {
@@ -222,6 +227,7 @@ void TPartitionActor::CompleteLoadState(
         Config->GetCleanupScoreHistorySize(),
         bpConfig,
         fsConfig,
+        effectiveFreshThresholds,
         GetMaxIORequestsInFlight(*Config, PartitionConfig),
         Config->GetReassignChannelsPercentageThreshold(),
         Config->GetReassignFreshChannelsPercentageThreshold(),
