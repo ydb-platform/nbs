@@ -54,6 +54,7 @@ message TFileStoreFeatures
     bool UnconfirmedFlowEnabled = 39;
     bool GuestPosixAclEnabled = 40;
     bool UseListNodesInternal = 41;
+    bool UseCustomReadDataResponseParser = 42;
 }
 
 message TFileStore
