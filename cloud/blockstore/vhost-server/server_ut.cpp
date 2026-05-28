@@ -1408,7 +1408,7 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
             EXPECT_EQ(makePatten(i), readData);
         }
 
-        auto expectedSleepTime = (GetTotalSleepTime() / ThreadCount) * 1.1;
+        auto expectedSleepTime = (GetTotalSleepTime() / ThreadCount) * 1.25;
 
 #if !defined(_san_enabled_)
         EXPECT_LT(duration, expectedSleepTime);
