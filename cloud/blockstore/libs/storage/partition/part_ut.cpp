@@ -3016,8 +3016,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool garbageCompactionRequestObserved = false;
         bool ignoringZeroedCompactionRequestObserved = false;
 
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
@@ -3051,7 +3051,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
@@ -3149,8 +3149,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool garbageCompactionRequestObserved = false;
         bool ignoringZeroedCompactionRequestObserved = false;
 
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
@@ -3180,7 +3180,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
@@ -3237,8 +3237,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionByGarbageBlocksPerDisk = 0;
         bool garbageCompactionRequestObserved = false;
         bool ignoringZeroedCompactionRequestObserved = false;
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
@@ -3268,7 +3268,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
@@ -3290,7 +3290,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT(garbageCompactionRequestObserved);
         UNIT_ASSERT(!ignoringZeroedCompactionRequestObserved);
-        // garbageCompactionRequestObserved = false;
+        garbageCompactionRequestObserved = false;
 
         partition.SendToPipe(
             std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
@@ -3327,8 +3327,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionByIgnoringZeroedPerDisk = 0;
         bool garbageCompactionRequestObserved = false;
         bool ignoringZeroedCompactionRequestObserved = false;
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
@@ -3362,7 +3362,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         auto checkCompactionRequests = [&](bool shouldObserveRequest)
@@ -3475,8 +3475,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionByIgnoringZeroedPerDisk = 0;
         bool garbageCompactionRequestObserved = false;
         bool ignoringZeroedCompactionRequestObserved = false;
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
@@ -3510,7 +3510,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         auto checkCompactionRequests = [&](bool shouldObserveRequest)

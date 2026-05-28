@@ -1081,14 +1081,16 @@ public:
         std::optional<TTriggerInfo> info;
 
         info = TriggerRangeCompactionIfNeeded();
-        if (!info) {
-            info = TriggerIgnoringZeroedCompactionIfNeeded();
-            if (!info) {
-                info = TriggerGarbageCompactionIfNeeded();
-            }
+        if (info) {
+            return info;
         }
 
-        return info;
+        info = TriggerIgnoringZeroedCompactionIfNeeded();
+        if (info) {
+            return info;
+        }
+
+        return TriggerGarbageCompactionIfNeeded();
     }
 
 private:
@@ -1159,24 +1161,24 @@ private:
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerGarbageCompactionIfNeeded() const
     {
-        return TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(true);
+        return TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(false);
     }
 
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerIgnoringZeroedCompactionIfNeeded() const
     {
-        return TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(false);
+        return TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(true);
     }
 
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(
-        bool isGarbageCompaction) const
+        bool isIgnoringZeroedCompaction) const
     {
         if (!Config->GetV1GarbageCompactionEnabled()) {
             return std::nullopt;
         }
 
-        if (!isGarbageCompaction &&
+        if (isIgnoringZeroedCompaction &&
             !Config->GetIgnoringZeroedCompactionEnabled())
         {
             return std::nullopt;
@@ -1193,9 +1195,9 @@ private:
             // Nothing to compact if there are no blobs in the range.
             // Nothing to compact if there is only one blob in the range and it
             // is not zeroed.
-            const auto& rangeStat = isGarbageCompaction
-                                        ? TopGarbageRangeStat
-                                        : TopByGarbageIgnoringZeroed;
+            const auto& rangeStat = isIgnoringZeroedCompaction
+                                        ? TopByGarbageIgnoringZeroed
+                                        : TopGarbageRangeStat;
 
             const auto isZeroedRange =
                 rangeStat.BlockCount && !rangeStat.UsedBlockCount;
@@ -1210,27 +1212,27 @@ private:
         ui64 diskGarbage = 0;
         ui64 rangeGarbage = 0;
 
-        if (isGarbageCompaction) {
-            diskGarbage = GetGarbagePercentage();
-            rangeGarbage = GetPercentage(
-                TopGarbageRangeStat.UsedBlockCount,
-                TopGarbageRangeStat.BlockCount);
-        } else {
+        if (isIgnoringZeroedCompaction) {
             diskGarbage = GetPercentage(
-                State.GetUsedBlocksCount() + State.GetNewlyZeroedBlocks(),
+                State.GetUsedBlocksIgnoringZeroed(),
                 GetBlockCount());
             rangeGarbage = GetPercentage(
                 TopByGarbageIgnoringZeroed.UsedBlocksIgnoringZeroed(),
                 TopByGarbageIgnoringZeroed.BlockCount);
+        } else {
+            diskGarbage = GetGarbagePercentage();
+            rangeGarbage = GetPercentage(
+                TopGarbageRangeStat.UsedBlockCount,
+                TopGarbageRangeStat.BlockCount);
         }
 
         const bool diskGarbageBelowThreshold =
             diskGarbage < Config->GetCompactionGarbageThreshold();
 
         ECompactionTriggerKind triggerKind =
-            isGarbageCompaction
-                ? ECompactionTriggerKind::ByGarbageBlocksPerRange
-                : ECompactionTriggerKind::ByIgnoringZeroedPerRange;
+            isIgnoringZeroedCompaction
+                ? ECompactionTriggerKind::ByIgnoringZeroedPerRange
+                : ECompactionTriggerKind::ByGarbageBlocksPerRange;
 
         if (rangeGarbage < Config->GetCompactionRangeGarbageThreshold()) {
             // Not enough garbage in this range.
@@ -1244,9 +1246,9 @@ private:
                 return std::nullopt;
             }
 
-            triggerKind = isGarbageCompaction
-                              ? ECompactionTriggerKind::ByGarbageBlocksPerDisk
-                              : ECompactionTriggerKind::ByIgnoringZeroedPerDisk;
+            triggerKind = isIgnoringZeroedCompaction
+                              ? ECompactionTriggerKind::ByIgnoringZeroedPerDisk
+                              : ECompactionTriggerKind::ByGarbageBlocksPerDisk;
         }
 
         return TTriggerInfo(
@@ -1254,9 +1256,9 @@ private:
             Config->GetCompactionRangeGarbageThreshold(),
             diskGarbage,
             Config->GetCompactionGarbageThreshold(),
-            isGarbageCompaction
-                ? TEvPartitionPrivate::GarbageCompaction
-                : TEvPartitionPrivate::IgnoringZeroedCompaction,
+            isIgnoringZeroedCompaction
+                ? TEvPartitionPrivate::IgnoringZeroedCompaction
+                : TEvPartitionPrivate::GarbageCompaction,
             triggerKind,
             true /* throttlingAllowed */,
             true /* fullCompaction */);
@@ -1409,6 +1411,14 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     {
         maxCompactionExecTimePerSecond =
             Config->GetMaxCompactionExecTimePerSecondForZeroed();
+
+        // Throttling for ignoring zeroed compaction should be at least as much
+        // as for garbage compaction.
+        if (Config->GetMaxCompactionExecTimePerSecond()) {
+            maxCompactionExecTimePerSecond = std::min(
+                Config->GetMaxCompactionExecTimePerSecond(),
+                Config->GetMaxCompactionExecTimePerSecondForZeroed());
+        }
     }
 
     if (info->ThrottlingAllowed && Config->GetMaxCompactionDelay()) {
