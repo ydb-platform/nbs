@@ -73,13 +73,12 @@ entry used whenever the code decides whether the pool has enough capacity.
 
 Primary key: `(image_id, zone_id)`.
 
-`pool.size` is not the number of physical base disks and not the total number of
-slots ever created. It is the spare slot capacity that can still accept future
-overlay reservations. Scheduling a base disk adds that base disk's free slot
-count immediately, even before the physical NBS disk is ready. Acquiring an
-overlay consumes spare capacity, so the base disk transition decreases
-`pool.size`. Releasing the overlay adds the capacity back if the base disk still
-belongs to the pool.
+`pool.size` is the spare slot capacity that can still accept future overlay
+reservations. Scheduling a base disk adds that base disk's free slot count
+immediately, even before the physical NBS disk is ready. Acquiring an overlay
+consumes spare capacity, so the base disk transition decreases `pool.size`.
+Releasing the overlay adds the capacity back if the base disk still belongs to
+the pool.
 
 A unit is the weighted accounting cost of an overlay reservation. It is derived
 from overlay disk size and disk kind in
@@ -87,10 +86,9 @@ from overlay disk size and disk kind in
 one unit size is 32 GiB, SSD overlays are weighted more heavily than HDD
 overlays, and every acquired slot reserves at least one unit.
 
-`acquired_units` answers a different question: how much weighted overlay load is
-already placed on base disks from this pool. Scheduling uses `pool.size` to find
-slot deficits; optimization uses `acquired_units` to decide whether the pool
-should use default-sized or image-sized base disks.
+`acquired_units` is the weighted overlay load already placed on base disks from
+this pool. `pools.OptimizeBaseDisks` uses it as the usage signal for choosing
+between default-sized and image-sized base disks.
 
 `lock_id` stores the task id that locked the pool, usually the
 `pools.RetireBaseDisks` task id. While it is set, `DeletePool` interrupts
@@ -764,22 +762,39 @@ There are two task levels:
 * `pools.RetireBaseDisks` lists the ready base disks for one `(image_id,
   zone_id)` and schedules `RetireBaseDisk` for each of those listed base disks.
 
-So yes, `RetireBaseDisks` is used when the goal is to move overlays away from
-all current ready base disks in a pool/image-zone and let those old base disks
-be deleted. It does not delete them synchronously, and it may create replacement
-base disks to receive the rebased overlays. Those replacement disks are not the
-old set being retired.
+`RetireBaseDisks` is the pool-wide drain task. It lists the current ready base
+disks for one `(image_id, zone_id)`, schedules `RetireBaseDisk` for each listed
+base disk, and lets the asynchronous deletion pipeline remove drained base disks
+later. If existing target capacity is insufficient, retirement creates
+replacement base disks for the rebased overlays; those replacements are outside
+the listed base-disk set being retired.
 
 Common reasons:
 
-* Image deletion: active overlays may still use base disks created from the
-  image. Retirement moves those overlays to replacement base disks so the old
-  image-backed base disks can disappear.
+* Image deletion: active overlays may still depend on base disks created from the
+  image. Retirement moves those existing overlays to replacement base disks
+  created from an old base disk source, so image storage and unused pool base
+  disks can be removed without breaking the overlays.
 * Explicit/private retirement: an operator can drain selected base disks from
   the private API or admin CLI.
 * Base disk optimization: `pools.OptimizeBaseDisks` changes the desired base
   disk size mode and retires the old base disks so replacements use the new
   mode.
+
+For image deletion, this is a cleanup and reshaping step. Deleting the pool
+removes the config row, so no new spare capacity is maintained, but existing
+overlays could still keep old pool base disks alive. The image deletion flow
+schedules `RetireBaseDisks` with
+[`UseBaseDiskAsSrc=true`](../../../cloud/disk_manager/internal/pkg/services/images/common.go#L117)
+and [`UseImageSize=imageMeta.Size`](../../../cloud/disk_manager/internal/pkg/services/images/common.go#L118).
+When retirement needs a replacement base disk, it creates one from the old base
+disk source and uses that image size
+([`retireBaseDisk`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L3186),
+[`generateBaseDisk`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L3266)).
+That moves existing overlays from old pool-capacity base disks to image-sized
+non-pool base disks. Plain `DeletePool` only deletes the pool config and marks
+the pool deleted; this image-sized retirement is scheduled by the image deletion
+flow.
 
 Code:
 [retire_base_disks_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/retire_base_disks_task.go),
@@ -844,11 +859,15 @@ promotes the target reservation to the main reservation.
 or image-sized base disks.
 
 The purpose is to keep the base disk shape appropriate for the actual usage of
-the pool. Default-sized base disks are large and can hold many overlay
-reservations; they are better when many overlays are attached to the image.
-Image-sized base disks follow the image's logical size and can be cheaper or
-smaller for images with low overlay usage. The optimization task switches mode
-when `acquired_units` crosses configured thresholds.
+the pool. `acquired_units` is the signal: it is the weighted amount of overlay
+load currently attached to pool base disks. Heavily used images benefit from
+default-sized base disks because larger base disks reserve more YDB blob storage
+channels and therefore more reserved bandwidth, so shared base-disk reads are
+less likely to be throttled. Large pools with low `acquired_units` are better
+served by image-sized base disks: they keep the pool configured without
+overprovisioning large base disks, channels, and bandwidth for an image that does
+not currently have much overlay load. The optimization task switches mode when
+`acquired_units` crosses configured thresholds.
 
 Code:
 [optimize_base_disks_task.go](../../../cloud/disk_manager/internal/pkg/services/pools/optimize_base_disks_task.go),
