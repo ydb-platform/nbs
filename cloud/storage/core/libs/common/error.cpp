@@ -56,7 +56,6 @@ EErrorKind GetErrorKind(const NProto::TError& e)
         case E_BS_THROTTLED:
         case E_FS_THROTTLED:
         case E_RDMA_UNAVAILABLE:
-        case E_TRANSPORT_ERROR:
             return EErrorKind::ErrorRetriable;
 
         case E_BS_INVALID_SESSION:

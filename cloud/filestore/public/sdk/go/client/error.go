@@ -38,8 +38,7 @@ func (e *ClientError) Error() string {
 
 func (e *ClientError) IsRetriable() bool {
 	switch e.Code {
-	case E_REJECTED, E_TIMEOUT, E_FS_OUT_OF_SPACE, E_FS_THROTTLED,
-		E_TRANSPORT_ERROR:
+	case E_REJECTED, E_TIMEOUT, E_FS_OUT_OF_SPACE, E_FS_THROTTLED:
 		// special error code for retries
 		return true
 	}
