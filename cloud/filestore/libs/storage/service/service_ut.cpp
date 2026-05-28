@@ -3639,12 +3639,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ShouldDestroyFileStoreAfterTabletRestartAndOrphanSessionsCleanup)
     {
         const auto idleSessionTimeout = TDuration::Hours(1);
-        const auto restartTabletUptimeThreshold = idleSessionTimeout;
+        const auto restartTabletUptimeThresholdDuringDestroy =
+            idleSessionTimeout;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetIdleSessionTimeout(idleSessionTimeout.MilliSeconds());
-        storageConfig.SetRestartTabletUptimeThreshold(
-            restartTabletUptimeThreshold.MilliSeconds());
+        storageConfig.SetRestartTabletUptimeThresholdDuringDestroy(
+            restartTabletUptimeThresholdDuringDestroy.MilliSeconds());
 
         TTestEnv env({}, storageConfig);
 
@@ -3705,7 +3706,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             TEvIndexTablet::TEvGetStorageStatsResponse>();
                         if (++getStorageStatsResponses == 1) {
                             msg->Record.SetTabletUptimeMs(
-                                (restartTabletUptimeThreshold +
+                                (restartTabletUptimeThresholdDuringDestroy +
                                  TDuration::Minutes(1))
                                     .MilliSeconds());
                             patchedStorageStatsResponse = true;
@@ -3781,7 +3782,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     }
 
     Y_UNIT_TEST(
-        ShouldNotRestartTabletDuringDestroyIfRestartTabletUptimeThresholdIsNotSet)
+        ShouldNotRestartTabletDuringDestroyIfRestartTabletUptimeThresholdDuringDestroyIsNotSet)
     {
         TTestEnv env;
 

@@ -28,7 +28,7 @@ private:
     const TString FileSystemId;
     const bool ForceDestroy;
     const bool AllowFileStoreDestroyWithOrphanSessions;
-    TDuration RestartTabletUptimeThreshold;
+    TDuration RestartTabletUptimeThresholdDuringDestroy;
     TVector<TString> ShardIds;
     ui32 DestroyedShardCount = 0;
     ui64 ForceDestroySizeThreshold = 0;
@@ -43,7 +43,7 @@ public:
         bool forceDestroy,
         bool allowFileStoreDestroyWithOrphanSessions,
         ui64 forceDestroySizeThreshold,
-        TDuration restartTabletUptimeThreshold);
+        TDuration restartTabletUptimeThresholdDuringDestroy);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -99,13 +99,14 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
         bool forceDestroy,
         bool allowFileStoreDestroyWithOrphanSessions,
         ui64 forceDestroySizeThreshold,
-        TDuration restartTabletUptimeThreshold)
+        TDuration restartTabletUptimeThresholdDuringDestroy)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)
     , AllowFileStoreDestroyWithOrphanSessions(
         allowFileStoreDestroyWithOrphanSessions)
-    , RestartTabletUptimeThreshold(restartTabletUptimeThreshold)
+    , RestartTabletUptimeThresholdDuringDestroy(
+        restartTabletUptimeThresholdDuringDestroy)
     , ForceDestroySizeThreshold(forceDestroySizeThreshold)
 {}
 
@@ -229,14 +230,16 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
     }
 
     bool haveSessions = msg->Record.SessionsSize() != 0;
-    if (AllowFileStoreDestroyWithOrphanSessions) {
-        haveSessions = false;
-        for (const auto& s: msg->Record.GetSessions()) {
-            if (!s.GetIsOrphan()) {
-                haveSessions = true;
-                break;
-            }
+    bool haveNonOrphanSessions = false;
+    for (const auto& s: msg->Record.GetSessions()) {
+        if (!s.GetIsOrphan()) {
+            haveNonOrphanSessions = true;
+            break;
         }
+    }
+
+    if (AllowFileStoreDestroyWithOrphanSessions) {
+        haveSessions = haveNonOrphanSessions;
     }
 
     if (haveSessions) {
@@ -247,8 +250,9 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
             message << " " << sessionInfo.GetClientId();
         }
 
-        if (RestartTabletUptimeThreshold &&
-            TabletUptime > RestartTabletUptimeThreshold)
+        if (RestartTabletUptimeThresholdDuringDestroy &&
+            TabletUptime > RestartTabletUptimeThresholdDuringDestroy &&
+            haveNonOrphanSessions)
         {
             ActiveSessionsError = MakeError(E_REJECTED, message);
             RestartTablet(ctx);
@@ -274,7 +278,7 @@ void TDestroyFileStoreActor::RestartTablet(const TActorContext& ctx)
         " because the tablet may have false active sessions,"
         " uptime is greater than %lu ms",
         FileSystemId.c_str(),
-        RestartTabletUptimeThreshold.MilliSeconds());
+        RestartTabletUptimeThresholdDuringDestroy.MilliSeconds());
 
     NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
@@ -523,13 +527,18 @@ void TStorageServiceActor::HandleDestroyFileStore(
 
     bool forceDestroy = msg->Record.GetForceDestroy() &&
                         StorageConfig->GetAllowFileStoreForceDestroy();
+    bool allowDestroyWithOrphanSessions =
+        StorageConfig->GetAllowFileStoreDestroyWithOrphanSessions();
+    if (StorageConfig->GetRestartTabletUptimeThresholdDuringDestroy()) {
+        allowDestroyWithOrphanSessions = false;
+    }
     auto actor = std::make_unique<TDestroyFileStoreActor>(
         std::move(requestInfo),
         msg->Record.GetFileSystemId(),
         forceDestroy,
-        StorageConfig->GetAllowFileStoreDestroyWithOrphanSessions(),
+        allowDestroyWithOrphanSessions,
         StorageConfig->GetForceDestroySizeThreshold(),
-        StorageConfig->GetRestartTabletUptimeThreshold());
+        StorageConfig->GetRestartTabletUptimeThresholdDuringDestroy());
 
     NCloud::Register(ctx, std::move(actor));
 }

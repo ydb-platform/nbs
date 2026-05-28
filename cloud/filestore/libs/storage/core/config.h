@@ -396,7 +396,7 @@ public:
     [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
 
     [[nodiscard]] ui64 GetForceDestroySizeThreshold() const;
-    [[nodiscard]] TDuration GetRestartTabletUptimeThreshold() const;
+    [[nodiscard]] TDuration GetRestartTabletUptimeThresholdDuringDestroy() const;
 
     [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
     [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;

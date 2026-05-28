@@ -769,5 +769,5 @@ message TStorageConfig
 
     // Restart index tablet on destroy with active sessions only if tablet
     // uptime is greater than this threshold. Zero disables restarts.
-    optional uint32 RestartTabletUptimeThreshold = 498;
+    optional uint32 RestartTabletUptimeThresholdDuringDestroy = 498;
 }
