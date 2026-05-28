@@ -921,8 +921,7 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>(
-            std::move(args.Error));
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
 
     LOG_INFO(
         ctx,

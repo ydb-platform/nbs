@@ -568,8 +568,7 @@ bool TIndexTabletDatabase::ReadNodeRef(
                 it.GetValue<TTable::ShardId>(),
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            );
+                maxCommitId);
         }
     }
 
@@ -614,7 +613,6 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
                 maxCommitId);
 
             auto& ref = refs.back();
-
             // TODO(#5148): consider other size calculation modes
             if (sizeMode == NProto::LNSM_FULL_ROW) {
                 bytes += ref.CalculateByteSize();
@@ -2292,11 +2290,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRef(
     const TString& name,
     TMaybe<TNodeRef>& ref)
 {
-    const bool result = TIndexTabletDatabase::ReadNodeRef(
-        nodeId,
-        commitId,
-        name,
-        ref);
+    const bool result =
+        TIndexTabletDatabase::ReadNodeRef(nodeId, commitId, name, ref);
     if (result && ref) {
         // If ReadNodeRef was successful, it is reasonable to update the cache
         // with the value that has just been read.
