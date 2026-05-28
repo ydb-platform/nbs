@@ -63,9 +63,9 @@ entry used whenever the code decides whether the pool has enough capacity.
 | --- | --- | --- |
 | `image_id` | `Utf8` | Image id. Part of the primary key. |
 | `zone_id` | `Utf8` | Zone id. Part of the primary key. |
-| `size` | `Uint64` | Current pool slot capacity already accounted by base disks. This is compared with `configs.capacity`. |
+| `size` | `Uint64` | Current spare slot capacity already accounted by base disks. This is compared with `configs.capacity`. |
 | `free_units` | `Uint64` | Current free weighted units on base disks that still belong to the pool. |
-| `acquired_units` | `Uint64` | Weighted units currently reserved by acquired overlay slot reservations. |
+| `acquired_units` | `Uint64` | Weighted units currently consumed by overlays placed on pool base disks. |
 | `base_disks_inflight` | `Uint64` | Base disks in `scheduling` or `creating`. |
 | `lock_id` | `Utf8` | ID of the task that currently locks the pool. |
 | `status` | `Int64` | `ready` or `deleted`. |
@@ -73,24 +73,24 @@ entry used whenever the code decides whether the pool has enough capacity.
 
 Primary key: `(image_id, zone_id)`.
 
-`pool.size` is measured in slots. Scheduling a base disk adds that base disk's
-free slot count to `pool.size` immediately, even before the physical NBS disk is
-ready. Acquiring a slot subtracts from `pool.size`; releasing a slot adds back
-to `pool.size` if the base disk still belongs to the pool.
+`pool.size` is not the number of physical base disks and not the total number of
+slots ever created. It is the spare slot capacity that can still accept future
+overlay reservations. Scheduling a base disk adds that base disk's free slot
+count immediately, even before the physical NBS disk is ready. Acquiring an
+overlay consumes spare capacity, so the base disk transition decreases
+`pool.size`. Releasing the overlay adds the capacity back if the base disk still
+belongs to the pool.
 
 A unit is the weighted accounting cost of an overlay reservation. It is derived
 from overlay disk size and disk kind in
-[computeAllottedUnits](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go):
+[computeAllottedUnits](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go#L738):
 one unit size is 32 GiB, SSD overlays are weighted more heavily than HDD
 overlays, and every acquired slot reserves at least one unit.
 
-For `acquired_units`, an acquired overlay slot is a row in `slots` with
-`status=acquired`. `pools.AcquireBaseDisk` writes that row and increments the
-base disk's `active_units` in one transaction, before the NBS overlay disk is
-created. If acquire finds no usable base disk and only enables on-demand
-capacity, no slot row is acquired and no units are added. During rebase, source
-and target reservations can both exist, so both can contribute to
-`acquired_units` until the rebase is finalized.
+`acquired_units` answers a different question: how much weighted overlay load is
+already placed on base disks from this pool. Scheduling uses `pool.size` to find
+slot deficits; optimization uses `acquired_units` to decide whether the pool
+should use default-sized or image-sized base disks.
 
 `lock_id` stores the task id that locked the pool, usually the
 `pools.RetireBaseDisks` task id. While it is set, `DeletePool` interrupts
@@ -212,10 +212,16 @@ slot.allottedUnits = computeAllottedUnits(slot)
 disk.activeUnits += slot.allottedUnits
 ```
 
-Units are weighted by overlay size and disk kind. SSD overlays are more
-expensive than HDD overlays. The default unit size is 32 GiB. The code uses
-oversubscription, so units are not raw bytes; they are a scheduling/accounting
-weight.
+Units are weighted by overlay size and disk kind. The unit size is 32 GiB, SSD
+overlays are multiplied by 5, and overlay demand is divided by the
+`overlayDiskOversubscription=30` factor. In code, HDD overlays reserve
+`ceil((overlay_size / 32GiB) / 30)` units, SSD overlays reserve
+`ceil(5 * (overlay_size / 32GiB) / 30)` units, and every overlay reserves at
+least one unit. The constants are defined next to `generateBaseDisk`, and the
+formula is in
+[computeAllottedUnits](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go#L738).
+For image-sized base disks, `generateBaseDisk` also applies
+`baseDiskOverSubscription=2` while computing the base disk unit budget.
 
 Default configuration:
 
@@ -279,29 +285,28 @@ Important invariants:
 A base disk transition is an old/new pair: the base disk row before an operation
 and the base disk row after that operation. Storage uses that pair to derive the
 pool counter changes. The central path is
-[updateBaseDisks](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go),
+[updateBaseDisks](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L755),
 which is called through helpers such as `updateBaseDisk`,
 `updateBaseDisksAndSlots`, and `updateBaseDiskAndSlot` from acquire, release,
 rebase, creation, deletion, and retirement paths.
 
 The transition pipeline for a base disk update is:
 
-```mermaid
-flowchart TD
-    A[Base disk state change] --> B[applyBaseDiskInvariants]
-    B --> C[computePoolAction]
-    C --> D[update scheduling table]
-    D --> E[update deleting table]
-    E --> F[update deleted table]
-    F --> G[update free table]
-    G --> H[update pools table]
-    H --> I[upsert base_disks row]
-
-    click B "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "applyBaseDiskInvariants"
-    click C "../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go" "computePoolAction"
-    click G "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "updateFreeTable"
-    click H "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "updatePoolsTable"
-```
+* [`updateBaseDisks`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L755)
+  filters unchanged transitions, then calls
+  [`applyBaseDiskInvariants`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L651).
+* `applyBaseDiskInvariants` loads the current pool row, forces base disks out of
+  deleted pools, applies base disk invariants, calls
+  [`computePoolAction`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go#L345),
+  and applies the resulting counter diff.
+* `updateBaseDisks` then updates the derived indexes:
+  [`scheduling`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L774),
+  [`deleting`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L779),
+  [`deleted`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L784),
+  and [`free`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L789).
+* Finally it writes the new pool counters through
+  [`updatePoolsTable`](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go#L717)
+  and upserts the changed `base_disks` rows.
 
 The core pool action for a normal base disk transition is:
 
@@ -323,9 +328,17 @@ tasks; operators can also invoke private pool operations directly through
 `PrivateService` or `disk-manager-admin`.
 
 In public flows, pools are used during image creation, disk-from-image creation,
-image deletion, and disk deletion. Disk-from-image creation uses pools only when
-the disk service selects the overlay path; otherwise it falls back to a regular
-copy from image.
+image deletion, and disk deletion. For disk-from-image creation, the disk service
+uses the pool only when
+[`isOverlayDiskAllowed`](../../../cloud/disk_manager/internal/pkg/services/disks/service.go#L302)
+returns true. That requires a supported disk kind, 4 KiB block size, disk size no
+larger than 4 TiB, `force_not_layered=false`, no disk/image encryption, an
+existing pool config for the image/zone, and folder/config checks from
+[`DisksConfig`](../../../cloud/disk_manager/internal/pkg/services/disks/config/config.proto#L15).
+If any check fails, `CreateDisk` schedules the regular
+[`disks.CreateDiskFromImage`](../../../cloud/disk_manager/internal/pkg/services/disks/service.go#L399)
+copy path instead of
+[`disks.CreateOverlayDisk`](../../../cloud/disk_manager/internal/pkg/services/disks/service.go#L387).
 
 Code:
 [private_service.proto](../../../cloud/disk_manager/internal/api/private_service.proto),
@@ -334,28 +347,30 @@ Code:
 
 | API or task | Request fields | Main effect |
 | --- | --- | --- |
-| `PrivateService.ConfigurePool` / `pools.ConfigurePool` | `image_id`, `zone_id`, `capacity`, `use_image_size` | Writes or updates `configs`. |
-| `PrivateService.DeletePool` / `pools.DeletePool` | `image_id`, `zone_id` | Deletes one pool config and removes free empty base disks from the pool. |
-| `PrivateService.AcquireBaseDisk` / `pools.AcquireBaseDisk` | `src_image_id`, `overlay_disk_id`, `overlay_disk_kind`, `overlay_disk_size` | Reserves one slot for an overlay disk and returns base disk id/checkpoint. |
-| `PrivateService.ReleaseBaseDisk` / `pools.ReleaseBaseDisk` | `disk_id` | Releases the overlay slot and restores base disk/pool accounting. |
-| `PrivateService.RebaseOverlayDisk` / `pools.RebaseOverlayDisk` | `disk_id`, `base_disk_id`, `target_base_disk_id`, `slot_generation` | Performs NBS rebase and finalizes a slot move. |
-| `PrivateService.RetireBaseDisk` / `pools.RetireBaseDisk` | `base_disk_id`, optional `src_disk_id` | Moves overlays away from one base disk and marks it retiring. |
-| `PrivateService.RetireBaseDisks` / `pools.RetireBaseDisks` | `image_id`, `zone_id`, `use_base_disk_as_src`, `use_image_size` | Retires all base disks for one image/zone. |
-| `PrivateService.OptimizeBaseDisks` / `pools.OptimizeBaseDisks` | empty | Switches eligible pools between default-sized and image-sized mode, then retires old base disks. |
-| Regular `pools.ScheduleBaseDisks` | none | Converts configured capacity deficit into `pools.CreateBaseDisk` tasks. |
-| Regular `pools.DeleteBaseDisks` | none | Deletes physical NBS disks listed in `deleting`. |
-| Regular `pools.ClearDeletedBaseDisks` | none | Removes expired deleted base disk rows. |
-| Regular `pools.ClearReleasedSlots` | none | Removes expired released slot tombstones. |
+| [`PrivateService.ConfigurePool`](../../../cloud/disk_manager/internal/api/private_service.proto#L28) / [`pools.ConfigurePool`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L73), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/configure_pool_task.go#L63) | `image_id`, `zone_id`, `capacity`, `use_image_size` | Writes or updates `configs`. |
+| [`PrivateService.DeletePool`](../../../cloud/disk_manager/internal/api/private_service.proto#L30) / [`pools.DeletePool`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L90), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/delete_pool_task.go#L45) | `image_id`, `zone_id` | Deletes one pool config and removes free empty base disks from the pool. |
+| [`PrivateService.AcquireBaseDisk`](../../../cloud/disk_manager/internal/api/private_service.proto#L16) / [`pools.AcquireBaseDisk`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L20), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/acquire_base_disk_task.go#L39) | `src_image_id`, `overlay_disk_id`, `overlay_disk_kind`, `overlay_disk_size` | Reserves one slot for an overlay disk and returns base disk id/checkpoint. |
+| [`PrivateService.ReleaseBaseDisk`](../../../cloud/disk_manager/internal/api/private_service.proto#L18) / [`pools.ReleaseBaseDisk`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L38), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/release_base_disk_task.go#L54) | `disk_id` | Releases the overlay slot and restores base disk/pool accounting. |
+| [`PrivateService.RebaseOverlayDisk`](../../../cloud/disk_manager/internal/api/private_service.proto#L20) / [`pools.RebaseOverlayDisk`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L55), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/rebase_overlay_disk_task.go#L92) | `disk_id`, `base_disk_id`, `target_base_disk_id`, `slot_generation` | Performs NBS rebase and finalizes a slot move. |
+| [`PrivateService.RetireBaseDisk`](../../../cloud/disk_manager/internal/api/private_service.proto#L22) / [`pools.RetireBaseDisk`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L129), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/retire_base_disk_task.go#L42) | `base_disk_id`, optional `src_disk_id` | Moves overlays away from one base disk and marks it retiring. |
+| [`PrivateService.RetireBaseDisks`](../../../cloud/disk_manager/internal/api/private_service.proto#L24) / [`pools.RetireBaseDisks`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L144), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/retire_base_disks_task.go#L42) | `image_id`, `zone_id`, `use_base_disk_as_src`, `use_image_size` | Retires all base disks for one image/zone. |
+| [`PrivateService.OptimizeBaseDisks`](../../../cloud/disk_manager/internal/api/private_service.proto#L26) / [`pools.OptimizeBaseDisks`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L159), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/optimize_base_disks_task.go#L37) | empty | Switches eligible pools between default-sized and image-sized mode, then retires old base disks. |
+| Internal [`pools.ImageDeleting`](../../../cloud/disk_manager/internal/pkg/services/pools/service.go#L105), task [`Run`](../../../cloud/disk_manager/internal/pkg/services/pools/image_deleting_task.go#L45) | `image_id` | Marks pool state for image deletion before image storage is deleted. |
+| Regular [`pools.ScheduleBaseDisks`](../../../cloud/disk_manager/internal/pkg/services/pools/schedule_base_disks_task.go#L30) | none | Converts configured capacity deficit into `pools.CreateBaseDisk` tasks. |
+| Task [`pools.CreateBaseDisk`](../../../cloud/disk_manager/internal/pkg/services/pools/create_base_disk_task.go#L48) | base disk id, source image/disk, checkpoint id, size mode | Creates and fills a base disk, then marks it ready. |
+| Regular [`pools.DeleteBaseDisks`](../../../cloud/disk_manager/internal/pkg/services/pools/delete_base_disks_task.go#L42) | none | Deletes physical NBS disks listed in `deleting`. |
+| Regular [`pools.ClearDeletedBaseDisks`](../../../cloud/disk_manager/internal/pkg/services/pools/clear_deleted_base_disks_task.go#L29) | none | Removes expired deleted base disk rows. |
+| Regular [`pools.ClearReleasedSlots`](../../../cloud/disk_manager/internal/pkg/services/pools/clear_released_slots_task.go#L29) | none | Removes expired released slot tombstones. |
 
 The main callers are:
 
 | Caller | Pool operation |
 | --- | --- |
-| `images.CreateImage*` | Calls `ConfigurePool` after image metadata/snapshot creation when pooled image config is present. |
-| `images.DeleteImage` | Calls `ImageDeleting`, schedules `RetireBaseDisks`, then deletes the image snapshot. |
-| `disks.CreateOverlayDisk` | Calls `AcquireBaseDisk` before creating the NBS overlay disk. |
-| `disks.DeleteDisk` and overlay-create cancellation | Calls `ReleaseBaseDisk` for overlay disks created from images. |
-| Disk migration/relocation | Uses pool relocation/rebase storage paths and finalizes with `OverlayDiskRebasedTx`. |
+| [`images.CreateImage*`](../../../cloud/disk_manager/internal/pkg/services/images/common.go#L131) | Calls `ConfigurePool` after image metadata/snapshot creation when pooled image config is present. |
+| [`images.DeleteImage`](../../../cloud/disk_manager/internal/pkg/services/images/common.go#L19) | Calls `ImageDeleting`, schedules `RetireBaseDisks`, then deletes the image snapshot. |
+| [`disks.CreateOverlayDisk`](../../../cloud/disk_manager/internal/pkg/services/disks/create_overlay_disk_task.go#L50) | Calls `AcquireBaseDisk` before creating the NBS overlay disk. |
+| [`disks.DeleteDisk`](../../../cloud/disk_manager/internal/pkg/services/disks/delete_disk_task.go#L128) and [`CreateOverlayDisk.Cancel`](../../../cloud/disk_manager/internal/pkg/services/disks/create_overlay_disk_task.go#L152) | Calls `ReleaseBaseDisk` for overlay disks created from images. |
+| [`disks.MigrateDisk`](../../../cloud/disk_manager/internal/pkg/services/disks/migrate_disk_task.go#L245) relocation | Uses pool relocation/rebase storage paths and finalizes with `OverlayDiskRebasedTx`. |
 
 ## Image Creation and Pool Configuration
 
@@ -377,11 +392,12 @@ Code:
 `ConfigurePool(image_id, zone_id, capacity, use_image_size)` schedules
 `pools.ConfigurePool`.
 
-The task reads image metadata. If `use_image_size=false`, it stores
-`configs.image_size=0`, which means "use default-sized base disks". If
-`use_image_size=true`, it stores the image metadata size in `configs.image_size`,
-which means "size future base disks from this image's logical size". Then
-storage upserts the `configs` row.
+The task always reads image metadata to validate that the image exists and is
+ready. If `use_image_size=false`, it stores `configs.image_size=0`; this is a
+sentinel for the default base disk size mode. If `use_image_size=true`, it
+stores the image metadata size in `configs.image_size`, which means "size future
+base disks from this image's logical size". Then storage upserts the `configs`
+row.
 
 The stored image size is the snapshot/image logical size written by image
 creation. The default-sized mode is not a different image size; it is the
@@ -561,11 +577,6 @@ flowchart TD
     M --> N
     N --> O[Storage.BaseDisksScheduled sets status creating and createTaskID]
 
-    click A "../../../cloud/disk_manager/internal/pkg/services/pools/register.go" "Regular task registration"
-    click B "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "TakeBaseDisksToSchedule"
-    click I "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "capacity deficit calculation"
-    click N "../../../cloud/disk_manager/internal/pkg/services/pools/schedule_base_disks_task.go" "Schedule CreateBaseDisk"
-    click O "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "BaseDisksScheduled"
 ```
 
 ## Base Disk Creation
@@ -689,10 +700,6 @@ flowchart TD
     F -- no --> N[set zero-capacity config to capacity 1]
     N --> O[Return InterruptExecutionError]
 
-    click A "../../../cloud/disk_manager/internal/pkg/services/pools/acquire_base_disk_task.go" "pools.AcquireBaseDisk task"
-    click B "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "AcquireBaseDiskSlot storage path"
-    click I "../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go" "unit accounting"
-    click J "../../../cloud/disk_manager/internal/pkg/services/pools/storage/common.go" "pool size diff"
 ```
 
 Release marks the slot `released`, releases source units and slots, and also
@@ -890,11 +897,6 @@ flowchart TD
     H --> I
     I --> J[Replacement base disks follow new config]
 
-    click A "../../../cloud/disk_manager/internal/pkg/services/pools/optimize_base_disks_task.go" "OptimizeBaseDisks task"
-    click B "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "GetReadyPoolInfos"
-    click F "../../../cloud/disk_manager/internal/pkg/services/pools/configure_pool_task.go" "ConfigurePool task"
-    click H "../../../cloud/disk_manager/internal/pkg/services/pools/configure_pool_task.go" "ConfigurePool task"
-    click I "../../../cloud/disk_manager/internal/pkg/services/pools/retire_base_disks_task.go" "RetireBaseDisks task"
 ```
 
 Optimization can change the amount of base disks in the pool because
@@ -987,9 +989,6 @@ flowchart LR
     E --> F[pools.ClearDeletedBaseDisks]
     F --> G[remove base_disks and deleted rows]
 
-    click C "../../../cloud/disk_manager/internal/pkg/services/pools/delete_base_disks_task.go" "DeleteBaseDisks task"
-    click E "../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go" "BaseDisksDeleted"
-    click F "../../../cloud/disk_manager/internal/pkg/services/pools/clear_deleted_base_disks_task.go" "ClearDeletedBaseDisks task"
 ```
 
 ## Full Lifecycle
