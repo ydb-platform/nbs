@@ -1573,7 +1573,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         storageConfig.SetInMemoryIndexCacheEnabled(true);
         storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
-        storageConfig.SetInMemoryIndexCacheNodeRefsLoadOnTabletStartForShards(
+        storageConfig.SetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards(
             true);
         storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(1);
         storageConfig.SetInMemoryIndexCacheLoadSchedulePeriod(

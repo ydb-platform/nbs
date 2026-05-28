@@ -461,10 +461,6 @@ message TStorageConfig
     // Enables index cache loading on tablet startup. Enables ListNodes
     // responses from cache.
     optional bool InMemoryIndexCacheLoadOnTabletStart = 398;
-    // Similar to the previous flag, but applies only to the node refs table and
-    // filesystem shards. If `InMemoryIndexCacheLoadOnTabletStart` is also set,
-    // it takes precedence.
-    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartForShards = 498;
     optional uint64 InMemoryIndexCacheLoadOnTabletStartRowsPerTx = 399;
 
     // Blob is divided into chunks of a certain size (in bytes) and each chunk
@@ -770,4 +766,9 @@ message TStorageConfig
     // These flags turn NodeRefs cache into a btree_map without capacity limits.
     optional bool UseUnlimitedBTreeNodeRefsCacheInMainTablet = 496;
     optional bool UseUnlimitedBTreeNodeRefsCacheInShards = 497;
+
+    // Similar to `InMemoryIndexCacheLoadOnTabletStart`, but applies only to
+    // the node refs table in filesystem shards. If
+    // `InMemoryIndexCacheLoadOnTabletStart` is also set, it takes precedence.
+    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards = 498;
 }

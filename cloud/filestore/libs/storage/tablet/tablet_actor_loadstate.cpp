@@ -440,7 +440,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
             shouldScheduleNodeRefsLoad = true;
             shouldScheduleNodesLoad = true;
         } else if (
-            Config->GetInMemoryIndexCacheNodeRefsLoadOnTabletStartForShards() &&
+            Config->GetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards() &&
             !IsMainTablet())
         {
             shouldScheduleNodeRefsLoad = true;
