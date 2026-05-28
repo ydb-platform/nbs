@@ -771,5 +771,6 @@ message TStorageConfig
     // to optimize TReadDataActor performance.
     optional bool UseCustomReadDataResponseParser = 498;
 
+    // If true, describes will be done using SchemeCache instead of TxProxy.
     optional bool UseSchemeCache = 499;
 }

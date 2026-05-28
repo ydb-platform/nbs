@@ -341,7 +341,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(HideFileNamesInTabletDirectoryViewer,   bool,   false                 )\
                                                                                \
     xxx(UseCustomReadDataResponseParser,        bool,   false                 )\
-
+                                                                               \
     xxx(UseSchemeCache,                         bool,   false                 )\
 // FILESTORE_STORAGE_CONFIG
 

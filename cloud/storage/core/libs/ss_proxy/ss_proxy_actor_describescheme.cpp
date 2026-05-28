@@ -226,7 +226,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
             case TSchemeCacheNavigate::EStatus::PathErrorUnknown: {
                 auto error = MakeSchemeShardError(
                     NKikimrScheme::StatusPathDoesNotExist,
-                    "SchemeCache PathErrorUnknown converted to StatusPathDoesNotExist");
+                    "path not found in SchemeCache");
                 SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
                 HandleError(ctx, error);
                 return;
@@ -235,7 +235,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
             case TSchemeCacheNavigate::EStatus::RootUnknown: {
                 auto error = MakeSchemeShardError(
                     NKikimrScheme::StatusPathDoesNotExist,
-                    "SchemeCache RootUnknown converted to StatusPathDoesNotExist");
+                    "root path not found in SchemeCache");
                 SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
                 HandleError(ctx, error);
                 return;
