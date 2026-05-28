@@ -3652,7 +3652,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
-        const auto initialBlockCount = 1'000;
+        const ui64 initialBlockCount = 1'000;
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
 
@@ -3748,7 +3748,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT(sessions[0].GetIsOrphan());
         }
 
-        const auto getStorageStatsResponsesBeforeRetry =
+        const ui32 getStorageStatsResponsesBeforeRetry =
             getStorageStatsResponses;
         destroyFileStoreResponse = service.AssertDestroyFileStoreFailed(fsId);
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -3789,7 +3789,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
-        const auto initialBlockCount = 1'000;
+        const ui64 initialBlockCount = 1'000;
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
 
@@ -3844,7 +3844,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         const TString fsId = "test";
         // Size less than ForceDestroySizeThreshold
-        const auto initialBlockCount = 80_MB / DefaultBlockSize;
+        const ui64 initialBlockCount = 80_MB / DefaultBlockSize;
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
 
