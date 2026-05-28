@@ -461,6 +461,10 @@ message TStorageConfig
     // Enables index cache loading on tablet startup. Enables ListNodes
     // responses from cache.
     optional bool InMemoryIndexCacheLoadOnTabletStart = 398;
+    // Similar to the previous flag, but applies only to the node refs table and
+    // filesystem shards. If `InMemoryIndexCacheLoadOnTabletStart` is also set,
+    // it takes precedence.
+    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartForShards = 498;
     optional uint64 InMemoryIndexCacheLoadOnTabletStartRowsPerTx = 399;
 
     // Blob is divided into chunks of a certain size (in bytes) and each chunk
