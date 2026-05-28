@@ -1567,13 +1567,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT(statsAfter.IsExhaustive);
     }
 
-    Y_UNIT_TEST(ShouldFullyLoadShardWhenBothLoadFlagsEnabled)
+    Y_UNIT_TEST(ShouldLoadNodeRefsOnlyForShardOnTabletStart)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetInMemoryIndexCacheEnabled(true);
         storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
-        storageConfig.SetInMemoryIndexCacheLoadOnTabletStart(true);
         storageConfig.SetInMemoryIndexCacheNodeRefsLoadOnTabletStartForShards(
             true);
         storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(1);
@@ -1601,15 +1600,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
 
         tablet.InitSession("client", "session");
 
-        // InMemoryIndexCacheLoadOnTabletStart takes priority over the shard-only
-        // flag via else-if: both node refs and nodes must be loaded
+        // It will take 1 iteration to load all the nodeRefs (root -> test1)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             env.GetRuntime().GetCounter(
                 TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs));
-        // 2 iterations: one for root, one for test1
+        // Nodes should NOT be loaded: the flag only enables node refs load for
+        // shards
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            0,
             env.GetRuntime().GetCounter(
                 TEvIndexTabletPrivate::EEvents::EvLoadNodes));
     }
