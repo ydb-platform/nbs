@@ -731,7 +731,9 @@ struct TRequestCounters::TStatCounters
             if (unaligned) {
                 UnalignedCount->Inc();
                 TimeHistUnaligned.Increment(time);
-                ExecutionTimeHistUnaligned.Increment(execTime);
+                if (!ThrottlingHistogramsDisabled) {
+                    ExecutionTimeHistUnaligned.Increment(execTime);
+                }
             }
 
             if (!ThrottlingHistogramsDisabled) {
