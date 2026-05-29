@@ -432,14 +432,26 @@ void TIndexTabletActor::CompleteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
 
-    if (Config->GetInMemoryIndexCacheEnabled() &&
-        Config->GetInMemoryIndexCacheLoadOnTabletStart())
-    {
-        const ui64 maxRows =
-            Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
-        const TDuration schedulePeriod =
-            Config->GetInMemoryIndexCacheLoadSchedulePeriod();
+    bool shouldScheduleNodeRefsLoad = false;
+    bool shouldScheduleNodesLoad = false;
 
+    if (Config->GetInMemoryIndexCacheEnabled()) {
+        if (Config->GetInMemoryIndexCacheLoadOnTabletStart()) {
+            shouldScheduleNodeRefsLoad = true;
+            shouldScheduleNodesLoad = true;
+        } else if (
+            Config->GetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards() &&
+            !IsMainTablet())
+        {
+            shouldScheduleNodeRefsLoad = true;
+        }
+    }
+
+    const ui64 maxRows =
+        Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
+    const TDuration schedulePeriod =
+        Config->GetInMemoryIndexCacheLoadSchedulePeriod();
+    if (shouldScheduleNodeRefsLoad) {
         // If necessary, code can iteratively call ReadNodeRefs for all nodes.
         // This will populate cache with node refs and allow us to perform
         // ListNodes using in-memory index state by knowing that the nodeRefs
@@ -458,7 +470,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
                 "",
                 maxRows,
                 schedulePeriod));
+    }
 
+    if (shouldScheduleNodesLoad) {
         // Same logic is performed for batch loading nodes as well. The only
         // difference is that we do not need to keep track of the exhaustiveness
         // of the cache

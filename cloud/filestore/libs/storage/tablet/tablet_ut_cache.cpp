@@ -1567,6 +1567,52 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT(statsAfter.IsExhaustive);
     }
 
+    Y_UNIT_TEST(ShouldLoadNodeRefsOnlyForShardOnTabletStart)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards(
+            true);
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(1);
+        storageConfig.SetInMemoryIndexCacheLoadSchedulePeriod(
+            TDuration::Seconds(1).MilliSeconds());
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"));
+
+        tablet.ConfigureAsShard(1);
+
+        env.GetRuntime().ClearCounters();
+        tablet.RebootTablet();
+
+        for (int i = 0; i < 10; ++i) {
+            tablet.AdvanceTime(TDuration::Seconds(1));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        tablet.InitSession("client", "session");
+
+        // It will take 1 iteration to load all the nodeRefs (root -> test1)
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs));
+        // Nodes should NOT be loaded: the flag only enables node refs load for
+        // shards
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodes));
+    }
+
     Y_UNIT_TEST(ShouldUseInMemoryCacheAndMixedBlocksCacheForReads)
     {
         NProto::TStorageConfig storageConfig;
