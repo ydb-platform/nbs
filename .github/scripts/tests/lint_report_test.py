@@ -79,3 +79,53 @@ def test_lint_report_adds_single_pass_case_for_success(tmp_path: Path) -> None:
     lr.write_junit(junit, cases)
 
     assert _statuses(junit) == [gs.TestStatus.PASS]
+
+
+def test_lint_report_parses_shellcheck_gcc_lines(tmp_path: Path) -> None:
+    cases = lr.build_cases(
+        tool="shellcheck",
+        title="GA Scripts shellcheck",
+        command="shellcheck",
+        exit_code=1,
+        elapsed=1.0,
+        log_text=".github/scripts/foo.sh:3:7: warning: Double quote to prevent globbing. [SC2086]\n",
+        log_url="",
+    )
+    junit = tmp_path / "shellcheck.xml"
+    lr.write_junit(junit, cases)
+
+    root = ET.parse(junit).getroot()
+    case = root.find(".//testcase")
+    assert case is not None
+    assert case.get("classname") == ".github/scripts/foo.sh"
+    assert case.get("name") == "3:7 SC2086"
+    assert _statuses(junit) == [gs.TestStatus.FAIL]
+
+
+def test_lint_report_parses_shfmt_diff_blocks(tmp_path: Path) -> None:
+    cases = lr.build_cases(
+        tool="shfmt",
+        title="GA Scripts shfmt",
+        command="shfmt",
+        exit_code=1,
+        elapsed=1.0,
+        log_text=(
+            "--- .github/scripts/foo.sh.orig\n"
+            "+++ .github/scripts/foo.sh\n"
+            "@@ -1 +1 @@\n"
+            "-if true; then echo ok; fi\n"
+            "+if true; then\n"
+            "+    echo ok\n"
+            "+fi\n"
+        ),
+        log_url="",
+    )
+    junit = tmp_path / "shfmt.xml"
+    lr.write_junit(junit, cases)
+
+    root = ET.parse(junit).getroot()
+    case = root.find(".//testcase")
+    assert case is not None
+    assert case.get("classname") == ".github/scripts"
+    assert case.get("name") == "foo.sh"
+    assert _statuses(junit) == [gs.TestStatus.FAIL]

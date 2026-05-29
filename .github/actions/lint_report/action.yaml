@@ -1,5 +1,5 @@
-name: Python lint report
-description: Run a Python lint command and publish JUnit, HTML, and markdown reports
+name: Lint report
+description: Run a lint command and publish JUnit, HTML, and markdown reports
 
 inputs:
   title:
@@ -14,6 +14,10 @@ inputs:
   report_name:
     required: true
     description: "Base filename for generated reports"
+  report_on_success:
+    required: false
+    default: "true"
+    description: "Generate a passing report when the command succeeds without output"
 
 outputs:
   exit_code:
@@ -31,6 +35,9 @@ outputs:
   log_path:
     description: "Captured command log path"
     value: ${{ steps.report.outputs.log_path }}
+  has_report:
+    description: "Whether report files were generated"
+    value: ${{ steps.report.outputs.has_report }}
 
 runs:
   using: composite
@@ -43,6 +50,7 @@ runs:
         TOOL: ${{ inputs.tool }}
         COMMAND: ${{ inputs.command }}
         REPORT_NAME: ${{ inputs.report_name }}
+        REPORT_ON_SUCCESS: ${{ inputs.report_on_success }}
       run: |
         set -euo pipefail
 
@@ -58,6 +66,16 @@ runs:
         end_time=$(date +%s)
         elapsed=$((end_time - start_time))
 
+        has_output=false
+        if [ -s "${LOG_PATH}" ]; then
+          has_output=true
+        fi
+
+        has_report=false
+        if [ "${REPORT_ON_SUCCESS}" = "true" ] || [ "${exit_code}" != "0" ] || [ "${has_output}" = "true" ]; then
+          has_report=true
+        fi
+
         summary_url_prefix=""
         log_url=""
         if [ -n "${S3_URL_PREFIX:-}" ]; then
@@ -65,49 +83,54 @@ runs:
           log_url="${summary_url_prefix}${LOG_PATH}"
         fi
 
-        export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
-        python3 -m scripts.tests.lint_report \
-          --tool "${TOOL}" \
-          --title "${TITLE}" \
-          --command "${COMMAND}" \
-          --exit-code "${exit_code}" \
-          --elapsed "${elapsed}" \
-          --log "${LOG_PATH}" \
-          --log-url "${log_url}" \
-          --junit "${JUNIT_PATH}" \
-          --html "${HTML_PATH}" \
-          --summary-url-prefix "${summary_url_prefix}"
+        markdown_out=$(mktemp)
+        if [ "${has_report}" = "true" ]; then
+          export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+          python3 -m scripts.tests.lint_report \
+            --tool "${TOOL}" \
+            --title "${TITLE}" \
+            --command "${COMMAND}" \
+            --exit-code "${exit_code}" \
+            --elapsed "${elapsed}" \
+            --log "${LOG_PATH}" \
+            --log-url "${log_url}" \
+            --junit "${JUNIT_PATH}" \
+            --html "${HTML_PATH}" \
+            --summary-url-prefix "${summary_url_prefix}"
 
-        summary_out=$(mktemp)
-        python3 -m scripts.tests.pytest_summary \
-          --title "${TITLE}" \
-          "${JUNIT_PATH}" > "${summary_out}"
+          python3 -m scripts.tests.pytest_summary \
+            --title "${TITLE}" \
+            "${JUNIT_PATH}" > "${markdown_out}"
+        fi
 
         {
           echo "exit_code=${exit_code}"
           echo "html_path=${HTML_PATH}"
           echo "junit_path=${JUNIT_PATH}"
           echo "log_path=${LOG_PATH}"
+          echo "has_report=${has_report}"
           echo "markdown<<__PYTHON_LINT_MARKDOWN__"
-          cat "${summary_out}"
+          cat "${markdown_out}"
           echo "__PYTHON_LINT_MARKDOWN__"
         } >> "$GITHUB_OUTPUT"
 
-        {
-          echo "### ${TITLE} reports"
-          echo
-          cat "${summary_out}"
-          echo
-          if [ "${ACT:-}" = "true" ]; then
-            echo "- Local act run: reports were written to ${HTML_PATH}, ${JUNIT_PATH}, and ${LOG_PATH}"
-          elif [ -n "${S3_URL_PREFIX:-}" ]; then
-            echo "- [${TITLE} report (s3)](${S3_URL_PREFIX}/test_reports/${HTML_PATH})"
-            echo "- [${TITLE} results xml (s3)](${S3_URL_PREFIX}/test_reports/${JUNIT_PATH})"
-            echo "- [${TITLE} log (s3)](${S3_URL_PREFIX}/test_reports/${LOG_PATH})"
-          fi
-        } >> "$GITHUB_STEP_SUMMARY"
+        if [ "${has_report}" = "true" ]; then
+          {
+            echo "### ${TITLE} reports"
+            echo
+            cat "${markdown_out}"
+            echo
+            if [ "${ACT:-}" = "true" ]; then
+              echo "- Local act run: reports were written to ${HTML_PATH}, ${JUNIT_PATH}, and ${LOG_PATH}"
+            elif [ -n "${S3_URL_PREFIX:-}" ]; then
+              echo "- [${TITLE} report (s3)](${S3_URL_PREFIX}/test_reports/${HTML_PATH})"
+              echo "- [${TITLE} results xml (s3)](${S3_URL_PREFIX}/test_reports/${JUNIT_PATH})"
+              echo "- [${TITLE} log (s3)](${S3_URL_PREFIX}/test_reports/${LOG_PATH})"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
 
-        if [ "${ACT:-}" != "true" ] && [ -n "${S3_BUCKET_PATH:-}" ]; then
+        if [ "${has_report}" = "true" ] && [ "${ACT:-}" != "true" ] && [ -n "${S3_BUCKET_PATH:-}" ]; then
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "${HTML_PATH}" "$S3_BUCKET_PATH/test_reports/${HTML_PATH}"
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "${JUNIT_PATH}" "$S3_BUCKET_PATH/test_reports/${JUNIT_PATH}"
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "${LOG_PATH}" "$S3_BUCKET_PATH/test_reports/${LOG_PATH}"

@@ -12,6 +12,10 @@ from .junit_utils import add_junit_log_property
 FLAKE8_RE = re.compile(
     r"^(?P<path>.*?):(?P<line>\d+):(?P<column>\d+): (?P<code>[A-Z]+\d+) (?P<message>.*)$"
 )
+SHELLCHECK_RE = re.compile(
+    r"^(?P<path>.*?):(?P<line>\d+):(?P<column>\d+): (?P<severity>[a-z]+): "
+    r"(?P<message>.*?) \[(?P<code>SC\d+)\]$"
+)
 
 
 def _read_log(path: Path) -> str:
@@ -107,6 +111,60 @@ def parse_black(log_text: str, elapsed: float, log_url: str) -> list[ET.Element]
     return cases
 
 
+def parse_shellcheck(log_text: str, elapsed: float, log_url: str) -> list[ET.Element]:
+    cases = []
+    for line in log_text.splitlines():
+        match = SHELLCHECK_RE.match(line)
+        if match is None:
+            continue
+        classname = match.group("path")
+        name = f"{match.group('line')}:{match.group('column')} {match.group('code')}"
+        message = f"{match.group('severity')}: {match.group('message')}"
+        cases.append(
+            _make_case(
+                classname=classname,
+                name=name,
+                elapsed=elapsed,
+                log_url=log_url,
+                failure=f"{line}\n\n{message}",
+            )
+        )
+    return cases
+
+
+def parse_shfmt(log_text: str, elapsed: float, log_url: str) -> list[ET.Element]:
+    cases = []
+    current_path = ""
+    current_block: list[str] = []
+
+    def add_current() -> None:
+        if not current_path:
+            return
+        classname, name = _case_name_from_path(current_path)
+        cases.append(
+            _make_case(
+                classname=classname,
+                name=name,
+                elapsed=elapsed,
+                log_url=log_url,
+                failure="\n".join(current_block),
+            )
+        )
+
+    for line in log_text.splitlines():
+        if line.startswith("--- "):
+            add_current()
+            current_block = [line]
+            current_path = line.removeprefix("--- ").split("\t", 1)[0].strip()
+            current_path = current_path.removesuffix(".orig")
+            continue
+        if current_block:
+            current_block.append(line)
+
+    add_current()
+    return cases
+
+
 def build_cases(
     *,
     tool: str,
@@ -121,6 +179,10 @@ def build_cases(
         cases = parse_flake8(log_text, elapsed, log_url)
     elif tool == "black":
         cases = parse_black(log_text, elapsed, log_url)
+    elif tool == "shellcheck":
+        cases = parse_shellcheck(log_text, elapsed, log_url)
+    elif tool == "shfmt":
+        cases = parse_shfmt(log_text, elapsed, log_url)
     else:
         cases = []
 
@@ -189,7 +251,11 @@ def write_html(path: Path, cases: list[ET.Element], summary_url_prefix: str) -> 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tool", choices=("flake8", "black", "command"), required=True)
+    parser.add_argument(
+        "--tool",
+        choices=("flake8", "black", "shellcheck", "shfmt", "command"),
+        required=True,
+    )
     parser.add_argument("--title", required=True)
     parser.add_argument("--command", required=True)
     parser.add_argument("--exit-code", type=int, required=True)

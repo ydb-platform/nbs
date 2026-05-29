@@ -157,31 +157,153 @@ jobs:
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements_dev.txt
 
+      - name: Prepare s3
+        if: ${{ env.ACT != 'true' }}
+        id: s3
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ vars.POOLED_LIGHT_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: "relwithdebinfo"
+          install: false
+
       - name: generate shellscripts from github actions
         run: |
           python3 .github/scripts/shell_extractor.py
           find .temporary/ -type f -name "*.sh";
 
       - name: shellcheck for .github dir
-        uses: ludeeus/action-shellcheck@master
+        id: shellcheck-github
+        uses: ./.github/actions/lint_report
         with:
-          scandir: .github
+          title: "GA Scripts shellcheck (.github)"
+          tool: shellcheck
+          report_name: ga-scripts-shellcheck-github
+          report_on_success: "false"
+          command: |
+            find .github -type f -print0 |
+              while IFS= read -r -d '' file; do
+                case "$file" in
+                  *.sh | *.bash | *.bats)
+                    printf '%s\0' "$file"
+                    continue
+                    ;;
+                esac
+                read -r first_line < "$file" || true
+                case "$first_line" in
+                  '#!'*sh* | '#!'*bash* | '#!'*dash* | '#!'*ksh* | '#!'*zsh*)
+                    printf '%s\0' "$file"
+                    ;;
+                esac
+              done |
+              xargs -0 --no-run-if-empty shellcheck -f gcc ${SHELLCHECK_OPTS:-}
         env:
           SHELLCHECK_OPTS: "-e SC2155,SC2086"
 
       - name: shellcheck for github actions shell scripts in .temporary dir
-        uses: ludeeus/action-shellcheck@master
+        id: shellcheck-temporary
+        uses: ./.github/actions/lint_report
         env:
           SHELLCHECK_OPTS: "-e SC2155,SC2086"
         with:
-          scandir: .temporary
+          title: "GA Scripts shellcheck (.temporary)"
+          tool: shellcheck
+          report_name: ga-scripts-shellcheck-temporary
+          report_on_success: "false"
+          command: |
+            find .temporary -type f -name "*.sh" -print0 |
+              xargs -0 --no-run-if-empty shellcheck -f gcc ${SHELLCHECK_OPTS:-}
 
       - name: shfmt
-        uses: librarian/action-shfmt@v0.0.1
+        id: shfmt
+        uses: ./.github/actions/lint_report
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: .github/
-          shfmt_flags: "-i 4 -ci -kp -bn -sr"
+          title: "GA Scripts shfmt"
+          tool: shfmt
+          report_name: ga-scripts-shfmt
+          report_on_success: "false"
+          command: |
+            set +e
+            shfmt_diff=$(shfmt -d -i 4 -ci -kp -bn -sr .github/ 2>&1)
+            shfmt_status=$?
+            set -e
+            if [ -n "${shfmt_diff}" ]; then
+              printf '%s\n' "${shfmt_diff}"
+            fi
+            if [ "${shfmt_status}" != "0" ]; then
+              exit "${shfmt_status}"
+            fi
+            if [ -n "${shfmt_diff}" ]; then
+              exit 1
+            fi
+
+      - name: comment on issue
+        if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() && (steps.shellcheck-github.outputs.has_report == 'true' || steps.shellcheck-temporary.outputs.has_report == 'true' || steps.shfmt.outputs.has_report == 'true') }}
+        uses: actions/github-script@v9
+        env:
+          SHELLCHECK_GITHUB_HAS_REPORT: ${{ steps.shellcheck-github.outputs.has_report }}
+          SHELLCHECK_TEMPORARY_HAS_REPORT: ${{ steps.shellcheck-temporary.outputs.has_report }}
+          SHFMT_HAS_REPORT: ${{ steps.shfmt.outputs.has_report }}
+          SHELLCHECK_GITHUB_MARKDOWN: ${{ steps.shellcheck-github.outputs.markdown }}
+          SHELLCHECK_TEMPORARY_MARKDOWN: ${{ steps.shellcheck-temporary.outputs.markdown }}
+          SHFMT_MARKDOWN: ${{ steps.shfmt.outputs.markdown }}
+        with:
+          script: |
+            const s3_path = process.env.S3_URL_PREFIX;
+            const links = [];
+            if (process.env.SHELLCHECK_GITHUB_HAS_REPORT == 'true') {
+              links.push('[GA scripts shellcheck .github report (s3)](' + s3_path + '/test_reports/ga-scripts-shellcheck-github-report.html)');
+            }
+            if (process.env.SHELLCHECK_TEMPORARY_HAS_REPORT == 'true') {
+              links.push('[GA scripts shellcheck .temporary report (s3)](' + s3_path + '/test_reports/ga-scripts-shellcheck-temporary-report.html)');
+            }
+            if (process.env.SHFMT_HAS_REPORT == 'true') {
+              links.push('[GA scripts shfmt report (s3)](' + s3_path + '/test_reports/ga-scripts-shfmt-report.html)');
+            }
+            let comment = 'status: :red_circle: ' + links.join(' ');
+
+            if (process.env.SHELLCHECK_GITHUB_MARKDOWN) {
+              comment += '\n\n' + process.env.SHELLCHECK_GITHUB_MARKDOWN;
+            }
+            if (process.env.SHELLCHECK_TEMPORARY_MARKDOWN) {
+              comment += '\n\n' + process.env.SHELLCHECK_TEMPORARY_MARKDOWN;
+            }
+            if (process.env.SHFMT_MARKDOWN) {
+              comment += '\n\n' + process.env.SHFMT_MARKDOWN;
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            })
+
+      - name: fail on shell checks
+        if: ${{ always() }}
+        env:
+          SHELLCHECK_GITHUB_EXIT_CODE: ${{ steps.shellcheck-github.outputs.exit_code }}
+          SHELLCHECK_TEMPORARY_EXIT_CODE: ${{ steps.shellcheck-temporary.outputs.exit_code }}
+          SHFMT_EXIT_CODE: ${{ steps.shfmt.outputs.exit_code }}
+        run: |
+          status=0
+          if [ "${SHELLCHECK_GITHUB_EXIT_CODE:-1}" != "0" ]; then
+            echo "::error::shellcheck .github failed"
+            status=1
+          fi
+          if [ "${SHELLCHECK_TEMPORARY_EXIT_CODE:-1}" != "0" ]; then
+            echo "::error::shellcheck .temporary failed"
+            status=1
+          fi
+          if [ "${SHFMT_EXIT_CODE:-1}" != "0" ]; then
+            echo "::error::shfmt failed"
+            status=1
+          fi
+          exit "$status"
 
   python:
     needs: [set-env, check-running-allowed, check-trigger-label]
@@ -227,7 +349,7 @@ jobs:
 
       - name: flake8
         id: flake8
-        uses: ./.github/actions/python_lint_report
+        uses: ./.github/actions/lint_report
         with:
           title: "GA Scripts flake8"
           tool: flake8
@@ -236,7 +358,7 @@ jobs:
 
       - name: black
         id: black
-        uses: ./.github/actions/python_lint_report
+        uses: ./.github/actions/lint_report
         with:
           title: "GA Scripts black"
           tool: black
