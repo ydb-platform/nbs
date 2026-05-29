@@ -59,7 +59,7 @@ jobs:
       with:
         fetch-depth: 0
         clean: true
-    - uses: actions/setup-python@v3
+    - uses: actions/setup-python@v6.2.0
     - uses: pre-commit/action@v3.0.1
       with:
         extra_args: --from "origin/main" --to "HEAD" --show-diff-on-failure

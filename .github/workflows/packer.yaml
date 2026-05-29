@@ -113,9 +113,9 @@ jobs:
 
       - name: set up packer
         if: inputs.image_id == '' && inputs.build_image == true
-        uses: hashicorp/setup-packer@v3.2.0
+        uses: hashicorp/setup-packer@3751c32c3d7b56bc32095c10c30f337ab1f52cf5
         with:
-          version: 1.10.0
+          version: 1.15.3
 
       - name: init packer
         if: inputs.image_id == '' && inputs.build_image == true

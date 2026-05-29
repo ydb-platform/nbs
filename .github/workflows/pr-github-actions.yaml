@@ -153,13 +153,6 @@ jobs:
         if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
-      - name: get reporter name
-        uses: haya14busa/action-cond@v1
-        id: reporter
-        with:
-          cond: ${{ github.event_name == 'pull_request' }}
-          if_true: "github-pr-review"
-          if_false: "github-check"
 
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements_dev.txt
@@ -207,14 +200,6 @@ jobs:
         run: git config core.sparseCheckout false
         continue-on-error: true
 
-      - name: get reporter name
-        uses: haya14busa/action-cond@v1
-        id: reporter
-        with:
-          cond: ${{ github.event_name == 'pull_request' }}
-          if_true: "github-pr-review"
-          if_false: "github-check"
-
       - name: Prepare s3
         if: ${{ env.ACT != 'true' }}
         id: s3
@@ -230,8 +215,9 @@ jobs:
           install: false
 
       - name: set up python environment
-        uses: actions/setup-python@v5.0.0
+        uses: actions/setup-python@v6.2.0
         with:
+          # used in ubuntu 22.04
           python-version: "3.10"
 
       - name: set up dependencies
@@ -240,33 +226,22 @@ jobs:
           pip install -r .github/scripts/requirements_dev.txt
 
       - name: flake8
-        if: ${{ env.ACT != 'true' }}
-        uses: reviewdog/action-flake8@v3.8.0
+        id: flake8
+        uses: ./.github/actions/python_lint_report
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: .github/
-          reporter: ${{ steps.reporter.outputs.value }}
-          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503"
-
-      - name: flake8 (act)
-        if: ${{ env.ACT == 'true' }}
-        run: |
-          pip install flake8==7.3.0
-          flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503 .github/
+          title: "GA Scripts flake8"
+          tool: flake8
+          report_name: ga-scripts-flake8
+          command: flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503 .github/
 
       - name: black
-        if: ${{ env.ACT != 'true' }}
-        uses: reviewdog/action-black@v3.10.2
+        id: black
+        uses: ./.github/actions/python_lint_report
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: .github/
-          reporter: ${{ steps.reporter.outputs.value }}
-
-      - name: black (act)
-        if: ${{ env.ACT == 'true' }}
-        run: |
-          pip install black==26.3.1
-          black --check .github/
+          title: "GA Scripts black"
+          tool: black
+          report_name: ga-scripts-black
+          command: black --check .github/
 
       - name: pytest
         id: pytest
@@ -282,17 +257,17 @@ jobs:
             .github/scripts/tests
 
       - name: Upload pytest test results artifact
-        if: ${{ env.ACT != 'true' &&always() }}
+        if: ${{ env.ACT != 'true' && always() }}
         id: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ga-scripts-pytest-results
           path: ga-scripts-pytest-results.xml
 
       - name: Upload pytest html report artifact
-        if: ${{ env.ACT != 'true' &&always() }}
+        if: ${{ env.ACT != 'true' && always() }}
         id: upload-html
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ga-scripts-pytest-report-html
           path: ga-scripts-pytest-report.html
@@ -344,26 +319,41 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: comment on issue (${{ steps.pytest.outcome }})
+      - name: comment on issue
         if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v9
         env:
           STEP_OUTCOME: ${{ steps.pytest.outcome }}
+          FLAKE8_EXIT_CODE: ${{ steps.flake8.outputs.exit_code }}
+          BLACK_EXIT_CODE: ${{ steps.black.outputs.exit_code }}
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
+          FLAKE8_SUMMARY_MARKDOWN: ${{ steps.flake8.outputs.markdown }}
+          BLACK_SUMMARY_MARKDOWN: ${{ steps.black.outputs.markdown }}
           PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         with:
           script: |
             const outcome = process.env.STEP_OUTCOME;
-            const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
+            const flake8ExitCode = process.env.FLAKE8_EXIT_CODE || '1';
+            const blackExitCode = process.env.BLACK_EXIT_CODE || '1';
+            const success = outcome == 'success' && flake8ExitCode == '0' && blackExitCode == '0';
+            const status_emoji = success ? ':green_circle:' : ':red_circle:';
             const s3_path = process.env.S3_URL_PREFIX;
             let comment =
               'status: ' + status_emoji +
+              ' [GA scripts flake8 report (s3)](' + s3_path + '/test_reports/ga-scripts-flake8-report.html)' +
+              ' [GA scripts black report (s3)](' + s3_path + '/test_reports/ga-scripts-black-report.html)' +
               ' [GA scripts pytest result (artifact)](' + process.env.ARTIFACT_URL + ')' +
               ' [GA scripts pytest report (artifact)](' + process.env.HTML_ARTIFACT_URL + ')' +
               ' [GA scripts pytest report (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-report.html)' +
               ' [GA scripts pytest results (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-results.xml)';
 
+            if (process.env.FLAKE8_SUMMARY_MARKDOWN) {
+              comment += '\n\n' + process.env.FLAKE8_SUMMARY_MARKDOWN;
+            }
+            if (process.env.BLACK_SUMMARY_MARKDOWN) {
+              comment += '\n\n' + process.env.BLACK_SUMMARY_MARKDOWN;
+            }
             if (process.env.PYTEST_SUMMARY_MARKDOWN) {
               comment += '\n\n' + process.env.PYTEST_SUMMARY_MARKDOWN;
             }
@@ -374,6 +364,28 @@ jobs:
               repo: context.repo.repo,
               body: comment
             })
+
+      - name: fail on python checks
+        if: ${{ always() }}
+        env:
+          FLAKE8_EXIT_CODE: ${{ steps.flake8.outputs.exit_code }}
+          BLACK_EXIT_CODE: ${{ steps.black.outputs.exit_code }}
+          PYTEST_OUTCOME: ${{ steps.pytest.outcome }}
+        run: |
+          status=0
+          if [ "${FLAKE8_EXIT_CODE:-1}" != "0" ]; then
+            echo "::error::flake8 failed"
+            status=1
+          fi
+          if [ "${BLACK_EXIT_CODE:-1}" != "0" ]; then
+            echo "::error::black failed"
+            status=1
+          fi
+          if [ "${PYTEST_OUTCOME}" != "success" ]; then
+            echo "::error::pytest failed"
+            status=1
+          fi
+          exit "$status"
 
   workflows:
     needs: [set-env, check-running-allowed, check-trigger-label]

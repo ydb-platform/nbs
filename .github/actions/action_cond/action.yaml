@@ -1,0 +1,50 @@
+name: Conditional value
+description: Select one of two values based on a boolean condition
+
+inputs:
+  cond:
+    required: true
+    description: "Boolean condition value"
+  if_true:
+    required: true
+    description: "Value returned when cond is true"
+  if_false:
+    required: true
+    description: "Value returned when cond is false"
+
+outputs:
+  value:
+    description: "Selected value"
+    value: ${{ steps.cond.outputs.value }}
+
+runs:
+  using: composite
+  steps:
+    - name: choose value
+      id: cond
+      shell: bash
+      env:
+        COND: ${{ inputs.cond }}
+        IF_TRUE: ${{ inputs.if_true }}
+        IF_FALSE: ${{ inputs.if_false }}
+      run: |
+        set -euo pipefail
+
+        case "${COND,,}" in
+            true | 1 | yes)
+                value="${IF_TRUE}"
+                ;;
+            false | 0 | no | "")
+                value="${IF_FALSE}"
+                ;;
+            *)
+                echo "::error::cond must be a boolean value, got '${COND}'"
+                exit 1
+                ;;
+        esac
+
+        {
+            echo "value<<__ACTION_COND_VALUE__"
+            printf '%s\n' "$value"
+            echo "__ACTION_COND_VALUE__"
+        } >> "$GITHUB_OUTPUT"

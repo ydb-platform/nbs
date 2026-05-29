@@ -1,0 +1,17 @@
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    assignees:
+      - librarian
+      - wilytiger
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pip"
+    assignees:
+      - librarian
+      - wilytiger
+    directory: "/.github"
+    schedule:
+      interval: "weekly"

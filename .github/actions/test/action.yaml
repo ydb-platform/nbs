@@ -643,13 +643,13 @@ runs:
 
     - name: upload ya url to s3 on success
       if: success() && inputs.upload_ya_dir == 'yes' && steps.upload_ya_dir.outputs.empty_ya_bin != 'yes'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: ya_web_url_file
         path: /home/github/ya_web_url.txt
     - name: upload ya url to s3 on success
       if: success() && inputs.upload_ya_dir == 'yes' && steps.upload_ya_dir.outputs.empty_ya_bin != 'yes'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: ya_s3_url_file
         path: /home/github/ya_s3_url.txt
