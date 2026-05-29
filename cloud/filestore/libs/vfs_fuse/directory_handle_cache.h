@@ -45,7 +45,10 @@ public:
     void ResetHandle(
         ui64 handleId,
         const std::shared_ptr<TDirectoryHandle>& handle);
-    void AppendChunk(ui64 handleId, const TDirectoryHandleChunk& handleChunk);
+    void AppendChunk(
+        ui64 handleId,
+        const std::shared_ptr<TDirectoryHandle>& handle,
+        const TDirectoryHandleChunk& handleChunk);
 
     void Clear();
     void Reset();

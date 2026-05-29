@@ -304,6 +304,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
     xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
+    xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\
     xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
     xxx(GuestPosixAclEnabled,              bool,      false                   )\
     xxx(AllowAdditionalSystemTablets,      bool,      false                   )\

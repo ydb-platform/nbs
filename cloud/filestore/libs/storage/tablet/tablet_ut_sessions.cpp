@@ -827,6 +827,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetServerWriteBackCacheEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
+        config.SetDirectoryHandlesStorageEnabled(true);
+        config.SetDirectoryHandlesTableSize(1000);
+        config.SetDirectoryHandlesPersistentHandleMaxSize(4_GB);
         config.SetZeroCopyWriteEnabled(true);
         config.SetGuestHandleKillPrivV2Enabled(true);
         config.SetGuestPosixAclEnabled(true);
@@ -852,6 +855,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetServerWriteBackCacheEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
+        features.SetDirectoryHandlesStorageEnabled(true);
+        features.SetDirectoryHandlesTableSize(1000);
+        features.SetDirectoryHandlesPersistentHandleMaxSize(4_GB);
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
         features.SetGuestPosixAclEnabled(false);

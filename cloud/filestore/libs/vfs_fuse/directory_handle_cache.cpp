@@ -23,8 +23,9 @@ TDirectoryHandleMetrics GetDirectoryHandleMetrics(
 
     for (const auto& [_, handle]: handles) {
         if (handle) {
-            metrics.SerializedSize += handle->GetSerializedSize();
-            metrics.ChunkCount += handle->GetChunkCount();
+            const auto [serializedSize, chunkCount] = handle->GetMetrics();
+            metrics.SerializedSize += serializedSize;
+            metrics.ChunkCount += chunkCount;
         }
     }
 
@@ -63,7 +64,10 @@ ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
         IncreaseStatsForHandle(handle);
 
         if (Storage) {
-            Storage->StoreHandle(handleId, TDirectoryHandleChunk{.Index = ino});
+            Storage->StoreHandle(
+                handleId,
+                *handle,
+                TDirectoryHandleChunk{.Index = ino});
         }
     }
 
@@ -136,13 +140,14 @@ void TDirectoryHandleCache::ResetHandle(
 
 void TDirectoryHandleCache::AppendChunk(
     ui64 handleId,
+    const std::shared_ptr<TDirectoryHandle>& handle,
     const TDirectoryHandleChunk& handleChunk)
 {
     Stats->IncreaseCacheSize(handleChunk.GetSerializedSize());
     Stats->IncreaseChunkCount(1);
 
-    if (Storage) {
-        Storage->UpdateHandle(handleId, handleChunk);
+    if (Storage && handle) {
+        Storage->UpdateHandle(handleId, *handle, handleChunk);
     }
 }
 
@@ -172,8 +177,9 @@ void TDirectoryHandleCache::IncreaseStatsForHandle(
     const std::shared_ptr<TDirectoryHandle>& handle)
 {
     if (handle) {
-        Stats->IncreaseCacheSize(handle->GetSerializedSize());
-        Stats->IncreaseChunkCount(handle->GetChunkCount());
+        const auto [serializedSize, chunkCount] = handle->GetMetrics();
+        Stats->IncreaseCacheSize(serializedSize);
+        Stats->IncreaseChunkCount(chunkCount);
     }
 }
 
@@ -189,8 +195,9 @@ void TDirectoryHandleCache::DecreaseStatsForHandle(
     const std::shared_ptr<TDirectoryHandle>& handle)
 {
     if (handle) {
-        Stats->DecreaseCacheSize(handle->GetSerializedSize());
-        Stats->DecreaseChunkCount(handle->GetChunkCount());
+        const auto [serializedSize, chunkCount] = handle->GetMetrics();
+        Stats->DecreaseCacheSize(serializedSize);
+        Stats->DecreaseChunkCount(chunkCount);
     }
 }
 

@@ -70,6 +70,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         if (directoryHandleStorageEnabled) {
             features->SetDirectoryHandlesTableSize(
                 Config->GetDirectoryHandlesTableSize());
+            features->SetDirectoryHandlesPersistentHandleMaxSize(
+                Config->GetDirectoryHandlesPersistentHandleMaxSize());
         }
         features->SetGuestHandleKillPrivV2Enabled(
             Config->GetGuestHandleKillPrivV2Enabled(cloudId, folderId, fsId));
