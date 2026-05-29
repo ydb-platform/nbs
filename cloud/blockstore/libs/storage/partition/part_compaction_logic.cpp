@@ -14,6 +14,7 @@
 #include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/block_buffer.h>
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
@@ -55,7 +56,8 @@ TRangeCompactionInfo::TRangeCompactionInfo(
         TBlockBuffer blobContent,
         TVector<ui32> zeroBlocks,
         TAffectedBlobs affectedBlobs,
-        TAffectedBlocks affectedBlocks)
+        TAffectedBlocks affectedBlocks,
+        TVector<TChecksumFixup> checksumFixups)
     : BlockRange(blockRange)
     , OriginalBlobId(originalBlobId)
     , DataBlobId(dataBlobId)
@@ -70,6 +72,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     , ZeroBlocks(std::move(zeroBlocks))
     , AffectedBlobs(std::move(affectedBlobs))
     , AffectedBlocks(std::move(affectedBlocks))
+    , ChecksumFixups(std::move(checksumFixups))
 {}
 
 TBlobCompactionRequest::TBlobCompactionRequest(
@@ -88,6 +91,20 @@ TBlobCompactionRequest::TBlobCompactionRequest(
     , GroupId(groupId)
     , RangeCompactionIndex(rangeCompactionIndex)
 {}
+
+void ApplyChecksumFixups(TRangeCompactionInfo& rc)
+{
+    for (const auto& fixup: rc.ChecksumFixups) {
+        const auto* ab = rc.AffectedBlobs.FindPtr(fixup.BlobId);
+        Y_ABORT_UNLESS(ab);
+        auto* meta = ab->BlobMeta.Get();
+        Y_ABORT_UNLESS(meta);
+        if (fixup.BlobOffset < meta->BlockChecksumsSize()) {
+            rc.BlockChecksums[fixup.ChecksumIndex] =
+                meta->GetBlockChecksums(fixup.BlobOffset);
+        }
+    }
+}
 
 namespace {
 
@@ -213,6 +230,50 @@ public:
     }
 };
 
+void FillBlobsInfoToRead(
+    ui64 commitId,
+    bool readBlockMaskOnCompactionOptimizationEnabled,
+    TTxPartition::TRangeCompaction& args,
+    TPartitionState& state,
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlockMasks,
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas)
+{
+    for (auto& kv: args.AffectedBlobs) {
+        state.IncrementBlobsProcessedDuringCompaction();
+
+        if (state.GetCleanupQueue().HasBlob(kv.first)) {
+            kv.second.BlockMask = GetFullBlockMask();
+            continue;
+        }
+
+        const bool blobOnlyInOneCompactRange =
+            kv.second.CompactionRangeCount == 1;
+
+        const bool blobFullyAvailableForRangeCompaction =
+            kv.second.MaxCommitIdInCompactionRange <= commitId &&
+            blobOnlyInOneCompactRange;
+
+        if (!blobFullyAvailableForRangeCompaction ||
+            !readBlockMaskOnCompactionOptimizationEnabled)
+        {
+            state.IncrementBlockMaskReadDuringCompaction();
+            blobsToReadBlockMasks.emplace(kv.first);
+        }
+    }
+
+    // blob metas are needed for checksums validation, so we will read
+    // them only for blobs with live data
+    if (args.ChecksumsEnabled) {
+        for (const auto& mark: args.BlockMarks) {
+            if (mark.CommitId && !mark.BlockContent &&
+                !IsDeletionMarker(mark.BlobId))
+            {
+                blobsToReadBlobMetas.emplace(mark.BlobId);
+            }
+        }
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -221,14 +282,14 @@ void PrepareRangeCompaction(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
     const ui64 commitId,
-    const TActorContext& ctx,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
-    const TString& logTitle)
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlockMasks,
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas)
 {
     TCompactionBlockVisitor visitor(
         args,
@@ -297,17 +358,6 @@ void PrepareRangeCompaction(
             ++it;
         }
 
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Dropping last %u blobs, %u blocks, remaining blobs: %u, "
-            "blocks: %u",
-            logTitle.c_str(),
-            args.BlobsSkipped,
-            args.BlocksSkipped,
-            liveBlocks.size(),
-            blocks);
-
         THashSet<ui32> skippedBlockIndices;
 
         for (const auto& x: liveBlocks) {
@@ -345,50 +395,13 @@ void PrepareRangeCompaction(
         / state.GetBlockSize();
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
-    for (auto& kv: args.AffectedBlobs) {
-        state.IncrementBlobsProcessedDuringCompaction();
-
-        const bool blobOnlyInOneCompactRange =
-            kv.second.CompactionRangeCount == 1;
-
-        const bool blobFullyAvailableForRangeCompaction =
-            kv.second.MaxCommitIdInCompactionRange <= commitId &&
-            blobOnlyInOneCompactRange;
-
-        if (!blobFullyAvailableForRangeCompaction ||
-            !readBlockMaskOnCompactionOptimizationEnabled)
-        {
-            state.IncrementBlockMaskReadDuringCompaction();
-
-            if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
-                STORAGE_VERIFY_C(
-                    kv.second.BlockMask.Defined(),
-                    TWellKnownEntityTypes::TABLET,
-                    tabletId,
-                    TStringBuilder() << "Could not read block mask for blob: "
-                                     << MakeBlobId(tabletId, kv.first));
-            } else {
-                ready = false;
-            }
-        } else if (state.GetCleanupQueue().HasBlob(kv.first)) {
-            // If the blob is in the cleanup queue, we should not try to add
-            // this blob to cleanup queue again.
-            kv.second.BlockMask = GetFullBlockMask();
-        }
-
-        if (args.ChecksumsEnabled) {
-            if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
-                STORAGE_VERIFY_C(
-                    kv.second.BlobMeta.Defined(),
-                    TWellKnownEntityTypes::TABLET,
-                    tabletId,
-                    TStringBuilder() << "Could not read blob meta for blob: "
-                                     << MakeBlobId(tabletId, kv.first));
-            } else {
-                ready = false;
-            }
-        }
-    }
+    FillBlobsInfoToRead(
+        commitId,
+        readBlockMaskOnCompactionOptimizationEnabled,
+        args,
+        state,
+        blobsToReadBlockMasks,
+        blobsToReadBlobMetas);
 }
 
 void CompleteRangeCompaction(
@@ -468,6 +481,7 @@ void CompleteRangeCompaction(
     // now build the blob content for all blocks to be written
     TBlockBuffer blobContent(TProfilingAllocator::Instance());
     TVector<ui32> blockChecksums;
+    TVector<TChecksumFixup> checksumFixups;
     TVector<ui32> zeroBlocks;
 
     ui32 blockIndex = args.BlockRange.Start;
@@ -519,22 +533,14 @@ void CompleteRangeCompaction(
                 // we will read this block later
                 blobContent.AddBlock(state.GetBlockSize(), char(0));
 
-                // block checksum is simply moved from the affected blob's meta
                 if (args.ChecksumsEnabled) {
-                    ui32 blockChecksum = 0;
-
-                    auto* affectedBlob = args.AffectedBlobs.FindPtr(mark.BlobId);
-                    Y_DEBUG_ABORT_UNLESS(affectedBlob);
-                    if (affectedBlob) {
-                        if (auto* meta = affectedBlob->BlobMeta.Get()) {
-                            if (mark.BlobOffset < meta->BlockChecksumsSize()) {
-                                blockChecksum =
-                                    meta->GetBlockChecksums(mark.BlobOffset);
-                            }
-                        }
-                    }
-
-                    blockChecksums.push_back(blockChecksum);
+                    // checksums will be moved from the affected blob's meta
+                    // later
+                    checksumFixups.emplace_back(
+                        blockChecksums.size(),   // ChecksumIndex
+                        mark.BlobId,
+                        mark.BlobOffset);
+                    blockChecksums.push_back(0);
                 }
 
                 if (zeroBlobId) {
@@ -634,7 +640,8 @@ void CompleteRangeCompaction(
         std::move(blobContent),
         std::move(zeroBlocks),
         std::move(args.AffectedBlobs),
-        std::move(args.AffectedBlocks));
+        std::move(args.AffectedBlocks),
+        std::move(checksumFixups));
 
     if (!dataBlobId && !zeroBlobId) {
         const auto rangeDescr = DescribeRange(args.BlockRange);

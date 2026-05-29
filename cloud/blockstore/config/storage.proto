@@ -1580,4 +1580,9 @@ message TStorageServiceConfig
     // (VOLUME_HEALTH_UNHEALTHY when the first device breaks, VOLUME_HEALTH_HEALTHY
     // when all recovered) for non-replicated disks.
     optional bool VolumeHealthNotificationEnabled = 499;
+
+    // If true, partition compaction splits the per-blob BlockMask / BlobMeta
+    // read into a separate transaction issued by TCompactionActor instead of
+    // doing it inside the main TCompaction prepare phase.
+    optional bool SplitCompactionTxEnabled = 500;
 }
