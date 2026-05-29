@@ -14,8 +14,8 @@ github_latest_tag() {
         curl_args+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
     fi
 
-    curl "${curl_args[@]}" "https://api.github.com/repos/${repo}/releases/latest" |
-        python3 -c 'import json, sys; print(json.load(sys.stdin)["tag_name"])'
+    curl "${curl_args[@]}" "https://api.github.com/repos/${repo}/releases/latest" \
+        | python3 -c 'import json, sys; print(json.load(sys.stdin)["tag_name"])'
 }
 
 install_shfmt() {

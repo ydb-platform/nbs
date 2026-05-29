@@ -189,6 +189,7 @@ jobs:
           tool: shellcheck
           report_name: ga-scripts-shellcheck-github
           report_on_success: "false"
+          show_summary_table: "false"
           command: |
             find .github -type f -print0 |
               while IFS= read -r -d '' file; do
@@ -219,6 +220,7 @@ jobs:
           tool: shellcheck
           report_name: ga-scripts-shellcheck-temporary
           report_on_success: "false"
+          show_summary_table: "false"
           command: |
             find .temporary -type f -name "*.sh" -print0 |
               xargs -0 --no-run-if-empty shellcheck -f gcc ${SHELLCHECK_OPTS:-}
@@ -231,6 +233,7 @@ jobs:
           tool: shfmt
           report_name: ga-scripts-shfmt
           report_on_success: "false"
+          show_summary_table: "false"
           command: |
             set +e
             shfmt_diff=$(shfmt -d -i 4 -ci -kp -bn -sr .github/ 2>&1)
@@ -253,33 +256,26 @@ jobs:
           SHELLCHECK_GITHUB_HAS_REPORT: ${{ steps.shellcheck-github.outputs.has_report }}
           SHELLCHECK_TEMPORARY_HAS_REPORT: ${{ steps.shellcheck-temporary.outputs.has_report }}
           SHFMT_HAS_REPORT: ${{ steps.shfmt.outputs.has_report }}
-          SHELLCHECK_GITHUB_MARKDOWN: ${{ steps.shellcheck-github.outputs.markdown }}
-          SHELLCHECK_TEMPORARY_MARKDOWN: ${{ steps.shellcheck-temporary.outputs.markdown }}
-          SHFMT_MARKDOWN: ${{ steps.shfmt.outputs.markdown }}
+          SHELLCHECK_GITHUB_EXIT_CODE: ${{ steps.shellcheck-github.outputs.exit_code }}
+          SHELLCHECK_TEMPORARY_EXIT_CODE: ${{ steps.shellcheck-temporary.outputs.exit_code }}
+          SHFMT_EXIT_CODE: ${{ steps.shfmt.outputs.exit_code }}
         with:
           script: |
             const s3_path = process.env.S3_URL_PREFIX;
-            const links = [];
+            const lines = [];
             if (process.env.SHELLCHECK_GITHUB_HAS_REPORT == 'true') {
-              links.push('[GA scripts shellcheck .github report (s3)](' + s3_path + '/test_reports/ga-scripts-shellcheck-github-report.html)');
+              const status = process.env.SHELLCHECK_GITHUB_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
+              lines.push('shellcheck .github - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shellcheck-github.log)');
             }
             if (process.env.SHELLCHECK_TEMPORARY_HAS_REPORT == 'true') {
-              links.push('[GA scripts shellcheck .temporary report (s3)](' + s3_path + '/test_reports/ga-scripts-shellcheck-temporary-report.html)');
+              const status = process.env.SHELLCHECK_TEMPORARY_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
+              lines.push('shellcheck .temporary - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shellcheck-temporary.log)');
             }
             if (process.env.SHFMT_HAS_REPORT == 'true') {
-              links.push('[GA scripts shfmt report (s3)](' + s3_path + '/test_reports/ga-scripts-shfmt-report.html)');
+              const status = process.env.SHFMT_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
+              lines.push('shfmt - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shfmt.log)');
             }
-            let comment = 'status: :red_circle: ' + links.join(' ');
-
-            if (process.env.SHELLCHECK_GITHUB_MARKDOWN) {
-              comment += '\n\n' + process.env.SHELLCHECK_GITHUB_MARKDOWN;
-            }
-            if (process.env.SHELLCHECK_TEMPORARY_MARKDOWN) {
-              comment += '\n\n' + process.env.SHELLCHECK_TEMPORARY_MARKDOWN;
-            }
-            if (process.env.SHFMT_MARKDOWN) {
-              comment += '\n\n' + process.env.SHFMT_MARKDOWN;
-            }
+            let comment = 'status: :red_circle:\n\n' + lines.join('\n');
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
