@@ -770,7 +770,4 @@ message TStorageConfig
     // Use custom protobuf parser for TReadDataResponse
     // to optimize TReadDataActor performance.
     optional bool UseCustomReadDataResponseParser = 498;
-
-    // Timeout for dynamic node registration via discovery service, in ms
-    optional uint32 DynamicNodeRegistrationTimeout = 499;
 }
