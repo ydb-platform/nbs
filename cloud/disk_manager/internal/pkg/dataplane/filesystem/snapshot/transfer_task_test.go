@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	nfs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/mocks"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config"
 	snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
@@ -64,7 +65,18 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+	factory := nfs_testing.NewFactory(ctx)
 
+	return newFixtureWithFactory(t, ctx, client, factory)
+}
+
+func newFixtureWithFactory(
+	t *testing.T,
+	ctx context.Context,
+	client nfs.Client,
+	factory nfs.Factory,
+) *fixture {
 	db, err := newYDB(ctx)
 	require.NoError(t, err)
 
@@ -81,9 +93,6 @@ func newFixture(t *testing.T) *fixture {
 	)
 	err = snapshot_storage_schema.Create(ctx, nodesStorageFolder, db, false)
 	require.NoError(t, err)
-
-	client := nfs_testing.NewClient(t, ctx)
-	factory := nfs_testing.NewFactory(ctx)
 
 	return &fixture{
 		ctx:              ctx,
@@ -319,6 +328,110 @@ func (f *cancelOnListNodesFactory) NewClient(
 		Client:  client,
 		factory: f,
 	}, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestTransferFromFilesystemToSnapshotSkipsInvalidNodeIDs(t *testing.T) {
+	filesystemID := "filesystem"
+	snapshotID := "snapshot"
+	zoneID := "zone"
+	checkpointID := "checkpoint"
+
+	listNodesMaxBytes := uint32(1000)
+	selectNodesToListLimit := uint64(100)
+	traversalQueueDeletionLimit := uint64(100)
+	traversalWorkersCount := uint32(1)
+	config := &snapshot_config.FilesystemSnapshotConfig{
+		TraversalConfig: &traversal_config.FilesystemTraversalConfig{
+			SelectNodesToListLimit:      &selectNodesToListLimit,
+			TraversalQueueDeletionLimit: &traversalQueueDeletionLimit,
+			TraversalWorkersCount:       &traversalWorkersCount,
+		},
+		ListNodesMaxBytes: &listNodesMaxBytes,
+	}
+
+	validNode := nfs.Node{
+		NodeID:   123,
+		ParentID: nfs.RootNodeID,
+		Name:     "valid",
+		Type:     nfs.NODE_KIND_FILE,
+		Links:    1,
+	}
+	anotherValidNode := nfs.Node{
+		NodeID:   456,
+		ParentID: nfs.RootNodeID,
+		Name:     "another-valid",
+		Type:     nfs.NODE_KIND_FILE,
+		Links:    1,
+	}
+	invalidNode := nfs.Node{
+		NodeID:   nfs.InvalidNodeID,
+		ParentID: nfs.RootNodeID,
+		Name:     "invalid",
+		Type:     nfs.NODE_KIND_FILE,
+		Links:    1,
+	}
+
+	factoryMock := nfs_mocks.NewFactoryMock()
+	clientMock := nfs_mocks.NewClientMock()
+	sessionMock := nfs_mocks.NewSessionMock()
+	clientMock.On("Close").Return(nil)
+
+	f := newFixtureWithFactory(
+		t,
+		nfs_testing.NewContext(),
+		clientMock,
+		factoryMock,
+	)
+	defer f.close(t)
+
+	factoryMock.On("NewClient", mock.Anything, zoneID).Return(clientMock, nil).Once()
+	clientMock.On(
+		"CreateSession",
+		mock.Anything,
+		filesystemID,
+		checkpointID,
+		true,
+	).Return(sessionMock, nil).Once()
+	sessionMock.On(
+		"ListNodes",
+		mock.Anything,
+		nfs.RootNodeID,
+		"",
+		listNodesMaxBytes,
+		true,
+	).Return([]nfs.Node{validNode, invalidNode, anotherValidNode}, "", nil).Once()
+	sessionMock.On("Close", mock.Anything).Return(nil).Once()
+
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("SaveState", mock.Anything).Return(nil).Once()
+
+	task := f.newTransferFromFilesystemToSnapshotTask(
+		config,
+		filesystemID,
+		snapshotID,
+	)
+	task.request.CheckpointId = checkpointID
+
+	err := task.Run(f.ctx, execCtx)
+	require.NoError(t, err)
+
+	nodes, nextCookie, err := f.nodesStorage.ListNodes(
+		f.ctx,
+		snapshotID,
+		nfs.RootNodeID,
+		"",
+		100,
+	)
+	require.NoError(t, err)
+	require.Empty(t, nextCookie)
+	require.Equal(t, []nfs.Node{anotherValidNode, validNode}, nodes)
+
+	factoryMock.AssertExpectations(t)
+	clientMock.AssertExpectations(t)
+	sessionMock.AssertExpectations(t)
+	execCtx.AssertExpectations(t)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

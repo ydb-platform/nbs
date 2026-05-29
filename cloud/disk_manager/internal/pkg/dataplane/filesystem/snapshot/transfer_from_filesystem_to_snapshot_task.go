@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -87,8 +88,20 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 	) error {
 
 		session := filesystemLister.(*listers.FilestoreLister).Session
+		nodesToSave := make([]nfs.Node, 0, len(nodes))
 
 		for i := range nodes {
+			if nodes[i].NodeID == nfs.InvalidNodeID {
+				logging.Warn(
+					ctx,
+					"skipping node with invalid id during filesystem backup: filesystem_id=%v snapshot_id=%v node=%+v",
+					filesystem.GetFilesystemId(),
+					snapshotID,
+					nodes[i],
+				)
+				continue
+			}
+
 			if nodes[i].Type.IsSymlink() {
 				linkTarget, err := session.ReadLink(ctx, nodes[i].NodeID)
 				if err != nil {
@@ -97,9 +110,11 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 
 				nodes[i].LinkTarget = string(linkTarget)
 			}
+
+			nodesToSave = append(nodesToSave, nodes[i])
 		}
 
-		return t.nodesStorage.SaveNodes(ctx, snapshotID, nodes)
+		return t.nodesStorage.SaveNodes(ctx, snapshotID, nodesToSave)
 	})
 }
 
