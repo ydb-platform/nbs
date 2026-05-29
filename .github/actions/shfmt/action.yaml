@@ -1,5 +1,5 @@
 name: Shfmt report
-description: Run shfmt for GitHub workflow scripts and upload lint reports
+description: Run shfmt for shell scripts and generated workflow/action scripts
 
 outputs:
   exit_code:
@@ -20,7 +20,7 @@ runs:
       id: shfmt
       uses: ./.github/actions/lint_report
       with:
-        title: "GA Scripts shfmt"
+        title: "Shell Scripts shfmt"
         tool: shfmt
         report_name: ga-scripts-shfmt
         show_summary_table: "false"

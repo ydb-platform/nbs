@@ -131,6 +131,28 @@ def test_lint_report_parses_shfmt_diff_blocks(tmp_path: Path) -> None:
     assert _statuses(junit) == [gs.TestStatus.FAIL]
 
 
+def test_lint_report_parses_shfmt_file_list(tmp_path: Path) -> None:
+    cases = lr.build_cases(
+        tool="shfmt",
+        title="GA Scripts shfmt",
+        command="shfmt",
+        exit_code=1,
+        elapsed=1.0,
+        log_text=".github/scripts/foo.sh\n.temporary/workflows/pr-1.sh\n",
+        log_url="",
+    )
+    junit = tmp_path / "shfmt-list.xml"
+    lr.write_junit(junit, cases)
+
+    root = ET.parse(junit).getroot()
+    parsed_cases = root.findall(".//testcase")
+    assert parsed_cases[0].get("classname") == ".github/scripts"
+    assert parsed_cases[0].get("name") == "foo.sh"
+    assert parsed_cases[1].get("classname") == ".temporary/workflows"
+    assert parsed_cases[1].get("name") == "pr-1.sh"
+    assert _statuses(junit) == [gs.TestStatus.FAIL, gs.TestStatus.FAIL]
+
+
 def test_lint_report_fallback_uses_title_for_missing_tools(tmp_path: Path) -> None:
     cases = lr.build_cases(
         tool="shellcheck",

@@ -140,6 +140,7 @@ def parse_shfmt(log_text: str, elapsed: float, log_url: str) -> list[ET.Element]
     current_path = ""
     current_line = ""
     current_block: list[str] = []
+    listed_paths: list[str] = []
 
     def add_current() -> None:
         if not current_path:
@@ -170,8 +171,23 @@ def parse_shfmt(log_text: str, elapsed: float, log_url: str) -> list[ET.Element]
             current_line = hunk_match.group("old_line")
         if current_block:
             current_block.append(line)
+        elif (
+            line.strip() and not line.startswith("+++ ") and not line.startswith("@@ ")
+        ):
+            listed_paths.append(line.strip())
 
     add_current()
+    for path in listed_paths:
+        classname, name = _case_name_from_path(path)
+        cases.append(
+            _make_case(
+                classname=classname,
+                name=name,
+                elapsed=elapsed,
+                log_url=log_url,
+                failure=f"{path} is not shfmt-formatted",
+            )
+        )
     return cases
 
 

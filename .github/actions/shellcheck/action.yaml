@@ -1,5 +1,5 @@
 name: Shellcheck report
-description: Run shellcheck for GitHub workflow scripts and upload lint reports
+description: Run shellcheck for shell scripts and generated workflow/action scripts
 
 outputs:
   exit_code:
@@ -19,7 +19,7 @@ runs:
       id: shellcheck
       uses: ./.github/actions/lint_report
       with:
-        title: "GA Scripts shellcheck"
+        title: "Shell Scripts shellcheck"
         tool: shellcheck
         report_name: ga-scripts-shellcheck
         show_summary_table: "false"
