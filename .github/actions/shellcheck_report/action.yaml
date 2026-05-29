@@ -1,0 +1,48 @@
+name: Shellcheck report
+description: Run shellcheck for GitHub workflow scripts and upload lint reports
+
+outputs:
+  exit_code:
+    description: "shellcheck exit code"
+    value: ${{ steps.shellcheck.outputs.exit_code }}
+  has_report:
+    description: "Whether shellcheck report files were generated"
+    value: ${{ steps.shellcheck.outputs.has_report }}
+  log_path:
+    description: "Captured shellcheck log path"
+    value: ${{ steps.shellcheck.outputs.log_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: shellcheck
+      id: shellcheck
+      uses: ./.github/actions/lint_report
+      with:
+        title: "GA Scripts shellcheck"
+        tool: shellcheck
+        report_name: ga-scripts-shellcheck
+        show_summary_table: "false"
+        command: |
+          {
+            find .github -type f -print0 |
+              while IFS= read -r -d '' file; do
+                case "$file" in
+                  *.sh | *.bash | *.bats)
+                    printf '%s\0' "$file"
+                    continue
+                    ;;
+                esac
+                read -r first_line < "$file" || true
+                case "$first_line" in
+                  '#!'*sh* | '#!'*bash* | '#!'*dash* | '#!'*ksh* | '#!'*zsh*)
+                    printf '%s\0' "$file"
+                    ;;
+                esac
+              done
+            find .temporary -type f -name "*.sh" -print0
+          } |
+            xargs -0 --no-run-if-empty shellcheck -f gcc ${SHELLCHECK_OPTS:-}
+      env:
+        SHELLCHECK_OPTS: "-e SC2155,SC2086"
+

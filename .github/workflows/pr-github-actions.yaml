@@ -157,11 +157,6 @@ jobs:
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements_dev.txt
 
-      - name: install shell linters
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bash .github/packer/scripts/install-shell-linters.sh
-
       - name: Prepare s3
         if: ${{ env.ACT != 'true' }}
         id: s3
@@ -176,105 +171,46 @@ jobs:
           build_preset: "relwithdebinfo"
           install: false
 
+      - name: install shell linters
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .github/packer/scripts/install-shell-linters.sh
+
       - name: generate shellscripts from github actions
         run: |
           python3 .github/scripts/shell_extractor.py
           find .temporary/ -type f -name "*.sh";
 
-      - name: shellcheck for .github dir
-        id: shellcheck-github
-        uses: ./.github/actions/lint_report
-        with:
-          title: "GA Scripts shellcheck (.github)"
-          tool: shellcheck
-          report_name: ga-scripts-shellcheck-github
-          show_summary_table: "false"
-          command: |
-            find .github -type f -print0 |
-              while IFS= read -r -d '' file; do
-                case "$file" in
-                  *.sh | *.bash | *.bats)
-                    printf '%s\0' "$file"
-                    continue
-                    ;;
-                esac
-                read -r first_line < "$file" || true
-                case "$first_line" in
-                  '#!'*sh* | '#!'*bash* | '#!'*dash* | '#!'*ksh* | '#!'*zsh*)
-                    printf '%s\0' "$file"
-                    ;;
-                esac
-              done |
-              xargs -0 --no-run-if-empty shellcheck -f gcc ${SHELLCHECK_OPTS:-}
-        env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086"
-
-      - name: shellcheck for github actions shell scripts in .temporary dir
-        id: shellcheck-temporary
-        uses: ./.github/actions/lint_report
-        env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086"
-        with:
-          title: "GA Scripts shellcheck (.temporary)"
-          tool: shellcheck
-          report_name: ga-scripts-shellcheck-temporary
-          show_summary_table: "false"
-          command: |
-            find .temporary -type f -name "*.sh" -print0 |
-              xargs -0 --no-run-if-empty shellcheck -f gcc ${SHELLCHECK_OPTS:-}
+      - name: shellcheck
+        id: shellcheck
+        uses: ./.github/actions/shellcheck_report
 
       - name: shfmt
         id: shfmt
-        uses: ./.github/actions/lint_report
-        with:
-          title: "GA Scripts shfmt"
-          tool: shfmt
-          report_name: ga-scripts-shfmt
-          show_summary_table: "false"
-          command: |
-            set +e
-            shfmt_diff=$(shfmt -d -i 4 -ci -kp -bn -sr .github/ 2>&1)
-            shfmt_status=$?
-            set -e
-            if [ -n "${shfmt_diff}" ]; then
-              printf '%s\n' "${shfmt_diff}"
-            fi
-            if [ "${shfmt_status}" != "0" ]; then
-              exit "${shfmt_status}"
-            fi
-            if [ -n "${shfmt_diff}" ]; then
-              exit 1
-            fi
+        uses: ./.github/actions/shfmt_report
 
       - name: comment on issue
-        if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() && (steps.shellcheck-github.outputs.has_report == 'true' || steps.shellcheck-temporary.outputs.has_report == 'true' || steps.shfmt.outputs.has_report == 'true') }}
+        if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() && (steps.shellcheck.outputs.has_report == 'true' || steps.shfmt.outputs.has_report == 'true') }}
         uses: actions/github-script@v9
         env:
-          SHELLCHECK_GITHUB_HAS_REPORT: ${{ steps.shellcheck-github.outputs.has_report }}
-          SHELLCHECK_TEMPORARY_HAS_REPORT: ${{ steps.shellcheck-temporary.outputs.has_report }}
+          SHELLCHECK_HAS_REPORT: ${{ steps.shellcheck.outputs.has_report }}
           SHFMT_HAS_REPORT: ${{ steps.shfmt.outputs.has_report }}
-          SHELLCHECK_GITHUB_EXIT_CODE: ${{ steps.shellcheck-github.outputs.exit_code }}
-          SHELLCHECK_TEMPORARY_EXIT_CODE: ${{ steps.shellcheck-temporary.outputs.exit_code }}
+          SHELLCHECK_EXIT_CODE: ${{ steps.shellcheck.outputs.exit_code }}
           SHFMT_EXIT_CODE: ${{ steps.shfmt.outputs.exit_code }}
         with:
           script: |
             const s3_path = process.env.S3_URL_PREFIX;
             const lines = [];
-            if (process.env.SHELLCHECK_GITHUB_HAS_REPORT == 'true') {
-              const status = process.env.SHELLCHECK_GITHUB_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
-              lines.push('shellcheck .github - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shellcheck-github.log)');
-            }
-            if (process.env.SHELLCHECK_TEMPORARY_HAS_REPORT == 'true') {
-              const status = process.env.SHELLCHECK_TEMPORARY_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
-              lines.push('shellcheck .temporary - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shellcheck-temporary.log)');
+            if (process.env.SHELLCHECK_HAS_REPORT == 'true') {
+              const status = process.env.SHELLCHECK_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
+              lines.push('shellcheck - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shellcheck.log)');
             }
             if (process.env.SHFMT_HAS_REPORT == 'true') {
               const status = process.env.SHFMT_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
               lines.push('shfmt - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shfmt.log)');
             }
             const success =
-              process.env.SHELLCHECK_GITHUB_EXIT_CODE == '0' &&
-              process.env.SHELLCHECK_TEMPORARY_EXIT_CODE == '0' &&
+              process.env.SHELLCHECK_EXIT_CODE == '0' &&
               process.env.SHFMT_EXIT_CODE == '0';
             const status_emoji = success ? ':green_circle:' : ':red_circle:';
             let comment = 'status: ' + status_emoji + '\n\n' + lines.join('\n');
@@ -289,17 +225,12 @@ jobs:
       - name: fail on shell checks
         if: ${{ always() }}
         env:
-          SHELLCHECK_GITHUB_EXIT_CODE: ${{ steps.shellcheck-github.outputs.exit_code }}
-          SHELLCHECK_TEMPORARY_EXIT_CODE: ${{ steps.shellcheck-temporary.outputs.exit_code }}
+          SHELLCHECK_EXIT_CODE: ${{ steps.shellcheck.outputs.exit_code }}
           SHFMT_EXIT_CODE: ${{ steps.shfmt.outputs.exit_code }}
         run: |
           status=0
-          if [ "${SHELLCHECK_GITHUB_EXIT_CODE:-1}" != "0" ]; then
-            echo "::error::shellcheck .github failed"
-            status=1
-          fi
-          if [ "${SHELLCHECK_TEMPORARY_EXIT_CODE:-1}" != "0" ]; then
-            echo "::error::shellcheck .temporary failed"
+          if [ "${SHELLCHECK_EXIT_CODE:-1}" != "0" ]; then
+            echo "::error::shellcheck failed"
             status=1
           fi
           if [ "${SHFMT_EXIT_CODE:-1}" != "0" ]; then

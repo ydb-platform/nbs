@@ -1,0 +1,61 @@
+name: Shfmt report
+description: Run shfmt for GitHub workflow scripts and upload lint reports
+
+outputs:
+  exit_code:
+    description: "shfmt exit code"
+    value: ${{ steps.shfmt.outputs.exit_code }}
+  has_report:
+    description: "Whether shfmt report files were generated"
+    value: ${{ steps.shfmt.outputs.has_report }}
+  log_path:
+    description: "Captured shfmt log path"
+    value: ${{ steps.shfmt.outputs.log_path }}
+
+
+runs:
+  using: composite
+  steps:
+    - name: shfmt
+      id: shfmt
+      uses: ./.github/actions/lint_report
+      with:
+        title: "GA Scripts shfmt"
+        tool: shfmt
+        report_name: ga-scripts-shfmt
+        show_summary_table: "false"
+        command: |
+          set +e
+          shfmt_diff=$(
+            {
+              find .github -type f -print0 |
+                while IFS= read -r -d '' file; do
+                  case "$file" in
+                    *.sh | *.bash | *.bats)
+                      printf '%s\0' "$file"
+                      continue
+                      ;;
+                  esac
+                  read -r first_line < "$file" || true
+                  case "$first_line" in
+                    '#!'*sh* | '#!'*bash* | '#!'*dash* | '#!'*ksh* | '#!'*zsh*)
+                      printf '%s\0' "$file"
+                      ;;
+                  esac
+                done
+              find .temporary -type f -name "*.sh" -print0
+            } |
+              xargs -0 --no-run-if-empty shfmt -d -i 4 -ci -kp -bn -sr 2>&1
+          )
+          shfmt_status=$?
+          set -e
+          if [ -n "${shfmt_diff}" ]; then
+            printf '%s\n' "${shfmt_diff}"
+          fi
+          if [ "${shfmt_status}" != "0" ]; then
+            exit "${shfmt_status}"
+          fi
+          if [ -n "${shfmt_diff}" ]; then
+            exit 1
+          fi
+
