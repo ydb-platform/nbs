@@ -422,7 +422,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // Functions that compress and decompress NodeRefs
 
-bool TryToEncodeShardId(
+void TryToEncodeShardId(
     const TString& mainFsId,
     IIndexTabletDatabase::TNodeRef& nodeRef)
 {
@@ -431,26 +431,21 @@ bool TryToEncodeShardId(
             TStringBuilder()
             << "ShardId: " << nodeRef.ShardId.Quote()
             << ", ShardNodeName: " << nodeRef.ShardNodeName.Quote());
-
-        return false;
     }
-
-    return true;
 }
 
 bool TryToDecodeShardId(
-    IIndexTabletDatabase::TNodeRef& nodeRef,
-    const TString& mainFsId)
+    const TString& mainFsId,
+    IIndexTabletDatabase::TNodeRef& nodeRef)
 {
     if (!nodeRef.TryToDecodeShardId(mainFsId)) {
-            // This is a kind of impossible situation meaning that data in
-            // the table is corrupted
-            ReportMalformedEncodedShardNodeRef(
-                TStringBuilder()
-                << "Filesystem: " << mainFsId
-                << ", encoded ShardId: " << nodeRef.ShardId.Quote()
-                << ", encoded ShardNodeName: "
-                << nodeRef.ShardNodeName.Quote());
+        // This is a kind of impossible situation meaning that data in
+        // the table is corrupted
+        ReportMalformedEncodedShardNodeRef(
+            TStringBuilder()
+            << "Filesystem: " << mainFsId
+            << ", encoded ShardId: " << nodeRef.ShardId.Quote()
+            << ", encoded ShardNodeName: " << nodeRef.ShardNodeName.Quote());
 
         return false;
     }
@@ -483,11 +478,8 @@ void TIndexTabletState::CreateNodeRef(
         .MaxCommitId = InvalidCommitId
     };
 
-    if (GetCompressNodeRef() && !TryToEncodeShardId(
-            GetMainFileSystemId(),
-            nodeRef))
-    {
-        return;
+    if (GetCompressNodeRef()) {
+        TryToEncodeShardId(GetMainFileSystemId(), nodeRef);
     }
 
     db.WriteNodeRef(nodeRef, markExhaustive);
@@ -530,7 +522,7 @@ bool TIndexTabletState::ReadNodeRef(
 {
     bool ready = db.ReadNodeRef(nodeId, commitId, name, ref);
 
-    if (ref && !TryToDecodeShardId(ref.GetRef(), GetMainFileSystemId())) {
+    if (ref && !TryToDecodeShardId(GetMainFileSystemId(), ref.GetRef())) {
         ref.Clear();
     }
 
@@ -575,7 +567,7 @@ bool TIndexTabletState::ReadNodeRefs(
     std::erase_if(
         refs,
         [this](IIndexTabletDatabase::TNodeRef& ref)
-        { return !TryToDecodeShardId(ref, GetMainFileSystemId()); });
+        { return !TryToDecodeShardId(GetMainFileSystemId(), ref); });
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
     if (checkpointId != InvalidCommitId) {
@@ -608,7 +600,7 @@ bool TIndexTabletState::ReadNodeRefs(
     std::erase_if(
         refs,
         [this](IIndexTabletDatabase::TNodeRef& ref)
-        { return !TryToDecodeShardId(ref, GetMainFileSystemId()); });
+        { return !TryToDecodeShardId(GetMainFileSystemId(), ref); });
 
     return ready;
 }

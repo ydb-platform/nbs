@@ -69,6 +69,7 @@ def __create_multitablet_fs(client, fs_id, shard_ids):
             {
                 "FileSystemId": shard_id,
                 "ShardNo": i + 1,
+                "MainFileSystemId": fs_id
             },
         )
 

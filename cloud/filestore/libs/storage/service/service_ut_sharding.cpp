@@ -5367,6 +5367,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(fsConfig.Shard1Id);
+            request.SetMainFileSystemId(fsConfig.FsId);
             request.SetShardNo(1);
             request.AddShardFileSystemIds(fsConfig.Shard1Id);
             request.AddShardFileSystemIds(fsConfig.Shard2Id);
@@ -8829,10 +8830,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
 
-            //const auto actionResponse =
-            //    service.ExecuteAction("unsafecreatenoderef", buf);
-
-            auto actionResponse =
+            const auto actionResponse =
                 service.SendAndRecvExecuteAction("unsafecreatenoderef", buf);
 
             bool succeded = SUCCEEDED(actionResponse->GetStatus());
@@ -8849,7 +8847,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(status.ok());
         };
 
-        auto unsafeGetNodRef =
+        auto unsafeGetNodeRef =
             [&](const NProtoPrivate::TUnsafeGetNodeRefRequest& request,
                 const bool isOk = true)
         {
@@ -8944,7 +8942,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     createNodeRefRequest.GetParentId());
                 getNodeRefRequest.SetName(createNodeRefRequest.GetName());
                 const auto getNodeRefResponse =
-                    unsafeGetNodRef(getNodeRefRequest);
+                    unsafeGetNodeRef(getNodeRefRequest);
 
                 UNIT_ASSERT_EQUAL(
                     createNodeRefRequest.GetShardId(),
@@ -8976,7 +8974,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             createNodeRefRequest.GetParentId());
         getNodeRefRequest.SetName(createNodeRefRequest.GetName());
         const auto getNodeRefResponse =
-            unsafeGetNodRef(getNodeRefRequest, false);
+            unsafeGetNodeRef(getNodeRefRequest, false);
 
         setCompress(true);
         createNodeRefRequest.SetFileSystemId(fsId);
@@ -9020,7 +9018,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 response->GetError().GetCode(),
                 response->GetErrorReason());
         }
-
 
         for (const char* goodFsId:
              {"nfs_shared",

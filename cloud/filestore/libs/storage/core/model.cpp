@@ -570,8 +570,12 @@ NProto::TError ValidateFilesystemId(const TString& fsId)
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
-                << "Can't create a filesystem with the ID that starts with a "
-                   "non-printable character: "
+                << "Characters from "
+                << TString(MinShardIdEncodingVersion).Quote() << " to "
+                << TString(MaxShardIdEncodingVersion).Quote()
+                << " are reserved."
+                << " A filesystem ID can't start with a reserved character. "
+                   "File system identifier: "
                 << fsId.Quote());
     }
 

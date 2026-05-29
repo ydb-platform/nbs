@@ -17,8 +17,8 @@ namespace {
 // Type of compression of ShardId and ShardNodeName
 
 constexpr char ShardIdAsBinaryStream = 1;
-constexpr char MinPrintableChar = ' ';
-static_assert(ShardIdAsBinaryStream < MinPrintableChar);
+static_assert(MinShardIdEncodingVersion <= ShardIdAsBinaryStream);
+static_assert(ShardIdAsBinaryStream <= MaxShardIdEncodingVersion);
 
 static_assert(sizeof(TGUID::dw) == 16);
 
@@ -92,16 +92,17 @@ bool IIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainFsId)
         return false;
     }
 
-    ShardId = shardNo
-                  ? TStringBuilder() << mainFsId << ShardNumPrefix << shardNo
-                  : mainFsId;
-
     // ShardNodeName should be GUID in binary format.
     if (ShardNodeName.size() != sizeof(TGUID::dw)) {
         return false;
     }
 
-    // Decode ShardId and ShardNodeName
+    // Create decoded ShardId as a string.
+    ShardId = shardNo
+                  ? TStringBuilder() << mainFsId << ShardNumPrefix << shardNo
+                  : mainFsId;
+
+    // Decode ShardNodeName
     TGUID guid;
     TMemoryInput shardNodeNameIn(ShardNodeName.data(), ShardNodeName.size());
     shardNodeNameIn.Read(guid.dw, sizeof(guid.dw));

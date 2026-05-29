@@ -43,11 +43,17 @@ constexpr TStringBuf ShardNumPrefix = "_s";
 // as we reserve two bytes to store it in handles and node IDs.
 constexpr ui64 MaxShardCount = Max<ui16>();
 
+// Range of possible ShardId encoding versions.
+constexpr char MinShardIdEncodingVersion = 1;
+constexpr char MaxShardIdEncodingVersion = 31;
+
 // A filesystem ID can be stored encoded in the tablet database.
-// In this case, it starts with an unprintable character.
+// In this case, it starts with a character denoting an encoding
+// version.
 inline bool IsFilesystemIdEncoded(const TString& fsId)
 {
-    return !fsId.empty() && !std::isprint(static_cast<ui8>(fsId[0]));
+    return !fsId.empty() && MinShardIdEncodingVersion <= fsId[0] &&
+           fsId[0] <= MaxShardIdEncodingVersion;
 }
 
 NCloud::NProto::TError ValidateFilesystemId(const TString& fsId);
