@@ -188,7 +188,6 @@ jobs:
           title: "GA Scripts shellcheck (.github)"
           tool: shellcheck
           report_name: ga-scripts-shellcheck-github
-          report_on_success: "false"
           show_summary_table: "false"
           command: |
             find .github -type f -print0 |
@@ -219,7 +218,6 @@ jobs:
           title: "GA Scripts shellcheck (.temporary)"
           tool: shellcheck
           report_name: ga-scripts-shellcheck-temporary
-          report_on_success: "false"
           show_summary_table: "false"
           command: |
             find .temporary -type f -name "*.sh" -print0 |
@@ -232,7 +230,6 @@ jobs:
           title: "GA Scripts shfmt"
           tool: shfmt
           report_name: ga-scripts-shfmt
-          report_on_success: "false"
           show_summary_table: "false"
           command: |
             set +e
