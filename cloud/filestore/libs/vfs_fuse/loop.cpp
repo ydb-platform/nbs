@@ -1105,13 +1105,20 @@ private:
                     }
 
                     directoryHandleStorage = CreateDirectoryHandleStorage(
-                        Log,
-                        path / DirectoryHandleStorageFileName,
-                        FileSystemConfig->GetDirectoryHandlesTableSize(),
-                        Config->GetDirectoryHandlesInitialDataSize(),
-                        Config->GetDirectoryHandlesMaxDataAreaStepSize(),
-                        FileSystemConfig->GetMaxBufferSize(),
-                        FileMapMemoryLimiter);
+                        {.Log = Log,
+                         .FileMapMemoryLimiter = FileMapMemoryLimiter,
+                         .FilePath = path / DirectoryHandleStorageFileName,
+                         .MaxRecords =
+                             FileSystemConfig->GetDirectoryHandlesTableSize(),
+                         .InitialDataAreaSize =
+                             Config->GetDirectoryHandlesInitialDataSize(),
+                         .MaxDataAreaStepSize =
+                             Config->GetDirectoryHandlesMaxDataAreaStepSize(),
+                         .InitialDataMoveBufferSize =
+                             FileSystemConfig->GetMaxBufferSize(),
+                         .PersistentHandleMaxSize =
+                             FileSystemConfig
+                                 ->GetDirectoryHandlesPersistentHandleMaxSize()});
 
                     DirectoryHandleStorageInitialized = true;
                 } else {
@@ -1255,6 +1262,11 @@ private:
             features.GetDirectoryHandlesTableSize();
         if (directoryHandlesTableSize != 0) {
             config.SetDirectoryHandlesTableSize(directoryHandlesTableSize);
+        }
+
+        if (features.HasDirectoryHandlesPersistentHandleMaxSize()) {
+            config.SetDirectoryHandlesPersistentHandleMaxSize(
+                features.GetDirectoryHandlesPersistentHandleMaxSize());
         }
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());

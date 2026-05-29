@@ -234,7 +234,10 @@ void TFileSystem::ReadDir(
                          << " limit: " << size << " actual size "
                          << handleChunk.DirectoryContent.GetSize());
 
-                self->DirectoryHandleCache->AppendChunk(fh, handleChunk);
+                self->DirectoryHandleCache->AppendChunk(
+                    fh,
+                    handle,
+                    handleChunk);
 
                 reply(*self, handleChunk.DirectoryContent);
             });
