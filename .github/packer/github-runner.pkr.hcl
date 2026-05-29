@@ -128,8 +128,8 @@ build {
   }
 
   provisioner "file" {
-    source      = "${path.cwd}/scripts/install-shell-linters.sh"
-    destination = "${local.tmp_directory}/install-shell-linters.sh"
+    source      = "${path.cwd}/scripts/install-github-release-tools.sh"
+    destination = "${local.tmp_directory}/install-github-release-tools.sh"
   }
 
   provisioner "shell" {

@@ -172,9 +172,7 @@ jobs:
           install: false
 
       - name: install shell linters
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bash .github/packer/scripts/install-shell-linters.sh
+        run: bash .github/packer/scripts/install-github-release-tools.sh shellcheck shfmt
 
       - name: generate shellscripts from github actions
         run: |
