@@ -2168,51 +2168,6 @@ void PrepareRangeCompaction(
                                  << MakeBlobId(tabletId, blobId));
         }
     }
-
-    for (auto& kv: args.AffectedBlobs) {
-        state.IncrementBlobsProcessedDuringCompaction();
-
-        const bool blobOnlyInOneCompactRange =
-            kv.second.CompactionRangeCount == 1;
-
-        const bool blobFullyAvailableForRangeCompaction =
-            kv.second.MaxCommitIdInCompactionRange <= commitId &&
-            blobOnlyInOneCompactRange;
-
-        if (!blobFullyAvailableForRangeCompaction ||
-            !readBlockMaskOnCompactionOptimizationEnabled)
-        {
-            state.IncrementBlockMaskReadDuringCompaction();
-
-            if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
-                STORAGE_VERIFY_C(
-                    kv.second.BlockMask.Defined(),
-                    TWellKnownEntityTypes::TABLET,
-                    tabletId,
-                    TStringBuilder() << "Could not read block mask for blob: "
-                                     << MakeBlobId(tabletId, kv.first));
-            } else {
-                ready = false;
-            }
-        } else if (state.GetCleanupQueue().HasBlob(kv.first)) {
-            // If the blob is in the cleanup queue, we should not try to add
-            // this blob to cleanup queue again.
-            kv.second.BlockMask = GetFullBlockMask();
-        }
-
-        if (args.ChecksumsEnabled) {
-            if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
-                STORAGE_VERIFY_C(
-                    kv.second.BlobMeta.Defined(),
-                    TWellKnownEntityTypes::TABLET,
-                    tabletId,
-                    TStringBuilder() << "Could not read blob meta for blob: "
-                                     << MakeBlobId(tabletId, kv.first));
-            } else {
-                ready = false;
-            }
-        }
-    }
 }
 
 void CompleteRangeCompaction(
