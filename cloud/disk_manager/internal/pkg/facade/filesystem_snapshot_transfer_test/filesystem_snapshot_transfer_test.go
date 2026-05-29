@@ -170,7 +170,7 @@ func checkCopyFilesystemThroughSnapshot(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestFilesystemTraversalLargeDirectoryTree(t *testing.T) {
+func TestFilesystemSnapshotLargeDirectoryTree(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -217,7 +217,7 @@ func TestFilesystemTraversalLargeDirectoryTree(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestFilesystemTraversalEmptyFilesystem(t *testing.T) {
+func TestFilesystemSnapshotEmptyFilesystem(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -259,7 +259,7 @@ func TestFilesystemTraversalEmptyFilesystem(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestFilesystemTraversalSmallTree(t *testing.T) {
+func TestFilesystemSnapshotSmallTree(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -344,7 +344,7 @@ func TestFilesystemTraversalSmallTree(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestFilesystemTraversalHardlinks(t *testing.T) {
+func TestFilesystemSnapshotHardlinks(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
