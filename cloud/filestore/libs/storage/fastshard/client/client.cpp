@@ -1,11 +1,16 @@
 #include "client.h"
 
+#include <cloud/filestore/libs/storage/fastshard/ipc/ipc.h>
+
 #include <silk/fibers/fiber.h>
 
 #include <util/generic/string.h>
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -22,10 +27,6 @@ TClient::TClient(ui16 port)
 
 TResponse TClient::Send(const TRequest& req)
 {
-    // Use ThreadModeScope so blocking socket calls don't block
-    // the silk scheduler thread.
-    FiberScheduler::ThreadModeScope threadMode;
-
     int fd = Connect();
     Y_ABORT_UNLESS(fd >= 0, "connect failed");
 
@@ -33,16 +34,20 @@ TResponse TClient::Send(const TRequest& req)
     Y_PROTOBUF_SUPPRESS_NODISCARD req.SerializeToString(&reqBuf);
 
     ui32 lenBe = htonl(static_cast<ui32>(reqBuf.size()));
-    SendAll(fd, &lenBe, sizeof(lenBe));
-    SendAll(fd, reqBuf.data(), reqBuf.size());
+    int r = SendAll(fd, &lenBe, sizeof(lenBe));
+    Y_ABORT_UNLESS(r == 0, "send length failed");
+    r = SendAll(fd, reqBuf.data(), reqBuf.size());
+    Y_ABORT_UNLESS(r == 0, "send body failed");
 
     ui32 respLenBe = 0;
-    RecvAll(fd, &respLenBe, sizeof(respLenBe));
+    r = RecvAll(fd, &respLenBe, sizeof(respLenBe));
+    Y_ABORT_UNLESS(r == 0, "recv length failed");
     ui32 respLen = ntohl(respLenBe);
 
     TString respBuf;
     respBuf.ReserveAndResize(respLen);
-    RecvAll(fd, respBuf.begin(), respLen);
+    r = RecvAll(fd, respBuf.begin(), respLen);
+    Y_ABORT_UNLESS(r == 0, "recv body failed");
 
     TResponse resp;
     Y_PROTOBUF_SUPPRESS_NODISCARD resp.ParseFromString(respBuf);
@@ -52,7 +57,10 @@ TResponse TClient::Send(const TRequest& req)
 
 int TClient::Connect()
 {
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    int fd = ::socket(
+        AF_INET,
+        SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
+        0);
     if (fd < 0) {
         return -1;
     }
@@ -62,41 +70,38 @@ int TClient::Connect()
     addr.sin_port = htons(Port);
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-    if (::connect(
-            fd,
-            reinterpret_cast<sockaddr*>(&addr),
-            sizeof(addr)) < 0)
-    {
+    int ret = ::connect(
+        fd,
+        reinterpret_cast<sockaddr*>(&addr),
+        sizeof(addr));
+    if (ret < 0 && errno != EINPROGRESS) {
         ::close(fd);
         return -1;
     }
+
+    if (ret < 0) {
+        // EINPROGRESS — wait for connection to complete.
+        int r = FiberScheduler::poll(fd, POLLOUT);
+        if (r) {
+            ::close(fd);
+            return -1;
+        }
+
+        // Check for connect error.
+        int err = 0;
+        socklen_t errLen = sizeof(err);
+        ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errLen);
+        if (err) {
+            ::close(fd);
+            return -1;
+        }
+    }
+
+    int one = 1;
+    ::setsockopt(
+        fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+
     return fd;
-}
-
-void TClient::RecvAll(int fd, void* buf, size_t len)
-{
-    auto* p = static_cast<ui8*>(buf);
-    size_t done = 0;
-    while (done < len) {
-        ssize_t n = ::recv(fd, p + done, len - done, 0);
-        if (n <= 0) {
-            break;
-        }
-        done += static_cast<size_t>(n);
-    }
-}
-
-void TClient::SendAll(int fd, const void* buf, size_t len)
-{
-    const auto* p = static_cast<const ui8*>(buf);
-    size_t done = 0;
-    while (done < len) {
-        ssize_t n = ::send(fd, p + done, len - done, MSG_NOSIGNAL);
-        if (n <= 0) {
-            break;
-        }
-        done += static_cast<size_t>(n);
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

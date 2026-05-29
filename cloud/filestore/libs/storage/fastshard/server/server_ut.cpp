@@ -27,7 +27,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // Silk test environment.
 
-class SilkEnv : public ::testing::Environment
+class TSilkEnv : public ::testing::Environment
 {
 public:
     void SetUp() override
@@ -43,7 +43,7 @@ public:
 };
 
 [[maybe_unused]] auto* const gEnv =
-    ::testing::AddGlobalTestEnvironment(new SilkEnv);
+    ::testing::AddGlobalTestEnvironment(new TSilkEnv);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Pick a free port.

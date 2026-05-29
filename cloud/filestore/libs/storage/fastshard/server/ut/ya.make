@@ -2,7 +2,7 @@ GTEST()
 
 
 SRCS(
-    server_ut.cpp
+    ../server_ut.cpp
 )
 
 PEERDIR(
