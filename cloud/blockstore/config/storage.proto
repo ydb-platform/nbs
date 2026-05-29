@@ -1575,4 +1575,9 @@ message TStorageServiceConfig
     // modification requests (AddHost, AddDevice, RemoveHost, RemoveDevice,
     // PurgeHost) are rejected with E_REJECTED. 0 means no limit.
     optional uint32 MaxInFlightCmsRequests = 498;
+
+    // If true, partition compaction splits the per-blob BlockMask / BlobMeta
+    // read into a separate transaction issued by TCompactionActor instead of
+    // doing it inside the main TCompaction prepare phase.
+    optional bool SplitCompactionTxEnabled = 499;
 }

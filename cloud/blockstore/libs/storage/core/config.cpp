@@ -697,6 +697,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         bool,                                                                  \
         false                                                                 )\
                                                                                \
+    xxx(SplitCompactionTxEnabled,                                              \
+        bool,                                                                  \
+        false                                                                 )\
+                                                                               \
     xxx(VolumeBalancerGentlePreemptionEnabled,      bool,       false         )\
     xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
                                                                                \
@@ -739,6 +743,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(EnableVhostDiscardOnVolumeRestart)                                     \
     xxx(FreshBlocksWriter)                                                     \
     xxx(ReadBlockMaskOnCompactionOptimization)                                 \
+    xxx(SplitCompactionTx)                                                     \
 
 // BLOCKSTORE_BINARY_FEATURES
 

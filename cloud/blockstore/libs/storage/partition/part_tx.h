@@ -43,6 +43,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(ReadBlocks,                 __VA_ARGS__)                               \
     xxx(AddBlobs,                   __VA_ARGS__)                               \
     xxx(Compaction,                 __VA_ARGS__)                               \
+    xxx(CompactionReadBlobInfo,     __VA_ARGS__)                               \
     xxx(Cleanup,                    __VA_ARGS__)                               \
     xxx(CollectGarbage,             __VA_ARGS__)                               \
     xxx(AddGarbage,                 __VA_ARGS__)                               \
@@ -372,6 +373,8 @@ struct TTxPartition
         ui32 BlocksSkipped = 0;
         bool ChecksumsEnabled = false;
 
+        THashSet<TPartialBlobId, TPartialBlobIdHash> GarbageBlobs;
+
         TRangeCompaction(ui32 rangeIdx, const TBlockRange32& blockRange)
             : RangeIdx(rangeIdx)
             , BlockRange(blockRange)
@@ -386,6 +389,7 @@ struct TTxPartition
             BlobsSkipped = 0;
             BlocksSkipped = 0;
             ChecksumsEnabled = false;
+            GarbageBlobs.clear();
         }
 
         TBlockMark& GetBlockMark(ui32 blockIndex)
@@ -464,6 +468,41 @@ struct TTxPartition
             for (auto& range: RangeCompactions) {
                 range.Clear();
             }
+        }
+    };
+
+    //
+    // CompactionReadBlobInfo
+    //
+
+    struct TCompactionReadBlobInfo
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TVector<TPartialBlobId> BlobsToReadBlockMasks;
+        const TVector<TPartialBlobId> BlobsToReadBlobMetas;
+
+        TVector<TBlockMask> BlockMasks;
+        TVector<NProto::TBlobMeta> BlobMetas;
+
+        TInstant TxStarted;
+
+        TCompactionReadBlobInfo(
+                TRequestInfoPtr requestInfo,
+                TVector<TPartialBlobId> blobsToReadBlockMasks,
+                TVector<TPartialBlobId> blobsToReadBlobMetas,
+                TInstant txStarted)
+            : RequestInfo(std::move(requestInfo))
+            , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
+            , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
+            , BlockMasks(BlobsToReadBlockMasks.size())
+            , BlobMetas(BlobsToReadBlobMetas.size())
+            , TxStarted(txStarted)
+        {}
+
+        void Clear()
+        {
+            BlockMasks.assign(BlobsToReadBlockMasks.size(), {});
+            BlobMetas.assign(BlobsToReadBlobMetas.size(), {});
         }
     };
 
