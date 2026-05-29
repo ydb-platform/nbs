@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,15 +74,97 @@ func copyFilesystemThroughSnapshot(
 	testcommon.RequireTaskHasNoError(t, ctx, taskID)
 }
 
-func compareFindResults(
+type comparableNode struct {
+	Name  string
+	Mode  uint32
+	Type  uint32
+	Links uint32
+	UID   uint64
+	GID   uint64
+}
+
+func listComparableNodes(
 	t *testing.T,
+	ctx context.Context,
+	nfsClient nfs_testing.TestingClient,
+	filesystemID string,
+) []comparableNode {
+
+	session, err := nfsClient.CreateSession(ctx, filesystemID, "", true)
+	require.NoError(t, err)
+	model := nfs_testing.NewFileSystemModel(
+		t,
+		ctx,
+		session,
+		nfs_testing.Root(),
+	)
+	defer model.Close()
+
+	nodes := model.ListAllNodesRecursively(false)
+	result := make([]comparableNode, 0, len(nodes))
+	for _, node := range nodes {
+		require.NotEmpty(t, node.Name)
+		result = append(result, comparableNode{
+			Name:  node.Name,
+			Mode:  node.Mode,
+			Type:  uint32(node.Type),
+			Links: node.Links,
+			UID:   node.UID,
+			GID:   node.GID,
+		})
+	}
+
+	slices.SortFunc(result, func(a, b comparableNode) int {
+		if c := strings.Compare(a.Name, b.Name); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Type, b.Type); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Mode, b.Mode); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Links, b.Links); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.UID, b.UID); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.GID, b.GID)
+	})
+	return result
+}
+
+func checkCopyFilesystemThroughSnapshot(
+	t *testing.T,
+	ctx context.Context,
+	client sdk_client.Client,
+	nfsClient nfs_testing.TestingClient,
 	filestoreClient *filestore_client.FilestoreClient,
 	srcFilesystemID string,
 	dstFilesystemID string,
+	snapshotID string,
 ) {
+
+	copyFilesystemThroughSnapshot(
+		t,
+		ctx,
+		client,
+		srcFilesystemID,
+		dstFilesystemID,
+		snapshotID,
+	)
+
+	srcNodes := listComparableNodes(t, ctx, nfsClient, srcFilesystemID)
+	dstNodes := listComparableNodes(t, ctx, nfsClient, dstFilesystemID)
+	require.NotEmpty(t, srcNodes)
+	require.NotEmpty(t, dstNodes)
+	require.Equal(t, srcNodes, dstNodes)
 
 	srcPaths := filestoreClient.FindAllPaths(srcFilesystemID)
 	dstPaths := filestoreClient.FindAllPaths(dstFilesystemID)
+	require.NotEmpty(t, srcPaths)
+	require.NotEmpty(t, dstPaths)
 	require.Equal(t, srcPaths, dstPaths)
 }
 
@@ -115,9 +199,51 @@ func TestFilesystemTraversalLargeDirectoryTree(t *testing.T) {
 		1,
 	)
 
+	checkCopyFilesystemThroughSnapshot(
+		t,
+		ctx,
+		client,
+		nfsClient,
+		filestoreClient,
+		srcFilesystemID,
+		dstFilesystemID,
+		t.Name()+"_snapshot",
+	)
+	defer func() {
+		err := nfsClient.Delete(ctx, dstFilesystemID, true)
+		require.NoError(t, err)
+	}()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestFilesystemTraversalEmptyFilesystem(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
+	defer nfsClient.Close()
+
+	filestoreClient := filestore_client.NewFilestoreClient(t)
+
+	srcFilesystemID := t.Name() + "_src"
+	dstFilesystemID := t.Name() + "_dst"
+
+	createFilesystem(t, ctx, client, srcFilesystemID)
+	defer func() {
+		err := nfsClient.Delete(ctx, srcFilesystemID, true)
+		require.NoError(t, err)
+	}()
+
 	copyFilesystemThroughSnapshot(
-		t, ctx, client,
-		srcFilesystemID, dstFilesystemID,
+		t,
+		ctx,
+		client,
+		srcFilesystemID,
+		dstFilesystemID,
 		t.Name()+"_snapshot",
 	)
 	defer func() {
@@ -125,7 +251,10 @@ func TestFilesystemTraversalLargeDirectoryTree(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	compareFindResults(t, filestoreClient, srcFilesystemID, dstFilesystemID)
+	require.Empty(t, listComparableNodes(t, ctx, nfsClient, srcFilesystemID))
+	require.Empty(t, listComparableNodes(t, ctx, nfsClient, dstFilesystemID))
+	require.Empty(t, filestoreClient.FindAllPaths(srcFilesystemID))
+	require.Empty(t, filestoreClient.FindAllPaths(dstFilesystemID))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,36 +326,20 @@ func TestFilesystemTraversalSmallTree(t *testing.T) {
 	require.Equal(t, expectedNames, nfs_testing.NodeNames(nodes))
 	model.Close()
 
-	srcPaths := filestoreClient.FindAllPaths(srcFilesystemID)
-	require.NotEmpty(t, srcPaths)
-
-	copyFilesystemThroughSnapshot(
-		t, ctx, client,
-		srcFilesystemID, dstFilesystemID,
+	checkCopyFilesystemThroughSnapshot(
+		t,
+		ctx,
+		client,
+		nfsClient,
+		filestoreClient,
+		srcFilesystemID,
+		dstFilesystemID,
 		t.Name()+"_snapshot",
 	)
 	defer func() {
 		err := nfsClient.Delete(ctx, dstFilesystemID, true)
 		require.NoError(t, err)
 	}()
-
-	dstSession, err := nfsClient.CreateSession(ctx, dstFilesystemID, "", true)
-	require.NoError(t, err)
-	dstModel := nfs_testing.NewFileSystemModel(t, ctx, dstSession, rootDir)
-	dstNodes := dstModel.ListAllNodesRecursively(false)
-	require.Equal(t, expectedNames, nfs_testing.NodeNames(dstNodes))
-	dstModel.Close()
-
-	verifySession, err := nfsClient.CreateSession(
-		ctx, dstFilesystemID, "", true,
-	)
-	require.NoError(t, err)
-	verifyModel := nfs_testing.NewFileSystemModel(t, ctx, verifySession, rootDir)
-	verifyNodes := verifyModel.ListAllNodesRecursively(false)
-	require.Equal(t, expectedNames, nfs_testing.NodeNames(verifyNodes))
-	verifyModel.Close()
-
-	compareFindResults(t, filestoreClient, srcFilesystemID, dstFilesystemID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -308,20 +421,18 @@ func TestFilesystemTraversalHardlinks(t *testing.T) {
 	}
 	session.Close(ctx)
 
-	copyFilesystemThroughSnapshot(
-		t, ctx, client,
-		srcFilesystemID, dstFilesystemID,
+	checkCopyFilesystemThroughSnapshot(
+		t,
+		ctx,
+		client,
+		nfsClient,
+		filestoreClient,
+		srcFilesystemID,
+		dstFilesystemID,
 		t.Name()+"_snapshot",
 	)
 	defer func() {
 		err := nfsClient.Delete(ctx, dstFilesystemID, true)
 		require.NoError(t, err)
 	}()
-
-	srcPaths := filestoreClient.FindAllPaths(srcFilesystemID)
-	dstPaths := filestoreClient.FindAllPaths(dstFilesystemID)
-
-	slices.Sort(srcPaths)
-	slices.Sort(dstPaths)
-	require.Equal(t, srcPaths, dstPaths)
 }

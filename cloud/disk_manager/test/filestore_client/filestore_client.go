@@ -88,8 +88,13 @@ func (c *FilestoreClient) FindAllPaths(filesystemID string) []string {
 	entries := c.FindAll(filesystemID)
 	paths := make([]string, len(entries))
 	for i, e := range entries {
+		require.NotEmpty(c.t, e.DirPath)
+		require.NotEmpty(c.t, e.Name)
+
 		paths[i] = fmt.Sprintf("%s%s", e.DirPath, e.Name)
+		require.NotEmpty(c.t, paths[i])
 	}
 
+	slices.Sort(paths)
 	return paths
 }
