@@ -1535,6 +1535,44 @@ private:
     }
 };
 
+void FillBlobsInfoToRead(
+    ui64 commitId,
+    bool readBlockMaskOnCompactionOptimizationEnabled,
+    bool checksumsEnabled,
+    TPartitionState& state,
+    TVector<TPartialBlobId>& blobsToReadBlockMasks,
+    TVector<TPartialBlobId>& blobsToReadBlobMetas,
+    TAffectedBlobs& affectedBlobs,
+    const THashSet<TPartialBlobId, TPartialBlobIdHash>& garbageBlobs)
+{
+    for (auto& kv: affectedBlobs) {
+        state.IncrementBlobsProcessedDuringCompaction();
+
+        if (garbageBlobs.contains(kv.first)) {
+            kv.second.BlockMask = GetFullBlockMask();
+            continue;
+        }
+
+        const bool blobOnlyInOneCompactRange =
+            kv.second.CompactionRangeCount == 1;
+
+        const bool blobFullyAvailableForRangeCompaction =
+            kv.second.MaxCommitIdInCompactionRange <= commitId &&
+            blobOnlyInOneCompactRange;
+
+        if (!blobFullyAvailableForRangeCompaction ||
+            !readBlockMaskOnCompactionOptimizationEnabled)
+        {
+            state.IncrementBlockMaskReadDuringCompaction();
+            blobsToReadBlockMasks.push_back(kv.first);
+        }
+
+        if (checksumsEnabled) {
+            blobsToReadBlobMetas.push_back(kv.first);
+        }
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2095,6 +2133,42 @@ void PrepareRangeCompaction(
         return;
     }
 
+    TVector<TPartialBlobId> blobsToReadBlockMasks;
+    TVector<TPartialBlobId> blobsToReadBlobMetas;
+    FillBlobsInfoToRead(
+        commitId,
+        readBlockMaskOnCompactionOptimizationEnabled,
+        args.ChecksumsEnabled,
+        state,
+        blobsToReadBlockMasks,
+        blobsToReadBlobMetas,
+        args.AffectedBlobs,
+        args.GarbageBlobs);
+
+    for (const auto& blobId: blobsToReadBlockMasks) {
+        auto& affectedBlob = args.AffectedBlobs[blobId];
+        if (db.ReadBlockMask(blobId, affectedBlob.BlockMask)) {
+            STORAGE_VERIFY_C(
+                affectedBlob.BlockMask.Defined(),
+                TWellKnownEntityTypes::TABLET,
+                tabletId,
+                TStringBuilder() << "Could not read block mask for blob: "
+                                 << MakeBlobId(tabletId, blobId));
+        }
+    }
+
+    for (const auto& blobId: blobsToReadBlobMetas) {
+        auto& affectedBlob = args.AffectedBlobs[blobId];
+        if (db.ReadBlobMeta(blobId, affectedBlob.BlobMeta)) {
+            STORAGE_VERIFY_C(
+                affectedBlob.BlobMeta.Defined(),
+                TWellKnownEntityTypes::TABLET,
+                tabletId,
+                TStringBuilder() << "Could not read blob meta for blob: "
+                                 << MakeBlobId(tabletId, blobId));
+        }
+    }
+
     for (auto& kv: args.AffectedBlobs) {
         state.IncrementBlobsProcessedDuringCompaction();
 
@@ -2391,32 +2465,15 @@ void CompleteRangeCompaction(
     }
 
     if (splitTxEnabled) {
-        for (auto& kv: args.AffectedBlobs) {
-            if (args.GarbageBlobs.contains(kv.first)) {
-                kv.second.BlockMask = GetFullBlockMask();
-                continue;
-            }
-
-            state.IncrementBlobsProcessedDuringCompaction();
-
-            const bool blobOnlyInOneCompactRange =
-                kv.second.CompactionRangeCount == 1;
-
-            const bool blobFullyAvailableForRangeCompaction =
-                kv.second.MaxCommitIdInCompactionRange <= commitId &&
-                blobOnlyInOneCompactRange;
-
-            if (!blobFullyAvailableForRangeCompaction ||
-                !readBlockMaskOnCompactionOptimizationEnabled)
-            {
-                state.IncrementBlockMaskReadDuringCompaction();
-                blobsToReadBlockMasks.push_back(kv.first);
-            }
-
-            if (args.ChecksumsEnabled) {
-                blobsToReadBlobMetas.push_back(kv.first);
-            }
-        }
+        FillBlobsInfoToRead(
+            commitId,
+            readBlockMaskOnCompactionOptimizationEnabled,
+            args.ChecksumsEnabled,
+            state,
+            blobsToReadBlockMasks,
+            blobsToReadBlobMetas,
+            args.AffectedBlobs,
+            args.GarbageBlobs);
     }
 
     rangeCompactionInfos.emplace_back(
