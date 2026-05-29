@@ -6,6 +6,8 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(IIndexTabletDatabaseTest)
 {
     Y_UNIT_TEST(ShouldCompressAndDecompressNodeRefs)

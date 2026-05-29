@@ -417,11 +417,26 @@ void TIndexTabletState::WriteHasXAttrs(
     SetHasXAttrs(db, static_cast<ui64>(hasXAttrs));
 }
 
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Functions that compress and decompress NodeRefs
+
+bool TryToEncodeShardId(
+    const TString& mainFsId,
+    IIndexTabletDatabase::TNodeRef& nodeRef)
+{
+    if (!nodeRef.TryToEncodeShardId(mainFsId)) {
+        ReportMalformedShardNodeRef(
+            TStringBuilder()
+            << "ShardId: " << nodeRef.ShardId.Quote()
+            << ", ShardNodeName: " << nodeRef.ShardNodeName.Quote());
+
+        return false;
+    }
+
+    return true;
+}
 
 bool TryToDecodeShardId(
     IIndexTabletDatabase::TNodeRef& nodeRef,
@@ -436,22 +451,6 @@ bool TryToDecodeShardId(
                 << ", encoded ShardId: " << nodeRef.ShardId.Quote()
                 << ", encoded ShardNodeName: "
                 << nodeRef.ShardNodeName.Quote());
-
-        return false;
-    }
-
-    return true;
-}
-
-bool TryToEncodeShardId(
-    const TString& mainFs,
-    IIndexTabletDatabase::TNodeRef& nodeRef)
-{
-    if (!nodeRef.TryToEncodeShardId(mainFs)) {
-        ReportMalformedShardNodeRef(
-            TStringBuilder()
-            << "ShardId: " << nodeRef.ShardId.Quote()
-            << ", ShardNodeName: " << nodeRef.ShardNodeName.Quote());
 
         return false;
     }

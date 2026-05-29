@@ -24,7 +24,7 @@ static_assert(sizeof(TGUID::dw) == 16);
 
 }   // namespace
 
-bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFs)
+bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFsId)
 {
     if (ShardId.empty() || IsFilesystemIdEncoded(ShardId)) {
         return true;
@@ -35,7 +35,7 @@ bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFs)
     // where shardNo > 0 && shardNo <= MaxShardCount
 
     TStringBuf shardId(ShardId);
-    if (!shardId.SkipPrefix(mainFs)) {
+    if (!shardId.SkipPrefix(mainFsId)) {
         return false;
     }
 
@@ -69,7 +69,7 @@ bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFs)
     return true;
 }
 
-bool IIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainFs)
+bool IIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainFsId)
 {
     if (!IsFilesystemIdEncoded(ShardId)) {
         return true;
@@ -92,8 +92,9 @@ bool IIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainFs)
         return false;
     }
 
-    ShardId = shardNo ? TStringBuilder() << mainFs << ShardNumPrefix << shardNo
-                      : mainFs;
+    ShardId = shardNo
+                  ? TStringBuilder() << mainFsId << ShardNumPrefix << shardNo
+                  : mainFsId;
 
     // ShardNodeName should be GUID in binary format.
     if (ShardNodeName.size() != sizeof(TGUID::dw)) {
