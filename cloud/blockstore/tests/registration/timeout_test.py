@@ -341,7 +341,7 @@ def prepare(
     )
     nbs_configurator.files["storage"].NodeType = node_type
     nbs_configurator.files["storage"].DisableLocalService = False
-    nbs_configurator.files["storage"].DynamicNodeRegistrationTimeout = 1000  # 1 second
+    nbs_configurator.files["storage"].NodeRegistrationTimeout = 1000  # 1 second
 
     return nbs_configurator
 
