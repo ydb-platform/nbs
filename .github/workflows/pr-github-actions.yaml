@@ -272,7 +272,12 @@ jobs:
               const status = process.env.SHFMT_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
               lines.push('shfmt - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shfmt.log)');
             }
-            let comment = 'status: :red_circle:\n\n' + lines.join('\n');
+            const success =
+              process.env.SHELLCHECK_GITHUB_EXIT_CODE == '0' &&
+              process.env.SHELLCHECK_TEMPORARY_EXIT_CODE == '0' &&
+              process.env.SHFMT_EXIT_CODE == '0';
+            const status_emoji = success ? ':green_circle:' : ':red_circle:';
+            let comment = 'status: ' + status_emoji + '\n\n' + lines.join('\n');
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
