@@ -1280,7 +1280,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         auto monitoring = CreateMonitoringServiceStub();
 
         auto requestCounters = MakeRequestCounters(
-            {.Options = TRequestCounters::EOption::ThrottlingMetricsDisabled});
+            {.Options =
+                 TRequestCounters::EOption::ThrottlingHistogramsDisabled});
         requestCounters.Register(*monitoring->GetCounters());
 
         auto writeBlocks =

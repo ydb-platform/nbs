@@ -156,5 +156,5 @@ message TDiagnosticsConfig
     optional uint32 DumpTracksInterval = 32;
 
     // Disable registration of throttling metrics in the metrics registry.
-    optional bool ThrottlingMetricsDisabled = 33;
+    optional bool ThrottlingHistogramsDisabled = 33;
 }

@@ -49,7 +49,7 @@ namespace {
                                                                                \
     xxx(ProfileLogMaxFlushRecords,      ui64, 0                               )\
     xxx(ProfileLogMaxFrameFlushRecords, ui64, 0                               )\
-    xxx(ThrottlingMetricsDisabled,      bool, false                           )\
+    xxx(ThrottlingHistogramsDisabled,       bool,            false            )\
 
 // FILESTORE_DIAGNOSTICS_CONFIG
 

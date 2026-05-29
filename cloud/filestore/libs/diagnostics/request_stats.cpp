@@ -160,12 +160,12 @@ class TRequestStats final
 
 public:
     TRequestStats(
-        TDynamicCountersPtr counters,
-        ITimerPtr timer,
-        TDuration executionTimeThreshold,
-        TDuration totalTimeThreshold,
-        EHistogramCounterOptions histogramCounterOptions,
-        TRequestCounters::EOptions counterOptions)
+            TDynamicCountersPtr counters,
+            ITimerPtr timer,
+            TDuration executionTimeThreshold,
+            TDuration totalTimeThreshold,
+            EHistogramCounterOptions histogramCounterOptions,
+            TRequestCounters::EOptions counterOptions)
         : TRequestLogger(executionTimeThreshold, totalTimeThreshold)
         , RootCounters(std::move(counters))
         , TotalCounters(MakeRequestCounters(
@@ -735,8 +735,8 @@ public:
               TRequestCounters::EOption::ReportDataPlaneHistogram |
               TRequestCounters::EOption::ReportControlPlaneHistogram |
               TRequestCounters::EOption::LazyRequestInitialization |
-              (DiagnosticsConfig->GetThrottlingMetricsDisabled()
-                   ? TRequestCounters::EOption::ThrottlingMetricsDisabled
+              (DiagnosticsConfig->GetThrottlingHistogramsDisabled()
+                   ? TRequestCounters::EOption::ThrottlingHistogramsDisabled
                    : TRequestCounters::EOptions{}))
         , FsCountersProvider(std::move(fsCountersProvider))
         , UserCounters(std::move(userCounters))

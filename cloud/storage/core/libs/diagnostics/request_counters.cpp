@@ -372,7 +372,7 @@ struct TRequestCounters::TStatCounters
     bool IsReadWriteRequest = false;
     bool ReportDataPlaneHistogram = false;
     bool ReportControlPlaneHistogram = false;
-    bool ThrottlingMetricsDisabled = false;
+    bool ThrottlingHistogramsDisabled = false;
 
     TIntrusivePtr<TDynamicCounters> CountersGroup;
 
@@ -498,7 +498,7 @@ struct TRequestCounters::TStatCounters
         bool isReadWriteRequest,
         bool reportDataPlaneHistogram,
         bool reportControlPlaneHistogram,
-        bool throttlingMetricsDisabled)
+        bool throttlingHistogramsDisabled)
     {
         CountersGroup = std::move(countersGroup);
         auto& counters = *CountersGroup;
@@ -506,7 +506,7 @@ struct TRequestCounters::TStatCounters
         IsReadWriteRequest = isReadWriteRequest;
         ReportDataPlaneHistogram = reportDataPlaneHistogram;
         ReportControlPlaneHistogram = reportControlPlaneHistogram;
-        ThrottlingMetricsDisabled = throttlingMetricsDisabled;
+        ThrottlingHistogramsDisabled = throttlingHistogramsDisabled;
 
         // always reporting the most important counters even when lazy
         // initialization is enabled and the values are zeroes
@@ -572,13 +572,13 @@ struct TRequestCounters::TStatCounters
 
                 SizeHist.Register(counters);
                 TimeHistUnaligned.Register(*unalignedClassGroup);
-                if (!ThrottlingMetricsDisabled) {
+                if (!ThrottlingHistogramsDisabled) {
                     ExecutionTimeHist.Register(counters);
                     ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
                 }
             } else {
                 SizePercentiles.Register(counters);
-                if (!ThrottlingMetricsDisabled) {
+                if (!ThrottlingHistogramsDisabled) {
                     ExecutionTimePercentiles.Register(counters);
                     PostponedTimePercentiles.Register(counters);
                     BackoffTimePercentiles.Register(counters);
@@ -587,7 +587,7 @@ struct TRequestCounters::TStatCounters
                 TimePercentiles.Register(counters);
             }
 
-            if (!ThrottlingMetricsDisabled) {
+            if (!ThrottlingHistogramsDisabled) {
                 for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
                     auto sizeClassCounters = counters.GetSubgroup(
                         "sizeclass",
@@ -606,7 +606,7 @@ struct TRequestCounters::TStatCounters
                 ? TCountableBase::EVisibility::Public
                 : TCountableBase::EVisibility::Private;
 
-            if (!ThrottlingMetricsDisabled) {
+            if (!ThrottlingHistogramsDisabled) {
                 PostponedTimeHist.Register(counters, visibleHistogram);
                 BackoffTimeHist.Register(counters, visibleHistogram);
                 ShapingTimeHist.Register(counters, visibleHistogram);
@@ -734,7 +734,7 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimeHistUnaligned.Increment(execTime);
             }
 
-            if (!ThrottlingMetricsDisabled) {
+            if (!ThrottlingHistogramsDisabled) {
                 ExecutionTimeHist.Increment(execTime);
 
                 ExecutionTimeSizeClasses.VisitOverlapping(
@@ -891,7 +891,7 @@ struct TRequestCounters::TStatCounters
                 SizePercentiles.Update();
                 TimePercentiles.Update();
                 RequestCompletionTimePercentiles.Update();
-                if (!ThrottlingMetricsDisabled) {
+                if (!ThrottlingHistogramsDisabled) {
                     ExecutionTimePercentiles.Update();
                     PostponedTimePercentiles.Update();
                     BackoffTimePercentiles.Update();
@@ -967,7 +967,7 @@ void TRequestCounters::Register(TDynamicCounters& counters)
                 IsReadWriteRequestType(t),
                 Options & EOption::ReportDataPlaneHistogram,
                 Options & EOption::ReportControlPlaneHistogram,
-                Options & EOption::ThrottlingMetricsDisabled);
+                Options & EOption::ThrottlingHistogramsDisabled);
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all

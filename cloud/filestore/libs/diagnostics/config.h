@@ -144,7 +144,7 @@ public:
     ui64 GetProfileLogMaxFlushRecords() const;
     ui64 GetProfileLogMaxFrameFlushRecords() const;
 
-    bool GetThrottlingMetricsDisabled() const;
+    bool GetThrottlingHistogramsDisabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
