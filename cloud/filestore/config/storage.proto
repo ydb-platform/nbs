@@ -771,8 +771,12 @@ message TStorageConfig
     // to optimize TReadDataActor performance.
     optional bool UseCustomReadDataResponseParser = 498;
 
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 499;
+    
     // Similar to `InMemoryIndexCacheLoadOnTabletStart`, but applies only to
     // the node refs table in filesystem shards. If
     // `InMemoryIndexCacheLoadOnTabletStart` is also set, it takes precedence.
-    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards = 499;
+    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards = 500;
+
 }

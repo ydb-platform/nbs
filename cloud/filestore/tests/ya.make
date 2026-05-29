@@ -28,6 +28,7 @@ RECURSE_FOR_TESTS(
     loadtest
     profile_log
     registration
+    scheme_cache
     service
     xfs_suite
 )
