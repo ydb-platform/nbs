@@ -487,14 +487,12 @@ struct TTxPartition
         TCompactionReadBlobInfo(
                 TRequestInfoPtr requestInfo,
                 TVector<TPartialBlobId> blobsToReadBlockMasks,
-                TVector<TPartialBlobId> blobsToReadBlobMetas,
-                TInstant txStarted)
+                TVector<TPartialBlobId> blobsToReadBlobMetas)
             : RequestInfo(std::move(requestInfo))
             , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
             , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
             , BlockMasks(BlobsToReadBlockMasks.size())
             , BlobMetas(BlobsToReadBlobMetas.size())
-            , TxStarted(txStarted)
         {}
 
         void Clear()
