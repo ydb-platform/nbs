@@ -183,11 +183,11 @@ jobs:
 
       - name: shellcheck
         id: shellcheck
-        uses: ./.github/actions/shellcheck_report
+        uses: ./.github/actions/shellcheck
 
       - name: shfmt
         id: shfmt
-        uses: ./.github/actions/shfmt_report
+        uses: ./.github/actions/shfmt
 
       - name: comment on issue
         if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() && (steps.shellcheck.outputs.has_report == 'true' || steps.shfmt.outputs.has_report == 'true') }}

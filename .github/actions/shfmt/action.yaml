@@ -27,24 +27,7 @@ runs:
         command: |
           set +e
           shfmt_diff=$(
-            {
-              find .github -type f -print0 |
-                while IFS= read -r -d '' file; do
-                  case "$file" in
-                    *.sh | *.bash | *.bats)
-                      printf '%s\0' "$file"
-                      continue
-                      ;;
-                  esac
-                  read -r first_line < "$file" || true
-                  case "$first_line" in
-                    '#!'*sh* | '#!'*bash* | '#!'*dash* | '#!'*ksh* | '#!'*zsh*)
-                      printf '%s\0' "$file"
-                      ;;
-                  esac
-                done
-              find .temporary -type f -name "*.sh" -print0
-            } |
+            bash .github/scripts/list_shell_files.sh |
               xargs -0 --no-run-if-empty shfmt -d -i 4 -ci -kp -bn -sr 2>&1
           )
           shfmt_status=$?
@@ -58,4 +41,3 @@ runs:
           if [ -n "${shfmt_diff}" ]; then
             exit 1
           fi
-
