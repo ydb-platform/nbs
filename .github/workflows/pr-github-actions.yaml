@@ -157,6 +157,11 @@ jobs:
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements_dev.txt
 
+      - name: install shell linters
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .github/packer/scripts/install-shell-linters.sh
+
       - name: Prepare s3
         if: ${{ env.ACT != 'true' }}
         id: s3

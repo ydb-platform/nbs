@@ -16,6 +16,9 @@ SHELLCHECK_RE = re.compile(
     r"^(?P<path>.*?):(?P<line>\d+):(?P<column>\d+): (?P<severity>[a-z]+): "
     r"(?P<message>.*?) \[(?P<code>SC\d+)\]$"
 )
+SHFMT_HUNK_RE = re.compile(
+    r"^@@ -(?P<old_line>\d+)(?:,\d+)? \+(?P<new_line>\d+)(?:,\d+)? @@"
+)
 
 
 def _read_log(path: Path) -> str:
@@ -135,12 +138,15 @@ def parse_shellcheck(log_text: str, elapsed: float, log_url: str) -> list[ET.Ele
 def parse_shfmt(log_text: str, elapsed: float, log_url: str) -> list[ET.Element]:
     cases = []
     current_path = ""
+    current_line = ""
     current_block: list[str] = []
 
     def add_current() -> None:
         if not current_path:
             return
         classname, name = _case_name_from_path(current_path)
+        if current_line:
+            name = f"{name}:{current_line}"
         cases.append(
             _make_case(
                 classname=classname,
@@ -154,10 +160,14 @@ def parse_shfmt(log_text: str, elapsed: float, log_url: str) -> list[ET.Element]
     for line in log_text.splitlines():
         if line.startswith("--- "):
             add_current()
+            current_line = ""
             current_block = [line]
             current_path = line.removeprefix("--- ").split("\t", 1)[0].strip()
             current_path = current_path.removesuffix(".orig")
             continue
+        hunk_match = SHFMT_HUNK_RE.match(line)
+        if hunk_match is not None and not current_line:
+            current_line = hunk_match.group("old_line")
         if current_block:
             current_block.append(line)
 
@@ -202,10 +212,14 @@ def build_cases(
     return [
         _make_case(
             classname=tool,
-            name=command,
+            name=title,
             elapsed=elapsed,
             log_url=log_url,
-            failure=log_text or f"{command} failed with exit code {exit_code}",
+            failure=(
+                f"Command failed with exit code {exit_code}:\n{command}\n\n{log_text}"
+                if log_text
+                else f"Command failed with exit code {exit_code}:\n{command}"
+            ),
         )
     ]
 

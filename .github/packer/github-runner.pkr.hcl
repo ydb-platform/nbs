@@ -127,6 +127,11 @@ build {
     destination = "${local.tmp_directory}/actions-runner-job-completed-cleanup.sh"
   }
 
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/install-shell-linters.sh"
+    destination = "${local.tmp_directory}/install-shell-linters.sh"
+  }
+
   provisioner "shell" {
     environment_vars = [
       "RUNNER_VERSION=${var.RUNNER_VERSION}",

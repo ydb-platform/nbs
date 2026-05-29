@@ -127,5 +127,28 @@ def test_lint_report_parses_shfmt_diff_blocks(tmp_path: Path) -> None:
     case = root.find(".//testcase")
     assert case is not None
     assert case.get("classname") == ".github/scripts"
-    assert case.get("name") == "foo.sh"
+    assert case.get("name") == "foo.sh:1"
     assert _statuses(junit) == [gs.TestStatus.FAIL]
+
+
+def test_lint_report_fallback_uses_title_for_missing_tools(tmp_path: Path) -> None:
+    cases = lr.build_cases(
+        tool="shellcheck",
+        title="GA Scripts shellcheck (.github)",
+        command="find .github -type f -print0 | xargs -0 shellcheck",
+        exit_code=127,
+        elapsed=1.0,
+        log_text="xargs: shellcheck: No such file or directory\n",
+        log_url="",
+    )
+    junit = tmp_path / "missing-tool.xml"
+    lr.write_junit(junit, cases)
+
+    root = ET.parse(junit).getroot()
+    case = root.find(".//testcase")
+    assert case is not None
+    assert case.get("classname") == "shellcheck"
+    assert case.get("name") == "GA Scripts shellcheck (.github)"
+    assert "xargs: shellcheck: No such file or directory" in (
+        case.find("failure").text or ""
+    )

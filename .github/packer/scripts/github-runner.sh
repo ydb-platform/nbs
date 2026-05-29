@@ -111,6 +111,8 @@ echo "install rxrpc /bin/false" > /etc/modprobe.d/disable-rxrpc.conf
 
 pip3 install -r /tmp/packer/requirements.txt
 
+bash /tmp/packer/install-shell-linters.sh
+
 YQ_VERSION=$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name')
 if [ -z "$YQ_VERSION" ] || [ "$YQ_VERSION" = "null" ]; then
     echo "Failed to resolve latest yq release"
