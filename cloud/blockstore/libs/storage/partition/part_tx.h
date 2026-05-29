@@ -484,8 +484,6 @@ struct TTxPartition
         TVector<TBlockMask> BlockMasks;
         TVector<NProto::TBlobMeta> BlobMetas;
 
-        TInstant TxStarted;
-
         TCompactionReadBlobInfo(
                 TRequestInfoPtr requestInfo,
                 TVector<TPartialBlobId> blobsToReadBlockMasks,
