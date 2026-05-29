@@ -370,11 +370,13 @@ void TBootstrapVhost::InitComponents()
         });
     }
 
-    if (!certPathList.empty()) {
-        CertificateProvider = CreateStaticCertificateProvider(
-            Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList));
-    }
+    CertificateProvider = CreateCertificateProvider(
+        Logging,
+        "FILESTORE_TLS_CERTIFICATE_PROVIDER",
+        serverCounters,
+        Configs->ServerConfig->GetRootCertsFile(),
+        std::move(certPathList),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     Server = CreateServer(
         Configs->ServerConfig,

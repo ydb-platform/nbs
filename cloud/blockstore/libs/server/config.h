@@ -150,6 +150,7 @@ public:
     bool GetEnableOverlappingRequestsGuard() const;
     bool GetEnableRequestSplitter() const;
     ui64 GetExternalVhostServerThreadPoolSize() const;
+     TDuration GetRefreshCertsPeriod() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
