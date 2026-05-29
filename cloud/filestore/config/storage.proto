@@ -771,7 +771,10 @@ message TStorageConfig
     // to optimize TReadDataActor performance.
     optional bool UseCustomReadDataResponseParser = 498;
 
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 499;
+ 
     // Restart index tablet on destroy with active sessions only if tablet
     // uptime is greater than this threshold. Zero disables restarts.
-    optional uint32 RestartTabletUptimeThresholdDuringDestroy = 499;
+    optional uint32 RestartTabletUptimeThresholdDuringDestroy = 500;
 }

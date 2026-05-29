@@ -404,6 +404,8 @@ public:
     [[nodiscard]] bool GetHideFileNamesInTabletDirectoryViewer() const;
 
     [[nodiscard]] bool GetUseCustomReadDataResponseParser() const;
+
+    [[nodiscard]] bool GetUseSchemeCache() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -168,6 +168,7 @@ class FilestoreDaemonConfigGenerator:
             "TABLET_OPS_HOST",
             "TENANT_POOL",
             "TX_PROXY",
+            "TX_PROXY_SCHEME_CACHE",
         ]
 
         filestore_services = [
