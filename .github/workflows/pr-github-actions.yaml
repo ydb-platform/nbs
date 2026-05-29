@@ -359,6 +359,7 @@ jobs:
           title: "GA Scripts flake8"
           tool: flake8
           report_name: ga-scripts-flake8
+          show_summary_table: "false"
           command: flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503 .github/
 
       - name: black
@@ -368,6 +369,7 @@ jobs:
           title: "GA Scripts black"
           tool: black
           report_name: ga-scripts-black
+          show_summary_table: "false"
           command: black --check .github/
 
       - name: pytest
@@ -455,8 +457,6 @@ jobs:
           BLACK_EXIT_CODE: ${{ steps.black.outputs.exit_code }}
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
-          FLAKE8_SUMMARY_MARKDOWN: ${{ steps.flake8.outputs.markdown }}
-          BLACK_SUMMARY_MARKDOWN: ${{ steps.black.outputs.markdown }}
           PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         with:
           script: |
@@ -466,24 +466,21 @@ jobs:
             const success = outcome == 'success' && flake8ExitCode == '0' && blackExitCode == '0';
             const status_emoji = success ? ':green_circle:' : ':red_circle:';
             const s3_path = process.env.S3_URL_PREFIX;
+            const flake8Status = flake8ExitCode == '0' ? ':green_circle:' : ':red_circle:';
+            const blackStatus = blackExitCode == '0' ? ':green_circle:' : ':red_circle:';
             let comment =
               'status: ' + status_emoji +
-              ' [GA scripts flake8 report (s3)](' + s3_path + '/test_reports/ga-scripts-flake8-report.html)' +
-              ' [GA scripts black report (s3)](' + s3_path + '/test_reports/ga-scripts-black-report.html)' +
               ' [GA scripts pytest result (artifact)](' + process.env.ARTIFACT_URL + ')' +
               ' [GA scripts pytest report (artifact)](' + process.env.HTML_ARTIFACT_URL + ')' +
               ' [GA scripts pytest report (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-report.html)' +
               ' [GA scripts pytest results (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-results.xml)';
 
-            if (process.env.FLAKE8_SUMMARY_MARKDOWN) {
-              comment += '\n\n' + process.env.FLAKE8_SUMMARY_MARKDOWN;
-            }
-            if (process.env.BLACK_SUMMARY_MARKDOWN) {
-              comment += '\n\n' + process.env.BLACK_SUMMARY_MARKDOWN;
-            }
             if (process.env.PYTEST_SUMMARY_MARKDOWN) {
               comment += '\n\n' + process.env.PYTEST_SUMMARY_MARKDOWN;
             }
+            comment +=
+              '\n\nblack - ' + blackStatus + ' [log](' + s3_path + '/test_reports/ga-scripts-black.log)' +
+              '\nflake8 - ' + flake8Status + ' [log](' + s3_path + '/test_reports/ga-scripts-flake8.log)';
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,

@@ -18,6 +18,10 @@ inputs:
     required: false
     default: "true"
     description: "Generate a passing report when the command succeeds without output"
+  show_summary_table:
+    required: false
+    default: "true"
+    description: "Add the generated markdown table to the job summary and outputs"
 
 outputs:
   exit_code:
@@ -51,6 +55,7 @@ runs:
         COMMAND: ${{ inputs.command }}
         REPORT_NAME: ${{ inputs.report_name }}
         REPORT_ON_SUCCESS: ${{ inputs.report_on_success }}
+        SHOW_SUMMARY_TABLE: ${{ inputs.show_summary_table }}
       run: |
         set -euo pipefail
 
@@ -110,16 +115,20 @@ runs:
           echo "log_path=${LOG_PATH}"
           echo "has_report=${has_report}"
           echo "markdown<<__PYTHON_LINT_MARKDOWN__"
-          cat "${markdown_out}"
+          if [ "${SHOW_SUMMARY_TABLE}" = "true" ]; then
+            cat "${markdown_out}"
+          fi
           echo "__PYTHON_LINT_MARKDOWN__"
         } >> "$GITHUB_OUTPUT"
 
         if [ "${has_report}" = "true" ]; then
           {
             echo "### ${TITLE} reports"
-            echo
-            cat "${markdown_out}"
-            echo
+            if [ "${SHOW_SUMMARY_TABLE}" = "true" ]; then
+              echo
+              cat "${markdown_out}"
+              echo
+            fi
             if [ "${ACT:-}" = "true" ]; then
               echo "- Local act run: reports were written to ${HTML_PATH}, ${JUNIT_PATH}, and ${LOG_PATH}"
             elif [ -n "${S3_URL_PREFIX:-}" ]; then
