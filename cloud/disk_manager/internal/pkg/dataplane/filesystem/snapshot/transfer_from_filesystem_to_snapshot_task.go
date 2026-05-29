@@ -114,7 +114,21 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 			nodesToSave = append(nodesToSave, nodes[i])
 		}
 
-		return t.nodesStorage.SaveNodes(ctx, snapshotID, nodesToSave)
+		err := t.nodesStorage.SaveNodes(ctx, snapshotID, nodesToSave)
+		if err != nil {
+			return err
+		}
+
+		logging.Debug(
+			ctx,
+			"saved filesystem nodes to snapshot: "+
+				"filesystem_id=%v snapshot_id=%v nodes=%v",
+			filesystem.GetFilesystemId(),
+			snapshotID,
+			nodesToSave,
+		)
+
+		return nil
 	})
 }
 

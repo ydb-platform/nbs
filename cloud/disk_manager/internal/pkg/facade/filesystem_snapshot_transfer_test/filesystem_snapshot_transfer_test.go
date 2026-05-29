@@ -161,8 +161,8 @@ func checkCopyFilesystemThroughSnapshot(
 	require.NotEmpty(t, dstNodes)
 	require.Equal(t, srcNodes, dstNodes)
 
-	srcPaths := filestoreClient.FindAllPaths(srcFilesystemID)
-	dstPaths := filestoreClient.FindAllPaths(dstFilesystemID)
+	srcPaths := filestoreClient.FindAllPaths(ctx, srcFilesystemID)
+	dstPaths := filestoreClient.FindAllPaths(ctx, dstFilesystemID)
 	require.NotEmpty(t, srcPaths)
 	require.NotEmpty(t, dstPaths)
 	require.Equal(t, srcPaths, dstPaths)
@@ -253,8 +253,8 @@ func TestFilesystemTraversalEmptyFilesystem(t *testing.T) {
 
 	require.Empty(t, listComparableNodes(t, ctx, nfsClient, srcFilesystemID))
 	require.Empty(t, listComparableNodes(t, ctx, nfsClient, dstFilesystemID))
-	require.Empty(t, filestoreClient.FindAllPaths(srcFilesystemID))
-	require.Empty(t, filestoreClient.FindAllPaths(dstFilesystemID))
+	require.Empty(t, filestoreClient.FindAllPaths(ctx, srcFilesystemID))
+	require.Empty(t, filestoreClient.FindAllPaths(ctx, dstFilesystemID))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

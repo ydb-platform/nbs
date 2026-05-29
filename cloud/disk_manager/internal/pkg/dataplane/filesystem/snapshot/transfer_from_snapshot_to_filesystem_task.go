@@ -156,6 +156,18 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 				return false, err
 			}
 
+			logging.Debug(
+				ctx,
+				"recovered filesystem hardlink source node from snapshot: "+
+					"snapshot_id=%v filesystem_id=%v source_node_id=%v "+
+					"node=%v dst_node_id=%v",
+				t.snapshotID(),
+				t.filesystemID(),
+				srcNodeID,
+				first,
+				dstNodeID,
+			)
+
 			newMappings[srcNodeID] = dstNodeID
 			nodes = nodes[1:]
 		}
@@ -167,6 +179,18 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 			if err != nil {
 				return false, err
 			}
+
+			logging.Debug(
+				ctx,
+				"recovered filesystem hardlink node from snapshot: "+
+					"snapshot_id=%v filesystem_id=%v source_node_id=%v "+
+					"node=%v dst_node_id=%v",
+				t.snapshotID(),
+				t.filesystemID(),
+				srcNodeID,
+				node,
+				dstNodeID,
+			)
 		}
 	}
 
@@ -315,6 +339,17 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 			if err != nil {
 				return err
 			}
+
+			logging.Debug(
+				ctx,
+				"recovered filesystem node from snapshot: "+
+					"snapshot_id=%v filesystem_id=%v "+
+					"node=%v dst_node_id=%v",
+				t.snapshotID(),
+				t.filesystemID(),
+				node,
+				dstNodeID,
+			)
 
 			if node.Type.IsDirectory() {
 				dirMapping[node.NodeID] = dstNodeID

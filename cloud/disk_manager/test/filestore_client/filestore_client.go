@@ -1,6 +1,7 @@
 package filestore_client
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/library/go/test/yatest"
 )
 
@@ -41,7 +43,10 @@ type FilestoreEntry struct {
 	Name    string
 }
 
-func (c *FilestoreClient) FindAll(filesystemID string) []FilestoreEntry {
+func (c *FilestoreClient) FindAll(
+	ctx context.Context,
+	filesystemID string,
+) []FilestoreEntry {
 	cmd := exec.Command(
 		c.binaryPath,
 		"find",
@@ -71,6 +76,14 @@ func (c *FilestoreClient) FindAll(filesystemID string) []FilestoreEntry {
 			DirPath: parts[0],
 			Name:    parts[1],
 		})
+
+		logging.Debug(
+			ctx,
+			"filestore-client find entry: filesystem_id=%s dir_path=%s name=%s",
+			filesystemID,
+			parts[0],
+			parts[1],
+		)
 	}
 
 	slices.SortFunc(entries, func(a, b FilestoreEntry) int {
@@ -84,8 +97,11 @@ func (c *FilestoreClient) FindAll(filesystemID string) []FilestoreEntry {
 	return entries
 }
 
-func (c *FilestoreClient) FindAllPaths(filesystemID string) []string {
-	entries := c.FindAll(filesystemID)
+func (c *FilestoreClient) FindAllPaths(
+	ctx context.Context,
+	filesystemID string,
+) []string {
+	entries := c.FindAll(ctx, filesystemID)
 	paths := make([]string, len(entries))
 	for i, e := range entries {
 		require.NotEmpty(c.t, e.DirPath)
