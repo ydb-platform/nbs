@@ -260,6 +260,99 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT(future.IsReady());
         future.GetValueSync();
     }
+
+    Y_UNIT_TEST(ShouldPublishCredentialsOnStart)
+    {
+        TCertificateProviderTestContext context;
+
+        UNIT_ASSERT(context.Provider->CreateSecureServerCredentials());
+        UNIT_ASSERT(context.Provider->CreateSecureClientCredentials());
+    }
+
+    Y_UNIT_TEST(ShouldSkipEmptyPairsInStaticProvider)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        const auto pair = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt"));
+
+        TVector<TCertificateFiles> certs{
+            {},
+            pair,
+            {},
+        };
+
+        auto provider = CreateStaticCertificateProvider(
+            rootPath,
+            std::move(certs));
+        UNIT_ASSERT(provider);
+        UNIT_ASSERT(provider->CreateSecureServerCredentials());
+        UNIT_ASSERT(provider->CreateSecureClientCredentials());
+    }
+
+    Y_UNIT_TEST(ShouldRejectStaticProviderIncompletePair)
+    {
+        UNIT_ASSERT_EXCEPTION(
+            CreateStaticCertificateProvider(
+                {},
+                {TCertificateFiles{.PrivateKeyPath = "/tmp/k"}}),
+            yexception);
+
+        UNIT_ASSERT_EXCEPTION(
+            CreateStaticCertificateProvider(
+                {},
+                {TCertificateFiles{.CertChainPath = "/tmp/c"}}),
+            yexception);
+    }
+
+    Y_UNIT_TEST(ShouldFallBackToStaticWhenRefreshIntervalIsZero)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        const auto pair = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt"));
+
+        auto provider = CreateCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            rootPath,
+            TVector<TCertificateFiles>{pair},
+            TDuration::Zero());
+
+        UNIT_ASSERT(provider);
+        UNIT_ASSERT(provider->CreateSecureServerCredentials());
+        UNIT_ASSERT(provider->CreateSecureClientCredentials());
+        UNIT_ASSERT(provider->UpdateCertificates().HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldFallBackToStubWhenNoCertificatesAndRefreshEnabled)
+    {
+        auto provider = CreateCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            /*rootCertPath=*/{},
+            /*certificates=*/{},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT(provider);
+        UNIT_ASSERT(provider->CreateSecureServerCredentials());
+        UNIT_ASSERT(provider->CreateSecureClientCredentials());
+        UNIT_ASSERT(provider->UpdateCertificates().HasValue());
+    }
 }
 
 }   // namespace NCloud

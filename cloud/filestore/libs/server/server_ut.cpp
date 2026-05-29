@@ -41,7 +41,7 @@ constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 ICertificateProviderPtr CreateServerCertificateProvider(
     const TServerConfigPtr& config,
-    ILoggingServicePtr /*logging*/)
+    ILoggingServicePtr logging)
 {
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: config->GetCerts()) {
@@ -51,9 +51,15 @@ ICertificateProviderPtr CreateServerCertificateProvider(
         });
     }
 
-    return CreateStaticCertificateProvider(
+    auto provider = CreateCertificateProvider(
+        std::move(logging),
+        "FILESTORE_SERVER_TEST_TLS",
+        nullptr,
         config->GetRootCertsFile(),
-        std::move(certPathList));
+        std::move(certPathList),
+        config->GetRefreshCertsPeriod());
+    provider->Start();
+    return provider;
 }
 
 ICertificateProviderPtr CreateClientCertificateProvider(
@@ -202,6 +208,12 @@ public:
         auto* c = ServerConfig.MutableCerts()->Add();
         c->SetCertFile(GetTestFilePath(certFileName));
         c->SetCertPrivateKeyFile(GetTestFilePath(certPrivateKeyFileName));
+        return *this;
+    }
+
+    TTestServerBuilder& SetRefreshCertsPeriod(TDuration period)
+    {
+        ServerConfig.SetRefreshCertsPeriod(period.MilliSeconds());
         return *this;
     }
 
@@ -626,7 +638,6 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
 
-
     Y_UNIT_TEST(ShouldHandleAuthRequestsWithMultipleCertificates)
     {
         TTestServerBuilder serverConfigBuilder;
@@ -870,6 +881,42 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             serverCounters->GetCounter("TotalMmapSizeBytes")->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldHandleAuthRequestsWithPeriodicCertificateProvider)
+    {
+        TTestServerBuilder serverConfigBuilder;
+        serverConfigBuilder.SetSecureEndpoint(
+            "certs/server.crt",
+            {{"certs/server.crt", "certs/server.key"}});
+        serverConfigBuilder.SetRefreshCertsPeriod(TDuration::Seconds(1));
+
+        TBootstrap<TServerSetup> bootstrap(serverConfigBuilder.BuildServerConfig());
+        bootstrap.Service->PingHandler =
+            [&] (auto callContext, auto request) {
+                Y_UNUSED(callContext);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "test",
+                    request->GetHeaders().GetInternal().GetAuthToken()
+                );
+                return MakeFuture<NProto::TPingResponse>();
+            };
+
+        TTestClientBuilder clientConfigBuilder;
+        clientConfigBuilder.SetSecureEndpoint(
+            "certs/server.crt",
+            "test");
+
+        auto client = bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
+        bootstrap.Start();
+
+        auto future = client->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>()
+        );
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
 }
 

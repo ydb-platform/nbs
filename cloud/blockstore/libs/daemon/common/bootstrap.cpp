@@ -313,6 +313,11 @@ void TBootstrapBase::Init()
         });
     }
 
+    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
+        ythrow yexception()
+            << "Secure port is configured without certificates";
+    }
+
     CertificateProvider = CreateCertificateProvider(
         Logging,
         "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",

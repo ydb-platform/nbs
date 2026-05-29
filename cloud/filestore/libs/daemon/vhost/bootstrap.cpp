@@ -370,6 +370,11 @@ void TBootstrapVhost::InitComponents()
         });
     }
 
+    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
+        ythrow yexception()
+            << "Secure port is configured without certificates";
+    }
+
     CertificateProvider = CreateCertificateProvider(
         Logging,
         "FILESTORE_TLS_CERTIFICATE_PROVIDER",

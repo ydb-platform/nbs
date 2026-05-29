@@ -1511,6 +1511,69 @@ Y_UNIT_TEST_SUITE(TServerTest)
         CheckDescribe(endpoint, "xyz", E_REJECTED);
         CheckDescribe(endpoint, "", S_OK);
     }
+
+    Y_UNIT_TEST(ShouldHandleAuthRequestsWithPeriodicCertificateProvider)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+        ui16 secureEndpointPort = portManager.GetPort(9003);
+
+        auto service = std::make_shared<TTestService>();
+        service->PingHandler =
+            [&] (std::shared_ptr<NProto::TPingRequest> request) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "test",
+                    request->GetHeaders().GetInternal().GetAuthToken()
+                );
+                return MakeFuture<NProto::TPingResponse>();
+            };
+
+        TTestFactory testFactory;
+
+        auto server = testFactory.CreateServerBuilder()
+            .SetSecureEndpoint(
+                secureEndpointPort,
+                "certs/server.crt",
+                "certs/server.crt",
+                "certs/server.key")
+            .SetRefreshCertsPeriod(TDuration::Seconds(1))
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildServer(service);
+
+        auto client = testFactory.CreateClientBuilder()
+            .SetSecureEndpoint(
+                secureEndpointPort,
+                "certs/server.crt",
+                "test")
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildClient();
+
+        server->Start();
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+            server->Stop();
+        };
+
+        auto endpoint = client->CreateEndpoint();
+        endpoint = testFactory.CreateDurableClient(std::move(endpoint));
+
+        endpoint->Start();
+        Y_DEFER {
+            endpoint->Stop();
+        };
+
+        auto future = endpoint->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>()
+        );
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

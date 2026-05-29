@@ -1,4 +1,5 @@
 #include "tls_certificate_provider.h"
+#include "tls_utils.h"
 
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
@@ -111,7 +112,7 @@ ICertificateProviderPtr CreateStaticCertificateProvider(
 {
     return std::make_shared<TStaticCertificateProvider>(
         rootCertPath,
-        std::move(certificates));
+        NTlsUtils::PrepareAndValidateCertificates(std::move(certificates)));
 }
 
 ICertificateProviderPtr CreateCertificateProviderStub()

@@ -84,7 +84,7 @@ private:
     const TString LogComponent;
     const NMonitoring::TDynamicCountersPtr ServerGroup;
     const TString RootCertPath;
-    const TDuration RefreshIntervalSec;
+    const TDuration RefreshInterval;
     mutable TMutex WakeupMutex;
     TMaybe<TString> RootCertificate;
     TVector<TCertificateState> Certificates;
@@ -106,12 +106,12 @@ public:
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
-            TDuration refreshIntervalSec)
+            TDuration refreshInterval)
         : Logging(std::move(logging))
         , LogComponent(std::move(logComponent))
         , ServerGroup(std::move(serverGroup))
         , RootCertPath(std::move(rootCertPath))
-        , RefreshIntervalSec(refreshIntervalSec)
+        , RefreshInterval(refreshInterval)
     {
         for (const auto& certificate: certificates) {
             Certificates.push_back({
@@ -173,7 +173,7 @@ protected:
             certificate.Metrics = std::move(certMetrics);
         }
 
-        UpdateCertificates();
+        UpdateCertificates(true);
         RefreshThread = std::make_unique<TThread>([this] { RunRefreshThread(); });
         RefreshThread->Start();
     }
@@ -215,7 +215,7 @@ private:
             std::unique_lock lock(WakeupMutex);
             const bool isRequested = Wakeup.WaitT(
                 WakeupMutex,
-                RefreshIntervalSec,
+                RefreshInterval,
                 [this] {
                     return Stopping.load() || UpdateRequested;
                 });
@@ -229,7 +229,7 @@ private:
             UpdateInProgress = true;
             lock.unlock();
 
-            UpdateCertificates();
+            UpdateCertificates(false);
             lock.lock();
             PendingUpdate.SetValue();
             UpdateInProgress = false;
@@ -237,7 +237,7 @@ private:
         }
     }
 
-    void UpdateCertificates()
+    void UpdateCertificates(bool initial)
     {
         TVector<TMaybe<PemKeyCertPairList>> identities(
             Certificates.size());
@@ -312,7 +312,7 @@ private:
             hasUpdates = true;
         }
 
-        if (hasUpdates) {
+        if (hasUpdates || initial) {
             static_cast<TDerived*>(this)->OnCertificateUpdated();
         }
     }
@@ -340,7 +340,7 @@ public:
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
-            TDuration refreshIntervalSec)
+            TDuration refreshInterval)
         : TPeriodicCertificateProviderBase<
             TGrpcPeriodicCertificateProvider>(
               std::move(logging),
@@ -348,7 +348,7 @@ public:
               std::move(serverGroup),
               std::move(rootCertPath),
               std::move(certificates),
-              refreshIntervalSec)
+              refreshInterval)
         , Distributor(
             grpc_core::MakeRefCounted<grpc_tls_certificate_distributor>())
     {
@@ -406,7 +406,6 @@ private:
         const bool needsRoot = !!GetRootCertPath();
         const bool rootInvalid = needsRoot && !rootCertificate.Defined();
 
-        bool changed = false;
         PemKeyCertPairList identityPairs;
 
         for (const auto& state: states) {
@@ -415,10 +414,9 @@ private:
                 identityPairs.end(),
                 pairs.begin(),
                 pairs.end());
-            changed = true;
         }
 
-        if (changed && !identityPairs.empty() &&
+        if (!identityPairs.empty() &&
             (!needsRoot || !rootInvalid))
         {
             Distributor->SetKeyMaterials(
@@ -487,7 +485,7 @@ public:
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
-            TDuration refreshIntervalSec)
+            TDuration refreshInterval)
         : HasRootCert(!!rootCertPath)
     {
         Provider = grpc_core::RefCountedPtr<TGrpcPeriodicCertificateProvider>(
@@ -497,7 +495,7 @@ public:
                 std::move(serverGroup),
                 std::move(rootCertPath),
                 std::move(certificates),
-                refreshIntervalSec));
+                refreshInterval));
 
         GrpcProvider =
             std::make_shared<TGrpcCertificateProvider>(Provider);
@@ -555,14 +553,17 @@ ICertificateProviderPtr CreateCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshIntervalSec)
+    TDuration refreshInterval)
 {
-    auto certs = NTlsUtils::PrepareAndValidateCertificates(std::move(certificates));
-
-    if (refreshIntervalSec == TDuration::Zero() || certs.empty()) {
+    if (refreshInterval == TDuration::Zero()) {
         return CreateStaticCertificateProvider(
             std::move(rootCertPath),
-            std::move(certs));
+            std::move(certificates));
+    }
+
+    auto certs = NTlsUtils::PrepareAndValidateCertificates(std::move(certificates));
+    if (certs.empty()) {
+        return CreateCertificateProviderStub();
     }
 
     return std::make_shared<TPeriodicCertificateProvider>(
@@ -571,7 +572,7 @@ ICertificateProviderPtr CreateCertificateProvider(
         std::move(serverGroup),
         std::move(rootCertPath),
         std::move(certs),
-        refreshIntervalSec);
+        refreshInterval);
 }
 
 }   // namespace NCloud
