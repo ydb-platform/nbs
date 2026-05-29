@@ -263,7 +263,7 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
             TStringBuilder()
             << "tabletId: " << TabletID() << ", error: " << errorMessage);
 
-        BecomeAux(ctx, STATE_BROKEN);
+        Suicide(ctx);
         return;
     }
 
