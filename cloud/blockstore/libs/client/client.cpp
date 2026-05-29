@@ -432,11 +432,7 @@ private:
             headers.SetRequestTimeout(requestTimeout.MilliSeconds());
         }
 
-        RequestId = headers.GetRequestId();
-        if (!RequestId) {
-            RequestId = CreateRequestId();
-            headers.SetRequestId(RequestId);
-        }
+        RequestId = EnsureRequestId(*Request);
 
         DiskId = GetDiskId(*Request);
 
