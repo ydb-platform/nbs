@@ -988,9 +988,135 @@ STFUNC(TCompactionActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 GetPercentage(ui64 total, ui64 real)
+class TCompactionBlockVisitor final
+    : public IFreshBlocksIndexVisitor
+    , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
+    , public IBlobsVisitor
 {
-    const double p = (real - total) * 100. / Max(total, 1UL);
+private:
+    TTxPartition::TRangeCompaction& Args;
+    const ui64 MaxCommitId;
+    const TCompactionMap& CompactionMap;
+    const ui64 TabletId;
+
+public:
+    TCompactionBlockVisitor(
+            TTxPartition::TRangeCompaction& args,
+            ui64 maxCommitId,
+            const TCompactionMap& compactionMap,
+            ui64 tabletId)
+        : Args(args)
+        , MaxCommitId(maxCommitId)
+        , CompactionMap(compactionMap)
+        , TabletId(tabletId)
+    {}
+
+    bool Visit(const TFreshBlock& block) override
+    {
+        Args.MarkBlock(
+            block.Meta.BlockIndex,
+            block.Meta.CommitId,
+            block.Content);
+        return true;
+    }
+
+    bool KeepTrackOfAffectedBlocks = false;
+
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset) override
+    {
+        if (commitId > MaxCommitId) {
+            return true;
+        }
+
+        Args.MarkBlock(
+            blockIndex,
+            commitId,
+            blobId,
+            blobOffset,
+            KeepTrackOfAffectedBlocks);
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        auto& ab = Args.AffectedBlobs[blobId];
+
+        ab.MaxCommitIdInCompactionRange =
+            std::max(commitId, ab.MaxCommitIdInCompactionRange);
+        ab.MinCommitIdInCompactionRange =
+            std::min(commitId, ab.MinCommitIdInCompactionRange);
+
+        if (commitId > MaxCommitId) {
+            return true;
+        }
+
+        STORAGE_VERIFY_C(
+            ab.CompactionRangeCount == 0 ||
+                ab.CompactionRangeCount == compactionRangeCount,
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            TStringBuilder()
+                << "Compaction range count mismatch, BlobId: " << blobId
+                << ", expected: " << ab.CompactionRangeCount
+                << ", actual: " << compactionRangeCount);
+
+        ab.CompactionRangeCount = compactionRangeCount;
+
+        Args.MarkBlock(
+            blockIndex,
+            commitId,
+            blobId,
+            blobOffset,
+            KeepTrackOfAffectedBlocks);
+        return true;
+    }
+
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    {
+        auto& ab = Args.AffectedBlobs[blobId];
+        ab.MaxCommitIdInCompactionRange = blobId.CommitId();
+        ab.MinCommitIdInCompactionRange = blobId.CommitId();
+        ab.CompactionRangeCount =
+            CompactionMap.GetRangeIndex(blockRange.End) -
+            CompactionMap.GetRangeIndex(blockRange.Start) + 1;
+        return true;
+    }
+
+    void Finish()
+    {
+        TVector<TPartialBlobId> blobIdsToDelete;
+
+        for (const auto& [blobId, ab]: Args.AffectedBlobs) {
+            if (ab.MinCommitIdInCompactionRange > MaxCommitId) {
+                blobIdsToDelete.push_back(blobId);
+            }
+        }
+
+        for (const auto& blobId: blobIdsToDelete) {
+            Args.AffectedBlobs.erase(blobId);
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 GetExcessPercentage(ui64 enumerator, ui64 denominator)
+{
+    if (enumerator < denominator) {
+        return 0;
+    }
+
+    const double p = (enumerator - denominator) * 100. / Max(denominator, 1UL);
     const double MAX_P = 1'000;
     return Min(p, MAX_P);
 }
@@ -1102,7 +1228,7 @@ private:
 
     [[nodiscard]] ui64 GetGarbagePercentage() const
     {
-        return GetPercentage(State.GetUsedBlocksCount(), GetBlockCount());
+        return GetExcessPercentage(GetBlockCount(), State.GetUsedBlocksCount());
     }
 
     [[nodiscard]] std::optional<TTriggerInfo>
@@ -1219,17 +1345,17 @@ private:
                 TopByGarbageIgnoringZeroed.UsedBlocksIgnoringZeroed() <=
                 TopByGarbageIgnoringZeroed.BlockCount);
 
-            diskGarbage = GetPercentage(
-                State.GetUsedBlocksIgnoringZeroed(),
-                GetBlockCount());
-            rangeGarbage = GetPercentage(
-                TopByGarbageIgnoringZeroed.UsedBlocksIgnoringZeroed(),
-                TopByGarbageIgnoringZeroed.BlockCount);
+            diskGarbage = GetExcessPercentage(
+                GetBlockCount(),
+                State.GetUsedBlocksIgnoringZeroed());
+            rangeGarbage = GetExcessPercentage(
+                TopByGarbageIgnoringZeroed.BlockCount,
+                TopByGarbageIgnoringZeroed.UsedBlocksIgnoringZeroed());
         } else {
             diskGarbage = GetGarbagePercentage();
-            rangeGarbage = GetPercentage(
-                TopGarbageRangeStat.UsedBlockCount,
-                TopGarbageRangeStat.BlockCount);
+            rangeGarbage = GetExcessPercentage(
+                TopGarbageRangeStat.BlockCount,
+                TopGarbageRangeStat.UsedBlockCount);
         }
 
         const bool diskGarbageBelowThreshold =
@@ -1330,12 +1456,13 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
 
     if (rangeThreshold && rangeRealCount > rangeThreshold) {
         thresholdPercentage =
-            GetPercentage(rangeThreshold, rangeRealCount);
+            GetExcessPercentage(rangeRealCount, rangeThreshold);
     }
 
     if (diskThreshold && diskRealCount > diskThreshold) {
         thresholdPercentage =
-            Max(thresholdPercentage, GetPercentage(diskThreshold, diskRealCount));
+            Max(thresholdPercentage,
+                GetExcessPercentage(diskRealCount, diskThreshold));
     }
 
     const auto compactionRangeCountPerRun =
