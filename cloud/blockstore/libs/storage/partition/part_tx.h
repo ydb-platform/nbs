@@ -443,6 +443,9 @@ struct TTxPartition
         TVector<TRangeCompaction> RangeCompactions;
         TInstant TxStarted;
 
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlockMasks;
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlobMetas;
+
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
@@ -465,6 +468,8 @@ struct TTxPartition
             for (auto& range: RangeCompactions) {
                 range.Clear();
             }
+            BlobsToReadBlockMasks.clear();
+            BlobsToReadBlobMetas.clear();
         }
     };
 
@@ -511,6 +516,7 @@ struct TTxPartition
             bool Filled = false;
             ui64 MaxCommitId = 0;
         };
+
         TVector<TBlockInfo> BlockInfos;
         ui32 FilledBlockCount = 0;
 
