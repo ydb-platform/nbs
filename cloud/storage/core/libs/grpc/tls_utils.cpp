@@ -59,9 +59,38 @@ TResultOrError<std::vector<TX509Ptr>> ParsePemCertificates(TStringBuf pem)
     return certificates;
 }
 
+bool IsEmptyPair(const TCertificateFiles& certPair)
+{
+    return !certPair.PrivateKeyPath && !certPair.CertChainPath;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TVector<TCertificateFiles> PrepareAndValidateCertificates(
+    TVector<TCertificateFiles> certificates)
+{
+    TVector<TCertificateFiles> res;
+    for (size_t i = 0; i < certificates.size(); ++i) {
+        auto& cert = certificates[i];
+        if (IsEmptyPair(cert)) {
+            continue;
+        }
+        if (!cert.PrivateKeyPath) {
+            ythrow yexception()
+                << "Empty PrivateKeyPath for certificate #"
+                << i;
+        }
+        if (!cert.CertChainPath) {
+            ythrow yexception()
+                << "Empty CertChainPath for certificate #"
+                << i;
+        }
+        res.emplace_back(std::move(cert));
+    }
+    return res;
+}
 
 TResultOrError<TString> TryReadFile(const TString& path)
 {

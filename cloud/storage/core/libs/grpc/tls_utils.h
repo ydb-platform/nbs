@@ -12,6 +12,9 @@ namespace NCloud::NTlsUtils {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVector<TCertificateFiles> PrepareAndValidateCertificates(
+    TVector<TCertificateFiles> certificates);
+
 TResultOrError<TString> TryReadFile(const TString& path);
 
 TResultOrError<void> IsValidPemCertificate(TStringBuf pem);
