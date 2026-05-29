@@ -263,6 +263,7 @@ public:
     ui64 GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio() const;
     ui64 GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity() const;
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
+    bool GetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
     bool GetUseUnlimitedBTreeNodeRefsCacheInMainTablet() const;
