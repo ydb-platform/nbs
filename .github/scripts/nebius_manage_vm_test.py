@@ -391,7 +391,7 @@ def test_resolve_runner_release_for_update_resolves_when_override_enabled(monkey
     assert calls == [("latest", "github-token")]
 
 
-def test_find_runner_by_name_retries_github_lookup_errors(monkeypatch):
+def test_wait_runner_by_name_retries_github_lookup_errors(monkeypatch):
     attempts = []
 
     class FakeRepo:
@@ -410,12 +410,12 @@ def test_find_runner_by_name_retries_github_lookup_errors(monkeypatch):
 
     monkeypatch.setattr(m.time, "sleep", sleeps.append)
 
-    assert m.find_runner_by_name(FakeGithub(), "owner", "repo", "vm-id") == "runner-id"
+    assert m.wait_runner_by_name(FakeGithub(), "owner", "repo", "vm-id") == "runner-id"
     assert len(attempts) == 2
     assert sleeps == [m.RUNNER_REGISTRATION_RETRY_INTERVAL_SEC]
 
 
-def test_find_runner_by_name_retries_missing_runner(monkeypatch):
+def test_wait_runner_by_name_retries_missing_runner(monkeypatch):
     runners_by_attempt = [
         [SimpleNamespace(name="another-vm", id="another-runner-id")],
         [SimpleNamespace(name="vm-id", id="runner-id")],
@@ -433,9 +433,30 @@ def test_find_runner_by_name_retries_missing_runner(monkeypatch):
 
     monkeypatch.setattr(m.time, "sleep", sleeps.append)
 
-    assert m.find_runner_by_name(FakeGithub(), "owner", "repo", "vm-id") == "runner-id"
+    assert m.wait_runner_by_name(FakeGithub(), "owner", "repo", "vm-id") == "runner-id"
     assert runners_by_attempt == []
     assert sleeps == [m.RUNNER_REGISTRATION_RETRY_INTERVAL_SEC]
+
+
+def test_find_runner_by_name_does_not_retry_missing_runner(monkeypatch):
+    attempts = []
+    sleeps = []
+
+    class FakeRepo:
+        def get_self_hosted_runners(self):
+            attempts.append(1)
+            return [SimpleNamespace(name="another-vm", id="another-runner-id")]
+
+    class FakeGithub:
+        def get_repo(self, repo_name):
+            assert repo_name == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setattr(m.time, "sleep", sleeps.append)
+
+    assert m.find_runner_by_name(FakeGithub(), "owner", "repo", "vm-id") is None
+    assert len(attempts) == 1
+    assert sleeps == []
 
 
 def test_retry_retries_async_function_and_passes_attempt(monkeypatch):

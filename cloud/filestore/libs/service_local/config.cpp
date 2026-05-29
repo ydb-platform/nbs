@@ -47,6 +47,7 @@ namespace {
     xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,      ui64,       100'000                   )\
+    xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\
     xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
     xxx(GuestPosixAclEnabled,           bool,       false                     )\
     xxx(SnapshotsDirEnabled,            bool,       false                     )\

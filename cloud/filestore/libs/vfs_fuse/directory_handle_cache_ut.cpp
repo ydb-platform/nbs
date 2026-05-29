@@ -7,6 +7,7 @@
 
 #include <util/folder/tempdir.h>
 #include <util/generic/buffer.h>
+#include <util/generic/size_literals.h>
 
 #include <algorithm>
 
@@ -57,16 +58,18 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
     TTempDir TempDir;
     TString StoragePath = TempDir.Path() / "directory_handles";
 
-    TDirectoryHandleStoragePtr CreateStorage()
+    TDirectoryHandleStoragePtr CreateStorage(
+        ui64 persistentHandleMaxSize = 2_GB)
     {
         return CreateDirectoryHandleStorage(
-            Log,
-            StoragePath,
-            32,
-            128,
-            128,
-            64,
-            Limiter);
+            {.Log = Log,
+             .FileMapMemoryLimiter = Limiter,
+             .FilePath = StoragePath,
+             .MaxRecords = 32,
+             .InitialDataAreaSize = 128,
+             .MaxDataAreaStepSize = 128,
+             .InitialDataMoveBufferSize = 64,
+             .PersistentHandleMaxSize = persistentHandleMaxSize});
     }
 
     TDirectoryHandleCache CreateCache(
@@ -107,7 +110,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 CreateContent(1024, 'x'),
                 1,
                 "next");
-            cache.AppendChunk(id, chunk);
+            cache.AppendChunk(id, handle, chunk);
 
             Limiter->CanIncreaseResult = true;
             chunk = handle->UpdateContent(
@@ -116,7 +119,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 CreateContent(1024, 'y'),
                 2,
                 {});
-            cache.AppendChunk(id, chunk);
+            cache.AppendChunk(id, handle, chunk);
 
             return id;
         }();
@@ -138,8 +141,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto handle = cache.FindHandle(id);
         UNIT_ASSERT(handle);
 
-        const auto serializedSize = handle->GetSerializedSize();
-        const auto chunkCount = handle->GetChunkCount();
+        const auto [serializedSize, chunkCount] = handle->GetMetrics();
 
         cache.RemoveHandle(id);
 
@@ -147,8 +149,10 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             handle->UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, {});
 
         UNIT_ASSERT_VALUES_EQUAL(1024, chunk.DirectoryContent.GetSize());
-        UNIT_ASSERT_GT(handle->GetSerializedSize(), serializedSize);
-        UNIT_ASSERT_VALUES_EQUAL(chunkCount + 1, handle->GetChunkCount());
+        const auto [updatedSerializedSize, updatedChunkCount] =
+            handle->GetMetrics();
+        UNIT_ASSERT_GT(updatedSerializedSize, serializedSize);
+        UNIT_ASSERT_VALUES_EQUAL(chunkCount + 1, updatedChunkCount);
     }
 
     Y_UNIT_TEST(ShouldNotStoreClosedHandleContentUpdate)
@@ -165,7 +169,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
             auto chunk =
                 handle->UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, {});
-            cache.AppendChunk(id, chunk);
+            cache.AppendChunk(id, handle, chunk);
 
             UNIT_ASSERT_VALUES_EQUAL(1024, chunk.DirectoryContent.GetSize());
         }
@@ -179,27 +183,90 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
     }
 
+    Y_UNIT_TEST(ShouldBypassStorageAfterPersistentHandleSizeLimitExceeded)
+    {
+        const ui64 handleId = [&]
+        {
+            auto cache = CreateCache(CreateStorage(512));
+
+            const ui64 id = cache.CreateHandle(42);
+            auto handle = cache.FindHandle(id);
+            UNIT_ASSERT(handle);
+
+            auto chunk =
+                handle->UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, {});
+            cache.AppendChunk(id, handle, chunk);
+
+            chunk = handle->UpdateContent(
+                1024,
+                1024,
+                CreateContent(1024, 'y'),
+                2,
+                {});
+            cache.AppendChunk(id, handle, chunk);
+
+            return id;
+        }();
+
+        auto storage = CreateStorage();
+
+        TDirectoryHandleMap handles;
+        storage->LoadHandles(handles);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
+        UNIT_ASSERT(!handles.contains(handleId));
+    }
+
+    Y_UNIT_TEST(ShouldDropLoadedHandleAbovePersistentHandleSizeLimit)
+    {
+        const ui64 handleId = 42;
+        {
+            auto storage = CreateStorage();
+            TDirectoryHandle handle(100);
+            storage->StoreHandle(
+                handleId,
+                handle,
+                TDirectoryHandleChunk{.Index = 100});
+
+            auto chunk =
+                handle.UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, {});
+            storage->UpdateHandle(handleId, handle, chunk);
+        }
+
+        auto storage = CreateStorage(512);
+
+        TDirectoryHandleMap handles;
+        storage->LoadHandles(handles);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
+        UNIT_ASSERT(!handles.contains(handleId));
+    }
+
     Y_UNIT_TEST(ShouldDropStoredHandleWithMissingOrDuplicatedUpdateVersion)
     {
         const ui64 handleId = 42;
         {
             auto storage = CreateStorage();
+            TDirectoryHandle handle(100);
 
-            storage->StoreHandle(handleId, TDirectoryHandleChunk{.Index = 100});
+            storage->StoreHandle(
+                handleId,
+                handle,
+                TDirectoryHandleChunk{.Index = 100});
 
             TDirectoryHandleChunk chunk1{
                 .Key = 1024,
                 .UpdateVersion = 2,
                 .Index = 100,
                 .DirectoryContent = {CreateContent(1024, 'x'), 0, 1024}};
-            storage->UpdateHandle(handleId, chunk1);
+            storage->UpdateHandle(handleId, handle, chunk1);
 
             TDirectoryHandleChunk chunk2{
                 .Key = 2048,
                 .UpdateVersion = 2,
                 .Index = 100,
                 .DirectoryContent = {CreateContent(1024, 'y'), 0, 1024}};
-            storage->UpdateHandle(handleId, chunk2);
+            storage->UpdateHandle(handleId, handle, chunk2);
         }
 
         auto storage = CreateStorage();

@@ -70,6 +70,8 @@ void FillFeatures(
     if (config.GetDirectoryHandlesStorageEnabled()) {
         features->SetDirectoryHandlesTableSize(
             config.GetDirectoryHandlesTableSize());
+        features->SetDirectoryHandlesPersistentHandleMaxSize(
+            config.GetDirectoryHandlesPersistentHandleMaxSize());
     }
 
     features->SetDirectoryCreationInShardsEnabled(
@@ -109,6 +111,9 @@ void FillFeatures(
         config.GetAddingUnconfirmedDataEnabled());
 
     features->SetUseListNodesInternal(config.GetUseListNodesInternal());
+
+    features->SetUseCustomReadDataResponseParser(
+        config.GetUseCustomReadDataResponseParser());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

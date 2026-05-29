@@ -188,6 +188,8 @@ private:
             return;
         }
 
+        EnsureRequestId(*request);
+
         TMethod::Execute(Client.get(), state->CallContext, std::move(request))
             .Subscribe(
                 [state = std::move(state), weakSelf = this->weak_from_this()](

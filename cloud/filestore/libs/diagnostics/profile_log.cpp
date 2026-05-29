@@ -97,7 +97,7 @@ void TProfileLog::Write(TRecord record)
 
 void TProfileLog::RegisterCounters(NMonitoring::TDynamicCounters& root)
 {
-    auto pg = root.GetSubgroup("component", "profile_log");
+    auto pg = root.GetSubgroup("counters", "profile_log");
     Counters.Requests = pg->GetCounter("Count", true);
     Counters.Bytes = pg->GetCounter("RequestBytes", true);
     Counters.Flushes = pg->GetCounter("FlushCount", true);

@@ -242,7 +242,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         ui64,                                                                  \
         0                                                                     )\
     xxx(InMemoryIndexCacheLoadOnTabletStart,            bool,       false     )\
-    xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       1000      )\
+    xxx(InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards,                   \
+        bool,                                                                  \
+        false                                                                 )\
+    xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       100'000   )\
     xxx(InMemoryIndexCacheLoadSchedulePeriod,                                  \
         TDuration,                                                             \
         TDuration::Seconds(0)                                                 )\
@@ -301,6 +304,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
     xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
+    xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\
     xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
     xxx(GuestPosixAclEnabled,              bool,      false                   )\
     xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
@@ -333,12 +337,20 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
                                                                                \
-    xxx(ForceDestroySizeThreshold,          ui32,       0                     )\
+    xxx(ForceDestroySizeThreshold,          ui64,       0                     )\
+                                                                               \
+    xxx(RestartTabletUptimeThresholdDuringDestroy,                             \
+        TDuration,                                                             \
+        TDuration::Zero()                                                     )\
                                                                                \
     xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
                                                                                \
     xxx(HideFileNamesInTabletDirectoryViewer,   bool,   false                 )\
+                                                                               \
+    xxx(UseCustomReadDataResponseParser,        bool,   false                 )\
+                                                                               \
+    xxx(UseSchemeCache,                         bool,   false                 )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

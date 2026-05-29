@@ -34,6 +34,10 @@ public:
         UserSession,    // UID-session keyring
     };
 
+    static ui32 SearchProcKeys(const TString& desc);
+    static bool
+    ParseProcKeysLine(const TString& line, const TString& desc, ui32& key);
+
     static TKeyring Create(ui32 keySerial);
     static TKeyring GetRoot(ERootKeyring keyring);
     static TKeyring GetProcKey(const TString& desc);
