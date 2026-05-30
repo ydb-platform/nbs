@@ -35,6 +35,9 @@
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
+#include <silk/fibers/fiber.h>
+#include <silk/util/init.h>
+
 namespace NCloud::NFileStore::NDaemon {
 
 using namespace NActors;
@@ -67,6 +70,10 @@ TBootstrapServer::~TBootstrapServer()
 
 void TBootstrapServer::StartComponents()
 {
+    if (FastShardServer) {
+        silk::initialize();
+        silk::FiberScheduler::initialize();
+    }
     FILESTORE_LOG_START_COMPONENT(FastShardServer);
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
     FILESTORE_LOG_START_COMPONENT(Service);
@@ -82,6 +89,10 @@ void TBootstrapServer::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
     FILESTORE_LOG_STOP_COMPONENT(FastShardServer);
+    if (FastShardServer) {
+        silk::FiberScheduler::destroy();
+        silk::destroy();
+    }
 }
 
 TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)
