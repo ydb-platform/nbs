@@ -17,6 +17,7 @@ PEERDIR(
     cloud/filestore/libs/service_local
     cloud/filestore/libs/service_null
     cloud/filestore/libs/storage/core
+    cloud/filestore/libs/storage/fastshard/server
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon
