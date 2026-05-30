@@ -701,6 +701,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
                                                                                \
     xxx(SplitByCompactionRangeMaxBlobCount,   ui64,        0                  )\
+                                                                               \
+    xxx(FlushThresholdPerTB,                  ui32,        0                  )\
+    xxx(FlushThresholdMax,                    ui32,        0                  )\
+    xxx(FlushThresholdMin,                    ui32,        4_MB               )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -1205,6 +1209,59 @@ TStorageConfigPtr TStorageConfig::Merge(
     return std::make_shared<TStorageConfig>(
         std::move(patchedConfigProto),
         config->Impl->FeaturesConfig);
+}
+
+TEffectiveFreshThresholds TStorageConfig::GetEffectiveFreshThresholds(
+    ui64 partitionDiskBytes) const
+{
+    const ui32 staticFlushThreshold = GetFlushThreshold();
+    const ui32 perTB = GetFlushThresholdPerTB();
+
+    TEffectiveFreshThresholds result{
+        staticFlushThreshold,
+        GetFreshBlobCountFlushThreshold(),
+        GetFreshBlobByteCountFlushThreshold(),
+        GetFreshByteCountHardLimit(),
+        GetFreshByteCountLimitForBackpressure(),
+        GetFreshByteCountThresholdForBackpressure(),
+    };
+
+    if (perTB == 0) {
+        return result;
+    }
+
+    const ui32 maxCap = GetFlushThresholdMax();
+    const ui32 minFloor = GetFlushThresholdMin();
+
+    const ui64 rawDynamic = (partitionDiskBytes * perTB) / 1_TB;
+    ui64 dynamicFlushThreshold =
+        maxCap ? Min<ui64>(rawDynamic, maxCap) : rawDynamic;
+    dynamicFlushThreshold = Max<ui64>(dynamicFlushThreshold, minFloor);
+
+    const double scale =
+        static_cast<double>(dynamicFlushThreshold) /
+        static_cast<double>(Max<ui32>(staticFlushThreshold, 1));
+
+    auto scaled = [&](ui32 v) {
+        const double scaled = static_cast<double>(v) * scale;
+        if (scaled >= static_cast<double>(Max<ui32>())) {
+            return Max<ui32>();
+        }
+        return static_cast<ui32>(scaled);
+    };
+
+    result.FlushThreshold = static_cast<ui32>(dynamicFlushThreshold);
+    result.FreshBlobCountFlushThreshold =
+        scaled(GetFreshBlobCountFlushThreshold());
+    result.FreshBlobByteCountFlushThreshold =
+        scaled(GetFreshBlobByteCountFlushThreshold());
+    result.FreshByteCountHardLimit = scaled(GetFreshByteCountHardLimit());
+    result.FreshByteCountLimitForBackpressure =
+        scaled(GetFreshByteCountLimitForBackpressure());
+    result.FreshByteCountThresholdForBackpressure =
+        scaled(GetFreshByteCountThresholdForBackpressure());
+
+    return result;
 }
 
 ui64 GetAllocationUnit(

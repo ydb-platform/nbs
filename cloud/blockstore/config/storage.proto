@@ -1575,4 +1575,17 @@ message TStorageServiceConfig
     // modification requests (AddHost, AddDevice, RemoveHost, RemoveDevice,
     // PurgeHost) are rejected with E_REJECTED. 0 means no limit.
     optional uint32 MaxInFlightCmsRequests = 498;
+
+    // Dynamic fresh sizing: bytes of FlushThreshold per TiB of per-partition
+    // disk size. 0 disables dynamic sizing (the static six fresh-related
+    // thresholds are used as-is).
+    optional uint32 FlushThresholdPerTB = 499;
+
+    // Upper cap (in bytes) for the dynamically computed FlushThreshold.
+    // Has effect only when FlushThresholdPerTB != 0. 0 means no cap.
+    optional uint32 FlushThresholdMax = 500;
+
+    // Lower floor (in bytes) for the dynamically computed FlushThreshold.
+    // Defaults to 4 MiB. Has effect only when FlushThresholdPerTB != 0.
+    optional uint32 FlushThresholdMin = 501;
 }

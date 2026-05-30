@@ -242,6 +242,22 @@ void TVolumeActor::SendRequestToPartition(
     bool isMultipartitionWriteOrZero = false;
     if (State->IsDiskRegistryMediaKind()) {
         partActorId = State->GetDiskRegistryBasedPartitionActor();
+    } else if (
+        State->GetPartitions().size() == 1 && IsReadMethod<TMethod>)
+    {
+        const auto& part = State->GetPartitions()[0];
+        const auto& relatedActors = part.RelatedActors;
+
+        // 2 actors: partition actor and fresh blocks writer actor. Fresh blocks
+        // writer just forwards the request to the partition. So we can skip
+        // this forward by sending event directly to the partition actor.
+        if (IsFreshBlocksWriterEnabled(part.TabletId) &&
+            relatedActors.Size() == 2)
+        {
+            partActorId = relatedActors.GetPartitionActor();
+        } else {
+            partActorId = relatedActors.GetTop();
+        }
     } else if (State->GetPartitions().size() == 1) {
         partActorId = State->GetPartitions()[0].GetTopActorId();
     } else {

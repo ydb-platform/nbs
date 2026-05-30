@@ -455,11 +455,12 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
     const auto freshBlobCount = State->GetUnflushedFreshBlobCount();
     const auto freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
+    const auto& freshThresholds = State->GetEffectiveFreshThresholds();
     const bool shouldFlush =
         !State->IsLoadStateFinished() ||
-        freshBlockByteCount >= Config->GetFlushThreshold() ||
-        freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
-        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
+        freshBlockByteCount >= freshThresholds.FlushThreshold ||
+        freshBlobCount >= freshThresholds.FreshBlobCountFlushThreshold ||
+        freshBlobByteCount >= freshThresholds.FreshBlobByteCountFlushThreshold;
 
     if (!shouldFlush) {
         return;

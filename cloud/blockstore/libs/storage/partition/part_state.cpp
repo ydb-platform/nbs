@@ -52,6 +52,7 @@ TPartitionState::TPartitionState(
         ui32 cleanupScoreHistorySize,
         const TBackpressureFeaturesConfig& bpConfig,
         const TFreeSpaceConfig& freeSpaceConfig,
+        const TEffectiveFreshThresholds& effectiveFreshThresholds,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
         ui32 reassignFreshChannelsPercentageThreshold,
@@ -80,6 +81,7 @@ TPartitionState::TPartitionState(
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
+    , EffectiveFreshThresholds(effectiveFreshThresholds)
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)

@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
@@ -293,6 +294,7 @@ private:
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
+    const TEffectiveFreshThresholds EffectiveFreshThresholds;
 
     TPartitionThreadSafeStatePtr ThreadSafeState;
 
@@ -304,6 +306,7 @@ public:
         ui32 cleanupScoreHistorySize,
         const TBackpressureFeaturesConfig& bpConfig,
         const TFreeSpaceConfig& freeSpaceConfig,
+        const TEffectiveFreshThresholds& effectiveFreshThresholds,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
         ui32 reassignFreshChannelsPercentageThreshold,
@@ -316,6 +319,11 @@ public:
         ui32 maxBLobsPerRange,
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState);
+
+    const TEffectiveFreshThresholds& GetEffectiveFreshThresholds() const
+    {
+        return EffectiveFreshThresholds;
+    }
 
 private:
     bool LoadStateFinished = false;

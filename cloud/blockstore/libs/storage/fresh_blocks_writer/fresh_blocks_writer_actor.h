@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
@@ -36,6 +37,7 @@ class TFreshBlocksWriterActor final
 private:
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
+    const TEffectiveFreshThresholds EffectiveFreshThresholds;
     const EStorageAccessMode StorageAccessMode;
     const ui64 PartitionTabletID;
     const NActors::TActorId PartitionActorId;

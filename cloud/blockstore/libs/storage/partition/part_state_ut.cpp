@@ -106,6 +106,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
+            TEffectiveFreshThresholds{},
             Max(),  // maxIORequestsInFlight
             0,      // reassignChannelsPercentageThreshold
             100,    // reassignFreshChannelsPercentageThreshold
@@ -176,6 +177,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
+            TEffectiveFreshThresholds{},
             Max(),  // maxIORequestsInFlight
             0,      // reassignChannelsPercentageThreshold
             100,    // reassignFreshChannelsPercentageThreshold
@@ -212,6 +214,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
+            TEffectiveFreshThresholds{},
             Max(),  // maxIORequestsInFlight
             0,      // reassignChannelsPercentageThreshold
             100,    // reassignFreshChannelsPercentageThreshold
@@ -298,6 +301,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
+            TEffectiveFreshThresholds{},
             Max(),  // maxIORequestsInFlight
             0,      // reassignChannelsPercentageThreshold
             100,    // reassignFreshChannelsPercentageThreshold
@@ -342,6 +346,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
+            TEffectiveFreshThresholds{},
             Max(),  // maxIORequestsInFlight
             0,      // reassignChannelsPercentageThreshold
             100,    // reassignFreshChannelsPercentageThreshold
@@ -482,6 +487,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
+            TEffectiveFreshThresholds{},
             Max(),  // maxIORequestsInFlight
             0,      // reassignChannelsPercentageThreshold
             100,    // reassignFreshChannelsPercentageThreshold
@@ -505,6 +511,62 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 100);
     }
 
+    Y_UNIT_TEST(ShouldCacheEffectiveFreshThresholds)
+    {
+        const TEffectiveFreshThresholds expected{
+            32_MB,    // FlushThreshold
+            25600,    // FreshBlobCountFlushThreshold
+            128_MB,   // FreshBlobByteCountFlushThreshold
+            2048_MB,  // FreshByteCountHardLimit
+            1024_MB,  // FreshByteCountLimitForBackpressure
+            320_MB,   // FreshByteCountThresholdForBackpressure
+        };
+
+        auto threadSafeState =
+            std::make_shared<TPartitionThreadSafeState>();
+        TPartitionState state(
+            DefaultConfig(1, 1000),
+            BuildDefaultCompactionPolicy(5),
+            0,  // compactionScoreHistorySize
+            0,  // cleanupScoreHistorySize
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            expected,
+            Max(),  // maxIORequestsInFlight
+            0,      // reassignChannelsPercentageThreshold
+            100,    // reassignFreshChannelsPercentageThreshold
+            100,    // reassignMixedChannelsPercentageThreshold
+            false,  // reassignSystemChannelsImmediately
+            5,      // channelCount
+            0,      // mixedIndexCacheSize
+            10000,  // allocationUnit
+            100,    // maxBlobsPerUnit
+            10,     // maxBlobsPerRange,
+            1,      // compactionRangeCountPerRun
+            threadSafeState
+        );
+
+        const auto& actual = state.GetEffectiveFreshThresholds();
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.FlushThreshold,
+            actual.FlushThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.FreshBlobCountFlushThreshold,
+            actual.FreshBlobCountFlushThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.FreshBlobByteCountFlushThreshold,
+            actual.FreshBlobByteCountFlushThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.FreshByteCountHardLimit,
+            actual.FreshByteCountHardLimit);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.FreshByteCountLimitForBackpressure,
+            actual.FreshByteCountLimitForBackpressure);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.FreshByteCountThresholdForBackpressure,
+            actual.FreshByteCountThresholdForBackpressure);
+    }
+
     Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
     {
         auto threadSafeState =
@@ -516,6 +578,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
+            TEffectiveFreshThresholds{},
             Max(),  // maxIORequestsInFlight
             0,      // reassignChannelsPercentageThreshold
             100,    // reassignFreshChannelsPercentageThreshold

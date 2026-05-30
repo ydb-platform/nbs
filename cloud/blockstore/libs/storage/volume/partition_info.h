@@ -111,8 +111,10 @@ public:
     void Clear();
     [[nodiscard]] bool Empty() const;
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
+    [[nodiscard]] size_t Size() const;
     [[nodiscard]] NActors::TActorId GetTop() const;
     [[nodiscard]] NActors::TActorId GetTopWrapper() const;
+    [[nodiscard]] NActors::TActorId GetPartitionActor() const;
 
     void UpdateStartInfo(const TPartitionStartInfo& startInfo);
     [[nodiscard]] TPartitionStartInfo GetStartInfo() const;

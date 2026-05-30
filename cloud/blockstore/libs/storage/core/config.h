@@ -33,6 +33,20 @@ using TPoolKindToMediaKindMapping =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Effective fresh-channel thresholds, optionally derived from per-partition
+// disk size. See TStorageConfig::GetEffectiveFreshThresholds.
+struct TEffectiveFreshThresholds
+{
+    ui32 FlushThreshold = 0;
+    ui32 FreshBlobCountFlushThreshold = 0;
+    ui32 FreshBlobByteCountFlushThreshold = 0;
+    ui32 FreshByteCountHardLimit = 0;
+    ui32 FreshByteCountLimitForBackpressure = 0;
+    ui32 FreshByteCountThresholdForBackpressure = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageConfig
 {
 private:
@@ -819,6 +833,13 @@ public:
     [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
 
     [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
+
+    [[nodiscard]] ui32 GetFlushThresholdPerTB() const;
+    [[nodiscard]] ui32 GetFlushThresholdMax() const;
+    [[nodiscard]] ui32 GetFlushThresholdMin() const;
+
+    [[nodiscard]] TEffectiveFreshThresholds GetEffectiveFreshThresholds(
+        ui64 partitionDiskBytes) const;
 };
 
 ui64 GetAllocationUnit(

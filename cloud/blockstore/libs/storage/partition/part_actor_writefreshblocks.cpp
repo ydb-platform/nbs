@@ -40,8 +40,8 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    if (State->GetUnflushedFreshBlobByteCount()
-            >= Config->GetFreshByteCountHardLimit())
+    if (State->GetUnflushedFreshBlobByteCount() >=
+        State->GetEffectiveFreshThresholds().FreshByteCountHardLimit)
     {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
@@ -443,7 +443,7 @@ void TPartitionActor::ZeroFreshBlocks(
         "All small writes should be handled by TFreshBlockWriter");
 
     if (State->GetUnflushedFreshBlobByteCount() >=
-        Config->GetFreshByteCountHardLimit())
+        State->GetEffectiveFreshThresholds().FreshByteCountHardLimit)
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);

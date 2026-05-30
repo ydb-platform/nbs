@@ -32,7 +32,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
     }
 
     if (SharedState->UnflushedFreshBlobByteCount.load() >=
-        Config->GetFreshByteCountHardLimit())
+        EffectiveFreshThresholds.FreshByteCountHardLimit)
     {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
@@ -140,7 +140,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     TBlockRange32 writeRange)
 {
     if (SharedState->UnflushedFreshBlobByteCount.load() >=
-        Config->GetFreshByteCountHardLimit())
+        EffectiveFreshThresholds.FreshByteCountHardLimit)
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
