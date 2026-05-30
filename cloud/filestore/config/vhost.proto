@@ -18,6 +18,14 @@ message TServiceEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum ESideChannelType
+{
+    SCT_NONE = 0;
+    SCT_TCP = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TVhostServiceConfig
 {
     // Endpoints mapping.
@@ -97,6 +105,10 @@ message TVhostServiceConfig
     // cached state instead of expanding file mappings.
     // Value 0 disables the limit and uses a permissive stub limiter.
     optional uint64 FileMapMemoryLimit = 23;
+
+    // Whether to use a direct service <-> shard side-channel for
+    // latency-critical requests instead of actor system.
+    optional ESideChannelType SideChannelType = 24;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
