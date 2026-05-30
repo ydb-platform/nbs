@@ -255,5 +255,6 @@ NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
 TString PoolKindToString(const NProto::EDevicePoolKind poolKind);
 
 bool IsNotFoundSchemeShardError(const NProto::TError& error);
+bool IsDiskNotFoundError(const NProto::TError& error);
 
 }   // namespace NCloud::NBlockStore::NStorage

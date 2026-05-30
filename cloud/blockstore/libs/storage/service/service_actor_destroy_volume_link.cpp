@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -114,15 +115,10 @@ void TDestroyVolumeLinkActor::HandleUnlinkLeaderVolumeFromFollowerResponse(
             LeaderDiskId.Quote().data(),
             FormatError(error).data());
 
-        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-            auto status = static_cast<NKikimrScheme::EStatus>(
-                STATUS_FROM_CODE(error.GetCode()));
-            // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
-            if (status == NKikimrScheme::StatusPathDoesNotExist) {
-                // Leader disk not found. Try to remove on follower.
-                RemoveLinkOnFollower(ctx);
-                return;
-            }
+        if (IsDiskNotFoundError(error)) {
+            // Leader disk not found. Try to remove on follower.
+            RemoveLinkOnFollower(ctx);
+            return;
         }
     }
 
