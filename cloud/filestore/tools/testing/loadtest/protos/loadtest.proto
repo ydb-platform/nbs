@@ -124,6 +124,25 @@ message TReplaySpec
     string ReplayTimeTill = 15;
 }
 
+message TFastShardLoadSpec
+{
+    message TAction
+    {
+        EAction Action = 1;
+        uint32 Rate = 2;
+    }
+
+    // Port of the fastshard TCP server to connect to.
+    uint32 FastShardPort = 1;
+    // Filesystem id of the shard to route requests to.
+    string ShardFileSystemId = 2;
+    uint32 ReadBytes = 3;
+    uint32 WriteBytes = 4;
+    // Amount of data written to each newly created file before it enters the pool.
+    uint64 InitialFileSize = 5;
+    repeated TAction Actions = 6;
+}
+
 message TDatashardLikeLoadSpec
 {
     message TAction
@@ -171,6 +190,7 @@ message TLoadTest
         TReplaySpec ReplayFsSpec = 17;
         TReplaySpec ReplayGrpcSpec = 18;
         TDatashardLikeLoadSpec DatashardLikeLoadSpec = 20;
+        TFastShardLoadSpec FastShardLoadSpec = 21;
     }
 
     uint32 IODepth = 10;

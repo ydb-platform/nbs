@@ -19,6 +19,9 @@ PEERDIR(
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/fastshard/server
 
+    contrib/libs/silk/src/fibers
+    contrib/libs/silk/src/util
+
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/diagnostics
