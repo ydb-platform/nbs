@@ -884,6 +884,9 @@ class TSnapshotEncryptionClient final
 private:
     const NProto::TEncryptionDesc EncryptionDesc;
 
+    ui32 BlockSize = 0;
+    TString ZeroBlock;
+
     TLog Log;
 
 public:
@@ -908,11 +911,18 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override;
 
+    TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override;
+
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override;
 
 private:
+    void HandleMountVolumeResponse(
+        const NProto::TMountVolumeResponse& response);
+
     static NProto::TReadBlocksResponse HandleReadBlocksResponse(
         NProto::TReadBlocksResponse response);
 
@@ -942,9 +952,26 @@ TFuture<NProto::TMountVolumeResponse> TSnapshotEncryptionClient::MountVolume(
     encryption.SetMode(EncryptionDesc.GetMode());
     encryption.SetKeyHash(EncryptionDesc.GetKeyHash());
 
-    return Client->MountVolume(
+    auto future = Client->MountVolume(
         std::move(callContext),
         std::move(request));
+
+    return future.Apply([this] (const auto& f) {
+        const auto& response = f.GetValue();
+        if (!HasError(response)) {
+            HandleMountVolumeResponse(response);
+        }
+        return response;
+    });
+}
+
+void TSnapshotEncryptionClient::HandleMountVolumeResponse(
+    const NProto::TMountVolumeResponse& response)
+{
+    if (BlockSize == 0) {
+        BlockSize = response.GetVolume().GetBlockSize();
+        ZeroBlock = TString(BlockSize, 0);
+    }
 }
 
 TFuture<NProto::TReadBlocksResponse> TSnapshotEncryptionClient::ReadBlocks(
@@ -1021,16 +1048,70 @@ NProto::TReadBlocksLocalResponse TSnapshotEncryptionClient::HandleReadBlocksLoca
     return response;
 }
 
+TFuture<NProto::TWriteBlocksLocalResponse> TSnapshotEncryptionClient::WriteBlocksLocal(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+{
+    return Client->WriteBlocksLocal(
+        std::move(callContext),
+        std::move(request));
+}
+
 TFuture<NProto::TZeroBlocksResponse> TSnapshotEncryptionClient::ZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
-    Y_UNUSED(callContext);
-    Y_UNUSED(request);
+    if (request->GetBlocksCount() == 0 || BlockSize == 0) {
+        return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
+            E_ARGUMENT,
+            "Request size should not be zero");
+    }
 
-    return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
-        E_NOT_IMPLEMENTED,
-        "ZeroBlocks requests not supported by snapshot encryption client");
+    STORAGE_VERIFY(
+        BlockSize <= ZeroBlock.size(),
+        TWellKnownEntityTypes::DISK,
+        request->GetDiskId());
+
+    TBlockDataRef zeroDataRef(ZeroBlock.data(), BlockSize);
+    TSgList zeroSgList(request->GetBlocksCount(), zeroDataRef);
+    TGuardedSgList guardedSgList(std::move(zeroSgList));
+
+    auto writeRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+    writeRequest->MutableHeaders()->CopyFrom(request->GetHeaders());
+    writeRequest->SetDiskId(request->GetDiskId());
+    writeRequest->SetStartIndex(request->GetStartIndex());
+    writeRequest->SetFlags(request->GetFlags());
+    writeRequest->SetSessionId(request->GetSessionId());
+    writeRequest->SetBlockSize(BlockSize);
+    writeRequest->BlocksCount = request->GetBlocksCount();
+    writeRequest->Sglist = guardedSgList;
+
+    auto future = WriteBlocksLocal(
+        std::move(callContext),
+        std::move(writeRequest));
+
+    return future.Apply(
+        [sgList = std::move(guardedSgList)](const auto& f) mutable
+        {
+            sgList.Close();
+
+            const auto& response = f.GetValue();
+
+            NProto::TZeroBlocksResponse zeroResponse;
+            const auto& trace = response.GetHeaders().HasTrace()
+                                    ? response.GetHeaders().GetTrace()
+                                    : response.GetDeprecatedTrace();
+            const ui64 throttlerDelay =
+                Max(response.GetDeprecatedThrottlerDelay(),
+                    response.GetHeaders().GetThrottler().GetDelay());
+            zeroResponse.MutableError()->CopyFrom(response.GetError());
+            zeroResponse.MutableDeprecatedTrace()->CopyFrom(trace);
+            zeroResponse.MutableHeaders()->MutableTrace()->CopyFrom(trace);
+            zeroResponse.SetDeprecatedThrottlerDelay(throttlerDelay);
+            zeroResponse.MutableHeaders()->MutableThrottler()->SetDelay(
+                throttlerDelay);
+            return zeroResponse;
+        });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
