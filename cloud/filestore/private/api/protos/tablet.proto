@@ -455,6 +455,9 @@ message TGenerateBlobIdsRequest
     // Unaligned head/tail data for internal AddData (used when tablet does
     // AddData internally in the unconfirmed flow).
     repeated TFreshDataRange UnalignedDataRanges = 7;
+
+    // If true, the service is ready to use the unconfirmed data flow.
+    bool UnconfirmedFlowRequested = 8;
 }
 
 message TGeneratedBlob

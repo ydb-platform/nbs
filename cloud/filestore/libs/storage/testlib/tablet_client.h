@@ -929,7 +929,8 @@ public:
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
-        ui64 length)
+        ui64 length,
+        bool unconfirmedFlowRequested = true)
     {
         auto request =
             CreateSessionRequest<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
@@ -937,6 +938,7 @@ public:
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetLength(length);
+        request->Record.SetUnconfirmedFlowRequested(unconfirmedFlowRequested);
         return request;
     }
 

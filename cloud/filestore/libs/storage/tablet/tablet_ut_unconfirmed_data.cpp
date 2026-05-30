@@ -253,6 +253,36 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             ReadData(tablet, handle, expected.size(), 0));
     }
 
+    Y_UNIT_TEST(ShouldNotEnableUnconfirmedFlowUnlessRequested)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto gbi = tablet.GenerateBlobIds(
+            id,
+            handle,
+            0,
+            block,
+            false /* unconfirmedFlowRequested */);
+
+        UNIT_ASSERT(!gbi->Record.GetUnconfirmedFlowEnabled());
+        AssertStorageStats(tablet, 0, 0);
+    }
+
     Y_UNIT_TEST(ShouldConfirmUnalignedHeadAndTailData)
     {
         constexpr ui32 block = 4_KB;
