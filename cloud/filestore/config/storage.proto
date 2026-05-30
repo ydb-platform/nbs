@@ -785,4 +785,9 @@ message TStorageConfig
 
     // Maximum serialized size of one persistent handle.
     optional uint64 DirectoryHandlesPersistentHandleMaxSize = 502;
+
+    // Enable the silk-based fastshard TCP server. When enabled, adapter-
+    // mode tablets register their IFileSystemShard with this server,
+    // allowing direct TCP access to shard operations.
+    optional uint32 FastShardServerPort = 503;
 }

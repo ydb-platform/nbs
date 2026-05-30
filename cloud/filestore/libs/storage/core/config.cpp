@@ -351,6 +351,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UseCustomReadDataResponseParser,        bool,   false                 )\
                                                                                \
     xxx(UseSchemeCache,                         bool,   false                 )\
+                                                                               \
+    xxx(FastShardServerPort,                    ui32,   0                     )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
