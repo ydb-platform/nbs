@@ -1000,7 +1000,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         const ui64 requestId = 111;
         const ui32 shardNo = 222;
-        tablet.ConfigureAsShard(shardNo);
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
 
         {
             tablet.SendCreateNodeRequest(
