@@ -1,14 +1,15 @@
 #include "service.h"
 
+#include "handler_actor.h"
+#include "methods.h"
+#include "request_actor.h"
+#include "stream_request_actor.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NCloud::NFileStore {
 
@@ -18,383 +19,6 @@ using namespace NThreading;
 using namespace NCloud::NFileStore::NStorage;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr auto RequestName = TStringBuf(#name);                 \
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-                                                                               \
-        using TRequestEvent = TEvService::TEv##name##Request;                  \
-        using TResponseEvent = TEvService::TEv##name##Response;                \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
-
-FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD)
-
-#undef FILESTORE_DECLARE_METHOD
-
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr auto RequestName = TStringBuf(#name);                 \
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
-
-FILESTORE_LOCAL_DATA_METHODS(FILESTORE_DECLARE_METHOD)
-
-#undef FILESTORE_DECLARE_METHOD
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<TMethod>>
-{
-    using TThis = TRequestActor<TMethod>;
-    using TBase = TActorBootstrapped<TThis>;
-
-    using TRequest = typename TMethod::TRequest;
-    using TResponse = typename TMethod::TResponse;
-
-    using TRequestEvent = typename TMethod::TRequestEvent;
-    using TResponseEvent = typename TMethod::TResponseEvent;
-
-private:
-    TCallContextPtr CallContext;
-    std::shared_ptr<TRequest> Request;
-    TPromise<TResponse> Response;
-
-public:
-    static constexpr const char ActorName[] = "NCloud::NFileStore::TRequestActor<T>";
-
-public:
-    TRequestActor(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            TPromise<TResponse> response)
-        : CallContext(std::move(callContext))
-        , Request(std::move(request))
-        , Response(std::move(response))
-    {}
-
-    void Bootstrap(const TActorContext& ctx)
-    {
-        TThis::Become(&TThis::StateWork);
-
-        SendRequest(ctx);
-    }
-
-private:
-    void SendRequest(const TActorContext& ctx)
-    {
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-            TMethod::RequestName << " send request");
-
-        auto request = std::make_unique<TRequestEvent>(
-            CallContext,
-            *Request
-        );
-
-        NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
-    }
-
-    void HandleResponse(
-        const typename TResponseEvent::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        auto* msg = ev->Get();
-
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-            TMethod::RequestName << " response received");
-
-        try {
-            Response.SetValue(std::move(msg->Record));
-        } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-                TMethod::RequestName << " exception in callback: "
-                << CurrentExceptionMessage());
-        }
-
-        TThis::Die(ctx);
-    }
-
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            HFunc(TResponseEvent, HandleResponse);
-
-            default:
-                HandleUnexpectedEvent(
-                    ev,
-                    TFileStoreComponents::SERVICE_PROXY,
-                    __PRETTY_FUNCTION__);
-                break;
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
-class TMethodHandler final
-{
-    using TRequest = typename TMethod::TRequest;
-    using TResponse = typename TMethod::TResponse;
-
-    using TRequestEvent = typename TMethod::TRequestEvent;
-    using TResponseEvent = typename TMethod::TResponseEvent;
-
-private:
-    THashMap<ui64, TPromise<TResponse>> Responses;
-    ui64 Cookie = 0;
-    TAdaptiveLock Lock;
-
-public:
-    void SendRequest(
-        IActorSystem& actorSystem,
-        TCallContextPtr callContext,
-        const TRequest& request,
-        TPromise<TResponse> promise,
-        TActorId actorId)
-    {
-        ui64 cookie = 0;
-        with_lock (Lock) {
-            cookie = ++Cookie;
-            Responses[cookie] = std::move(promise);
-        }
-
-        auto event = std::make_unique<IEventHandle>(
-            MakeStorageServiceId(),
-            actorId,
-            std::make_unique<TRequestEvent>(
-                std::move(callContext),
-                request).release(),
-            0 /* flags */,
-            cookie,
-            nullptr /* forwardOnNondelivery */);
-
-        actorSystem.Send(std::move(event));
-    }
-
-    void HandleResponse(
-        const typename TResponseEvent::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        auto* msg = ev->Get();
-
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-            TMethod::RequestName << " response received");
-
-        TPromise<TResponse> promise;
-        with_lock (Lock) {
-            auto it = Responses.find(ev->Cookie);
-            if (it != Responses.end()) {
-                promise = std::move(it->second);
-                Responses.erase(it);
-            }
-        }
-
-        if (!promise.Initialized()) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-                TMethod::RequestName << " unknown cookie: " << ev->Cookie);
-            return;
-        }
-
-        try {
-            promise.SetValue(std::move(msg->Record));
-        } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-                TMethod::RequestName << " exception in callback: "
-                << CurrentExceptionMessage());
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct THandler
-{
-    TActorId SelfId;
-
-public:
-#define FILESTORE_SEND_REQUEST(name, ...)                                      \
-    TMethodHandler<T##name##Method> name##Handler;                             \
-    void SendRequest(                                                          \
-        IActorSystem& actorSystem,                                             \
-        TCallContextPtr callContext,                                           \
-        NProto::T##name##Request request,                                      \
-        TPromise<T##name##Method::TResponse> promise)                          \
-    {                                                                          \
-        name##Handler.SendRequest(                                             \
-            actorSystem,                                                       \
-            std::move(callContext),                                            \
-            std::move(request),                                                \
-            std::move(promise),                                                \
-            SelfId);                                                           \
-    }                                                                          \
-// FILESTORE_SEND_REQUEST
-
-FILESTORE_REMOTE_SERVICE(FILESTORE_SEND_REQUEST)
-
-#undef FILESTORE_SEND_REQUEST
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class THandlerActor final
-    : public TActor<THandlerActor>
-{
-private:
-    std::shared_ptr<THandler> Impl;
-
-public:
-    explicit THandlerActor(std::shared_ptr<THandler> impl)
-        : TActor<THandlerActor>(&THandlerActor::StateWork)
-        , Impl(std::move(impl))
-    {}
-
-public:
-    static constexpr const char ActorName[] =
-        "NCloud::NFileStore::THandlerActor";
-
-public:
-#define FILESTORE_HANDLE_RESPONSE_IMPL(name, ...)                              \
-    HFunc(T##name##Method::TResponseEvent, Impl->name##Handler.HandleResponse);\
-// FILESTORE_HANDLE_RESPONSE_IMPL
-
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_RESPONSE_IMPL)
-
-            default:
-                HandleUnexpectedEvent(
-                    ev,
-                    TFileStoreComponents::SERVICE_PROXY,
-                    __PRETTY_FUNCTION__);
-                break;
-        }
-    }
-
-#undef FILESTORE_HANDLE_RESPONSE_IMPL
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
-class TStreamRequestActor final
-    : public TActorBootstrapped<TStreamRequestActor<TMethod>>
-{
-    using TThis = TStreamRequestActor<TMethod>;
-    using TBase = TActorBootstrapped<TThis>;
-
-    using TRequest = typename TMethod::TRequest;
-    using TResponse = typename TMethod::TResponse;
-
-    using TRequestEvent = typename TMethod::TRequestEvent;
-    using TResponseEvent = typename TMethod::TResponseEvent;
-
-private:
-    TCallContextPtr CallContext;
-    std::shared_ptr<TRequest> Request;
-    IResponseHandlerPtr<TResponse> ResponseHandler;
-
-public:
-    TStreamRequestActor(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            IResponseHandlerPtr<TResponse> responseHandler)
-        : CallContext(std::move(callContext))
-        , Request(std::move(request))
-        , ResponseHandler(std::move(responseHandler))
-    {}
-
-    void Bootstrap(const TActorContext& ctx)
-    {
-        TThis::Become(&TThis::StateWork);
-        SendRequest(ctx);
-    }
-
-private:
-    void SendRequest(const TActorContext& ctx)
-    {
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-            TMethod::RequestName << " send request");
-
-        auto request = std::make_unique<TRequestEvent>(
-            CallContext,
-            *Request
-        );
-
-        // HACK: we use cookie as a marker for streaming requests
-        NCloud::Send(
-            ctx,
-            MakeStorageServiceId(),
-            std::move(request),
-            TEvService::StreamCookie);
-    }
-
-    void HandleResponse(
-        const typename TResponseEvent::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        auto* msg = ev->Get();
-
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-            TMethod::RequestName << " response received");
-
-        try {
-            ResponseHandler->HandleResponse(msg->Record);
-        } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-                TMethod::RequestName << " exception in callback: "
-                << CurrentExceptionMessage());
-        }
-    }
-
-    void HandleCompleted(
-        const TEvents::TEvCompleted::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        auto* msg = ev->Get();
-
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-            TMethod::RequestName << " request completed");
-
-        try {
-            ResponseHandler->HandleCompletion(MakeError(msg->Status));
-        } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-                TMethod::RequestName << " exception in callback: "
-                << CurrentExceptionMessage());
-        }
-
-        TThis::Die(ctx);
-    }
-
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            HFunc(TResponseEvent, HandleResponse);
-            HFunc(TEvents::TEvCompleted, HandleCompleted)
-
-            default:
-                HandleUnexpectedEvent(
-                    ev,
-                    TFileStoreComponents::SERVICE_PROXY,
-                    __PRETTY_FUNCTION__);
-                break;
-        }
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -442,7 +66,7 @@ public:
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
         auto response = NewPromise<NProto::T##name##Response>();               \
-        ExecuteRequest<T##name##Method>(                                       \
+        ExecuteRequest<T##name##ServiceMethod>(                                \
             std::move(callContext),                                            \
             std::move(request),                                                \
             response);                                                         \
@@ -457,9 +81,10 @@ public:
     void GetSessionEventsStream(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse>
+        responseHandler) override
     {
-        ExecuteStreamRequest<TGetSessionEventsMethod>(
+        ExecuteStreamRequest<TGetSessionEventsServiceMethod>(
             std::move(callContext),
             std::move(request),
             std::move(responseHandler));
@@ -470,7 +95,7 @@ public:
         std::shared_ptr<NProto::TReadDataLocalRequest> request) override
     {
         auto response = NewPromise<NProto::TReadDataResponse>();
-        ExecuteRequest<TReadDataMethod>(
+        ExecuteRequest<TReadDataServiceMethod>(
             std::move(callContext),
             std::move(request),
             response);
@@ -487,7 +112,7 @@ public:
         std::shared_ptr<NProto::TWriteDataLocalRequest> request) override
     {
         auto response = NewPromise<NProto::TWriteDataResponse>();
-        ExecuteRequest<TWriteDataMethod>(
+        ExecuteRequest<TWriteDataServiceMethod>(
             std::move(callContext),
             std::move(request),
             response);
@@ -520,29 +145,29 @@ private:
     }
 
     template<>
-    void ExecuteRequest<TFsyncMethod>(
+    void ExecuteRequest<TFsyncServiceMethod>(
         TCallContextPtr callContext,
-        std::shared_ptr<TFsyncMethod::TRequest> request,
-        TPromise<TFsyncMethod::TResponse> response)
+        std::shared_ptr<TFsyncServiceMethod::TRequest> request,
+        TPromise<TFsyncServiceMethod::TResponse> response)
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
-        Y_UNUSED(TFsyncMethod::RequestName);
+        Y_UNUSED(TFsyncServiceMethod::RequestName);
 
-        response.SetValue(TFsyncMethod::TResponse());
+        response.SetValue(TFsyncServiceMethod::TResponse());
     }
 
     template<>
-    void ExecuteRequest<TFsyncDirMethod>(
+    void ExecuteRequest<TFsyncDirServiceMethod>(
         TCallContextPtr callContext,
-        std::shared_ptr<TFsyncDirMethod::TRequest> request,
-        TPromise<TFsyncDirMethod::TResponse> response)
+        std::shared_ptr<TFsyncDirServiceMethod::TRequest> request,
+        TPromise<TFsyncDirServiceMethod::TResponse> response)
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
-        Y_UNUSED(TFsyncDirMethod::RequestName);
+        Y_UNUSED(TFsyncDirServiceMethod::RequestName);
 
-        response.SetValue(TFsyncDirMethod::TResponse());
+        response.SetValue(TFsyncDirServiceMethod::TResponse());
     }
 
     template <typename T>
