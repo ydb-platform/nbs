@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/libs/storage/testlib/ut_helpers.h>
+#include <cloud/filestore/private/api/protos/actions.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -22,6 +23,8 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <util/digest/city.h>
 #include <util/generic/map.h>
@@ -169,6 +172,40 @@ ReadData(TTestSetup& setup, ui64 offset, ui64 bytes)
         setup.Handle,
         offset,
         bytes);
+}
+
+NProtoPrivate::TConfigureUnconfirmedWriteForgetResponse
+ConfigureUnconfirmedWriteForget(
+    TTestSetup& setup,
+    ui64 requestsToForget)
+{
+    NProtoPrivate::TConfigureUnconfirmedWriteForgetRequest request;
+    request.SetRequestsToForget(requestsToForget);
+
+    TString input;
+    google::protobuf::util::MessageToJsonString(request, &input);
+
+    auto actionResponse =
+        setup.Service->ExecuteAction("configureunconfirmedwriteforget", input);
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, actionResponse->GetStatus());
+
+    NProtoPrivate::TConfigureUnconfirmedWriteForgetResponse response;
+    UNIT_ASSERT(
+        google::protobuf::util::JsonStringToMessage(
+            actionResponse->Record.GetOutput(),
+            &response)
+            .ok());
+    return response;
+}
+
+NProtoPrivate::TStorageStats GetStorageStats(TTestSetup& setup)
+{
+    const auto tabletId =
+        setup.Service->GetFileStoreInfo(setup.FileSystemId)
+            ->Record.GetFileStore()
+            .GetMainTabletId();
+    TIndexTabletClient tablet(setup.GetRuntime(), setup.NodeIdx, tabletId);
+    return GetStorageStats(tablet);
 }
 
 enum class EShardPipeToDisconnect
@@ -698,6 +735,46 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         UNIT_ASSERT_C(
             runtime.GetCounter(TEvIndexTablet::EvConfirmAddDataRequest) >= 3,
             "ConfirmAddData should be called 3 times for 3 writes");
+    }
+
+    Y_UNIT_TEST(ShouldForgetUnconfirmedCommitWhenArmed)
+    {
+        TTestSetup setup;
+        auto& runtime = setup.GetRuntime();
+
+        auto state = ConfigureUnconfirmedWriteForget(
+            setup,
+            1 /* requestsToForget */);
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetRequestsToForget());
+
+        ui32 confirmRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->Recipient != MakeIndexTabletProxyServiceId()) {
+                    return false;
+                }
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvConfirmAddDataRequest:
+                        ++confirmRequests;
+                        break;
+                }
+
+                return false;
+            });
+
+        TString data = GenerateValidateData(256_KB);
+        WriteData(setup, 0, data);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, confirmRequests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            GetStorageStats(setup).GetUnconfirmedDataCount());
+
+        state = ConfigureUnconfirmedWriteForget(setup, 0 /* requestsToForget */);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetRequestsToForget());
     }
 
     // =========================================================================
