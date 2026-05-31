@@ -141,50 +141,6 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)
 #undef FILESTORE_DECLARE_METHOD_SYNC
 #undef FILESTORE_DECLARE_METHOD_ASYNC
 
-    struct TReadDataLocalMethod
-    {
-        using TRequest = NProto::TReadDataLocalRequest;
-        using TResponse = NProto::TReadDataLocalResponse;
-        using TResult = TFuture<TResponse>;
-        static constexpr auto RequestType = EFileStoreRequest::ReadData;
-
-        static TResult Execute(
-            TLocalFileSystem& fs,
-            TRequest& request,
-            NProto::TProfileLogRequestInfo& logRequest)
-        {
-            return fs.ReadDataLocalAsync(request, logRequest);
-        }
-
-        static TResult ErrorResponse(ui32 code, TString message)
-        {
-            return MakeFuture(
-                NCloud::ErrorResponse<TResponse>(code, std::move(message)));
-        }
-    };
-
-    struct TWriteDataLocalMethod
-    {
-        using TRequest = NProto::TWriteDataLocalRequest;
-        using TResponse = NProto::TWriteDataLocalResponse;
-        using TResult = TFuture<TResponse>;
-        static constexpr auto RequestType = EFileStoreRequest::WriteData;
-
-        static TResult Execute(
-            TLocalFileSystem& fs,
-            TRequest& request,
-            NProto::TProfileLogRequestInfo& logRequest)
-        {
-            return fs.WriteDataLocalAsync(request, logRequest);
-        }
-
-        static TResult ErrorResponse(ui32 code, TString message)
-        {
-            return MakeFuture(
-                NCloud::ErrorResponse<TResponse>(code, std::move(message)));
-        }
-    };
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalFileStore final
@@ -270,8 +226,6 @@ public:
 
 FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_IMPLEMENT_METHOD_SYNC)
 FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
-FILESTORE_IMPLEMENT_METHOD_ASYNC(ReadDataLocal)
-FILESTORE_IMPLEMENT_METHOD_ASYNC(WriteDataLocal)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 

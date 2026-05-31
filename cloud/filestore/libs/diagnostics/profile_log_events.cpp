@@ -270,18 +270,6 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TReadDataLocalRequest& request)
-{
-    auto* rangeInfo = profileLogRequest.AddRanges();
-    rangeInfo->SetNodeId(request.GetNodeId());
-    rangeInfo->SetHandle(request.GetHandle());
-    rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.GetLength());
-}
-
-template <>
-void InitProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TDescribeDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
@@ -341,18 +329,6 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
     rangeInfo->SetBytes(CalculateByteCount(request));
-}
-
-template <>
-void InitProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TWriteDataLocalRequest& request)
-{
-    auto* rangeInfo = profileLogRequest.AddRanges();
-    rangeInfo->SetNodeId(request.GetNodeId());
-    rangeInfo->SetHandle(request.GetHandle());
-    rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.BytesToWrite);
 }
 
 template <>
@@ -817,20 +793,11 @@ void FinalizeProfileLogRequestInfo(
         profileLogRequest.AddRanges();
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
-    rangeInfo->SetActualBytes(response.GetBuffer().size());
+    rangeInfo->SetActualBytes(
+        response.GetBuffer().empty()
+            ? response.GetLength()
+            : response.GetBuffer().size());
     rangeInfo->SetBufferOffset(response.GetBufferOffset());
-}
-
-template <>
-void FinalizeProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TReadDataLocalResponse& response)
-{
-    if (profileLogRequest.RangesSize() == 0) {
-        profileLogRequest.AddRanges();
-    }
-    auto* rangeInfo = profileLogRequest.MutableRanges(0);
-    rangeInfo->SetActualBytes(response.BytesRead);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

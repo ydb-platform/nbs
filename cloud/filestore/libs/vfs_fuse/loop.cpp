@@ -1269,8 +1269,6 @@ private:
                 features.GetDirectoryHandlesPersistentHandleMaxSize());
         }
 
-        config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
-
         config.SetGuestPageCacheDisabled(features.GetGuestPageCacheDisabled());
         config.SetExtendedAttributesDisabled(
             features.GetExtendedAttributesDisabled());
@@ -1279,8 +1277,14 @@ private:
         config.SetMaxBackground(features.GetMaxBackground());
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
-        config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
-        config.SetZeroCopyReadEnabled(features.GetZeroCopyReadEnabled());
+        // The legacy ZeroCopyEnabled feature is a backward compatible alias
+        // that enables both read and write zero copy.
+        const bool zeroCopyEnabled = features.GetZeroCopyEnabled();
+        config.SetZeroCopyEnabled(zeroCopyEnabled);
+        config.SetZeroCopyWriteEnabled(
+            features.GetZeroCopyWriteEnabled() || zeroCopyEnabled);
+        config.SetZeroCopyReadEnabled(
+            features.GetZeroCopyReadEnabled() || zeroCopyEnabled);
 
         config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
 

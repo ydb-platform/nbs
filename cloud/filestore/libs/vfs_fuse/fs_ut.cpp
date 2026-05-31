@@ -3772,6 +3772,80 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             TString(reinterpret_cast<char*>(&request->Out->Body), size));
     }
 
+    Y_UNIT_TEST(ShouldEnableZeroCopyReadAndWriteViaLegacyAlias)
+    {
+        // The legacy ZeroCopyEnabled feature must enable both read and write
+        // zero-copy through the FUSE config alias, without the dedicated
+        // ZeroCopyReadEnabled / ZeroCopyWriteEnabled features being set.
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        features.SetZeroCopyEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 30;
+        const auto data = GenerateValidateData(size, 2);
+
+        std::atomic<int> readDataCalled = 0;
+        bootstrap.Service->ReadDataHandler = [&](auto, auto request)
+        {
+            UNIT_ASSERT_C(
+                !request->GetIovecs().empty(),
+                "Legacy ZeroCopyEnabled alias should enable read zero-copy");
+            readDataCalled++;
+            NProto::TReadDataResponse result;
+            memcpy(
+                reinterpret_cast<void*>(request->GetIovecs()[0].GetBase()),
+                data.data(),
+                request->GetIovecs()[0].GetLength());
+            result.SetLength(request->GetIovecs()[0].GetLength());
+            return MakeFuture(result);
+        };
+
+        std::atomic<int> writeDataCalled = 0;
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto& request)
+        {
+            UNIT_ASSERT_C(
+                !request->GetIovecs().empty(),
+                "Legacy ZeroCopyEnabled alias should enable write zero-copy");
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto readReq =
+            std::make_shared<TReadRequest>(nodeId, handleId, 0, size);
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(readReq);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        UNIT_ASSERT_VALUES_EQUAL(1, readDataCalled.load());
+
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT(write.Wait(WaitTimeout));
+
+        auto reqFlush =
+            bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+        UNIT_ASSERT(reqFlush.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
     Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
     {
         const TString sessionId = CreateGuidAsString();
