@@ -201,7 +201,7 @@ protected:
 private:
     void RunRefreshThread()
     {
-        while (!Stopping.load()) {
+        while (true) {
             std::unique_lock lock(WakeupMutex);
             const bool isRequested = Wakeup.WaitT(
                 WakeupMutex,
@@ -209,7 +209,7 @@ private:
                 [this] {
                     return Stopping.load() || UpdateRequested;
                 });
-            if (Stopping.load()) {
+            if (Stopping.load() && !UpdateRequested) {
                 return;
             }
             if (!isRequested) {
