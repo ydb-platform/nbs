@@ -44,16 +44,6 @@ TString ReadFile(const TString& fileName)
     return in.ReadAll();
 }
 
-TString ReadFileRobust(const TString& fileName)
-{
-    try {
-        TFileInput in(fileName);
-        return in.ReadAll();
-    } catch (...) {
-        return {};
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 PemKeyCertPairList ReadCertPair(const TCertificateFiles& cert)
