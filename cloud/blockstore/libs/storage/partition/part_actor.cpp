@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_base_disk_keep_alive.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -438,6 +439,11 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
     if (IOCompanion) {
         IOCompanion->KillActors(ctx);
     }
+
+    if (BaseDiskKeepAliveActorId) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, BaseDiskKeepAliveActorId);
+        BaseDiskKeepAliveActorId = {};
+    }
 }
 
 void TPartitionActor::AddTransaction(
@@ -802,8 +808,7 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
     }
 }
 
-void TPartitionActor::MapBaseDiskIdToTabletId(
-    const NActors::TActorContext& ctx)
+void TPartitionActor::MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx)
 {
     if (State && State->GetBaseDiskTabletId() != 0) {
         auto request = std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
@@ -825,12 +830,19 @@ void TPartitionActor::MapBaseDiskIdToTabletId(
             State->GetBaseDiskTabletId());
 
         ctx.Send(event.release());
+
+        StartBaseDiskKeepAliveActorIfNeeded(ctx);
     }
 }
 
 void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
     const NActors::TActorContext& ctx)
 {
+    if (BaseDiskKeepAliveActorId) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, BaseDiskKeepAliveActorId);
+        BaseDiskKeepAliveActorId = {};
+    }
+
     if (State && State->GetBaseDiskTabletId() != 0) {
         auto request = std::make_unique<
             TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
@@ -852,6 +864,25 @@ void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
     }
 }
 
+void TPartitionActor::StartBaseDiskKeepAliveActorIfNeeded(
+    const TActorContext& ctx)
+{
+    // Ping the base disk twice per inactivity timeout, so the pipe is
+    // always refreshed before VolumeProxy would close it as idle.
+    const auto keepAliveInterval =
+        Config->GetVolumeProxyPipeInactivityTimeout() / 2;
+    if (Config->GetBaseDiskPipeKeepAliveEnabled() &&
+        !BaseDiskKeepAliveActorId && keepAliveInterval)
+    {
+        BaseDiskKeepAliveActorId = NCloud::Register<TBaseDiskKeepAliveActor>(
+            ctx,
+            State->GetBaseDiskId(),
+            keepAliveInterval,
+            LogTitle.GetChildWithTags(
+                GetCycleCount(),
+                {{"BaseDiskId", State->GetBaseDiskId()}}));
+    }
+}
 
 void TPartitionActor::HandleReassignTabletResponse(
     const TEvHiveProxy::TEvReassignTabletResponse::TPtr& ev,
