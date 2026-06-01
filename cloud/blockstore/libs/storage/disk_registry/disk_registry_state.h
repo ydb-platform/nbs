@@ -920,7 +920,9 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
-    bool HasDependentDisks(const TAgentId& agentId, const TString& path);
+    bool HasDependentDisks(
+        const NProto::TAgentConfig& agent,
+        const TString& path);
 
     [[nodiscard]] NProto::TError UpdatePathAttachState(
         TDiskRegistryDatabase& db,
