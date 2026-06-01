@@ -51,9 +51,6 @@ static constexpr uint64_t CQE_TAG_CANCEL = 0;
 static constexpr uint64_t CQE_TAG_TIMEOUT = 1;
 static constexpr uint64_t CQE_TAG_DOORBELL = 2;
 
-// Hard cap on CPU index (largest known socket: 384 cores).
-static constexpr uint16_t INVALID_PROCESSOR_NUMBER = (1 << 10);
-
 // clang-format off
 #define FIBER_SIMPLE_COUNTERS(x) \
     x(FIBER_STARTED,           "FiberStarted") \
@@ -839,6 +836,10 @@ bool FiberScheduler::ProcessorState::enqueueIo(IoFuture * future, Setup && setup
         {
             ::io_uring_sqe_set_data(sqe, future);
 
+            // Record which processor holds this SQE so cancelIo can submit the
+            // cancel to the correct ring (cross-ring cancels fail with -ENOENT).
+            future->processorNumber = this->number;
+
             if (profiler)
             {
                 future->submitTimestamp = Tsc::getCycles();
@@ -1436,16 +1437,51 @@ void FiberScheduler::poll(int fd, uint32_t events, uint64_t * triggeredEvents, I
     enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_poll_add(sqe, fd, events); });
 }
 
-void FiberScheduler::cancelIo(IoFuture * future) noexcept
+void FiberScheduler::connect(int fd, const sockaddr * addr, socklen_t addrlen, IoFuture * future) noexcept
 {
     future->result = nullptr;
-    enqueueIo(
-        nullptr,
-        [=](io_uring_sqe * sqe) noexcept
-        {
-            ::io_uring_prep_cancel(sqe, future, 0);
-            ::io_uring_sqe_set_data64(sqe, CQE_TAG_CANCEL);
-        });
+    enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_connect(sqe, fd, addr, addrlen); });
+}
+
+void FiberScheduler::accept(int fd, sockaddr * addr, socklen_t * addrlen, int flags, uint64_t * acceptedFd, IoFuture * future) noexcept
+{
+    future->result = acceptedFd;
+    enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_accept(sqe, fd, addr, addrlen, flags); });
+}
+
+void FiberScheduler::cancelIo(IoFuture * future) noexcept
+{
+    // The cancel SQE must go to the SAME io_uring ring that holds the original
+    // SQE.  If we submit the cancel to a different ring (e.g. because the fiber
+    // was work-stolen to another CPU between registering the poll and cancelling
+    // it), io_uring returns -ENOENT and the original operation is never removed,
+    // leaving the caller's IoFuture::wait() blocked forever.
+    uint32_t processorNumber = future->processorNumber;
+    if (processorNumber == INVALID_PROCESSOR_NUMBER)
+    {
+        processorNumber = getCurrentProcessor();
+    }
+
+    auto * target = &scheduler->processorState[processorNumber];
+
+    auto setup = [=](io_uring_sqe * sqe) noexcept
+    {
+        ::io_uring_prep_cancel(sqe, future, 0);
+        ::io_uring_sqe_set_data64(sqe, CQE_TAG_CANCEL);
+    };
+
+    // Retry if the SQ ring is temporarily full.
+    while (!target->enqueueIo(nullptr, setup))
+    {
+        Perf::getSimpleCounter(simpleCounters[SQ_RING_OVERFLOW], target->number).increment();
+        yield();
+    }
+
+    // If we enqueued to a remote processor's ring, force-submit.
+    if (processorNumber != getCurrentProcessor() || getCurrentFiber()->isProxyFiber)
+    {
+        target->submitIo(true);
+    }
 }
 
 void FiberScheduler::sleep(uint64_t nanoseconds, SleepFuture * future) noexcept
@@ -1471,21 +1507,21 @@ void FiberScheduler::sleep(uint64_t nanoseconds, SleepFuture * future) noexcept
 
 void FiberScheduler::cancelSleep(SleepFuture * future) noexcept
 {
-    uint32_t expected = future->state.load(std::memory_order_relaxed);
+    uint32_t state = future->state.load(std::memory_order_relaxed);
     for (;;)
     {
-        if (expected & SleepFuture::CANCELLED)
+        if (state & SleepFuture::CANCELLED)
         {
             return;
         }
         if (future->state.compare_exchange_weak(
-                expected, expected | SleepFuture::CANCELLED, std::memory_order_acq_rel, std::memory_order_relaxed))
+                state, state | SleepFuture::CANCELLED, std::memory_order_acq_rel, std::memory_order_relaxed))
         {
             break;
         }
     }
 
-    if (expected & SleepFuture::IN_TABLE)
+    if (state & SleepFuture::IN_TABLE)
     {
         ProcessorState * processor = &scheduler->processorState[future->processorNumber];
         processor->cancelQueue.push(future);
@@ -1818,15 +1854,22 @@ __attribute__((noinline)) void FiberScheduler::handleSleepQueueSlow(ProcessorSta
     do
     {
         SleepFuture * next = SleepStack::next(sleepFuture);
-        uint32_t prev = sleepFuture->state.fetch_or(SleepFuture::IN_TABLE, std::memory_order_acq_rel);
-        if (prev & SleepFuture::CANCELLED)
+        uint32_t state = sleepFuture->state.load(std::memory_order_relaxed);
+        for (;;)
         {
-            sleepFuture->state.fetch_and(~SleepFuture::IN_TABLE, std::memory_order_relaxed);
-            sleepFuture->set(ECANCELED);
-        }
-        else
-        {
-            processor->sleepTree.insert(sleepFuture);
+            if (state & SleepFuture::CANCELLED)
+            {
+                sleepFuture->set(ECANCELED);
+                break;
+            }
+
+            SILK_ASSERT(!(state & SleepFuture::IN_TABLE));
+            if (sleepFuture->state.compare_exchange_weak(
+                    state, state | SleepFuture::IN_TABLE, std::memory_order_acq_rel, std::memory_order_relaxed))
+            {
+                processor->sleepTree.insert(sleepFuture);
+                break;
+            }
         }
         sleepFuture = next;
 
@@ -1848,17 +1891,21 @@ bool FiberScheduler::handleCancelQueue(ProcessorState * processor) noexcept
 
 __attribute__((noinline)) void FiberScheduler::handleCancelQueueSlow(ProcessorState * processor, SleepFuture * cancelEntry) noexcept
 {
+    uint64_t count = 0;
     do
     {
+        uint32_t prev = cancelEntry->state.fetch_and(~SleepFuture::IN_TABLE, std::memory_order_acq_rel);
+        SILK_ASSERT(prev & SleepFuture::IN_TABLE);
+
         SleepFuture * next = SleepStack::next(cancelEntry);
         processor->sleepTree.remove(cancelEntry);
-        cancelEntry->state.fetch_and(~SleepFuture::IN_TABLE, std::memory_order_relaxed);
         cancelEntry->set(ECANCELED);
         cancelEntry = next;
-
-        Perf::getSimpleCounter(simpleCounters[SLEEP_CANCELLED], processor->number).increment();
+        ++count;
 
     } while (cancelEntry);
+
+    Perf::getSimpleCounter(simpleCounters[SLEEP_CANCELLED], processor->number).increment(count);
 }
 
 bool FiberScheduler::handleExpiredWaiters(ProcessorState * processor) noexcept
@@ -1884,17 +1931,33 @@ bool FiberScheduler::handleExpiredWaiters(ProcessorState * processor) noexcept
 __attribute__((noinline)) void
 FiberScheduler::handleExpiredWaitersSlow(ProcessorState * processor, SleepFuture * sleepFuture, uint64_t now) noexcept
 {
+    uint64_t count = 0;
     do
     {
-        processor->sleepTree.remove(sleepFuture);
-        sleepFuture->state.fetch_and(~SleepFuture::IN_TABLE, std::memory_order_relaxed);
-        sleepFuture->set(0);
+        uint32_t state = sleepFuture->state.load(std::memory_order_relaxed);
+        for (;;)
+        {
+            if (state & SleepFuture::CANCELLED)
+            {
+                sleepFuture = processor->sleepTree.next(sleepFuture);
+                break;
+            }
 
-        Perf::getSimpleCounter(simpleCounters[SLEEP_EXPIRED], processor->number).increment();
-
-        sleepFuture = processor->sleepTree.min();
+            SILK_ASSERT(state & SleepFuture::IN_TABLE);
+            if (sleepFuture->state.compare_exchange_weak(
+                    state, state & ~SleepFuture::IN_TABLE, std::memory_order_acq_rel, std::memory_order_relaxed))
+            {
+                SleepFuture * next = processor->sleepTree.remove(sleepFuture);
+                sleepFuture->set(0);
+                sleepFuture = next;
+                ++count;
+                break;
+            }
+        }
 
     } while (sleepFuture && sleepFuture->deadlineCycles <= now);
+
+    Perf::getSimpleCounter(simpleCounters[SLEEP_EXPIRED], processor->number).increment(count);
 }
 
 void FiberScheduler::runFiber(Fiber * fiber, CpuTimer * timer) noexcept
