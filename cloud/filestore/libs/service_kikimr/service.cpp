@@ -3,6 +3,7 @@
 #include "handler_actor.h"
 #include "methods.h"
 #include "request_actor.h"
+#include "side_channel.h"
 #include "stream_request_actor.h"
 
 #include <cloud/filestore/libs/service/context.h>
@@ -29,6 +30,8 @@ private:
     const IActorSystemPtr ActorSystem;
     TLog Log;
 
+    ISideChannelPtr SideChannel;
+
     using THandlerPtr = std::shared_ptr<THandler>;
     TVector<THandlerPtr> Handlers;
     std::atomic<ui32> Selector{0};
@@ -36,9 +39,11 @@ private:
 public:
     TKikimrFileStore(
             IActorSystemPtr actorSystem,
+            ISideChannelPtr sideChannel,
             ui32 permanentActorCount)
         : ActorSystem(std::move(actorSystem))
         , Log(ActorSystem->CreateLog("KIKIMR_SERVICE"))
+        , SideChannel(std::move(sideChannel))
     {
         Handlers.resize(permanentActorCount);
     }
@@ -121,7 +126,7 @@ public:
 
 private:
     template <typename T>
-    void ExecuteRequest(
+    void ExecuteRequestImpl(
         TCallContextPtr callContext,
         std::shared_ptr<typename T::TRequest> request,
         TPromise<typename T::TResponse> response)
@@ -142,6 +147,18 @@ private:
             std::move(callContext),
             std::move(request),
             std::move(response)));
+    }
+
+    template <typename T>
+    void ExecuteRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename T::TRequest> request,
+        TPromise<typename T::TResponse> response)
+    {
+        ExecuteRequestImpl<T>(
+            std::move(callContext),
+            std::move(request),
+            std::move(response));
     }
 
     template<>
@@ -181,6 +198,54 @@ private:
             std::move(request),
             std::move(responseHandler)));
     }
+
+    template <typename T>
+    void ExecuteRequestWithSideChannel(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename T::TRequest> request,
+        TPromise<typename T::TResponse> response)
+    {
+        if (SideChannel) {
+            if (SideChannel->ExecuteRequest(callContext, request, response)) {
+                return;
+            }
+
+            response.GetFuture().Subscribe(
+                [sc = SideChannel] (TFuture<typename T::TResponse> f) {
+                    const auto& i = f.GetValue().GetHeaders().GetBackendInfo();
+                    sc->Update(i);
+                });
+        }
+
+        ExecuteRequestImpl<T>(
+            std::move(callContext),
+            std::move(request),
+            std::move(response));
+    }
+
+    template <>
+    void ExecuteRequest<TReadDataServiceMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request,
+        TPromise<NProto::TReadDataResponse> response)
+    {
+        ExecuteRequestWithSideChannel<TReadDataServiceMethod>(
+            std::move(callContext),
+            std::move(request),
+            std::move(response));
+    }
+
+    template <>
+    void ExecuteRequest<TWriteDataServiceMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        TPromise<NProto::TWriteDataResponse> response)
+    {
+        ExecuteRequestWithSideChannel<TWriteDataServiceMethod>(
+            std::move(callContext),
+            std::move(request),
+            std::move(response));
+    }
 };
 
 }   // namespace
@@ -189,10 +254,12 @@ private:
 
 IFileStoreServicePtr CreateKikimrFileStore(
     IActorSystemPtr actorSystem,
+    ISideChannelPtr sideChannel,
     ui32 permanentActorCount)
 {
     return std::make_shared<TKikimrFileStore>(
         std::move(actorSystem),
+        std::move(sideChannel),
         permanentActorCount);
 }
 

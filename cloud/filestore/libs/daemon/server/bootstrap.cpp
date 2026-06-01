@@ -168,7 +168,10 @@ void TBootstrapServer::InitLWTrace()
 void TBootstrapServer::InitKikimrService()
 {
     Y_ABORT_UNLESS(ActorSystem, "Actor system MUST be initialized to create kikimr filestore");
-    Service = CreateKikimrFileStore(ActorSystem, 0 /* permanentActorCount */);
+    Service = CreateKikimrFileStore(
+        ActorSystem,
+        nullptr /* sideChannel */,
+        0 /* permanentActorCount */);
 
     Service = CreateAuthService(
         std::move(Service),

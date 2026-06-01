@@ -86,6 +86,7 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
 
         auto service = CreateKikimrFileStore(
             actorSystem,
+            nullptr /* sideChannel */,
             permanentActorCount);
         service->Start();
 
@@ -123,8 +124,10 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service =
-            CreateKikimrFileStore(actorSystem, 0 /* permanentActorCount */);
+        auto service = CreateKikimrFileStore(
+            actorSystem,
+            nullptr /* sideChannel */,
+            0 /* permanentActorCount */);
         service->Start();
 
         {
@@ -179,8 +182,10 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service =
-            CreateKikimrFileStore(actorSystem, 0 /* permanentActorCount */);
+        auto service = CreateKikimrFileStore(
+            actorSystem,
+            nullptr /* sideChannel */,
+            0 /* permanentActorCount */);
         service->Start();
 
         auto context = MakeIntrusive<TCallContext>();

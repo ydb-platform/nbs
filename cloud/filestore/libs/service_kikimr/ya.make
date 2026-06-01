@@ -6,6 +6,7 @@ SRCS(
     methods.cpp
     request_actor.cpp
     service.cpp
+    side_channel.cpp
     stream_request_actor.cpp
 )
 

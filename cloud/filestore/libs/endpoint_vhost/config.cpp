@@ -45,6 +45,9 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(DirectoryHandlesStoragePath,                TString,    ""            )\
     xxx(DirectoryHandlesInitialDataSize,            ui64,       16_MB         )\
     xxx(PermanentActorCount,                        ui32,       0             )\
+    xxx(SideChannelType,                                                       \
+            NProto::ESideChannelType,                                          \
+            NProto::SCT_NONE                                                  )\
     xxx(DirectoryHandlesMaxDataAreaStepSize,        ui64,       1_GB          )\
     xxx(FileMapMemoryLimit,                         ui64,       0             )\
 // VHOST_SERVICE_CONFIG
@@ -100,6 +103,25 @@ void DumpImpl(const TVector<T>& t, IOutputStream& os)
 {
     for (const auto& v: t) {
         os << v;
+    }
+}
+template <>
+void DumpImpl(
+    const NProto::ESideChannelType& value,
+    IOutputStream& os)
+{
+    switch (value) {
+        case NProto::SCT_NONE:
+            os << "SCT_NONE";
+            break;
+        case NProto::SCT_TCP:
+            os << "SCT_TCP";
+            break;
+        default:
+            os << "(Unknown ESideChannelType value "
+                << static_cast<int>(value)
+                << ")";
+            break;
     }
 }
 

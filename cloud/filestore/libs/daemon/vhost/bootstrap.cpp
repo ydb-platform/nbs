@@ -27,6 +27,7 @@
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
+#include <cloud/filestore/libs/service_kikimr/side_channel.h>
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
@@ -152,6 +153,7 @@ public:
         const TString& name,
         const NProto::TClientConfig& config,
         NDaemon::EServiceKind kind,
+        NProto::ESideChannelType sideChannelType,
         ui32 permanentActorCount)
     {
         auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
@@ -163,8 +165,10 @@ public:
             }
 
             case NDaemon::EServiceKind::Kikimr: {
-                fileStore =
-                    CreateKikimrFileStore(ActorSystem, permanentActorCount);
+                fileStore = CreateKikimrFileStore(
+                    ActorSystem,
+                    CreateSideChannel(sideChannelType),
+                    permanentActorCount);
                 break;
             }
 
@@ -211,6 +215,17 @@ private:
 
         Endpoints.emplace(name, std::move(client));
         return true;
+    }
+
+    static ISideChannelPtr CreateSideChannel(
+        NProto::ESideChannelType sideChannelType)
+    {
+        switch (sideChannelType) {
+            case NProto::SCT_NONE: return nullptr;
+            case NProto::SCT_TCP: return CreateTCPSideChannel();
+        }
+
+        Y_ABORT("sct=%d", static_cast<int>(sideChannelType));
     }
 };
 
@@ -448,6 +463,7 @@ void TBootstrapVhost::InitEndpoints()
             endpoint.GetName(),
             endpoint.GetClientConfig(),
             Configs->Options->Service,
+            serviceConfig.GetSideChannelType(),
             serviceConfig.GetPermanentActorCount());
 
         if (inserted) {
