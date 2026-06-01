@@ -70,41 +70,50 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
     LastCpuWaitTs = ctx.Monotonic();
     ServiceState = NProto::SERVICE_STATE_RUNNING;
 
+    int i = 0;
     try {
         if (getProcessName() == "filestore-vhost") {
             Timer = CreateWallClockTimer();
             Scheduler = CreateScheduler();
-            NProto::TClientConfig protoClientConfig;
-            protoClientConfig.SetUnixSocketPath("/tmp/nfs.sock");
-            //protoClientConfig.SetUnixSocketPath("/run/nbsd/nfs0.sock");
-            auto clientConfig = std::make_shared<NClient::TClientConfig>(
-                std::move(protoClientConfig));
-            Logging = CreateLoggingService("nfs-client", {TLOG_DEBUG});
+            for (; i < 2; ++i) {
+                Clients.push_back(nullptr);
+                ShmClients.push_back(nullptr);
+                NProto::TClientConfig protoClientConfig;
+                //protoClientConfig.SetUnixSocketPath("/tmp/nfs.sock");
+                protoClientConfig.SetUnixSocketPath("/run/nbsd/nfs" + std::to_string(i) + ".sock");
+                auto clientConfig = std::make_shared<NClient::TClientConfig>(
+                    std::move(protoClientConfig));
+                Logging = CreateLoggingService("nfs-client-" + std::to_string(i), {TLOG_DEBUG});
 
-            auto client = NClient::CreateFileStoreClient(clientConfig, Logging);
-            Client = NClient::CreateDurableClient(
-                Logging,
-                Timer,
-                Scheduler,
-                CreateRetryPolicy(clientConfig),
-                client);
+                auto client =
+                    NClient::CreateFileStoreClient(clientConfig, Logging);
+                Clients[i] = NClient::CreateDurableClient(
+                    Logging,
+                    Timer,
+                    Scheduler,
+                    CreateRetryPolicy(clientConfig),
+                    client);
 
-            auto shmControl = CreateShmControlClient(clientConfig, Logging);
-            ShmClient = NCloud::NFileStore::NLoadTest::CreateSharedMemoryClient(
-                "/tmp/",
-                //"/Berkanavt/nfs-vhost/shm/nfs-server-shm",
-                "shm.bin",
-                128_MB,
-                //2048_MB,
-                1_MB,
-                shmControl,
-                Scheduler,
-                Timer,
-                Logging);
+                auto shmControl = CreateShmControlClient(clientConfig, Logging);
+                ShmClients[i] =
+                    NCloud::NFileStore::NLoadTest::CreateSharedMemoryClient(
+                        //"/tmp/",
+                        "/Berkanavt/nfs-vhost/shm/nfs-server-shm",
+                        "shm-" + std::to_string(i) + ".bin",
+                        // 128_MB,
+                        2048_MB,
+                        1_MB,
+                        shmControl,
+                        Scheduler,
+                        Timer,
+                        Logging);
 
-            ShmClient->Start();
+                Sessions.push_back(nullptr);
 
-            Client->Start();
+                ShmClients[i]->Start();
+
+                Clients[i]->Start();
+            }
         }
     } catch (const std::exception& ex) {
         LOG_ERROR(
@@ -112,8 +121,8 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
             TFileStoreComponents::SERVICE,
             "failed to initialize nfs client: %s",
             ex.what());
-        ShmClient.reset();
-        Client.reset();
+        ShmClients[i].reset();
+        Clients[i].reset();
     }
 
     RegisterPages(ctx);

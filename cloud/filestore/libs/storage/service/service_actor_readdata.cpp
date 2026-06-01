@@ -1022,6 +1022,9 @@ void TStorageServiceActor::HandleReadData(
     const TEvService::TEvReadDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    static ui64 sRequestCounter = 0;
+    sRequestCounter++;
+
     TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
 
@@ -1120,29 +1123,31 @@ void TStorageServiceActor::HandleReadData(
             msg->Record.GetIovecs());
     }
 
-    if (Client) {
-        if (!Session) {
-            NProto::TSessionConfig proto;
-            proto.SetFileSystemId(filestore.filesystemid());
+    size_t shmClientIndex = sRequestCounter % 2;
+    // if (Clients[shmClientIndex]) {
+    //     if (!Sessions[shmClientIndex]) {
+    //         NProto::TSessionConfig proto;
+    //         proto.SetFileSystemId(filestore.filesystemid());
 
-            Session = NClient::CreateSession(
-                Logging,
-                Timer,
-                Scheduler,
-                Client,
-                std::make_shared<NClient::TSessionConfig>(proto));
+    //         Sessions[shmClientIndex] = NClient::CreateSession(
+    //             Logging,
+    //             Timer,
+    //             Scheduler,
+    //             Clients[shmClientIndex],
+    //             std::make_shared<NClient::TSessionConfig>(proto));
 
 
-            auto response = Session->CreateSession().GetValue(TDuration::Seconds(10));
-            if (HasError(response)) {
-                Session.reset();
-            }
-        }
-    }
+    //         auto response = Sessions[shmClientIndex]->CreateSession().GetValue(TDuration::Seconds(10));
+    //         if (HasError(response)) {
+    //             Sessions[shmClientIndex].reset();
+    //         }
+    //     }
+    // }
 
-    bool sendRequestToLocalServer =
-        msg->Record.GetLength() == 1_MB &&
-        (msg->Record.GetOffset() % filestore.GetBlockSize() == 0);
+    // bool sendRequestToLocalServer =
+    //     msg->Record.GetLength() == 1_MB &&
+    //     (msg->Record.GetOffset() % filestore.GetBlockSize() == 0);
+    bool sendRequestToLocalServer = false;
 
     auto actor = std::make_unique<TReadDataActor>(
         std::move(msg->Record),
@@ -1163,8 +1168,8 @@ void TStorageServiceActor::HandleReadData(
         std::move(shardState),
         session->MediaKind,
         useTwoStageRead,
-        sendRequestToLocalServer ? Session : nullptr,
-        ShmClient,
+        sendRequestToLocalServer ? Sessions[shmClientIndex] : nullptr,
+        ShmClients[shmClientIndex],
         std::move(fsId));
 
     NCloud::Register(ctx, std::move(actor));

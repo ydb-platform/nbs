@@ -122,9 +122,9 @@ private:
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
-    IFileStoreServicePtr Client;
-    NLoadTest::IShmDataClientPtr ShmClient;
-    NClient::ISessionPtr Session;
+    std::vector<IFileStoreServicePtr> Clients;
+    std::vector<NLoadTest::IShmDataClientPtr> ShmClients;
+    std::vector<NClient::ISessionPtr> Sessions;
 
 public:
     TStorageServiceActor(

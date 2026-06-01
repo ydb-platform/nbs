@@ -199,6 +199,7 @@ public:
         try {
             if (Session && ShmClient) {
 
+                std::cerr << "MYAGKOV: entry write data via shm " << std::endl;
                 auto request =
                     std::make_shared<NProto::TWriteDataRequest>(WriteRequest);
                 request->SetHandle(InvalidHandle);
@@ -228,6 +229,8 @@ public:
                                         FormatError(response.GetError())
                                             .c_str());
                                 }
+
+                                std::cerr << "MYAGKOV: success write data via shm " << std::endl;
                                 auto resp = std::make_unique<
                                     TEvService::TEvWriteDataResponse>();
                                 resp->Record = std::move(response);
@@ -1121,28 +1124,31 @@ void TStorageServiceActor::HandleWriteData(
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-        if (Client) {
-            if (!Session) {
+        size_t shmClientIndex = sRequestCounter % 2;
+        if (Clients[shmClientIndex]) {
+            if (!Sessions[shmClientIndex]) {
                 NProto::TSessionConfig proto;
                 proto.SetFileSystemId(filestore.filesystemid());
 
-                Session = NClient::CreateSession(
+                Sessions[shmClientIndex] = NClient::CreateSession(
                     Logging,
                     Timer,
                     Scheduler,
-                    Client,
+                    Clients[shmClientIndex],
                     std::make_shared<NClient::TSessionConfig>(proto));
 
                 auto response =
-                    Session->CreateSession().GetValue(TDuration::Seconds(10));
+                    Sessions[shmClientIndex]->CreateSession().GetValue(TDuration::Seconds(10));
                 if (HasError(response)) {
-                    Session.reset();
+                    Sessions[shmClientIndex].reset();
                 }
+
+                std::cerr << "MYAGKOV: Shm session is created: " << shmClientIndex << std::endl;
             }
         }
 
         bool sendRequestToLocalServer =
-            sRequestCounter % 2 == 0 && bytesCount == 1_MB &&
+            bytesCount == 1_MB &&
             (msg->Record.GetOffset() % filestore.GetBlockSize() == 0);
 
         auto actor = std::make_unique<TWriteDataActor>(
@@ -1156,8 +1162,8 @@ void TStorageServiceActor::HandleWriteData(
             ProfileLog,
             TraceSerializer,
             session->MediaKind,
-            sendRequestToLocalServer ? Session : nullptr,
-            ShmClient,
+            sendRequestToLocalServer ? Sessions[shmClientIndex] : nullptr,
+            ShmClients[shmClientIndex],
             std::move(fsId));
         NCloud::Register(ctx, std::move(actor));
     } else {
