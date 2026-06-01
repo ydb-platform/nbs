@@ -140,7 +140,6 @@ message TDatashardLikeLoadSpec
     string SharedMemoryFilePath = 7;
 
     // Size of the shared memory region in bytes (used when SharedMemoryFilePath is set).
-
     uint64 SharedMemorySizeBytes = 8;
 
     // Size of the iovec in read/write requests with shared memory

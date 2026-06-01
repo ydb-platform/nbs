@@ -20,7 +20,8 @@ Tests {
             ReadBytes: 4096
             WriteBytes: 4096
             InitialFileSize: 4194304
-            SharedMemoryFilePath: "{output_path}/shm/shm-page-size-loadtest.bin"
+            SharedMemoryBaseDir: "{output_path}/shm"
+            SharedMemoryFilePath: "shm-page-size-loadtest.bin"
             SharedMemorySizeBytes: 33554432
             SharedMemoryPageSize: 4096
         }

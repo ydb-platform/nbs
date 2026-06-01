@@ -9,6 +9,8 @@
 
 #include <sys/mman.h>
 
+#define MIN_PAGE_SIZE 4096
+
 namespace NCloud::NFileStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,14 +37,17 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
     size_t size,
     ui32 pageSize)
 {
-    if (size == 0) {
-        return MakeError(E_ARGUMENT, "Size must be greater than zero");
+    if (size < MIN_PAGE_SIZE) {
+        return MakeError(E_ARGUMENT, "Size must be greater or equal to 4 KB");
     }
 
     if (pageSize != 0 && size % pageSize != 0) {
         return MakeError(
             E_ARGUMENT,
-            "Page size is not aligned with region size");
+            Sprintf(
+                "Page size %u is not aligned with region size: %lu",
+                pageSize,
+                size));
     }
 
     TString fullPath;
@@ -167,16 +172,17 @@ TServerState::AdjustAndLockIovecs(
             E_TRANSPORT_ERROR,
             Sprintf("Mmap region not found: %lu", mmapId));
     }
+
     auto& region = it->second;
-    const auto regionAddress = region.GetAddress();
-    const auto regionSize = region.GetSize();
+    const size_t regionAddress = region.GetAddress();
+    const size_t regionSize = region.GetSize();
 
     auto adjustedIovecs = iovecs;
     for (auto& iovec: adjustedIovecs) {
         ui64 offset = iovec.GetBase();
         ui64 length = iovec.GetLength();
 
-        if (offset + length > regionSize) {
+        if (offset >= regionSize || length > regionSize - offset) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
@@ -193,14 +199,14 @@ TServerState::AdjustAndLockIovecs(
     }
 
     int i = 0;
-    NProto::TError ret;
+    NProto::TError err;
     for (; i < iovecs.size(); ++i) {
         const auto& base = iovecs[i].GetBase();
         const auto& length = iovecs[i].GetLength();
         if (base % pageSize != 0 || length > pageSize ||
             (length < pageSize && i != iovecs.size() - 1))
         {
-            ret = MakeError(
+            err = MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "Iovec is not aligned with page size: offset=" << base
@@ -210,7 +216,7 @@ TServerState::AdjustAndLockIovecs(
 
         ui64 index = base / pageSize;
         if (!region.LockPage(index)) {
-            ret = MakeError(
+            err = MakeError(
                 E_TRANSPORT_ERROR,
                 Sprintf(
                     "Address range is in use: [%lu, %lu]",
@@ -228,7 +234,7 @@ TServerState::AdjustAndLockIovecs(
             }
         }
 
-        return ret;
+        return err;
     }
 
     return {adjustedIovecs};

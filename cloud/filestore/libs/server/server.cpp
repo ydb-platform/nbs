@@ -657,6 +657,7 @@ private:
 
         AppCtx.Stats->RequestStarted(Log, *CallContext);
         Started = true;
+        bool iovecsLocked = false;
 
         if constexpr (
             (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
@@ -673,6 +674,7 @@ private:
                     response.MutableError()->Swap(&error);
                     Response = MakeFuture(std::move(response));
                 } else {
+                    iovecsLocked = true;
                     auto iovecs = adjustedIovecs.ExtractResult();
                     Request->MutableIovecs()->Swap(&iovecs);
                 }
@@ -719,7 +721,7 @@ private:
                      std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
                     std::is_same_v<TAppContext, TFileStoreContext>)
                 {
-                    if (AppCtx.State && Request->IovecsSize() > 0) {
+                    if (iovecsLocked) {
                         AppCtx.State->UnlockIovecs(
                             Request->GetRegionId(),
                             Request->GetIovecs());
