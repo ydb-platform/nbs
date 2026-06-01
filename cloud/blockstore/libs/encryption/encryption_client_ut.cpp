@@ -534,123 +534,111 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldWriteZeroBlocksInSnapshotEncryptionClient)
+    Y_UNIT_TEST(ShouldForwardZeroBlocksInSnapshotEncryptionClient)
     {
         auto logging = CreateLoggingService("console");
-        size_t blockSize = 8;
-        size_t storageBlocksCount = 16;
-
-        TVector<TString> storageBlocks(Reserve(storageBlocksCount));
-        for (size_t i = 0; i < storageBlocksCount; ++i) {
-            storageBlocks.emplace_back(blockSize, '1');
-        }
-
         auto testClient = std::make_shared<TTestService>();
         auto encryptionClient = CreateSnapshotEncryptionClient(
             testClient,
             logging,
             GetDefaultEncryption());
 
-        auto zRequest = std::make_shared<NProto::TZeroBlocksRequest>();
-        zRequest->MutableHeaders()->SetClientId("testClientId");
-        zRequest->SetDiskId("testDiskId");
-        zRequest->SetStartIndex(1);
-        zRequest->SetBlocksCount(6);
-        zRequest->SetFlags(42);
-        zRequest->SetSessionId("testSessionId");
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->MutableHeaders()->SetClientId("testClientId");
+        request->SetDiskId("testDiskId");
+        request->SetStartIndex(1);
+        request->SetBlocksCount(6);
+        request->SetFlags(42);
+        request->SetSessionId("testSessionId");
         UNIT_ASSERT_VALUES_EQUAL(
             6,
             GetFieldCount<NProto::TZeroBlocksRequest>());
 
-        NProto::TWriteBlocksLocalResponse wResponse;
-        wResponse.MutableError()->SetMessage("testMessage");
-        wResponse.MutableDeprecatedTrace()->SetRequestStartTime(42);
-        wResponse.MutableHeaders()->MutableTrace()->SetRequestStartTime(42);
-        wResponse.SetDeprecatedThrottlerDelay(13);
-        wResponse.MutableHeaders()->MutableThrottler()->SetDelay(13);
+        NProto::TZeroBlocksResponse zResponse;
+        zResponse.MutableError()->SetMessage("testMessage");
+        zResponse.MutableDeprecatedTrace()->SetRequestStartTime(42);
+        zResponse.MutableHeaders()->MutableTrace()->SetRequestStartTime(42);
+        zResponse.SetDeprecatedThrottlerDelay(13);
+        zResponse.MutableHeaders()->MutableThrottler()->SetDelay(13);
 
-        testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                const auto& spec = request->GetEncryptionSpec();
-                UNIT_ASSERT(GetDefaultEncryption().GetMode() == spec.GetMode());
+        size_t requestsCount = 0;
+        testClient->ZeroBlocksHandler =
+            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> zRequest) {
+                ++requestsCount;
                 UNIT_ASSERT_VALUES_EQUAL(
-                    GetDefaultEncryption().GetKeyHash(),
-                    spec.GetKeyHash());
+                    request->MutableHeaders()->GetClientId(),
+                    zRequest->MutableHeaders()->GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetDiskId(),
+                    zRequest->GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetStartIndex(),
+                    zRequest->GetStartIndex());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetBlocksCount(),
+                    zRequest->GetBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetFlags(),
+                    zRequest->GetFlags());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetSessionId(),
+                    zRequest->GetSessionId());
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                return MakeFuture(std::move(response));
+                return MakeFuture(zResponse);
             };
-
-        testClient->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> wRequest) {
-                auto guard = wRequest->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
-
-                for (size_t i = 0; i < sglist.size(); ++i) {
-                    size_t n = i + wRequest->GetStartIndex();
-                    UNIT_ASSERT_VALUES_EQUAL(storageBlocks[n].size(), sglist[i].Size());
-                    auto* dst = const_cast<char*>(storageBlocks[n].data());
-                    auto* src = sglist[i].Data();
-                    memcpy(dst, src, sglist[i].Size());
-                }
-
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->MutableHeaders()->GetClientId(),
-                    wRequest->MutableHeaders()->GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetDiskId(),
-                    wRequest->GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetStartIndex(),
-                    wRequest->GetStartIndex());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetFlags(),
-                    wRequest->GetFlags());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetSessionId(),
-                    wRequest->GetSessionId());
-
-                return MakeFuture(wResponse);
-            };
-
-        auto mountResponse = MountVolume(*encryptionClient);
-        UNIT_ASSERT(!HasError(mountResponse));
 
         auto future = encryptionClient->ZeroBlocks(
             MakeIntrusive<TCallContext>(),
-            zRequest);
-        auto zResponse = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT(!HasError(zResponse));
+            request);
+        auto response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            wResponse.GetError().GetMessage(),
-            zResponse.GetError().GetMessage());
+            zResponse.GetError().GetMessage(),
+            response.GetError().GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(
-            wResponse.GetDeprecatedTrace().GetRequestStartTime(),
-            zResponse.GetDeprecatedTrace().GetRequestStartTime());
+            zResponse.GetDeprecatedTrace().GetRequestStartTime(),
+            response.GetDeprecatedTrace().GetRequestStartTime());
         UNIT_ASSERT_VALUES_EQUAL(
-            wResponse.GetHeaders().GetTrace().GetRequestStartTime(),
-            zResponse.GetHeaders().GetTrace().GetRequestStartTime());
+            zResponse.GetHeaders().GetTrace().GetRequestStartTime(),
+            response.GetHeaders().GetTrace().GetRequestStartTime());
         UNIT_ASSERT_VALUES_EQUAL(
-            wResponse.GetDeprecatedThrottlerDelay(),
-            zResponse.GetDeprecatedThrottlerDelay());
+            zResponse.GetDeprecatedThrottlerDelay(),
+            response.GetDeprecatedThrottlerDelay());
         UNIT_ASSERT_VALUES_EQUAL(
-            wResponse.GetHeaders().GetThrottler().GetDelay(),
-            zResponse.GetHeaders().GetThrottler().GetDelay());
+            zResponse.GetHeaders().GetThrottler().GetDelay(),
+            response.GetHeaders().GetThrottler().GetDelay());
+        UNIT_ASSERT_VALUES_EQUAL(1, requestsCount);
+    }
 
-        for (size_t i = 0; i < storageBlocksCount; ++i) {
-            TBlockDataRef block(storageBlocks[i].data(), storageBlocks[i].size());
+    Y_UNIT_TEST(ShouldPropagateZeroBlocksErrorInSnapshotEncryptionClient)
+    {
+        auto logging = CreateLoggingService("console");
+        auto testClient = std::make_shared<TTestService>();
+        auto encryptionClient = CreateSnapshotEncryptionClient(
+            testClient,
+            logging,
+            GetDefaultEncryption());
 
-            if (zRequest->GetStartIndex() <= i &&
-                i < zRequest->GetStartIndex() + zRequest->GetBlocksCount())
-            {
-                UNIT_ASSERT(BlockFilledByValue(block, 0));
-            } else {
-                UNIT_ASSERT(BlockFilledByValue(block, '1'));
-            }
-        }
+        testClient->ZeroBlocksHandler =
+            [] (std::shared_ptr<NProto::TZeroBlocksRequest>) {
+                NProto::TZeroBlocksResponse response;
+                response.MutableError()->SetCode(E_REJECTED);
+                response.MutableError()->SetMessage("testError");
+                return MakeFuture(response);
+            };
+
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetBlocksCount(1);
+
+        auto future = encryptionClient->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            request);
+        auto response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "testError",
+            response.GetError().GetMessage());
     }
 
     Y_UNIT_TEST(ShouldNotEncryptInZeroBlock)
@@ -1243,23 +1231,42 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
-    Y_UNIT_TEST(SnapshotEncryptionClientShouldRejectZeroBlocksBeforeMount)
+    Y_UNIT_TEST(SnapshotEncryptionClientShouldForwardZeroBlocksBeforeMount)
     {
         auto logging = CreateLoggingService("console");
+        auto testClient = std::make_shared<TTestService>();
         auto encryptionClient = CreateSnapshotEncryptionClient(
-            std::make_shared<TTestService>(),
+            testClient,
             logging,
             GetDefaultEncryption());
 
         auto request = std::make_shared<NProto::TZeroBlocksRequest>();
         request->SetBlocksCount(1);
 
+        size_t requestsCount = 0;
+        testClient->ZeroBlocksHandler =
+            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> zRequest) {
+                ++requestsCount;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetBlocksCount(),
+                    zRequest->GetBlocksCount());
+
+                NProto::TZeroBlocksResponse response;
+                response.MutableError()->SetCode(E_REJECTED);
+                response.MutableError()->SetMessage("not mounted");
+                return MakeFuture(response);
+            };
+
         auto future = encryptionClient->ZeroBlocks(
             MakeIntrusive<TCallContext>(),
             request);
 
         auto response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "not mounted",
+            response.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(1, requestsCount);
     }
 
     Y_UNIT_TEST(ShouldHandleRequestsAfterDestroyClient)
@@ -1444,8 +1451,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             auto zeroFuture = encryptionClient->ZeroBlocks(
                 MakeIntrusive<TCallContext>(),
                 zeroRequest);
-            auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, zeroResponse.GetError().GetCode());
+            UNIT_ASSERT(!zeroFuture.HasValue());
 
             encryptionClient.reset();
             trigger.SetValue();
@@ -1464,6 +1470,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
             auto localWriteResponse = localWriteFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localWriteResponse), localWriteResponse);
+
+            auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(zeroResponse), zeroResponse);
         }
     }
 
