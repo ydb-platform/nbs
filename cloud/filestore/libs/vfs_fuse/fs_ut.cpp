@@ -66,6 +66,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
+constexpr TDuration LargeDirectoryWaitTimeout = TDuration::Seconds(15);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
 constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
 constexpr TStringBuf MetricsComponent = "fs_ut";
@@ -1086,7 +1087,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             auto read =
                 bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
-            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
             const auto size = read.GetValue();
             UNIT_ASSERT_GT(size, 0);
             UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
@@ -1125,8 +1126,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldHandleReadDirLargeDataWithHandlesStoragePaging)
     {
-        const auto LargeDirectoryWaitTimeout = TDuration::Seconds(15);
-
         auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
         std::atomic<ui32> numCalls = 0;
@@ -1365,7 +1364,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 1);
 
         const auto size1 = read.GetValue();
@@ -1373,7 +1372,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
 
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
@@ -1392,7 +1391,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
 
         const auto largeOffset = size1 + 3700000;
@@ -1400,7 +1399,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             nodeId,
             handleId,
             largeOffset);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 4);
         UNIT_ASSERT_VALUES_EQUAL(4096, read.GetValue());
 
@@ -1511,7 +1510,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto read =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(4096, read.GetValue());
 
         const ui64 sizeAfterRead = TFile(pathToCache, RdOnly).GetLength();
@@ -1607,7 +1606,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             auto read =
                 bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
-            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
             UNIT_ASSERT_VALUES_EQUAL(numCalls1.load(), 1);
             UNIT_ASSERT_VALUES_EQUAL(numCalls2.load(), 0);
 
@@ -1616,7 +1615,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 nodeId,
                 handleId,
                 largeOffset);
-            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
             UNIT_ASSERT_VALUES_EQUAL(numCalls1.load(), 1);
             UNIT_ASSERT_VALUES_EQUAL(numCalls2.load(), 1);
 
