@@ -7,7 +7,7 @@
 #include <array>
 #include <atomic>
 
-namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -308,4 +308,4 @@ public:
     }
 };
 
-}   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
+}   // namespace NCloud::NFileStore::NFuse

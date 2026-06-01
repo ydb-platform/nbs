@@ -60,19 +60,23 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
     TTempDir TempDir;
     TString StoragePath = TempDir.Path() / "directory_handles";
 
+    IDirectoryHandleStorageStatsPtr StorageStats;
+
     TDirectoryHandleStatsPtr CreateStats()
     {
-        return CreateDirectoryHandleStats(CreateWallClockTimer());
+        StorageStats = CreateDirectoryHandleStorageStats();
+        return CreateDirectoryHandleStats(CreateWallClockTimer(), StorageStats);
     }
 
     TDirectoryHandleStoragePtr CreateStorage(
         TDirectoryHandleStatsPtr stats,
         ui64 persistentHandleMaxSize = 2_GB)
     {
+        Y_UNUSED(stats);
         return CreateDirectoryHandleStorage(
             {.Log = Log,
              .FileMapMemoryLimiter = Limiter,
-             .Stats = stats->GetStorageStats(),
+             .Stats = StorageStats,
              .FilePath = StoragePath,
              .MaxRecords = 32,
              .InitialDataAreaSize = 128,
@@ -81,8 +85,7 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
              .PersistentHandleMaxSize = persistentHandleMaxSize});
     }
 
-    TDirectoryHandleCache CreateStoredCache(
-        ui64 persistentHandleMaxSize = 2_GB)
+    TDirectoryHandleCache CreateStoredCache(ui64 persistentHandleMaxSize = 2_GB)
     {
         auto stats = CreateStats();
         return TDirectoryHandleCache(
@@ -146,7 +149,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto handle = cache.FindHandle(id);
         UNIT_ASSERT(handle);
 
-        const auto [serializedSize, chunkCount] = handle->GetMetrics();
+        const auto [serializedSize, chunkCount] = handle->GetStats();
 
         cache.RemoveHandle(id);
 
@@ -155,7 +158,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         UNIT_ASSERT_VALUES_EQUAL(1024, chunk.DirectoryContent.GetSize());
         const auto [updatedSerializedSize, updatedChunkCount] =
-            handle->GetMetrics();
+            handle->GetStats();
         UNIT_ASSERT_GT(updatedSerializedSize, serializedSize);
         UNIT_ASSERT_VALUES_EQUAL(chunkCount + 1, updatedChunkCount);
     }
@@ -286,7 +289,8 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldRegisterMetrics)
     {
         auto timer = CreateWallClockTimer();
-        auto stats = CreateDirectoryHandleStats(timer);
+        StorageStats = CreateDirectoryHandleStorageStats();
+        auto stats = CreateDirectoryHandleStats(timer, StorageStats);
 
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         auto metricsRegistry = NMetrics::CreateMetricsRegistry({}, counters);
@@ -310,20 +314,20 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT(maxOpenHandleCount);
         UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
 
-        auto storageFileMapSizeMax =
-            counters->FindCounter("Storage_FileMapSizeMax");
-        UNIT_ASSERT(storageFileMapSizeMax);
-        UNIT_ASSERT_GT(storageFileMapSizeMax->Val(), 0);
+        auto rawCapacityByteMaxCount =
+            counters->FindCounter("Storage_RawCapacityByteMaxCount");
+        UNIT_ASSERT(rawCapacityByteMaxCount);
+        UNIT_ASSERT_GT(rawCapacityByteMaxCount->Val(), 0);
 
-        auto storageUsedSpaceMax =
-            counters->FindCounter("Storage_UsedSpaceMax");
-        UNIT_ASSERT(storageUsedSpaceMax);
-        UNIT_ASSERT_GT(storageUsedSpaceMax->Val(), 0);
+        auto rawUsedByteMaxCount =
+            counters->FindCounter("Storage_RawUsedByteMaxCount");
+        UNIT_ASSERT(rawUsedByteMaxCount);
+        UNIT_ASSERT_GT(rawUsedByteMaxCount->Val(), 0);
 
-        auto memoryControllerRejectCount =
-            counters->FindCounter("Storage_MemoryControllerRejectCount");
-        UNIT_ASSERT(memoryControllerRejectCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, memoryControllerRejectCount->Val());
+        auto memoryLimiterRejectionCount =
+            counters->FindCounter("Storage_MemoryLimiterRejectionCount");
+        UNIT_ASSERT(memoryLimiterRejectionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, memoryLimiterRejectionCount->Val());
 
         Limiter->CanIncreaseResult = false;
 
@@ -338,7 +342,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         stats->UpdateStats(timer->Now());
         metricsRegistry->Update(timer->Now());
 
-        UNIT_ASSERT_GT(memoryControllerRejectCount->Val(), 0);
+        UNIT_ASSERT_GT(memoryLimiterRejectionCount->Val(), 0);
     }
 }
 

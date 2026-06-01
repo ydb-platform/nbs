@@ -112,7 +112,7 @@ void TFileSystem::ReadDir(
 
     if (!offset) {
         // directory contents need to be refreshed on rewinddir()
-        DirectoryHandleCache->ResetHandle(fi->fh, handle);
+        DirectoryHandleCache->ResetHandle(fi->fh);
     } else if (auto content = handle->ReadContent(size, offset, Log)) {
         reply(*this, *content);
         return;

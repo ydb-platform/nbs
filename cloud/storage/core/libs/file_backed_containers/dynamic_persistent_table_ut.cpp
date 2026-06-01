@@ -421,43 +421,47 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
                 .InitialDataMoveBufferSize = 100,
             });
 
-        const auto initialStats = table.GetStats();
-        UNIT_ASSERT_VALUES_UNEQUAL(0, initialStats.FileMapSize);
+        const auto initialStats = table.GetCounters();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, initialStats.RawCapacityByteCount);
         UNIT_ASSERT_VALUES_EQUAL(0, initialStats.ShrinkCount);
         UNIT_ASSERT_VALUES_EQUAL(1, initialStats.ExpansionCount);
         UNIT_ASSERT_VALUES_EQUAL(1, initialStats.CompactionCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, initialStats.UsedSpace);
+        UNIT_ASSERT_VALUES_EQUAL(0, initialStats.RawUsedByteCount);
 
         const TString data(96, 'a');
 
         const ui64 firstIndex = AllocAndCommitRecord(table, data);
         const ui64 secondIndex = AllocAndCommitRecord(table, data);
 
-        auto stats = table.GetStats();
-        UNIT_ASSERT_GT(stats.FileMapSize, initialStats.FileMapSize);
+        auto stats = table.GetCounters();
+        UNIT_ASSERT_GT(
+            stats.RawCapacityByteCount,
+            initialStats.RawCapacityByteCount);
         UNIT_ASSERT_VALUES_EQUAL(0, stats.ShrinkCount);
         UNIT_ASSERT_VALUES_EQUAL(2, stats.ExpansionCount);
         UNIT_ASSERT_VALUES_EQUAL(
             initialStats.CompactionCount,
             stats.CompactionCount);
-        UNIT_ASSERT_GT(stats.UsedSpace, 0);
+        UNIT_ASSERT_GT(stats.RawUsedByteCount, 0);
 
         UNIT_ASSERT(table.DeleteRecord(firstIndex));
         UNIT_ASSERT(table.DeleteRecord(secondIndex));
         table.TryDeallocateMemory();
 
-        stats = table.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(initialStats.FileMapSize, stats.FileMapSize);
+        stats = table.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialStats.RawCapacityByteCount,
+            stats.RawCapacityByteCount);
         UNIT_ASSERT_VALUES_EQUAL(1, stats.ShrinkCount);
         UNIT_ASSERT_VALUES_EQUAL(2, stats.ExpansionCount);
         UNIT_ASSERT_VALUES_EQUAL(
             initialStats.CompactionCount + 1,
             stats.CompactionCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.UsedSpace);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.RawUsedByteCount);
 
         table.Clear();
 
-        stats = table.GetStats();
+        stats = table.GetCounters();
         UNIT_ASSERT_VALUES_EQUAL(1, stats.ShrinkCount);
         UNIT_ASSERT_VALUES_EQUAL(3, stats.ExpansionCount);
     }

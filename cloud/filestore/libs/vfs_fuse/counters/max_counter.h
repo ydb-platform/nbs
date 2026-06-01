@@ -1,13 +1,8 @@
 #pragma once
 
-#include <cloud/filestore/libs/diagnostics/metrics/label.h>
-#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
-
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
-#include <util/generic/strbuf.h>
-#include <util/generic/string.h>
 #include <util/system/types.h>
 #include <util/system/yassert.h>
 
@@ -24,7 +19,7 @@ constexpr size_t DirectoryHandleMaxBucketCount = 60;   // 1 minute window
 ////////////////////////////////////////////////////////////////////////////////
 
 template <size_t BucketCount>
-class TMaxMetric
+class TMaxCounter
 {
 private:
     std::atomic<i64> Value = 0;
@@ -32,19 +27,10 @@ private:
     std::atomic<i64> MaxCounter = 0;
 
 public:
-    explicit TMaxMetric(ITimerPtr timer)
+    explicit TMaxCounter(ITimerPtr timer)
         : MaxCalc(
               std::make_unique<TMaxCalculator<BucketCount>>(std::move(timer)))
     {}
-
-    void Register(
-        NMetrics::IMetricsRegistry& metricsRegistry,
-        TStringBuf counterName)
-    {
-        metricsRegistry.Register(
-            {NMetrics::CreateSensor(TString(counterName))},
-            MaxCounter);
-    }
 
     void Set(ui64 value)
     {
@@ -65,6 +51,10 @@ public:
         MaxCounter.store(static_cast<i64>(MaxCalc->NextValue()));
     }
 
+    i64 GetValue() const
+    {
+        return MaxCounter.load();
+    }
 };
 
 }   // namespace NCloud::NFileStore::NFuse

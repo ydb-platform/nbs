@@ -92,7 +92,7 @@ private:
         ui64 handleSerializedSize);
     bool CanStoreHandle(ui64 handleSerializedSize) const;
     void RemoveRecords(ui64 handleId);
-    void UpdateStats();
+    void UpdateCounters();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

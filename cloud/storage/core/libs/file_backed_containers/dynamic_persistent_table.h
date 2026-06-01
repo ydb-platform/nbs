@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dynamic_persistent_table_counters.h"
 #include "file_map_memory_limiter.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -138,14 +139,7 @@ public:
         ui32 Crc32 = 0;
     };
 
-    struct TStats
-    {
-        ui64 FileMapSize = 0;
-        ui64 UsedSpace = 0;
-        ui64 ShrinkCount = 0;
-        ui64 ExpansionCount = 0;
-        ui64 CompactionCount = 0;
-    };
+    using TCounters = TDynamicPersistentTableCounters;
 
 private:
     enum class EDataRetrievalMode
@@ -171,6 +165,7 @@ private:
     ui64 ShrinkCount = 0;
     ui64 ExpansionCount = 0;
     ui64 CompactionCount = 0;
+    ui64 MemoryLimiterRejectionCount = 0;
 
     std::unique_ptr<TFileMap> FileMap;
     TDeque<ui64> FreeRecordIndexes;
@@ -407,14 +402,15 @@ public:
         return NextFreeRecordIndex - FreeRecordIndexes.size();
     }
 
-    TStats GetStats() const
+    TCounters GetCounters() const
     {
         return {
-            .FileMapSize = GetFileMapSize(),
-            .UsedSpace = GetLiveDataSize(),
+            .RawCapacityByteCount = GetFileMapSize(),
+            .RawUsedByteCount = GetUsedByteCount(),
             .ShrinkCount = ShrinkCount,
             .ExpansionCount = ExpansionCount,
             .CompactionCount = CompactionCount,
+            .MemoryLimiterRejectionCount = MemoryLimiterRejectionCount,
         };
     }
 
@@ -964,19 +960,19 @@ private:
 
     ui64 CalcShrinkTargetSize()
     {
-        const ui64 live = GetLiveDataSize();
+        const ui64 used = GetUsedByteCount();
         const ui64 shrinkTriggerThreshold =
             PercentOf(DataAreaSize, Config.ShrinkTriggerPercent);
 
         ui64 reserve = Config.InitialDataAreaSize;
         const ui64 percentReserve =
-            PercentOf(live, Config.ShrinkReservePercent);
+            PercentOf(used, Config.ShrinkReservePercent);
         if (reserve < percentReserve) {
             reserve = percentReserve;
         }
 
-        if (live > shrinkTriggerThreshold &&
-            DataAreaSize - live >= Config.MaxDataAreaStepSize)
+        if (used > shrinkTriggerThreshold &&
+            DataAreaSize - used >= Config.MaxDataAreaStepSize)
         {
             const ui64 maxStepReserve = Config.MaxDataAreaStepSize / 2;
             if (reserve < maxStepReserve) {
@@ -988,7 +984,7 @@ private:
             reserve = Config.MaxDataAreaStepSize;
         }
 
-        ui64 target = live + reserve;
+        ui64 target = used + reserve;
         target = AlignUp(target, Config.InitialDataAreaSize);
 
         if (target > DataAreaSize) {
@@ -1085,6 +1081,7 @@ private:
         // This is intentionally a growth admission check, not a reservation.
         // Usage is charged after ResizeAndRemap() succeeds.
         if (auto error = CanGrowFileMapSize(newFileMapSize); HasError(error)) {
+            ++MemoryLimiterRejectionCount;
             return error;
         }
 
@@ -1131,18 +1128,18 @@ private:
         return FileMap ? FileMap->MappedSize() : 0;
     }
 
-    ui64 GetLiveDataSize() const
+    ui64 GetUsedByteCount() const
     {
         return NextDataOffset - GapSpaceSize;
     }
 
     bool IsLowMemoryUsage() const
     {
-        const ui64 live = GetLiveDataSize();
+        const ui64 used = GetUsedByteCount();
         const ui64 threshold =
             PercentOf(DataAreaSize, Config.ShrinkTriggerPercent);
-        return live <= threshold ||
-               (DataAreaSize - live >= Config.MaxDataAreaStepSize);
+        return used <= threshold ||
+               (DataAreaSize - used >= Config.MaxDataAreaStepSize);
     }
 
     void ResetShrinkState()

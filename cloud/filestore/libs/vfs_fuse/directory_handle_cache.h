@@ -23,12 +23,8 @@ private:
     TDirectoryHandleStatsPtr Stats;
 
 private:
-    void IncreaseStatsForHandle(
-        const std::shared_ptr<TDirectoryHandle>& handle);
-    void IncreaseStatsForHandles(const TDirectoryHandleMap& handles);
-    void DecreaseStatsForHandle(
-        const std::shared_ptr<TDirectoryHandle>& handle);
-    void DecreaseStatsForHandles(const TDirectoryHandleMap& handles);
+    void IncreaseStats(const TDirectoryHandleStats& stats, size_t openHandles);
+    void DecreaseStats(const TDirectoryHandleStats& stats, size_t openHandles);
 
 public:
     TDirectoryHandleCache(
@@ -42,9 +38,7 @@ public:
 
     void RemoveHandle(ui64 handleId);
     bool RemoveHandle(ui64 handleId, fuse_ino_t ino);
-    void ResetHandle(
-        ui64 handleId,
-        const std::shared_ptr<TDirectoryHandle>& handle);
+    void ResetHandle(ui64 handleId);
     void AppendChunk(
         ui64 handleId,
         const std::shared_ptr<TDirectoryHandle>& handle,

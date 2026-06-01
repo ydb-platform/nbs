@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -235,4 +235,4 @@ Y_UNIT_TEST_SUITE(TRelaxedCountersTest)
     }
 }
 
-}   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
+}   // namespace NCloud::NFileStore::NFuse

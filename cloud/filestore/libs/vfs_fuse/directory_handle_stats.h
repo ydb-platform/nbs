@@ -1,41 +1,37 @@
 #pragma once
 
-#include "directory_handle_max_metric.h"
 #include "directory_handle_storage_stats.h"
 
-#include <cloud/filestore/libs/diagnostics/metrics/label.h>
-#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
+#include <cloud/filestore/libs/vfs_fuse/counters/max_counter.h>
 
 #include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
-#include <library/cpp/deprecated/atomic/atomic.h>
-#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <util/system/types.h>
 
-#include <util/generic/strbuf.h>
-#include <util/generic/string.h>
-#include <util/system/yassert.h>
-
+#include <atomic>
 #include <memory>
 
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDirectoryHandleStats final: public IModuleStats
+class TDirectoryHandleModuleStats final
+    : public std::enable_shared_from_this<TDirectoryHandleModuleStats>
+    , public IModuleStats
 {
 private:
-    TMaxMetric<DirectoryHandleMaxBucketCount> CacheSize;
-    TMaxMetric<DirectoryHandleMaxBucketCount> ChunkCount;
-    TMaxMetric<DirectoryHandleMaxBucketCount> OpenHandleCount;
+    TMaxCounter<DirectoryHandleMaxBucketCount> CacheSize;
+    TMaxCounter<DirectoryHandleMaxBucketCount> ChunkCount;
+    TMaxCounter<DirectoryHandleMaxBucketCount> OpenHandleCount;
+    std::atomic<i64> RewindCount = 0;
+    // Optional; when null no storage sensors are registered or updated.
     IDirectoryHandleStorageStatsPtr StorageStats;
 
-    void ChangeCacheSize(i64 delta);
-    void ChangeChunkCount(i64 delta);
-
 public:
-    explicit TDirectoryHandleStats(ITimerPtr timer);
+    TDirectoryHandleModuleStats(
+        ITimerPtr timer,
+        IDirectoryHandleStorageStatsPtr storageStats);
 
     TStringBuf GetName() const override;
 
@@ -44,21 +40,23 @@ public:
         const NMetrics::IMetricsRegistryPtr& aggregatableMetricsRegistry)
         override;
 
-    void IncreaseCacheSize(size_t value);
-    void DecreaseCacheSize(size_t value);
-    void IncreaseChunkCount(size_t value);
-    void DecreaseChunkCount(size_t value);
-    void SetOpenHandleCount(size_t value);
-
-    IDirectoryHandleStorageStatsPtr GetStorageStats();
+    void ChangeCacheSize(i64 delta);
+    void ChangeChunkCount(i64 delta);
+    void ChangeOpenHandleCount(i64 delta);
+    void IncrementRewindCount();
 
     void UpdateStats(TInstant now) override;
 };
 
-using TDirectoryHandleStatsPtr = std::shared_ptr<TDirectoryHandleStats>;
+using TDirectoryHandleStatsPtr = std::shared_ptr<TDirectoryHandleModuleStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandleStatsPtr CreateDirectoryHandleStats(ITimerPtr timer);
+// storageStats may be null when the persistent directory-handle storage is
+// disabled, the resulting module stats will not register or update the
+// storage-level sensors.
+TDirectoryHandleStatsPtr CreateDirectoryHandleStats(
+    ITimerPtr timer,
+    IDirectoryHandleStorageStatsPtr storageStats);
 
 }   // namespace NCloud::NFileStore::NFuse

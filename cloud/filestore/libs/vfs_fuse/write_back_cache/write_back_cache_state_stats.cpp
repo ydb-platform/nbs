@@ -1,10 +1,9 @@
 #include "write_back_cache_state_stats.h"
 
-#include "relaxed_counters.h"
-
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+#include <cloud/filestore/libs/vfs_fuse/counters/relaxed_counters.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 

@@ -1,12 +1,12 @@
 #include "write_back_cache_state.h"
 
 #include "queued_operations.h"
-#include "relaxed_counters.h"
 #include "write_back_cache_stats.h"
 #include "write_data_request.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/service/error.h>
+#include <cloud/filestore/libs/vfs_fuse/counters/relaxed_counters.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 

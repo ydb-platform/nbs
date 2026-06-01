@@ -5,6 +5,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/buffer.h>
+#include <util/generic/scope.h>
 #include <util/system/yassert.h>
 
 #include <utility>
@@ -31,7 +32,7 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
         },
         std::move(args.FileMapMemoryLimiter));
 
-    UpdateStats();
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -48,11 +49,10 @@ void TDirectoryHandleStorage::StoreHandle(
             "Failed to store record with existing handle id");
         RemoveRecords(handleId);
         HandlesExcludedFromStorage.insert(handleId);
-        UpdateStats();
         return;
     }
 
-    CreateRecord(handleId, record, handle.GetMetrics().first);
+    CreateRecord(handleId, record, handle.GetStats().SerializedSize);
 }
 
 void TDirectoryHandleStorage::UpdateHandle(
@@ -65,7 +65,6 @@ void TDirectoryHandleStorage::UpdateHandle(
     TGuard guard(TableLock);
 
     if (HandlesExcludedFromStorage.contains(handleId)) {
-        UpdateStats();
         return;
     }
 
@@ -75,11 +74,10 @@ void TDirectoryHandleStorage::UpdateHandle(
         STORAGE_DEBUG(
             "failed to update record for handle %lu, handle is already deleted",
             handleId);
-        UpdateStats();
         return;
     }
 
-    CreateRecord(handleId, record, handle.GetMetrics().first);
+    CreateRecord(handleId, record, handle.GetStats().SerializedSize);
 }
 
 void TDirectoryHandleStorage::CreateRecord(
@@ -93,6 +91,11 @@ void TDirectoryHandleStorage::CreateRecord(
         HandlesExcludedFromStorage.insert(handleId);
     };
 
+    Y_DEFER
+    {
+        UpdateCounters();
+    };
+
     if (!CanStoreHandle(handleSerializedSize)) {
         STORAGE_WARN(
             "Dropping directory handle "
@@ -100,16 +103,11 @@ void TDirectoryHandleStorage::CreateRecord(
             << handleSerializedSize << " exceeds limit "
             << PersistentHandleMaxSize);
         dropRecordsForHandle();
-        UpdateStats();
         return;
     }
 
     auto result = CreateRecord(record);
     if (HasError(result)) {
-        if (result.GetError().GetCode() == E_FS_NOSPC) {
-            Stats->IncrementMemoryControllerRejectCount();
-        }
-
         const auto it = HandleIdToIndices.find(handleId);
         const size_t indexCount =
             it == HandleIdToIndices.end() ? 0 : it->second.size();
@@ -118,13 +116,11 @@ void TDirectoryHandleStorage::CreateRecord(
             << handleId << ", indices count: " << indexCount << ": "
             << FormatError(result.GetError()));
         dropRecordsForHandle();
-        UpdateStats();
         return;
     }
 
     const ui64 recordIndex = result.GetResult();
     HandleIdToIndices[handleId].push_back(recordIndex);
-    UpdateStats();
 }
 
 void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
@@ -132,14 +128,13 @@ void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
     TGuard guard(TableLock);
     HandlesExcludedFromStorage.erase(handleId);
     RemoveRecords(handleId);
-    UpdateStats();
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
     if (HandlesExcludedFromStorage.contains(handleId)) {
-        UpdateStats();
         return;
     }
 
@@ -160,7 +155,7 @@ void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
             HandleIdToIndices[handleId].end());
     }
 
-    UpdateStats();
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
@@ -251,7 +246,7 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
     TVector<ui64> oversizedHandleIds;
     if (PersistentHandleMaxSize) {
         for (const auto& [handleId, handle]: handles) {
-            const ui64 handleSerializedSize = handle->GetMetrics().first;
+            const ui64 handleSerializedSize = handle->GetStats().SerializedSize;
             if (handleSerializedSize <= PersistentHandleMaxSize) {
                 continue;
             }
@@ -270,7 +265,7 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
         handles.erase(handleId);
     }
 
-    UpdateStats();
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::Clear()
@@ -279,7 +274,7 @@ void TDirectoryHandleStorage::Clear()
     Table->Clear();
     HandleIdToIndices.clear();
     HandlesExcludedFromStorage.clear();
-    UpdateStats();
+    UpdateCounters();
 }
 
 // TODO: We can optimize this by counting size for serialization dynamically and
@@ -361,16 +356,9 @@ void TDirectoryHandleStorage::RemoveRecords(ui64 handleId)
     Table->TryDeallocateMemory();
 }
 
-void TDirectoryHandleStorage::UpdateStats()
+void TDirectoryHandleStorage::UpdateCounters()
 {
-    const auto stats = Table->GetStats();
-    Stats->SetCounters({
-        .FileMapSize = stats.FileMapSize,
-        .ShrinkCount = stats.ShrinkCount,
-        .ExpansionCount = stats.ExpansionCount,
-        .CompactionCount = stats.CompactionCount,
-        .UsedSpace = stats.UsedSpace,
-    });
+    Stats->SetCounters(Table->GetCounters());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

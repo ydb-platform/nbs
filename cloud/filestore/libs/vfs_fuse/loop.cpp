@@ -1087,8 +1087,7 @@ private:
                     Config->GetClientId().Quote().c_str()));
             }
 
-            DirectoryHandleStats = CreateDirectoryHandleStats(Timer);
-
+            IDirectoryHandleStorageStatsPtr directoryHandleStorageStats;
             TDirectoryHandleStoragePtr directoryHandleStorage;
             if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
                 if (Config->GetDirectoryHandlesStoragePath()) {
@@ -1106,10 +1105,13 @@ private:
                         return error;
                     }
 
+                    directoryHandleStorageStats =
+                        CreateDirectoryHandleStorageStats();
+
                     directoryHandleStorage = CreateDirectoryHandleStorage(
                         {.Log = Log,
                          .FileMapMemoryLimiter = FileMapMemoryLimiter,
-                         .Stats = DirectoryHandleStats->GetStorageStats(),
+                         .Stats = directoryHandleStorageStats,
                          .FilePath = path / DirectoryHandleStorageFileName,
                          .MaxRecords =
                              FileSystemConfig->GetDirectoryHandlesTableSize(),
@@ -1133,6 +1135,10 @@ private:
                         Config->GetClientId().Quote().c_str());
                 }
             }
+
+            DirectoryHandleStats = CreateDirectoryHandleStats(
+                Timer,
+                std::move(directoryHandleStorageStats));
 
             ModuleStatsRegistry->Register(
                 {.FileSystemId = Config->GetFileSystemId(),

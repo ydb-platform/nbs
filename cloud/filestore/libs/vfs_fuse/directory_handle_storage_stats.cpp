@@ -1,12 +1,10 @@
 #include "directory_handle_storage_stats.h"
 
-#include "directory_handle_max_metric.h"
-
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
-
-#include <atomic>
-#include <utility>
+#include <cloud/filestore/libs/vfs_fuse/counters/max_counter.h>
+#include <cloud/filestore/libs/vfs_fuse/counters/relaxed_counters.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -16,76 +14,59 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDirectoryHandleStorageStats final: public IDirectoryHandleStorageStats
+// Storage counters are always updated while holding the storage's TableLock,
+// so relaxed memory ordering is sufficient.
+class TDirectoryHandleStorageStats final
+    : public std::enable_shared_from_this<TDirectoryHandleStorageStats>
+    , public IDirectoryHandleStorageStats
 {
 private:
-    TMaxMetric<DirectoryHandleMaxBucketCount> FileMapSizeCounter;
-    TMaxMetric<DirectoryHandleMaxBucketCount> UsedSpaceCounter;
-    std::atomic<i64> ShrinkCounter = 0;
-    std::atomic<i64> ExpansionCounter = 0;
-    std::atomic<i64> CompactionCounter = 0;
-    std::atomic<i64> MemoryControllerRejectCounter = 0;
+    TRelaxedCombinedMaxCounter<DirectoryHandleMaxBucketCount>
+        RawCapacityByteCounter;
+    TRelaxedCombinedMaxCounter<DirectoryHandleMaxBucketCount>
+        RawUsedByteCounter;
+    TRelaxedCounter ShrinkCounter;
+    TRelaxedCounter ExpansionCounter;
+    TRelaxedCounter CompactionCounter;
+    TRelaxedCounter MemoryLimiterRejectionCounter;
 
 public:
-    explicit TDirectoryHandleStorageStats(ITimerPtr timer)
-        : FileMapSizeCounter(timer)
-        , UsedSpaceCounter(std::move(timer))
-    {}
-
-    void RegisterCounters(
-        IMetricsRegistry& localMetricsRegistry,
-        IMetricsRegistry& aggregatableMetricsRegistry) override
+    void SetCounters(TDynamicPersistentTableCounters counters) override
     {
-        Y_UNUSED(aggregatableMetricsRegistry);
-
-        FileMapSizeCounter.Register(
-            localMetricsRegistry,
-            "Storage_FileMapSizeMax");
-        UsedSpaceCounter.Register(localMetricsRegistry, "Storage_UsedSpaceMax");
-
-        localMetricsRegistry.Register(
-            {CreateSensor("Storage_ShrinkCount")},
-            ShrinkCounter,
-            EAggregationType::AT_SUM,
-            EMetricType::MT_DERIVATIVE);
-
-        localMetricsRegistry.Register(
-            {CreateSensor("Storage_ExpansionCount")},
-            ExpansionCounter,
-            EAggregationType::AT_SUM,
-            EMetricType::MT_DERIVATIVE);
-
-        localMetricsRegistry.Register(
-            {CreateSensor("Storage_CompactionCount")},
-            CompactionCounter,
-            EAggregationType::AT_SUM,
-            EMetricType::MT_DERIVATIVE);
-
-        localMetricsRegistry.Register(
-            {CreateSensor("Storage_MemoryControllerRejectCount")},
-            MemoryControllerRejectCounter,
-            EAggregationType::AT_SUM,
-            EMetricType::MT_DERIVATIVE);
+        RawCapacityByteCounter.Set(
+            static_cast<i64>(counters.RawCapacityByteCount));
+        RawUsedByteCounter.Set(static_cast<i64>(counters.RawUsedByteCount));
+        ShrinkCounter.Set(static_cast<i64>(counters.ShrinkCount));
+        ExpansionCounter.Set(static_cast<i64>(counters.ExpansionCount));
+        CompactionCounter.Set(static_cast<i64>(counters.CompactionCount));
+        MemoryLimiterRejectionCounter.Set(
+            static_cast<i64>(counters.MemoryLimiterRejectionCount));
     }
 
-    void SetCounters(TDirectoryHandleStorageCounters counters) override
+    TDirectoryHandleStorageMetrics CreateMetrics() const override
     {
-        FileMapSizeCounter.Set(counters.FileMapSize);
-        UsedSpaceCounter.Set(counters.UsedSpace);
-        ShrinkCounter.store(static_cast<i64>(counters.ShrinkCount));
-        ExpansionCounter.store(static_cast<i64>(counters.ExpansionCount));
-        CompactionCounter.store(static_cast<i64>(counters.CompactionCount));
-    }
+        auto self = shared_from_this();
 
-    void IncrementMemoryControllerRejectCount() override
-    {
-        MemoryControllerRejectCounter.fetch_add(1);
+        return {
+            .RawCapacityByteMaxCount = CreateMetric(
+                [self] { return self->RawCapacityByteCounter.GetMax(); }),
+            .RawUsedByteMaxCount = CreateMetric(
+                [self] { return self->RawUsedByteCounter.GetMax(); }),
+            .ShrinkCount =
+                CreateMetric([self] { return self->ShrinkCounter.Get(); }),
+            .ExpansionCount =
+                CreateMetric([self] { return self->ExpansionCounter.Get(); }),
+            .CompactionCount =
+                CreateMetric([self] { return self->CompactionCounter.Get(); }),
+            .MemoryLimiterRejectionCount = CreateMetric(
+                [self] { return self->MemoryLimiterRejectionCounter.Get(); }),
+        };
     }
 
     void UpdateStats() override
     {
-        FileMapSizeCounter.UpdateMax();
-        UsedSpaceCounter.UpdateMax();
+        RawCapacityByteCounter.Update();
+        RawUsedByteCounter.Update();
     }
 };
 
@@ -93,10 +74,54 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDirectoryHandleStorageStatsPtr CreateDirectoryHandleStorageStats(
-    ITimerPtr timer)
+void TDirectoryHandleStorageMetrics::Register(
+    NMetrics::IMetricsRegistry& localMetricsRegistry,
+    NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const
 {
-    return std::make_shared<TDirectoryHandleStorageStats>(std::move(timer));
+    Y_UNUSED(aggregatableMetricsRegistry);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_RawCapacityByteMaxCount")},
+        RawCapacityByteMaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_RawUsedByteMaxCount")},
+        RawUsedByteMaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_ShrinkCount")},
+        ShrinkCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_ExpansionCount")},
+        ExpansionCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_CompactionCount")},
+        CompactionCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_MemoryLimiterRejectionCount")},
+        MemoryLimiterRejectionCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+IDirectoryHandleStorageStatsPtr CreateDirectoryHandleStorageStats()
+{
+    return std::make_shared<TDirectoryHandleStorageStats>();
 }
 
 }   // namespace NCloud::NFileStore::NFuse

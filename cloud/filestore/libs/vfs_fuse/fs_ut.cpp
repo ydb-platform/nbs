@@ -1105,11 +1105,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
             UNIT_ASSERT(moduleCounters);
 
-            auto memoryControllerRejectCount =
+            auto memoryLimiterRejectionCount =
                 moduleCounters->FindCounter(
-                    "Storage_MemoryControllerRejectCount");
-            UNIT_ASSERT(memoryControllerRejectCount);
-            UNIT_ASSERT_GT(memoryControllerRejectCount->Val(), 0);
+                    "Storage_MemoryLimiterRejectionCount");
+            UNIT_ASSERT(memoryLimiterRejectionCount);
+            UNIT_ASSERT_GT(memoryLimiterRejectionCount->Val(), 0);
 
             auto suspend = bootstrap.Loop->SuspendAsync();
             UNIT_ASSERT_NO_EXCEPTION(suspend.GetValue(WaitTimeout));
@@ -1121,8 +1121,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto storage = CreateDirectoryHandleStorage(
                 {.Log = log,
                  .FileMapMemoryLimiter = CreateFileMapMemoryLimiterStub(),
-                 .Stats = CreateDirectoryHandleStorageStats(
-                     CreateWallClockTimer()),
+                 .Stats = CreateDirectoryHandleStorageStats(),
                  .FilePath = storagePath,
                  .MaxRecords = 100000,
                  .InitialDataAreaSize = 128,
@@ -1572,10 +1571,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
         UNIT_ASSERT(moduleCounters);
 
-        auto storageFileMapSizeMax =
-            moduleCounters->FindCounter("Storage_FileMapSizeMax");
-        UNIT_ASSERT(storageFileMapSizeMax);
-        UNIT_ASSERT_GT(storageFileMapSizeMax->Val(), 0);
+        auto rawCapacityByteMaxCount =
+            moduleCounters->FindCounter("Storage_RawCapacityByteMaxCount");
+        UNIT_ASSERT(rawCapacityByteMaxCount);
+        UNIT_ASSERT_GT(rawCapacityByteMaxCount->Val(), 0);
 
         auto storageExpansionCount =
             moduleCounters->FindCounter("Storage_ExpansionCount");
@@ -1586,10 +1585,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(maxOpenHandleCount);
         UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
 
-        auto storageUsedSpaceMax =
-            moduleCounters->FindCounter("Storage_UsedSpaceMax");
-        UNIT_ASSERT(storageUsedSpaceMax);
-        UNIT_ASSERT_GT(storageUsedSpaceMax->Val(), 0);
+        auto rawUsedByteMaxCount =
+            moduleCounters->FindCounter("Storage_RawUsedByteMaxCount");
+        UNIT_ASSERT(rawUsedByteMaxCount);
+        UNIT_ASSERT_GT(rawUsedByteMaxCount->Val(), 0);
 
         auto close =
             bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
