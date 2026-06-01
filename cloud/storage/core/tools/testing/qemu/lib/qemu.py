@@ -89,7 +89,7 @@ class Qemu:
                  use_virtiofs_server=False,
                  num_request_queues=1,
                  is_arm=None,
-                 reconnect=1,
+                 reconnect=None,
                  qemu_bios=None):
 
         self.ssh_port = 0
@@ -111,7 +111,7 @@ class Qemu:
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
         self.is_arm = platform.machine().lower() in ("aarch64", "arm64") if is_arm is None else is_arm
-        self.reconnect = 0 if self.is_arm else reconnect
+        self.reconnect = reconnect if reconnect is None else 0 if self.is_arm else 1
         self.migration = "" if self.is_arm else ",migration=external"
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
