@@ -244,7 +244,7 @@ private:
     bool InitialValidationInProgress() const;
 
     void Read(IService& service, TVector<char>& readBuffer);
-    void Read(
+    bool Read(
         IService& service,
         ui64 offset,
         ui64 length,
@@ -563,29 +563,38 @@ void TUnalignedTestScenario::Read(
     ITestExecutorIOService& service,
     TVector<char>& readBuffer)
 {
-    auto len =
-        Min(RandomNumberFromRange(MinReadByteCount, MaxReadByteCount),
-            readBuffer.size(),
-            FileSize);
+    while (true) {
+        auto len =
+            Min(RandomNumberFromRange(MinReadByteCount, MaxReadByteCount),
+                readBuffer.size(),
+                FileSize);
 
-    if (ShouldValidate) {
-        auto offset = ValidationOffset.fetch_add(len);
-        if (offset == 0) {
-            STORAGE_INFO("Starting sequential read validation");
+        if (ShouldValidate) {
+            auto offset = ValidationOffset.fetch_add(len);
+            if (offset == 0) {
+                STORAGE_INFO("Starting sequential read validation");
+            }
+            if (offset < FileSize) {
+                len = Min(len, FileSize - offset);
+                Read(service, offset, len, true, readBuffer);
+                return;
+            }
         }
-        if (offset < FileSize) {
-            len = Min(len, FileSize - offset);
-            Read(service, offset, len, true, readBuffer);
-            return;
+
+        auto randomOffset = RandomNumber(FileSize - len + 1);
+
+        if (Read(service, randomOffset, len, false, readBuffer)) {
+            break;
         }
+
+        // If we reach here, it means the generated read request intersects with
+        // in-flight write requests - we need to retry
+        // It is guaranteed that at least one region is not being written so
+        // eventually we will succeed
     }
-
-    auto randomOffset = RandomNumber(FileSize - len + 1);
-
-    Read(service, randomOffset, len, false, readBuffer);
 }
 
-void TUnalignedTestScenario::Read(
+bool TUnalignedTestScenario::Read(
     IService& service,
     ui64 offset,
     ui64 length,
@@ -593,6 +602,17 @@ void TUnalignedTestScenario::Read(
     TVector<char>& readBuffer)
 {
     auto regions = GetReadRegions(offset, length);
+
+    if (DisableParallelReadWrite) {
+        for (const auto& region: regions) {
+            if (RegionLockedForWriteFlags[region.Index]) {
+                // Skip read if it overlaps with a region that is being written
+                return false;
+            }
+        }
+    }
+
+
     auto buffer = TStringBuf(readBuffer.data(), length);
 
     service.Read(
@@ -617,6 +637,8 @@ void TUnalignedTestScenario::Read(
                 }
             }
         });
+
+    return true;
 }
 
 TVector<TReadRegionInfo> TUnalignedTestScenario::GetReadRegions(

@@ -94,6 +94,7 @@ TConfigHolder::TConfigHolder(const TCreateTestConfigArguments& args)
     fileTestConfig.SetMaxWriteByteCount(args.MaxWriteByteCount);
     fileTestConfig.SetMinRegionByteCount(args.MinRegionByteCount);
     fileTestConfig.SetMaxRegionByteCount(args.MaxRegionByteCount);
+    fileTestConfig.SetDisableParallelReadWrite(args.DisableParallelReadWrite);
 }
 
 TConfigHolder::TConfigHolder(const TTestConfig& config)

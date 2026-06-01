@@ -79,23 +79,27 @@ int TTest::Run()
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
             Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
 
-            ConfigHolder = CreateTestConfig(TCreateTestConfigArguments
-                {.FilePath = *Options->FilePath,
-                 .FileSize = *Options->FileSize,
-                 .TestCount = Options->TestCount,
-                 .IoDepth = Options->IoDepth,
-                 .BlockSize = Options->BlockSize,
-                 .WriteRate = Options->WriteRate,
-                 .RequestBlockCount = Options->RequestBlockCount,
-                 .WriteParts = Options->WriteParts,
-                 .AlternatingPhase = Options->AlternatingPhase,
-                 .MaxWriteRequestCount = 0,
-                 .MinReadByteCount = Options->MinReadSize,
-                 .MaxReadByteCount = Options->MaxReadSize,
-                 .MinWriteByteCount = Options->MinWriteSize,
-                 .MaxWriteByteCount = Options->MaxWriteSize,
-                 .MinRegionByteCount = Options->MinRegionSize,
-                 .MaxRegionByteCount = Options->MaxRegionSize});
+            ConfigHolder = CreateTestConfig(
+                TCreateTestConfigArguments{
+                    .FilePath = *Options->FilePath,
+                    .FileSize = *Options->FileSize,
+                    .TestCount = Options->TestCount,
+                    .IoDepth = Options->IoDepth,
+                    .BlockSize = Options->BlockSize,
+                    .WriteRate = Options->WriteRate,
+                    .RequestBlockCount = Options->RequestBlockCount,
+                    .WriteParts = Options->WriteParts,
+                    .AlternatingPhase = Options->AlternatingPhase,
+                    .MaxWriteRequestCount = 0,
+                    .MinReadByteCount = Options->MinReadSize,
+                    .MaxReadByteCount = Options->MaxReadSize,
+                    .MinWriteByteCount = Options->MinWriteSize,
+                    .MaxWriteByteCount = Options->MaxWriteSize,
+                    .MinRegionByteCount = Options->MinRegionSize,
+                    .MaxRegionByteCount = Options->MaxRegionSize,
+                    .DisableParallelReadWrite =
+                        Options->DisableParallelReadWrite,
+                });
 
             DumpConfiguration();
             break;
