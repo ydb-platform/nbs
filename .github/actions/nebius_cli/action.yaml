@@ -37,11 +37,6 @@ runs:
           shell: bash
           run: |
               set -x
-              if command -v yq > /dev/null 2>&1; then
-                echo "yq already installed"
-                exit 0
-              fi
-
               INSTALL_DIR="$HOME/.local/bin" \
                 bash "${GITHUB_ACTION_PATH}/../../packer/scripts/install-github-release-tools.sh" yq
 

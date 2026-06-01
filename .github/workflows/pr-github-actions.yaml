@@ -457,11 +457,8 @@ jobs:
         shell: bash
         run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
-      - name: install action-validator with asdf
-        uses: asdf-vm/actions/install@v4.0.1
-        with:
-          tool_versions: |
-            action-validator 0.8.0
+      - name: install action-validator
+        run: bash .github/packer/scripts/install-github-release-tools.sh action-validator
 
       - name: Prepare s3
         id: s3
