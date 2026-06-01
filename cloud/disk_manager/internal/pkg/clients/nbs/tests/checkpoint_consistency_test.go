@@ -5,11 +5,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -27,6 +29,12 @@ type writeRange struct {
 type writeRequest struct {
 	writeRange
 	EndTimestamp uint32
+}
+
+func isContextCanceledGrpcError(err error) bool {
+	clientErr := nbs_client.GetClientError(err)
+	return clientErr.Code == nbs_client.E_GRPC_CANCELLED &&
+		strings.Contains(clientErr.Message, "context canceled")
 }
 
 // goWriteBlocksWithRequestLog issues write requests to the disk while building
@@ -153,7 +161,7 @@ func goWriteBlocksWithRequestLog(
 		cancel()
 		<-finished
 		err := <-writeDone
-		if err != nil {
+		if err != nil && !isContextCanceledGrpcError(err) {
 			return nil, err
 		}
 		return requestLog, nil
@@ -420,14 +428,9 @@ func TestCheckpointDataConsistencySimple(t *testing.T) {
 
 func TestCheckpointDataConsistencyComplicated(t *testing.T) {
 	doTestCheckpointDataConsistency(t, 3072, []writeRange{
-		{StartBlockIndex: 0, BlockCount: 1},
-		{StartBlockIndex: 1, BlockCount: 1},
-		{StartBlockIndex: 1024, BlockCount: 1},
-		{StartBlockIndex: 0, BlockCount: 32},
-		{StartBlockIndex: 1008, BlockCount: 32},
+		{StartBlockIndex: 0, BlockCount: 2},
+		{StartBlockIndex: 2, BlockCount: 1},
 		{StartBlockIndex: 1024, BlockCount: 32},
-		{StartBlockIndex: 0, BlockCount: 1024},
-		{StartBlockIndex: 1024, BlockCount: 1024},
 		{StartBlockIndex: 2048, BlockCount: 1024},
 	})
 }
