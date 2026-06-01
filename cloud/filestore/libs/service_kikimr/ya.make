@@ -2,7 +2,11 @@ LIBRARY()
 
 SRCS(
     auth_provider_kikimr.cpp
+    handler_actor.cpp
+    methods.cpp
+    request_actor.cpp
     service.cpp
+    stream_request_actor.cpp
 )
 
 PEERDIR(
