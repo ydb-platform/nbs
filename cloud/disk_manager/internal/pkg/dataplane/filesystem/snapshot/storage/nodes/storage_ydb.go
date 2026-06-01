@@ -75,7 +75,8 @@ func nodeStructTypeString() string {
 		size: Uint64,
 		links: Uint32,
 		node_type: Uint32,
-		symlink_target: Utf8>`
+		symlink_target: Utf8,
+		dev_id: Uint64>`
 }
 
 func nodeStructValue(
@@ -87,8 +88,8 @@ func nodeStructValue(
 		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
 		persistence.StructFieldValue("node_id", persistence.Uint64Value(node.NodeID)),
 		persistence.StructFieldValue("mode", persistence.Uint32Value(node.Mode)),
-		persistence.StructFieldValue("uid", persistence.Uint32Value(uint32(node.UID))),
-		persistence.StructFieldValue("gid", persistence.Uint32Value(uint32(node.GID))),
+		persistence.StructFieldValue("uid", persistence.Uint32Value(node.UID)),
+		persistence.StructFieldValue("gid", persistence.Uint32Value(node.GID)),
 		persistence.StructFieldValue("atime", persistence.Uint64Value(node.Atime)),
 		persistence.StructFieldValue("mtime", persistence.Uint64Value(node.Mtime)),
 		persistence.StructFieldValue("ctime", persistence.Uint64Value(node.Ctime)),
@@ -96,6 +97,7 @@ func nodeStructValue(
 		persistence.StructFieldValue("links", persistence.Uint32Value(node.Links)),
 		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 		persistence.StructFieldValue("symlink_target", persistence.UTF8Value(node.LinkTarget)),
+		persistence.StructFieldValue("dev_id", persistence.Uint64Value(node.DevID)),
 	)
 }
 
@@ -205,6 +207,7 @@ func scanNode(result persistence.Result) (nfs.Node, error) {
 		persistence.OptionalWithDefault("links", &node.Links),
 		persistence.OptionalWithDefault("node_type", &nodeType),
 		persistence.OptionalWithDefault("symlink_target", &node.LinkTarget),
+		persistence.OptionalWithDefault("dev_id", &node.DevID),
 	)
 	if err != nil {
 		return nfs.Node{}, err
@@ -487,6 +490,7 @@ func (s *storageYDB) listNodes(
 			node.Links = a.Links
 			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
+			node.DevID = a.DevID
 			nodes[i] = node
 		}
 	}

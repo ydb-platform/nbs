@@ -183,6 +183,27 @@ func (f *fixture) newSlowConfig() *snapshot_config.FilesystemSnapshotConfig {
 	}
 }
 
+func TestValidateConfigRejectsZeroLimits(t *testing.T) {
+	restoreHardlinksBatchSize := uint32(0)
+	fetchNodesFromStorageLimit := uint32(0)
+	snapshotDataDeletionLimit := uint64(0)
+
+	err := validateConfig(&snapshot_config.FilesystemSnapshotConfig{
+		RestoreHardlinksBatchSize: &restoreHardlinksBatchSize,
+	})
+	require.Error(t, err)
+
+	err = validateConfig(&snapshot_config.FilesystemSnapshotConfig{
+		FetchNodesFromStorageLimit: &fetchNodesFromStorageLimit,
+	})
+	require.Error(t, err)
+
+	err = validateConfig(&snapshot_config.FilesystemSnapshotConfig{
+		SnapshotDataDeletionLimit: &snapshotDataDeletionLimit,
+	})
+	require.Error(t, err)
+}
+
 func (f *fixture) newTransferFromFilesystemToSnapshotTask(
 	config *snapshot_config.FilesystemSnapshotConfig,
 	filesystemID string,

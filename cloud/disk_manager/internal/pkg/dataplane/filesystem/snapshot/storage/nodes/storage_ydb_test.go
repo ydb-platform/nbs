@@ -153,6 +153,7 @@ func TestSavedNodesAreListed(t *testing.T) {
 		makeNode(parentNodeID, 20, "lambda", nfs_client.NODE_KIND_DIR),
 		makeNode(parentNodeID, 21, "mu", nfs_client.NODE_KIND_FILE),
 	}
+	expected[1].DevID = 777
 
 	err := f.storage.SaveNodes(f.ctx, snapshotID, expected)
 	require.NoError(t, err)

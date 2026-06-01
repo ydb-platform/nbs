@@ -104,8 +104,8 @@ type Node struct {
 	Ctime             uint64
 	Size              uint64
 	Mode              uint32
-	UID               uint64
-	GID               uint64
+	UID               uint32
+	GID               uint32
 	Links             uint32
 	Type              NodeType
 	LinkTarget        string
@@ -131,8 +131,8 @@ func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
 		Ctime:             attr.GetCTime(),
 		Size:              attr.GetSize(),
 		Mode:              attr.GetMode(),
-		UID:               uint64(attr.GetUid()),
-		GID:               uint64(attr.GetGid()),
+		UID:               attr.GetUid(),
+		GID:               attr.GetGid(),
 		Links:             attr.GetLinks(),
 		Type:              nodeType,
 		ShardFileSystemID: string(attr.GetShardFileSystemId()),
@@ -444,8 +444,8 @@ func (client *Client) CreateNode(
 		NodeId:       node.ParentID,
 		Name:         []byte(node.Name),
 		FileSystemId: session.FileSystemID,
-		Uid:          node.UID,
-		Gid:          node.GID,
+		Uid:          uint64(node.UID),
+		Gid:          uint64(node.GID),
 		Headers:      headersForSession(session),
 	}
 

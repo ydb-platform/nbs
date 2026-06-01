@@ -79,8 +79,8 @@ type comparableNode struct {
 	Mode  uint32
 	Type  uint32
 	Links uint32
-	UID   uint64
-	GID   uint64
+	UID   uint32
+	GID   uint32
 }
 
 func listComparableNodes(
