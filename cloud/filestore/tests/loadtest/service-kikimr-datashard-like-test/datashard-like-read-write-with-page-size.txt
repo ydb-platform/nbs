@@ -2,7 +2,7 @@ Tests {
     LoadTest {
         Name: "datashard-like-read-write-with-page-size"
         CreateFileStoreRequest: {
-            FileSystemId: "datashard-like-read-write-wth-page-size"
+            FileSystemId: "datashard-like-read-write-with-page-size"
             FolderId: "folder"
             CloudId: "cloud"
             BlocksCount: 1000000
