@@ -47,7 +47,7 @@ TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
 
 ICertificateProviderPtr CreateServerCertificateProvider(
     const TServerAppConfigPtr& config,
-    ILoggingServicePtr /*logging*/)
+    ILoggingServicePtr logging)
 {
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: config->GetCerts()) {
@@ -64,9 +64,15 @@ ICertificateProviderPtr CreateServerCertificateProvider(
         });
     }
 
-    return CreateStaticCertificateProvider(
+    auto provider = CreateCertificateProvider(
+        std::move(logging),
+        "BLOCKSTORE_SERVER_TEST_TLS",
+        nullptr,
         config->GetRootCertsFile(),
-        std::move(certPathList));
+        std::move(certPathList),
+        config->GetRefreshCertsPeriod());
+    provider->Start();
+    return provider;
 }
 
 ICertificateProviderPtr CreateClientCertificateProvider(
@@ -131,6 +137,13 @@ TTestServerBuilder& TTestServerBuilder::AddCert(
     auto& cert = *ServerAppConfig.MutableServerConfig()->AddCerts();
     cert.SetCertFile(GetTestFilePath(certFileName));
     cert.SetCertPrivateKeyFile(GetTestFilePath(certPrivateKeyFileName));
+    return *this;
+}
+
+TTestServerBuilder& TTestServerBuilder::SetRefreshCertsPeriod(TDuration period)
+{
+    ServerAppConfig.MutableServerConfig()->SetRefreshCertsPeriod(
+        period.MilliSeconds());
     return *this;
 }
 

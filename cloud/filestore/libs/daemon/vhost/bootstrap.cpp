@@ -370,11 +370,18 @@ void TBootstrapVhost::InitComponents()
         });
     }
 
-    if (!certPathList.empty()) {
-        CertificateProvider = CreateStaticCertificateProvider(
-            Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList));
+    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
+        ythrow yexception()
+            << "Secure port is configured without certificates";
     }
+
+    CertificateProvider = CreateCertificateProvider(
+        Logging,
+        "FILESTORE_TLS_CERTIFICATE_PROVIDER",
+        serverCounters,
+        Configs->ServerConfig->GetRootCertsFile(),
+        std::move(certPathList),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     Server = CreateServer(
         Configs->ServerConfig,

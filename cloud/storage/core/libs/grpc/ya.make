@@ -10,9 +10,12 @@ SRCS(
     init.cpp
     keepalive.cpp
     request.cpp
+    periodic_tls_certificate_provider.cpp
+    static_tls_certificate_provider.cpp
     threadpool.cpp
     time_point_specialization.cpp
     tls_certificate_provider.cpp
+    tls_utils.cpp
     utils.cpp
 )
 

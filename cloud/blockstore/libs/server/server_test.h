@@ -54,6 +54,8 @@ public:
         const TString& certFileName,
         const TString& certPrivateKeyFileName);
 
+    TTestServerBuilder& SetRefreshCertsPeriod(TDuration period);
+
     TTestServerBuilder& SetUnixSocketPath(const TString& unixSocketPath);
 
     TTestServerBuilder& SetVolumeStats(IVolumeStatsPtr volumeStats);
