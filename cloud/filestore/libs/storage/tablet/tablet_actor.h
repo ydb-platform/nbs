@@ -16,6 +16,7 @@
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+#include <cloud/filestore/libs/storage/fastshard/server/server.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
@@ -185,6 +186,7 @@ private:
     TProtoMessagePrinter ProtoMessagePrinter;
 
     NFastShard::IFileSystemShardPtr FastShard;
+    NFastShard::IServerPtr FastShardServer;
 
 public:
     TIndexTabletActor(
@@ -195,7 +197,8 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry);
+        NMetrics::IMetricsRegistryPtr metricsRegistry,
+        NFastShard::IServerPtr fastShardServer);
     ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;

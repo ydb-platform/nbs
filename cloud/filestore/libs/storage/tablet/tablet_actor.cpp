@@ -42,7 +42,8 @@ TIndexTabletActor::TIndexTabletActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry)
+        NMetrics::IMetricsRegistryPtr metricsRegistry,
+        NFastShard::IServerPtr fastShardServer)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
     , Metrics{std::move(metricsRegistry)}
@@ -59,6 +60,7 @@ TIndexTabletActor::TIndexTabletActor(
     , Config(std::make_shared<TStorageConfig>(*config))
     , DiagConfig(std::move(diagConfig))
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , FastShardServer(std::move(fastShardServer))
 {
     UpdateLogTag();
 }
@@ -248,6 +250,10 @@ void TIndexTabletActor::OnTabletDead(
 
     WorkerActors.clear();
     UnregisterFileStore(ctx);
+
+    if (FastShardServer) {
+        FastShardServer->UnregisterShard(GetFileSystemId());
+    }
 
     Die(ctx);
 }

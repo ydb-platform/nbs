@@ -839,6 +839,10 @@ bool FiberScheduler::ProcessorState::enqueueIo(IoFuture * future, Setup && setup
         {
             ::io_uring_sqe_set_data(sqe, future);
 
+            // Record which processor holds this SQE so cancelIo can submit the
+            // cancel to the correct ring (cross-ring cancels fail with -ENOENT).
+            future->submitProcessor = this->number;
+
             if (profiler)
             {
                 future->submitTimestamp = Tsc::getCycles();
@@ -1439,13 +1443,44 @@ void FiberScheduler::poll(int fd, uint32_t events, uint64_t * triggeredEvents, I
 void FiberScheduler::cancelIo(IoFuture * future) noexcept
 {
     future->result = nullptr;
-    enqueueIo(
-        nullptr,
-        [=](io_uring_sqe * sqe) noexcept
-        {
-            ::io_uring_prep_cancel(sqe, future, 0);
-            ::io_uring_sqe_set_data64(sqe, CQE_TAG_CANCEL);
-        });
+
+    // The cancel SQE must go to the SAME io_uring ring that holds the original
+    // SQE.  If we submit the cancel to a different ring (e.g. because the fiber
+    // was work-stolen to another CPU between registering the poll and cancelling
+    // it), io_uring returns -ENOENT and the original operation is never removed,
+    // leaving the caller's IoFuture::wait() blocked forever.
+    uint32_t submitProc = future->submitProcessor;
+    ProcessorState * target =
+        (submitProc < scheduler->processorCount &&
+         scheduler->processorState[submitProc].number != INVALID_PROCESSOR_NUMBER)
+        ? &scheduler->processorState[submitProc]
+        : &scheduler->processorState[getCurrentProcessor()];
+
+    auto setup = [=](io_uring_sqe * sqe) noexcept
+    {
+        ::io_uring_prep_cancel(sqe, future, 0);
+        ::io_uring_sqe_set_data64(sqe, CQE_TAG_CANCEL);
+    };
+
+    // Retry if the SQ ring is temporarily full.
+    while (!target->enqueueIo(nullptr, setup))
+    {
+        Perf::getSimpleCounter(simpleCounters[SQ_RING_OVERFLOW], target->number).increment();
+        yield();
+    }
+
+    // Submit immediately when:
+    //  - the cancel went to a remote ring (no runFiber on the current CPU
+    //    will flush it), or
+    //  - the caller is a proxy fiber (a non-silk OS thread has no runFiber
+    //    of its own, so the normal deferred-flush path never runs).
+    // In both cases the cancel CQEs on target's ring naturally wake its
+    // io_uring_enter2, so wakeThread() is not needed.
+    bool proxyFiber = getCurrentFiber()->isProxyFiber;
+    if (target != &scheduler->processorState[getCurrentProcessor()] || proxyFiber)
+    {
+        target->submitIo(true);
+    }
 }
 
 void FiberScheduler::sleep(uint64_t nanoseconds, SleepFuture * future) noexcept
@@ -1576,6 +1611,13 @@ bool FiberScheduler::runServiceLoop(ProcessorState * processor, uint64_t waitNs,
         }
         else
         {
+            // Force-flush any pending SQEs before parking so that io_uring
+            // operations submitted by recently-suspended fibers reach the kernel.
+            // Without this, the scheduler can deadlock: all fibers are suspended
+            // waiting for CQEs that will never arrive because their SQEs were
+            // never submitted (submitIo is only called from runFiber/handleReady,
+            // which never run when all fibers are idle).
+            processor->submitIo(true);
             processor->parkThread(waitNs, timer);
         }
     }

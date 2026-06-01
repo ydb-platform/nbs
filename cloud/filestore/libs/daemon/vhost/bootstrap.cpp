@@ -291,6 +291,9 @@ TConfigInitializerCommonPtr TBootstrapVhost::InitConfigs(int argc, char** argv)
     return Configs;
 }
 
+void TBootstrapVhost::InitActorSystemPrerequisites()
+{}
+
 void TBootstrapVhost::InitComponents()
 {
     InitConfig();

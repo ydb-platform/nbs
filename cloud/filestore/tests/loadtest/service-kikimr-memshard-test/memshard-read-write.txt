@@ -1,0 +1,22 @@
+Tests {
+    LoadTest {
+        Name: "memshard-read-write"
+        FastShardLoadSpec {
+            FastShardPort: {fast_shard_port}
+            ShardFileSystemId: "memshard-test_s1"
+            ReadBytes: 4096
+            WriteBytes: 4096
+            InitialFileSize: 4096
+            Actions {
+                Action: ACTION_READ
+                Rate: 50
+            }
+            Actions {
+                Action: ACTION_WRITE
+                Rate: 50
+            }
+        }
+        IODepth: 4
+        TestDuration: 30
+    }
+}
