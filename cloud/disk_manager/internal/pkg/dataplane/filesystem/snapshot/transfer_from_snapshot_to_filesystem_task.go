@@ -312,6 +312,12 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		nodes []nfs.Node,
 		filesystemLister listers.FilesystemLister,
 	) error {
+		if len(nodes) == 0 {
+			return nil
+		}
+
+		// Traversal lists one directory at a time, so all nodes in the same
+		// listing result have the same parent.
 		srcParentID := nodes[0].ParentID
 
 		parentMapping, err := t.nodesStorage.GetDestinationNodeIDs(
