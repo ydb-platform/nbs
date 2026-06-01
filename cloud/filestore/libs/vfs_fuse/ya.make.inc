@@ -1,8 +1,10 @@
 SRCS(
     config.cpp
     directory_handle_cache.cpp
+    directory_handle_max_metric.cpp
     directory_handle_stats.cpp
     directory_handle_storage.cpp
+    directory_handle_storage_stats.cpp
     fs.cpp
     fs_directory_content_format.cpp
     fs_directory_handle.cpp

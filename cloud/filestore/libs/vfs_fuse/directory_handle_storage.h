@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "directory_handle_storage_stats.h"
 #include "fs_directory_handle.h"
 
 #include <cloud/storage/core/libs/common/thread.h>
@@ -28,6 +29,7 @@ struct TDirectoryHandleStorageArgs
 {
     TLog Log;
     IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
+    IDirectoryHandleStorageStatsPtr Stats;
     TString FilePath;
     ui64 MaxRecords = 0;
     ui64 InitialDataAreaSize = 0;
@@ -59,6 +61,7 @@ private:
     THashMap<ui64, std::vector<ui64>> HandleIdToIndices;
     THashSet<ui64> HandlesExcludedFromStorage;
     const ui64 PersistentHandleMaxSize;
+    IDirectoryHandleStorageStatsPtr Stats;
 
 public:
     explicit TDirectoryHandleStorage(TDirectoryHandleStorageArgs args);
@@ -89,6 +92,7 @@ private:
         ui64 handleSerializedSize);
     bool CanStoreHandle(ui64 handleSerializedSize) const;
     void RemoveRecords(ui64 handleId);
+    void UpdateStats();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

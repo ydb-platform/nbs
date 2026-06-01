@@ -49,6 +49,7 @@ TDirectoryHandleCache::TDirectoryHandleCache(
     }
 
     IncreaseStatsForHandles(Handles);
+    Stats->SetOpenHandleCount(Handles.size());
 }
 
 ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
@@ -62,6 +63,7 @@ ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
         } while (!Handles.try_emplace(handleId, handle).second);
 
         IncreaseStatsForHandle(handle);
+        Stats->SetOpenHandleCount(Handles.size());
 
         if (Storage) {
             Storage->StoreHandle(
@@ -90,6 +92,7 @@ void TDirectoryHandleCache::RemoveHandle(ui64 handleId)
         if (it != Handles.end()) {
             DecreaseStatsForHandle(it->second);
             Handles.erase(it);
+            Stats->SetOpenHandleCount(Handles.size());
         }
 
         if (Storage) {
@@ -109,6 +112,7 @@ bool TDirectoryHandleCache::RemoveHandle(ui64 handleId, fuse_ino_t ino)
 
             DecreaseStatsForHandle(it->second);
             Handles.erase(it);
+            Stats->SetOpenHandleCount(Handles.size());
         }
 
         if (Storage) {
@@ -157,6 +161,7 @@ void TDirectoryHandleCache::Clear()
         STORAGE_DEBUG("clear directory cache of size %lu", Handles.size());
         DecreaseStatsForHandles(Handles);
         Handles.clear();
+        Stats->SetOpenHandleCount(0);
     }
 }
 
@@ -166,6 +171,7 @@ void TDirectoryHandleCache::Reset()
         STORAGE_DEBUG("reset directory cache of size %lu", Handles.size());
         DecreaseStatsForHandles(Handles);
         Handles.clear();
+        Stats->SetOpenHandleCount(0);
 
         if (Storage) {
             Storage->Clear();

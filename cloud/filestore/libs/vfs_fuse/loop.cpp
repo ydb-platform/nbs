@@ -1087,6 +1087,8 @@ private:
                     Config->GetClientId().Quote().c_str()));
             }
 
+            DirectoryHandleStats = CreateDirectoryHandleStats(Timer);
+
             TDirectoryHandleStoragePtr directoryHandleStorage;
             if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
                 if (Config->GetDirectoryHandlesStoragePath()) {
@@ -1107,6 +1109,7 @@ private:
                     directoryHandleStorage = CreateDirectoryHandleStorage(
                         {.Log = Log,
                          .FileMapMemoryLimiter = FileMapMemoryLimiter,
+                         .Stats = DirectoryHandleStats->GetStorageStats(),
                          .FilePath = path / DirectoryHandleStorageFileName,
                          .MaxRecords =
                              FileSystemConfig->GetDirectoryHandlesTableSize(),
@@ -1130,8 +1133,6 @@ private:
                         Config->GetClientId().Quote().c_str());
                 }
             }
-
-            DirectoryHandleStats = CreateDirectoryHandleStats(Timer);
 
             ModuleStatsRegistry->Register(
                 {.FileSystemId = Config->GetFileSystemId(),

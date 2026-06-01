@@ -138,6 +138,15 @@ public:
         ui32 Crc32 = 0;
     };
 
+    struct TStats
+    {
+        ui64 FileMapSize = 0;
+        ui64 UsedSpace = 0;
+        ui64 ShrinkCount = 0;
+        ui64 ExpansionCount = 0;
+        ui64 CompactionCount = 0;
+    };
+
 private:
     enum class EDataRetrievalMode
     {
@@ -158,6 +167,10 @@ private:
     ui64 NextDataOffset = 0;
     ui64 HeadDataIndex = InvalidIndex;
     ui64 TailDataIndex = InvalidIndex;
+
+    ui64 ShrinkCount = 0;
+    ui64 ExpansionCount = 0;
+    ui64 CompactionCount = 0;
 
     std::unique_ptr<TFileMap> FileMap;
     TDeque<ui64> FreeRecordIndexes;
@@ -394,6 +407,17 @@ public:
         return NextFreeRecordIndex - FreeRecordIndexes.size();
     }
 
+    TStats GetStats() const
+    {
+        return {
+            .FileMapSize = GetFileMapSize(),
+            .UsedSpace = GetLiveDataSize(),
+            .ShrinkCount = ShrinkCount,
+            .ExpansionCount = ExpansionCount,
+            .CompactionCount = CompactionCount,
+        };
+    }
+
     void TryDeallocateMemory()
     {
         if (!IsLowMemoryUsage()) {
@@ -405,7 +429,7 @@ public:
 
     void Clear()
     {
-        UpdateFileMapSize(GetFileMapSize(), 0);
+        const ui64 oldFileMapSize = GetFileMapSize();
 
         NextFreeRecordIndex = 0;
         NextDataOffset = 0;
@@ -415,6 +439,8 @@ public:
         FreeRecordIndexes.clear();
 
         FileMap->ResizeAndRemap(0, 0);
+        const ui64 newFileMapSize = GetFileMapSize();
+        UpdateFileMapSize(oldFileMapSize, newFileMapSize);
         FileMap.reset();
         Init();
     }
@@ -1020,6 +1046,7 @@ private:
 
         NextDataOffset = newOffset;
         GapSpaceSize = 0;
+        ++CompactionCount;
     }
 
     void FinishDataAreaMove()
@@ -1128,7 +1155,13 @@ private:
         const ui64 oldFileMapSize = GetFileMapSize();
         FileMap->ResizeAndRemap(0, CalcFileSize(DataAreaSize));
         RefreshPointers();
-        UpdateFileMapSize(oldFileMapSize, GetFileMapSize());
+        const ui64 newFileMapSize = GetFileMapSize();
+        if (newFileMapSize > oldFileMapSize) {
+            ++ExpansionCount;
+        } else if (newFileMapSize < oldFileMapSize) {
+            ++ShrinkCount;
+        }
+        UpdateFileMapSize(oldFileMapSize, newFileMapSize);
     }
 
     void RefreshPointers()

@@ -135,15 +135,15 @@ public:
     }
 
     void RegisterCounters(
-        IMetricsRegistry& localMetricsRegistry,
-        IMetricsRegistry& aggregatableMetricsRegistry) override
+        const IMetricsRegistryPtr& localMetricsRegistry,
+        const IMetricsRegistryPtr& aggregatableMetricsRegistry) override
     {
         // Local metrics can be aggregated when two WriteBackCache instances are
         // running for the same FileSystemId/ClientId pair (migration scenario)
 
         Stats->CreateMetrics().Register(
-            localMetricsRegistry,
-            aggregatableMetricsRegistry);
+            *localMetricsRegistry,
+            *aggregatableMetricsRegistry);
     }
 
     void UpdateStats(TInstant now) override

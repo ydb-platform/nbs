@@ -2,7 +2,10 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <util/generic/buffer.h>
+#include <util/system/yassert.h>
 
 #include <utility>
 
@@ -14,7 +17,10 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     TDirectoryHandleStorageArgs args)
     : Log(std::move(args.Log))
     , PersistentHandleMaxSize(args.PersistentHandleMaxSize)
+    , Stats(std::move(args.Stats))
 {
+    Y_ABORT_UNLESS(Stats);
+
     Table = std::make_unique<TDirectoryHandleTable>(
         args.FilePath,
         TDynamicPersistentTableConfig{
@@ -24,6 +30,8 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
             .InitialDataMoveBufferSize = args.InitialDataMoveBufferSize,
         },
         std::move(args.FileMapMemoryLimiter));
+
+    UpdateStats();
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -40,6 +48,7 @@ void TDirectoryHandleStorage::StoreHandle(
             "Failed to store record with existing handle id");
         RemoveRecords(handleId);
         HandlesExcludedFromStorage.insert(handleId);
+        UpdateStats();
         return;
     }
 
@@ -56,6 +65,7 @@ void TDirectoryHandleStorage::UpdateHandle(
     TGuard guard(TableLock);
 
     if (HandlesExcludedFromStorage.contains(handleId)) {
+        UpdateStats();
         return;
     }
 
@@ -65,6 +75,7 @@ void TDirectoryHandleStorage::UpdateHandle(
         STORAGE_DEBUG(
             "failed to update record for handle %lu, handle is already deleted",
             handleId);
+        UpdateStats();
         return;
     }
 
@@ -89,11 +100,16 @@ void TDirectoryHandleStorage::CreateRecord(
             << handleSerializedSize << " exceeds limit "
             << PersistentHandleMaxSize);
         dropRecordsForHandle();
+        UpdateStats();
         return;
     }
 
     auto result = CreateRecord(record);
     if (HasError(result)) {
+        if (result.GetError().GetCode() == E_FS_NOSPC) {
+            Stats->IncrementMemoryControllerRejectCount();
+        }
+
         const auto it = HandleIdToIndices.find(handleId);
         const size_t indexCount =
             it == HandleIdToIndices.end() ? 0 : it->second.size();
@@ -102,11 +118,13 @@ void TDirectoryHandleStorage::CreateRecord(
             << handleId << ", indices count: " << indexCount << ": "
             << FormatError(result.GetError()));
         dropRecordsForHandle();
+        UpdateStats();
         return;
     }
 
     const ui64 recordIndex = result.GetResult();
     HandleIdToIndices[handleId].push_back(recordIndex);
+    UpdateStats();
 }
 
 void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
@@ -114,12 +132,14 @@ void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
     TGuard guard(TableLock);
     HandlesExcludedFromStorage.erase(handleId);
     RemoveRecords(handleId);
+    UpdateStats();
 }
 
 void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
     if (HandlesExcludedFromStorage.contains(handleId)) {
+        UpdateStats();
         return;
     }
 
@@ -139,6 +159,8 @@ void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
             std::next(HandleIdToIndices[handleId].begin(), 1),
             HandleIdToIndices[handleId].end());
     }
+
+    UpdateStats();
 }
 
 void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
@@ -247,6 +269,8 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
         RemoveHandle(handleId);
         handles.erase(handleId);
     }
+
+    UpdateStats();
 }
 
 void TDirectoryHandleStorage::Clear()
@@ -255,6 +279,7 @@ void TDirectoryHandleStorage::Clear()
     Table->Clear();
     HandleIdToIndices.clear();
     HandlesExcludedFromStorage.clear();
+    UpdateStats();
 }
 
 // TODO: We can optimize this by counting size for serialization dynamically and
@@ -334,6 +359,18 @@ void TDirectoryHandleStorage::RemoveRecords(ui64 handleId)
 
     HandleIdToIndices.erase(it);
     Table->TryDeallocateMemory();
+}
+
+void TDirectoryHandleStorage::UpdateStats()
+{
+    const auto stats = Table->GetStats();
+    Stats->SetCounters({
+        .FileMapSize = stats.FileMapSize,
+        .ShrinkCount = stats.ShrinkCount,
+        .ExpansionCount = stats.ExpansionCount,
+        .CompactionCount = stats.CompactionCount,
+        .UsedSpace = stats.UsedSpace,
+    });
 }
 
 ////////////////////////////////////////////////////////////////////////////////

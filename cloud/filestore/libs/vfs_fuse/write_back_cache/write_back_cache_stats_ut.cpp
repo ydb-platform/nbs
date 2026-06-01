@@ -202,10 +202,11 @@ struct TModuleStats: public IModuleStats
     }
 
     void RegisterCounters(
-        NMetrics::IMetricsRegistry& localMetricsRegistry,
-        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) override
+        const NMetrics::IMetricsRegistryPtr& localMetricsRegistry,
+        const NMetrics::IMetricsRegistryPtr& aggregatableMetricsRegistry)
+        override
     {
-        Metrics.Register(localMetricsRegistry, aggregatableMetricsRegistry);
+        Metrics.Register(*localMetricsRegistry, *aggregatableMetricsRegistry);
     }
 
     void UpdateStats(TInstant now) override

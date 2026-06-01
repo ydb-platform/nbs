@@ -407,6 +407,61 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         UNIT_ASSERT_VALUES_EQUAL(0, fileMapSizeController->Current);
     }
 
+    Y_UNIT_TEST(ShouldReportStorageStats)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = 128,
+                .MaxDataAreaStepSize = 128,
+                .InitialDataMoveBufferSize = 100,
+            });
+
+        const auto initialStats = table.GetStats();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, initialStats.FileMapSize);
+        UNIT_ASSERT_VALUES_EQUAL(0, initialStats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, initialStats.ExpansionCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, initialStats.CompactionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, initialStats.UsedSpace);
+
+        const TString data(96, 'a');
+
+        const ui64 firstIndex = AllocAndCommitRecord(table, data);
+        const ui64 secondIndex = AllocAndCommitRecord(table, data);
+
+        auto stats = table.GetStats();
+        UNIT_ASSERT_GT(stats.FileMapSize, initialStats.FileMapSize);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ExpansionCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialStats.CompactionCount,
+            stats.CompactionCount);
+        UNIT_ASSERT_GT(stats.UsedSpace, 0);
+
+        UNIT_ASSERT(table.DeleteRecord(firstIndex));
+        UNIT_ASSERT(table.DeleteRecord(secondIndex));
+        table.TryDeallocateMemory();
+
+        stats = table.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(initialStats.FileMapSize, stats.FileMapSize);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ExpansionCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialStats.CompactionCount + 1,
+            stats.CompactionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.UsedSpace);
+
+        table.Clear();
+
+        stats = table.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.ExpansionCount);
+    }
+
     Y_UNIT_TEST(ShouldReturnErrorWhenFileMapSizeCannotIncrease)
     {
         TTempDir tempDir;
