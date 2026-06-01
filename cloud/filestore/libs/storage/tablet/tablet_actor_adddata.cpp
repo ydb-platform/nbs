@@ -337,7 +337,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     }
 
     // TODO (#5468) consider take into account isOverloaded
-    const bool canUseUnconfirmed = CanUseUnconfirmedData();
+    const bool canUseUnconfirmed =
+        msg->Record.GetUnconfirmedFlowRequested() && CanUseUnconfirmedData();
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
     {

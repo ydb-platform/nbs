@@ -195,6 +195,7 @@ public:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(BlobRange.Offset);
         request->Record.SetLength(BlobRange.Length);
+        request->Record.SetUnconfirmedFlowRequested(UseUnconfirmedFlow);
 
         if (UseUnconfirmedFlow) {
             FillUnalignedDataRanges(
