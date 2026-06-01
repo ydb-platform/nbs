@@ -31,7 +31,8 @@ IBlockStorePtr CreateEncryptionClient(
 IBlockStorePtr CreateSnapshotEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
-    NProto::TEncryptionDesc encryptionDesc);
+    NProto::TEncryptionDesc encryptionDesc,
+    NProto::EEncryptZeroPolicy encryptZeroPolicy);
 
 ////////////////////////////////////////////////////////////////////////////////
 
