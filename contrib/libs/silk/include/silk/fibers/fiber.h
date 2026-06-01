@@ -319,6 +319,9 @@ public:
         uint64_t * result = nullptr;
         uint64_t submitTimestamp = 0;
         uint8_t category = 0;
+        // Processor whose io_uring ring holds this SQE; cancelIo must submit
+        // the cancel to the same ring to avoid a cross-ring -ENOENT failure.
+        uint32_t submitProcessor = static_cast<uint32_t>(-1);
     };
 
     /**
