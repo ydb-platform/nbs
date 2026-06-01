@@ -165,6 +165,8 @@ TServerState::AdjustAndLockIovecs(
     ui64 mmapId,
     const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
 {
+    // The page state may be modified while holding a read lock because the
+    // state flag is atomic
     TLightReadGuard guard(StateLock);
     auto it = MmapRegions.find(mmapId);
     if (it == MmapRegions.end()) {
