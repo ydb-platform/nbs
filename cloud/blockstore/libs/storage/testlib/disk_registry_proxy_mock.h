@@ -59,6 +59,10 @@ private:
                 TEvDiskRegistry::TEvFinishMigrationRequest,
                 HandleFinishMigration);
 
+            HFunc(
+                TEvDiskRegistry::TEvUpdateVolumeHealthRequest,
+                HandleUpdateVolumeHealth);
+
             // acquire/release
             HFunc(TEvDiskRegistry::TEvAcquireDiskRequest, HandleAcquireDisk);
             HFunc(TEvDiskRegistry::TEvReleaseDiskRequest, HandleReleaseDisk);
@@ -403,6 +407,34 @@ private:
 
         NCloud::Reply(ctx, *ev,
             std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>());
+    }
+
+    void HandleUpdateVolumeHealth(
+        const TEvDiskRegistry::TEvUpdateVolumeHealthRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        ++State->UpdateVolumeHealthRequests;
+        State->LastVolumeHealth = ev->Get()->Record.GetVolumeHealth();
+        State->LastVolumeHealthSeqNo =
+            ev->Get()->Record.GetHeaders().GetVolumeRequestId();
+
+        if (State->DropVolumeHealthResponses) {
+            return;
+        }
+
+        NProto::TError error;
+        if (State->VolumeHealthForcedErrorCount > 0) {
+            --State->VolumeHealthForcedErrorCount;
+            error = MakeError(
+                State->VolumeHealthForcedErrorCode,
+                "test forced error");
+        }
+
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthResponse>(
+                std::move(error)));
     }
 
     void HandleAcquireDisk(

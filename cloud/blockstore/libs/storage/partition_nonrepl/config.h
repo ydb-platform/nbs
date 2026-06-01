@@ -72,6 +72,7 @@ public:
         TDuration MaxTimedOutDeviceStateDuration;
         bool MaxTimedOutDeviceStateDurationOverridden = false;
         bool UseSimpleMigrationBandwidthLimiter = true;
+        THashMap<TString, TInstant> BrokenAtByDeviceId;
 
         TNonreplicatedPartitionConfigInitParams(
                 TDevices devices,
@@ -139,6 +140,7 @@ private:
     const bool UseSimpleMigrationBandwidthLimiter;
     const TVector<ui64> BlockIndices;
     const bool CanReadFromAllDevices = false;
+    const THashMap<TString, TInstant> BrokenAtByDeviceId;
 
 public:
     explicit TNonreplicatedPartitionConfig(
@@ -149,6 +151,11 @@ public:
     const auto& GetDevices() const
     {
         return Devices;
+    }
+
+    const THashMap<TString, TInstant>& GetBrokenAtByDeviceId() const
+    {
+        return BrokenAtByDeviceId;
     }
 
     bool IsReadOnly() const

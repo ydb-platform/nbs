@@ -59,6 +59,7 @@ public:
 
     void MarkOk(TInstant requestStartTs, TDuration executionTime);
     void MarkBroken(TInstant now);
+    void MarkBrokenAndNotify(TInstant now);
     void MarkUnavailable();
     void MarkBackOnline();
 

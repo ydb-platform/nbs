@@ -44,7 +44,8 @@ void TDiskRegistryActor::HandleUpdateVolumeHealth(
         std::move(requestInfo),
         msg->Record.GetDiskId(),
         ctx.Now(),
-        health);
+        health,
+        msg->Record.GetHeaders().GetVolumeRequestId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +70,7 @@ void TDiskRegistryActor::ExecuteUpdateVolumeHealth(
 
     TDiskRegistryDatabase db(tx.DB);
     args.Error =
-        State->UpdateVolumeHealth(db, args.DiskId, args.Now, args.VolumeHealth);
+        State->UpdateVolumeHealth(db, args.DiskId, args.Now, args.VolumeHealth, args.VolumeHealthSeqNo);
 }
 
 void TDiskRegistryActor::CompleteUpdateVolumeHealth(
