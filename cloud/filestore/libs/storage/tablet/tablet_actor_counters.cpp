@@ -739,6 +739,16 @@ void TIndexTabletActor::HandleGetStorageStats(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
     response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
+    const i64 tabletStartTimestamp =
+        Metrics.TabletStartTimestamp.load(std::memory_order_relaxed);
+    if (tabletStartTimestamp) {
+        const auto now = ctx.Now();
+        const auto tabletStartTs = TInstant::MicroSeconds(tabletStartTimestamp);
+        if (tabletStartTs < now) {
+            response->Record.SetTabletUptimeMs(
+                (now - tabletStartTs).MilliSeconds());
+        }
+    }
     auto& req = ev->Get()->Record;
     auto* stats = response->Record.MutableStats();
 

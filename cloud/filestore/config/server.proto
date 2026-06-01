@@ -221,6 +221,9 @@ message TLocalServiceConfig
 
     // Enable FUSE_POSIX_ACL on guest (FUSE client)
     optional bool GuestPosixAclEnabled = 40;
+
+    // Maximum serialized size of one persistent handle.
+    optional uint64 DirectoryHandlesPersistentHandleMaxSize = 41;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

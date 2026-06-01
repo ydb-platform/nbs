@@ -1107,13 +1107,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto logging = CreateLoggingService("console");
             auto log = logging->CreateLog("DIR_HANDLE_RELOAD_TEST");
             auto storage = CreateDirectoryHandleStorage(
-                log,
-                storagePath,
-                100000,
-                128,
-                128,
-                1024 * 1024,
-                CreateFileMapMemoryLimiterStub());
+                {.Log = log,
+                 .FileMapMemoryLimiter = CreateFileMapMemoryLimiterStub(),
+                 .FilePath = storagePath,
+                 .MaxRecords = 100000,
+                 .InitialDataAreaSize = 128,
+                 .MaxDataAreaStepSize = 128,
+                 .InitialDataMoveBufferSize = 1024 * 1024,
+                 .PersistentHandleMaxSize = 2ull * 1024 * 1024 * 1024});
 
             TDirectoryHandleMap handles;
             storage->LoadHandles(handles);

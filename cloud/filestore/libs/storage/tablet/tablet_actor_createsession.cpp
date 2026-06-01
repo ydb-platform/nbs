@@ -70,6 +70,8 @@ void FillFeatures(
     if (config.GetDirectoryHandlesStorageEnabled()) {
         features->SetDirectoryHandlesTableSize(
             config.GetDirectoryHandlesTableSize());
+        features->SetDirectoryHandlesPersistentHandleMaxSize(
+            config.GetDirectoryHandlesPersistentHandleMaxSize());
     }
 
     features->SetDirectoryCreationInShardsEnabled(

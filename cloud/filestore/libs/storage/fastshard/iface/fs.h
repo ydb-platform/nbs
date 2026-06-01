@@ -13,53 +13,43 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define FAST_SHARD_PRIVATE_METHODS(xxx, ...)                                   \
+    xxx(GetNodeAttrBatch,                   __VA_ARGS__)                       \
+// FAST_SHARD_PRIVATE_METHODS
+
+#define FAST_SHARD_PUBLIC_METHODS(xxx, ...)                                    \
+    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(AccessNode,                         __VA_ARGS__)                       \
+    xxx(CreateNode,                         __VA_ARGS__)                       \
+    xxx(UnlinkNode,                         __VA_ARGS__)                       \
+    xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(DestroyHandle,                      __VA_ARGS__)                       \
+    xxx(AllocateData,                       __VA_ARGS__)                       \
+    xxx(AcquireLock,                        __VA_ARGS__)                       \
+    xxx(ReleaseLock,                        __VA_ARGS__)                       \
+    xxx(TestLock,                           __VA_ARGS__)                       \
+    xxx(WriteData,                          __VA_ARGS__)                       \
+    xxx(ReadData,                           __VA_ARGS__)                       \
+    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
+    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+// FAST_SHARD_PUBLIC_METHODS
+
 struct IFileSystemShard
 {
     virtual ~IFileSystemShard() = default;
 
-    virtual NThreading::TFuture<NProtoPrivate::TGetNodeAttrBatchResponse>
-    GetNodeAttrBatch(NProtoPrivate::TGetNodeAttrBatchRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TGetNodeAttrResponse>
-    GetNodeAttr(NProto::TGetNodeAttrRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TSetNodeAttrResponse>
-    SetNodeAttr(NProto::TSetNodeAttrRequest request) = 0;
+#define FAST_SHARD_DECLARE_METHOD(name, ns, ...)                               \
+    virtual NThreading::TFuture<ns::T##name##Response> name(                   \
+        ns::T##name##Request request) = 0;                                     \
+// FAST_SHARD_DECLARE_METHOD
 
-    virtual NThreading::TFuture<NProto::TAccessNodeResponse>
-    AccessNode(NProto::TAccessNodeRequest request) = 0;
+    FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DECLARE_METHOD, NProtoPrivate)
+    FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DECLARE_METHOD, NProto)
 
-    virtual NThreading::TFuture<NProto::TCreateNodeResponse>
-    CreateNode(NProto::TCreateNodeRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TUnlinkNodeResponse>
-    UnlinkNode(NProto::TUnlinkNodeRequest request) = 0;
-
-    virtual NThreading::TFuture<NProto::TCreateHandleResponse>
-    CreateHandle(NProto::TCreateHandleRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TDestroyHandleResponse>
-    DestroyHandle(NProto::TDestroyHandleRequest request) = 0;
-
-    virtual NThreading::TFuture<NProto::TAllocateDataResponse>
-    AllocateData(NProto::TAllocateDataRequest request) = 0;
-
-    virtual NThreading::TFuture<NProto::TAcquireLockResponse>
-    AcquireLock(NProto::TAcquireLockRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TReleaseLockResponse>
-    ReleaseLock(NProto::TReleaseLockRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TTestLockResponse>
-    TestLock(NProto::TTestLockRequest request) = 0;
-
-    virtual NThreading::TFuture<NProto::TWriteDataResponse>
-    WriteData(NProto::TWriteDataRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TReadDataResponse>
-    ReadData(NProto::TReadDataRequest request) = 0;
-
-    virtual NThreading::TFuture<NProto::TRemoveNodeXAttrResponse>
-    RemoveNodeXAttr(NProto::TRemoveNodeXAttrRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TGetNodeXAttrResponse>
-    GetNodeXAttr(NProto::TGetNodeXAttrRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TSetNodeXAttrResponse>
-    SetNodeXAttr(NProto::TSetNodeXAttrRequest request) = 0;
-    virtual NThreading::TFuture<NProto::TListNodeXAttrResponse>
-    ListNodeXAttr(NProto::TListNodeXAttrRequest request) = 0;
+#undef FAST_SHARD_DECLARE_METHOD
 };
 
 ////////////////////////////////////////////////////////////////////////////////

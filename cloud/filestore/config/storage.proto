@@ -735,7 +735,7 @@ message TStorageConfig
 
     // Allow to destroy filestore with active sessions
     // with size less than threshold(in bytes)
-    optional uint32 ForceDestroySizeThreshold = 487;
+    optional uint64 ForceDestroySizeThreshold = 487;
 
     // Enable adding unconfirmed data for write operations
     optional bool AddingUnconfirmedDataEnabled = 488;
@@ -770,4 +770,19 @@ message TStorageConfig
     // Use custom protobuf parser for TReadDataResponse
     // to optimize TReadDataActor performance.
     optional bool UseCustomReadDataResponseParser = 498;
+
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 499;
+
+    // Similar to `InMemoryIndexCacheLoadOnTabletStart`, but applies only to
+    // the node refs table in filesystem shards. If
+    // `InMemoryIndexCacheLoadOnTabletStart` is also set, it takes precedence.
+    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards = 500;
+
+    // Restart index tablet on destroy with active sessions only if tablet
+    // uptime is greater than this threshold. Zero disables restarts.
+    optional uint32 RestartTabletUptimeThresholdDuringDestroy = 501;
+
+    // Maximum serialized size of one persistent handle.
+    optional uint64 DirectoryHandlesPersistentHandleMaxSize = 502;
 }

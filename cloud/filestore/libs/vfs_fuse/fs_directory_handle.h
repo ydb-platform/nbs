@@ -12,6 +12,8 @@
 #include <util/stream/mem.h>
 #include <util/system/mutex.h>
 
+#include <utility>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,7 +73,7 @@ private:
     ui64 UpdateVersion = 0;
     ui64 SerializedSize = 0;
 
-    TMutex Lock;
+    mutable TMutex Lock;
 
 public:
     const fuse_ino_t Index;
@@ -91,11 +93,8 @@ public:
     void ResetContent();
     TString GetCookie();
 
-    // Get total size of serialized content in bytes
-    size_t GetSerializedSize() const;
-
-    // Get number of chunks (UpdateVersion + 1)
-    size_t GetChunkCount() const;
+    // Get serialized size and chunk count
+    std::pair<size_t, size_t> GetMetrics() const;
 
     // not thread safe, use only during restoration from storage
     void ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log);

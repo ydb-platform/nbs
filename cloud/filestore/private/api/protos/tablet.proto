@@ -210,6 +210,9 @@ message TGetStorageStatsResponse
 
     // Storage media kind.
     NCloud.NProto.EStorageMediaKind MediaKind = 3;
+
+    // Time since tablet start.
+    uint64 TabletUptimeMs = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

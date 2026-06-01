@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -3634,6 +3635,204 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(
+        ShouldDestroyFileStoreAfterTabletRestartAndOrphanSessionsCleanup)
+    {
+        const auto idleSessionTimeout = TDuration::Hours(1);
+        const auto restartTabletUptimeThresholdDuringDestroy =
+            idleSessionTimeout;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetIdleSessionTimeout(idleSessionTimeout.MilliSeconds());
+        storageConfig.SetRestartTabletUptimeThresholdDuringDestroy(
+            restartTabletUptimeThresholdDuringDestroy.MilliSeconds());
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        const ui64 initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+
+        auto describeSessions = [&]
+        {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(fsId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(
+                    jsonResponse->Record.GetOutput(),
+                    &response)
+                    .ok());
+            return response;
+        };
+
+        auto& runtime = env.GetRuntime();
+        ui64 tabletId = 0;
+        ui32 restartTabletRequests = 0;
+        ui32 getStorageStatsResponses = 0;
+        bool patchedStorageStatsResponse = false;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TResponse =
+                            TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TResponse>();
+                        if (!HasError(msg->GetError())) {
+                            const auto& desc =
+                                msg->PathDescription.GetFileStoreDescription();
+                            tabletId = desc.GetIndexTabletId();
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvGetStorageStatsResponse: {
+                        auto* msg = event->Get<
+                            TEvIndexTablet::TEvGetStorageStatsResponse>();
+                        if (++getStorageStatsResponses == 1) {
+                            msg->Record.SetTabletUptimeMs(
+                                (restartTabletUptimeThresholdDuringDestroy +
+                                 TDuration::Minutes(1))
+                                    .MilliSeconds());
+                            patchedStorageStatsResponse = true;
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvRestartTabletRequest: {
+                        if (event->Recipient ==
+                            MakeIndexTabletProxyServiceId()) {
+                            ++restartTabletRequests;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        auto destroyFileStoreResponse =
+            service.AssertDestroyFileStoreFailed(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+
+        UNIT_ASSERT(patchedStorageStatsResponse);
+        UNIT_ASSERT_VALUES_EQUAL(1, restartTabletRequests);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, tabletId);
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        {
+            const auto response = describeSessions();
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.ClientId,
+                sessions[0].GetClientId());
+            UNIT_ASSERT(sessions[0].GetIsOrphan());
+        }
+
+        const ui32 getStorageStatsResponsesBeforeRetry =
+            getStorageStatsResponses;
+        destroyFileStoreResponse = service.AssertDestroyFileStoreFailed(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+        UNIT_ASSERT_C(
+            getStorageStatsResponses > getStorageStatsResponsesBeforeRetry,
+            getStorageStatsResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, restartTabletRequests);
+
+        TIndexTabletClient tablet(
+            runtime,
+            nodeIdx,
+            tabletId,
+            {} /* config */,
+            false /* updateConfig */);
+        tablet.AdvanceTime(idleSessionTimeout + TDuration::MilliSeconds(1));
+        tablet.CleanupSessions();
+
+        {
+            const auto response = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, response.SessionsSize());
+        }
+
+        destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotRestartTabletDuringDestroyIfRestartTabletUptimeThresholdDuringDestroyIsNotSet)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        const ui64 initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+
+        auto& runtime = env.GetRuntime();
+        ui32 restartTabletRequests = 0;
+        bool patchedStorageStatsResponse = false;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGetStorageStatsResponse: {
+                        auto* msg = event->Get<
+                            TEvIndexTablet::TEvGetStorageStatsResponse>();
+                        msg->Record.SetTabletUptimeMs(
+                            TDuration::Hours(2).MilliSeconds());
+                        patchedStorageStatsResponse = true;
+                        break;
+                    }
+                    case TEvIndexTablet::EvRestartTabletRequest: {
+                        if (event->Recipient ==
+                            MakeIndexTabletProxyServiceId()) {
+                            ++restartTabletRequests;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service.AssertDestroyFileStoreFailed(fsId);
+
+        UNIT_ASSERT(patchedStorageStatsResponse);
+        UNIT_ASSERT_VALUES_EQUAL(0, restartTabletRequests);
+    }
+
     Y_UNIT_TEST(ShouldDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
     {
         NProto::TStorageConfig storageConfig;
@@ -3645,7 +3844,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         const TString fsId = "test";
         // Size less than ForceDestroySizeThreshold
-        const auto initialBlockCount = 80_MB / DefaultBlockSize;
+        const ui64 initialBlockCount = 80_MB / DefaultBlockSize;
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
 

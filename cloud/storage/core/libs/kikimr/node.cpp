@@ -86,7 +86,7 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 {
     NGRpcProxy::TGRpcClientConfig config(
         nodeBrokerAddress,
-        options.Settings.LegacyRegistrationTimeout);
+        options.Settings.NodeRegistrationTimeout);
 
     if (options.UseNodeBrokerSsl) {
         config.EnableSsl = true;
@@ -362,7 +362,7 @@ struct TDiscoveryNodeRegistrant
         Settings.DomainPath(Options.Domain);
         Settings.Port(Options.InterconnectPort);
         Settings.Path(Options.SchemeShardDir);
-        Settings.ClientTimeout(Options.Settings.DynamicNodeRegistrationTimeout);
+        Settings.ClientTimeout(Options.Settings.NodeRegistrationTimeout);
     }
 
     TResultOrError<TRegistrationResult> RegisterNode(
