@@ -115,6 +115,13 @@ def sanitize_github_expressions(line):
     return re.sub(r"\$\{\{.*?\}\}", "${GITHUB_EXPRESSION}", line)
 
 
+def get_block_indent(block):
+    for line in block:
+        if line.strip():
+            return re.match(r"^\s*", line).group(0)
+    return ""
+
+
 def write_runs_to_files(runs, output_dir, prefix):
     """
     Write run commands to files.
@@ -160,7 +167,9 @@ def write_runs_to_files(runs, output_dir, prefix):
                 if any("${{" in line for line in block):
                     # SC2296 is about that github variables are not valid shell variables
                     # SC1083 about basically the same thing
-                    f.write("# shellcheck disable=SC2296,SC1083\n")
+                    f.write(
+                        f"{get_block_indent(block)}# shellcheck disable=SC2296,SC1083\n"
+                    )
                 for line in block:
                     f.write(sanitize_github_expressions(line) + "\n")
 

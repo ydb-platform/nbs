@@ -177,8 +177,7 @@ jobs:
       - name: generate shellscripts from github actions
         run: |
           python3 .github/scripts/shell_extractor.py
-          find .temporary/ -type f -name "*.sh";
-
+          find .temporary/ -type f -name "*.sh"
       - name: shellcheck
         id: shellcheck
         uses: ./.github/actions/shellcheck
@@ -228,15 +227,14 @@ jobs:
         run: |
           status=0
           if [ "${SHELLCHECK_EXIT_CODE:-1}" != "0" ]; then
-            echo "::error::shellcheck failed"
-            status=1
+              echo "::error::shellcheck failed"
+              status=1
           fi
           if [ "${SHFMT_EXIT_CODE:-1}" != "0" ]; then
-            echo "::error::shfmt failed"
-            status=1
+              echo "::error::shfmt failed"
+              status=1
           fi
           exit "$status"
-
   python:
     needs: [set-env, check-running-allowed, check-trigger-label]
     if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
@@ -278,7 +276,6 @@ jobs:
         run: |
           pip install -r .github/scripts/requirements.txt
           pip install -r .github/scripts/requirements_dev.txt
-
       - name: flake8
         id: flake8
         uses: ./.github/actions/lint_report
@@ -306,12 +303,11 @@ jobs:
           set -x
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           pytest --tb=short --disable-warnings --maxfail=1 \
-            --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
-            --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
-            --self-contained-html \
-            .github/scripts/*_test.py \
-            .github/scripts/tests
-
+              --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
+              --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
+              --self-contained-html \
+              .github/scripts/*_test.py \
+              .github/scripts/tests
       - name: Upload pytest test results artifact
         if: ${{ env.ACT != 'true' && always() }}
         id: upload
@@ -334,7 +330,6 @@ jobs:
           set -x
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
-
       - name: build pytest summary table
         if: ${{ always() }}
         id: pytest-summary
@@ -344,14 +339,13 @@ jobs:
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           SUMMARY_OUT=$(mktemp)
           python3 -m scripts.tests.pytest_summary \
-            --title "GA Scripts pytest" \
-            ga-scripts-pytest-results.xml > "$SUMMARY_OUT"
+              --title "GA Scripts pytest" \
+              ga-scripts-pytest-results.xml > "$SUMMARY_OUT"
           {
-            echo "markdown<<EOF"
-            cat "$SUMMARY_OUT"
-            echo "EOF"
+              echo "markdown<<EOF"
+              cat "$SUMMARY_OUT"
+              echo "EOF"
           } >> "$GITHUB_OUTPUT"
-
       - name: add test report links to summary
         if: ${{ always() }}
         shell: bash
@@ -359,22 +353,21 @@ jobs:
           PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         run: |
           {
-            echo "### GA Scripts pytest reports"
-            if [ -n "${PYTEST_SUMMARY_MARKDOWN}" ]; then
-              echo
-              printf '%s\n' "${PYTEST_SUMMARY_MARKDOWN}"
-              echo
-            fi
-            if [ "${ACT}" = "true" ]; then
-              echo "- Local act run: reports were written to ga-scripts-pytest-report.html and ga-scripts-pytest-results.xml"
-            else
-              echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
-              echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
-              echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
-              echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
-            fi
+              echo "### GA Scripts pytest reports"
+              if [ -n "${PYTEST_SUMMARY_MARKDOWN}" ]; then
+                  echo
+                  printf '%s\n' "${PYTEST_SUMMARY_MARKDOWN}"
+                  echo
+              fi
+              if [ "${ACT}" = "true" ]; then
+                  echo "- Local act run: reports were written to ga-scripts-pytest-report.html and ga-scripts-pytest-results.xml"
+              else
+                  echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
+                  echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
+                  echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
+                  echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
+              fi
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: comment on issue
         if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v9
@@ -425,19 +418,18 @@ jobs:
         run: |
           status=0
           if [ "${FLAKE8_EXIT_CODE:-1}" != "0" ]; then
-            echo "::error::flake8 failed"
-            status=1
+              echo "::error::flake8 failed"
+              status=1
           fi
           if [ "${BLACK_EXIT_CODE:-1}" != "0" ]; then
-            echo "::error::black failed"
-            status=1
+              echo "::error::black failed"
+              status=1
           fi
           if [ "${PYTEST_OUTCOME}" != "success" ]; then
-            echo "::error::pytest failed"
-            status=1
+              echo "::error::pytest failed"
+              status=1
           fi
           exit "$status"
-
   workflows:
     needs: [set-env, check-running-allowed, check-trigger-label]
     if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
@@ -478,7 +470,12 @@ jobs:
         run: |
           set -x
           export TMP_OUT=$(mktemp)
-          find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read -r path; do echo Checking $path; action-validator --verbose $path; done > $TMP_OUT
+          {
+              find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read -r path; do
+                  echo "Checking $path"
+                  action-validator --verbose "$path"
+              done
+          } > "$TMP_OUT"
 
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
@@ -487,14 +484,12 @@ jobs:
           echo "OUTPUT_FILE=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
           chown github:github $TMP_OUT
           chmod 644 $TMP_OUT
-
       - name: upload workflow lint results
         if: ${{ always() }}
         id: upload-workflow-lint-to-s3
         run: |
           set -x
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
-
       - name: comment on issue
         uses: actions/github-script@v9
         if: ${{ github.event_name == 'pull_request' }}
@@ -536,8 +531,8 @@ jobs:
         shell: bash
         run: |
           if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-            echo "Removing stale rebase state left on runner checkout"
-            rm -rf .git/rebase-merge .git/rebase-apply
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
           fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
@@ -608,6 +603,6 @@ jobs:
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
           python3 -m scripts.tests.finalize_workload_comments \
-            --matrix-include "$MATRIX_INCLUDE" \
-            --platform-name "$platform_name" \
-            --workload-status completed
+              --matrix-include "$MATRIX_INCLUDE" \
+              --platform-name "$platform_name" \
+              --workload-status completed

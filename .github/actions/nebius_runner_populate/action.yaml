@@ -63,15 +63,15 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_populate_vms \
-          ${LOOP_ARG} \
-          --github-repo-owner "${OWNER}" \
-          --github-repo "${REPO}" \
-          --parent-id "${PARENT_ID}" \
-          --max-vms-to-create "${MAX_VMS_TO_CREATE}" \
-          --flavor "${FLAVOR}" \
-          --vms-older-than "${VMS_OLDER_THAN}" \
-          --maximum-amount-of-vms-to-have "${MAXIMUM_AMOUNT_OF_VMS_TO_HAVE}" \
-          --extra-vms-if-needed "${EXTRA_VMS_IF_NEEDED}"
+            ${LOOP_ARG} \
+            --github-repo-owner "${OWNER}" \
+            --github-repo "${REPO}" \
+            --parent-id "${PARENT_ID}" \
+            --max-vms-to-create "${MAX_VMS_TO_CREATE}" \
+            --flavor "${FLAVOR}" \
+            --vms-older-than "${VMS_OLDER_THAN}" \
+            --maximum-amount-of-vms-to-have "${MAXIMUM_AMOUNT_OF_VMS_TO_HAVE}" \
+            --extra-vms-if-needed "${EXTRA_VMS_IF_NEEDED}"
       env:
         OWNER: ${{ github.event.repository.owner.login }}
         REPO: ${{ github.event.repository.name }}

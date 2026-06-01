@@ -112,8 +112,8 @@ jobs:
         shell: bash
         run: |
           if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-            echo "Removing stale rebase state left on runner checkout"
-            rm -rf .git/rebase-merge .git/rebase-apply
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
           fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
@@ -177,8 +177,8 @@ jobs:
         shell: bash
         run: |
           if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-            echo "Removing stale rebase state left on runner checkout"
-            rm -rf .git/rebase-merge .git/rebase-apply
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
           fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
@@ -206,6 +206,6 @@ jobs:
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
           python3 -m scripts.tests.finalize_workload_comments \
-            --matrix-include "$MATRIX_INCLUDE" \
-            --platform-name "$platform_name" \
-            --workload-status completed
+              --matrix-include "$MATRIX_INCLUDE" \
+              --platform-name "$platform_name" \
+              --workload-status completed
