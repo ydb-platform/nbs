@@ -41,7 +41,7 @@ struct TSslErrorQueueGuard
 
 TString GetLastOpenSslError()
 {
-    const auto error = ERR_peek_last_error();
+    const ui64 error = ERR_peek_last_error();
     if (error == 0) {
         return {};
     }
@@ -81,7 +81,7 @@ TString OpenSslErrorToString(TStringBuf message)
 
 TErrorResponse MakeOpenSslError(TStringBuf message)
 {
-    const auto error = ERR_peek_last_error();
+    const ui64 error = ERR_peek_last_error();
     return {
         MAKE_SYSTEM_ERROR(ERR_GET_REASON(error)),
         OpenSslErrorToString(message)};
@@ -108,7 +108,7 @@ TResultOrError<TVector<TX509Ptr>> ParsePemCertificates(TStringBuf pem)
             continue;
         }
 
-        const auto error = ERR_peek_last_error();
+        const ui64 error = ERR_peek_last_error();
         if (error == 0) {
             break;
         }
@@ -255,7 +255,7 @@ TResultOrError<void> ValidateIdentityCertificateWithRoot(
         if (X509_STORE_add_cert(store.get(), root.get()) == 1) {
             continue;
         }
-        const auto error = ERR_peek_last_error();
+        const ui64 error = ERR_peek_last_error();
         if (ERR_GET_LIB(error) == ERR_LIB_X509 &&
             ERR_GET_REASON(error) == X509_R_CERT_ALREADY_IN_HASH_TABLE)
         {
