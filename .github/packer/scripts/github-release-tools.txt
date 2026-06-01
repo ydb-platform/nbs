@@ -1,0 +1,4 @@
+action-validator==v0.9.0
+shellcheck==v0.11.0
+shfmt==v3.13.1
+yq==v4.49.2

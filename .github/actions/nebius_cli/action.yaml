@@ -37,21 +37,8 @@ runs:
           shell: bash
           run: |
               set -x
-              if command -v yq > /dev/null 2>&1; then
-                echo "yq already installed"
-                exit 0
-              fi
-
-              yq_version=$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name')
-              if [ -z "$yq_version" ] || [ "$yq_version" = "null" ]; then
-                echo "Failed to resolve latest yq release"
-                exit 1
-              fi
-
-              mkdir -p "$HOME/.local/bin"
-              curl -sSL -o "$HOME/.local/bin/yq" \
-                "https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_amd64"
-              chmod 0755 "$HOME/.local/bin/yq"
+              INSTALL_DIR="$HOME/.local/bin" \
+                bash "${GITHUB_ACTION_PATH}/../../packer/scripts/install-github-release-tools.sh" yq
 
         - name: Set up Nebius CLI config from config.yaml
           if: ${{ inputs.config_yaml != '' }}
