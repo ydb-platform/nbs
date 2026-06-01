@@ -123,7 +123,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
             if (remaining == 0) {
                 break;
             }
-            const auto length = std::min<ui64>(remaining, iovec.GetLength());
+            const ui64 length = std::min<ui64>(remaining, iovec.GetLength());
             buffers.emplace_back(
                 reinterpret_cast<char*>(iovec.GetBase()),
                 length);

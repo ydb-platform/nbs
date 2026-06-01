@@ -107,11 +107,12 @@ def start(argv):
         service_endpoint.ClientConfig.Port = int(os.getenv("NFS_SERVER_PORT"))
     elif service_type == "local-noserver":
         local_service_config = TLocalServiceConfig()
+        # Vhost local tests enable zero-copy by default so the common path will
+        # exercises zero-copy behavior.
+        local_service_config.ZeroCopyEnabled = True
         if args.local_service_config_patch:
             with open(common.source_path(args.local_service_config_patch)) as p:
-                local_service_config = text_format.Parse(
-                    p.read(),
-                    TLocalServiceConfig())
+                text_format.Merge(p.read(), local_service_config)
 
         fs_root_path = common.ram_drive_path()
         if fs_root_path:

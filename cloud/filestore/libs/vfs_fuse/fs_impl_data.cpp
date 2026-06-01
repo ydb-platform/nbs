@@ -1,5 +1,6 @@
 #include "fs_impl.h"
 
+#include "fs_impl_data.h"
 #include "fuse.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -44,31 +45,21 @@ void InitNodeInfo(
     nodeInfo->SetHandle(ToUnderlying(handle));
 }
 
-// Builds the iovec list for a zero-copy read request from the fuse output
-// buffers. The first fuse out iovec holds the headers and is skipped; the rest
-// point to the data buffers. Each segment is capped to the remaining requested
-// length. Returns an error if the buffers cannot cover the requested length.
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+// zero-copy iovec helpers
+
 NProto::TError FillReadDataIovecs(
-    fuse_req_t req,
+    const struct iovec* iov,
+    int count,
     ui64 length,
     google::protobuf::RepeatedPtrField<NProto::TIovec>* iovecs)
 {
-    struct iovec* iov = nullptr;
-    int count = 0;
-    int ret = fuse_out_buf(req, &iov, &count);
-    if (ret == -1 || count <= 1) {
-        return MakeError(
-            E_FS_INVAL,
-            TStringBuilder() << "Invalid fuse out buffers, ret=" << ret
-                             << ", count=" << count);
-    }
-
     iovecs->Reserve(count);
 
     ui64 remainingSize = length;
-    // skip first fuse out iovec where headers are kept, the rest of the iovecs
-    // contain pointers to data buffers
-    for (int index = 1; index < count; index++) {
+    for (int index = 0; index < count; index++) {
         if (remainingSize == 0) {
             break;
         }
@@ -88,9 +79,26 @@ NProto::TError FillReadDataIovecs(
     return {};
 }
 
-// Builds the iovec list for a zero-copy write request from the fuse input
-// buffers. Zero-size buffers are skipped. Unlike the read helper, no total
-// length validation is performed.
+NProto::TError FillReadDataIovecs(
+    fuse_req_t req,
+    ui64 length,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>* iovecs)
+{
+    struct iovec* iov = nullptr;
+    int count = 0;
+    int ret = fuse_out_buf(req, &iov, &count);
+    if (ret == -1 || count <= 1) {
+        return MakeError(
+            E_FS_INVAL,
+            TStringBuilder() << "Invalid fuse out buffers, ret=" << ret
+                             << ", count=" << count);
+    }
+
+    // skip the first fuse out iovec where the headers are kept, the rest of the
+    // iovecs contain pointers to data buffers
+    return FillReadDataIovecs(iov + 1, count - 1, length, iovecs);
+}
+
 void FillWriteDataIovecs(
     const fuse_bufvec* bufv,
     google::protobuf::RepeatedPtrField<NProto::TIovec>* iovecs)
@@ -107,8 +115,6 @@ void FillWriteDataIovecs(
         iovec->SetLength(srcFuseBuf->size);
     }
 }
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // read & write files
