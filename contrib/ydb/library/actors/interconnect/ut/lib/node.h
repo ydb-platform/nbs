@@ -12,6 +12,8 @@
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_proxy.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_proxy_wrapper.h>
 
+#include <library/cpp/logger/backend.h>
+
 #include "tls/tls.h"
 
 using namespace NActors;
@@ -21,6 +23,8 @@ class TNode {
     TString CaPath;
 
 public:
+    using TLogBackendFactory = std::function<TAutoPtr<TLogBackend>()>;
+
     static constexpr ui32 DefaultInflight() { return 512 * 1024; }
     TNode(ui32 nodeId, ui32 numNodes, const THashMap<ui32, ui16>& nodeToPort, const TString& address,
           NMonitoring::TDynamicCounterPtr counters, TDuration deadPeerTimeout,
@@ -28,7 +32,8 @@ public:
           ui32 numDynamicNodes = 0, ui32 numThreads = 1,
           TIntrusivePtr<NLog::TSettings> loggerSettings = nullptr, ui32 inflight = DefaultInflight(),
           ESocketSendOptimization sendOpt = ESocketSendOptimization::DISABLED,
-          bool withTls = false) {
+          bool withTls = false,
+          TLogBackendFactory logBackendFactory = {}) {
         TActorSystemSetup setup;
         setup.NodeId = nodeId;
         setup.ExecutorsCount = 2;
@@ -121,8 +126,9 @@ public:
             interconnectPoolId));
 
         // register logger
+        TAutoPtr<TLogBackend> logBackend = logBackendFactory ? logBackendFactory() : CreateStderrBackend();
         setup.LocalServices.emplace_back(loggerActorId, TActorSetupCmd(new TLoggerActor(loggerSettings,
-            CreateStderrBackend(), counters->GetSubgroup("subsystem", "logger")),
+            logBackend, counters->GetSubgroup("subsystem", "logger")),
             TMailboxType::ReadAsFilled, 1));
 
         if (common->OutgoingHandshakeInflightLimit) {
@@ -138,8 +144,15 @@ public:
     }
 
     ~TNode() {
-        ActorSystem->Stop();
+        Stop();
         unlink(CaPath.c_str());
+    }
+
+    void Stop() {
+        if (ActorSystem) {
+            ActorSystem->Stop();
+            ActorSystem.Reset();
+        }
     }
 
     bool Send(const TActorId& recipient, IEventBase* ev) {
