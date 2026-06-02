@@ -1,9 +1,60 @@
 #include <contrib/ydb/library/actors/interconnect/ut/lib/ic_test_cluster.h>
+//#include <ydb/library/actors/protos/services_common.pb.h>
+#include <library/cpp/logger/backend.h>
+#include <library/cpp/logger/record.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/digest/md5/md5.h>
 #include <util/random/fast.h>
+#include <atomic>
+#include <memory>
 
 using namespace NActors;
+
+namespace {
+
+struct THandshakeFailureLogCounters {
+    std::atomic<ui32> Notice = 0;
+    std::atomic<ui32> Debug = 0;
+};
+
+class TCountingLogBackend : public TLogBackend {
+public:
+    explicit TCountingLogBackend(std::shared_ptr<THandshakeFailureLogCounters> outgoingHandshakeFailures)
+        : OutgoingHandshakeFailures(std::move(outgoingHandshakeFailures))
+    {}
+
+    void WriteData(const TLogRecord& rec) override {
+        const TStringBuf line(rec.Data, rec.Len);
+        if (line.Contains("ICP25") && line.Contains("outgoing handshake failed")) {
+            if (rec.Priority == TLOG_NOTICE) {
+                OutgoingHandshakeFailures->Notice.fetch_add(1, std::memory_order_relaxed);
+            } else if (rec.Priority == TLOG_DEBUG) {
+                OutgoingHandshakeFailures->Debug.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
+
+    void ReopenLog() override {
+    }
+
+private:
+    std::shared_ptr<THandshakeFailureLogCounters> OutgoingHandshakeFailures;
+};
+
+template <typename TCallback>
+void WaitForCondition(TDuration timeout, TCallback&& callback, TStringBuf description) {
+    const TInstant deadline = TInstant::Now() + timeout;
+    while (TInstant::Now() < deadline) {
+        if (callback()) {
+            return;
+        }
+        Sleep(TDuration::MilliSeconds(50));
+    }
+    UNIT_FAIL(TStringBuilder() << "condition failed: " << description);
+}
+
+} // namespace
+
 
 class TSenderActor : public TActorBootstrapped<TSenderActor> {
     const TActorId Recipient;
@@ -120,6 +171,7 @@ class TRecipientActor : public TActor<TRecipientActor> {
 public:
     TRecipientActor()
         : TActor(&TThis::StateFunc)
+        , Received(0)
     {}
 
     void HandlePing(TAutoPtr<IEventHandle>& ev) {
@@ -127,11 +179,18 @@ public:
         const TString& response = MD5::CalcRaw(data);
         TActivationContext::Send(new IEventHandle(TEvents::THelloWorld::Pong, 0, ev->Sender, SelfId(),
             MakeIntrusive<TEventSerializedData>(response, TEventSerializationInfo{}), ev->Cookie));
+        Received.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    size_t GetReceived() const noexcept {
+        return Received.load(std::memory_order_relaxed);
     }
 
     STRICT_STFUNC(StateFunc,
         fFunc(TEvents::THelloWorld::Ping, HandlePing);
     )
+private:
+    std::atomic<size_t> Received;
 };
 
 Y_UNIT_TEST_SUITE(Interconnect) {
@@ -172,6 +231,49 @@ Y_UNIT_TEST_SUITE(Interconnect) {
 
             Sleep(TDuration::MilliSeconds(RandomNumber<ui32>(500) + 100));
         }
+    }
+
+    Y_UNIT_TEST(UnavailableNodeOutgoingHandshakeLogCount) {
+        auto outgoingHandshakeFailures = std::make_shared<THandshakeFailureLogCounters>();
+        auto loggerSettings = MakeIntrusive<NLog::TSettings>(
+            TActorId(0, "logger"),
+            static_cast<NLog::EComponent>(NActorsServices::LOGGER),
+            NLog::PRI_DEBUG,
+            NLog::PRI_DEBUG,
+            0U);
+        loggerSettings->Append(
+            NActorsServices::EServiceCommon_MIN,
+            NActorsServices::EServiceCommon_MAX,
+            NActorsServices::EServiceCommon_Name);
+        loggerSettings->SetAllowDrop(false);
+        loggerSettings->SetThrottleDelay(TDuration::Zero());
+        auto logBackendFactory = [outgoingHandshakeFailures] {
+            return TAutoPtr<TLogBackend>(new TCountingLogBackend(outgoingHandshakeFailures));
+        };
+
+        TTestICCluster cluster(2, TChannelsConfig(), nullptr, loggerSettings, TTestICCluster::EMPTY,
+            logBackendFactory);
+
+        auto* recipientPtr = new TRecipientActor;
+        const TActorId recipient = cluster.RegisterActor(recipientPtr, 1);
+        cluster.RegisterActor(new TSenderActor(recipient), 2);
+
+        WaitForCondition(TDuration::Seconds(10), [&] {
+            return recipientPtr->GetReceived() >= 1;
+        }, "initial interconnect message delivery");
+
+        outgoingHandshakeFailures->Notice.store(0, std::memory_order_relaxed);
+        outgoingHandshakeFailures->Debug.store(0, std::memory_order_relaxed);
+        cluster.StopNode(1);
+        Sleep(TDuration::Seconds(10));
+
+        const ui32 noticeLogCount = outgoingHandshakeFailures->Notice.load(std::memory_order_relaxed);
+        const ui32 debugLogCount = outgoingHandshakeFailures->Debug.load(std::memory_order_relaxed);
+        UNIT_ASSERT_C(noticeLogCount == 1 || noticeLogCount == 2,
+            TStringBuilder() << "expected one or two notice-level ICP25 outgoing handshake failure log records in 10 seconds, got "
+                << noticeLogCount);
+        UNIT_ASSERT_C(debugLogCount > 0,
+            "expected repeated ICP25 outgoing handshake failure log records to be demoted to debug");
     }
 
 }
