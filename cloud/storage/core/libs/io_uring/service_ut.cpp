@@ -32,6 +32,7 @@ namespace {
 constexpr ui32 BlockSize = 4_KB;
 constexpr const ui64 BlockCount = 1024;
 constexpr const ui32 SubmissionQueueSize = 32;
+constexpr const auto Timeout = 15s;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -205,7 +206,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
             {
                 auto result = service.AsyncWrite(FileData, offset, buffer);
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValue(Timeout));
             }
 
             std::memset(buffer.data(), 0, buffer.size());
@@ -213,7 +214,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             {
                 auto result = service.AsyncRead(FileData, offset, buffer);
 
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValue(Timeout));
             }
 
             for (char val: buffer) {
@@ -254,7 +255,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             {
                 auto result =
                     service.AsyncWriteV(FileData, offset, constBuffers);
-                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValue(Timeout));
             }
 
             for (auto& buffer: buffers) {
@@ -263,7 +264,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
             {
                 auto result = service.AsyncReadV(FileData, offset, buffers);
-                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValue(Timeout));
             }
 
             for (auto& buffer: buffers) {
@@ -303,13 +304,13 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
             {
                 auto result = service.AsyncWrite(fileData, offset, buffer, O_SYNC);
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValue(Timeout));
             }
 
             std::memset(buffer.data(), 0, buffer.size());
             {
                 auto result = service.AsyncRead(fileData, offset, buffer);
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValue(Timeout));
             }
 
             for (char val: buffer) {
@@ -319,13 +320,13 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             std::memset(buffer.data(), dsyncData, buffer.size());
             {
                 auto result = service.AsyncWrite(fileData, offset, buffer, O_DSYNC);
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValue(Timeout));
             }
 
             std::memset(buffer.data(), 0, buffer.size());
             {
                 auto result = service.AsyncRead(fileData, offset, buffer);
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValue(Timeout));
             }
 
             for (char val: buffer) {
@@ -368,7 +369,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             {
                 auto result =
                     service.AsyncWriteV(fileData, offset, constBuffers, O_SYNC);
-                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValue(Timeout));
             }
 
             for (auto& buffer: buffers) {
@@ -376,7 +377,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             }
             {
                 auto result = service.AsyncReadV(fileData, offset, buffers);
-                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValue(Timeout));
             }
             for (auto& buffer: buffers) {
                 for (char val: buffer) {
@@ -390,7 +391,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             {
                 auto result =
                     service.AsyncWriteV(fileData, offset, constBuffers, O_DSYNC);
-                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValue(Timeout));
             }
 
             for (auto& buffer: buffers) {
@@ -398,7 +399,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             }
             {
                 auto result = service.AsyncReadV(fileData, offset, buffers);
-                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValue(Timeout));
             }
 
             for (auto& buffer: buffers) {
@@ -433,7 +434,7 @@ Y_UNIT_TEST_SUITE(TIoUringNullTest)
 
         for (auto& future: futures) {
             try {
-                const ui32 len = future.GetValueSync();
+                const ui32 len = future.GetValue(Timeout);
                 UNIT_ASSERT_VALUES_EQUAL(length, len);
             } catch (const TServiceError& e) {
                 // EINVAL is expected if the linux kernel is older than 6.0
