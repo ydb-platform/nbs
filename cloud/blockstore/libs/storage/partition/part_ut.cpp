@@ -14088,6 +14088,131 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 stats.GetBlockMaskReadDuringCompaction());
         }
     }
+
+    Y_UNIT_TEST(ShouldReadBlobInfo)
+    {
+        constexpr ui32 rangeSize = 1024;
+        constexpr ui32 blockCount = rangeSize * 3;
+
+        auto config = DefaultConfig();
+
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TVector<TBlockRange32> blockRanges = {
+            TBlockRange32::WithLength(0, rangeSize),
+            TBlockRange32::WithLength(rangeSize / 2, rangeSize),
+            TBlockRange32::WithLength(rangeSize, rangeSize),
+        };
+
+        TVector<TPartialBlobId> blobs;
+        bool interceptWriteBlobRequest = true;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
+                        if (interceptWriteBlobRequest) {
+                            auto* msg = event->Get<TEvPartitionCommonPrivate::
+                                                       TEvWriteBlobRequest>();
+                            blobs.push_back(msg->BlobId);
+                        }
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        char fill = '1';
+        for (const auto& blockRange: blockRanges) {
+            partition.WriteBlocks(blockRange, fill);
+            fill++;
+        }
+
+        interceptWriteBlobRequest = false;
+
+        TBlockMask emptyBlockMask;
+
+        TBlockMask fullBlockMask;
+        fullBlockMask.Set(0, MaxBlocksCount);
+
+        TBlockMask halfBlockMask;
+        halfBlockMask.Set(0, MaxBlocksCount / 2);
+
+        {
+            auto blobsInfo = partition.CompactionReadBlobInfo(blobs, blobs);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobsInfo->BlobMetasForBlobs.size(),
+                3);
+            for (size_t i = 0; i < blockRanges.size(); ++i) {
+                const auto& blobMeta = blobsInfo->BlobMetasForBlobs[i];
+                UNIT_ASSERT(blobMeta.HasMergedBlocks());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blockRanges[i].Start,
+                    blobMeta.GetMergedBlocks().GetStart());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blockRanges[i].End,
+                    blobMeta.GetMergedBlocks().GetEnd());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    blobMeta.GetMergedBlocks().GetSkipped());
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobsInfo->BlockMasksForBlobs.size(),
+                3);
+            for (size_t i = 0; i < blockRanges.size(); ++i) {
+                UNIT_ASSERT_C(
+                    emptyBlockMask == blobsInfo->BlockMasksForBlobs[i],
+                    TStringBuilder()
+                        << BlockMaskAsString(emptyBlockMask) << " != "
+                        << BlockMaskAsString(blobsInfo->BlockMasksForBlobs[i]));
+            }
+        }
+
+        partition.Compaction();
+
+        {
+            auto blobsInfo = partition.CompactionReadBlobInfo(blobs, blobs);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobsInfo->BlockMasksForBlobs.size(),
+                3);
+            TVector<TBlockMask> expectedBlockMasks = {
+                fullBlockMask,
+                halfBlockMask,
+                emptyBlockMask};
+            for (size_t i = 0; i < blockRanges.size(); ++i) {
+                UNIT_ASSERT_C(
+                    expectedBlockMasks[i] == blobsInfo->BlockMasksForBlobs[i],
+                    TStringBuilder()
+                        << BlockMaskAsString(expectedBlockMasks[i]) << " != "
+                        << BlockMaskAsString(blobsInfo->BlockMasksForBlobs[i]));
+            }
+        }
+
+        partition.Compaction();
+
+        {
+            auto blobsInfo = partition.CompactionReadBlobInfo(blobs, blobs);
+
+            UNIT_ASSERT_VALUES_EQUAL(blobsInfo->BlockMasksForBlobs.size(), 3);
+            TVector<TBlockMask> expectedBlockMasks = {
+                fullBlockMask,
+                fullBlockMask,
+                fullBlockMask};
+            for (size_t i = 0; i < blockRanges.size(); ++i) {
+                UNIT_ASSERT_C(
+                    expectedBlockMasks[i] == blobsInfo->BlockMasksForBlobs[i],
+                    TStringBuilder()
+                        << BlockMaskAsString(expectedBlockMasks[i]) << " != "
+                        << BlockMaskAsString(blobsInfo->BlockMasksForBlobs[i]));
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

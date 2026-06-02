@@ -33,6 +33,7 @@ SRCS(
     part_actor_monitoring_describe.cpp
     part_actor_monitoring_garbage.cpp
     part_actor_monitoring_view.cpp
+    part_actor_readblobinfo.cpp
     part_actor_readblocks.cpp
     part_actor_scan_disk.cpp
     part_actor_statpartition.cpp
