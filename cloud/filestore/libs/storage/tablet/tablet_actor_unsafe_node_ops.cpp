@@ -75,6 +75,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNode(
 
     NProto::TNode node;
     ConvertAttrsToNode(args.Request.GetNode(), &node);
+    node.SetSymLink(args.Request.GetSymLink());
     CreateNodeWithId(db, args.Request.GetNode().GetId(), commitId, node);
 }
 
