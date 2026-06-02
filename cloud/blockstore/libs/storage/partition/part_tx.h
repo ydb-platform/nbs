@@ -43,6 +43,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(ReadBlocks,                 __VA_ARGS__)                               \
     xxx(AddBlobs,                   __VA_ARGS__)                               \
     xxx(Compaction,                 __VA_ARGS__)                               \
+    xxx(CompactionReadBlobInfo,     __VA_ARGS__)                               \
     xxx(Cleanup,                    __VA_ARGS__)                               \
     xxx(CollectGarbage,             __VA_ARGS__)                               \
     xxx(AddGarbage,                 __VA_ARGS__)                               \
@@ -464,6 +465,35 @@ struct TTxPartition
             for (auto& range: RangeCompactions) {
                 range.Clear();
             }
+        }
+    };
+
+    //
+    // CompactionReadBlobInfo
+    //
+
+    struct TCompactionReadBlobInfo
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TVector<TPartialBlobId> BlobsToReadBlockMasks;
+        const TVector<TPartialBlobId> BlobsToReadBlobMetas;
+
+        TVector<TBlockMask> BlockMasks;
+        TVector<NProto::TBlobMeta> BlobMetas;
+
+        TCompactionReadBlobInfo(
+                TRequestInfoPtr requestInfo,
+                TVector<TPartialBlobId> blobsToReadBlockMasks,
+                TVector<TPartialBlobId> blobsToReadBlobMetas)
+            : RequestInfo(std::move(requestInfo))
+            , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
+            , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
+        {}
+
+        void Clear()
+        {
+            BlockMasks.clear();
+            BlobMetas.clear();
         }
     };
 

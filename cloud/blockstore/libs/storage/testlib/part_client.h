@@ -261,6 +261,11 @@ public:
     std::unique_ptr<TEvVolume::TEvGetPartitionInfoRequest>
     CreateGetPartitionInfoRequest();
 
+    std::unique_ptr<TEvPartitionPrivate::TEvCompactionReadBlobInfoRequest>
+    CreateCompactionReadBlobInfoRequest(
+        TVector<TPartialBlobId> blobsToReadBlockMasks,
+        TVector<TPartialBlobId> blobsToReadBlobMetas);
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                    \
     void Send##name##Request(Args&&... args)                                       \
