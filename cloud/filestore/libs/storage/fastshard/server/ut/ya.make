@@ -1,6 +1,5 @@
 GTEST()
 
-
 SRCS(
     ../server_ut.cpp
 )
