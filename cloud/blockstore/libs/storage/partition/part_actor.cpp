@@ -1235,6 +1235,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvPatchBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
