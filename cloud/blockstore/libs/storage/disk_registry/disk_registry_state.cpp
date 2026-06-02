@@ -8468,16 +8468,16 @@ void TDiskRegistryState::DetachPathIfNeeded(
 }
 
 bool TDiskRegistryState::HasDependentDisks(
-    const TAgentId& agentId,
+    const NProto::TAgentConfig& agent,
     const TString& path)
 {
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
+    if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
         return false;
     }
+
     return AnyOf(
-        *agent->MutableDevices(),
-        [&](auto& device)
+        agent.GetDevices(),
+        [&](const auto& device)
         {
             if (device.GetDeviceName() != path ||
                 device.GetState() == NProto::DEVICE_STATE_ERROR)
@@ -8528,7 +8528,7 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
     }
 
     if (state == NProto::PATH_ATTACH_STATE_DETACHED &&
-        HasDependentDisks(agent->GetAgentId(), path))
+        HasDependentDisks(*agent, path))
     {
         ReportDiskRegistryDetachPathWithDependentDisk(
             "Can't detach path with dependent disks",
@@ -8597,7 +8597,7 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
     }
 
     // We should not detach paths with dependent disks.
-    if (!attach && HasDependentDisks(agent.GetAgentId(), path)) {
+    if (!attach && HasDependentDisks(agent, path)) {
         ReportDiskRegistryDetachPathWithDependentDisk(
             "Can't detach path with dependent disks",
             {{"agent", agent.GetAgentId()}, {"path", path}});
