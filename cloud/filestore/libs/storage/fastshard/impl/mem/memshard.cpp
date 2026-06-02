@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/string/builder.h>
+#include <util/system/spinlock.h>
 
 #include <sys/stat.h>
 
@@ -79,6 +80,8 @@ private:
     ui64 LastNodeId = RootNodeId;
     ui64 LastHandleId = 0;
 
+    TAdaptiveLock Lock;
+
 public:
     TMemFileSystemShard(
             ui32 shardNo,
@@ -91,6 +94,8 @@ public:
     TFuture<NProtoPrivate::TGetNodeAttrBatchResponse>
     GetNodeAttrBatch(NProtoPrivate::TGetNodeAttrBatchRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProtoPrivate::TGetNodeAttrBatchResponse response;
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
@@ -122,6 +127,8 @@ public:
     TFuture<NProto::TGetNodeAttrResponse>
     GetNodeAttr(NProto::TGetNodeAttrRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TGetNodeAttrResponse response;
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
@@ -156,6 +163,8 @@ public:
     TFuture<NProto::TSetNodeAttrResponse>
     SetNodeAttr(NProto::TSetNodeAttrRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TSetNodeAttrResponse response;
         NProto::TNodeAttr* a = nullptr;
         if (!FindAttrs(request.GetNodeId(), &a)) {
@@ -202,6 +211,8 @@ public:
     TFuture<NProto::TCreateNodeResponse>
     CreateNode(NProto::TCreateNodeRequest request) override
     {
+        auto g = Guard(Lock);
+
         if (!request.HasFile()) {
             return NotImplemented<NProto::TCreateNodeResponse>(request);
         }
@@ -231,6 +242,8 @@ public:
     TFuture<NProto::TUnlinkNodeResponse>
     UnlinkNode(NProto::TUnlinkNodeRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TUnlinkNodeResponse response;
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
@@ -263,6 +276,8 @@ public:
     TFuture<NProto::TCreateHandleResponse>
     CreateHandle(NProto::TCreateHandleRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TCreateHandleResponse response;
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
@@ -325,6 +340,8 @@ public:
     TFuture<NProto::TDestroyHandleResponse>
     DestroyHandle(NProto::TDestroyHandleRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TDestroyHandleResponse response;
         auto it = Handles.find(request.GetHandle());
         if (it == Handles.end()) {
@@ -348,6 +365,8 @@ public:
     TFuture<NProto::TAllocateDataResponse>
     AllocateData(NProto::TAllocateDataRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TAllocateDataResponse response;
 
         auto hit = Handles.find(request.GetHandle());
@@ -416,6 +435,8 @@ public:
     TFuture<NProto::TWriteDataResponse>
     WriteData(NProto::TWriteDataRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TWriteDataResponse response;
 
         auto hit = Handles.find(request.GetHandle());
@@ -455,6 +476,8 @@ public:
     TFuture<NProto::TReadDataResponse>
     ReadData(NProto::TReadDataRequest request) override
     {
+        auto g = Guard(Lock);
+
         if (request.IovecsSize()) {
             return NotImplemented<NProto::TReadDataResponse>(request);
         }
