@@ -905,7 +905,14 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
     Y_UNUSED(ctx);
 
     TIndexTabletDatabase db(tx.DB);
-    SetFrozen(db, args.Request.GetFrozen());
+
+    if (args.Request.HasCompressNodeRef()) {
+        SetCompressNodeRef(db, args.Request.GetCompressNodeRef());
+    }
+
+    if (args.Request.HasFrozen()) {
+        SetFrozen(db, args.Request.GetFrozen());
+    }
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(

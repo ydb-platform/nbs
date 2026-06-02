@@ -1999,6 +1999,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.ConfigureAsShard(
             1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
             true /* directoryCreationInShardsEnabled */);
 
         const TString shardId1 = "shard1";
@@ -2099,6 +2101,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.ConfigureAsShard(
             1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
             false /* directoryCreationInShardsEnabled, doesn't matter*/);
 
         const ui64 nodeId = 111;
@@ -2197,6 +2201,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.ConfigureAsShard(
             1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
             true /* directoryCreationInShardsEnabled - matters for this test*/,
             TVector<TString>{shardId});
 

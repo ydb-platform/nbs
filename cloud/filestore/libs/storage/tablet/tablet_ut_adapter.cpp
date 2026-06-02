@@ -33,6 +33,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
 
         tablet.ConfigureAsShard(
             1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
             true /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
             NProtoPrivate::TFastShardConfig(),

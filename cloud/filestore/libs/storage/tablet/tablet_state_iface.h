@@ -63,6 +63,9 @@ public:
                    sizeof(MaxCommitId) + Name.size() + ShardId.size() +
                    ShardNodeName.size();
         }
+
+        bool TryToEncodeShardId(const TString& mainFs);
+        bool TryToDecodeShardId(const TString& mainFs);
     };
 
     struct TNodeAttr
