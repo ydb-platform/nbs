@@ -908,11 +908,8 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override;
 
-    TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request) override;
-
 private:
+
     static NProto::TReadBlocksResponse HandleReadBlocksResponse(
         NProto::TReadBlocksResponse response);
 
@@ -1019,18 +1016,6 @@ NProto::TReadBlocksLocalResponse TSnapshotEncryptionClient::HandleReadBlocksLoca
         response.GetUnencryptedBlockMask());
 
     return response;
-}
-
-TFuture<NProto::TZeroBlocksResponse> TSnapshotEncryptionClient::ZeroBlocks(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TZeroBlocksRequest> request)
-{
-    Y_UNUSED(callContext);
-    Y_UNUSED(request);
-
-    return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
-        E_NOT_IMPLEMENTED,
-        "ZeroBlocks requests not supported by snapshot encryption client");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -534,6 +534,36 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldPropagateZeroBlocksErrorInSnapshotEncryptionClient)
+    {
+        auto logging = CreateLoggingService("console");
+        auto testClient = std::make_shared<TTestService>();
+        auto encryptionClient = CreateSnapshotEncryptionClient(
+            testClient,
+            logging,
+            GetDefaultEncryption());
+
+        testClient->ZeroBlocksHandler =
+            [] (std::shared_ptr<NProto::TZeroBlocksRequest>) {
+                NProto::TZeroBlocksResponse response;
+                response.MutableError()->SetCode(E_REJECTED);
+                response.MutableError()->SetMessage("testError");
+                return MakeFuture(response);
+            };
+
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetBlocksCount(1);
+
+        auto future = encryptionClient->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            request);
+        auto response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "testError",
+            response.GetError().GetMessage());
+    }
+
     Y_UNIT_TEST(ShouldNotEncryptInZeroBlock)
     {
         auto logging = CreateLoggingService("console");
@@ -1124,21 +1154,42 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
-    Y_UNIT_TEST(SnapshotEncryptionClientShouldDenyZeroBlocksRequests)
+    Y_UNIT_TEST(SnapshotEncryptionClientShouldForwardZeroBlocksBeforeMount)
     {
         auto logging = CreateLoggingService("console");
+        auto testClient = std::make_shared<TTestService>();
         auto encryptionClient = CreateSnapshotEncryptionClient(
-            std::make_shared<TTestService>(),
+            testClient,
             logging,
             GetDefaultEncryption());
 
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetBlocksCount(1);
+
+        size_t requestsCount = 0;
+        testClient->ZeroBlocksHandler =
+            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> zRequest) {
+                ++requestsCount;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetBlocksCount(),
+                    zRequest->GetBlocksCount());
+
+                NProto::TZeroBlocksResponse response;
+                response.MutableError()->SetCode(E_REJECTED);
+                response.MutableError()->SetMessage("not mounted");
+                return MakeFuture(response);
+            };
+
         auto future = encryptionClient->ZeroBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TZeroBlocksRequest>());
+            request);
 
         auto response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT(HasError(response)
-            && response.GetError().GetCode() == E_NOT_IMPLEMENTED);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "not mounted",
+            response.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(1, requestsCount);
     }
 
     Y_UNIT_TEST(ShouldHandleRequestsAfterDestroyClient)
@@ -1323,8 +1374,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             auto zeroFuture = encryptionClient->ZeroBlocks(
                 MakeIntrusive<TCallContext>(),
                 zeroRequest);
-            auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, zeroResponse.GetError().GetCode());
+            UNIT_ASSERT(!zeroFuture.HasValue());
 
             encryptionClient.reset();
             trigger.SetValue();
@@ -1343,6 +1393,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
             auto localWriteResponse = localWriteFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localWriteResponse), localWriteResponse);
+
+            auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(zeroResponse), zeroResponse);
         }
     }
 
