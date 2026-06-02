@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -16,9 +17,6 @@
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-
-#include <silk/fibers/fiber.h>
-#include <silk/util/init.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
@@ -161,17 +159,15 @@ void TBootstrap::Start()
         ClientFactory->Start();
     }
 
-    silk::initialize();
-    silk::FiberScheduler::initialize();
-    SilkInitialized = true;
+    NStorage::NFastShard::Init();
+    FastShardInitialized = true;
 }
 
 void TBootstrap::Stop()
 {
-    if (SilkInitialized) {
-        silk::FiberScheduler::destroy();
-        silk::destroy();
-        SilkInitialized = false;
+    if (FastShardInitialized) {
+        NStorage::NFastShard::Destroy();
+        FastShardInitialized = false;
     }
 
     if (ClientFactory) {

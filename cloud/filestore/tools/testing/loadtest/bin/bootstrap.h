@@ -32,7 +32,7 @@ private:
     NClient::TClientConfigPtr ClientConfig;
     IClientFactoryPtr ClientFactory;
 
-    bool SilkInitialized = false;
+    bool FastShardInitialized = false;
 
 public:
     TBootstrap(TOptionsPtr options);
