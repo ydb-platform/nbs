@@ -1089,12 +1089,12 @@ private:
 
             IDirectoryHandleStorageStatsPtr directoryHandleStorageStats;
             TDirectoryHandleStoragePtr directoryHandleStorage;
-            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
-                if (Config->GetDirectoryHandlesStoragePath()) {
-                    auto path =
-                        TFsPath(Config->GetDirectoryHandlesStoragePath()) /
-                        FileSystemConfig->GetFileSystemId() / SessionId;
+            if (Config->GetDirectoryHandlesStoragePath()) {
+                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                            FileSystemConfig->GetFileSystemId() / SessionId;
+                auto filePath = path / DirectoryHandleStorageFileName;
 
+                if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
                     auto error = CreateAndLockFile(
                         path,
                         DirectoryHandleStorageFileName,
@@ -1112,7 +1112,7 @@ private:
                         {.Log = Log,
                          .FileMapMemoryLimiter = FileMapMemoryLimiter,
                          .Stats = directoryHandleStorageStats,
-                         .FilePath = path / DirectoryHandleStorageFileName,
+                         .FilePath = filePath,
                          .MaxRecords =
                              FileSystemConfig->GetDirectoryHandlesTableSize(),
                          .InitialDataAreaSize =
@@ -1126,14 +1126,27 @@ private:
                                  ->GetDirectoryHandlesPersistentHandleMaxSize()});
 
                     DirectoryHandleStorageInitialized = true;
-                } else {
-                    STORAGE_ERROR(
-                        "[f:%s][c:%s] Error initializing "
-                        "DirectoryHandleStorage: DirectoryHandlesStoragePath "
-                        "is not set",
-                        Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str());
+                } else if (filePath.Exists()) {
+                    // The feature is disabled but a file from a previous
+                    // session with it enabled is still on disk. The file
+                    // holds only a derived view of the directory listing,
+                    // so it can be removed without any drain.
+                    try {
+                        NFs::Remove(filePath);
+                    } catch (const TSystemError& err) {
+                        ReportDirectoryHandlesStorageError(
+                            TStringBuilder()
+                            << "Failed to remove orphan directory handles "
+                            << filePath << ": " << err.AsStrBuf());
+                    }
                 }
+            } else if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
+                STORAGE_ERROR(
+                    "[f:%s][c:%s] Error initializing "
+                    "DirectoryHandleStorage: DirectoryHandlesStoragePath "
+                    "is not set",
+                    Config->GetFileSystemId().Quote().c_str(),
+                    Config->GetClientId().Quote().c_str());
             }
 
             DirectoryHandleStats = CreateDirectoryHandleStats(

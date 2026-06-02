@@ -256,9 +256,10 @@ struct TBootstrap
             proto.SetHandleOpsQueueSize(handleOpsQueueSize);
         }
 
+        proto.SetDirectoryHandlesStoragePath(
+            TempDir.Path() / "DirectoryHandles");
+        DirectoryHandleStoragePath = proto.GetDirectoryHandlesStoragePath();
         if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
-            proto.SetDirectoryHandlesStoragePath(TempDir.Path() / "DirectoryHandles");
-            DirectoryHandleStoragePath = proto.GetDirectoryHandlesStoragePath();
             if (directoryHandlesInitialDataSize) {
                 proto.SetDirectoryHandlesInitialDataSize(
                     directoryHandlesInitialDataSize);
@@ -1134,6 +1135,101 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             storage->LoadHandles(handles);
 
             UNIT_ASSERT(!handles.contains(handleId));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRemoveOrphanDirectoryHandleStorageFileWhenFeatureDisabled)
+    {
+        const TString sessionId = CreateGuidAsString();
+
+        TString storageFilePath;
+
+        // Phase 1: feature ENABLED — open a directory handle so the
+        // persistent storage file is created on disk, then simulate a crash by
+        // suspending the loop without the normal cleanup.
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            bootstrap.Service->CreateSessionHandler =
+                [&sessionId](auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                UNIT_ASSERT(request->GetRestoreClientSession());
+
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(sessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                NProto::TFileStoreFeatures features;
+                features.SetDirectoryHandlesStorageEnabled(true);
+                result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                    features);
+                result.MutableFileStore()->SetFileSystemId(FileSystemId);
+                return MakeFuture(result);
+            };
+
+            bootstrap.Service->ListNodesHandler = [](auto, auto)
+            {
+                NProto::TListNodesResponse result;
+                return MakeFuture(result);
+            };
+
+            bootstrap.Start();
+
+            const ui64 nodeId = 123;
+            auto open = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(open.Wait(WaitTimeout));
+            const auto handleId = open.GetValue();
+
+            auto read =
+                bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+
+            storageFilePath =
+                (TFsPath(bootstrap.DirectoryHandleStoragePath) / FileSystemId /
+                 sessionId / "directory_handles_storage")
+                    .GetPath();
+            UNIT_ASSERT(TFsPath(storageFilePath).Exists());
+
+            auto suspend = bootstrap.Loop->SuspendAsync();
+            UNIT_ASSERT(suspend.Wait(WaitTimeout));
+        }
+
+        // File from the previous session is still on disk.
+        UNIT_ASSERT(TFsPath(storageFilePath).Exists());
+
+        // Phase 2: feature DISABLED — startup must clean up the orphaned
+        // storage file.
+        {
+            NProto::TFileStoreFeatures features;
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features);
+
+            bootstrap.Service->CreateSessionHandler =
+                [&sessionId](auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                UNIT_ASSERT(request->GetRestoreClientSession());
+
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(sessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                // storage disabled in the response features
+                NProto::TFileStoreFeatures disabled;
+                result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                    disabled);
+                result.MutableFileStore()->SetFileSystemId(FileSystemId);
+                return MakeFuture(result);
+            };
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            UNIT_ASSERT(!TFsPath(storageFilePath).Exists());
         }
     }
 
