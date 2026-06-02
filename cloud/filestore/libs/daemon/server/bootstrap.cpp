@@ -19,6 +19,7 @@
 #include <cloud/filestore/libs/service_null/service.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -34,9 +35,6 @@
 #include <contrib/ydb/core/tablet_flat/probes.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
-#include <silk/fibers/fiber.h>
-#include <silk/util/init.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -71,8 +69,7 @@ TBootstrapServer::~TBootstrapServer()
 void TBootstrapServer::StartComponents()
 {
     if (FastShardServer) {
-        silk::initialize();
-        silk::FiberScheduler::initialize();
+        NStorage::NFastShard::Init();
     }
     FILESTORE_LOG_START_COMPONENT(FastShardServer);
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
@@ -90,8 +87,7 @@ void TBootstrapServer::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
     FILESTORE_LOG_STOP_COMPONENT(FastShardServer);
     if (FastShardServer) {
-        silk::FiberScheduler::destroy();
-        silk::destroy();
+        NStorage::NFastShard::Destroy();
     }
 }
 
