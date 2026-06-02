@@ -46,7 +46,7 @@ def start(argv):
     parser.add_argument("--restart-flag-on-demand", action="store_true", default=False)
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--service-config-patch", action="store", default=None)
-    parser.add_argument("--local-service-config-patch", action="store", default=None)
+    parser.add_argument("--local-service-config-patch", action="append", default=[])
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
 
@@ -107,11 +107,8 @@ def start(argv):
         service_endpoint.ClientConfig.Port = int(os.getenv("NFS_SERVER_PORT"))
     elif service_type == "local-noserver":
         local_service_config = TLocalServiceConfig()
-        # Vhost local tests enable zero-copy by default so the common path will
-        # exercises zero-copy behavior.
-        local_service_config.ZeroCopyEnabled = True
-        if args.local_service_config_patch:
-            with open(common.source_path(args.local_service_config_patch)) as p:
+        for patch in args.local_service_config_patch:
+            with open(common.source_path(patch)) as p:
                 text_format.Merge(p.read(), local_service_config)
 
         fs_root_path = common.ram_drive_path()

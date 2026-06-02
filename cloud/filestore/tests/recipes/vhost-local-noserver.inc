@@ -13,6 +13,7 @@ SET(RECIPE_ARGS
     --service local-noserver
     --restart-interval $VHOST_RESTART_INTERVAL
     --restart-flag $VHOST_RESTART_FLAG
+    --local-service-config-patch cloud/filestore/tests/common_configs/nfs-vhost-local-common-patch.txt
 )
 
 IF (NFS_LOCAL_SERVICE_CONFIG_PATCH)
