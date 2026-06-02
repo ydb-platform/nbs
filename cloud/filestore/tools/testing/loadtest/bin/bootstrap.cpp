@@ -17,6 +17,9 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <silk/fibers/fiber.h>
+#include <silk/util/init.h>
+
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -157,10 +160,20 @@ void TBootstrap::Start()
     if (ClientFactory) {
         ClientFactory->Start();
     }
+
+    silk::initialize();
+    silk::FiberScheduler::initialize();
+    SilkInitialized = true;
 }
 
 void TBootstrap::Stop()
 {
+    if (SilkInitialized) {
+        silk::FiberScheduler::destroy();
+        silk::destroy();
+        SilkInitialized = false;
+    }
+
     if (ClientFactory) {
         ClientFactory->Stop();
     }

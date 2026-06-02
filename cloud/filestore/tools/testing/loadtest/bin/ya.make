@@ -11,6 +11,8 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
+    contrib/libs/silk/src/fibers
+    contrib/libs/silk/src/util
     contrib/ydb/library/actors/util
     library/cpp/getopt
     library/cpp/logger

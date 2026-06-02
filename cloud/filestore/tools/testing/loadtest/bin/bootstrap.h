@@ -32,6 +32,8 @@ private:
     NClient::TClientConfigPtr ClientConfig;
     IClientFactoryPtr ClientFactory;
 
+    bool SilkInitialized = false;
+
 public:
     TBootstrap(TOptionsPtr options);
     ~TBootstrap();
