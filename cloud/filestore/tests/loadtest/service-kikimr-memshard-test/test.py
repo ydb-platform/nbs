@@ -19,6 +19,8 @@ def configure_memshard():
         port,
         cwd=common.output_path())
 
+    client.create(SHARD_ID, "test_cloud", "test_folder")
+
     client.execute_action(
         "configureasshard",
         {
