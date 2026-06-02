@@ -28,7 +28,7 @@ TDirectoryHandleStats SumDirectoryHandlesStats(
 
 TDirectoryHandleCache::TDirectoryHandleCache(
     TLog log,
-    TDirectoryHandleStatsPtr stats,
+    TDirectoryHandleModuleStatsPtr stats,
     TDirectoryHandleStoragePtr storage)
     : Log(std::move(log))
     , Storage(std::move(storage))

@@ -85,7 +85,7 @@ void TDirectoryHandleModuleStats::UpdateStats(TInstant now)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandleStatsPtr CreateDirectoryHandleStats(
+TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStats(
     ITimerPtr timer,
     IDirectoryHandleStorageStatsPtr storageStats)
 {

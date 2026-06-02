@@ -62,7 +62,7 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
 
     IDirectoryHandleStorageStatsPtr StorageStats;
 
-    TDirectoryHandleStatsPtr CreateStats()
+    TDirectoryHandleModuleStatsPtr CreateStats()
     {
         auto timer = CreateWallClockTimer();
         StorageStats = CreateDirectoryHandleStorageStats(timer);
@@ -70,7 +70,7 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
     }
 
     TDirectoryHandleStoragePtr CreateStorage(
-        TDirectoryHandleStatsPtr stats,
+        TDirectoryHandleModuleStatsPtr stats,
         ui64 persistentHandleMaxSize = 2_GB)
     {
         Y_UNUSED(stats);

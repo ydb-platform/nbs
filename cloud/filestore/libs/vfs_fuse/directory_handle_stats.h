@@ -48,14 +48,15 @@ public:
     void UpdateStats(TInstant now) override;
 };
 
-using TDirectoryHandleStatsPtr = std::shared_ptr<TDirectoryHandleModuleStats>;
+using TDirectoryHandleModuleStatsPtr =
+    std::shared_ptr<TDirectoryHandleModuleStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // storageStats may be null when the persistent directory-handle storage is
 // disabled, the resulting module stats will not register or update the
 // storage-level sensors.
-TDirectoryHandleStatsPtr CreateDirectoryHandleStats(
+TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStats(
     ITimerPtr timer,
     IDirectoryHandleStorageStatsPtr storageStats);
 

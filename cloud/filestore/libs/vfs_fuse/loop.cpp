@@ -712,7 +712,7 @@ private:
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
-    TDirectoryHandleStatsPtr DirectoryHandleStats;
+    TDirectoryHandleModuleStatsPtr DirectoryHandleStats;
     TFileSystemConfigPtr FileSystemConfig;
 
     THolder<TFileLock> HandleOpsQueueFileLock;

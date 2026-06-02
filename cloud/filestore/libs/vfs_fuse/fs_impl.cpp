@@ -36,7 +36,7 @@ TFileSystem::TFileSystem(
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        TDirectoryHandleStatsPtr directoryHandleStats,
+        TDirectoryHandleModuleStatsPtr directoryHandleStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
         TDirectoryHandleStoragePtr directoryHandleStorage,

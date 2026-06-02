@@ -20,7 +20,7 @@ private:
     TDirectoryHandleMap Handles;
     TDirectoryHandleStoragePtr Storage;
 
-    TDirectoryHandleStatsPtr Stats;
+    TDirectoryHandleModuleStatsPtr Stats;
 
 private:
     void IncreaseStats(const TDirectoryHandleStats& stats, size_t openHandles);
@@ -29,7 +29,7 @@ private:
 public:
     TDirectoryHandleCache(
         TLog log,
-        TDirectoryHandleStatsPtr stats,
+        TDirectoryHandleModuleStatsPtr stats,
         TDirectoryHandleStoragePtr storage);
 
     ui64 CreateHandle(fuse_ino_t ino);
