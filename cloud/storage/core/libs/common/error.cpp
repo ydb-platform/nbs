@@ -168,6 +168,7 @@ EDiagnosticsErrorKind GetDiagnosticsErrorKind(const NProto::TError& e)
         case E_BS_INVALID_SESSION:
             return EDiagnosticsErrorKind::ErrorSession;
         case E_ABORTED:
+        case E_TRANSPORT_ERROR:
             return EDiagnosticsErrorKind::ErrorAborted;
     }
 
