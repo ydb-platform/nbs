@@ -1588,7 +1588,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
 
         tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"));
 
-        tablet.ConfigureAsShard(1);
+        tablet.ConfigureAsShard(1, "fs", "fs");
 
         env.GetRuntime().ClearCounters();
         tablet.RebootTablet();
