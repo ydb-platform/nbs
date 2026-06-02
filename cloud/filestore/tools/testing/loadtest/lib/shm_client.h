@@ -61,6 +61,7 @@ IShmDataClientPtr CreateSharedMemoryClient(
     IShmControlPtr shmControl,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
-    ILoggingServicePtr logging);
+    ILoggingServicePtr logging,
+    bool allowOverlappingRegions);
 
 }   // namespace NCloud::NFileStore::NLoadTest

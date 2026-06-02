@@ -144,6 +144,10 @@ message TDatashardLikeLoadSpec
 
     // Size of the iovec in read/write requests with shared memory
     uint32 SharedMemoryPageSize = 9;
+
+    // Allows the client to reuse the same shared memory page across parallel requests.
+    // Intended for testing the page-locking feature in filestore-server.
+    bool AllowOverlappingSharedMemoryPages = 10;
 }
 
 message TMigrationSpec

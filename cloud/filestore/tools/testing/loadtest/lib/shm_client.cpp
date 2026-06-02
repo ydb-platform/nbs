@@ -47,6 +47,8 @@ private:
     // Control transport for SHM RPCs (Mmap / Munmap / PingMmapRegion).
     const IShmControlPtr ShmControl;
 
+    const bool AllowOverlappingSharedMemoryPages;
+
     TLog Log;
 
     void* LocalAddr = MAP_FAILED;
@@ -64,7 +66,8 @@ public:
             IShmControlPtr shmControl,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            ILoggingServicePtr logging)
+            ILoggingServicePtr logging,
+            bool allowOverlappingSharedMemoryPages)
         : BaseDir(std::move(baseDir))
         , FilePath(std::move(filePath))
         , ShmSize(shmSize)
@@ -73,6 +76,7 @@ public:
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , ShmControl(std::move(shmControl))
+        , AllowOverlappingSharedMemoryPages(allowOverlappingSharedMemoryPages)
     {
         Log = logging->CreateLog("NFS_SHM_CLIENT");
     }
@@ -81,6 +85,9 @@ public:
     {
         for (ui64 offset = 0; offset < ShmSize; offset += SlotSize) {
             FreeOffsets.Enqueue(offset);
+            if (AllowOverlappingSharedMemoryPages) {
+                FreeOffsets.Enqueue(offset);
+            }
         }
 
         ShmControl->Start();
@@ -248,7 +255,8 @@ IShmDataClientPtr CreateSharedMemoryClient(
     IShmControlPtr shmControl,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
-    ILoggingServicePtr logging)
+    ILoggingServicePtr logging,
+    bool allowOverlappingSharedMemoryPages)
 {
     return std::make_shared<TSharedMemoryClient>(
         std::move(baseDir),
@@ -259,7 +267,8 @@ IShmDataClientPtr CreateSharedMemoryClient(
         std::move(shmControl),
         std::move(scheduler),
         std::move(timer),
-        std::move(logging));
+        std::move(logging),
+        allowOverlappingSharedMemoryPages);
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest
