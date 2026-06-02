@@ -1124,23 +1124,6 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
-    Y_UNIT_TEST(SnapshotEncryptionClientShouldDenyZeroBlocksRequests)
-    {
-        auto logging = CreateLoggingService("console");
-        auto encryptionClient = CreateSnapshotEncryptionClient(
-            std::make_shared<TTestService>(),
-            logging,
-            GetDefaultEncryption());
-
-        auto future = encryptionClient->ZeroBlocks(
-            MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TZeroBlocksRequest>());
-
-        auto response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT(HasError(response)
-            && response.GetError().GetCode() == E_NOT_IMPLEMENTED);
-    }
-
     Y_UNIT_TEST(ShouldHandleRequestsAfterDestroyClient)
     {
         auto logging = CreateLoggingService("console");
@@ -1323,8 +1306,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             auto zeroFuture = encryptionClient->ZeroBlocks(
                 MakeIntrusive<TCallContext>(),
                 zeroRequest);
-            auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, zeroResponse.GetError().GetCode());
+            UNIT_ASSERT(!zeroFuture.HasValue());
 
             encryptionClient.reset();
             trigger.SetValue();
@@ -1343,6 +1325,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
             auto localWriteResponse = localWriteFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localWriteResponse), localWriteResponse);
+
+            auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(zeroResponse), zeroResponse);
         }
     }
 

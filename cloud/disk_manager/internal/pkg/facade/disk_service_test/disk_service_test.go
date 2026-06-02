@@ -922,7 +922,10 @@ func TestDiskServiceDescribeDiskModel(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
+func testDiskServiceCreateEncryptedDiskFromSnapshot(
+	t *testing.T,
+	incremental bool,
+) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -942,6 +945,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 		},
 	}
 
+	// Create original encrypted diskID1
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
@@ -974,6 +978,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	encryptionDesc, err := disks.PrepareEncryptionDesc(encryption)
 	require.NoError(t, err)
 
+	// Fill diskID1 with random data.
 	diskContentInfo, err := nbsClient.FillEncryptedDisk(
 		ctx,
 		diskID1,
@@ -990,6 +995,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, testcommon.DefaultKeyHash, diskKeyHash1)
 
+	// Create snapshot from diskID1
 	snapshotID := t.Name()
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
@@ -1006,6 +1012,46 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+	lastSnapshotID := snapshotID
+
+	if incremental {
+		snapshotID2 := t.Name() + "2"
+		lastSnapshotID = snapshotID2
+
+		// Fill diskID1 with random data once again.
+		_, err := nbsClient.FillEncryptedDisk(
+			ctx,
+			diskID1,
+			diskSize,
+			encryptionDesc,
+		)
+		// Since the source disk contains data from the old and new filling,
+		// re-calculate crc32 from the disk.
+		srcDiskContentInfo, err := nbsClient.CalculateCrc32WithEncryption(
+			diskID1,
+			diskSize,
+			encryptionDesc,
+		)
+		require.NoError(t, err)
+		diskContentInfo = srcDiskContentInfo
+
+		// Create second (incremental) snapshot from diskID1
+		reqCtx = testcommon.GetRequestContext(t, ctx)
+		operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID1,
+			},
+			SnapshotId: snapshotID2,
+			FolderId:   "folder",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, operation)
+		err = internal_client.WaitOperation(ctx, client, operation.Id)
+		require.NoError(t, err)
+	}
+
+	// Create diskID2 from snapshot with specified encryption.
 	snapshotMeta := disk_manager.CreateSnapshotMetadata{}
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &snapshotMeta)
 	require.NoError(t, err)
@@ -1016,7 +1062,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
-			SrcSnapshotId: snapshotID,
+			SrcSnapshotId: lastSnapshotID,
 		},
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
@@ -1046,12 +1092,14 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, float64(1), diskMeta.Progress)
 
+	// Try to create diskID3 from snapshot without specified encryption.
+	// Should get error "encryption mode should be the same".
 	diskID3 := t.Name() + "3"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
-			SrcSnapshotId: snapshotID,
+			SrcSnapshotId: lastSnapshotID,
 		},
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
@@ -1066,6 +1114,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "encryption mode should be the same")
 
+	// Validate content equality of original diskID and created from snapshot diskID2.
 	err = nbsClient.ValidateCrc32WithEncryption(
 		ctx,
 		diskID1,
@@ -1082,6 +1131,14 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
+	testDiskServiceCreateEncryptedDiskFromSnapshot(t, false)
+}
+
+func TestDiskServiceCreateEncryptedDiskFromIncrementedSnapshot(t *testing.T) {
+	testDiskServiceCreateEncryptedDiskFromSnapshot(t, true)
 }
 
 func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
