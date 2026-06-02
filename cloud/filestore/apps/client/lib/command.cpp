@@ -337,6 +337,8 @@ void TFileStoreServiceCommand::Init()
 {
     TCommand::Init();
 
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
+
     Client = CreateDurableClient(
         Logging,
         Timer,
@@ -345,12 +347,16 @@ void TFileStoreServiceCommand::Init()
         CreateFileStoreClient(
             ClientConfig,
             Logging,
-            CreateClientCertificateProvider(ClientConfig)));
+            CertificateProvider));
 }
 
 void TFileStoreServiceCommand::Start()
 {
     TCommand::Start();
+
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
 
     if (Client) {
         Client->Start();
@@ -361,6 +367,10 @@ void TFileStoreServiceCommand::Stop()
 {
     if (Client) {
         Client->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     TCommand::Stop();

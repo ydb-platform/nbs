@@ -12,6 +12,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <util/thread/lfstack.h>
@@ -51,6 +52,7 @@ private:
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
     IServerStatsPtr ClientStats;
+    ICertificateProviderPtr CertificateProvider;
     NSpdk::ISpdkEnvPtr Spdk;
     std::function<void(TLog& log)> SpdkLogInitializer;
 

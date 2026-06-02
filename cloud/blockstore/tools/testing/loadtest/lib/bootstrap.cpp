@@ -141,6 +141,21 @@ TRdmaEndpointConfig CreateRdmaEndpointConfig(const TClientAppConfig& config)
     };
 }
 
+ICertificateProviderPtr CreateCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -232,6 +247,8 @@ void TBootstrap::Init()
         SpdkLog = Logging->CreateLog("BLOCKSTORE_SPDK");
         spdkParts.LogInitializer(SpdkLog);
     }
+
+    CertificateProvider = CreateCertificateProvider(ClientConfig);
 }
 
 IBlockStoreValidationClientPtr TBootstrap::CreateValidationClient(
@@ -274,21 +291,6 @@ TClientAppConfigPtr CreateClientConfig(
     return std::make_shared<TClientAppConfig>(appConfig);
 }
 
-ICertificateProviderPtr CreateCertificateProvider(
-    const TClientAppConfigPtr& config)
-{
-    TVector<NCloud::TCertificateFiles> certPathList {
-        {
-            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
-            .CertChainPath = config->GetCertFile()
-        }
-    };
-
-    return CreateStaticCertificateProvider(
-        config->GetRootCertsFile(),
-        std::move(certPathList));
-}
-
 IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
 {
     auto config = CreateClientConfig(ClientConfig, std::move(clientId));
@@ -300,7 +302,6 @@ IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
         VolumeStats,
         TestInstanceId);
 
-    auto certificateProvider = CreateCertificateProvider(config);
     auto [client, error] = NClient::CreateClient(
         std::move(config),
         Timer,
@@ -308,7 +309,7 @@ IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
         Logging,
         Monitoring,
         std::move(clientStats),
-        certificateProvider);
+        CertificateProvider);
 
     Y_ABORT_UNLESS(!HasError(error));
 
@@ -608,6 +609,10 @@ void TBootstrap::Start()
         Scheduler->Start();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
+
     if (Spdk) {
         Spdk->Start();
     }
@@ -622,6 +627,10 @@ void TBootstrap::Stop()
 
     if (Spdk) {
         Spdk->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Scheduler) {

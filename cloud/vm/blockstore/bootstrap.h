@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/throttling/public.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 
 #include <cloud/blockstore/config/plugin.pb.h>
 
@@ -47,6 +48,7 @@ private:
     IStatsUpdaterPtr StatsUpdater;
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;
+    ICertificateProviderPtr CertificateProvider;
 
     IThrottlerPtr Throttler;
     NClient::IClientPtr Client;

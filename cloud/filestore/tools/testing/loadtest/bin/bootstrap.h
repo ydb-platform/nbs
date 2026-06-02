@@ -9,6 +9,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 
 #include <library/cpp/logger/log.h>
 
@@ -28,6 +29,7 @@ private:
     IMonitoringServicePtr Monitoring;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
+    ICertificateProviderPtr CertificateProvider;
 
     NClient::TClientConfigPtr ClientConfig;
     IClientFactoryPtr ClientFactory;
