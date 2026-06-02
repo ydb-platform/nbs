@@ -180,9 +180,9 @@ TReadDataActor::TReadDataActor(
     , BlockSize(blockSize)
     , ReadBlobDisabled(readBlobDisabled)
     , OriginByteRange(
-          ReadRequest.GetOffset(),
-          ReadRequest.GetLength(),
-          BlockSize)
+        ReadRequest.GetOffset(),
+        ReadRequest.GetLength(),
+        BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(std::make_unique<TString>())
     , ZeroIntervals(TDefaultAllocator::Instance(), 0, OriginByteRange.Length)
