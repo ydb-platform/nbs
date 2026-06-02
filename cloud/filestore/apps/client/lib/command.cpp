@@ -244,6 +244,8 @@ void TCommand::Init()
     }
 
     ClientConfig = std::make_shared<TClientConfig>(config);
+
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
 }
 
 void TCommand::Start()
@@ -259,12 +261,20 @@ void TCommand::Start()
     if (Monitoring) {
         Monitoring->Start();
     }
+
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
 }
 
 void TCommand::Stop()
 {
     if (IamClient) {
         IamClient->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Monitoring) {
@@ -337,8 +347,6 @@ void TFileStoreServiceCommand::Init()
 {
     TCommand::Init();
 
-    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
-
     Client = CreateDurableClient(
         Logging,
         Timer,
@@ -354,10 +362,6 @@ void TFileStoreServiceCommand::Start()
 {
     TCommand::Start();
 
-    if (CertificateProvider) {
-        CertificateProvider->Start();
-    }
-
     if (Client) {
         Client->Start();
     }
@@ -367,10 +371,6 @@ void TFileStoreServiceCommand::Stop()
 {
     if (Client) {
         Client->Stop();
-    }
-
-    if (CertificateProvider) {
-        CertificateProvider->Stop();
     }
 
     TCommand::Stop();
