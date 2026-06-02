@@ -88,6 +88,13 @@ func (f *factory) initClients(
 		return err
 	}
 
+	discoveryClientRetryDelay, err := time.ParseDuration(
+		f.config.GetDiscoveryClientRetryDelay(),
+	)
+	if err != nil {
+		return err
+	}
+
 	sessionRediscoverPeriodMin, err := time.ParseDuration(
 		f.config.GetSessionRediscoverPeriodMin(),
 	)
@@ -141,6 +148,7 @@ func (f *factory) initClients(
 			&nbs_client.DiscoveryClientOpts{
 				HardTimeout: discoveryClientHardTimeout,
 				SoftTimeout: discoveryClientSoftTimeout,
+				RetryDelay: discoveryClientRetryDelay,
 			},
 			logging.GetLogger(ctx),
 		)
