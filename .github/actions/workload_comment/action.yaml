@@ -71,12 +71,21 @@ runs:
       run: |
         set -euo pipefail
         export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
-        if ! python3 -m scripts.tests.workload_comment init \
-          --matrix-include "${MATRIX_INCLUDE}" \
-          --build-preset "${FULL_BUILD_PRESET}" \
-          --workload-status "${WORKLOAD_STATUS}"; then
-          echo "::warning::Failed to initialize workload PR comment; continuing because PR comments are non-critical"
-        fi
+        for attempt in 1 2 3; do
+          if python3 -m scripts.tests.workload_comment init \
+            --matrix-include "${MATRIX_INCLUDE}" \
+            --build-preset "${FULL_BUILD_PRESET}" \
+            --workload-status "${WORKLOAD_STATUS}"; then
+            exit 0
+          fi
+
+          if [ "$attempt" -lt 3 ]; then
+            delay=$((attempt * 5))
+            echo "::warning::Failed to initialize workload PR comment on attempt ${attempt}; retrying in ${delay}s"
+            sleep "$delay"
+          fi
+        done
+        echo "::warning::Failed to initialize workload PR comment after 3 attempts; continuing because PR comments are non-critical"
 
     - name: update workload comment
       if: ${{ inputs.command == 'update' }}
