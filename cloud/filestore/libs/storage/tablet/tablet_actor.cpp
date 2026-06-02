@@ -1175,48 +1175,6 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
-        HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
-        HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
-        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
-        HFunc(
-            TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
-            HandleForcedRangeOperationProgress);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInShard,
-            HandleNodeCreatedInShard);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
-            HandleNodeUnlinkedInShard);
-        HFunc(
-            TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard,
-            HandleUnlinkDirectoryNodeAbortedInShard);
-        HFunc(
-            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
-            HandleDoRenameNodeInDestination);
-        HFunc(TEvIndexTabletPrivate::TEvDoRenameNode, HandleDoRenameNode);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
-            HandleNodeRenamedInDestination);
-        HFunc(
-            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
-            HandleResponseLogEntryDeleted);
-        HFunc(
-            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
-            HandleAggregateStatsCompleted);
-        HFunc(
-            TEvIndexTabletPrivate::TEvShardRequestCompleted,
-            HandleShardRequestCompleted);
-        HFunc(
-            TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
-            HandleLoadNodeRefsRequest);
-        HFunc(
-            TEvIndexTabletPrivate::TEvLoadNodesRequest,
-            HandleLoadNodesRequest);
-        HFunc(
-            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
-            HandleEnqueueBlobIndexOpIfNeeded);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
