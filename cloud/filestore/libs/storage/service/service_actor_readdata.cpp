@@ -89,6 +89,7 @@ private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead;
     const bool UseCustomReadDataResponseParser;
+    const bool ZeroCopyReadEnabled;
 
 public:
     TReadDataActor(
@@ -110,7 +111,8 @@ public:
         TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead,
-        bool useCustomReadDataResponseParser);
+        bool useCustomReadDataResponseParser,
+        bool zeroCopyReadEnabled);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -171,15 +173,16 @@ TReadDataActor::TReadDataActor(
         TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead,
-        bool useCustomReadDataResponseParser)
+        bool useCustomReadDataResponseParser,
+        bool zeroCopyReadEnabled)
     : ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
     , ReadBlobDisabled(readBlobDisabled)
     , OriginByteRange(
-        ReadRequest.GetOffset(),
-        ReadRequest.GetLength(),
-        BlockSize)
+          ReadRequest.GetOffset(),
+          ReadRequest.GetLength(),
+          BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(std::make_unique<TString>())
     , ZeroIntervals(TDefaultAllocator::Instance(), 0, OriginByteRange.Length)
@@ -198,13 +201,18 @@ TReadDataActor::TReadDataActor(
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
     , UseCustomReadDataResponseParser(useCustomReadDataResponseParser)
+    , ZeroCopyReadEnabled(
+          zeroCopyReadEnabled &&
+          !ReadRequest.GetIovecs()
+               .empty())   // Zero-copy read optimization is only applicable
+                           // when iovecs are provided
 {
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
     if (UseTwoStageRead) {
-        if (ReadRequest.GetIovecs().empty()) {
+        if (!ZeroCopyReadEnabled) {
             // BlockBuffer should not be initialized in constructor, because
             // creating a block buffer leads to memory allocation (and
             // initialization) which is heavy and we would like to execute that
@@ -859,7 +867,7 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
         BlockBuffer->clear();
     } else {
         const ui64 length = end - OriginByteRange.Offset;
-        if (ReadRequest.GetIovecs().empty()) {
+        if (!ZeroCopyReadEnabled) {
             BlockBuffer->ReserveAndResize(length);
             response->Record.set_allocated_buffer(BlockBuffer.release());
         } else {
@@ -867,6 +875,7 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
         }
     }
 
+    MoveBufferToIovecsIfNeeded(ctx, response->Record);
     SendResponseAndDie(ctx, std::move(response));
 }
 
@@ -1053,7 +1062,8 @@ void TStorageServiceActor::HandleReadData(
         std::move(shardState),
         session->MediaKind,
         useTwoStageRead,
-        filestore.GetFeatures().GetUseCustomReadDataResponseParser());
+        filestore.GetFeatures().GetUseCustomReadDataResponseParser(),
+        filestore.GetFeatures().GetZeroCopyReadEnabled());
 
     NCloud::Register(ctx, std::move(actor));
 }

@@ -1,3 +1,5 @@
 ParentlessFilesOnly: true
 AllowHandlelessIO: true
 AutomaticShardCreationEnabled: true
+TwoStageReadEnabled: true
+ThreeStageWriteEnabled: true

@@ -4811,6 +4811,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         testReadDataRequestWithIovecs(std::move(config));
     }
 
+    Y_UNIT_TEST(
+        ShouldUseIovecsForReadDataRequestWithTwoStageReadAndZeroCopyRead)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        config.SetZeroCopyReadEnabled(true);
+        testReadDataRequestWithIovecs(std::move(config));
+    }
+
     Y_UNIT_TEST(ShouldUseIovecsForReadDataRequestWithCustomParserEnabled)
     {
         NProto::TStorageConfig config;
