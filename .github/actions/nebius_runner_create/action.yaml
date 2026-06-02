@@ -111,18 +111,18 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_vm create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} ${VM_PUBLIC_IP} \
-          --github-repo-owner "${REPO_OWNER}" \
-          --github-repo "${REPO}" \
-          --name "${VM_NAME}" \
-          --parent-id "${VM_PARENT_ID}" \
-          --platform-id "${VM_PLATFORM_ID}" \
-          --preset "${VM_PRESET}" --disk-size "${VM_DISK_SIZE}" \
-          --disk-type "${VM_DISK_TYPE}" \
-          --subnet-id "${VM_SUBNET}" \
-          --image-id "$VM_IMAGE" \
-          --labels "$VM_LABELS" \
-          --runner-flavor "$VM_FLAVOR" \
-          --apply
+            --github-repo-owner "${REPO_OWNER}" \
+            --github-repo "${REPO}" \
+            --name "${VM_NAME}" \
+            --parent-id "${VM_PARENT_ID}" \
+            --platform-id "${VM_PLATFORM_ID}" \
+            --preset "${VM_PRESET}" --disk-size "${VM_DISK_SIZE}" \
+            --disk-type "${VM_DISK_TYPE}" \
+            --subnet-id "${VM_SUBNET}" \
+            --image-id "$VM_IMAGE" \
+            --labels "$VM_LABELS" \
+            --runner-flavor "$VM_FLAVOR" \
+            --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         NEBIUS_IAM_TOKEN: ${{ steps.nebius-cli.outputs.NEBIUS_IAM_TOKEN }}

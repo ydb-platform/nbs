@@ -47,15 +47,15 @@ runs:
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         LABELS_ARG=()
         if [ -n "${VM_LABELS}" ]; then
-          LABELS_ARG=(--labels "${VM_LABELS}")
+            LABELS_ARG=(--labels "${VM_LABELS}")
         fi
         python3 -m scripts.nebius_manage_vm remove \
-          --github-repo-owner "${REPO_OWNER}" \
-          --github-repo "${REPO}" \
-          --parent-id "${PARENT_ID}" \
-          --id "${VM_ID}" \
-          "${LABELS_ARG[@]}" \
-          --apply
+            --github-repo-owner "${REPO_OWNER}" \
+            --github-repo "${REPO}" \
+            --parent-id "${PARENT_ID}" \
+            --id "${VM_ID}" \
+            "${LABELS_ARG[@]}" \
+            --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         NEBIUS_IAM_TOKEN: ${{ steps.nebius-cli.outputs.NEBIUS_IAM_TOKEN }}

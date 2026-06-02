@@ -43,15 +43,15 @@ jobs:
           set -euo pipefail
 
           if [ "${EVENT_ACTION}" != "labeled" ]; then
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-            exit 0
+              echo "allowed=true" >> "$GITHUB_OUTPUT"
+              exit 0
           fi
 
           while IFS= read -r allowed_label; do
-            if [ "${LABEL_NAME}" = "${allowed_label}" ]; then
-              echo "allowed=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+              if [ "${LABEL_NAME}" = "${allowed_label}" ]; then
+                  echo "allowed=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+              fi
           done <<< "${ALLOWED_LABELS}"
 
           echo "Label '${LABEL_NAME}' is not in the test-launch label whitelist"
