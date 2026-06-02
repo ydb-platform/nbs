@@ -148,7 +148,7 @@ func (f *factory) initClients(
 			&nbs_client.DiscoveryClientOpts{
 				HardTimeout: discoveryClientHardTimeout,
 				SoftTimeout: discoveryClientSoftTimeout,
-				RetryDelay: discoveryClientRetryDelay,
+				RetryDelay:  discoveryClientRetryDelay,
 			},
 			logging.GetLogger(ctx),
 		)
