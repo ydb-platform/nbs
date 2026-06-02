@@ -28,6 +28,7 @@ class TTestScenarioBase: public ITestScenario
 {
 protected:
     IConfigHolderPtr ConfigHolder;
+    const TString LogTag;
     const TLog Log;
 
     ui64 FileSize = 0;
@@ -55,6 +56,7 @@ protected:
     TTestScenarioBase(
         const TTestScenarioBaseConfig& config,
         IConfigHolderPtr configHolder,
+        const TString& logTag,
         const TLog& log);
 
 public:

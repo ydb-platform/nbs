@@ -167,8 +167,11 @@ private:
     };
 
 public:
-    TAlignedTestScenario(IConfigHolderPtr configHolder, const TLog& log)
-        : TTestScenarioBase({}, std::move(configHolder), log)
+    TAlignedTestScenario(
+        IConfigHolderPtr configHolder,
+        const TString& logTag,
+        const TLog& log)
+        : TTestScenarioBase({}, std::move(configHolder), logTag, log)
     {
         auto& config = ConfigHolder->GetConfig();
         for (ui16 i = 0; i < config.GetIoDepth(); ++i) {
@@ -220,8 +223,8 @@ void TAlignedTestScenario::OnResponse(
     const auto d = now - startTs;
     if (d > SlowRequestThreshold) {
         STORAGE_WARN(
-            "Slow " << reqType << " request: "
-                    << "range=" << rangeIdx << ", duration=" << d);
+            LogTag << " Slow " << reqType << " request: "
+                   << "range=" << rangeIdx << ", duration=" << d);
     }
 }
 
@@ -258,8 +261,8 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
             {
                 service.Fail(
                     TStringBuilder()
-                    << "[" << rangeIdx << "] Wrong data in block " << blockIdx
-                    << " expected RequestNumber " << expected
+                    << LogTag << "[" << rangeIdx << "] Wrong data in block "
+                    << blockIdx << " expected RequestNumber " << expected
                     << " actual TBlockData " << blockData);
                 return;
             }
@@ -311,10 +314,11 @@ void TAlignedTestScenario::DoWriteRequest(ui16 rangeIdx, IService& service)
 
 ITestScenarioPtr CreateAlignedTestScenario(
     IConfigHolderPtr configHolder,
+    const TString& logTag,
     const TLog& log)
 {
     return ITestScenarioPtr(
-        new TAlignedTestScenario(std::move(configHolder), log));
+        new TAlignedTestScenario(std::move(configHolder), logTag, log));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

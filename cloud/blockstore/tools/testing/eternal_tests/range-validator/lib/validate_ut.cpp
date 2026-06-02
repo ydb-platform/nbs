@@ -43,7 +43,7 @@ Y_UNIT_TEST_SUITE(ValidateTest)
         auto executor = NTesting::CreateTestExecutor(
             {.TestScenarios = {{
                  .TestScenario =
-                     NTesting::CreateAlignedTestScenario(configHolder, log),
+                     NTesting::CreateAlignedTestScenario(configHolder, "", log),
                  .FilePath = filePath,
              }},
              .FileService = NTesting::ETestExecutorFileService::AsyncIo,

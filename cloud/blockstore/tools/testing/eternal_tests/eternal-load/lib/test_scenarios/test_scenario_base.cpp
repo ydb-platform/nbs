@@ -20,8 +20,10 @@ namespace NCloud::NBlockStore::NTesting {
 TTestScenarioBase::TTestScenarioBase(
         const TTestScenarioBaseConfig& baseConfig,
         IConfigHolderPtr configHolder,
+        const TString& logTag,
         const TLog& log)
     : ConfigHolder(std::move(configHolder))
+    , LogTag(logTag)
     , Log(log)
     , TestStartTime(Now())
     , MinReadByteCount(baseConfig.DefaultMinReadByteCount)
