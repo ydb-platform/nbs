@@ -1100,6 +1100,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_GT(read.GetValue(), 0);
             UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
 
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+            auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
+            UNIT_ASSERT(moduleCounters);
+
+            auto memoryLimiterRejectionCount =
+                moduleCounters->FindCounter(
+                    "Storage_MemoryLimiterRejectionCount");
+            UNIT_ASSERT(memoryLimiterRejectionCount);
+            UNIT_ASSERT_GT(memoryLimiterRejectionCount->Val(), 0);
+
             auto suspend = bootstrap.Loop->SuspendAsync();
             UNIT_ASSERT_NO_EXCEPTION(suspend.GetValue(WaitTimeout));
         }
@@ -1110,6 +1121,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto storage = CreateDirectoryHandleStorage(
                 {.Log = log,
                  .FileMapMemoryLimiter = CreateFileMapMemoryLimiterStub(),
+                 .Stats =
+                     CreateDirectoryHandleStorageStats(CreateWallClockTimer()),
                  .FilePath = storagePath,
                  .MaxRecords = 100000,
                  .InitialDataAreaSize = 128,
@@ -1229,6 +1242,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(2, maxChunkCount->Val());
 
+        auto maxOpenHandleCount =
+            moduleCounters->FindCounter("MaxOpenHandleCount");
+        UNIT_ASSERT(maxOpenHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
+
         auto largeOffset = size1 + 3700000;   // Go beyond the first chunk
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
@@ -1298,6 +1316,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(5, maxChunkCount->Val());
+
+        maxOpenHandleCount =
+            moduleCounters->FindCounter("MaxOpenHandleCount");
+        UNIT_ASSERT(maxOpenHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, maxOpenHandleCount->Val());
 
         auto close2 =
             bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId2);
@@ -1418,6 +1441,24 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const auto peakChunkCount = maxChunkCount->Val();
         UNIT_ASSERT_VALUES_EQUAL(3, peakChunkCount);
 
+        auto maxOpenHandleCount =
+            moduleCounters->FindCounter("MaxOpenHandleCount");
+        UNIT_ASSERT(maxOpenHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
+
+        for (size_t i = 0; i < DirectoryHandleMaxBucketCount; ++i) {
+            timer->AdvanceTime(TDuration::Seconds(1));
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        }
+
+        maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
+        UNIT_ASSERT(maxCacheSize);
+        UNIT_ASSERT_VALUES_EQUAL(peakCacheSize, maxCacheSize->Val());
+
+        maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
+        UNIT_ASSERT(maxChunkCount);
+        UNIT_ASSERT_VALUES_EQUAL(peakChunkCount, maxChunkCount->Val());
+
         auto close =
             bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
@@ -1432,6 +1473,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(peakChunkCount, maxChunkCount->Val());
 
+        maxOpenHandleCount =
+            moduleCounters->FindCounter("MaxOpenHandleCount");
+        UNIT_ASSERT(maxOpenHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
+
         for (size_t i = 0; i < DirectoryHandleMaxBucketCount; ++i) {
             timer->AdvanceTime(TDuration::Seconds(1));
             bootstrap.ModuleStatsRegistry->UpdateStats(true);
@@ -1444,6 +1490,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(0, maxChunkCount->Val());
+
+        maxOpenHandleCount =
+            moduleCounters->FindCounter("MaxOpenHandleCount");
+        UNIT_ASSERT(maxOpenHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, maxOpenHandleCount->Val());
     }
 
     Y_UNIT_TEST(ShouldDeallocateDirectoryHandleStorageAfterReleaseDir)
@@ -1516,12 +1567,41 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 sizeAfterRead = TFile(pathToCache, RdOnly).GetLength();
         UNIT_ASSERT_GT(sizeAfterRead, sizeBeforeRead);
 
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
+        UNIT_ASSERT(moduleCounters);
+
+        auto rawCapacityByteMaxCount =
+            moduleCounters->FindCounter("Storage_RawCapacityByteMaxCount");
+        UNIT_ASSERT(rawCapacityByteMaxCount);
+        UNIT_ASSERT_GT(rawCapacityByteMaxCount->Val(), 0);
+
+        auto storageExpansionCount =
+            moduleCounters->FindCounter("Storage_ExpansionCount");
+        UNIT_ASSERT(storageExpansionCount);
+
+        auto maxOpenHandleCount =
+            moduleCounters->FindCounter("MaxOpenHandleCount");
+        UNIT_ASSERT(maxOpenHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
+
+        auto rawUsedByteMaxCount =
+            moduleCounters->FindCounter("Storage_RawUsedByteMaxCount");
+        UNIT_ASSERT(rawUsedByteMaxCount);
+        UNIT_ASSERT_GT(rawUsedByteMaxCount->Val(), 0);
+
         auto close =
             bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
 
         const ui64 sizeAfterRelease = TFile(pathToCache, RdOnly).GetLength();
         UNIT_ASSERT_VALUES_EQUAL(sizeBeforeRead, sizeAfterRelease);
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        UNIT_ASSERT(moduleCounters->FindCounter("Storage_ShrinkCount"));
+        UNIT_ASSERT(moduleCounters->FindCounter("Storage_CompactionCount"));
     }
 
     Y_UNIT_TEST(ShouldLoadDirectoryHandlesStorageWithoutErrors)

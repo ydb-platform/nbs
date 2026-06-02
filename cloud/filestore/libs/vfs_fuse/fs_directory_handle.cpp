@@ -202,10 +202,13 @@ TString TDirectoryHandle::GetCookie()
     }
 }
 
-std::pair<size_t, size_t> TDirectoryHandle::GetMetrics() const
+TDirectoryHandleStats TDirectoryHandle::GetStats() const
 {
     with_lock (Lock) {
-        return {SerializedSize, UpdateVersion + 1};
+        return {
+            .SerializedSize = SerializedSize,
+            .ChunkCount = UpdateVersion + 1,
+        };
     }
 }
 

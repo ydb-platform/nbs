@@ -42,12 +42,12 @@ struct TModuleStatsEntry
 {
     TString FileSystemId;
     TString ClientId;
+    IModuleStatsPtr ModuleStats;
 
     // DynamicCounters are automatically deleted when all registries referencing
     // them are deleted
     IMetricsRegistryPtr LocalMetricsRegistry;
     IMetricsRegistryPtr AggregatableMetricsRegistry;
-    IModuleStatsPtr ModuleStats;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,16 +131,16 @@ public:
             {std::move(totalMetricsRegistry), localMetricsRegistry});
 
         args.ModuleStats->RegisterCounters(
-            *localMetricsRegistry,
-            *aggregatableMetricsRegistry);
+            localMetricsRegistry,
+            aggregatableMetricsRegistry);
 
         StatsPerSession[args.SessionId].push_back(
             {.FileSystemId = args.FileSystemId,
              .ClientId = args.ClientId,
+             .ModuleStats = std::move(args.ModuleStats),
              .LocalMetricsRegistry = std::move(localMetricsRegistry),
              .AggregatableMetricsRegistry =
-                 std::move(aggregatableMetricsRegistry),
-             .ModuleStats = std::move(args.ModuleStats)});
+                 std::move(aggregatableMetricsRegistry)});
     }
 
     void Unregister(const TString& sessionId) override

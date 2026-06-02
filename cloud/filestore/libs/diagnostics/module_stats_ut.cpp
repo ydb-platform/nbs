@@ -51,11 +51,11 @@ public:
     }
 
     void RegisterCounters(
-        IMetricsRegistry& localMetricsRegistry,
-        IMetricsRegistry& aggregatableMetricsRegistry) override
+        const IMetricsRegistryPtr& localMetricsRegistry,
+        const IMetricsRegistryPtr& aggregatableMetricsRegistry) override
     {
-        localMetricsRegistry.Register({CreateSensor("MaxValue")}, MaxValue);
-        aggregatableMetricsRegistry.Register(
+        localMetricsRegistry->Register({CreateSensor("MaxValue")}, MaxValue);
+        aggregatableMetricsRegistry->Register(
             {CreateSensor("SumValue")},
             SumValue,
             EAggregationType::AT_SUM,
