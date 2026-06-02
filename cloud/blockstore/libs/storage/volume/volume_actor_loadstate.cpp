@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/format.h>
-#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -51,6 +50,7 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadFollowers(args.FollowerDisks),
         db.ReadLeaders(args.LeaderDisks),
+        db.ReadBrokenDevices(args.BrokenDevices),
     };
 
     if (args.Meta) {
@@ -162,6 +162,13 @@ void TVolumeActor::CompleteLoadState(
                 CopyCachedStatsToPartCounters(partStats.Stats, *info);
             }
         }
+
+        for (const auto& info: args.BrokenDevices) {
+            DeviceUUIDToBrokenAt[info.DeviceUUID] = info.BrokenTs;
+        }
+
+        CleanupStaleBrokenDevices(ctx);
+        RegisterVolumeHealthSyncActorIfNeeded(ctx);
 
         Y_ABORT_UNLESS(CurrentState == STATE_INIT);
         BecomeAux(ctx, STATE_WORK);
