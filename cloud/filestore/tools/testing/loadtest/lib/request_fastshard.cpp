@@ -9,7 +9,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <silk/fibers/fiber.h>
-#include <silk/util/init.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -17,8 +16,6 @@
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 #include <util/system/mutex.h>
-
-#include <mutex>
 
 namespace NCloud::NFileStore::NLoadTest {
 
@@ -28,18 +25,6 @@ using namespace NCloud::NFileStore::NStorage::NFastShard::NProtoSrv;
 using silk::FiberScheduler;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-static std::once_flag SilkOnceFlag;
-
-static void EnsureSilkInitialized()
-{
-    std::call_once(SilkOnceFlag, [] {
-        silk::initialize();
-        FiberScheduler::initialize();
-    });
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -116,8 +101,6 @@ public:
             Actions.emplace_back(TotalRate, a.GetAction());
         }
         Y_ENSURE(!Actions.empty(), "at least one action required");
-
-        EnsureSilkInitialized();
     }
 
     bool HasNextRequest() override
