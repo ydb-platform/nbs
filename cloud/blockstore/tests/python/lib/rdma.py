@@ -72,6 +72,7 @@ def setup_rdma():
         )
 
         setup_cmds = [
+            "modprobe rdma_rxe",
             f"netplan set ethernets.ens5.addresses=[{local_ip}/24]",
             "netplan apply",
             "rdma link add rxe0 type rxe netdev ens5",
