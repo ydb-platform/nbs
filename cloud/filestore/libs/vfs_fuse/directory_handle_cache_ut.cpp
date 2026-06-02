@@ -64,8 +64,9 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
 
     TDirectoryHandleStatsPtr CreateStats()
     {
-        StorageStats = CreateDirectoryHandleStorageStats();
-        return CreateDirectoryHandleStats(CreateWallClockTimer(), StorageStats);
+        auto timer = CreateWallClockTimer();
+        StorageStats = CreateDirectoryHandleStorageStats(timer);
+        return CreateDirectoryHandleStats(std::move(timer), StorageStats);
     }
 
     TDirectoryHandleStoragePtr CreateStorage(
@@ -289,7 +290,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldRegisterMetrics)
     {
         auto timer = CreateWallClockTimer();
-        StorageStats = CreateDirectoryHandleStorageStats();
+        StorageStats = CreateDirectoryHandleStorageStats(timer);
         auto stats = CreateDirectoryHandleStats(timer, StorageStats);
 
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();

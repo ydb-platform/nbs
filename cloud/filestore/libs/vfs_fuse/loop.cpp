@@ -1106,7 +1106,7 @@ private:
                     }
 
                     directoryHandleStorageStats =
-                        CreateDirectoryHandleStorageStats();
+                        CreateDirectoryHandleStorageStats(Timer);
 
                     directoryHandleStorage = CreateDirectoryHandleStorage(
                         {.Log = Log,

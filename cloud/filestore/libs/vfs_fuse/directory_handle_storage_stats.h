@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/file_backed_containers/dynamic_persistent_table_counters.h>
 
 #include <memory>
@@ -44,6 +45,7 @@ using IDirectoryHandleStorageStatsPtr =
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDirectoryHandleStorageStatsPtr CreateDirectoryHandleStorageStats();
+IDirectoryHandleStorageStatsPtr CreateDirectoryHandleStorageStats(
+    ITimerPtr timer);
 
 }   // namespace NCloud::NFileStore::NFuse

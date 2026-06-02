@@ -1121,7 +1121,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto storage = CreateDirectoryHandleStorage(
                 {.Log = log,
                  .FileMapMemoryLimiter = CreateFileMapMemoryLimiterStub(),
-                 .Stats = CreateDirectoryHandleStorageStats(),
+                 .Stats =
+                     CreateDirectoryHandleStorageStats(CreateWallClockTimer()),
                  .FilePath = storagePath,
                  .MaxRecords = 100000,
                  .InitialDataAreaSize = 128,

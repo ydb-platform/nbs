@@ -4,7 +4,8 @@
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/vfs_fuse/counters/max_counter.h>
-#include <cloud/filestore/libs/vfs_fuse/counters/relaxed_counters.h>
+
+#include <atomic>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -14,33 +15,36 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Storage counters are always updated while holding the storage's TableLock,
-// so relaxed memory ordering is sufficient.
+// All counters here are individually thread-safe (atomic CAS / atomic loads
+// and stores), so SetCounters and UpdateStats may be called from any thread
+// without external synchronization.
 class TDirectoryHandleStorageStats final
     : public std::enable_shared_from_this<TDirectoryHandleStorageStats>
     , public IDirectoryHandleStorageStats
 {
 private:
-    TRelaxedCombinedMaxCounter<DirectoryHandleMaxBucketCount>
-        RawCapacityByteCounter;
-    TRelaxedCombinedMaxCounter<DirectoryHandleMaxBucketCount>
-        RawUsedByteCounter;
-    TRelaxedCounter ShrinkCounter;
-    TRelaxedCounter ExpansionCounter;
-    TRelaxedCounter CompactionCounter;
-    TRelaxedCounter MemoryLimiterRejectionCounter;
+    TMaxCounter<DirectoryHandleMaxBucketCount> RawCapacityByteCounter;
+    TMaxCounter<DirectoryHandleMaxBucketCount> RawUsedByteCounter;
+    std::atomic<ui64> ShrinkCounter = 0;
+    std::atomic<ui64> ExpansionCounter = 0;
+    std::atomic<ui64> CompactionCounter = 0;
+    std::atomic<ui64> MemoryLimiterRejectionCounter = 0;
 
 public:
+    explicit TDirectoryHandleStorageStats(ITimerPtr timer)
+        : RawCapacityByteCounter(timer)
+        , RawUsedByteCounter(std::move(timer))
+    {}
+
     void SetCounters(TDynamicPersistentTableCounters counters) override
     {
-        RawCapacityByteCounter.Set(
-            static_cast<i64>(counters.RawCapacityByteCount));
-        RawUsedByteCounter.Set(static_cast<i64>(counters.RawUsedByteCount));
-        ShrinkCounter.Set(static_cast<i64>(counters.ShrinkCount));
-        ExpansionCounter.Set(static_cast<i64>(counters.ExpansionCount));
-        CompactionCounter.Set(static_cast<i64>(counters.CompactionCount));
-        MemoryLimiterRejectionCounter.Set(
-            static_cast<i64>(counters.MemoryLimiterRejectionCount));
+        RawCapacityByteCounter.Set(counters.RawCapacityByteCount);
+        RawUsedByteCounter.Set(counters.RawUsedByteCount);
+        ShrinkCounter.store(counters.ShrinkCount);
+        ExpansionCounter.store(counters.ExpansionCount);
+        CompactionCounter.store(counters.CompactionCount);
+        MemoryLimiterRejectionCounter.store(
+            counters.MemoryLimiterRejectionCount);
     }
 
     TDirectoryHandleStorageMetrics CreateMetrics() const override
@@ -49,24 +53,24 @@ public:
 
         return {
             .RawCapacityByteMaxCount = CreateMetric(
-                [self] { return self->RawCapacityByteCounter.GetMax(); }),
+                [self] { return self->RawCapacityByteCounter.GetValue(); }),
             .RawUsedByteMaxCount = CreateMetric(
-                [self] { return self->RawUsedByteCounter.GetMax(); }),
+                [self] { return self->RawUsedByteCounter.GetValue(); }),
             .ShrinkCount =
-                CreateMetric([self] { return self->ShrinkCounter.Get(); }),
+                CreateMetric([self] { return self->ShrinkCounter.load(); }),
             .ExpansionCount =
-                CreateMetric([self] { return self->ExpansionCounter.Get(); }),
+                CreateMetric([self] { return self->ExpansionCounter.load(); }),
             .CompactionCount =
-                CreateMetric([self] { return self->CompactionCounter.Get(); }),
+                CreateMetric([self] { return self->CompactionCounter.load(); }),
             .MemoryLimiterRejectionCount = CreateMetric(
-                [self] { return self->MemoryLimiterRejectionCounter.Get(); }),
+                [self] { return self->MemoryLimiterRejectionCounter.load(); }),
         };
     }
 
     void UpdateStats() override
     {
-        RawCapacityByteCounter.Update();
-        RawUsedByteCounter.Update();
+        RawCapacityByteCounter.UpdateMax();
+        RawUsedByteCounter.UpdateMax();
     }
 };
 
@@ -119,9 +123,10 @@ void TDirectoryHandleStorageMetrics::Register(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDirectoryHandleStorageStatsPtr CreateDirectoryHandleStorageStats()
+IDirectoryHandleStorageStatsPtr CreateDirectoryHandleStorageStats(
+    ITimerPtr timer)
 {
-    return std::make_shared<TDirectoryHandleStorageStats>();
+    return std::make_shared<TDirectoryHandleStorageStats>(std::move(timer));
 }
 
 }   // namespace NCloud::NFileStore::NFuse
