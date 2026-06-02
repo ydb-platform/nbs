@@ -44,6 +44,8 @@ TTestScenarioBase::TTestScenarioBase(
     INIT_CONFIG_PARAMS_HELPER(fileTestConfig, ReadByteCount);
     INIT_CONFIG_PARAMS_HELPER(fileTestConfig, WriteByteCount);
     INIT_CONFIG_PARAMS_HELPER(fileTestConfig, RegionByteCount);
+
+    DisableParallelReadWrite = fileTestConfig.GetDisableParallelReadWrite();
 }
 
 ui32 TTestScenarioBase::GetWorkerCount() const

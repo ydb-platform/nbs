@@ -39,6 +39,7 @@ protected:
     ui64 MaxWriteByteCount = 0;
     ui64 MinRegionByteCount = 0;
     ui64 MaxRegionByteCount = 0;
+    bool DisableParallelReadWrite = false;
 
 private:
     TVector<std::unique_ptr<ITestScenarioWorker>> Workers;
