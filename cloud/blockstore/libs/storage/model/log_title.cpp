@@ -221,13 +221,13 @@ TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
 
 TChildLogTitle TLogTitle::GetChildWithTags(
     const ui64 startTime,
-    std::span<const std::pair<TString, TString>> additionalTags) const
+    TPrintableParams additionalTags) const
 {
     TStringBuilder childPrefix;
     childPrefix << CachedPrefix;
 
-    for (const auto& [key, value]: additionalTags) {
-        childPrefix << " " << key << ":" << value;
+    if (!additionalTags.empty()) {
+        childPrefix << " " << PrintKeyValue(additionalTags);
     }
 
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
@@ -238,9 +238,10 @@ TChildLogTitle TLogTitle::GetChildWithTags(
 
 TChildLogTitle TLogTitle::GetChildWithTags(
     const ui64 startTime,
-    std::initializer_list<std::pair<TString, TString>> additionalTags) const
+    std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+        additionalTags) const
 {
-    return GetChildWithTags(startTime, std::span(additionalTags));
+    return GetChildWithTags(startTime, TPrintableParams(additionalTags));
 }
 
 TString TLogTitle::Get(EDetails details) const
