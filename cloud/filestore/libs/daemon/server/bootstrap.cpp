@@ -104,7 +104,7 @@ void TBootstrapServer::InitActorSystemPrerequisites()
 {
     InitConfigs();
 
-    auto port = Configs->StorageConfig->GetFastShardServerPort();
+    const ui32 port = Configs->StorageConfig->GetFastShardServerPort();
     if (port) {
         FastShardServer =
             NStorage::NFastShard::CreateServer(port);
