@@ -14,7 +14,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const defaultUpsertBatchSize uint64 = 1000
+const defaultUpsertBatchSize int = 1000
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -22,7 +22,7 @@ type storageYDB struct {
 	db              *persistence.YDBClient
 	tablesPath      string
 	deleteLimit     uint64
-	upsertBatchSize uint64
+	upsertBatchSize int
 }
 
 func NewStorage(
@@ -248,13 +248,13 @@ func (s *storageYDB) upsertInBatches(
 	upsert func(batch []persistence.Value) error,
 ) error {
 
-	for i := uint64(0); i < uint64(len(values)); i += s.upsertBatchSize {
+	for i := 0; i < len(values); i += s.upsertBatchSize {
 		end := i + s.upsertBatchSize
-		if end > uint64(len(values)) {
-			end = uint64(len(values))
+		if end > len(values) {
+			end = len(values)
 		}
 
-		if err := upsert(values[int(i):int(end)]); err != nil {
+		if err := upsert(values[i:end]); err != nil {
 			return err
 		}
 	}
