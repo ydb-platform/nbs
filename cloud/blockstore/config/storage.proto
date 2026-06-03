@@ -1590,6 +1590,8 @@ message TStorageServiceConfig
     optional bool BaseDiskPipeKeepAliveEnabled = 500;
 
     // Enables compaction by garbage ignoring zeroed blocks.
+    // Should be used only with FreshChannelWriteRequestsEnabled and
+    // FreshChannelZeroRequestsEnabled.
     optional bool IgnoringZeroedCompactionEnabled = 501;
 
     // Max Compaction per second (in ms). Should be less than
