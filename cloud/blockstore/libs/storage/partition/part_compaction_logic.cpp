@@ -72,7 +72,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     , AffectedBlocks(std::move(affectedBlocks))
 {}
 
-TCompactionRequest::TCompactionRequest(
+TBlobCompactionRequest::TBlobCompactionRequest(
         const TPartialBlobId& blobId,
         const TActorId& proxy,
         ui16 blobOffset,
@@ -398,7 +398,7 @@ void CompleteRangeCompaction(
     TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
-    TVector<TCompactionRequest>& requests,
+    TVector<TBlobCompactionRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
     ui32 maxDiffPercentageForBlobPatching)
 {

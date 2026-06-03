@@ -74,7 +74,7 @@ struct TRangeCompactionInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCompactionRequest
+struct TBlobCompactionRequest
 {
     TPartialBlobId BlobId;
     NActors::TActorId Proxy;
@@ -84,7 +84,7 @@ struct TCompactionRequest
     ui32 GroupId;
     ui32 RangeCompactionIndex;
 
-    TCompactionRequest(
+    TBlobCompactionRequest(
             const TPartialBlobId& blobId,
             const NActors::TActorId& proxy,
             ui16 blobOffset,
@@ -116,7 +116,7 @@ void CompleteRangeCompaction(
     NKikimr::TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
-    TVector<TCompactionRequest>& requests,
+    TVector<TBlobCompactionRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
     ui32 maxDiffPercentageForBlobPatching);
 
