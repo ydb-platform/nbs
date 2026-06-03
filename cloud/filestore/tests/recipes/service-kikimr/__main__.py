@@ -47,7 +47,7 @@ def start(argv):
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
-    parser.add_argument("--fast-shard-port", action="store_true", default=False)
+    parser.add_argument("--use-fast-shard-port", action="store_true", default=False)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -114,7 +114,7 @@ def start(argv):
         server_config.ServerConfig.SharedMemoryBasePath = shared_memory_base_path
 
     fast_shard_port = 0
-    if args.fast_shard_port:
+    if args.use_fast_shard_port:
         import contrib.ydb.tests.library.common.yatest_common as _yatest_common
         fast_shard_port = _yatest_common.PortManager().get_port()
         storage_config.FastShardServerPort = fast_shard_port

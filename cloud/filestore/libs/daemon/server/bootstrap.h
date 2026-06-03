@@ -22,7 +22,6 @@ private:
     NServer::IServerPtr Server;
     IFileStoreServicePtr Service;
     ITaskQueuePtr ThreadPool;
-    NStorage::NFastShard::IServerPtr FastShardServer;
 
 public:
     TBootstrapServer(

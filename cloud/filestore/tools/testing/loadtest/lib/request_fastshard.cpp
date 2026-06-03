@@ -175,7 +175,7 @@ private:
         if (s->File.Handle == 0) {
             if (!ptr) {
                 s->Promise.SetValue({s->Action, s->Started,
-                    MakeError(E_FAIL, "cancelled")});
+                    MakeError(E_CANCELLED, "cancelled")});
                 return;
             }
 
@@ -184,15 +184,15 @@ private:
             auto* body = req.MutableCreateHandle();
             body->SetNodeId(RootNodeId);
             body->SetName(CreateGuidAsString());
-            body->SetFlags(NProto::TCreateHandleRequest::E_CREATE);
+            body->SetFlags(ProtoFlag(NProto::TCreateHandleRequest::E_CREATE));
             body->SetMode(0664);
 
             auto resp = client.Send(req);
 
-            const auto& createErr = resp.GetError().GetCode() != 0
+            const auto& createErr = HasError(resp.GetError())
                 ? resp.GetError()
                 : resp.GetCreateHandle().GetError();
-            if (createErr.GetCode() != 0) {
+            if (HasError(createErr)) {
                 s->Promise.SetValue({s->Action, s->Started, createErr});
                 return;
             }
@@ -235,7 +235,7 @@ private:
         auto resp = client.Send(req);
 
         NProto::TError err;
-        if (resp.GetError().GetCode() != 0) {
+        if (HasError(resp.GetError())) {
             err = resp.GetError();
         } else if (resp.HasReadData()) {
             err = resp.GetReadData().GetError();

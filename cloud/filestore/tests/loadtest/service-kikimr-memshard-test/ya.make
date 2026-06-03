@@ -21,7 +21,7 @@ PEERDIR(
     cloud/filestore/tests/python/lib
 )
 
-SET(NFS_FAST_SHARD_PORT yes)
+SET(USE_FAST_SHARD_PORT yes)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 

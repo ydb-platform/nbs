@@ -26,7 +26,7 @@ def configure_memshard():
         {
             "FileSystemId": SHARD_ID,
             "ShardNo": 1,
-            "ShardFileSystemIds": [SHARD_ID],
+            "ShardFileSystemIds": [SHARD_ID, "foo"],
             "FileShardFileSystemIds": [SHARD_ID],
             "IsFastShard": True,
             "FastShardConfig": {"MemConfig": {}},

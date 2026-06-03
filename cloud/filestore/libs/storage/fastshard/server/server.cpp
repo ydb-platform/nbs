@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/storage/fastshard/ipc/ipc.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 #include <silk/util/logger.h>
@@ -157,8 +159,9 @@ int ConnFiberMain(TConnParams* params) noexcept
     TResponse resp;
     auto shard = registry->Find(req.GetFileSystemId());
     if (!shard) {
+        SILK_WARN("failed to find shard: %s", req.GetFileSystemId().c_str());
         auto* err = resp.MutableError();
-        err->SetCode(ENOENT);
+        err->SetCode(E_NOT_FOUND);
         err->SetMessage(
             TStringBuilder() << "no shard registered for "
                 << req.GetFileSystemId());
