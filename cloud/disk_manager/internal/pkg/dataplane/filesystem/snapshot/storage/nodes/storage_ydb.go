@@ -985,7 +985,8 @@ func (s *storageYDB) listHardLinks(
 			node.Links = a.Links
 			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
-			nodes[i] = nfs.Node(node)
+			node.DevID = a.DevID
+			nodes[i] = node
 		}
 	}
 

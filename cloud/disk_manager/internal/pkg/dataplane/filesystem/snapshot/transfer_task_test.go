@@ -542,6 +542,128 @@ func TestTransferFromFilesystemToSnapshotAndBack(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func TestTransferFromFilesystemToSnapshotAndBackWithDeviceHardlink(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	const (
+		deviceName     = "device"
+		deviceLinkName = "device-link"
+		deviceID       = uint64(0x12345)
+	)
+
+	root := nfs_testing.Root(
+		nfs_testing.Dir("dir",
+			nfs_testing.CharDev(deviceName, deviceID),
+		),
+		nfs_testing.Dir("dir2"),
+	)
+	fsModel := f.fillFilesystem(t, filesystemID, root)
+	defer fsModel.Close()
+
+	sourceSession, err := f.client.CreateSession(f.ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer sourceSession.Close(f.ctx)
+
+	dirNode, err := sourceSession.GetNodeAttr(f.ctx, nfs.RootNodeID, "dir")
+	require.NoError(t, err)
+	deviceNode, err := sourceSession.GetNodeAttr(f.ctx, dirNode.NodeID, deviceName)
+	require.NoError(t, err)
+	require.Equal(t, deviceID, deviceNode.DevID)
+
+	dir2Node, err := sourceSession.GetNodeAttr(f.ctx, nfs.RootNodeID, "dir2")
+	require.NoError(t, err)
+	_, err = sourceSession.CreateNode(f.ctx, nfs.Node{
+		ParentID: dir2Node.NodeID,
+		NodeID:   deviceNode.NodeID,
+		Name:     deviceLinkName,
+		Type:     nfs.NODE_KIND_LINK,
+	})
+	require.NoError(t, err)
+
+	deviceLinkNode, err := sourceSession.GetNodeAttr(
+		f.ctx,
+		dir2Node.NodeID,
+		deviceLinkName,
+	)
+	require.NoError(t, err)
+	require.Equal(t, deviceNode.NodeID, deviceLinkNode.NodeID)
+	require.Equal(t, deviceID, deviceLinkNode.DevID)
+
+	config := f.newConfig()
+	snapshotID := "snapshot-device-hardlink"
+
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("GetTaskID").Return("device-hardlink-to-snapshot")
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
+	toSnapshotTask := f.newTransferFromFilesystemToSnapshotTask(
+		config,
+		filesystemID,
+		snapshotID,
+	)
+
+	err = toSnapshotTask.Run(f.ctx, execCtx)
+	require.NoError(t, err)
+
+	dstFilesystemID := filesystemID + "_restored"
+	f.prepareFilesystem(t, dstFilesystemID)
+	defer f.cleanupFilesystem(t, dstFilesystemID)
+
+	restoreExecCtx := tasks_mocks.NewExecutionContextMock()
+	restoreExecCtx.On("GetTaskID").Return("device-hardlink-from-snapshot")
+	restoreExecCtx.On("SaveState", mock.Anything).Return(nil)
+
+	fromSnapshotTask := f.newTransferFromSnapshotToFilesystemTask(
+		config,
+		dstFilesystemID,
+		snapshotID,
+	)
+
+	err = fromSnapshotTask.Run(f.ctx, restoreExecCtx)
+	require.NoError(t, err)
+
+	restoredSession, err := f.client.CreateSession(f.ctx, dstFilesystemID, "", true)
+	require.NoError(t, err)
+	defer restoredSession.Close(f.ctx)
+
+	restoredDirNode, err := restoredSession.GetNodeAttr(
+		f.ctx,
+		nfs.RootNodeID,
+		"dir",
+	)
+	require.NoError(t, err)
+	restoredDeviceNode, err := restoredSession.GetNodeAttr(
+		f.ctx,
+		restoredDirNode.NodeID,
+		deviceName,
+	)
+	require.NoError(t, err)
+
+	restoredDir2Node, err := restoredSession.GetNodeAttr(
+		f.ctx,
+		nfs.RootNodeID,
+		"dir2",
+	)
+	require.NoError(t, err)
+	restoredDeviceLinkNode, err := restoredSession.GetNodeAttr(
+		f.ctx,
+		restoredDir2Node.NodeID,
+		deviceLinkName,
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, restoredDeviceNode.NodeID, restoredDeviceLinkNode.NodeID)
+	require.Equal(t, deviceID, restoredDeviceNode.DevID)
+	require.Equal(t, deviceID, restoredDeviceLinkNode.DevID)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestTransferFromFilesystemToSnapshotAndBackWithNemesis(t *testing.T) {
 	f := newFixture(t)
 	defer f.close(t)
