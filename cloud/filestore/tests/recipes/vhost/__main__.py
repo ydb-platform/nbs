@@ -46,7 +46,7 @@ def start(argv):
     parser.add_argument("--restart-flag-on-demand", action="store_true", default=False)
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--service-config-patch", action="store", default=None)
-    parser.add_argument("--local-service-config-patch", action="store", default=None)
+    parser.add_argument("--local-service-config-patch", action="append", default=[])
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
 
@@ -107,11 +107,9 @@ def start(argv):
         service_endpoint.ClientConfig.Port = int(os.getenv("NFS_SERVER_PORT"))
     elif service_type == "local-noserver":
         local_service_config = TLocalServiceConfig()
-        if args.local_service_config_patch:
-            with open(common.source_path(args.local_service_config_patch)) as p:
-                local_service_config = text_format.Parse(
-                    p.read(),
-                    TLocalServiceConfig())
+        for patch in args.local_service_config_patch:
+            with open(common.source_path(patch)) as p:
+                text_format.Merge(p.read(), local_service_config)
 
         fs_root_path = common.ram_drive_path()
         if fs_root_path:
