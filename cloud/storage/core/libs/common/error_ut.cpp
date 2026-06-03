@@ -3,6 +3,8 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
 
+#error "codex intentional PR storage test-stage build failure for build-error log feature verification"
+
 namespace NCloud {
 
 namespace {

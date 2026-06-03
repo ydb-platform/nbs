@@ -2,6 +2,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#error "codex intentional PR test-stage build failure for build-error log feature verification"
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
