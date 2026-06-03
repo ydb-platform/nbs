@@ -238,6 +238,10 @@ void TBootstrap::Start()
         Monitoring->Start();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
+
     if (Client) {
         Client->Start();
     }
@@ -347,6 +351,10 @@ void TBootstrap::Stop()
         Client->Stop();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
+    }
+
     if (Monitoring) {
         Monitoring->Stop();
     }
@@ -390,6 +398,8 @@ void TBootstrap::InitControlClient()
         VolumeStats,
         ClientConfig->GetInstanceId());
 
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
+
     auto [client, error] = CreateClient(
         ClientConfig,
         Timer,
@@ -397,7 +407,7 @@ void TBootstrap::InitControlClient()
         Logging,
         Monitoring,
         ClientStats,
-        CreateClientCertificateProvider(ClientConfig));
+        CertificateProvider);
 
     Y_ABORT_UNLESS(!HasError(error));
     Client = std::move(client);

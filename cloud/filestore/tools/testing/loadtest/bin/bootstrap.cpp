@@ -57,6 +57,7 @@ private:
     const ILoggingServicePtr Logging;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
+    const ICertificateProviderPtr CertificateProvider;
     const NClient::TClientConfigPtr ClientConfig;
 
     TVector<IFileStoreServicePtr> Clients;
@@ -66,10 +67,12 @@ public:
             ILoggingServicePtr logging,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
+            ICertificateProviderPtr certificateProvider,
             NClient::TClientConfigPtr clientConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
+        , CertificateProvider(std::move(certificateProvider))
         , ClientConfig(std::move(clientConfig))
     {}
 
@@ -92,7 +95,7 @@ public:
         auto client = NClient::CreateFileStoreClient(
             ClientConfig,
             Logging,
-            CreateClientCertificateProvider(ClientConfig));
+            CertificateProvider);
 
         client = NClient::CreateDurableClient(
             Logging,
@@ -133,10 +136,13 @@ void TBootstrap::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
 
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
+
     ClientFactory = std::make_shared<TClientFactory>(
         Logging,
         Timer,
         Scheduler,
+        CertificateProvider,
         ClientConfig);
 }
 
@@ -154,6 +160,10 @@ void TBootstrap::Start()
         Scheduler->Start();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
+
     if (ClientFactory) {
         ClientFactory->Start();
     }
@@ -163,6 +173,10 @@ void TBootstrap::Stop()
 {
     if (ClientFactory) {
         ClientFactory->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Scheduler) {
