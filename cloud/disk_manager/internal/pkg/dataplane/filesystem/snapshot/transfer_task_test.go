@@ -660,6 +660,7 @@ func TestTransferFromFilesystemToSnapshotAndBackWithDeviceHardlink(t *testing.T)
 	require.Equal(t, restoredDeviceNode.NodeID, restoredDeviceLinkNode.NodeID)
 	require.Equal(t, deviceID, restoredDeviceNode.DevID)
 	require.Equal(t, deviceID, restoredDeviceLinkNode.DevID)
+	require.Equal(t, nfs.NODE_KIND_CHARDEV, restoredDeviceLinkNode.Type)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
