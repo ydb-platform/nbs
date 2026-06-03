@@ -318,6 +318,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
         return;
     }
 
+    ScheduleUpdateCounters(ctx);
+
     if (args.FileSystem.GetIsFastShard()) {
         BecomeAux(ctx, STATE_ADAPTER);
         CompleteAdapterLoadState(ctx, args);

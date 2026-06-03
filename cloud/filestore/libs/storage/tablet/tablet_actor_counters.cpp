@@ -512,8 +512,7 @@ void TIndexTabletActor::RegisterCounters(const TActorContext& ctx)
         // only aggregated statistics will be reported by default
         // (you can always turn on per-tablet statistics on monitoring page)
         // TabletCountersAddTablet(TabletID(), ctx);
-
-        ScheduleUpdateCounters(ctx);
+        Y_UNUSED(ctx);
     }
 }
 
