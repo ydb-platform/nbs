@@ -594,6 +594,7 @@ jobs:
         continue-on-error: true
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements.txt
+        continue-on-error: true
       - name: finalize workload comments
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -606,3 +607,4 @@ jobs:
               --matrix-include "$MATRIX_INCLUDE" \
               --platform-name "$platform_name" \
               --workload-status completed
+        continue-on-error: true
