@@ -278,8 +278,13 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         state->DropVolumeHealthResponses = true;
         SendBrokenDeviceNotification(volume, "uuid-1");
-        // 100ms: enough to deliver the event, but below the 1s retry timer.
-        runtime->DispatchEvents({}, 100ms);
+        runtime->DispatchEvents([&] {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&] {
+                return state->UpdateVolumeHealthRequests == requestsBefore + 1;
+            };
+            return options;
+        }());
         UNIT_ASSERT_VALUES_EQUAL(
             requestsBefore + 1,
             state->UpdateVolumeHealthRequests);
