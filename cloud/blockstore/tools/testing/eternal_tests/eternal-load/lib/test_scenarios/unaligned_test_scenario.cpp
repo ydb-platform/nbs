@@ -572,6 +572,8 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
                 LogTag << " Test file contains written data and will be fully"
                           " validated before writing new data");
             ShouldValidate = true;
+            ValidationOffset = RegionMetadata.front().Offset;
+            ValidatedByteCount = ValidationOffset.load();
             break;
         }
     }
@@ -601,9 +603,14 @@ void TUnalignedTestScenario::Read(
             }
             if (offset < FileSize) {
                 len = Min(len, FileSize - offset);
-                if (Read(service, offset, len, true, readBuffer)) {
-                    break;
-                }
+                bool status = Read(service, offset, len, true, readBuffer);
+                Y_ABORT_UNLESS(
+                    status,
+                    "Initial read validation failed - not allowed to read "
+                    "range [%lu, %lu)",
+                    offset,
+                    offset + len);
+                return;
             }
         }
 
