@@ -1113,7 +1113,6 @@ public:
 ui32 GetExcessPercentage(ui64 enumerator, ui64 denominator)
 {
     if (enumerator < denominator) {
-        Y_DEBUG_ABORT_UNLESS(false);
         return 0;
     }
 
@@ -1340,6 +1339,12 @@ private:
         ui64 rangeGarbage = 0;
 
         if (isIgnoringZeroedCompaction) {
+            Y_DEBUG_ABORT_UNLESS(
+                State.GetUsedBlocksIgnoringZeroed() <= GetBlockCount());
+            Y_DEBUG_ABORT_UNLESS(
+                TopByGarbageIgnoringZeroed.UsedBlocksIgnoringZeroed() <=
+                TopByGarbageIgnoringZeroed.BlockCount);
+
             diskGarbage = GetExcessPercentage(
                 GetBlockCount(),
                 State.GetUsedBlocksIgnoringZeroed());
