@@ -10,6 +10,8 @@
 #include <util/string/cast.h>
 #include <util/string/printf.h>
 
+#error "codex intentional PR check build failure for build-error log feature verification"
+
 namespace NDatetime {
     const ui32 MonthDays[2][12] = {
         {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}, //nleap
