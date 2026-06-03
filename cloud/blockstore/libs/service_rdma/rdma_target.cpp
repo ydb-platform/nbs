@@ -218,12 +218,10 @@ private:
         TResponse& response,
         TStringBuf responseName) const
     {
-        TStringBuilder msg;
-        SerializeToTextFormat(response, msg);
         STORAGE_ERROR(
             TStringBuilder() <<
             "Unable to serialize " << responseName << " protobuf: [" <<
-            msg <<
+            response.ShortDebugString() <<
             "] with exception: " <<
             CurrentExceptionMessage());
     }
