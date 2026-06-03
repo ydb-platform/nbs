@@ -410,10 +410,10 @@ void TPartitionActor::BeforeDie(const TActorContext& ctx)
     ClearWriteQueue(ctx);
     CancelPendingRequests(ctx, PendingRequests);
 
-    if (Poisoner) {
+    for (const auto& poisonPill: PendingPoisonPills) {
         NCloud::Reply(
             ctx,
-            *Poisoner,
+            *poisonPill,
             std::make_unique<TEvents::TEvPoisonTaken>());
     }
 
@@ -676,18 +676,20 @@ void TPartitionActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Poisoner = CreateRequestInfo(
+    PendingPoisonPills.push_back(CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>());
+        MakeIntrusive<TCallContext>()));
 
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "%s Stop tablet because of PoisonPill request",
-        LogTitle.GetWithTime().c_str());
+    if (CurrentState != STATE_ZOMBIE) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Stop tablet because of PoisonPill request",
+            LogTitle.GetWithTime().c_str());
 
-    Suicide(ctx);
+        Suicide(ctx);
+    }
 }
 
 void TPartitionActor::HandleUpdateCounters(
@@ -1218,7 +1220,8 @@ STFUNC(TPartitionActor::StateZombie)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
         IgnoreFunc(TEvTablet::TEvTabletStop);
 
-        IgnoreFunc(TEvents::TEvPoisonPill);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
