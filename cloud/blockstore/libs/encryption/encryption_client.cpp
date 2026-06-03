@@ -878,6 +878,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The client writes and reads the data as-is, without encryption/decryption.
+// When reading, if a block has been read from the base disk, this block will be
+// zeroed, and the client will read zeros from the block.
+// During mounting, the hash sum of the key provided by the client is compared
+// to the hash of the encrypted disk. This ensures that the correct key was
+// used, but the actual encryption key is not transmitted, so it is impossible
+// to encrypt/decrypt the data.
 class TSnapshotEncryptionClient final
     : public TClientWrapper
 {
@@ -907,10 +914,6 @@ public:
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override;
-
-    TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request) override;
 
 private:
     static NProto::TReadBlocksResponse HandleReadBlocksResponse(
@@ -1019,18 +1022,6 @@ NProto::TReadBlocksLocalResponse TSnapshotEncryptionClient::HandleReadBlocksLoca
         response.GetUnencryptedBlockMask());
 
     return response;
-}
-
-TFuture<NProto::TZeroBlocksResponse> TSnapshotEncryptionClient::ZeroBlocks(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TZeroBlocksRequest> request)
-{
-    Y_UNUSED(callContext);
-    Y_UNUSED(request);
-
-    return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
-        E_NOT_IMPLEMENTED,
-        "ZeroBlocks requests not supported by snapshot encryption client");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
