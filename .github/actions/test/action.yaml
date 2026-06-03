@@ -248,7 +248,6 @@ runs:
         RETRIES="${NUMBER_OF_RETRIES}"
         OOM_CAN_BE_RETRIED=1
         BUILD_FAILED=0
-        BUILD_ERROR_LOG_URL=""
 
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
@@ -454,9 +453,7 @@ runs:
                     --evlog-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
                     > "$SUMMARY_FILE"
 
-                if [ -s "$SUMMARY_FILE" ]; then
-                    BUILD_ERROR_LOG_URL="$BUILD_ERROR_LOG_URL_FOR_ITERATION"
-                else
+                if [ ! -s "$SUMMARY_FILE" ]; then
                     BUILD_ERROR_LOG_URL_FOR_ITERATION=""
                     rm -f "$SUMMARY_FILE"
                 fi
