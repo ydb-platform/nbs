@@ -71,12 +71,6 @@ outputs:
   failed_tests:
     description: "List of failed tests"
     value: ${{ steps.check_test_results.outputs.failed_tests }}
-  build_failed:
-    description: "Whether ya test failed because a test target build failed"
-    value: ${{ steps.check_test_results.outputs.build_failed }}
-  build_error_log_url:
-    description: "URL to Markdown summary of ya build errors found during tests"
-    value: ${{ steps.check_test_results.outputs.build_error_log_url }}
 
 runs:
   using: composite
@@ -514,14 +508,14 @@ runs:
         echo "END_EXIT_CODE=${FAIL_CHECKER_RC}" | tee -a "$GITHUB_ENV"
         if [ "$BUILD_FAILED" -eq 1 ]; then
             echo "BUILD_FAILED=1" | tee -a "$GITHUB_ENV"
-            echo "failed_tests=yes" >> $GITHUB_OUTPUT
-            echo "build_failed=1" >> $GITHUB_OUTPUT
-            echo "build_error_log_url=$BUILD_ERROR_LOG_URL" >> $GITHUB_OUTPUT
+            {
+                echo "failed_tests=yes"
+            } >> "$GITHUB_OUTPUT"
         else
             echo "BUILD_FAILED=0" | tee -a "$GITHUB_ENV"
-            echo "failed_tests=yes" >> $GITHUB_OUTPUT
-            echo "build_failed=0" >> $GITHUB_OUTPUT
-            echo "build_error_log_url=" >> $GITHUB_OUTPUT
+            {
+                echo "failed_tests=yes"
+            } >> "$GITHUB_OUTPUT"
         fi
     - name: copying system files
       if: ${{ always() }}
