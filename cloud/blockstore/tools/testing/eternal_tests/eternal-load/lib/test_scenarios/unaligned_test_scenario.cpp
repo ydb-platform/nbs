@@ -32,6 +32,8 @@ constexpr TTestScenarioBaseConfig BaseConfig = {
 
 constexpr size_t RegionBlockByteCount = 1_KB;
 
+constexpr size_t InvalidRegionIndex = static_cast<size_t>(-1);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -165,6 +167,12 @@ struct TReadRegionInfo
     TRegionMetadata AfterRead;
 };
 
+struct TRegionUsage
+{
+    size_t ReadCount = 0;
+    size_t WriteCount = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class T>
@@ -222,10 +230,14 @@ private:
 
     TMutex Lock;
     TVector<TRegionMetadata> RegionMetadata;
-    // Workers are not allowed to concurrently write to the same region.
-    // When a worker starts writing to a region, it sets the corresponding flag
-    // to true. When the write is complete, the flag is reset to false.
-    TVector<bool> RegionLockedForWriteFlags;
+
+    // Used to prevent concurrent reads or writes.
+    // Current restrictions:
+    // - no more than one worker can write the same region;
+    // - if DisableParallelReadWrite is set: the same region cannot be
+    //   simultaneously read and written.
+    TVector<TRegionUsage> RegionUsage;
+
     std::atomic<ui64> NextSeqNum = 0;
     ui64 FileSize = 0;
 
@@ -253,8 +265,10 @@ private:
         ui64 length,
         bool isInitialValidation,
         TVector<char>& readBuffer);
-    TVector<TReadRegionInfo> GetReadRegions(ui64 offset, ui64 length) const;
-    void UpdateReadRegions(TVector<TReadRegionInfo>& regions) const;
+
+    TVector<TReadRegionInfo> GetAndLockReadRegions(ui64 offset, ui64 length);
+    void UpdateAndUnlockReadRegions(TVector<TReadRegionInfo>& regions);
+
     void ValidateReadData(
         IService& service,
         TStringBuf readBuffer,
@@ -275,8 +289,9 @@ private:
         size_t index,
         TVector<char>& writeBuffer);
     void WriteEnd(IService& service, size_t index);
-    size_t AcquireRandomRegion();
-    void ReleaseRegion(size_t index);
+
+    bool CanReadRegion(const TRegionUsage& regionUsage) const;
+    bool CanWriteRegion(const TRegionUsage& regionUsage) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -338,7 +353,13 @@ public:
 
             case EOperation::WriteBegin:
                 WriteRegionIndex = TestScenario->WriteBegin(service);
-                Operation = EOperation::WriteRegionData;
+                if (WriteRegionIndex == InvalidRegionIndex) {
+                    // No regions are available for writing, will read instead
+                    TestScenario->Read(service, ReadBuffer);
+                    Operation = EOperation::Idle;
+                } else {
+                    Operation = EOperation::WriteRegionData;
+                }
                 break;
 
             case EOperation::WriteRegionData:
@@ -540,7 +561,7 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
         return false;
     }
 
-    RegionLockedForWriteFlags = TVector<bool>(RegionMetadata.size(), false);
+    RegionUsage = TVector<TRegionUsage>(RegionMetadata.size());
 
     STORAGE_INFO(
         LogTag << " File format: " << RegionMetadata.size() << " regions");
@@ -605,17 +626,12 @@ bool TUnalignedTestScenario::Read(
     bool isInitialValidation,
     TVector<char>& readBuffer)
 {
-    auto regions = GetReadRegions(offset, length);
-
-    if (DisableParallelReadWrite) {
-        for (const auto& region: regions) {
-            if (RegionLockedForWriteFlags[region.Index]) {
-                // Skip read if it overlaps with a region that is being written
-                return false;
-            }
-        }
+    auto regions = GetAndLockReadRegions(offset, length);
+    if (regions.empty()) {
+        // Skip read if it overlaps with a region that is being written
+        // A caller is expected to try again with different range
+        return false;
     }
-
 
     auto buffer = TStringBuf(readBuffer.data(), length);
 
@@ -629,7 +645,7 @@ bool TUnalignedTestScenario::Read(
          buffer,
          isInitialValidation]() mutable
         {
-            UpdateReadRegions(regions);
+            UpdateAndUnlockReadRegions(regions);
             ValidateReadData(service, buffer, regions);
             if (isInitialValidation) {
                 auto prev = ValidatedByteCount.fetch_add(buffer.size());
@@ -645,9 +661,9 @@ bool TUnalignedTestScenario::Read(
     return true;
 }
 
-TVector<TReadRegionInfo> TUnalignedTestScenario::GetReadRegions(
+TVector<TReadRegionInfo> TUnalignedTestScenario::GetAndLockReadRegions(
     ui64 offset,
-    ui64 length) const
+    ui64 length)
 {
     auto guard = Guard(Lock);
 
@@ -668,16 +684,28 @@ TVector<TReadRegionInfo> TUnalignedTestScenario::GetReadRegions(
         }
     }
 
+    for (const auto& region: res) {
+        if (!CanReadRegion(RegionUsage[region.Index])) {
+            return {};
+        }
+    }
+
+    for (const auto& region: res) {
+        RegionUsage[region.Index].ReadCount++;
+    }
+
     return res;
 }
 
-void TUnalignedTestScenario::UpdateReadRegions(
-    TVector<TReadRegionInfo>& regions) const
+void TUnalignedTestScenario::UpdateAndUnlockReadRegions(
+    TVector<TReadRegionInfo>& regions)
 {
     auto guard = Guard(Lock);
 
     for (auto& region: regions) {
         region.AfterRead = RegionMetadata[region.Index];
+        Y_ABORT_UNLESS(RegionUsage[region.Index].ReadCount > 0);
+        RegionUsage[region.Index].ReadCount--;
     }
 }
 
@@ -836,12 +864,21 @@ size_t TUnalignedTestScenario::WriteBegin(IService& service)
     auto guard = Guard(Lock);
     size_t index = 0;
 
+    bool hasAvailableRegions = AnyOf(
+        RegionUsage,
+        [this](const TRegionUsage& region) { return CanWriteRegion(region); });
+
+    if (!hasAvailableRegions) {
+        // There are no available regions for writing
+        // A called is expected to read instead
+        return InvalidRegionIndex;
+    }
+
     while (true) {
-        // The number of workers is guaranteed to be not greater than the
-        // number of regions, so this loop will eventually terminate
         index = RandomNumber(RegionMetadata.size());
-        if (!RegionLockedForWriteFlags[index]) {
-            RegionLockedForWriteFlags[index] = true;
+        if (CanWriteRegion(RegionUsage[index])) {
+            Y_ABORT_UNLESS(RegionUsage[index].WriteCount == 0);
+            RegionUsage[index].WriteCount = 1;
             break;
         }
     }
@@ -924,10 +961,23 @@ void TUnalignedTestScenario::WriteEnd(IService& service, size_t index)
         [this, index]()
         {
             auto guard = Guard(Lock);
-            Y_ABORT_UNLESS(RegionLockedForWriteFlags[index]);
-            RegionLockedForWriteFlags[index] = false;
+            Y_ABORT_UNLESS(RegionUsage[index].WriteCount == 1);
+            RegionUsage[index].WriteCount = 0;
             RegionMetadata[index].CurrentState = RegionMetadata[index].NewState;
         });
+}
+
+bool TUnalignedTestScenario::CanReadRegion(
+    const TRegionUsage& regionUsage) const
+{
+    return !DisableParallelReadWrite || regionUsage.WriteCount == 0;
+}
+
+bool TUnalignedTestScenario::CanWriteRegion(
+    const TRegionUsage& regionUsage) const
+{
+    return regionUsage.WriteCount == 0 &&
+           (!DisableParallelReadWrite || regionUsage.ReadCount == 0);
 }
 
 }   // namespace
