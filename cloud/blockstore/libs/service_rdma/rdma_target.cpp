@@ -25,6 +25,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
 using namespace NMonitoring;
+using namespace NCloud::NStorage::NRdma;
 
 LWTRACE_USING(STORAGE_RDMA_PROVIDER);
 
@@ -197,22 +198,19 @@ private:
         TGuardedSgList::TGuard& guard) const
     {
         return SUCCEEDED(response.GetError().GetCode())
-            ? NCloud::NStorage::NRdma::
-                TProtoMessageSerializer::
-                    SerializeWithData(
-                        out,
-                        TBlockStoreServerProtocol::
-                            EvReadBlocksResponse,
-                        flags,
-                        response,
-                        guard.Get())
-            : NCloud::NStorage::NRdma::
-                TProtoMessageSerializer::Serialize(
-                    out,
-                    TBlockStoreServerProtocol::
-                        EvReadBlocksResponse,
-                    flags,
-                    response);
+            ? TProtoMessageSerializer::SerializeWithData(
+                out,
+                TBlockStoreServerProtocol::
+                    EvReadBlocksResponse,
+                flags,
+                response,
+                guard.Get())
+            : TProtoMessageSerializer::Serialize(
+                out,
+                TBlockStoreServerProtocol::
+                    EvReadBlocksResponse,
+                flags,
+                response);
     }
 
     template <typename TResponse>
@@ -392,7 +390,7 @@ private:
                 size_t responseBytes = 0;
                 try {
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvWriteBlocksResponse,
                             flags,   // flags
@@ -406,7 +404,7 @@ private:
                         E_REJECTED,
                         CurrentExceptionMessage());
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvWriteBlocksResponse,
                             flags,   // flags
@@ -470,7 +468,7 @@ private:
                 size_t responseBytes = 0;
                 try {
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvZeroBlocksResponse,
                             flags,   // flags
@@ -484,7 +482,7 @@ private:
                         E_REJECTED,
                         CurrentExceptionMessage());
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvZeroBlocksResponse,
                             flags,   // flags
@@ -517,7 +515,7 @@ private:
             flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
         size_t responseBytes =
-            NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+            TProtoMessageSerializer::Serialize(
                 out,
                 TBlockStoreServerProtocol::EvPingResponse,
                 flags,   // flags
@@ -567,7 +565,7 @@ private:
                 size_t responseBytes = 0;
                 try {
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvMountVolumeResponse,
                             flags,   // flags
@@ -581,7 +579,7 @@ private:
                         E_REJECTED,
                         CurrentExceptionMessage());
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvMountVolumeResponse,
                             flags,   // flags
@@ -633,7 +631,7 @@ private:
                 size_t responseBytes = 0;
                 try {
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvUnmountVolumeResponse,
                             flags,   // flags
@@ -647,7 +645,7 @@ private:
                         E_REJECTED,
                         CurrentExceptionMessage());
                     responseBytes =
-                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        TProtoMessageSerializer::Serialize(
                             out,
                             TBlockStoreServerProtocol::EvUnmountVolumeResponse,
                             flags,   // flags
