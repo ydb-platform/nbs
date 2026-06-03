@@ -180,7 +180,7 @@ private:
 
     TPartitionThreadSafeStatePtr SharedState;
 
-    TRequestInfoPtr Poisoner;
+    TVector<TRequestInfoPtr> PendingPoisonPills;
 
 public:
     TPartitionActor(
