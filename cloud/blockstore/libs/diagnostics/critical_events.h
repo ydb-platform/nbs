@@ -7,7 +7,8 @@
 
 namespace NCloud::NBlockStore {
 
-using TCritEventParams = TVector<std::pair<TStringBuf, TPrintableValue>>;
+using TCritEventParams =
+    std::initializer_list<std::pair<TStringBuf, TPrintableValue>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
