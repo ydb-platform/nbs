@@ -321,11 +321,13 @@ private:
                             *response.MutableError() = MakeError(
                                 E_REJECTED,
                                 "Unable to serialize ReadBlocks response");
-                            responseBytes = SerializeReadBlocksResponse(
-                                response,
-                                out,
-                                flags,
-                                guard);
+                            if (auto ep = endpoint.lock()) {
+                                ep->SendError(
+                                    context,
+                                    E_REJECTED,
+                                    "unable to serialize ReadBlocks response");
+                            }
+                            return;
                         }
 
                         if (auto ep = endpoint.lock()) {
@@ -415,12 +417,13 @@ private:
                             *response.MutableError() = MakeError(
                                 E_REJECTED,
                                 "Unable to serialize WriteBlocks response");
-                            responseBytes = TProtoMessageSerializer::Serialize(
-                                out,
-                                TBlockStoreServerProtocol::
-                                    EvWriteBlocksResponse,
-                                flags,   // flags
-                                response);
+                            if (auto ep = endpoint.lock()) {
+                                ep->SendError(
+                                    context,
+                                    E_REJECTED,
+                                    "unable to serialize WriteBlocks response");
+                            }
+                            return;
                         }
                         if (auto ep = endpoint.lock()) {
                             ep->SendResponse(context, responseBytes);
@@ -496,11 +499,13 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize ZeroBlocks response");
-                    responseBytes = TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreServerProtocol::EvZeroBlocksResponse,
-                        flags,   // flags
-                        response);
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            E_REJECTED,
+                            "unable to serialize ZeroBlocks response");
+                    }
+                    return;
                 }
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
@@ -594,11 +599,13 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize MountVolume response");
-                    responseBytes = TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreServerProtocol::EvMountVolumeResponse,
-                        flags,   // flags
-                        response);
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            E_REJECTED,
+                            "unable to serialize MountVolume response");
+                    }
+                    return;
                 }
 
                 if (auto ep = endpoint.lock()) {
@@ -661,11 +668,13 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize UnmountVolume response");
-                    responseBytes = TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreServerProtocol::EvUnmountVolumeResponse,
-                        flags,   // flags
-                        response);
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            E_REJECTED,
+                            "unable to serialize UnmountVolume response");
+                    }
+                    return;
                 }
 
                 if (auto ep = endpoint.lock()) {
