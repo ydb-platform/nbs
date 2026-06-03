@@ -228,10 +228,6 @@ private:
             msg <<
             "] with exception: " <<
             CurrentExceptionMessage());
-        response = TResponse{};
-        *response.MutableError() = MakeError(
-            E_REJECTED,
-            CurrentExceptionMessage());
     }
 
     NProto::TError HandleReadBlocksRequest(
@@ -321,6 +317,10 @@ private:
                             if (auto self = weakSelf.lock()) {
                                 self->OnSerializeException(response, "ReadBlocks");
                             }
+                            response = NProto::TReadBlocksLocalResponse{};
+                            *response.MutableError() = MakeError(
+                                E_REJECTED,
+                                CurrentExceptionMessage());
                             responseBytes = SerializeReadBlocksResponse(
                                 response,
                                 out,
@@ -401,6 +401,10 @@ private:
                     if (auto self = weakSelf.lock()) {
                         self->OnSerializeException(response, "WriteBlocks");
                     }
+                    response = NProto::TWriteBlocksLocalResponse{};
+                    *response.MutableError() = MakeError(
+                        E_REJECTED,
+                        CurrentExceptionMessage());
                     responseBytes =
                         NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                             out,
@@ -475,6 +479,10 @@ private:
                     if (auto self = weakSelf.lock()) {
                         self->OnSerializeException(response, "ZeroBlocksResponse");
                     }
+                    response = NProto::TZeroBlocksResponse{};
+                    *response.MutableError() = MakeError(
+                        E_REJECTED,
+                        CurrentExceptionMessage());
                     responseBytes =
                         NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                             out,
@@ -568,6 +576,10 @@ private:
                     if (auto self = weakSelf.lock()) {
                         self->OnSerializeException(response, "MountVolumeResponse");
                     }
+                    response = NProto::TMountVolumeResponse{};
+                    *response.MutableError() = MakeError(
+                        E_REJECTED,
+                        CurrentExceptionMessage());
                     responseBytes =
                         NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                             out,
@@ -630,6 +642,10 @@ private:
                     if (auto self = weakSelf.lock()) {
                         self->OnSerializeException(response, "UnmountVolumeResponse");
                     }
+                    response = NProto::TUnmountVolumeResponse{};
+                    *response.MutableError() = MakeError(
+                        E_REJECTED,
+                        CurrentExceptionMessage());
                     responseBytes =
                         NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                             out,
