@@ -55,6 +55,7 @@ func initDataplane(
 			s3Config,
 			metrics.NewEmptyRegistry(),
 			nil, // availabilityMonitoring
+			creds,
 		)
 		if err != nil {
 			return err
@@ -89,6 +90,7 @@ func initDataplane(
 			migrationDstS3Config,
 			metrics.NewEmptyRegistry(),
 			nil, // availabilityMonitoring
+			creds,
 		)
 		if err != nil {
 			return err

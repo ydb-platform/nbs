@@ -257,6 +257,7 @@ func run(
 				s3Config,
 				s3MetricsRegistry,
 				availabilityMonitoring,
+				creds,
 			)
 			if err != nil {
 				return err
@@ -286,6 +287,7 @@ func run(
 					migrationDstS3Config,
 					registry,
 					nil, // availabilityMonitoring
+					creds,
 				)
 				if err != nil {
 					return err
