@@ -1,5 +1,7 @@
 #include "directory_handle_cache.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -58,12 +60,24 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
     TTempDir TempDir;
     TString StoragePath = TempDir.Path() / "directory_handles";
 
+    IDirectoryHandleStorageStatsPtr StorageStats;
+
+    TDirectoryHandleModuleStatsPtr CreateStats()
+    {
+        auto timer = CreateWallClockTimer();
+        StorageStats = CreateDirectoryHandleStorageStats(timer);
+        return CreateDirectoryHandleStats(std::move(timer), StorageStats);
+    }
+
     TDirectoryHandleStoragePtr CreateStorage(
+        TDirectoryHandleModuleStatsPtr stats,
         ui64 persistentHandleMaxSize = 2_GB)
     {
+        Y_UNUSED(stats);
         return CreateDirectoryHandleStorage(
             {.Log = Log,
              .FileMapMemoryLimiter = Limiter,
+             .Stats = StorageStats,
              .FilePath = StoragePath,
              .MaxRecords = 32,
              .InitialDataAreaSize = 128,
@@ -72,18 +86,13 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
              .PersistentHandleMaxSize = persistentHandleMaxSize});
     }
 
-    TDirectoryHandleCache CreateCache(
-        TDirectoryHandleStoragePtr storage = nullptr)
+    TDirectoryHandleCache CreateStoredCache(ui64 persistentHandleMaxSize = 2_GB)
     {
+        auto stats = CreateStats();
         return TDirectoryHandleCache(
             Log,
-            CreateDirectoryHandleStats(CreateWallClockTimer()),
-            std::move(storage));
-    }
-
-    TDirectoryHandleCache CreateStoredCache()
-    {
-        return CreateCache(CreateStorage());
+            stats,
+            CreateStorage(stats, persistentHandleMaxSize));
     }
 };
 
@@ -124,7 +133,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             return id;
         }();
 
-        auto storage = CreateStorage();
+        auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
@@ -135,13 +144,13 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
     Y_UNIT_TEST(ShouldReturnChunkForClosedHandleContentUpdate)
     {
-        auto cache = CreateCache();
+        auto cache = TDirectoryHandleCache(Log, CreateStats(), nullptr);
 
         const ui64 id = cache.CreateHandle(42);
         auto handle = cache.FindHandle(id);
         UNIT_ASSERT(handle);
 
-        const auto [serializedSize, chunkCount] = handle->GetMetrics();
+        const auto [serializedSize, chunkCount] = handle->GetStats();
 
         cache.RemoveHandle(id);
 
@@ -150,7 +159,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         UNIT_ASSERT_VALUES_EQUAL(1024, chunk.DirectoryContent.GetSize());
         const auto [updatedSerializedSize, updatedChunkCount] =
-            handle->GetMetrics();
+            handle->GetStats();
         UNIT_ASSERT_GT(updatedSerializedSize, serializedSize);
         UNIT_ASSERT_VALUES_EQUAL(chunkCount + 1, updatedChunkCount);
     }
@@ -174,7 +183,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             UNIT_ASSERT_VALUES_EQUAL(1024, chunk.DirectoryContent.GetSize());
         }
 
-        auto storage = CreateStorage();
+        auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
@@ -187,7 +196,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     {
         const ui64 handleId = [&]
         {
-            auto cache = CreateCache(CreateStorage(512));
+            auto cache = CreateStoredCache(512);
 
             const ui64 id = cache.CreateHandle(42);
             auto handle = cache.FindHandle(id);
@@ -208,7 +217,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             return id;
         }();
 
-        auto storage = CreateStorage();
+        auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
@@ -221,7 +230,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     {
         const ui64 handleId = 42;
         {
-            auto storage = CreateStorage();
+            auto storage = CreateStorage(CreateStats());
             TDirectoryHandle handle(100);
             storage->StoreHandle(
                 handleId,
@@ -233,7 +242,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             storage->UpdateHandle(handleId, handle, chunk);
         }
 
-        auto storage = CreateStorage(512);
+        auto storage = CreateStorage(CreateStats(), 512);
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
@@ -246,7 +255,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     {
         const ui64 handleId = 42;
         {
-            auto storage = CreateStorage();
+            auto storage = CreateStorage(CreateStats());
             TDirectoryHandle handle(100);
 
             storage->StoreHandle(
@@ -269,13 +278,72 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             storage->UpdateHandle(handleId, handle, chunk2);
         }
 
-        auto storage = CreateStorage();
+        auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
 
         UNIT_ASSERT(!handles.contains(handleId));
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
+    }
+
+    Y_UNIT_TEST(ShouldRegisterMetrics)
+    {
+        auto timer = CreateWallClockTimer();
+        StorageStats = CreateDirectoryHandleStorageStats(timer);
+        auto stats = CreateDirectoryHandleStats(timer, StorageStats);
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto metricsRegistry = NMetrics::CreateMetricsRegistry({}, counters);
+        auto aggregatableMetricsRegistry =
+            NMetrics::CreateMetricsRegistryStub();
+        stats->RegisterCounters(metricsRegistry, aggregatableMetricsRegistry);
+
+        auto cache = TDirectoryHandleCache(Log, stats, CreateStorage(stats));
+
+        const ui64 id = cache.CreateHandle(42);
+        auto handle = cache.FindHandle(id);
+        UNIT_ASSERT(handle);
+
+        stats->UpdateStats(timer->Now());
+        metricsRegistry->Update(timer->Now());
+
+        UNIT_ASSERT(counters->FindCounter("MaxCacheSize"));
+        UNIT_ASSERT(counters->FindCounter("MaxChunkCount"));
+
+        auto maxOpenHandleCount = counters->FindCounter("MaxOpenHandleCount");
+        UNIT_ASSERT(maxOpenHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
+
+        auto rawCapacityByteMaxCount =
+            counters->FindCounter("Storage_RawCapacityByteMaxCount");
+        UNIT_ASSERT(rawCapacityByteMaxCount);
+        UNIT_ASSERT_GT(rawCapacityByteMaxCount->Val(), 0);
+
+        auto rawUsedByteMaxCount =
+            counters->FindCounter("Storage_RawUsedByteMaxCount");
+        UNIT_ASSERT(rawUsedByteMaxCount);
+        UNIT_ASSERT_GT(rawUsedByteMaxCount->Val(), 0);
+
+        auto memoryLimiterRejectionCount =
+            counters->FindCounter("Storage_MemoryLimiterRejectionCount");
+        UNIT_ASSERT(memoryLimiterRejectionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, memoryLimiterRejectionCount->Val());
+
+        Limiter->CanIncreaseResult = false;
+
+        auto chunk = handle->UpdateContent(
+            64 * 1024,
+            0,
+            CreateContent(64 * 1024, 'z'),
+            1,
+            "next");
+        cache.AppendChunk(id, handle, chunk);
+
+        stats->UpdateStats(timer->Now());
+        metricsRegistry->Update(timer->Now());
+
+        UNIT_ASSERT_GT(memoryLimiterRejectionCount->Val(), 0);
     }
 }
 

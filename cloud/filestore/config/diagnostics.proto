@@ -154,4 +154,7 @@ message TDiagnosticsConfig
 
     // Dump lwtrace tracks every DumpTracksInterval ms.
     optional uint32 DumpTracksInterval = 32;
+
+    // Disable registration of throttling metrics in the metrics registry.
+    optional bool ThrottlingHistogramsDisabled = 33;
 }

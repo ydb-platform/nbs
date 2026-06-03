@@ -307,6 +307,8 @@ public:
 
     void SetFrozen(TIndexTabletDatabase& db, bool frozen);
 
+    void SetCompressNodeRef(TIndexTabletDatabase& db, bool compressNodeRef);
+
     //
     // FileSystem
     //
@@ -334,7 +336,16 @@ public:
 
     TString GetMainFileSystemId() const
     {
-        return FileSystem.GetMainFileSystemId();
+        // As of now TFileSystem::MainFIleSystemId is empty for the main
+        // filesystem. It should be fixed. TODO(#6065)
+        STORAGE_VERIFY_DEBUG(
+            FileSystem.GetShardNo() == 0 || FileSystem.GetMainFileSystemId(),
+            FileSystem.GetFileSystemId(),
+            TWellKnownEntityTypes::FILESYSTEM);
+
+        return FileSystem.GetMainFileSystemId()
+                   ? FileSystem.GetMainFileSystemId()
+                   : FileSystem.GetFileSystemId();
     }
 
     ui32 GetGeneration() const
@@ -359,6 +370,11 @@ public:
         }
 
         return FileSystem.GetNodesCount();
+    }
+
+    bool GetCompressNodeRef() const
+    {
+        return FileSystem.GetCompressNodeRef();
     }
 
     ui64 GetCurrentCommitId() const

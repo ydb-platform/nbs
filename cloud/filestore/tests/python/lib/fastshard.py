@@ -31,6 +31,7 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
             {
                 "FileSystemId": shard_id,
                 "ShardNo": shard_no,
+                "MainFileSystemId": filesystem,
                 "ShardFileSystemIds": shard_ids,
                 "FileShardFileSystemIds": file_shard_ids,
                 "IsFastShard": shard_id in file_shard_ids,

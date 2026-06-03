@@ -455,6 +455,9 @@ message TGenerateBlobIdsRequest
     // Unaligned head/tail data for internal AddData (used when tablet does
     // AddData internally in the unconfirmed flow).
     repeated TFreshDataRange UnalignedDataRanges = 7;
+
+    // If true, the service is ready to use the unconfirmed data flow.
+    bool UnconfirmedFlowRequested = 8;
 }
 
 message TGeneratedBlob
@@ -840,7 +843,10 @@ message TUnsafeChangeTabletStateRequest
     string FileSystemId = 1;
 
     // If set, only unsafe ops will be allowed.
-    bool Frozen = 2;
+    optional bool Frozen = 2;
+
+    // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
+    optional bool CompressNodeRef = 3;
 }
 
 message TUnsafeChangeTabletStateResponse

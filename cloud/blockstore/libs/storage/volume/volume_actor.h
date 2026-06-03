@@ -335,6 +335,9 @@ private:
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
 
+    THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
+    NActors::TActorId VolumeHealthSyncActorId;
+
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
 
@@ -1276,6 +1279,15 @@ private:
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void CleanupStaleBrokenDevices(const NActors::TActorContext& ctx);
+
+    void RegisterVolumeHealthSyncActorIfNeeded(
+        const NActors::TActorContext& ctx);
+
+    void SendVolumeHealthNotification(
+        const NActors::TActorContext& ctx,
+        NProto::EVolumeHealth volumeHealth);
 
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,

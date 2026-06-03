@@ -491,6 +491,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
         disk.VolumeHealth = config.GetVolumeHealth();
+        disk.VolumeHealthSeqNo = config.GetVolumeHealthSeqNo();
 
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
@@ -5266,6 +5267,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetStorageMediaKind(diskState.MediaKind);
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
     config.SetVolumeHealth(diskState.VolumeHealth);
+    config.SetVolumeHealthSeqNo(diskState.VolumeHealthSeqNo);
 
     for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
@@ -8468,16 +8470,16 @@ void TDiskRegistryState::DetachPathIfNeeded(
 }
 
 bool TDiskRegistryState::HasDependentDisks(
-    const TAgentId& agentId,
+    const NProto::TAgentConfig& agent,
     const TString& path)
 {
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
+    if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
         return false;
     }
+
     return AnyOf(
-        *agent->MutableDevices(),
-        [&](auto& device)
+        agent.GetDevices(),
+        [&](const auto& device)
         {
             if (device.GetDeviceName() != path ||
                 device.GetState() == NProto::DEVICE_STATE_ERROR)
@@ -8528,7 +8530,7 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
     }
 
     if (state == NProto::PATH_ATTACH_STATE_DETACHED &&
-        HasDependentDisks(agent->GetAgentId(), path))
+        HasDependentDisks(*agent, path))
     {
         ReportDiskRegistryDetachPathWithDependentDisk(
             "Can't detach path with dependent disks",
@@ -8597,7 +8599,7 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
     }
 
     // We should not detach paths with dependent disks.
-    if (!attach && HasDependentDisks(agent.GetAgentId(), path)) {
+    if (!attach && HasDependentDisks(agent, path)) {
         ReportDiskRegistryDetachPathWithDependentDisk(
             "Can't detach path with dependent disks",
             {{"agent", agent.GetAgentId()}, {"path", path}});
@@ -8679,7 +8681,8 @@ NProto::TError TDiskRegistryState::UpdateVolumeHealth(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TInstant now,
-    NProto::EVolumeHealth volumeHealth)
+    NProto::EVolumeHealth volumeHealth,
+    ui64 volumeHealthSeqNo)
 {
     auto* disk = Disks.FindPtr(diskId);
     if (!disk) {
@@ -8687,11 +8690,24 @@ NProto::TError TDiskRegistryState::UpdateVolumeHealth(
             E_NOT_FOUND,
             TStringBuilder() << "disk " << diskId.Quote() << " not found");
     }
-    if (disk->VolumeHealth == volumeHealth) {
+    if (volumeHealthSeqNo < disk->VolumeHealthSeqNo) {
+        return MakeError(
+            E_ABORTED,
+            TStringBuilder() << "Stale volume health update for disk "
+                             << diskId.Quote() << ": incoming seqNo "
+                             << volumeHealthSeqNo << " is older than current "
+                             << disk->VolumeHealthSeqNo << ", dropping");
+    }
+    if (volumeHealthSeqNo == disk->VolumeHealthSeqNo) {
         return MakeError(S_ALREADY);
     }
+    const bool healthUnchanged = disk->VolumeHealth == volumeHealth;
+    disk->VolumeHealthSeqNo = volumeHealthSeqNo;
     disk->VolumeHealth = volumeHealth;
     db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+    if (healthUnchanged) {
+        return MakeError(S_ALREADY);
+    }
     TryUpdateDiskStateImpl(db, diskId, *disk, now);
     return {};
 }

@@ -551,6 +551,16 @@ TPartitionClient::CreateGetPartitionInfoRequest()
     return request;
 }
 
-
+std::unique_ptr<TEvPartitionPrivate::TEvCompactionReadBlobInfoRequest>
+TPartitionClient::CreateCompactionReadBlobInfoRequest(
+    TVector<TPartialBlobId> blobsToReadBlockMasks,
+    TVector<TPartialBlobId> blobsToReadBlobMetas)
+{
+    auto request = std::make_unique<
+        TEvPartitionPrivate::TEvCompactionReadBlobInfoRequest>();
+    request->BlobsToReadBlockMasks = std::move(blobsToReadBlockMasks);
+    request->BlobsToReadBlobMetas = std::move(blobsToReadBlobMetas);
+    return request;
+}
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

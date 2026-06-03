@@ -61,7 +61,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         VFIODriverPath = PrepareDriver("vfio-pci");
 
         Devices = PrepareDevices();
-        UNIT_ASSERT_VALUES_EQUAL(3, Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(4, Devices.size());
 
         for (const auto& device: Devices) {
             const TFsPath devicePath = GetPCIDevicePath(device);
@@ -99,6 +99,21 @@ struct TFixture: public NUnitTest::TBaseFixture
         // NVME_1 bound to the vfio-pci driver
         {
             const auto& device = Devices[1];
+            const TFsPath devicePath = GetPCIDevicePath(device);
+            NFs::SymLink(VFIODriverPath, devicePath / "driver");
+
+            const TFsPath vfioDeviceDir =
+                devicePath / "vfio-dev" / device.GetVfioDevName();
+            NFs::MakeDirectoryRecursive(vfioDeviceDir);
+            TFileOutput(vfioDeviceDir / "dev").Write("501:0");
+        }
+
+        // NVME_2 not bound to any driver, nothing to setup
+
+        // NVME_3 bound to the vfio-pci driver but doesn't have VFIO device
+        // (VFIO_DEVICE_CDEV not supported by kernel or disabled)
+        {
+            const auto& device = Devices[3];
             const TFsPath devicePath = GetPCIDevicePath(device);
             NFs::SymLink(VFIODriverPath, devicePath / "driver");
 
@@ -156,6 +171,15 @@ struct TFixture: public NUnitTest::TBaseFixture
                 VendorId: 0x500
                 DeviceId: 0x600
                 Model: "Test NVMe 3"
+                NumaNode: 1
+            }
+            Devices {
+                SerialNumber: "NVME_3"
+                PCIAddress: "0000:34:00.0"
+                IOMMUGroup: 40
+                VendorId: 0x700
+                DeviceId: 0x800
+                Model: "Test NVMe 4"
                 NumaNode: 1
             }
         )",

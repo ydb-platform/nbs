@@ -111,6 +111,17 @@ def parse_command_blocks(run_content):
     return command_blocks
 
 
+def sanitize_github_expressions(line):
+    return re.sub(r"\$\{\{.*?\}\}", "${GITHUB_EXPRESSION}", line)
+
+
+def get_block_indent(block):
+    for line in block:
+        if line.strip():
+            return re.match(r"^\s*", line).group(0)
+    return ""
+
+
 def write_runs_to_files(runs, output_dir, prefix):
     """
     Write run commands to files.
@@ -118,29 +129,49 @@ def write_runs_to_files(runs, output_dir, prefix):
     Write each run command to a .sh file with template {action name}-{index inside of action file}
     in the given output_dir.
 
-    Also adds a #!/usr/bin/env bash shebang at the start of each script.
+    Also adds #!/usr/bin/env bash to generated files so shell tools can read
+    workflow/action run blocks as standalone scripts.
 
     For each run:
       - Parse into command blocks.
       - If any block contains '${{ ... }}', insert shellcheck disable instructions
         before that block.
+      - Replace GitHub expressions with a shell-safe placeholder before writing
+        the script so tools like shfmt can parse generated scripts.
+
+        Examples:
+          '${{ github.token }}' -> '${GITHUB_EXPRESSION}'
+          'if [ "${{ env.ACT }}" = "true" ]; then' ->
+              'if [ "${GITHUB_EXPRESSION}" = "true" ]; then'
+          'echo "${{ inputs.name }}"' -> 'echo "${GITHUB_EXPRESSION}"'
+
+        Generated scripts that contain GitHub expressions also define
+        GITHUB_EXPRESSION once so shellcheck treats the placeholder as known.
     """
     for i, run_content in enumerate(runs, 1):
         file_id = f"{prefix}-{i}.sh"
         filepath = os.path.join(output_dir, file_id)
 
         command_blocks = parse_command_blocks(run_content)
+        has_github_expressions = any(
+            "${{" in line for block in command_blocks for line in block
+        )
 
         with open(filepath, "w") as f:
             f.write("#!/usr/bin/env bash\n\n")
+            if has_github_expressions:
+                f.write("# shellcheck disable=SC2034\n")
+                f.write("GITHUB_EXPRESSION='GITHUB_EXPRESSION'\n\n")
             for block in command_blocks:
                 # Check if this block contains GitHub variables
                 if any("${{" in line for line in block):
                     # SC2296 is about that github variables are not valid shell variables
                     # SC1083 about basically the same thing
-                    f.write("# shellcheck disable=SC2296,SC1083\n")
+                    f.write(
+                        f"{get_block_indent(block)}# shellcheck disable=SC2296,SC1083\n"
+                    )
                 for line in block:
-                    f.write(line + "\n")
+                    f.write(sanitize_github_expressions(line) + "\n")
 
 
 def process_workflows():

@@ -47,6 +47,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(RemoveFollower,                 __VA_ARGS__)                           \
     xxx(UpdateLeader,                   __VA_ARGS__)                           \
     xxx(RemoveLeader,                   __VA_ARGS__)                           \
+    xxx(UpdateBrokenDevice,             __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -850,6 +851,31 @@ struct TTxVolume
         TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
             : RequestInfo(std::move(requestInfo))
             , Link(std::move(link))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // UpdateBrokenDevice
+    //
+
+    struct TUpdateBrokenDevice
+    {
+        struct TDeviceEntry
+        {
+            TString DeviceUUID;
+            TInstant BrokenTs;
+            bool Add;
+        };
+
+        TVector<TDeviceEntry> Entries;
+
+        explicit TUpdateBrokenDevice(TVector<TDeviceEntry> entries)
+            : Entries(std::move(entries))
         {}
 
         void Clear()

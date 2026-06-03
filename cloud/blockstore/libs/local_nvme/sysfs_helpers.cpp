@@ -60,7 +60,10 @@ auto GetVFioDeviceName(const TFsPath& pciDevicePath) -> TString
                 << vfioDevDir.GetPath().Quote() << " (already have "
                 << devName.Quote() << ", now also " << child.Quote() << ")");
 
-        devName = child;
+        const TFsPath vfioDevice = vfioDevDir / child / "dev";
+        if (vfioDevice.Exists()) {
+            devName = child;
+        }
     }
 
     return devName;

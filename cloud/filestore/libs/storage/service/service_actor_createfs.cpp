@@ -27,6 +27,11 @@ NProto::TError ValidateCreateFileSystemRequest(
             << "missing file system identifier");
     }
 
+    NProto::TError fileSystemIdError = ValidateFilesystemId(fileSystemId);
+    if (HasError(fileSystemIdError)) {
+        return fileSystemIdError;
+    }
+
     const auto& cloudId = request.GetCloudId();
     if (!cloudId) {
         return MakeError(E_ARGUMENT, TStringBuilder()

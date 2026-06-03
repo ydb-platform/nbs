@@ -300,6 +300,7 @@ IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
         VolumeStats,
         TestInstanceId);
 
+    auto certificateProvider = CreateCertificateProvider(config);
     auto [client, error] = NClient::CreateClient(
         std::move(config),
         Timer,
@@ -307,7 +308,7 @@ IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
         Logging,
         Monitoring,
         std::move(clientStats),
-        CreateCertificateProvider(config));
+        certificateProvider);
 
     Y_ABORT_UNLESS(!HasError(error));
 

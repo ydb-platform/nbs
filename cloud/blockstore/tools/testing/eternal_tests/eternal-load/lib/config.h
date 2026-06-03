@@ -44,6 +44,7 @@ struct TCreateTestConfigArguments
     ui64 MaxWriteByteCount = 0;
     ui64 MinRegionByteCount = 0;
     ui64 MaxRegionByteCount = 0;
+    bool DisableParallelReadWrite = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

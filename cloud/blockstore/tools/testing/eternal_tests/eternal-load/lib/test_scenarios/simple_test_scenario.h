@@ -18,6 +18,7 @@ enum class ESimpleTestScenarioMode
 ITestScenarioPtr CreateSimpleTestScenario(
     ESimpleTestScenarioMode mode,
     IConfigHolderPtr configHolder,
+    const TString& logTag,
     const TLog& log);
 
 }   // namespace NCloud::NBlockStore::NTesting

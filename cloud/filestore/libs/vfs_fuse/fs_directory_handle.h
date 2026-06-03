@@ -12,8 +12,6 @@
 #include <util/stream/mem.h>
 #include <util/system/mutex.h>
 
-#include <utility>
-
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +57,14 @@ struct TDirectoryHandleChunk
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDirectoryHandleStats
+{
+    size_t SerializedSize = 0;
+    size_t ChunkCount = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDirectoryHandle
 {
 private:
@@ -93,8 +99,8 @@ public:
     void ResetContent();
     TString GetCookie();
 
-    // Get serialized size and chunk count
-    std::pair<size_t, size_t> GetMetrics() const;
+    // Returns the handle's current serialized size and chunk count.
+    TDirectoryHandleStats GetStats() const;
 
     // not thread safe, use only during restoration from storage
     void ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log);

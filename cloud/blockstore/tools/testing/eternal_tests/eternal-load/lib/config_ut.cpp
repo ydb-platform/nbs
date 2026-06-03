@@ -149,7 +149,8 @@ Y_UNIT_TEST_SUITE(ConfigTest)
                 "MinWriteByteCount":3,
                 "MaxWriteByteCount":4,
                 "MinRegionByteCount":5,
-                "MaxRegionByteCount":6
+                "MaxRegionByteCount":6,
+                "DisableParallelReadWrite":true
             },
         "BlockSize":4096,
         "FilePath":"/dev/vdb",
@@ -213,7 +214,8 @@ Y_UNIT_TEST_SUITE(ConfigTest)
              .MinWriteByteCount = 3,
              .MaxWriteByteCount = 4,
              .MinRegionByteCount = 5,
-             .MaxRegionByteCount = 6});
+             .MaxRegionByteCount = 6,
+             .DisableParallelReadWrite = true});
 
         auto filename = MakeTempName();
         configHolder->DumpConfig(filename);

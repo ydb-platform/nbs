@@ -109,6 +109,7 @@ jobs:
     steps:
     - name: Checkout PR
       uses: actions/checkout@v6
+      timeout-minutes: 10
       if: github.event.pull_request.head.sha != ''
       with:
         submodules: true
@@ -120,8 +121,8 @@ jobs:
       shell: bash
       run: |
         if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-          echo "Removing stale rebase state left on runner checkout"
-          rm -rf .git/rebase-merge .git/rebase-apply
+            echo "Removing stale rebase state left on runner checkout"
+            rm -rf .git/rebase-merge .git/rebase-apply
         fi
         git config user.email "robot-nbs@nebius.com"
         git config user.name "Robot NBS"
@@ -130,6 +131,7 @@ jobs:
         git submodule update --init --recursive
     - name: Checkout
       uses: actions/checkout@v6
+      timeout-minutes: 10
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: true
@@ -165,18 +167,17 @@ jobs:
       run: |
         set -x
         while true; do
-          echo "$(date) done sleeping" | tee -a /tmp/oom_score_adj.log
-          for pid in $(pgrep -f ydbd) $(pgrep -f qemu-system-x86_64); do
-            # check if process is already having oom_score_adj set to 500 if not then set it
-            if [ "$(cat /proc/$pid/oom_score_adj)" != "1000" ]; then
-              echo 1000 | sudo tee /proc/$pid/oom_score_adj
-              echo "set oom_score_adj=1000 for pid: $pid" | tee -a /tmp/oom_score_adj.log
-            fi
-          done
-          echo "$(date) sleeping for 30s" | tee -a /tmp/oom_score_adj.log
-          sleep 30
+            echo "$(date) done sleeping" | tee -a /tmp/oom_score_adj.log
+            for pid in $(pgrep -f ydbd) $(pgrep -f qemu-system-x86_64); do
+                # check if process is already having oom_score_adj set to 500 if not then set it
+                if [ "$(cat /proc/$pid/oom_score_adj)" != "1000" ]; then
+                    echo 1000 | sudo tee /proc/$pid/oom_score_adj
+                    echo "set oom_score_adj=1000 for pid: $pid" | tee -a /tmp/oom_score_adj.log
+                fi
+            done
+            echo "$(date) sleeping for 30s" | tee -a /tmp/oom_score_adj.log
+            sleep 30
         done &
-
     - name: Build
       id: build
       uses: ./.github/actions/build

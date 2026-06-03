@@ -11,7 +11,6 @@ SRCS(
     persistent_storage_stats.cpp
     queued_operations.cpp
     read_response_builder.cpp
-    relaxed_counters.cpp
     sequence_id_generator.cpp
     utils.cpp
     write_back_cache.cpp

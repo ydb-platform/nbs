@@ -127,6 +127,16 @@ build {
     destination = "${local.tmp_directory}/actions-runner-job-completed-cleanup.sh"
   }
 
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/install-github-release-tools.sh"
+    destination = "${local.tmp_directory}/install-github-release-tools.sh"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/github-release-tools.txt"
+    destination = "${local.tmp_directory}/github-release-tools.txt"
+  }
+
   provisioner "shell" {
     environment_vars = [
       "RUNNER_VERSION=${var.RUNNER_VERSION}",

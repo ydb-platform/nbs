@@ -1,0 +1,30 @@
+name: Shellcheck report
+description: Run shellcheck for shell scripts and generated workflow/action scripts
+
+outputs:
+  exit_code:
+    description: "shellcheck exit code"
+    value: ${{ steps.shellcheck.outputs.exit_code }}
+  has_report:
+    description: "Whether shellcheck report files were generated"
+    value: ${{ steps.shellcheck.outputs.has_report }}
+  log_path:
+    description: "Captured shellcheck log path"
+    value: ${{ steps.shellcheck.outputs.log_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: shellcheck
+      id: shellcheck
+      uses: ./.github/actions/lint_report
+      with:
+        title: "Shell Scripts shellcheck"
+        tool: shellcheck
+        report_name: ga-scripts-shellcheck
+        show_summary_table: "false"
+        command: |
+          bash .github/scripts/list_shell_files.sh |
+            xargs -0 --no-run-if-empty shellcheck -f gcc ${SHELLCHECK_OPTS:-}
+      env:
+        SHELLCHECK_OPTS: "-e SC2155,SC2086"

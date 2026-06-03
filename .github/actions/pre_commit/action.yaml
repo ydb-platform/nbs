@@ -1,0 +1,29 @@
+name: pre-commit
+description: Run pre-commit with a cached hook environment
+
+inputs:
+  extra_args:
+    required: false
+    default: "--all-files"
+    description: "Options to pass to pre-commit run"
+
+runs:
+  using: composite
+  steps:
+    - name: install pre-commit
+      shell: bash
+      run: python -m pip install pre-commit==4.6.0
+
+    - name: show python packages
+      shell: bash
+      run: python -m pip freeze --local
+
+    - name: cache pre-commit environments
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-3|${{ env.pythonLocation }}|${{ hashFiles('.pre-commit-config.yaml') }}
+
+    - name: run pre-commit
+      shell: bash
+      run: pre-commit run --show-diff-on-failure --color=always ${{ inputs.extra_args }}

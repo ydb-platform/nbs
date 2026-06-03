@@ -290,6 +290,11 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&MaxRegionSize);
 
     opts.AddLongOption(
+        "disable-parallel-read-write",
+        "disable reading regions that are being written")
+        .StoreTrue(&DisableParallelReadWrite);
+
+    opts.AddLongOption(
         "debug",
         "print debug statistics")
         .StoreTrue(&PrintDebugStats);

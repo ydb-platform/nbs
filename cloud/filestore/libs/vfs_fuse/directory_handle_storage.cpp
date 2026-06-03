@@ -2,7 +2,11 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <util/generic/buffer.h>
+#include <util/generic/scope.h>
+#include <util/system/yassert.h>
 
 #include <utility>
 
@@ -14,7 +18,10 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     TDirectoryHandleStorageArgs args)
     : Log(std::move(args.Log))
     , PersistentHandleMaxSize(args.PersistentHandleMaxSize)
+    , Stats(std::move(args.Stats))
 {
+    Y_ABORT_UNLESS(Stats);
+
     Table = std::make_unique<TDirectoryHandleTable>(
         args.FilePath,
         TDynamicPersistentTableConfig{
@@ -24,6 +31,8 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
             .InitialDataMoveBufferSize = args.InitialDataMoveBufferSize,
         },
         std::move(args.FileMapMemoryLimiter));
+
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -43,7 +52,7 @@ void TDirectoryHandleStorage::StoreHandle(
         return;
     }
 
-    CreateRecord(handleId, record, handle.GetMetrics().first);
+    CreateRecord(handleId, record, handle.GetStats().SerializedSize);
 }
 
 void TDirectoryHandleStorage::UpdateHandle(
@@ -68,7 +77,7 @@ void TDirectoryHandleStorage::UpdateHandle(
         return;
     }
 
-    CreateRecord(handleId, record, handle.GetMetrics().first);
+    CreateRecord(handleId, record, handle.GetStats().SerializedSize);
 }
 
 void TDirectoryHandleStorage::CreateRecord(
@@ -80,6 +89,11 @@ void TDirectoryHandleStorage::CreateRecord(
     {
         RemoveRecords(handleId);
         HandlesExcludedFromStorage.insert(handleId);
+    };
+
+    Y_DEFER
+    {
+        UpdateCounters();
     };
 
     if (!CanStoreHandle(handleSerializedSize)) {
@@ -114,6 +128,7 @@ void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
     TGuard guard(TableLock);
     HandlesExcludedFromStorage.erase(handleId);
     RemoveRecords(handleId);
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
@@ -139,6 +154,8 @@ void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
             std::next(HandleIdToIndices[handleId].begin(), 1),
             HandleIdToIndices[handleId].end());
     }
+
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
@@ -229,7 +246,7 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
     TVector<ui64> oversizedHandleIds;
     if (PersistentHandleMaxSize) {
         for (const auto& [handleId, handle]: handles) {
-            const ui64 handleSerializedSize = handle->GetMetrics().first;
+            const ui64 handleSerializedSize = handle->GetStats().SerializedSize;
             if (handleSerializedSize <= PersistentHandleMaxSize) {
                 continue;
             }
@@ -247,6 +264,8 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
         RemoveHandle(handleId);
         handles.erase(handleId);
     }
+
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::Clear()
@@ -255,6 +274,7 @@ void TDirectoryHandleStorage::Clear()
     Table->Clear();
     HandleIdToIndices.clear();
     HandlesExcludedFromStorage.clear();
+    UpdateCounters();
 }
 
 // TODO: We can optimize this by counting size for serialization dynamically and
@@ -334,6 +354,11 @@ void TDirectoryHandleStorage::RemoveRecords(ui64 handleId)
 
     HandleIdToIndices.erase(it);
     Table->TryDeallocateMemory();
+}
+
+void TDirectoryHandleStorage::UpdateCounters()
+{
+    Stats->SetCounters(Table->GetCounters());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
