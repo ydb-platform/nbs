@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -13,6 +14,31 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const maxRetriableErrorCount = 3
+
+////////////////////////////////////////////////////////////////////////////////
+
+type testS3TokenProvider struct {
+	token string
+}
+
+func (p *testS3TokenProvider) Token(ctx context.Context) (string, error) {
+	return p.token, nil
+}
+
+type testRoundTripper struct {
+	request *http.Request
+}
+
+func (t *testRoundTripper) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
+
+	t.request = request
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       http.NoBody,
+	}, nil
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,7 +56,35 @@ func newS3Client(
 		metricsRegistry,
 		maxRetriableErrorCount,
 		nil, // availabilityMonitoring
+		nil, // tokenProvider
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestS3TokenAuthTransportShouldSetAuthorizationHeader(t *testing.T) {
+	inner := &testRoundTripper{}
+	transport := &s3TokenAuthTransport{
+		inner: inner,
+		tokenProvider: &testS3TokenProvider{
+			token: "test-token",
+		},
+	}
+
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com",
+		nil,
+	)
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "AWS test-signature")
+
+	_, err = transport.RoundTrip(request)
+	require.NoError(t, err)
+
+	require.Equal(t, "Bearer test-token", inner.request.Header.Get("Authorization"))
+	require.Equal(t, "AWS test-signature", request.Header.Get("Authorization"))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

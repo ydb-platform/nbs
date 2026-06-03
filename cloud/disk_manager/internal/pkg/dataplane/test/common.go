@@ -30,6 +30,7 @@ func NewS3Client() (*persistence.S3Client, error) {
 		metrics.NewEmptyRegistry(),
 		100, // maxRetriableErrorCount
 		nil, // availabilityMonitoring
+		nil, // tokenProvider
 	)
 }
 

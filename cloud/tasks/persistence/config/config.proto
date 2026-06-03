@@ -22,7 +22,8 @@ message PersistenceConfig {
 message S3Config {
     required string Endpoint = 1;
     required string Region = 2;
-    required string CredentialsFilePath = 3;
+    optional string CredentialsFilePath = 3;
     optional string CallTimeout = 4 [default = "60s"];
     optional uint64 MaxRetriableErrorCount = 5 [default = 3];
+    optional bool UseIamToken = 6;
 }

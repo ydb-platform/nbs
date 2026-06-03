@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"time"
 
@@ -48,6 +50,10 @@ type S3Client struct {
 	metrics     *s3Metrics
 }
 
+type S3TokenProvider interface {
+	Token(ctx context.Context) (string, error)
+}
+
 func NewS3Client(
 	endpoint string,
 	region string,
@@ -56,6 +62,7 @@ func NewS3Client(
 	registry metrics.Registry,
 	maxRetriableErrorCount uint64,
 	availabilityMonitoring *AvailabilityMonitoring,
+	tokenProvider S3TokenProvider,
 ) (*S3Client, error) {
 
 	s3Metrics := newS3Metrics(
@@ -80,6 +87,9 @@ func NewS3Client(
 			metrics: s3Metrics,
 		},
 	}
+	if tokenProvider != nil {
+		sessionConfig.HTTPClient = newS3TokenAuthHTTPClient(tokenProvider)
+	}
 
 	session, err := session.NewSession(sessionConfig)
 	if err != nil {
@@ -97,9 +107,10 @@ func NewS3ClientFromConfig(
 	config *persistence_config.S3Config,
 	registry metrics.Registry,
 	availabilityMonitoring *AvailabilityMonitoring,
+	tokenProvider S3TokenProvider,
 ) (*S3Client, error) {
 
-	credentials, err := NewS3CredentialsFromFile(config.GetCredentialsFilePath())
+	credentials, err := newS3CredentialsFromConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +123,14 @@ func NewS3ClientFromConfig(
 		)
 	}
 
+	if !config.GetUseIamToken() {
+		tokenProvider = nil
+	} else if tokenProvider == nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"S3 IAM token authorization is enabled, but token provider is not configured",
+		)
+	}
+
 	return NewS3Client(
 		config.GetEndpoint(),
 		config.GetRegion(),
@@ -120,7 +139,50 @@ func NewS3ClientFromConfig(
 		registry,
 		config.GetMaxRetriableErrorCount(),
 		availabilityMonitoring,
+		tokenProvider,
 	)
+}
+
+func newS3CredentialsFromConfig(
+	config *persistence_config.S3Config,
+) (S3Credentials, error) {
+
+	if config.GetUseIamToken() && len(config.GetCredentialsFilePath()) == 0 {
+		// AWS SDK v1 still expects credentials for signing; the transport
+		// replaces the Authorization header with the IAM bearer token.
+		return NewS3Credentials("iam-token", "iam-token"), nil
+	}
+
+	return NewS3CredentialsFromFile(config.GetCredentialsFilePath())
+}
+
+type s3TokenAuthTransport struct {
+	inner         http.RoundTripper
+	tokenProvider S3TokenProvider
+}
+
+func newS3TokenAuthHTTPClient(tokenProvider S3TokenProvider) *http.Client {
+	return &http.Client{
+		Transport: &s3TokenAuthTransport{
+			inner:         http.DefaultTransport,
+			tokenProvider: tokenProvider,
+		},
+	}
+}
+
+func (t *s3TokenAuthTransport) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
+
+	token, err := t.tokenProvider.Token(request.Context())
+	if err != nil {
+		return nil, fmt.Errorf("get token via token provider: %w", err)
+	}
+
+	request = request.Clone(request.Context())
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	return t.inner.RoundTrip(request)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
