@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
 
+#include <library/cpp/protobuf/util/pb_io.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/list.h>
 
@@ -188,6 +190,50 @@ private:
             });
     }
 
+    size_t SerializeReadBlocksResponse(
+        const NProto::TReadBlocksResponse& response,
+        TStringBuf out,
+        ui32 flags,
+        TGuardedSgList::TGuard& guard) const
+    {
+        return SUCCEEDED(response.GetError().GetCode())
+            ? NCloud::NStorage::NRdma::
+                TProtoMessageSerializer::
+                    SerializeWithData(
+                        out,
+                        TBlockStoreServerProtocol::
+                            EvReadBlocksResponse,
+                        flags,
+                        response,
+                        guard.Get())
+            : NCloud::NStorage::NRdma::
+                TProtoMessageSerializer::Serialize(
+                    out,
+                    TBlockStoreServerProtocol::
+                        EvReadBlocksResponse,
+                    flags,
+                    response);
+    }
+
+    template <typename TResponse>
+    void OnSerializeException(
+        TResponse& response,
+        TStringBuf responseName) const
+    {
+        TStringBuilder msg;
+        SerializeToTextFormat(response, msg);
+        STORAGE_ERROR(
+            TStringBuilder() <<
+            "Unable to serialize " << responseName << " protobuf: [" <<
+            msg <<
+            "] with exception: " <<
+            CurrentExceptionMessage());
+        response = TResponse{};
+        *response.MutableError() = MakeError(
+            E_REJECTED,
+            CurrentExceptionMessage());
+    }
+
     NProto::TError HandleReadBlocksRequest(
         void* context,
         TCallContextPtr callContext,
@@ -231,7 +277,8 @@ private:
              guardedSgList = std::move(guardedSgList),
              blockSize = request->GetBlockSize(),
              taskQueue = TaskQueue,
-             endpoint = Endpoint](auto future) mutable
+             endpoint = Endpoint,
+             weakSelf = weak_from_this()](auto future) mutable
             {
                 auto response = ExtractResponse(future);
                 FillResponse(callContext, response);
@@ -239,7 +286,8 @@ private:
                 taskQueue->ExecuteSimple(
                     [=,
                      buffer = std::move(buffer),
-                     guardedSgList = std::move(guardedSgList)]() mutable
+                     guardedSgList = std::move(guardedSgList),
+                     weakSelf = std::move(weakSelf)]() mutable
                     {
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
@@ -250,7 +298,11 @@ private:
                         }
 
                         auto guard = guardedSgList.Acquire();
-                        Y_ENSURE(guard);
+                        if (!guard) {
+                            *response.MutableError() = MakeError(
+                                E_CANCELLED,
+                                "failed to acquire sglist in Rdma ReadBlocks handler");
+                        }
 
                         ui32 flags = 0;
                         SetProtoFlag(
@@ -258,23 +310,23 @@ private:
                             NCloud::NStorage::NRdma::
                                 RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
-                        size_t responseBytes =
-                            SUCCEEDED(response.GetError().GetCode())
-                                ? NCloud::NStorage::NRdma::
-                                      TProtoMessageSerializer::
-                                          SerializeWithData(
-                                              out,
-                                              TBlockStoreServerProtocol::
-                                                  EvReadBlocksResponse,
-                                              flags,   // flags
-                                              response, guard.Get())
-                                : NCloud::NStorage::NRdma::
-                                      TProtoMessageSerializer::Serialize(
-                                          out,
-                                          TBlockStoreServerProtocol::
-                                              EvReadBlocksResponse,
-                                          flags,   // flags
-                                          response);
+                        size_t responseBytes = 0;
+                        try {
+                            responseBytes = SerializeReadBlocksResponse(
+                                response,
+                                out,
+                                flags,
+                                guard);
+                        } catch (...) {
+                            if (auto self = weakSelf.lock()) {
+                                self->OnSerializeException(response, "ReadBlocks");
+                            }
+                            responseBytes = SerializeReadBlocksResponse(
+                                response,
+                                out,
+                                flags,
+                                guard);
+                        }
 
                         if (auto ep = endpoint.lock()) {
                             ep->SendResponse(context, responseBytes);
@@ -319,7 +371,7 @@ private:
 
         auto future = Service->WriteBlocksLocal(callContext, std::move(req));
 
-        future.Subscribe([=, taskQueue = TaskQueue, endpoint = Endpoint] (auto future) {
+        future.Subscribe([=, taskQueue = TaskQueue, endpoint = Endpoint, weakSelf = weak_from_this()] (auto future) {
             auto response = ExtractResponse(future);
             FillResponse(callContext, response);
 
@@ -336,12 +388,26 @@ private:
                 SetProtoFlag(
                     flags,
                     NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-                size_t responseBytes =
-                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreServerProtocol::EvWriteBlocksResponse,
-                        flags,   // flags
-                        response);
+
+                size_t responseBytes = 0;
+                try {
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvWriteBlocksResponse,
+                            flags,   // flags
+                            response);
+                } catch (...) {
+                    if (auto self = weakSelf.lock()) {
+                        self->OnSerializeException(response, "WriteBlocks");
+                    }
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvWriteBlocksResponse,
+                            flags,   // flags
+                            response);
+                }
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
                 }
@@ -378,7 +444,8 @@ private:
             [out = out,
              context = context,
              endpoint = Endpoint,
-             callContext = std::move(callContext)](auto future)
+             callContext = std::move(callContext),
+             weakSelf = weak_from_this()](auto future)
             {
                 auto response = ExtractResponse(future);
                 FillResponse(callContext, response);
@@ -395,13 +462,26 @@ private:
                 SetProtoFlag(
                     flags,
                     NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-                size_t responseBytes =
-                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreServerProtocol::EvZeroBlocksResponse,
-                        flags,   // flags
-                        response);
 
+                size_t responseBytes = 0;
+                try {
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvZeroBlocksResponse,
+                            flags,   // flags
+                            response);
+                } catch (...) {
+                    if (auto self = weakSelf.lock()) {
+                        self->OnSerializeException(response, "ZeroBlocksResponse");
+                    }
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvZeroBlocksResponse,
+                            flags,   // flags
+                            response);
+                }
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
                 }
@@ -427,6 +507,7 @@ private:
         ui32 flags = 0;
         SetProtoFlag(
             flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+
         size_t responseBytes =
             NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
                 out,
@@ -469,17 +550,31 @@ private:
             [out = out,
              context = context,
              endpoint = Endpoint,
-             callContext = std::move(callContext)](auto future)
+             callContext = std::move(callContext),
+             weakSelf = weak_from_this()](auto future)
             {
                 auto response = ExtractResponse(future);
 
                 ui32 flags = 0;
-                size_t responseBytes =
-                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreServerProtocol::EvMountVolumeResponse,
-                        flags,   // flags
-                        response);
+                size_t responseBytes = 0;
+                try {
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvMountVolumeResponse,
+                            flags,   // flags
+                            response);
+                } catch (...) {
+                    if (auto self = weakSelf.lock()) {
+                        self->OnSerializeException(response, "MountVolumeResponse");
+                    }
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvMountVolumeResponse,
+                            flags,   // flags
+                            response);
+                }
 
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
@@ -517,17 +612,31 @@ private:
             [out = out,
              context = context,
              endpoint = Endpoint,
-             callContext = std::move(callContext)](auto future)
+             callContext = std::move(callContext),
+             weakSelf = weak_from_this()](auto future)
             {
                 auto response = ExtractResponse(future);
 
                 ui32 flags = 0;
-                size_t responseBytes =
-                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreServerProtocol::EvUnmountVolumeResponse,
-                        flags,   // flags
-                        response);
+                size_t responseBytes = 0;
+                try {
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvUnmountVolumeResponse,
+                            flags,   // flags
+                            response);
+                } catch (...) {
+                    if (auto self = weakSelf.lock()) {
+                        self->OnSerializeException(response, "UnmountVolumeResponse");
+                    }
+                    responseBytes =
+                        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreServerProtocol::EvUnmountVolumeResponse,
+                            flags,   // flags
+                            response);
+                }
 
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
