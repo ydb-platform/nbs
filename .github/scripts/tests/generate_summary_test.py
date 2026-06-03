@@ -174,6 +174,34 @@ def test_write_summary_renders_expected_table_row(tmp_path: Path, monkeypatch) -
     ) in content
 
 
+def test_write_summary_links_fail_build_log(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    line = gs.TestSummaryLine("Tests")
+    line.add(
+        gs.TestResult(
+            "cls",
+            "build_failed",
+            gs.TestStatus.FAIL_BUILD,
+            {},
+            1.0,
+            False,
+        )
+    )
+    line.add_report("ya-test.html", "https://summary/ya-test.html")
+
+    summary = gs.TestSummary()
+    summary.add_line(line)
+
+    out = tmp_path / "summary_env"
+    gs.write_summary(summary, str(out), "https://summary/build_errors.md")
+    content = out.read_text()
+
+    assert (
+        "[1](https://summary/ya-test.html#FAIL_BUILD) "
+        "([log](https://summary/build_errors.md))"
+    ) in content
+
+
 def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
 
@@ -814,3 +842,50 @@ def test_complete_workload_checks_block_preserves_failed_build_rows() -> None:
     assert ":white_check_mark:" in updated
     assert "https://github.example/job/123" in updated
     assert "https://github.example/job/456" in updated
+
+
+def test_update_workload_check_block_adds_failed_build_log_link() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                "https://github.example/job/123",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.update_workload_check_block(
+        body,
+        "blockstore",
+        "failed_build",
+        build_error_log_url="https://logs/build_errors.md",
+    )
+
+    assert "build failed" in updated
+    assert "[log](https://logs/build_errors.md)" in updated
+    assert "file.cpp:1:1: error: broken" not in updated
+
+    completed = gs.complete_workload_checks_block(updated)
+    assert "[log](https://logs/build_errors.md)" in completed
+
+
+def test_update_workload_check_block_preserves_failed_build_log_on_completion() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "failed_build",
+                build_error_log_url="https://logs/build_errors.md",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.update_workload_check_block(body, "blockstore", "completed")
+
+    assert "https://logs/build_errors.md" in updated
+    assert gs.get_workload_check_status(updated, "blockstore") == "failed_build"

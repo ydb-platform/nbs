@@ -71,6 +71,12 @@ outputs:
   failed_tests:
     description: "List of failed tests"
     value: ${{ steps.check_test_results.outputs.failed_tests }}
+  build_failed:
+    description: "Whether ya test failed because a test target build failed"
+    value: ${{ steps.check_test_results.outputs.build_failed }}
+  build_error_log_url:
+    description: "URL to Markdown summary of ya build errors found during tests"
+    value: ${{ steps.check_test_results.outputs.build_error_log_url }}
 
 runs:
   using: composite
@@ -135,6 +141,7 @@ runs:
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
         chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
     - name: ya test
+      id: check_test_results
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
@@ -247,6 +254,7 @@ runs:
         RETRIES="${NUMBER_OF_RETRIES}"
         OOM_CAN_BE_RETRIED=1
         BUILD_FAILED=0
+        BUILD_ERROR_LOG_URL=""
 
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
@@ -263,6 +271,7 @@ runs:
             sudo -E -H -u github mkdir -p "$RETRY_LOG_DIR"
             echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
             echo "::group::ya-make-test-${i}"
+            EXIT_CODE_FILE=$(mktemp)
             set +e
             {
                 sudo -E -H -u github ./ya make "${test_size[@]/#/--test-size=}" \
@@ -272,10 +281,11 @@ runs:
                     --log-file "$RETRY_LOG_DIR/ya_log.txt" \
                     --evlog-file "$RETRY_LOG_DIR/ya_evlog.jsonl" \
                     "$RETRY_FLAG"
-                echo $? > exit_code
+                echo $? > "$EXIT_CODE_FILE"
             } |& tee "$RETRY_LOG_DIR/ya_make_output.txt"
             set -e
-            RC=$(< exit_code)
+            RC=$(< "$EXIT_CODE_FILE")
+            rm -f "$EXIT_CODE_FILE"
             DO_RETRY=0
             case $RC in
                 0)
@@ -356,11 +366,12 @@ runs:
                 fi
                 BUILD_FAILED_COUNT_TMP=$BUILD_FAILED_COUNT
                 FAIL_CHECKER_TEMP_FILE=$(mktemp -p /home/github)
+                FAIL_CHECKER_EXIT_CODE_FILE=$(mktemp)
                 set +e
                 {
                     sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                         python3 -m scripts.tests.fail_checker "${JUNIT_REPORT_XML}.${i}"
-                    echo $? > fail_checker_exit_code
+                    echo $? > "$FAIL_CHECKER_EXIT_CODE_FILE"
                 } |& tee fail-checker-output.log
                 set -e
                 if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
@@ -376,7 +387,8 @@ runs:
                     echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP" | tee -a "$GITHUB_ENV"
                     BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP
                 fi
-                FAIL_CHECKER_RC=$(< fail_checker_exit_code)
+                FAIL_CHECKER_RC=$(< "$FAIL_CHECKER_EXIT_CODE_FILE")
+                rm -f "$FAIL_CHECKER_EXIT_CODE_FILE"
                 if [ "$FAIL_CHECKER_RC" -ne 0 ]; then
                     NEED_COPYING=1
                     echo "::group::Copy-failed-tests-data"
@@ -435,6 +447,26 @@ runs:
             cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
 
             platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
+            BUILD_ERROR_LOG_URL_FOR_ITERATION=""
+
+            if [ "$FAIL_CHECKER_RC" -eq 237 ]; then
+                SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.md"
+                BUILD_ERROR_LOG_URL_FOR_ITERATION="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/build_errors.md"
+                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                    python3 -m scripts.tests.ya_build_errors \
+                    --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
+                    --log "$LOG_DIR/${i}/ya_log.txt" \
+                    --ya-log-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_log.txt" \
+                    --evlog-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
+                    > "$SUMMARY_FILE"
+
+                if [ -s "$SUMMARY_FILE" ]; then
+                    BUILD_ERROR_LOG_URL="$BUILD_ERROR_LOG_URL_FOR_ITERATION"
+                else
+                    BUILD_ERROR_LOG_URL_FOR_ITERATION=""
+                    rm -f "$SUMMARY_FILE"
+                fi
+            fi
 
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
             chown github:github $SUMMARY_OUT_ENV_PATH
@@ -447,6 +479,7 @@ runs:
                 --workload-status in_progress \
                 --test-target "${TEST_TARGET//\"/}" \
                 --test-time $((TEST_END_TIME - TEST_START_TIME)) \
+                --build-error-log-url "$BUILD_ERROR_LOG_URL_FOR_ITERATION" \
                 "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
 
             cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
@@ -482,9 +515,13 @@ runs:
         if [ "$BUILD_FAILED" -eq 1 ]; then
             echo "BUILD_FAILED=1" | tee -a "$GITHUB_ENV"
             echo "failed_tests=yes" >> $GITHUB_OUTPUT
+            echo "build_failed=1" >> $GITHUB_OUTPUT
+            echo "build_error_log_url=$BUILD_ERROR_LOG_URL" >> $GITHUB_OUTPUT
         else
             echo "BUILD_FAILED=0" | tee -a "$GITHUB_ENV"
             echo "failed_tests=yes" >> $GITHUB_OUTPUT
+            echo "build_failed=0" >> $GITHUB_OUTPUT
+            echo "build_error_log_url=" >> $GITHUB_OUTPUT
         fi
     - name: copying system files
       if: ${{ always() }}

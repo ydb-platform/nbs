@@ -301,7 +301,10 @@ class TestSummary:
         return f"| {' | '.join(items)} |"
 
     def render(
-        self, add_footnote: bool = False, build_failed_count: int = 0
+        self,
+        add_footnote: bool = False,
+        build_failed_count: int = 0,
+        build_error_log_url: str = "",
     ) -> list[str]:
         github_srv = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/nbs")
@@ -346,7 +349,10 @@ class TestSummary:
                 status_url = (
                     f"{report_url}#{status.report_anchor}" if report_url else None
                 )
-                row.append(render_pm(count, status_url, 0))
+                cell = render_pm(count, status_url, 0)
+                if status == TestStatus.FAIL_BUILD and count and build_error_log_url:
+                    cell = f"{cell} ([log]({build_error_log_url}))"
+                row.append(cell)
             result.append(self.render_line(row))
 
         if add_footnote:
@@ -385,6 +391,7 @@ def render_summary_markdown(
     *,
     add_footnote: bool = False,
     build_failed_count: int = 0,
+    build_error_log_url: str = "",
 ) -> str:
     if summary.is_empty:
         return ""
@@ -392,6 +399,7 @@ def render_summary_markdown(
         summary.render(
             add_footnote=add_footnote,
             build_failed_count=build_failed_count,
+            build_error_log_url=build_error_log_url,
         )
     )
 
@@ -428,7 +436,11 @@ def render_testlist_html(rows: list[TestResult], fn: str, summary_url: str) -> N
         fp.write(content)
 
 
-def write_summary(summary: TestSummary, summary_out_env_path: str = "") -> None:
+def write_summary(
+    summary: TestSummary,
+    summary_out_env_path: str = "",
+    build_error_log_url: str = "",
+) -> None:
     summary_fn = summary_out_env_path or os.environ.get("GITHUB_STEP_SUMMARY")
 
     with _summary_output_stream(summary_fn) as fp:
@@ -440,6 +452,7 @@ def write_summary(summary: TestSummary, summary_out_env_path: str = "") -> None:
             for line in summary.render(
                 add_footnote=True,
                 build_failed_count=get_build_failed_count(),
+                build_error_log_url=build_error_log_url,
             ):
                 fp.write(f"{line}\n")
 
@@ -501,6 +514,7 @@ def get_comment_text(
     test_history_url: str,
     test_target: str,
     test_time: str,
+    build_error_log_url: str = "",
 ) -> list[str]:
     test_target_message = f" target: **{test_target}**" if test_target else ""
     test_time_message = (
@@ -527,7 +541,12 @@ def get_comment_text(
         body.append("")
         body.append(f"[Test history]({test_history_url})")
 
-    body.extend(summary.render(build_failed_count=get_build_failed_count()))
+    body.extend(
+        summary.render(
+            build_failed_count=get_build_failed_count(),
+            build_error_log_url=build_error_log_url,
+        )
+    )
 
     return body
 
@@ -632,6 +651,7 @@ def get_workload_check_line(
     component: str,
     status: str,
     job_url: str = "",
+    build_error_log_url: str = "",
 ) -> str:
     suffixes = {
         "pending": "",
@@ -642,8 +662,11 @@ def get_workload_check_line(
     label = get_workload_label(component)
     if job_url:
         label = f"[{label}]({job_url})"
+    suffix = suffixes[status]
+    if status == "failed_build" and build_error_log_url:
+        suffix = f" (build failed, [log]({build_error_log_url}))"
     return (
-        f"- {WORKLOAD_CHECK_STATUS_ICONS[status]} {label}{suffixes[status]} "
+        f"- {WORKLOAD_CHECK_STATUS_ICONS[status]} {label}{suffix} "
         f"{get_workload_check_marker(component)}"
     )
 
@@ -802,6 +825,7 @@ def update_workload_check_block(
     component: str,
     status: str,
     job_url: str = "",
+    build_error_log_url: str = "",
 ) -> str:
     match = get_workload_check_line_match(body, component)
     if match is None:
@@ -826,11 +850,12 @@ def update_workload_check_block(
 
     marker = get_workload_check_marker(component)
     pattern = re.compile(rf"^.*{re.escape(marker)}$", re.MULTILINE)
-    return pattern.sub(
-        get_workload_check_line(component, status, job_url),
+    updated = pattern.sub(
+        get_workload_check_line(component, status, job_url, build_error_log_url),
         body,
         count=1,
     )
+    return updated
 
 
 def complete_workload_checks_block(body: str) -> str:
@@ -965,6 +990,7 @@ def update_pr_comment(
     test_time: str,
     is_dry_run: bool,
     workload_status: str,
+    build_error_log_url: str = "",
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
     header_prefix = get_comment_header_prefix(
@@ -1001,6 +1027,7 @@ def update_pr_comment(
             test_history_url,
             test_target,
             test_time,
+            build_error_log_url,
         )
     )
 
@@ -1091,6 +1118,7 @@ def update_pr_comment_workload_check(
     is_dry_run: bool,
     workload_check_status: str,
     job_url: str = "",
+    build_error_log_url: str = "",
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,
@@ -1129,6 +1157,7 @@ def update_pr_comment_workload_check(
             component,
             workload_check_status,
             job_url,
+            build_error_log_url,
         ),
         is_applied=lambda body: is_workload_check_update_applied(
             body,
@@ -1191,6 +1220,7 @@ def main() -> None:
         help="Add mark in comments that this is simulation, not real result",
     )
     parser.add_argument("--test-time", default="0", required=False)
+    parser.add_argument("--build-error-log-url", default="", required=False)
     parser.add_argument(
         "--workload-status",
         choices=("in_progress", "completed"),
@@ -1217,7 +1247,11 @@ def main() -> None:
         summary = gen_summary(
             args.summary_url_prefix, args.summary_out_path, title_path
         )
-        write_summary(summary, args.summary_out_env_path)
+        write_summary(
+            summary,
+            args.summary_out_env_path,
+            build_error_log_url=args.build_error_log_url,
+        )
     elif not args.update_workload_status_only:
         LOGGER.error("No summary inputs provided")
         raise SystemExit(-1)
@@ -1245,6 +1279,7 @@ def main() -> None:
             args.build_preset,
             args.is_dry_run,
             args.workload_status,
+            args.build_error_log_url,
         )
     else:
         assert summary is not None
