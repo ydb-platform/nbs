@@ -3686,6 +3686,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 restartTabletRequests = 0;
         ui32 getStorageStatsResponses = 0;
         bool patchedStorageStatsResponse = false;
+        bool blockCreateSession = false;
         runtime.SetEventFilter(
             [&](auto&, TAutoPtr<IEventHandle>& event)
             {
@@ -3720,10 +3721,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         }
                         break;
                     }
+                    case TEvIndexTablet::EvCreateSessionRequest: {
+                        if (blockCreateSession) {
+                            return true;
+                        }
+                        break;
+                    }
                 }
 
                 return false;
             });
+
+        blockCreateSession = true;
 
         auto destroyFileStoreResponse =
             service.AssertDestroyFileStoreFailed(fsId);
