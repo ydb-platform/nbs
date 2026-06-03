@@ -243,7 +243,7 @@ private:
 
     std::atomic<ui64> ValidationOffset = 0;
     std::atomic<ui64> ValidatedByteCount = 0;
-    bool ShouldValidate = false;
+    std::atomic<bool> ShouldValidate = false;
 
 public:
     TUnalignedTestScenario(
@@ -601,8 +601,9 @@ void TUnalignedTestScenario::Read(
             }
             if (offset < FileSize) {
                 len = Min(len, FileSize - offset);
-                Read(service, offset, len, true, readBuffer);
-                return;
+                if (Read(service, offset, len, true, readBuffer)) {
+                    break;
+                }
             }
         }
 
@@ -870,7 +871,7 @@ size_t TUnalignedTestScenario::WriteBegin(IService& service)
 
     if (!hasAvailableRegions) {
         // There are no available regions for writing
-        // A called is expected to read instead
+        // A caller is expected to read instead
         return InvalidRegionIndex;
     }
 
