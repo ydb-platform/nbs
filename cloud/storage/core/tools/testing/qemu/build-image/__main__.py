@@ -138,7 +138,8 @@ def write_user_data(filename, args):
         })
 
     if args.release in ["noble"]:
-        user_data['packages'].append("linux-generic-hwe-24.04");
+        user_data['packages'].append("linux-generic-hwe-24.04")
+        # linux-generic-hwe-24.04-edge for linux 7+ kernel
 
     if args.plain_pwd:
         user_data['runcmd'].append(
