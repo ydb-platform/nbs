@@ -278,10 +278,10 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
 
         state->DropVolumeHealthResponses = true;
         SendBrokenDeviceNotification(volume, "uuid-1");
-        runtime->DispatchEvents({}, 1s);
-        UNIT_ASSERT_VALUES_EQUAL(
-            requestsBefore + 1,
-            state->UpdateVolumeHealthRequests);
+        runtime->DispatchEvents({
+            .CustomFinalCondition = [&]
+            { return state->UpdateVolumeHealthRequests == requestsBefore + 1; },
+        });
         UNIT_ASSERT_EQUAL(
             NProto::VOLUME_HEALTH_UNHEALTHY,
             state->LastVolumeHealth);
