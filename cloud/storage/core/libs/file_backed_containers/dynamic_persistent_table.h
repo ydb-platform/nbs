@@ -996,14 +996,14 @@ private:
 
     void ShrinkDataArea()
     {
-        if (GapSpaceSize != 0) {
-            CompactDataArea();
-        }
-
         const ui64 newDataAreaSize = CalcShrinkTargetSize();
         if (newDataAreaSize == DataAreaSize) {
             ResetShrinkState();
             return;
+        }
+
+        if (GapSpaceSize != 0) {
+            CompactDataArea();
         }
 
         DataAreaSize = newDataAreaSize;

@@ -1437,6 +1437,100 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             dataAreaSizeAfterSecondAlloc);
     }
 
+    Y_UNIT_TEST(ShouldSkipCompactionWhenShrinkCannotReduceDataArea)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "skip_compaction.table";
+
+        // DataAreaSize stays at InitialDataAreaSize, so CalcShrinkTargetSize()
+        // always rounds back up to it and shrink can never actually reduce the
+        // area. ShrinkDataArea must return early without compacting.
+        const ui64 initialDataAreaSize = 4_KB;
+        const TString payload(512, 'z');
+        const ui64 shrinkLowMemoryOpThreshold = 1;
+
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataMoveBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+                .ShrinkMode = EDynamicPersistentTableShrinkMode::AnyOp,
+            });
+
+        TVector<ui64> indices = FillTable(table, 8, payload);
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialDataAreaSize,
+            GetTableHeader(table)->DataAreaSize);
+
+        const auto baseline = table.GetCounters();
+
+        DeleteRecords(table, indices, 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, table.CountRecords());
+
+        const auto stats = table.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialDataAreaSize,
+            GetTableHeader(table)->DataAreaSize);
+        UNIT_ASSERT_VALUES_EQUAL(baseline.ShrinkCount, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            baseline.CompactionCount,
+            stats.CompactionCount);
+
+        TStringBuf survivor = table.GetRecordWithValidation(indices.front());
+        UNIT_ASSERT_VALUES_EQUAL(payload, TString(survivor));
+    }
+
+    Y_UNIT_TEST(ShouldCompactDuringShrinkWhenGapPresentAndShrinkPossible)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "shrink_with_compact.table";
+
+        // DataAreaSize has grown past InitialDataAreaSize, so
+        // CalcShrinkTargetSize() returns a value strictly less than the
+        // current size. With a non-zero gap, ShrinkDataArea must compact
+        // first (at its new position after the early-return check) and
+        // then shrink — both counters must tick by exactly one.
+        const ui64 initialDataAreaSize = 4_KB;
+        const TString payload(1_KB, 's');
+        const ui64 shrinkLowMemoryOpThreshold = 3;
+        const ui64 totalRecords = 9;
+        const ui64 keptRecords = 3;
+
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataMoveBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+            });
+
+        TVector<ui64> indices = FillTable(table, totalRecords, payload);
+        UNIT_ASSERT_VALUES_EQUAL(16_KB, GetTableHeader(table)->DataAreaSize);
+
+        DeleteRecords(table, indices, keptRecords);
+        UNIT_ASSERT_VALUES_EQUAL(keptRecords, table.CountRecords());
+
+        const auto baseline = table.GetCounters();
+        const ui64 newIndex = AllocAndCommitRecord(table, payload);
+
+        const auto stats = table.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(8_KB, GetTableHeader(table)->DataAreaSize);
+        UNIT_ASSERT_VALUES_EQUAL(baseline.ShrinkCount + 1, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            baseline.CompactionCount + 1,
+            stats.CompactionCount);
+
+        TStringBuf firstRecord = table.GetRecordWithValidation(indices.front());
+        UNIT_ASSERT_VALUES_EQUAL(payload, TString(firstRecord));
+        TStringBuf newRecord = table.GetRecordWithValidation(newIndex);
+        UNIT_ASSERT_VALUES_EQUAL(payload, TString(newRecord));
+    }
+
     Y_UNIT_TEST(ShouldShrinkEmptyTableToInitialDataAreaOnStartup)
     {
         TTempDir tempDir;
