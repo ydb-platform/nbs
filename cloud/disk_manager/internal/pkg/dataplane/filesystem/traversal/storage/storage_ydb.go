@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -86,7 +87,7 @@ func (s *storageYDB) selectNodesToList(
 			uint64(nfs.InvalidNodeID),
 		),
 	)
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
@@ -124,6 +125,9 @@ func (s *storageYDB) selectNodesToList(
 			entry.Cookie = string(cookie)
 			entries = append(entries, entry)
 		}
+	}
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
 	}
 
 	return entries, nil

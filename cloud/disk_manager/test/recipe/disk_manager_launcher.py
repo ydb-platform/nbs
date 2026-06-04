@@ -444,6 +444,12 @@ FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
             ListNodesMaxBytes: {list_nodes_max_bytes}
 {regular_scrubbing_config}
         >
+        SnapshotConfig: <
+            TraversalConfig: <
+                TraversalWorkersCount: 100
+            >
+            ListNodesMaxBytes: {snapshot_list_nodes_max_bytes}
+        >
     >
 """
 
@@ -576,6 +582,7 @@ class DiskManagerLauncher:
         cell_selection_policy="FIRST_IN_CONFIG",
         filesystem_dataplane_enabled=False,
         list_nodes_max_bytes=0,
+        snapshot_list_nodes_max_bytes=100,
         scrubbing_config_content="",
         # 100s is long enough in tests with concurrent resource creation and deletion to prevent
         # creating an already deleted resourse (see #5539).
@@ -643,6 +650,7 @@ class DiskManagerLauncher:
                     filesystem_dataplane_config="" if not filesystem_dataplane_enabled else FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE.format(
                         ydb_port=ydb_port,
                         list_nodes_max_bytes=list_nodes_max_bytes,
+                        snapshot_list_nodes_max_bytes=snapshot_list_nodes_max_bytes,
                         regular_scrubbing_config=scrubbing_config_content,
                     ),
                     nfs_config=NFS_CONFIG_TEMPLATE.format(

@@ -27,6 +27,8 @@ import (
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	filesystem_scrubbing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
+	snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
@@ -726,6 +728,11 @@ func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
 		return nil, err
 	}
 
+	err = filesystem_snapshot.Register(taskRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	taskStorage, err := NewTaskStorage(ctx)
 	if err != nil {
 		return nil, err
@@ -801,6 +808,68 @@ func ScheduleFilesystemScrubbing(
 		scheduler,
 		zoneID,
 		filesystemID,
+	)
+	require.NoError(t, err)
+	return taskID
+}
+
+func ScheduleTransferFromFilesystemToSnapshot(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+	filesystemID string,
+	checkpointID string,
+	snapshotID string,
+) string {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+	lastReqNumber++
+	taskID, err := scheduler.ScheduleTask(
+		tasks_headers.SetIncomingIdempotencyKey(
+			ctx,
+			fmt.Sprintf("transfer_fs_to_snap_%v_%v", t.Name(), lastReqNumber),
+		),
+		"dataplane.TransferFromFilesystemToSnapshot",
+		"Transfer from filesystem to snapshot",
+		&snapshot_protos.CreateFilesystemSnapshotRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       zoneID,
+				FilesystemId: filesystemID,
+			},
+			CheckpointId: checkpointID,
+			SnapshotId:   snapshotID,
+		},
+	)
+	require.NoError(t, err)
+	return taskID
+}
+
+func ScheduleTransferFromSnapshotToFilesystem(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+	filesystemID string,
+	snapshotID string,
+) string {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+	lastReqNumber++
+	taskID, err := scheduler.ScheduleTask(
+		tasks_headers.SetIncomingIdempotencyKey(
+			ctx,
+			fmt.Sprintf("transfer_snap_to_fs_%v_%v", t.Name(), lastReqNumber),
+		),
+		"dataplane.TransferFromSnapshotToFilesystem",
+		"Transfer from snapshot to filesystem",
+		&snapshot_protos.TransferFromSnapshotToFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       zoneID,
+				FilesystemId: filesystemID,
+			},
+			SnapshotId: snapshotID,
+		},
 	)
 	require.NoError(t, err)
 	return taskID
