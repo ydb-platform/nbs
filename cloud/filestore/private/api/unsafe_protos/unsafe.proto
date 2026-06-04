@@ -67,6 +67,9 @@ message TConfigureShardsRequest
     // Shard FileSystem identifiers for regular files. If empty, then
     // ShardFileSystemIds will be used for regular files.
     repeated string FileShardFileSystemIds = 7;
+
+    // Compress ShardId and ShardNodeName in NodeRefs table.
+    bool CompressNodeRef = 8;
 }
 
 message TConfigureShardsResponse
@@ -156,6 +159,9 @@ message TConfigureAsShardRequest
     // using BlobStorage.
     bool IsFastShard = 10;
     TFastShardConfig FastShardConfig = 11;
+
+    // Compress ShardId and ShardNodeName in NodeRefs table.
+    bool CompressNodeRef = 12;
 }
 
 message TConfigureAsShardResponse

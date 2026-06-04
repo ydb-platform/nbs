@@ -422,7 +422,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // Functions that compress and decompress NodeRefs
 
-void TryToEncodeShardId(
+inline void TryToEncodeShardId(
     const TString& mainFsId,
     IIndexTabletDatabase::TNodeRef& nodeRef)
 {
@@ -434,7 +434,7 @@ void TryToEncodeShardId(
     }
 }
 
-bool TryToDecodeShardId(
+inline bool TryToDecodeShardId(
     const TString& mainFsId,
     IIndexTabletDatabase::TNodeRef& nodeRef)
 {
@@ -451,6 +451,16 @@ bool TryToDecodeShardId(
     }
 
     return true;
+}
+
+inline void TryToDecodeShardIds(
+    const TString& mainFsId,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs)
+{
+    std::erase_if(
+        refs,
+        [&](IIndexTabletDatabase::TNodeRef& ref)
+        { return !TryToDecodeShardId(mainFsId, ref); });
 }
 
 }   // namespace
@@ -564,10 +574,7 @@ bool TIndexTabletState::ReadNodeRefs(
         noAutoPrecharge,
         sizeMode);
 
-    std::erase_if(
-        refs,
-        [this](IIndexTabletDatabase::TNodeRef& ref)
-        { return !TryToDecodeShardId(GetMainFileSystemId(), ref); });
+    TryToDecodeShardIds(GetMainFileSystemId(), refs);
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
     if (checkpointId != InvalidCommitId) {
@@ -597,10 +604,7 @@ bool TIndexTabletState::ReadNodeRefs(
         nextNodeId,
         nextCookie);
 
-    std::erase_if(
-        refs,
-        [this](IIndexTabletDatabase::TNodeRef& ref)
-        { return !TryToDecodeShardId(GetMainFileSystemId(), ref); });
+    TryToDecodeShardIds(GetMainFileSystemId(), refs);
 
     return ready;
 }

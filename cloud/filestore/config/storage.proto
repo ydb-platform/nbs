@@ -790,4 +790,7 @@ message TStorageConfig
     // mode tablets register their IFileSystemShard with this server,
     // allowing direct TCP access to shard operations.
     optional uint32 FastShardServerPort = 503;
+
+    // If this flag is on, new filesystems are created with CompressNodeRef.
+    optional bool EnableNodeRefCompression = 504;
 }

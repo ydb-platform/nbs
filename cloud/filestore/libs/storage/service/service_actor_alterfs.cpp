@@ -75,6 +75,7 @@ private:
     bool DirectoryCreationInShardsForced = false;
     bool StrictFileSystemSizeEnforcementEnabled = false;
     bool ShouldConfigureMainFileStore = false;
+    bool CompressNodeRef = false;
 
     const ui64 MainFileStoreCookie = Max<ui64>();
 
@@ -533,6 +534,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         EnableStrictFileSystemSizeEnforcement ||
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
     MaxShardCount = msg->Record.GetMaxShardCount();
+    CompressNodeRef = msg->Record.GetCompressNodeRef();
 
     PatchStorageConfig();
     FillMultiShardFileStoreConfig(ctx);
@@ -758,6 +760,8 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
             }
         }
 
+        request->Record.SetCompressNodeRef(CompressNodeRef);
+
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -836,6 +840,8 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
+
+    request->Record.SetCompressNodeRef(CompressNodeRef);
 
     LOG_INFO(
         ctx,
