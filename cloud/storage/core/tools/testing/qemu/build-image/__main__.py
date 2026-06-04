@@ -75,13 +75,16 @@ def write_user_data(filename, args):
             "acl",
             "btop",
             "fio",
+            "ibverbs-utils",  # rdma
             "iotop",
+            "linux-modules-extra",  # modprobe rdma_rxe
             "mc",
-            "mysql-server",
             "nfs-common",
-            "postgresql",
+            "perftest",
+            "rdma-core",
             "sysbench",
             "tmux",
+            "util-linux",  # flock
             "xattr",
         ]
 
@@ -114,6 +117,7 @@ def write_user_data(filename, args):
             'mode': 'poweroff',
         },
         'write_files': [],
+        #'runcmd': ["apt update"],
         'runcmd': [],
     }
 
@@ -139,12 +143,6 @@ def write_user_data(filename, args):
         user_data['runcmd'].append(
             "echo '### use login: %s password: qemupass' >> /etc/issue" % args.user,
         )
-
-    if args.with_rdma:
-        user_data['runcmd'].extend([
-            "apt install -y linux-modules-extra-`uname -r` rdma-core ibverbs-utils perftest",
-            "bash -c 'echo rdma_rxe >> /etc/modules'",
-        ])
 
     with open(filename, 'w') as f:
         f.write('#cloud-config\n' + yaml.dump(user_data))
@@ -259,7 +257,6 @@ def parse_args():
                         required=True)
     parser.add_argument("--plain-pwd", help="Use password for user login", action='store_true')
     parser.add_argument("--no-resize", help="do not attempt to resize partitions", action='store_true')
-    parser.add_argument("--with-rdma", help="Install rdma packages", action='store_true')
     parser.add_argument(
         "--packages",
         help="Comma-separated list of packages to install (overrides default package list)",

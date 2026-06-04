@@ -61,6 +61,7 @@ class GuestClient:
 
 def setup_rdma():
     ssh_key = os.getenv("QEMU_SSH_KEY")
+    interface = "enp0s4"
 
     clients = []
     for index, local_ip in enumerate(["192.168.1.1", "192.168.1.2"]):
@@ -72,11 +73,12 @@ def setup_rdma():
         )
 
         setup_cmds = [
-            f"netplan set ethernets.ens5.addresses=[{local_ip}/24]",
+            "ip address",
+            "modprobe rdma_rxe",
+            f"netplan set ethernets.{interface}.addresses=[{local_ip}/24]",
             "netplan apply",
-            "rdma link add rxe0 type rxe netdev ens5",
-            "ln -s /usr/lib/x86_64-linux-gnu/libibverbs.so.1 /usr/lib/libibverbs.so",
-            "ln -s /usr/lib/x86_64-linux-gnu/librdmacm.so.1 /usr/lib/librdmacm.so",
+            f"rdma link add rxe0 type rxe netdev {interface}",
+            "ip address",
         ]
 
         for cmd in setup_cmds:

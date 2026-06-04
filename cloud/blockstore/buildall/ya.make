@@ -9,7 +9,7 @@ PEERDIR(
     cloud/blockstore/tools/nbd
     cloud/blockstore/vhost-server
     cloud/storage/core/tools/testing/qemu/bin
-    cloud/storage/core/tools/testing/qemu/image
+    cloud/storage/core/tools/testing/qemu/image-resolute
 )
 
 END()
