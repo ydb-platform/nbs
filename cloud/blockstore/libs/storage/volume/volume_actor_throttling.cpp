@@ -253,7 +253,6 @@ GENERATE_IMPL(ReadBlocksLocal,       TEvService)
 GENERATE_IMPL(WriteBlocksLocal,      TEvService)
 
 GENERATE_IMPL(DescribeBlocks,           TEvVolume)
-GENERATE_IMPL(DescribeBlocksIndex,      TEvVolume)
 GENERATE_IMPL(GetUsedBlocks,            TEvVolume)
 GENERATE_IMPL(GetPartitionInfo,         TEvVolume)
 GENERATE_IMPL(CompactRange,             TEvVolume)

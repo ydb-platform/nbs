@@ -421,38 +421,7 @@ NProto::TError ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
         );
         (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
         (*requests)[i].Event->Record.SetCheckpointId(proto.GetCheckpointId());
-    }
-
-    return MakeError(S_OK);
-}
-
-template <>
-NProto::TError ToPartitionRequests<TEvVolume::TDescribeBlocksIndexMethod>(
-    const TBriefPartitionInfoList& partitions,
-    const ui32 blockSize,
-    const ui32 blocksPerStripe,
-    const TEvVolume::TDescribeBlocksIndexMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TEvVolume::TDescribeBlocksIndexMethod>>* requests,
-    TBlockRange64* blockRange)
-{
-    const auto& proto = ev->Get()->Record;
-
-    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
-
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()));
-
-    for (ui32 i = 0; i < requests->size(); ++i) {
-        const auto blocksCount = InitPartitionRequest<TEvVolume::TDescribeBlocksIndexMethod>(
-            partitions,
-            proto.GetBlocksCount(),
-            blocksPerStripe,
-            i,
-            proto,
-            (*requests)[i]);
-        (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
+        (*requests)[i].Event->Record.SetIndexOnly(proto.GetIndexOnly());
     }
 
     return MakeError(S_OK);

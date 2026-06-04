@@ -446,17 +446,6 @@ TBlockRange64 BuildRequestBlockRange(
 }
 
 TBlockRange64 BuildRequestBlockRange(
-    const TEvVolume::TEvDescribeBlocksIndexRequest& request,
-    const ui32 blockSize)
-{
-    Y_UNUSED(blockSize);
-
-    return TBlockRange64::WithLength(
-        request.Record.GetStartIndex(),
-        request.Record.GetBlocksCount());
-}
-
-TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvGetChangedBlocksRequest& request,
     const ui32 blockSize)
 {

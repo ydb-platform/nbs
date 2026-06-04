@@ -274,23 +274,6 @@ private:
     }
 
     void Merge(
-        NProto::TDescribeBlocksIndexResponse& src,
-        ui32 requestNo,
-        NProto::TDescribeBlocksIndexResponse& dst)
-    {
-        Y_UNUSED(requestNo);
-
-        if (FAILED(src.GetError().GetCode())) {
-            *dst.MutableError() = std::move(*src.MutableError());
-            return;
-        }
-
-        for (auto& entry : *src.MutableEntries()) {
-            *dst.AddEntries() = std::move(entry);
-        }
-    }
-
-    void Merge(
         NProto::TDescribeBlocksResponse& src,
         ui32 requestNo,
         NProto::TDescribeBlocksResponse& dst)

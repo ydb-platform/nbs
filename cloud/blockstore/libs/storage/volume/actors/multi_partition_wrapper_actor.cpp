@@ -86,9 +86,6 @@ void TMultiPartitionWrapperActor::StateWork(
             TEvVolume::TEvDescribeBlocksRequest,
             HandleRequest<TEvVolume::TDescribeBlocksMethod>);
         HFunc(
-            TEvVolume::TEvDescribeBlocksIndexRequest,
-            HandleRequest<TEvVolume::TDescribeBlocksIndexMethod>);
-        HFunc(
             TEvService::TEvGetChangedBlocksRequest,
             HandleRequest<TEvService::TGetChangedBlocksMethod>);
         HFunc(

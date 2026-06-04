@@ -51,7 +51,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(CreateCheckpoint,           __VA_ARGS__)                               \
     xxx(DeleteCheckpoint,           __VA_ARGS__)                               \
     xxx(DescribeRange,              __VA_ARGS__)                               \
-    xxx(DescribeBlocksIndex,        __VA_ARGS__)                               \
     xxx(DescribeBlob,               __VA_ARGS__)                               \
     xxx(CheckIndex,                 __VA_ARGS__)                               \
     xxx(GetChangedBlocks,           __VA_ARGS__)                               \
@@ -850,48 +849,6 @@ struct TTxPartition
                 blockIndex,
                 blobOffset,
             });
-        }
-    };
-
-    //
-    // DescribeBlocksIndex
-    //
-
-    struct TDescribeBlocksIndex
-    {
-        const TRequestInfoPtr RequestInfo;
-        const TBlockRange32 BlockRange;
-
-        struct TBlockMark
-        {
-            TPartialBlobId BlobId;
-            ui64 CommitId = 0;
-            ui32 BlockIndex = 0;
-            ui16 BlobOffset = 0;
-        };
-
-        TVector<TBlockMark> BlockMarks;
-
-        TDescribeBlocksIndex(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& blockRange)
-            : RequestInfo(std::move(requestInfo))
-            , BlockRange(blockRange)
-        {}
-
-        void Clear()
-        {
-            BlockMarks.clear();
-        }
-
-        void MarkBlock(
-            ui32 blockIndex,
-            ui64 commitId,
-            const TPartialBlobId& blobId,
-            ui16 blobOffset)
-        {
-            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
-            BlockMarks.push_back({blobId, commitId, blockIndex, blobOffset});
         }
     };
 

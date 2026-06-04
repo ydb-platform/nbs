@@ -35,6 +35,7 @@ private:
     ui64 StartIndex = 0;
     ui32 BlocksCount = 0;
     TString CheckpointId;
+    bool IndexOnly = false;
 
 public:
     TDescribeBlocksActionActor(TRequestInfoPtr requestInfo, TString input);
@@ -98,6 +99,10 @@ void TDescribeBlocksActionActor::Bootstrap(const TActorContext& ctx)
         CheckpointId = input["CheckpointId"].GetStringRobust();
     }
 
+    if (input.Has("IndexOnly")) {
+        IndexOnly = input["IndexOnly"].GetBooleanRobust();
+    }
+
     DescribeBlocks(ctx);
     Become(&TThis::StateWork);
 }
@@ -110,6 +115,7 @@ void TDescribeBlocksActionActor::DescribeBlocks(const TActorContext& ctx)
     request->Record.SetStartIndex(StartIndex);
     request->Record.SetBlocksCount(BlocksCount);
     request->Record.SetCheckpointId(CheckpointId);
+    request->Record.SetIndexOnly(IndexOnly);
 
     NCloud::Send(
         ctx,
@@ -179,8 +185,10 @@ void TDescribeBlocksActionActor::HandleDescribeBlocksResponse(
         return;
     }
 
-    // We don't need fresh blocks.
-    msg->Record.ClearFreshBlockRanges();
+    if (!IndexOnly) {
+        // Fresh block content is only needed for non-index requests.
+        msg->Record.ClearFreshBlockRanges();
+    }
     msg->Record.ClearDeprecatedTrace();
     msg->Record.MutableHeaders()->ClearTrace();
 

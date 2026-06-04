@@ -46,7 +46,7 @@ void TServiceActor::HandleExecuteAction(
         {"configurevolumebalancer",           &TServiceActor::CreateConfigureVolumeBalancerActionActor     },
         {"deletecheckpointdata",              &TServiceActor::CreateDeleteCheckpointDataActionActor        },
         {"describeblocks",                    &TServiceActor::CreateDescribeBlocksActionActor              },
-        {"describeblocksindex",               &TServiceActor::CreateDescribeBlocksIndexActionActor         },
+
         {"describevolume",                    &TServiceActor::CreateDescribeVolumeActionActor              },
         {"diskregistrychangestate",           &TServiceActor::CreateDiskRegistryChangeStateActor           },
         {"diskregistrydescribedisk",          &TServiceActor::CreateDiskRegistryDescribeDiskActionActor    },

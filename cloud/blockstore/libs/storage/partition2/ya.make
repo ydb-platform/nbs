@@ -16,7 +16,6 @@ SRCS(
     part2_actor_deletecheckpoint.cpp
     part2_actor_deletegarbage.cpp
     part2_actor_describeblocks.cpp
-    part2_actor_describe_blocks_index.cpp
     part2_actor_flush.cpp
     part2_actor_getusedblocks.cpp
     part2_actor_initfreshblocks.cpp
