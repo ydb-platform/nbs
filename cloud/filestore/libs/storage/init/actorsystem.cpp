@@ -230,7 +230,8 @@ public:
              profileLog = Args.ProfileLog,
              traceSerializer = Args.TraceSerializer,
              systemCounters = SystemCounters,
-             metricsRegistry = MetricsRegistry] (
+             metricsRegistry = MetricsRegistry,
+             fastShardServer = Args.FastShardServer] (
                 const TActorId& owner,
                 TTabletStorageInfo* storage)
             {
@@ -243,7 +244,8 @@ public:
                     profileLog,
                     traceSerializer,
                     systemCounters,
-                    metricsRegistry);
+                    metricsRegistry,
+                    fastShardServer);
                 return actor.release();
             };
 

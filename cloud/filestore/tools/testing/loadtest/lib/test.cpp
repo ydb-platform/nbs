@@ -585,6 +585,11 @@ private:
                     headers);
                 break;
             }
+            case NProto::TLoadTest::kFastShardLoadSpec:
+                RequestGenerator = CreateFastShardRequestGenerator(
+                    Config.GetFastShardLoadSpec(),
+                    Logging);
+                break;
             default:
                 ythrow yexception()
                     << MakeTestTag()

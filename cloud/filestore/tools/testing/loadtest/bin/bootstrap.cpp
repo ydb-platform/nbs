@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -167,10 +168,18 @@ void TBootstrap::Start()
     if (ClientFactory) {
         ClientFactory->Start();
     }
+
+    NStorage::NFastShard::Init();
+    FastShardInitialized = true;
 }
 
 void TBootstrap::Stop()
 {
+    if (FastShardInitialized) {
+        NStorage::NFastShard::Destroy();
+        FastShardInitialized = false;
+    }
+
     if (ClientFactory) {
         ClientFactory->Stop();
     }

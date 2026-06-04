@@ -17,7 +17,9 @@
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
+#include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -66,6 +68,10 @@ TBootstrapServer::~TBootstrapServer()
 
 void TBootstrapServer::StartComponents()
 {
+    if (FastShardServer) {
+        NStorage::NFastShard::Init();
+    }
+    FILESTORE_LOG_START_COMPONENT(FastShardServer);
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
     FILESTORE_LOG_START_COMPONENT(Service);
     FILESTORE_LOG_START_COMPONENT(Server);
@@ -79,6 +85,10 @@ void TBootstrapServer::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(Server);
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
+    FILESTORE_LOG_STOP_COMPONENT(FastShardServer);
+    if (FastShardServer) {
+        NStorage::NFastShard::Destroy();
+    }
 }
 
 TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)
@@ -88,6 +98,17 @@ TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)
 
     Configs = std::make_shared<TConfigInitializerServer>(std::move(options));
     return Configs;
+}
+
+void TBootstrapServer::InitActorSystemPrerequisites()
+{
+    InitConfigs();
+
+    const ui32 port = Configs->StorageConfig->GetFastShardServerPort();
+    if (port) {
+        FastShardServer =
+            NStorage::NFastShard::CreateServer(port);
+    }
 }
 
 void TBootstrapServer::InitComponents()

@@ -66,6 +66,7 @@ public:
 private:
     TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) override;
 
+    void InitActorSystemPrerequisites() override;
     void InitComponents() override;
     void StartComponents() override;
     void StopComponents() override;

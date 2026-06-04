@@ -1,4 +1,5 @@
 RECURSE(
+    bootstrap
     client
     iface
     impl

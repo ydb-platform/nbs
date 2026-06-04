@@ -6,6 +6,8 @@
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 #include <silk/util/init.h>
@@ -177,7 +179,7 @@ TEST(ServerTest, UnknownShardReturnsEmptyResponse)
             EXPECT_TRUE(resp.HasError());
             EXPECT_EQ(
                 resp.GetError().GetCode(),
-                static_cast<ui32>(ENOENT));
+                static_cast<ui32>(NCloud::E_NOT_FOUND));
 
             fixture.StopServer();
             return 0;
