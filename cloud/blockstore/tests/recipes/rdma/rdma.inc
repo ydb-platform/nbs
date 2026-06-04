@@ -3,7 +3,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 FORK_SUBTESTS()
 SPLIT_FACTOR(1)
 
-SET(QEMU_ROOTFS cloud/blockstore/tests/rdma/image/rootfs.img)
+SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-resolute/rootfs.img)
 DEPENDS(cloud/blockstore/tests/rdma/image)
 
 SET(QEMU_INSTANCE_COUNT 2)

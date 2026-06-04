@@ -16,7 +16,7 @@ class QemuWithMigration:
         self.qemu = Qemu(
             qemu_kvm=get_qemu_kvm(),
             qemu_firmware=get_qemu_firmware(),
-            rootfs=common.build_path("cloud/storage/core/tools/testing/qemu/image/rootfs.img"),
+            rootfs=common.build_path("cloud/storage/core/tools/testing/qemu/image-resolute/rootfs.img"),
             kernel=None,
             kcmdline=None,
             initrd=None,
