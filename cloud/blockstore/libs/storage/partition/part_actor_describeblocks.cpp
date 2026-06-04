@@ -42,7 +42,8 @@ public:
         Args.MarkBlock(
             block.Meta.BlockIndex,
             block.Meta.CommitId,
-            block.Content);
+            block.Content,
+            block.BlobId);
         return true;
     }
 
@@ -111,7 +112,8 @@ void TPartitionActor::DescribeBlocks(
     const TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     ui64 commitId,
-    const TBlockRange32& describeRange)
+    const TBlockRange32& describeRange,
+    bool indexOnly)
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
@@ -127,7 +129,7 @@ void TPartitionActor::DescribeBlocks(
 
     ExecuteTx(
         ctx,
-        CreateTx<TDescribeBlocks>(requestInfo, commitId, describeRange));
+        CreateTx<TDescribeBlocks>(requestInfo, commitId, describeRange, indexOnly));
 }
 
 void TPartitionActor::HandleDescribeBlocks(
@@ -202,7 +204,9 @@ void TPartitionActor::HandleDescribeBlocks(
         return;
     }
 
-    DescribeBlocks(ctx, requestInfo, *commitId, ConvertRangeSafe(range));
+    DescribeBlocks(
+        ctx, requestInfo, *commitId, ConvertRangeSafe(range),
+        msg->Record.GetIndexOnly());
 }
 
 bool TPartitionActor::PrepareDescribeBlocks(
@@ -330,7 +334,15 @@ void TPartitionActor::FillDescribeBlocksResponse(
         range->SetStartIndex(mark.BlockIndex);
         // TODO(svartmetal): should be optimized.
         range->SetBlocksCount(1);
-        range->SetBlocksContent(std::move(mark.Content));
+        if (!args.IndexOnly) {
+            range->SetBlocksContent(std::move(mark.Content));
+        }
+        if (mark.BlobId) {
+            LogoBlobIDFromLogoBlobID(
+                MakeBlobId(TabletID(), mark.BlobId),
+                range->MutableBlobId());
+            mark.BlobId = {};
+        }
     }
 
     EraseIf(args.Marks, [] (const auto& m) { return IsDeletionMarker(m.BlobId); });

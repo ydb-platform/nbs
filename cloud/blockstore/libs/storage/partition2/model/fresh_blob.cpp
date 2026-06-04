@@ -19,6 +19,7 @@ static constexpr TFreshBlobFormatVersion FreshBlobFormatVersion = 1;
 
 NProto::TError ParseFreshBlobContent(
     ui64 commitId,
+    TPartialBlobId blobId,
     ui32 blockSize,
     const TString& buffer,
     TVector<TOwningFreshBlock>& blocks,
@@ -69,7 +70,7 @@ NProto::TError ParseFreshBlobContent(
             }
 
             TString content(buffer.data() + offset, blockSize);
-            blocks.emplace_back(block, std::move(content));
+            blocks.emplace_back(block, std::move(content), blobId);
 
             offset += blockSize;
         }

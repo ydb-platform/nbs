@@ -685,7 +685,8 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
             meta.BlockIndex,
             freshBlock.Content,
             meta.MinCommitId,
-            meta.MaxCommitId);
+            meta.MaxCommitId,
+            freshBlock.BlobId);
 
         Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
             meta.BlockIndex,

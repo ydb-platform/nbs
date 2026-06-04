@@ -398,7 +398,14 @@ public:
     void WriteFreshBlock(
         const TBlock& block,
         TBlockDataRef blockContent,
-        TPartialBlobId blobId = {});
+        TPartialBlobId blobId);
+
+    void WriteFreshBlock(
+        const TBlock& block,
+        TBlockDataRef blockContent)
+    {
+        WriteFreshBlock(block, blockContent, {});
+    }
 
     bool DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 

@@ -128,7 +128,10 @@ private:
     TBlockMap Blocks;
 
 public:
-    void Visit(const TBlock& block, TStringBuf blockContent) override
+    void Visit(
+        const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& /*blobId*/) override
     {
         TBlockMap::iterator it;
         bool inserted;

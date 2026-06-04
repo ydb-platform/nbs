@@ -6050,82 +6050,40 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldForbidDescribeBlocksIndexWithEmptyRange)
+    Y_UNIT_TEST(ShouldPreserveBlobIdForFreshBlocksAcrossReboot)
     {
-        auto runtime = PrepareTestActorRuntime();
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        auto request = partition.CreateDescribeBlocksIndexRequest(0, 0);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-    }
-
-    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestWithOutOfBoundsRange)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        const auto range =
-            TBlockRange32::MakeClosedInterval(Max<ui32>() - 2, Max<ui32>() - 1);
-        auto request = partition.CreateDescribeBlocksIndexRequest(range);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.EntriesSize());
-    }
-
-    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestWhenBlocksAreFresh)
-    {
-        NProto::TStorageServiceConfig config = DefaultConfig();
+        auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(std::move(config));
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        const auto range = TBlockRange32::WithLength(0, 5);
+        const auto range = TBlockRange32::MakeOneBlock(0);
         partition.WriteBlocks(range, char(1));
 
-        auto request = partition.CreateDescribeBlocksIndexRequest(range);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(5, response->Record.EntriesSize());
-
-        for (const auto& entry : response->Record.GetEntries()) {
-            UNIT_ASSERT(entry.GetCommitId() > 0);
-            const auto blobId = LogoBlobIDFromLogoBlobID(entry.GetBlobId());
+        // Before reboot: fresh block has a valid BlobId in FreshBlockRanges.
+        {
+            auto request = partition.CreateDescribeBlocksRequest(range);
+            request->Record.SetIndexOnly(true);
+            partition.SendToPipe(std::move(request));
+            const auto response =
+                partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.FreshBlockRangesSize());
+            const auto blobId =
+                LogoBlobIDFromLogoBlobID(response->Record.GetFreshBlockRanges(0).GetBlobId());
             UNIT_ASSERT(blobId.IsValid());
         }
-    }
 
-    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestAfterFlush)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
+        partition.RebootTablet();
 
-        const auto range = TBlockRange32::WithLength(0, 5);
-        partition.WriteBlocks(range, char(1));
-        partition.Flush();
-
-        auto request = partition.CreateDescribeBlocksIndexRequest(range);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(5, response->Record.EntriesSize());
-
-        for (const auto& entry : response->Record.GetEntries()) {
-            UNIT_ASSERT(entry.GetCommitId() > 0);
-            const auto blobId = LogoBlobIDFromLogoBlobID(entry.GetBlobId());
-            UNIT_ASSERT(blobId.IsValid());
-        }
+        // After reboot the data must still be readable. The block may have been
+        // flushed to a merged blob (since flush is triggered at startup), but
+        // the content must be intact — which verifies the fresh blob was
+        // correctly loaded using the preserved BlobId.
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(char(1)),
+            GetBlockContent(partition.ReadBlocks(0)));
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateUsedBlocksCount)

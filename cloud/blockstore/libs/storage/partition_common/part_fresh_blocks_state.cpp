@@ -122,7 +122,8 @@ void TPartitionFreshBlocksState::InitFreshBlocks(
             meta.BlockIndex,
             meta.CommitId,
             meta.IsStoredInDb,
-            freshBlock.Content);
+            freshBlock.Content,
+            freshBlock.BlobId);
 
         Y_ABORT_UNLESS(
             added,
