@@ -117,7 +117,6 @@ def write_user_data(filename, args):
             'mode': 'poweroff',
         },
         'write_files': [],
-        #'runcmd': ["apt update"],
         'runcmd': [],
     }
 
