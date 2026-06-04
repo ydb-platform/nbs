@@ -61,7 +61,8 @@ class GuestClient:
 
 def setup_rdma():
     ssh_key = os.getenv("QEMU_SSH_KEY")
-    interface = "enp0s4"
+    interface = "ens5" # Ubuntu 24.04
+    # interface = "enp0s4" # Ubuntu 26.04
 
     clients = []
     for index, local_ip in enumerate(["192.168.1.1", "192.168.1.2"]):

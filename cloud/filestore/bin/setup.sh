@@ -30,7 +30,7 @@ YDBD_BIN="contrib/ydb/apps/ydbd/ydbd"
 FILESTORE_CLIENT_BIN="cloud/filestore/apps/client/filestore-client"
 FILESTORE_SERVER_BIN="cloud/filestore/apps/server/filestore-server"
 FILESTORE_VHOST_BIN="cloud/filestore/apps/vhost/filestore-vhost"
-QEMU_IMAGE="cloud/storage/core/tools/testing/qemu/image-resolute/rootfs.img"
+QEMU_IMAGE="cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img"
 
 # create symlinks
 for file in $YDBD_BIN $FILESTORE_CLIENT_BIN $FILESTORE_SERVER_BIN $FILESTORE_VHOST_BIN $QEMU_IMAGE; do

@@ -5,7 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin
     cloud/storage/core/tools/testing/qemu/bin
-    cloud/storage/core/tools/testing/qemu/image-resolute
+    cloud/storage/core/tools/testing/qemu/image-noble
 )
 
 PEERDIR(

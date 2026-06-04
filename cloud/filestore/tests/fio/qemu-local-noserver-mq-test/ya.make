@@ -12,7 +12,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 DEPENDS(
     cloud/filestore/tools/analytics/profile_tool
     cloud/storage/core/tools/testing/fio/bin
-    cloud/storage/core/tools/testing/qemu/image-resolute
+    cloud/storage/core/tools/testing/qemu/image-noble
 )
 
 PEERDIR(
@@ -31,7 +31,7 @@ SET(
 )
 
 SET(QEMU_VIRTIO fs)
-SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-resolute/rootfs.img)
+SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
 SET(QEMU_NUM_REQUEST_QUEUES 8)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-local-noserver.inc)

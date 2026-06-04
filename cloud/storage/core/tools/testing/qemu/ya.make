@@ -2,6 +2,6 @@ RECURSE(
     bin
     build
     build-image
-    image-resolute
+    image-noble
     lib
 )
