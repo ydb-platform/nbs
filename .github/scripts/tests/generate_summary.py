@@ -1308,7 +1308,6 @@ def main() -> None:
             args.build_preset,
             args.is_dry_run,
             args.workload_status,
-            args.build_error_log_url,
         )
     else:
         assert summary is not None
