@@ -227,7 +227,7 @@ TChildLogTitle TLogTitle::GetChildWithTags(
     childPrefix << CachedPrefix;
 
     if (!additionalTags.empty()) {
-        childPrefix << " " << PrintKeyValue(additionalTags);
+        childPrefix << " " << PrintParams(additionalTags);
     }
 
     const auto duration = CyclesToDurationSafe(startTime - StartTime);

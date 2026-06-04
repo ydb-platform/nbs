@@ -3,7 +3,6 @@
 #include "block_range.h"
 
 #include <util/generic/strbuf.h>
-#include <util/generic/string.h>
 #include <util/string/builder.h>
 #include <util/system/types.h>
 
@@ -29,6 +28,6 @@ using TPrintableValue = std::variant<
 using TPrintableParams =
     std::span<const std::pair<TStringBuf, TPrintableValue>>;
 
-TString PrintKeyValue(TPrintableParams keyValues);
+TString PrintParams(TPrintableParams keyValues);
 
 }   // namespace NCloud::NBlockStore

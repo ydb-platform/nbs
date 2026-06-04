@@ -4,7 +4,7 @@ namespace NCloud::NBlockStore {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-TString PrintKeyValue(TPrintableParams keyValues)
+TString PrintParams(TPrintableParams keyValues)
 {
     TStringBuilder sb;
     bool first = true;

@@ -24,7 +24,7 @@ Y_UNIT_TEST_SUITE(TPrintableParams)
         UNIT_ASSERT_VALUES_EQUAL(
             "str:hello cstr:world buf:bufval i:-1 u16:16 u32:32 u64:64"
             " range:[0, 9] flag",
-            PrintKeyValue(params));
+            PrintParams(params));
     }
 }
 
