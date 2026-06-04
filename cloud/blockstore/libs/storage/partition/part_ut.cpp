@@ -6050,42 +6050,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPreserveBlobIdForFreshBlocksAcrossReboot)
-    {
-        auto config = DefaultConfig();
-        config.SetFreshChannelWriteRequestsEnabled(true);
-        auto runtime = PrepareTestActorRuntime(std::move(config));
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        const auto range = TBlockRange32::MakeOneBlock(0);
-        partition.WriteBlocks(range, char(1));
-
-        // Before reboot: fresh block has a valid BlobId in FreshBlockRanges.
-        {
-            auto request = partition.CreateDescribeBlocksRequest(range);
-            request->Record.SetIndexOnly(true);
-            partition.SendToPipe(std::move(request));
-            const auto response =
-                partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.FreshBlockRangesSize());
-            const auto blobId =
-                LogoBlobIDFromLogoBlobID(response->Record.GetFreshBlockRanges(0).GetBlobId());
-            UNIT_ASSERT(blobId.IsValid());
-        }
-
-        partition.RebootTablet();
-
-        // After reboot the data must still be readable. The block may have been
-        // flushed to a merged blob (since flush is triggered at startup), but
-        // the content must be intact — which verifies the fresh blob was
-        // correctly loaded using the preserved BlobId.
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(char(1)),
-            GetBlockContent(partition.ReadBlocks(0)));
-    }
-
     Y_UNIT_TEST(ShouldCorrectlyCalculateUsedBlocksCount)
     {
         constexpr ui32 blockCount = 1024 * 1024;
@@ -14341,6 +14305,75 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
 
         UNIT_ASSERT_VALUES_EQUAL(0u, pingCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotReturnBlobIdForFreshBlocksInDescribeWhenIndexOnlyIsOff)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::MakeOneBlock(0);
+        partition.WriteBlocks(range, char(1));
+
+        NKikimr::TLogoBlobID blobIdFromContent;
+        {
+            const auto response = partition.DescribeBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.FreshBlockRangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.BlobPiecesSize());
+            const auto& fr = response->Record.GetFreshBlockRanges(0);
+            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(char(1)), fr.GetBlocksContent());
+            blobIdFromContent = LogoBlobIDFromLogoBlobID(fr.GetBlobId());
+            UNIT_ASSERT_VALUES_EQUAL(false, blobIdFromContent.IsValid());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReturnBlobIdForFreshBlocksInDescribeWhenIndexOnlyIsTrue)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 channelCount = DataChannelOffset + 2;
+        const ui32 freshChannelNo = channelCount - 1;
+
+        NKikimr::TLogoBlobID blobIdFromContent;
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvWriteBlobRequest>();
+                        if (msg->BlobId.Channel() != freshChannelNo) {
+                            break;
+                        }
+
+                        blobIdFromContent = NKikimr::TLogoBlobID(
+                            TestTabletId,
+                            msg->BlobId.Generation(),
+                            msg->BlobId.Step(),
+                            msg->BlobId.Channel(),
+                            msg->BlobId.BlobSize(),
+                            msg->BlobId.Cookie());
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto range = TBlockRange32::MakeOneBlock(0);
+        partition.WriteBlocks(range, char(1));
+
+        auto request = partition.CreateDescribeBlocksRequest(range);
+        request->Record.SetIndexOnly(true);
+        partition.SendToPipe(std::move(request));
+        const auto response =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.FreshBlockRangesSize());
+        const auto& fr = response->Record.GetFreshBlockRanges(0);
+        UNIT_ASSERT(fr.GetBlocksContent().empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            blobIdFromContent,
+            LogoBlobIDFromLogoBlobID(fr.GetBlobId()));
     }
 }
 

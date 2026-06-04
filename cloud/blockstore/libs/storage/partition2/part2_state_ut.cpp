@@ -131,8 +131,10 @@ public:
     void Visit(
         const TBlock& block,
         TStringBuf blockContent,
-        const TPartialBlobId& /*blobId*/) override
+        const TPartialBlobId& blobId) override
     {
+        Y_UNUSED(blobId);
+
         TBlockMap::iterator it;
         bool inserted;
 

@@ -274,9 +274,11 @@ void TPartitionActor::FillDescribeBlocksResponse(
             range->SetBlocksContent(std::move(mark.Content));
         }
         if (mark.BlobId) {
-            LogoBlobIDFromLogoBlobID(
-                MakeBlobId(TabletID(), mark.BlobId),
-                range->MutableBlobId());
+            if (args.IndexOnly) {
+                LogoBlobIDFromLogoBlobID(
+                    MakeBlobId(TabletID(), mark.BlobId),
+                    range->MutableBlobId());
+            }
             mark.BlobId = {};
         }
     }

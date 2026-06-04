@@ -1081,8 +1081,6 @@ BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,          TEvService)
 BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,         TEvService)
 
 BLOCKSTORE_FORWARD_REQUEST(DescribeBlocks,           TEvVolume)
-
-
 BLOCKSTORE_FORWARD_REQUEST(GetUsedBlocks,            TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(GetPartitionInfo,         TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(CompactRange,             TEvVolume)

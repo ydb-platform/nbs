@@ -38,9 +38,10 @@ public:
     void Visit(
         const TBlock& block,
         TStringBuf blockContent,
-        const TPartialBlobId& /*blobId*/) override
+        const TPartialBlobId& blobId) override
     {
         Y_UNUSED(blockContent);
+        Y_UNUSED(blobId);
         AddBlock(block, {}, 0);
     }
 

@@ -776,8 +776,10 @@ public:
     void Visit(
         const TBlock& block,
         TStringBuf blockContent,
-        const TPartialBlobId& /*blobId*/) override
+        const TPartialBlobId& blobId) override
     {
+        Y_UNUSED(blobId);
+
         if (AddBlock(block, {}, 0, 0)) {
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(BlockSize);
             if (!blockContent.empty()) {
