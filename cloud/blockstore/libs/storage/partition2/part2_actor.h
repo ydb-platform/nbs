@@ -187,6 +187,8 @@ private:
     void Activate(const NActors::TActorContext& ctx);
     void Suicide(const NActors::TActorContext& ctx);
 
+    void StartBaseDiskKeepAliveActorIfNeeded(const NActors::TActorContext& ctx);
+
     void OnDetach(const NActors::TActorContext& ctx) override;
 
     void OnTabletDead(

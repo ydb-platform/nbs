@@ -679,6 +679,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
+    xxx(BaseDiskPipeKeepAliveEnabled,         bool,        false              )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
     xxx(ResourceMetricsUpdateInterval,        TDuration,   Seconds(1)         )\

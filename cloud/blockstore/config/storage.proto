@@ -1580,4 +1580,12 @@ message TStorageServiceConfig
     // (VOLUME_HEALTH_UNHEALTHY when the first device breaks, VOLUME_HEALTH_HEALTHY
     // when all recovered) for non-replicated disks.
     optional bool VolumeHealthNotificationEnabled = 499;
+
+    // Enables periodic keep-alive pings sent from overlay-disk partitions to
+    // their base-disk volume via VolumeProxy. Keeps the base-disk pipe warm so
+    // that the first user request after an idle period does not pay the cold
+    // pipe re-establishment latency. The ping interval is derived from
+    // VolumeProxyPipeInactivityTimeout (half of it), so it is always strictly
+    // smaller than the timeout and needs no separate tuning.
+    optional bool BaseDiskPipeKeepAliveEnabled = 500;
 }
