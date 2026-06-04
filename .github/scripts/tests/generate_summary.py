@@ -321,7 +321,6 @@ class TestSummary:
         self,
         add_footnote: bool = False,
         build_failed_count: int = 0,
-        build_error_log_url: str = "",
     ) -> list[str]:
         github_srv = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/nbs")
@@ -406,7 +405,6 @@ def render_summary_markdown(
     *,
     add_footnote: bool = False,
     build_failed_count: int = 0,
-    build_error_log_url: str = "",
 ) -> str:
     if summary.is_empty:
         return ""
@@ -414,7 +412,6 @@ def render_summary_markdown(
         summary.render(
             add_footnote=add_footnote,
             build_failed_count=build_failed_count,
-            build_error_log_url=build_error_log_url,
         )
     )
 
@@ -461,7 +458,6 @@ def render_testlist_html(
 def write_summary(
     summary: TestSummary,
     summary_out_env_path: str = "",
-    build_error_log_url: str = "",
 ) -> None:
     summary_fn = summary_out_env_path or os.environ.get("GITHUB_STEP_SUMMARY")
 
@@ -474,7 +470,6 @@ def write_summary(
             for line in summary.render(
                 add_footnote=True,
                 build_failed_count=get_build_failed_count(),
-                build_error_log_url=build_error_log_url,
             ):
                 fp.write(f"{line}\n")
 
@@ -568,7 +563,6 @@ def get_comment_text(
     body.extend(
         summary.render(
             build_failed_count=get_build_failed_count(),
-            build_error_log_url=build_error_log_url,
         )
     )
 
@@ -1277,7 +1271,6 @@ def main() -> None:
         write_summary(
             summary,
             args.summary_out_env_path,
-            build_error_log_url=args.build_error_log_url,
         )
     elif not args.update_workload_status_only:
         LOGGER.error("No summary inputs provided")

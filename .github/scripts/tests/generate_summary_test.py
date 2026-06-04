@@ -228,7 +228,7 @@ def test_write_summary_omits_fail_build_log_link(tmp_path: Path, monkeypatch) ->
     summary.add_line(line)
 
     out = tmp_path / "summary_env"
-    gs.write_summary(summary, str(out), "https://summary/build_errors.html")
+    gs.write_summary(summary, str(out))
     content = out.read_text()
 
     assert "[1](https://summary/ya-test.html#FAIL_BUILD)" in content
