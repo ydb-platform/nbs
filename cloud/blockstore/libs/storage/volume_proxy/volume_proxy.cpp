@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -302,6 +303,10 @@ private:
 
     void HandleClearBaseDiskIdToTabletIdMapping(
         const TEvVolume::TEvClearBaseDiskIdToTabletIdMapping::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePingRequest(
+        const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -927,6 +932,28 @@ void TVolumeProxyActor::HandleClearBaseDiskIdToTabletIdMapping(
     }
 }
 
+void TVolumeProxyActor::HandlePingRequest(
+    const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& diskId = msg->DiskId;
+
+    auto** connPtr = ConnectionByDiskId.FindPtr(diskId);
+    if (!connPtr || (*connPtr)->State != STARTED) {
+        auto response = std::make_unique<TEvVolumeProxy::TEvKeepAliveResponse>(
+            MakeError(E_INVALID_STATE, "Connection is not established"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    auto& conn = **connPtr;
+    conn.LastActivity = ctx.Now();
+    ScheduleConnectionShutdown(ctx, conn);
+
+    NCloud::Reply(ctx, *ev, std::make_unique<TEvVolumeProxy::TEvKeepAliveResponse>());
+}
+
 void TVolumeProxyActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
@@ -1015,6 +1042,7 @@ STFUNC(TVolumeProxyActor::StateWork)
             HandleClearBaseDiskIdToTabletIdMapping);
 
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeResponse);
+        HFunc(TEvVolumeProxy::TEvKeepAliveRequest, HandlePingRequest);
 
         default:
             if (!HandleRequests(ev)) {

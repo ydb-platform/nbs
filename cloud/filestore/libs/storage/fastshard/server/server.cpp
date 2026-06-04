@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/storage/fastshard/ipc/ipc.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 #include <silk/util/logger.h>
@@ -157,8 +159,9 @@ int ConnFiberMain(TConnParams* params) noexcept
     TResponse resp;
     auto shard = registry->Find(req.GetFileSystemId());
     if (!shard) {
+        SILK_WARN("failed to find shard: %s", req.GetFileSystemId().c_str());
         auto* err = resp.MutableError();
-        err->SetCode(ENOENT);
+        err->SetCode(E_NOT_FOUND);
         err->SetMessage(
             TStringBuilder() << "no shard registered for "
                 << req.GetFileSystemId());
@@ -294,13 +297,19 @@ public:
 
         SILK_INFO("fastshard server listening on port %u", Port);
 
-        FiberScheduler::run(
+        // Spawn the accept loop as a background fiber.
+        int r = FiberScheduler::run(
             AcceptFiberMain,
             TAcceptParams{
                 .ListenFd = ListenFd,
                 .ShutdownFd = ShutdownFd,
                 .Registry = &Registry,
-            });
+            },
+            &AcceptFuture);
+        Y_ENSURE(
+            r == 0,
+            "failed to spawn accept fiber: "
+                << ::strerror(r));
     }
 
     void Stop() override
@@ -308,9 +317,14 @@ public:
         if (ShutdownFd >= 0) {
             uint64_t one = 1;
             if (::write(ShutdownFd, &one, sizeof(one)) < 0) {
-                SILK_ERROR("shutdown write: %s", ::strerror(errno));
+                SILK_ERROR(
+                    "shutdown write: %s",
+                    ::strerror(errno));
             }
         }
+
+        // Wait for the accept fiber to exit.
+        AcceptFuture.wait();
     }
 
     void RegisterShard(
@@ -365,6 +379,7 @@ private:
     int ListenFd = -1;
     int ShutdownFd = -1;
     TShardRegistry Registry;
+    FiberFuture AcceptFuture;
 };
 
 }   // namespace
@@ -373,7 +388,7 @@ private:
 
 IServerPtr CreateServer(ui16 port)
 {
-    return std::make_unique<TServer>(port);
+    return std::make_shared<TServer>(port);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

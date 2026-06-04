@@ -9,21 +9,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICertificateProviderPtr CreateClientCertificateProvider(
-    const TClientConfigPtr& config)
-{
-    TVector<NCloud::TCertificateFiles> certPathList {
-        {
-            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
-            .CertChainPath = config->GetCertFile()
-        }
-    };
-
-    return CreateStaticCertificateProvider(
-        config->GetRootCertsFile(),
-        std::move(certPathList));
-}
-
 class TPingCommand final:
     public TCommand
 {
@@ -54,7 +39,7 @@ public:
                 CreateFileStoreClient(
                     ClientConfig,
                     Logging,
-                    CreateClientCertificateProvider(ClientConfig)));
+                    CertificateProvider));
         } else {
             EndpointClient = CreateDurableClient(
                 Logging,
@@ -64,7 +49,7 @@ public:
                 CreateEndpointManagerClient(
                     ClientConfig,
                     Logging,
-                    CreateClientCertificateProvider(ClientConfig)));
+                    CertificateProvider));
         }
     }
 

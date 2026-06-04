@@ -1,0 +1,123 @@
+#pragma once
+
+#include "part_events_private.h"
+#include "part_tx.h"
+
+#include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+#include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
+
+#include <cloud/storage/core/libs/common/block_buffer.h>
+#include <cloud/storage/core/libs/common/guarded_sglist.h>
+#include <cloud/storage/core/libs/tablet/blob_id.h>
+#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
+
+#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+
+#include <util/generic/ptr.h>
+#include <util/generic/string.h>
+#include <util/generic/vector.h>
+
+namespace NKikimr {
+    class TTabletStorageInfo;
+}
+
+namespace NCloud::NBlockStore::NStorage::NPartition {
+
+class TPartitionState;
+class TPartitionDatabase;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TBlockMask GetFullBlockMask();
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TRangeCompactionInfo
+{
+    const TBlockRange32 BlockRange;
+    const TPartialBlobId OriginalBlobId;
+    const TPartialBlobId DataBlobId;
+    const TBlockMask DataBlobSkipMask;
+    const TPartialBlobId ZeroBlobId;
+    const TBlockMask ZeroBlobSkipMask;
+    const ui32 BlobsSkippedByCompaction;
+    const ui32 BlocksSkippedByCompaction;
+    const TVector<ui32> BlockChecksums;
+    const EChannelDataKind ChannelDataKind;
+
+    TGuardedBuffer<TBlockBuffer> BlobContent;
+    TVector<ui32> ZeroBlocks;
+    TAffectedBlobs AffectedBlobs;
+    TAffectedBlocks AffectedBlocks;
+    TVector<ui16> UnchangedBlobOffsets;
+    TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> Diffs;
+    ui32 DiffCount = 0;
+
+    TRangeCompactionInfo(
+            TBlockRange32 blockRange,
+            TPartialBlobId originalBlobId,
+            TPartialBlobId dataBlobId,
+            TBlockMask dataBlobSkipMask,
+            TPartialBlobId zeroBlobId,
+            TBlockMask zeroBlobSkipMask,
+            ui32 blobsSkippedByCompaction,
+            ui32 blocksSkippedByCompaction,
+            TVector<ui32> blockChecksums,
+            EChannelDataKind channelDataKind,
+            TBlockBuffer blobContent,
+            TVector<ui32> zeroBlocks,
+            TAffectedBlobs affectedBlobs,
+            TAffectedBlocks affectedBlocks);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBlobCompactionRequest
+{
+    TPartialBlobId BlobId;
+    NActors::TActorId Proxy;
+    ui16 BlobOffset;
+    ui32 BlockIndex;
+    size_t IndexInBlobContent;
+    ui32 GroupId;
+    ui32 RangeCompactionIndex;
+
+    TBlobCompactionRequest(
+            const TPartialBlobId& blobId,
+            const NActors::TActorId& proxy,
+            ui16 blobOffset,
+            ui32 blockIndex,
+            size_t indexInBlobContent,
+            ui32 groupId,
+            ui32 rangeCompactionIndex);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+void PrepareRangeCompaction(
+    const TStorageConfig& config,
+    ui32 maxSkippedBlobs,
+    ui64 commitId,
+    const NActors::TActorContext& ctx,
+    ui64 tabletId,
+    bool readBlockMaskOnCompactionOptimizationEnabled,
+    bool& ready,
+    TPartitionDatabase& db,
+    TPartitionState& state,
+    TTxPartition::TRangeCompaction& args,
+    const TString& logTitle);
+
+void CompleteRangeCompaction(
+    bool blobPatchingEnabled,
+    ui32 mergedBlobThreshold,
+    ui64 commitId,
+    NKikimr::TTabletStorageInfo& tabletStorageInfo,
+    TPartitionState& state,
+    TTxPartition::TRangeCompaction& args,
+    TVector<TBlobCompactionRequest>& requests,
+    TVector<TRangeCompactionInfo>& rangeCompactionInfos,
+    ui32 maxDiffPercentageForBlobPatching);
+
+}   // namespace NCloud::NBlockStore::NStorage::NPartition

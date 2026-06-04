@@ -161,7 +161,7 @@ void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
 void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
     // Since we store data in chunks instead of a single block, in rare cases
-    // a crash during the reset or removal process can lead to inconsistent
+    // a crash during the removal process can lead to inconsistent
     // chunks order. We detect this inconsistency during the load phase and
     // clean data for this handle.
     struct TChunkInfo
@@ -230,11 +230,12 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
             const auto& chunk = chunks[i];
 
             if (chunk.UpdateVersion != expectedVersion) {
-                ReportDirectoryHandlesStorageError(
-                    TStringBuilder()
-                    << "Corrupted data for handle " << handleId
-                    << ": expected update version " << expectedVersion
-                    << ", got " << chunk.UpdateVersion);
+                STORAGE_ERROR(
+                    "Dropping handle "
+                    << handleId
+                    << " with incomplete chunk sequence: expected update "
+                    << "version " << expectedVersion << ", got "
+                    << chunk.UpdateVersion);
 
                 RemoveHandle(handleId);
                 handles.erase(handleId);

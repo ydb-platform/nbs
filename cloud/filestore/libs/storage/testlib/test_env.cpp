@@ -473,7 +473,8 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             ProfileLog,
             TraceSerializer,
             SystemCounters,
-            Registry);
+            Registry,
+            nullptr /* fastShardServer */);
         return actor.release();
     };
 
@@ -604,7 +605,8 @@ void TTestEnv::SetupLocalServiceConfig(
             ProfileLog,
             TraceSerializer,
             SystemCounters,
-            Registry);
+            Registry,
+            nullptr /* fastShardServer */);
         return actor.release();
     };
 

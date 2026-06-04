@@ -5,6 +5,8 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config"
+	nodes_schema "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/schema"
 	filesystem_traversal_schema "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -113,14 +115,6 @@ func initFilesystemDataplane(
 		return nil
 	}
 
-	scrubbingConfig := filesystemConfig.GetScrubbingConfig()
-	if scrubbingConfig == nil {
-		return nil
-	}
-	traversalConfig := scrubbingConfig.GetTraversalConfig()
-	if traversalConfig == nil {
-		return nil
-	}
 	persistenceConfig := filesystemConfig.GetPersistenceConfig()
 	if persistenceConfig == nil {
 		return nil
@@ -137,9 +131,69 @@ func initFilesystemDataplane(
 	}
 	defer filesystemDB.Close(ctx)
 
+	err = initFilesystemScrubbingSchema(ctx, filesystemConfig, filesystemDB, dropUnusedColumns)
+	if err != nil {
+		return err
+	}
+
+	return initFilesystemSnapshotSchema(ctx, filesystemConfig, filesystemDB, dropUnusedColumns)
+}
+
+func initFilesystemScrubbingSchema(
+	ctx context.Context,
+	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
+	filesystemDB *persistence.YDBClient,
+	dropUnusedColumns bool,
+) error {
+
+	scrubbingConfig := filesystemConfig.GetScrubbingConfig()
+	if scrubbingConfig == nil {
+		return nil
+	}
+
+	traversalConfig := scrubbingConfig.GetTraversalConfig()
+	if traversalConfig == nil {
+		return nil
+	}
+
 	return filesystem_traversal_schema.Create(
 		ctx,
 		traversalConfig.GetStorageFolder(),
+		filesystemDB,
+		dropUnusedColumns,
+	)
+}
+
+func initFilesystemSnapshotSchema(
+	ctx context.Context,
+	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
+	filesystemDB *persistence.YDBClient,
+	dropUnusedColumns bool,
+) error {
+
+	snapshotConfig := filesystemConfig.GetSnapshotConfig()
+	if snapshotConfig == nil {
+		return nil
+	}
+
+	traversalConfig := snapshotConfig.GetTraversalConfig()
+	if traversalConfig == nil {
+		return nil
+	}
+
+	err := filesystem_traversal_schema.Create(
+		ctx,
+		traversalConfig.GetStorageFolder(),
+		filesystemDB,
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nodes_schema.Create(
+		ctx,
+		snapshotConfig.GetNodesStorageFolder(),
 		filesystemDB,
 		dropUnusedColumns,
 	)

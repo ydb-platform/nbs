@@ -408,6 +408,8 @@ public:
     [[nodiscard]] bool GetUseCustomReadDataResponseParser() const;
 
     [[nodiscard]] bool GetUseSchemeCache() const;
+
+    [[nodiscard]] ui32 GetFastShardServerPort() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

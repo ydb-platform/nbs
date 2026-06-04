@@ -22,6 +22,7 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
 
+    cloud/storage/core/libs/grpc
     cloud/storage/core/libs/rdma/impl
 )
 

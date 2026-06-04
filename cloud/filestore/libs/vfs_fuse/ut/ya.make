@@ -8,6 +8,7 @@ SRCS(
     directory_handle_cache_ut.cpp
     fs_directory_content_format_ut.cpp
     fs_directory_handle_ut.cpp
+    fs_impl_data_ut.cpp
     fs_ut.cpp
 )
 

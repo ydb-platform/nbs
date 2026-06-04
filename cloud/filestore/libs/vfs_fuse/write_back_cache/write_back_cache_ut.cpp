@@ -1933,6 +1933,83 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCopyIovecDataBeforeAcknowledgingNonDirectWrite)
+    {
+        // Cached writes must copy iovec data before acknowledging the request.
+        // The source buffers may disappear before the data is flushed.
+        TBootstrap b;
+
+        TString flushedBuffer;
+        std::atomic<int> writeAttempts = 0;
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            writeAttempts++;
+            // Flush must use cache owned data, not the original iovecs.
+            flushedBuffer = request->GetBuffer();
+            NProto::TWriteDataResponse response;
+            return MakeFuture(response);
+        };
+
+        auto source = std::make_unique<TString>("abcdefghij");
+        const ui64 base = reinterpret_cast<ui64>(source->data());
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetOffset(0);
+        auto* iovec = request->AddIovecs();
+        iovec->SetBase(base);
+        iovec->SetLength(source->size());
+
+        // Once WriteData resolves, the data must already be copied.
+        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+
+        // Overwrite and free the source before flushing.
+        for (auto& c: *source) {
+            c = 'X';
+        }
+        source.reset();
+
+        b.Cache.FlushNodeData(1).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
+        UNIT_ASSERT_VALUES_EQUAL("abcdefghij", flushedBuffer);
+    }
+
+    Y_UNIT_TEST(ShouldConsumeIovecDataWithinRequestLifetimeForDirectWrite)
+    {
+        // Direct writes may borrow iovec data only until the request completes.
+        TBootstrap b;
+
+        TString seen;
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            for (const auto& iovec: request->GetIovecs()) {
+                seen += TStringBuf(
+                    reinterpret_cast<const char*>(iovec.GetBase()),
+                    iovec.GetLength());
+            }
+            NProto::TWriteDataResponse response;
+            return MakeFuture(response);
+        };
+
+        auto source = std::make_unique<TString>("abcdefghij");
+        const ui64 base = reinterpret_cast<ui64>(source->data());
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetOffset(0);
+        auto* iovec = request->AddIovecs();
+        iovec->SetBase(base);
+        iovec->SetLength(source->size());
+
+        b.Cache.WriteDataDirect(b.CallContext, request).GetValueSync();
+
+        // The source may be released once the direct write resolves.
+        source.reset();
+
+        UNIT_ASSERT_VALUES_EQUAL("abcdefghij", seen);
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyFlushOnlyCachedRequests)
     {
         TBootstrap b;

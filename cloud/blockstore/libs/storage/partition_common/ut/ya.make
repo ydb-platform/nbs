@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/partition_common)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    actor_base_disk_keep_alive_ut.cpp
     actor_read_blob_ut.cpp
     actor_describe_base_disk_blocks_ut.cpp
     actor_loadfreshblobs_ut.cpp

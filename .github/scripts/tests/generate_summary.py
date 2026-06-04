@@ -693,6 +693,8 @@ def replace_workload_status_block(
     lines = body.splitlines()
     insert_at = len(lines)
     for idx, line in enumerate(lines):
+        if idx == 0 and line.startswith("<!-- status "):
+            continue
         if line.startswith("> [!NOTE]") or line.startswith("> [!IMPORTANT]"):
             continue
         if line.startswith("> This is "):
@@ -704,6 +706,17 @@ def replace_workload_status_block(
 
     updated_lines = lines[:insert_at] + [status_block, ""] + lines[insert_at:]
     return "\n".join(updated_lines)
+
+
+def ensure_workload_status_block(
+    body: str,
+    build_preset: str,
+    workload_status: str,
+) -> str:
+    if WORKLOAD_STATUS_START in body and WORKLOAD_STATUS_END in body:
+        return body
+
+    return replace_workload_status_block(body, build_preset, workload_status)
 
 
 def replace_workload_checks_block(
@@ -723,6 +736,24 @@ def replace_workload_checks_block(
         body,
         checks_block,
         after_marker=WORKLOAD_STATUS_END,
+    )
+
+
+def ensure_workload_check_row(
+    body: str,
+    build_preset: str,
+    component: str,
+) -> str:
+    if get_workload_check_line_match(body, component) is not None:
+        return body
+
+    if WORKLOAD_CHECKS_START not in body or WORKLOAD_CHECKS_END not in body:
+        return replace_workload_checks_block(body, build_preset, [component])
+
+    return body.replace(
+        WORKLOAD_CHECKS_END,
+        f"{get_workload_check_line(component, 'pending')}\n{WORKLOAD_CHECKS_END}",
+        1,
     )
 
 
@@ -1070,15 +1101,31 @@ def update_pr_comment_workload_check(
     comment = find_pr_comment(pr, header_prefix)
 
     if comment is None:
-        LOGGER.info("No existing comment found for workload check update")
-        return
+        LOGGER.info("Creating minimal comment for workload check update")
+        header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+        pr.create_issue_comment(
+            "\n".join(
+                get_base_comment_body(
+                    header,
+                    build_preset,
+                    is_dry_run,
+                    "in_progress",
+                    [component],
+                )
+            )
+        )
+    else:
+        LOGGER.info("Updating workload check for comment id=%s", comment.id)
 
-    LOGGER.info("Updating workload check for comment id=%s", comment.id)
     edit_pr_comment(
         pr=pr,
         header_prefix=header_prefix,
         update_body=lambda body: update_workload_check_block(
-            body,
+            ensure_workload_check_row(
+                ensure_workload_status_block(body, build_preset, "in_progress"),
+                build_preset,
+                component,
+            ),
             component,
             workload_check_status,
             job_url,

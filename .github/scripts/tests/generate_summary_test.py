@@ -458,6 +458,186 @@ def test_initialize_pr_comment_creates_workload_checks_block() -> None:
     assert "tasks + storage" in body
 
 
+def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        def __init__(self, comment_id: int, body: str) -> None:
+            self.id = comment_id
+            self.body = body
+            self.edits = []
+
+        def edit(self, body: str) -> None:
+            self.body = body
+            self.edits.append(body)
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self) -> None:
+            self.comments = []
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return self.comments
+
+        def create_issue_comment(self, body: str) -> None:
+            self.comments.append(FakeComment(len(self.comments) + 1, body))
+
+    pr = FakePR()
+
+    gs.update_pr_comment_workload_check(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        component="blockstore",
+        is_dry_run=False,
+        workload_check_status="completed",
+        job_url="https://github.example/job/123",
+    )
+
+    assert len(pr.comments) == 1
+    body = pr.comments[0].body
+    assert gs.WORKLOAD_CHECKS_START in body
+    assert "Planned checks for **linux**." in body
+    assert gs.get_workload_check_status(body, "blockstore") == "completed"
+    assert "https://github.example/job/123" in body
+    assert gs.get_comment_revision(body) == 1
+
+
+def test_update_pr_comment_workload_check_adds_missing_component_row(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        id = 1001
+
+        def __init__(self, body: str) -> None:
+            self.body = body
+            self.edits = []
+
+        def edit(self, body: str) -> None:
+            self.body = body
+            self.edits.append(body)
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self, comment: FakeComment) -> None:
+            self._comment = comment
+            self.created = []
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return [self._comment]
+
+        def create_issue_comment(self, body: str) -> None:
+            self.created.append(body)
+
+    existing = FakeComment(
+        "\n".join(
+            [
+                (
+                    "<!-- status pr=77, run=12, build_preset=linux, "
+                    "dry_run=False, revision=0 -->"
+                ),
+                *gs.get_workload_status_text("linux", "in_progress"),
+                "",
+                gs.WORKLOAD_CHECKS_START,
+                gs.get_workload_check_line("blockstore", "completed"),
+                gs.WORKLOAD_CHECKS_END,
+            ]
+        )
+    )
+    pr = FakePR(existing)
+
+    gs.update_pr_comment_workload_check(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        component="filestore",
+        is_dry_run=False,
+        workload_check_status="running",
+        job_url="https://github.example/job/456",
+    )
+
+    assert pr.created == []
+    assert len(existing.edits) == 1
+    assert gs.get_workload_check_status(existing.body, "blockstore") == "completed"
+    assert gs.get_workload_check_status(existing.body, "filestore") == "running"
+    assert "https://github.example/job/456" in existing.body
+    assert gs.get_comment_revision(existing.body) == 1
+
+
+def test_update_pr_comment_workload_check_does_not_downgrade_workload_status(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        id = 1001
+
+        def __init__(self, body: str) -> None:
+            self.body = body
+
+        def edit(self, body: str) -> None:
+            self.body = body
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self, comment: FakeComment) -> None:
+            self._comment = comment
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return [self._comment]
+
+        def create_issue_comment(self, body: str) -> None:  # noqa: U100
+            raise AssertionError("should not create a new comment")
+
+    existing = FakeComment(
+        "\n".join(
+            [
+                (
+                    "<!-- status pr=77, run=12, build_preset=linux, "
+                    "dry_run=False, revision=0 -->"
+                ),
+                *gs.get_workload_status_text("linux", "completed"),
+                "",
+                gs.WORKLOAD_CHECKS_START,
+                gs.WORKLOAD_CHECKS_END,
+            ]
+        )
+    )
+    pr = FakePR(existing)
+
+    gs.update_pr_comment_workload_check(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        component="blockstore",
+        is_dry_run=False,
+        workload_check_status="completed",
+    )
+
+    assert "All workloads for **linux** have completed." in existing.body
+    assert "is not finished yet" not in existing.body
+    assert gs.get_workload_check_status(existing.body, "blockstore") == "completed"
+
+
 def test_update_pr_comment_workload_check_preserves_existing_job_url() -> None:
     class FakeHead:
         sha = "abc123"

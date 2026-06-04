@@ -670,6 +670,10 @@ private:
     void HandleGetChangedBlocksRequest(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandleKeepAliveRequest(
+        const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -842,12 +846,26 @@ void TTestVolumeProxyActor::HandleGetChangedBlocksRequest(
     ctx.Send(ev->Sender, response.release());
 }
 
+void TTestVolumeProxyActor::HandleKeepAliveRequest(
+    const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    UNIT_ASSERT_VALUES_EQUAL(BaseDiskId, msg->DiskId);
+
+    ctx.Send(
+        ev->Sender,
+        std::make_unique<TEvVolumeProxy::TEvKeepAliveResponse>().release());
+}
+
 STFUNC(TTestVolumeProxyActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocksRequest);
         HFunc(TEvVolume::TEvGetUsedBlocksRequest, HandleGetUsedBlocksRequest);
         HFunc(TEvService::TEvGetChangedBlocksRequest, HandleGetChangedBlocksRequest);
+        HFunc(TEvVolumeProxy::TEvKeepAliveRequest, HandleKeepAliveRequest);
         IgnoreFunc(TEvVolume::TEvMapBaseDiskIdToTabletId);
         IgnoreFunc(TEvVolume::TEvClearBaseDiskIdToTabletIdMapping);
 
@@ -14212,6 +14230,81 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         << BlockMaskAsString(blobsInfo->BlockMasksForBlobs[i]));
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldKeepBaseDiskPipeAliveWhenEnabled)
+    {
+        auto config = DefaultConfig();
+        config.SetBaseDiskPipeKeepAliveEnabled(true);
+
+        const auto keepAliveInterval = TDuration::Seconds(2);
+        config.SetVolumeProxyPipeInactivityTimeout(
+            keepAliveInterval.MilliSeconds() * 2);
+
+        auto setup = SetupOverlayPartition(
+            TestTabletId,
+            TestTabletId2,
+            {},   // basePartitionContent
+            {},   // channelsCount
+            DefaultBlockSize,
+            1024,
+            config);
+        auto& runtime = *setup.Runtime;
+
+        ui64 pingCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvVolumeProxy::EvKeepAliveRequest) {
+                    ++pingCount;
+                }
+                return false;
+            });
+
+        // Drive simulated time across several intervals; the keep-alive actor
+        // must keep pinging the base-disk volume periodically.
+        for (ui32 i = 0; i < 3; ++i) {
+            runtime.AdvanceCurrentTime(keepAliveInterval);
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT_GE(pingCount, 2u);
+    }
+
+    Y_UNIT_TEST(ShouldNotKeepBaseDiskPipeAliveWhenDisabled)
+    {
+        auto config = DefaultConfig();
+        config.SetBaseDiskPipeKeepAliveEnabled(false);
+
+        const auto pipeInactivityInterval = TDuration::Seconds(5);
+        config.SetVolumeProxyPipeInactivityTimeout(
+            pipeInactivityInterval.MilliSeconds());
+
+        auto setup = SetupOverlayPartition(
+            TestTabletId,
+            TestTabletId2,
+            {},
+            {},
+            DefaultBlockSize,
+            1024,
+            config);
+        auto& runtime = *setup.Runtime;
+
+        ui64 pingCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvVolumeProxy::EvKeepAliveRequest) {
+                    ++pingCount;
+                }
+                return false;
+            });
+
+        runtime.AdvanceCurrentTime(
+            pipeInactivityInterval + TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, pingCount);
     }
 }
 

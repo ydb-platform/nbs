@@ -182,6 +182,7 @@ void TBootstrapCommon::Init()
     STORAGE_INFO("Metrics initialized");
 
     if (Configs->Options->Service == EServiceKind::Kikimr) {
+        InitActorSystemPrerequisites();
         InitActorSystem();
     }
 
@@ -311,6 +312,7 @@ void TBootstrapCommon::InitActorSystem()
     args.UserCounters = UserCounters;
     args.StatsFetcher = StatsFetcher;
     args.ModuleFactories = ModuleFactories;
+    args.FastShardServer = FastShardServer;
 
     ActorSystem = NStorage::CreateActorSystem(args);
     STORAGE_INFO("ActorSystem initialized");

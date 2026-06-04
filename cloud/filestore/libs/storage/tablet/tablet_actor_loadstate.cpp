@@ -268,6 +268,12 @@ void TIndexTabletActor::CompleteAdapterLoadState(
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
+    if (FastShardServer) {
+        FastShardServer->RegisterShard(
+            GetFileSystemId(),
+            FastShard);
+    }
+
     RunRegularTasks(ctx);
 
     LOG_INFO_S(
@@ -317,6 +323,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
         return;
     }
+
+    ScheduleUpdateCounters(ctx);
 
     if (args.FileSystem.GetIsFastShard()) {
         BecomeAux(ctx, STATE_ADAPTER);

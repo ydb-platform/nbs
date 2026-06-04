@@ -1058,6 +1058,19 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             profileLogRequest.GetRanges(0).GetBufferOffset());
     }
 
+    Y_UNIT_TEST(ShouldReadDataResponseUseLengthWhenBufferIsEmpty)
+    {
+        NProto::TReadDataResponse res;
+        constexpr auto Size = 42;
+        res.SetLength(Size);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        FinalizeProfileLogRequestInfo(profileLogRequest, res);
+        UNIT_ASSERT_VALUES_EQUAL(
+            Size,
+            profileLogRequest.GetRanges(0).GetActualBytes());
+    }
+
     Y_UNIT_TEST(ShouldGetCorrectFuseRequestName)
     {
         UNIT_ASSERT_VALUES_EQUAL(

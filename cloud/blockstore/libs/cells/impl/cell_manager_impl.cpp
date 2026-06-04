@@ -15,6 +15,7 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/rdma/impl/client.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
@@ -69,6 +70,7 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
 
 void TCellManager::Start()
 {
+    Bootstrap.CertProvider->Start();
     Bootstrap.GrpcClient->Start();
 
     for (auto& cell: Cells) {
@@ -83,6 +85,7 @@ void TCellManager::Stop()
     }
 
     Bootstrap.GrpcClient->Stop();
+    Bootstrap.CertProvider->Stop();
 }
 
 TResultOrError<TCellHostEndpoint> TCellManager::GetCellEndpoint(
@@ -178,7 +181,7 @@ ICellManagerPtr CreateCellManager(
         logging,
         monitoring,
         std::move(serverStats),
-        std::move(certificateProvider));
+        certificateProvider);
 
     if (HasError(result)) {
         STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "unable to create gRPC client";
@@ -197,6 +200,7 @@ ICellManagerPtr CreateCellManager(
         .Logging = std::move(logging),
         .Monitoring = std::move(monitoring),
         .TraceSerializer = std::move(traceSerializer),
+        .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),

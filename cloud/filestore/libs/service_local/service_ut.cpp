@@ -1574,6 +1574,192 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(buffer, "bbbb");
     }
 
+    Y_UNIT_TEST(ShouldWriteDataFromMultipleIovecs)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        TString part1 = "aaaabbbb";
+        TString part2 = "ccccdddd";
+
+        auto request = bootstrap.CreateWriteDataRequest(handle, 0, "");
+        auto* iov1 = request->MutableIovecs()->Add();
+        iov1->SetBase(reinterpret_cast<ui64>(part1.data()));
+        iov1->SetLength(part1.size());
+        auto* iov2 = request->MutableIovecs()->Add();
+        iov2->SetBase(reinterpret_cast<ui64>(part2.data()));
+        iov2->SetLength(part2.size());
+
+        auto response =
+            bootstrap.Store->WriteData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(buffer, part1 + part2);
+    }
+
+    Y_UNIT_TEST(ShouldWriteDataWithZeroLengthIovecs)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        TString part1 = "aaaa";
+        TString empty;
+        TString part2 = "bbbb";
+
+        auto request = bootstrap.CreateWriteDataRequest(handle, 0, "");
+        auto* iov1 = request->MutableIovecs()->Add();
+        iov1->SetBase(reinterpret_cast<ui64>(part1.data()));
+        iov1->SetLength(part1.size());
+        auto* iovEmpty = request->MutableIovecs()->Add();
+        iovEmpty->SetBase(reinterpret_cast<ui64>(empty.data()));
+        iovEmpty->SetLength(0);
+        auto* iov2 = request->MutableIovecs()->Add();
+        iov2->SetBase(reinterpret_cast<ui64>(part2.data()));
+        iov2->SetLength(part2.size());
+
+        auto response =
+            bootstrap.Store->WriteData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(buffer, "aaaabbbb");
+    }
+
+    Y_UNIT_TEST(ShouldReadDataIntoMultipleIovecs)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbbcccc");
+
+        TVector<char> buf1(4);
+        TVector<char> buf2(8);
+
+        auto request = bootstrap.CreateReadDataRequest(handle, 0, 12);
+        auto* iov1 = request->MutableIovecs()->Add();
+        iov1->SetBase(reinterpret_cast<ui64>(buf1.data()));
+        iov1->SetLength(buf1.size());
+        auto* iov2 = request->MutableIovecs()->Add();
+        iov2->SetBase(reinterpret_cast<ui64>(buf2.data()));
+        iov2->SetLength(buf2.size());
+
+        auto response =
+            bootstrap.Store->ReadData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        // Zero-copy reads report the read size via Length and leave Buffer
+        // empty.
+        UNIT_ASSERT_VALUES_EQUAL(12, response.GetLength());
+        UNIT_ASSERT(response.GetBuffer().empty());
+        UNIT_ASSERT_VALUES_EQUAL(TStringBuf(buf1.data(), buf1.size()), "aaaa");
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf(buf2.data(), buf2.size()),
+            "bbbbcccc");
+    }
+
+    Y_UNIT_TEST(ShouldCapReadLengthWhenIovecCapacityIsLarger)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbb");
+
+        // The caller supplies a much larger iovec than the requested length -
+        // we should only expose request.GetLength() bytes.
+        TVector<char> buf(100, 'x');
+
+        auto request = bootstrap.CreateReadDataRequest(handle, 0, 4);
+        auto* iov = request->MutableIovecs()->Add();
+        iov->SetBase(reinterpret_cast<ui64>(buf.data()));
+        iov->SetLength(buf.size());
+
+        auto response =
+            bootstrap.Store->ReadData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(TStringBuf(buf.data(), 4), "aaaa");
+        // Bytes beyond the requested length must be left untouched.
+        UNIT_ASSERT_VALUES_EQUAL('x', buf[4]);
+    }
+
+    Y_UNIT_TEST(ShouldShortReadWhenIovecCapacityIsSmallerThanLength)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbb");
+
+        // The caller supplies less iovec capacity than the requested length -
+        // the read is capped to the available capacity (a short read).
+        TVector<char> buf(4);
+
+        auto request = bootstrap.CreateReadDataRequest(handle, 0, 100);
+        auto* iov = request->MutableIovecs()->Add();
+        iov->SetBase(reinterpret_cast<ui64>(buf.data()));
+        iov->SetLength(buf.size());
+
+        auto response =
+            bootstrap.Store->ReadData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(TStringBuf(buf.data(), buf.size()), "aaaa");
+    }
+
+    Y_UNIT_TEST(ShouldReturnBufferForBufferedRead)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbb");
+
+        // A read request without iovecs must keep the buffered behavior and
+        // return the data via Buffer.
+        auto response = bootstrap.ReadData(handle, 0, 100);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aaaabbbb",
+            response.GetBuffer().substr(response.GetBufferOffset()));
+    }
+
     Y_UNIT_TEST(ShouldAllocateData)
     {
         TTestBootstrap bootstrap("fs");
