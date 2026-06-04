@@ -7,6 +7,8 @@
 #include <exception>
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 // Avoid recursion if std::terminate is triggered inside TerminateHandler
 thread_local int TerminateCount = 0;
 
