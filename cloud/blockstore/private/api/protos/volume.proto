@@ -316,25 +316,4 @@ message TSetVhostDiscardFlagActionResponse
 {
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// DescribeBlocksIndex request/response.
-
-message TDescribeBlocksIndexRequest
-{
-    string DiskId = 1;
-    uint32 StartIndex = 2;
-    uint32 BlocksCount = 3;
-}
-
-message TDescribeBlocksIndexEntry
-{
-    uint64 CommitId = 1;
-    TLogoBlobID BlobId = 2;
-    uint32 BlobOffset = 3;
-}
-
-message TDescribeBlocksIndexResponse
-{
-    repeated TDescribeBlocksIndexEntry Entries = 1;
-}
 

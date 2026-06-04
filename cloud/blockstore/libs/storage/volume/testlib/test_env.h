@@ -435,11 +435,6 @@ public:
         const TString& clientId,
         ui32 blocksCountToRead = 0);
 
-    std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
-    CreateDescribeBlocksIndexRequest(
-        const TBlockRange64& range,
-        const TString& clientId);
-
     std::unique_ptr<TEvService::TEvCreateCheckpointRequest> CreateCreateCheckpointRequest(
         const TString& checkpointId,
         NProto::ECheckpointType checkpointType = NProto::ECheckpointType::NORMAL);

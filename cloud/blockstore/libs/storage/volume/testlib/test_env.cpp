@@ -507,18 +507,6 @@ std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest> TVolumeClient::CreateDescri
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
-TVolumeClient::CreateDescribeBlocksIndexRequest(
-    const TBlockRange64& range,
-    const TString& clientId)
-{
-    auto request = std::make_unique<TEvVolume::TEvDescribeBlocksIndexRequest>();
-    request->Record.SetStartIndex(range.Start);
-    request->Record.SetBlocksCount(range.Size());
-    request->Record.MutableHeaders()->SetClientId(clientId);
-    return request;
-}
-
 std::unique_ptr<TEvService::TEvCreateCheckpointRequest>
 TVolumeClient::CreateCreateCheckpointRequest(
     const TString& checkpointId,

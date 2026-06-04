@@ -763,22 +763,6 @@ public:
         return CreateDescribeBlocksRequest(range.Start, range.Size(), checkpointId);
     }
 
-    std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
-    CreateDescribeBlocksIndexRequest(ui32 startIndex, ui32 blocksCount)
-    {
-        auto request =
-            std::make_unique<TEvVolume::TEvDescribeBlocksIndexRequest>();
-        request->Record.SetStartIndex(startIndex);
-        request->Record.SetBlocksCount(blocksCount);
-        return request;
-    }
-
-    std::unique_ptr<TEvVolume::TEvDescribeBlocksIndexRequest>
-    CreateDescribeBlocksIndexRequest(const TBlockRange32& range)
-    {
-        return CreateDescribeBlocksIndexRequest(range.Start, range.Size());
-    }
-
     std::unique_ptr<TEvVolume::TEvGetUsedBlocksRequest> CreateGetUsedBlocksRequest()
     {
         return std::make_unique<TEvVolume::TEvGetUsedBlocksRequest>();
@@ -4244,82 +4228,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
             const auto blobId = LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
             UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blobId.BlobSize());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldForbidDescribeBlocksIndexWithEmptyRange)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        auto request = partition.CreateDescribeBlocksIndexRequest(0, 0);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-    }
-
-    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestWithOutOfBoundsRange)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        const auto range =
-            TBlockRange32::MakeClosedInterval(Max<ui32>() - 2, Max<ui32>() - 1);
-        auto request = partition.CreateDescribeBlocksIndexRequest(range);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.EntriesSize());
-    }
-
-    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestWhenBlocksAreFresh)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        const auto range = TBlockRange32::WithLength(0, 5);
-        partition.WriteBlocks(range, char(1));
-
-        auto request = partition.CreateDescribeBlocksIndexRequest(range);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(5, response->Record.EntriesSize());
-
-        for (const auto& entry : response->Record.GetEntries()) {
-            UNIT_ASSERT(entry.GetCommitId() > 0);
-            const auto blobId = LogoBlobIDFromLogoBlobID(entry.GetBlobId());
-            UNIT_ASSERT(blobId.IsValid());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldHandleDescribeBlocksIndexRequestAfterFlush)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        const auto range = TBlockRange32::WithLength(0, 5);
-        partition.WriteBlocks(range, char(1));
-        partition.Flush();
-
-        auto request = partition.CreateDescribeBlocksIndexRequest(range);
-        partition.SendToPipe(std::move(request));
-        auto response =
-            partition.RecvResponse<TEvVolume::TEvDescribeBlocksIndexResponse>();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(5, response->Record.EntriesSize());
-
-        for (const auto& entry : response->Record.GetEntries()) {
-            UNIT_ASSERT(entry.GetCommitId() > 0);
-            const auto blobId = LogoBlobIDFromLogoBlobID(entry.GetBlobId());
-            UNIT_ASSERT(blobId.IsValid());
         }
     }
 
