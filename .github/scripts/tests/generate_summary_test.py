@@ -209,7 +209,7 @@ def test_write_summary_renders_expected_table_row(tmp_path: Path, monkeypatch) -
     ) in content
 
 
-def test_write_summary_links_fail_build_log(tmp_path: Path, monkeypatch) -> None:
+def test_write_summary_omits_fail_build_log_link(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
     line = gs.TestSummaryLine("Tests")
     line.add(
@@ -231,10 +231,8 @@ def test_write_summary_links_fail_build_log(tmp_path: Path, monkeypatch) -> None
     gs.write_summary(summary, str(out), "https://summary/build_errors.html")
     content = out.read_text()
 
-    assert (
-        "[1](https://summary/ya-test.html#FAIL_BUILD) "
-        "([log](https://summary/build_errors.html))"
-    ) in content
+    assert "[1](https://summary/ya-test.html#FAIL_BUILD)" in content
+    assert "https://summary/build_errors.html" not in content
 
 
 def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:

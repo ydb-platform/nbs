@@ -367,8 +367,6 @@ class TestSummary:
                     f"{report_url}#{status.report_anchor}" if report_url else None
                 )
                 cell = render_pm(count, status_url, 0)
-                if status == TestStatus.FAIL_BUILD and count and build_error_log_url:
-                    cell = f"{cell} ([log]({build_error_log_url}))"
                 row.append(cell)
             result.append(self.render_line(row))
 
