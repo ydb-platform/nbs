@@ -533,7 +533,6 @@ def get_comment_text(
     test_history_url: str,
     test_target: str,
     test_time: str,
-    build_error_log_url: str = "",
 ) -> list[str]:
     test_target_message = f" target: **{test_target}**" if test_target else ""
     test_time_message = (
@@ -1008,7 +1007,6 @@ def update_pr_comment(
     test_time: str,
     is_dry_run: bool,
     workload_status: str,
-    build_error_log_url: str = "",
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
     header_prefix = get_comment_header_prefix(
@@ -1045,7 +1043,6 @@ def update_pr_comment(
             test_history_url,
             test_target,
             test_time,
-            build_error_log_url,
         )
     )
 
