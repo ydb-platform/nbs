@@ -10,6 +10,7 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/terminate_handler
 
     contrib/ydb/library/actors/util
     library/cpp/deprecated/atomic

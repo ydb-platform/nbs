@@ -17,8 +17,8 @@ SRCS(
 PEERDIR(
     cloud/filestore/apps/client/lib
     cloud/storage/core/libs/iam/iface
+    cloud/storage/core/libs/terminate_handler
     library/cpp/getopt
-    library/cpp/terminate_handler
 )
 
 END()
