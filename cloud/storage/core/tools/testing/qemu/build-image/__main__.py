@@ -77,7 +77,6 @@ def write_user_data(filename, args):
             "fio",
             "ibverbs-utils",  # rdma
             "iotop",
-            "linux-modules-extra",  # modprobe rdma_rxe
             "mc",
             "nfs-common",
             "perftest",
@@ -138,6 +137,9 @@ def write_user_data(filename, args):
             'content': 'PubkeyAcceptedAlgorithms +ssh-rsa',
             'append': True,
         })
+
+    if args.release in ["noble"]:
+        user_data['packages'].append("linux-generic-hwe-24.04");
 
     if args.plain_pwd:
         user_data['runcmd'].append(
