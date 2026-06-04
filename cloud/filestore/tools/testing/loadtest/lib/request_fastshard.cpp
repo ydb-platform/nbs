@@ -13,6 +13,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/guid.h>
+#include <util/generic/scope.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 #include <util/system/mutex.h>
@@ -40,7 +41,6 @@ struct TFileState
 // passed through the silk FIBER_PARAMETERS_SIZE-limited params slot.
 struct TFiberState
 {
-    ui16 Port;
     TString ShardFileSystemId;
     NProto::EAction Action;
     ui64 ReadBytes;
@@ -67,13 +67,17 @@ class TFastShardRequestGenerator final
 {
 private:
     static constexpr ui32 DefaultIoSize = 4096;
+    static constexpr ui32 Parallelism = 16;
 
     const NProto::TFastShardLoadSpec Spec;
     const TString ShardFileSystemId;
-    const ui16 Port;
     const ui64 ReadBytes;
     const ui64 WriteBytes;
     const ui64 InitialFileSize;
+
+    TClient Client;
+    TDeque<std::unique_ptr<IEndpoint>> Endpoints;
+    TAdaptiveLock EndpointsLock;
 
     TVector<std::pair<ui64, NProto::EAction>> Actions;
     ui64 TotalRate = 0;
@@ -87,13 +91,17 @@ public:
             ILoggingServicePtr /*logging*/)
         : Spec(std::move(spec))
         , ShardFileSystemId(Spec.GetShardFileSystemId())
-        , Port(static_cast<ui16>(Spec.GetFastShardPort()))
         , ReadBytes(Spec.GetReadBytes() ? Spec.GetReadBytes() : DefaultIoSize)
         , WriteBytes(Spec.GetWriteBytes() ? Spec.GetWriteBytes() : DefaultIoSize)
         , InitialFileSize(Spec.GetInitialFileSize())
     {
         Y_ENSURE(!ShardFileSystemId.empty(), "ShardFileSystemId must be set");
-        Y_ENSURE(Port != 0, "FastShardPort must be set");
+
+        for (ui32 i = 0; i < Parallelism; ++i) {
+            Endpoints.push_back(
+                Client.Connect("localhost", Spec.GetFastShardPort()));
+            Y_ENSURE(Endpoints.back());
+        }
 
         for (const auto& a : Spec.GetActions()) {
             Y_ENSURE(a.GetRate() > 0, "action rate must be positive");
@@ -168,8 +176,20 @@ private:
 
     static void RunFiber(std::unique_ptr<TFiberState> s) noexcept
     {
-        TClient client(s->Port);
         auto ptr = s->Self.lock();
+
+        std::unique_ptr<IEndpoint> e;
+        with_lock (ptr->EndpointsLock) {
+            Y_ABORT_UNLESS(ptr->Endpoints.size());
+            e = std::move(ptr->Endpoints.back());
+            ptr->Endpoints.pop_back();
+        }
+
+        Y_DEFER {
+            with_lock (ptr->EndpointsLock) {
+                ptr->Endpoints.push_back(std::move(e));
+            }
+        };
 
         // Create a file if the pool had nothing to offer.
         if (s->File.Handle == 0) {
@@ -187,7 +207,7 @@ private:
             body->SetFlags(ProtoFlag(NProto::TCreateHandleRequest::E_CREATE));
             body->SetMode(0664);
 
-            auto resp = client.Send(req);
+            auto resp = e->Send(req);
 
             const auto& createErr = HasError(resp.GetError())
                 ? resp.GetError()
@@ -207,7 +227,7 @@ private:
                 wb->SetHandle(s->File.Handle);
                 wb->SetOffset(0);
                 wb->SetBuffer(TString(s->InitialFileSize, '\0'));
-                client.Send(wReq);
+                resp = e->Send(wReq);
                 s->File.Size = s->InitialFileSize;
             }
         }
@@ -232,7 +252,7 @@ private:
             body->SetBuffer(TString(s->WriteBytes, '\0'));
         }
 
-        auto resp = client.Send(req);
+        auto resp = e->Send(req);
 
         NProto::TError err;
         if (HasError(resp.GetError())) {
@@ -264,7 +284,6 @@ private:
         }
 
         auto state = std::make_unique<TFiberState>();
-        state->Port = Port;
         state->ShardFileSystemId = ShardFileSystemId;
         state->Action = NProto::ACTION_READ;
         state->ReadBytes = ReadBytes;
@@ -290,7 +309,6 @@ private:
         }
 
         auto state = std::make_unique<TFiberState>();
-        state->Port = Port;
         state->ShardFileSystemId = ShardFileSystemId;
         state->Action = NProto::ACTION_WRITE;
         state->ReadBytes = ReadBytes;

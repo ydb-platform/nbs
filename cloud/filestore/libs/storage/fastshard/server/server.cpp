@@ -129,67 +129,69 @@ int ConnFiberMain(TConnParams* params) noexcept
     int fd = params->Fd;
     auto* registry = params->Registry;
 
-    // Read length prefix.
-    ui32 lenBe = 0;
-    if (int r = RecvAll(fd, &lenBe, sizeof(lenBe)); r) {
-        ::close(fd);
-        return r;
-    }
-    ui32 len = ntohl(lenBe);
-    if (len > MaxMessageSize) {
-        ::close(fd);
-        return EMSGSIZE;
-    }
+    for (;;) {
+        // Read length prefix.
+        ui32 lenBe = 0;
+        if (int r = RecvAll(fd, &lenBe, sizeof(lenBe)); r) {
+            ::close(fd);
+            // EIO means the client closed the connection cleanly.
+            return r == EIO ? 0 : r;
+        }
+        ui32 len = ntohl(lenBe);
+        if (len > MaxMessageSize) {
+            ::close(fd);
+            return EMSGSIZE;
+        }
 
-    // Read request body.
-    TString reqBuf;
-    reqBuf.ReserveAndResize(len);
-    if (int r = RecvAll(fd, reqBuf.begin(), len); r) {
-        ::close(fd);
-        return r;
-    }
+        // Read request body.
+        TString reqBuf;
+        reqBuf.ReserveAndResize(len);
+        if (int r = RecvAll(fd, reqBuf.begin(), len); r) {
+            ::close(fd);
+            return r;
+        }
 
-    TRequest req;
-    if (!req.ParseFromString(reqBuf)) {
-        ::close(fd);
-        return EBADMSG;
-    }
+        TRequest req;
+        if (!req.ParseFromString(reqBuf)) {
+            ::close(fd);
+            return EBADMSG;
+        }
 
-    // Route to the right shard.
-    TResponse resp;
-    auto shard = registry->Find(req.GetFileSystemId());
-    if (!shard) {
-        SILK_WARN("failed to find shard: %s", req.GetFileSystemId().c_str());
-        auto* err = resp.MutableError();
-        err->SetCode(E_NOT_FOUND);
-        err->SetMessage(
-            TStringBuilder() << "no shard registered for "
-                << req.GetFileSystemId());
-    } else {
-        resp = Dispatch(*shard, req);
-    }
+        // Route to the right shard.
+        TResponse resp;
+        auto shard = registry->Find(req.GetFileSystemId());
+        if (!shard) {
+            SILK_WARN(
+                "failed to find shard: %s",
+                req.GetFileSystemId().c_str());
+            auto* err = resp.MutableError();
+            err->SetCode(E_NOT_FOUND);
+            err->SetMessage(
+                TStringBuilder() << "no shard registered for "
+                    << req.GetFileSystemId());
+        } else {
+            resp = Dispatch(*shard, req);
+        }
 
-    // Send response.
-    TString respBuf;
-    const bool serialized = resp.SerializeToString(&respBuf);
-    if (!serialized) {
-        SILK_ERROR("failed to serialize response");
-    }
+        // Send response.
+        TString respBuf;
+        const bool serialized = resp.SerializeToString(&respBuf);
+        if (!serialized) {
+            SILK_ERROR("failed to serialize response");
+        }
 
-    ui32 respLenBe = htonl(static_cast<ui32>(respBuf.size()));
-    if (int r = SendAll(fd, &respLenBe, sizeof(respLenBe)); r) {
-        SILK_WARN("send resp length: %s", ::strerror(r));
-        ::close(fd);
-        return r;
+        ui32 respLenBe = htonl(static_cast<ui32>(respBuf.size()));
+        if (int r = SendAll(fd, &respLenBe, sizeof(respLenBe)); r) {
+            SILK_WARN("send resp length: %s", ::strerror(r));
+            ::close(fd);
+            return r;
+        }
+        if (int r = SendAll(fd, respBuf.data(), respBuf.size()); r) {
+            SILK_WARN("send resp body: %s", ::strerror(r));
+            ::close(fd);
+            return r;
+        }
     }
-    if (int r = SendAll(fd, respBuf.data(), respBuf.size()); r) {
-        SILK_WARN("send resp body: %s", ::strerror(r));
-        ::close(fd);
-        return r;
-    }
-
-    ::close(fd);
-    return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

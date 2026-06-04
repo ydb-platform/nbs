@@ -8,6 +8,7 @@ namespace {
 
 class TTCPSideChannel: public ISideChannel
 {
+public:
     bool ExecuteRequest(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request,
