@@ -4,7 +4,7 @@ FORK_SUBTESTS()
 SPLIT_FACTOR(1)
 
 SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-resolute/rootfs.img)
-DEPENDS(cloud/blockstore/tests/rdma/image)
+DEPENDS(cloud/storage/core/tools/testing/qemu/image-resolute)
 
 SET(QEMU_INSTANCE_COUNT 2)
 SET(QEMU_INVOKE_TEST NO)
