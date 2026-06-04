@@ -498,6 +498,8 @@ public:
 
 struct TPingMethod
 {
+    static constexpr TBlockStoreProtocol::EMessageType RequestType =
+        TBlockStoreProtocol::EMessageType::PingRequest;
     static constexpr TBlockStoreProtocol::EMessageType ResponseType =
         TBlockStoreProtocol::EMessageType::PingResponse;
 
@@ -507,6 +509,8 @@ struct TPingMethod
 
 struct TMountVolumeMethod
 {
+    static constexpr TBlockStoreProtocol::EMessageType RequestType =
+        TBlockStoreProtocol::EMessageType::MountVolumeRequest;
     static constexpr TBlockStoreProtocol::EMessageType ResponseType =
         TBlockStoreProtocol::EMessageType::MountVolumeResponse;
 
@@ -516,6 +520,8 @@ struct TMountVolumeMethod
 
 struct TUnmountVolumeMethod
 {
+    static constexpr TBlockStoreProtocol::EMessageType RequestType =
+        TBlockStoreProtocol::EMessageType::UnmountVolumeRequest;
     static constexpr TBlockStoreProtocol::EMessageType ResponseType =
         TBlockStoreProtocol::EMessageType::UnmountVolumeResponse;
 
@@ -576,7 +582,7 @@ public:
 
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
-            TBlockStoreProtocol::PingRequest,
+            TMethod::RequestType,
             flags,   // flags
             *Request);
     }
