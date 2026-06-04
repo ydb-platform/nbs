@@ -32,7 +32,7 @@ constexpr TTestScenarioBaseConfig BaseConfig = {
 
 constexpr size_t RegionBlockByteCount = 1_KB;
 
-constexpr size_t InvalidRegionIndex = static_cast<size_t>(-1);
+constexpr size_t InvalidRegionIndex = Max<size_t>();
 
 ////////////////////////////////////////////////////////////////////////////////
 
