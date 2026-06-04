@@ -6,8 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ = codexIntentionalPRDiskManagerTestStageBuildFailure
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestParseMemoryItems(t *testing.T) {

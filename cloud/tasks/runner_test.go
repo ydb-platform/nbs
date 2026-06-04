@@ -19,8 +19,6 @@ import (
 	grpc_codes "google.golang.org/grpc/codes"
 )
 
-var _ = codexIntentionalPRTasksTestStageBuildFailure
-
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
