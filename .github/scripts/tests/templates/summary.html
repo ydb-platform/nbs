@@ -43,13 +43,16 @@
     <p><a href="{{ summary_url }}index.html">Summary dir file listing</a></p>
     {% for status in status_order %}
     <h1 id="{{ status.name }}">{{ status.name }} ({{ tests[status] | length }})</h1>
+    {% if status.name == "FAIL_BUILD" and build_error_log_url %}
+    <p><a href="{{ build_error_log_url }}">Build errors</a></p>
+    {% endif %}
     <table style="width:100%;" border="1">
         <thead>
             <tr>
                 <th>test name</th>
                 <th>elapsed</th>
                 <th>status</th>
-                {% if status in has_any_log %}
+                {% if status in has_any_log or (status.name == "FAIL_BUILD" and build_error_log_url) %}
                 <th>LOG</th>
                 {% endif %}
             </tr>
@@ -63,13 +66,15 @@
                     <span class="test_status test_{{ t.status_display }}">{{ t.status_display }}{% if t.is_timed_out
                         %}(TIMEOUT){% endif %}</span>
                 </td>
-                {% if status in has_any_log %}
+                {% if status in has_any_log or (status.name == "FAIL_BUILD" and build_error_log_url) %}
                 <td>
                     {% if t.log_urls %}
                     {% for log_name, log_url in t.log_urls.items() %}
                     <a href="{{ log_url }}">{{ log_name.upper() }}</a>{% if not loop.last %} | {% endif %}
 
                     {% endfor %}
+                    {% elif status.name == "FAIL_BUILD" and build_error_log_url %}
+                    <a href="{{ build_error_target_url(build_error_log_url, t) }}">BUILD ERRORS</a>
                     {% else %}
                     LOGS ARE EMPTY
                     {% endif %}

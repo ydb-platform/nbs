@@ -240,8 +240,8 @@ runs:
       run: |
         set -euo pipefail
         export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
-        SUMMARY_FILE="$TMP_DIR/build_errors.md"
-        SUMMARY_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}build_errors.md"
+        SUMMARY_FILE="$TMP_DIR/build_errors.html"
+        SUMMARY_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}build_errors.html"
         python3 -m scripts.tests.ya_build_errors \
             --evlog "$TMP_DIR/ya_evlog.jsonl" \
             --log "$TMP_DIR/ya_log.txt" \

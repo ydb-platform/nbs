@@ -442,15 +442,17 @@ runs:
             platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
             BUILD_ERROR_LOG_URL_FOR_ITERATION=""
 
-            if [ "$FAIL_CHECKER_RC" -eq 237 ]; then
-                SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.md"
-                BUILD_ERROR_LOG_URL_FOR_ITERATION="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/build_errors.md"
+            if [ -f "${JUNIT_REPORT_XML}.${i}" ]; then
+                SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.html"
+                BUILD_ERROR_LOG_URL_FOR_ITERATION="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/build_errors.html"
                 PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                     python3 -m scripts.tests.ya_build_errors \
+                    --junit "${JUNIT_REPORT_XML}.${i}" \
                     --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
                     --log "$LOG_DIR/${i}/ya_log.txt" \
                     --ya-log-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_log.txt" \
                     --evlog-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
+                    --only-if-junit-failed-build \
                     > "$SUMMARY_FILE"
 
                 if [ ! -s "$SUMMARY_FILE" ]; then
