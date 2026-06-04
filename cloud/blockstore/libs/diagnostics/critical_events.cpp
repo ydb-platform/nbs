@@ -65,7 +65,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         const TCritEventParams& keyValues)                                     \
     {                                                                          \
         TString msg =                                                          \
-            ComposeMessageWithSuffix(message, PrintParams(keyValues));       \
+            ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     TString Report##name(                                                      \
@@ -73,7 +73,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     {                                                                          \
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
-            PrintParams(keyValues),                                          \
+            PrintParams(keyValues),                                            \
             false);                                                            \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
@@ -98,7 +98,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         const TCritEventParams& keyValues)                                     \
     {                                                                          \
         TString msg =                                                          \
-            ComposeMessageWithSuffix(message, PrintParams(keyValues));       \
+            ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     TString Report##name(                                                      \
@@ -106,7 +106,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     {                                                                          \
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
-            PrintParams(keyValues),                                          \
+            PrintParams(keyValues),                                            \
             false); /* verifyDebug */                                          \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
@@ -132,7 +132,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         const TCritEventParams& keyValues)                                     \
     {                                                                          \
         TString msg =                                                          \
-            ComposeMessageWithSuffix(message, PrintParams(keyValues));       \
+            ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     TString Report##name(                                                      \
@@ -140,7 +140,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     {                                                                          \
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
-            PrintParams(keyValues),                                          \
+            PrintParams(keyValues),                                            \
             true); /* verifyDebug */                                           \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
