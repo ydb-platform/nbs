@@ -16,6 +16,7 @@ type Chunk struct {
 	Zero        bool
 	StoredInS3  bool
 	Compression string
+	StorageClass string
 }
 
 func (chunk Chunk) Checksum() uint32 {

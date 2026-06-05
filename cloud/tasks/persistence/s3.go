@@ -48,6 +48,10 @@ type S3Client struct {
 	metrics     *s3Metrics
 }
 
+const (
+	s3ErrCodeQuotaLimitExceeded = "QuotaLimitExceeded"
+)
+
 func NewS3Client(
 	endpoint string,
 	region string,
@@ -246,13 +250,33 @@ func (c *S3Client) PutObject(
 
 	defer c.metrics.StatCall(ctx, "PutObject", bucket, key)(&err)
 
-	_, err = c.s3.PutObjectWithContext(ctx, &aws_s3.PutObjectInput{
+	input := &aws_s3.PutObjectInput{
 		Bucket:          &bucket,
 		Key:             &key,
 		Body:            bytes.NewReader(object.Data),
 		Metadata:        object.Metadata,
 		ContentEncoding: aws.String("application/octet-stream"),
-	})
+	}
+	if len(object.StorageClass) != 0 {
+		input.StorageClass = aws.String(object.StorageClass)
+	}
+
+	_, err = c.s3.PutObjectWithContext(ctx, input)
+	if aerr, ok := err.(awserr.Error); ok &&
+		aerr.Code() == s3ErrCodeQuotaLimitExceeded &&
+		len(object.StorageClass) != 0 {
+
+		logging.Warn(
+			ctx,
+			"s3 put object with storage class %q failed with quota error, retrying without storage class",
+			object.StorageClass,
+		)
+
+		input.Body = bytes.NewReader(object.Data)
+		input.StorageClass = nil
+		_, err = c.s3.PutObjectWithContext(ctx, input)
+	}
+
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -307,8 +331,9 @@ func (c *S3Client) DeleteObject(
 ////////////////////////////////////////////////////////////////////////////////
 
 type S3Object struct {
-	Data     []byte
-	Metadata map[string]*string
+	Data         []byte
+	Metadata     map[string]*string
+	StorageClass string
 }
 
 ////////////////////////////////////////////////////////////////////////////////

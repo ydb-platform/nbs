@@ -12,6 +12,7 @@ message CreateSnapshotFromURLRequest {
     string SrcURL = 1;
     string DstSnapshotId = 3;
     bool UseS3 = 4;
+    string StorageClass = 5;
 }
 
 message CreateSnapshotFromURLResponse {

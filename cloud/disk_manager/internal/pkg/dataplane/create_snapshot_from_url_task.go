@@ -121,6 +121,7 @@ func (t *createSnapshotFromURLTask) Run(
 		t.storage,
 		true, // ignoreZeroChunks
 		t.request.UseS3,
+		t.request.StorageClass,
 	)
 	defer target.Close(ctx)
 
