@@ -272,19 +272,23 @@ void TStorageServiceActor::HandleDestroySession(
         "%s DestroySession",
         LogTag(fsId, clientId, sessionId, seqNo).c_str());
 
-    if (State->IsLastSubSession(sessionId, seqNo)) {
+    const auto sessionActor = session->GetSessionActor(seqNo);
+    if (sessionActor) {
         LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-            "%s Kill session actor %s from %s",
+            "%s Kill subsession actor %s from %s",
             LogTag(fsId, clientId, sessionId, seqNo).c_str(),
-            ToString(session->SessionActor).c_str(),
+            ToString(*sessionActor).c_str(),
             ToString(SelfId()).c_str());
 
         NCloud::Send(
             ctx,
-            session->SessionActor,
+            *sessionActor,
             std::make_unique<TEvents::TEvPoisonPill>());
 
-        session->SessionActor = {};
+        session->SetSessionActor(seqNo, {});
+    }
+
+    if (State->IsLastSubSession(sessionId, seqNo)) {
         session->ShouldStop = true;
     }
 

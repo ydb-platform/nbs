@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <optional>
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
@@ -315,6 +317,7 @@ struct TSessionInfo
         bool ReadOnly = false;
         TInstant LastPing;
         ui64 OwnerGeneration = 0;
+        NActors::TActorId SessionActor;
     };
 
     TString ClientId;
@@ -324,7 +327,6 @@ struct TSessionInfo
     NCloud::NProto::EStorageMediaKind MediaKind;
     IRequestStatsPtr RequestStats;
 
-    NActors::TActorId SessionActor;
     ui64 TabletId = 0;
 
     THashMap<ui64, TSubSessionInfo> SubSessions;
@@ -355,14 +357,44 @@ struct TSessionInfo
         FileStore = std::move(fileStore);
     }
 
+    const TSubSessionInfo* FindSubSession(ui64 seqNo) const
+    {
+        auto it = SubSessions.find(seqNo);
+        if (it != SubSessions.end()) {
+            return &it->second;
+        }
+        return nullptr;
+    }
+
+    std::optional<NActors::TActorId> GetSessionActor(ui64 seqNo) const
+    {
+        if (const auto* subSession = FindSubSession(seqNo)) {
+            if (subSession->SessionActor) {
+                return subSession->SessionActor;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    void SetSessionActor(ui64 seqNo, const NActors::TActorId& sessionActor)
+    {
+        auto it = SubSessions.find(seqNo);
+        if (it != SubSessions.end()) {
+            it->second.SessionActor = sessionActor;
+        }
+    }
+
     void AddSubSession(
         ui64 seqNo,
         bool readOnly,
+        const NActors::TActorId& sessionActor,
         ui64 ownerGeneration)
     {
         auto& subSession = SubSessions[seqNo];
         subSession.ReadOnly = readOnly;
         subSession.LastPing = TInstant::Now();
+        subSession.SessionActor = sessionActor;
         subSession.OwnerGeneration = ownerGeneration;
     }
 
@@ -377,10 +409,9 @@ struct TSessionInfo
         return SubSessions.count(seqNo) > 0;
     }
 
-    const TSubSessionInfo* FindSubSession(ui64 seqNo) const
+    ui32 GetSubSessionCount() const
     {
-        auto it = SubSessions.find(seqNo);
-        return it != SubSessions.end() ? &it->second : nullptr;
+        return SubSessions.size();
     }
 
     void UpdateSubSession(ui64 seqNo, TInstant now)
