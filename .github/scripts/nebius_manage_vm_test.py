@@ -348,6 +348,13 @@ def test_generate_cloud_init_script_renders_repo_template(monkeypatch):
     assert cloud_init["users"][0]["ssh_authorized_keys"] == ["ssh-rsa public-key"]
     assert cloud_init["users"][0]["lock_passwd"] is False
     assert cloud_init["users"][0]["passwd"] == "encrypted-passwd"
+    assert cloud_init["users"][0]["name"] == "github"
+    assert "sudo" not in cloud_init["users"][0]
+    assert cloud_init["users"][1]["name"] == "debug"
+    assert cloud_init["users"][1]["ssh_authorized_keys"] == ["ssh-rsa public-key"]
+    assert cloud_init["users"][1]["sudo"] == "ALL=(ALL) NOPASSWD:ALL"
+    assert cloud_init["users"][1]["lock_passwd"] is False
+    assert cloud_init["users"][1]["passwd"] == "encrypted-passwd"
     assert "RUNNER_VERSION=2.332.0" in script
     assert f"RUNNER_SHA256_X64={'a' * 64}" in script
     assert f"RUNNER_SHA256_ARM64={'b' * 64}" in script
@@ -359,6 +366,10 @@ def test_generate_cloud_init_script_renders_repo_template(monkeypatch):
     assert 'runuser -u "$RUNNER_USER" -- ./config.sh' in script
     assert './svc.sh install "$RUNNER_USER"' in script
     assert "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" in script
+    assert "kernel.dmesg_restrict=0" not in script
+    assert "NOPASSWD:ALL" not in script
+    assert "actions-runner-collect-system-logs.sh" in script
+    assert "GITHUB_RUNNER_TESTS" not in script
     assert "GITHUB_REPOSITORY_owner_repo" in script
     assert "GITHUB_SHA_abc123" in script
 

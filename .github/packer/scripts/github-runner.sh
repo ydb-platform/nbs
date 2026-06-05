@@ -27,6 +27,30 @@ function on_exit() {
 }
 trap on_exit EXIT
 
+DEBUG_USER=${DEBUG_USER:-debug}
+
+function create_password_user() {
+    local user_name=$1
+
+    adduser --gecos "" --disabled-password --shell /bin/bash "$user_name"
+    set +x
+    usermod --password "${PASSWORD_HASH//$/\\$}" "$user_name"
+    set -x
+}
+
+function install_authorized_keys() {
+    local user_name=$1
+    local user_home
+    user_home=$(getent passwd "$user_name" | cut -d: -f6)
+
+    mkdir -p "${user_home}/.ssh"
+    chown -R "${user_name}:${user_name}" "${user_home}/.ssh"
+    chmod 0700 "${user_home}/.ssh"
+    cp "${KEYS_FILE}" "${user_home}/.ssh/authorized_keys"
+    chown "${user_name}:${user_name}" "${user_home}/.ssh/authorized_keys"
+    chmod 0600 "${user_home}/.ssh/authorized_keys"
+}
+
 # Download github runner
 mkdir -p /actions-runner && cd /actions-runner || exit
 curl -fsSL -o runner.tar.gz -L "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
@@ -37,6 +61,7 @@ else
 fi
 tar xzf ./runner.tar.gz
 install -m 0755 /tmp/packer/actions-runner-job-completed-cleanup.sh /usr/local/bin/actions-runner-job-completed-cleanup.sh
+install -m 0755 /tmp/packer/actions-runner-collect-system-logs.sh /usr/local/bin/actions-runner-collect-system-logs.sh
 touch /actions-runner/.env
 grep -q '^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=' /actions-runner/.env || {
     echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/actions-runner-job-completed-cleanup.sh" >> /actions-runner/.env
@@ -119,15 +144,20 @@ unzip awscliv2.zip
 ./aws/install
 rm -rf awscliv2.zip
 
-adduser --gecos "" --disabled-password --shell /bin/bash "${USER_TO_CREATE}"
-set +x
-usermod --password "${PASSWORD_HASH//$/\\$}" "${USER_TO_CREATE}"
-set -x
+create_password_user "${USER_TO_CREATE}"
+create_password_user "${DEBUG_USER}"
 sed -i -e 's/\\\$/$/g' /etc/shadow
 usermod -a -G kvm "${USER_TO_CREATE}"
 usermod -a -G docker "${USER_TO_CREATE}"
-echo "${USER_TO_CREATE} ALL=(ALL) NOPASSWD:ALL" | tee "/etc/sudoers.d/99-${USER_TO_CREATE}" > /dev/null
+usermod -a -G kvm "${DEBUG_USER}"
+usermod -a -G docker "${DEBUG_USER}"
+cat > "/etc/sudoers.d/99-${USER_TO_CREATE}" << EOF
+Cmnd_Alias GITHUB_RUNNER_LOGS = /usr/local/bin/actions-runner-collect-system-logs.sh
+${USER_TO_CREATE} ALL=(root) NOPASSWD: GITHUB_RUNNER_LOGS
+EOF
 chmod 0440 "/etc/sudoers.d/99-${USER_TO_CREATE}"
+echo "${DEBUG_USER} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-${DEBUG_USER}"
+chmod 0440 "/etc/sudoers.d/99-${DEBUG_USER}"
 chown -R "${USER_TO_CREATE}:${USER_TO_CREATE}" /actions-runner
 
 # allow coredumps
@@ -191,12 +221,8 @@ if [ -n "$GITHUB_TOKEN" ] && [ -n "$ORG" ] && [ -n "$TEAM" ]; then
 fi
 
 if [ -f "$KEYS_FILE" ]; then
-    mkdir -p "/home/${USER_TO_CREATE}/.ssh"
-    chown -R "${USER_TO_CREATE}:${USER_TO_CREATE}" "/home/${USER_TO_CREATE}/.ssh"
-    chmod 0700 "/home/${USER_TO_CREATE}/.ssh"
-    cp "${KEYS_FILE}" "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
-    chown "${USER_TO_CREATE}:${USER_TO_CREATE}" "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
-    chmod 0600 "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
+    install_authorized_keys "${USER_TO_CREATE}"
+    install_authorized_keys "${DEBUG_USER}"
     cat "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
 fi
 
@@ -209,8 +235,12 @@ test -s "/home/${USER_TO_CREATE}/.ssh/authorized_keys" || {
     ls -lsha "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
     healthchecks_exit_code=1
 }
-grep 'github:\$' /etc/shadow > /dev/null 2> /dev/null || {
-    echo "User github either do not exist or has wrong hash"
+grep "${USER_TO_CREATE}:\\$" /etc/shadow > /dev/null 2> /dev/null || {
+    echo "User ${USER_TO_CREATE} either does not exist or has wrong hash"
+    healthchecks_exit_code=1
+}
+grep "${DEBUG_USER}:" /etc/shadow > /dev/null 2> /dev/null || {
+    echo "User ${DEBUG_USER} does not exist"
     healthchecks_exit_code=1
 }
 exit $healthchecks_exit_code
