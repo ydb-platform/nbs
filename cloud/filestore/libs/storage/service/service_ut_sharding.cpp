@@ -9037,7 +9037,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST(ShouldSetCopmpressNodeRefFlag)
+    SERVICE_TEST(ShouldSetCompressNodeRefFlag)
     {
         config.SetEnableNodeRefCompression(true);
 
@@ -9052,13 +9052,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 GetFileSystemTopology(service, fsConfig.FsId);
             UNIT_ASSERT(mainFsTopology.GetCompressNodeRef());
 
-            const auto shard1Topololgy =
+            const auto shard1Topology =
                 GetFileSystemTopology(service, fsConfig.Shard1Id);
-            UNIT_ASSERT(shard1Topololgy.GetCompressNodeRef());
+            UNIT_ASSERT(shard1Topology.GetCompressNodeRef());
 
-            const auto shard2Topololgy =
+            const auto shard2Topology =
                 GetFileSystemTopology(service, fsConfig.Shard2Id);
-            UNIT_ASSERT(shard2Topololgy.GetCompressNodeRef());
+            UNIT_ASSERT(shard2Topology.GetCompressNodeRef());
 
             // Resize the filesystem to have 3 shards, check that the new shard
             // has CompressNodeRef.
@@ -9067,9 +9067,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 fsConfig.MainFsBlockCount * 3 / 2);
             WaitForTabletStart(service);
 
-            const auto shard3Topololgy =
+            const auto shard3Topology =
                 GetFileSystemTopology(service, fsConfig.FsId + "_s3");
-            UNIT_ASSERT(shard3Topololgy.GetCompressNodeRef());
+            UNIT_ASSERT(shard3Topology.GetCompressNodeRef());
         }
 
         {
@@ -9095,13 +9095,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 .ResizeFileStore(fsId, fsSize, false /* force */, shardsCount);
             WaitForTabletStart(service);
 
-            const auto shard1Topololgy =
+            const auto shard1Topology =
                 GetFileSystemTopology(service, fsId + "_s1");
-            UNIT_ASSERT(shard1Topololgy.GetCompressNodeRef());
+            UNIT_ASSERT(shard1Topology.GetCompressNodeRef());
 
-            const auto shard2Topololgy =
+            const auto shard2Topology =
                 GetFileSystemTopology(service, fsId + "_s2");
-            UNIT_ASSERT(shard2Topololgy.GetCompressNodeRef());
+            UNIT_ASSERT(shard2Topology.GetCompressNodeRef());
         }
     }
 }
