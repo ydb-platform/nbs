@@ -94,6 +94,11 @@ struct TTestNvmeManager
         return "SN-" + path;
     }
 
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        return "MODEL-" + path;
+    }
+
     TResultOrError<bool> IsSsd(const TString& path) override
     {
         Y_UNUSED(path);
