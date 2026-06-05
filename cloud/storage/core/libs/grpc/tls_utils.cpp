@@ -380,4 +380,87 @@ TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
     return result;
 }
 
+TCertificatesUpdateResult UpdateCertificates(
+    const TVector<TCertificatePair>& certificates,
+    const TRootCaPair& root,
+    TLog& log)
+{
+    TVector<TMaybe<PemKeyCertPairList>> identities(
+        Certificates.size());
+    TVector<TMaybe<ui64>> certNotAfterTs(Certificates.size());
+
+    const TMaybe<TString> oldRoot = RootCertificate;
+    const bool needsRoot = !!GetRootCertPath();
+    if (!needsRoot) {
+        RootCertificate = Nothing();
+    } else {
+        auto rootResult =
+            NTlsUtils::ReadAndValidateRootCertificate(RootCertPath);
+        if (HasError(rootResult.GetError())) {
+            STORAGE_WARN(
+                "Root certificate update is skipped: "
+                << rootResult.GetError().GetMessage());
+        } else {
+            RootCertificate = rootResult.ExtractResult();
+        }
+    }
+
+    for (size_t i = 0; i < Certificates.size(); ++i) {
+        const auto& files = Certificates[i].Files;
+        auto identityResult =
+            NTlsUtils::ReadAndValidateIdentityPair(files);
+        if (!HasError(identityResult.GetError())) {
+            identities[i] = identityResult.ExtractResult();
+        } else {
+            STORAGE_WARN(
+                "Identity certificate update is skipped for "
+                << files.CertChainPath.Quote() << ": "
+                << identityResult.GetError().GetMessage());
+        }
+
+        if (identities[i].Defined()) {
+            const auto& pair = identities[i]->front();
+            auto notAfterTs =
+                NTlsUtils::GetCertificateNotAfterTimestampSec(
+                    pair.cert_chain());
+            if (HasError(notAfterTs.GetError())) {
+                STORAGE_WARN(
+                    "Unable to parse certificate notAfter date for "
+                    << files.CertChainPath.Quote() << ": "
+                    << FormatError(notAfterTs.GetError()));
+                identities[i] = Nothing();
+            } else {
+                certNotAfterTs[i] = notAfterTs.ExtractResult();
+            }
+        }
+    }
+
+    const bool rootChanged = oldRoot != RootCertificate;
+    bool hasUpdates = rootChanged;
+
+    for (size_t i = 0; i < Certificates.size(); ++i) {
+        if (Certificates[i].Metrics && certNotAfterTs[i].Defined()) {
+            *Certificates[i].Metrics->GetCounter(
+                "ExpireTs",
+                false) = *certNotAfterTs[i];
+        }
+
+        if (!identities[i].Defined()) {
+            continue;
+        }
+        const bool identityChanged =
+            identities[i] != Certificates[i].IdentityKeyCertPairs;
+        if (!rootChanged && !identityChanged) {
+            continue;
+        }
+
+        Certificates[i].IdentityKeyCertPairs = *identities[i];
+        hasUpdates = true;
+    }
+
+    if (hasUpdates || initial) {
+        static_cast<TDerived*>(this)->OnCertificateUpdated();
+    }
+}
+
 }   // namespace NCloud::NTlsUtils
