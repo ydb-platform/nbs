@@ -20,6 +20,7 @@ const defaultRetriableErrorsThreshold = 10 * time.Minute
 
 const volumeId1 = "disk-123"
 const volumeId2 = "disk-456"
+const filesystemId1 = "computefilesystem-123"
 
 func trimTrailingWhitespace(input string) string {
 	lines := strings.Split(input, "\n")
@@ -96,6 +97,21 @@ CriticalRetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolu
 Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
 Errors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
 Errors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+FilestoreErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+FilestoreErrors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+FilestoreRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+FilestoreRetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
@@ -136,6 +152,15 @@ CriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolu
 # HELP Errors
 # TYPE Errors counter
 Errors{component="server",method="/csi.v1.Controller/CreateVolume"} 1
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Controller/CreateVolume"} 1
@@ -170,6 +195,15 @@ CriticalRetriableErrors{component="server",method="/csi.v1.Controller/Controller
 # HELP Errors
 # TYPE Errors counter
 Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
@@ -235,6 +269,15 @@ CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"
 # HELP Errors
 # TYPE Errors counter
 Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
@@ -303,6 +346,15 @@ CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"
 # HELP Errors
 # TYPE Errors counter
 Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
@@ -331,6 +383,15 @@ CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"
 # HELP Errors
 # TYPE Errors counter
 Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
@@ -361,6 +422,15 @@ CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"
 # HELP Errors
 # TYPE Errors counter
 Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
@@ -370,5 +440,68 @@ RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
 # HELP Success
 # TYPE Success counter
 Success{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+`)
+}
+
+func TestShouldReportFilestoreErrors(t *testing.T) {
+	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
+	method := "/csi.v1.Node/NodeStageVolume"
+	timestamp := time.Now()
+	duration := 11 * time.Minute
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Unavailable, ""), timestamp, -1)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Unavailable, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Aborted, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Canceled, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(2*duration), -1)
+
+	// fatal error
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.FailedPrecondition, ""), timestamp, -1)
+
+	serv := httptest.NewServer(mon.Handler)
+	defer serv.Close()
+
+	response, err := http.Get(serv.URL)
+	require.NoError(t, err)
+	assert.Equal(t, response.StatusCode, http.StatusOK)
+	assert.Equal(t, getResponseBody(response),
+		`# HELP Count
+# TYPE Count counter
+Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 7
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+# HELP FilestoreCriticalRetriableErrors
+# TYPE FilestoreCriticalRetriableErrors counter
+FilestoreCriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+# HELP FilestoreErrors
+# TYPE FilestoreErrors counter
+FilestoreErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+# HELP FilestoreRetriableErrors
+# TYPE FilestoreRetriableErrors counter
+FilestoreRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 4
+# HELP InflightCount
+# TYPE InflightCount gauge
+InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP RetriableErrors
+# TYPE RetriableErrors counter
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 4
 `)
 }
