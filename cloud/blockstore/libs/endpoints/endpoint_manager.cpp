@@ -1116,6 +1116,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
+    STORAGE_INFO("Initiating StopEndpoint request handling: " << *request);
     auto socketPath = request->GetUnixSocketPath();
     if (IsEndpointRestoring(socketPath)) {
         return TErrorResponse(E_REJECTED, "endpoint is restoring now");
