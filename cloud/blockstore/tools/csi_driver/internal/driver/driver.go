@@ -246,7 +246,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 		method := getCsiMethodName(info.FullMethod)
 		volumeId := GetVolumeId(req)
-		mon.ReportRequestReceived(method)
+		mon.ReportRequestReceived(volumeId, method)
 
 		startTime := time.Now()
 		resp, err := handler(ctx, req)
