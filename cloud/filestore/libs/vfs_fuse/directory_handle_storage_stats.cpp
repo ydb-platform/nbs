@@ -29,6 +29,7 @@ private:
     std::atomic<ui64> ExpansionCounter = 0;
     std::atomic<ui64> CompactionCounter = 0;
     std::atomic<ui64> MemoryLimiterRejectionCounter = 0;
+    std::atomic<ui64> HandleSizeLimitRejectionCounter = 0;
 
 public:
     explicit TDirectoryHandleStorageStats(ITimerPtr timer)
@@ -45,6 +46,11 @@ public:
         CompactionCounter.store(counters.CompactionCount);
         MemoryLimiterRejectionCounter.store(
             counters.MemoryLimiterRejectionCount);
+    }
+
+    void IncrementHandleSizeLimitRejection() override
+    {
+        HandleSizeLimitRejectionCounter.fetch_add(1);
     }
 
     TDirectoryHandleStorageMetrics CreateMetrics() const override
@@ -64,6 +70,9 @@ public:
                 CreateMetric([self] { return self->CompactionCounter.load(); }),
             .MemoryLimiterRejectionCount = CreateMetric(
                 [self] { return self->MemoryLimiterRejectionCounter.load(); }),
+            .HandleSizeLimitRejectionCount = CreateMetric(
+                [self]
+                { return self->HandleSizeLimitRejectionCounter.load(); }),
         };
     }
 
@@ -117,6 +126,12 @@ void TDirectoryHandleStorageMetrics::Register(
     localMetricsRegistry.Register(
         {CreateSensor("Storage_MemoryLimiterRejectionCount")},
         MemoryLimiterRejectionCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_HandleSizeLimitRejectionCount")},
+        HandleSizeLimitRejectionCount,
         EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
 }
