@@ -7,6 +7,7 @@ RUNNER_SHA256_X64={sha256_x64}
 RUNNER_SHA256_ARM64={sha256_arm64}
 RUNNER_LABELS={label}
 REPO_URL={repo_url}
+RUNNER_USER={runner_user}
 RUNNER_REGISTRATION_TOKEN={token}
 
 set -x
@@ -14,6 +15,19 @@ set -x
 echo "fixing /etc/hosts"
 echo "::1 localhost" | tee -a /etc/hosts
 grep localhost /etc/hosts
+
+mkdir -p /coredumps
+chmod 1777 /coredumps
+grep -qF "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" /etc/sysctl.conf || echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" >> /etc/sysctl.conf
+grep -qF "kernel.core_uses_pid=1" /etc/sysctl.conf || echo "kernel.core_uses_pid=1" >> /etc/sysctl.conf
+grep -qF "fs.suid_dumpable=0" /etc/sysctl.conf || echo "fs.suid_dumpable=0" >> /etc/sysctl.conf
+sysctl -p || true
+
+RUNNER_HOME=$(getent passwd "$RUNNER_USER" | cut -d: -f6)
+if [ -z "$RUNNER_HOME" ]; then
+    echo "Runner user does not exist: $RUNNER_USER"
+    exit 1
+fi
 
 if [ "$UPDATE_RUNNER" = "true" ]; then
     mkdir -p /actions-runner
@@ -64,7 +78,8 @@ else
     echo "Runner is not installed and UPDATE_RUNNER is not true"
     exit 1
 fi
-export RUNNER_ALLOW_RUNASROOT=1
+
+chown -R "$RUNNER_USER:$RUNNER_USER" /actions-runner
 
 # trying to catch registration error
 exit_code=1
@@ -72,7 +87,7 @@ i=0
 until [ "$exit_code" -eq 0 ] || [ "$i" -gt 3 ]; do
     echo ./config.sh --labels "$RUNNER_LABELS" --url "$REPO_URL" --token XXX --unattended
     set +x
-    timeout 60 ./config.sh --labels "$RUNNER_LABELS" --url "$REPO_URL" --token "$RUNNER_REGISTRATION_TOKEN" --unattended
+    timeout 60 env HOME="$RUNNER_HOME" USER="$RUNNER_USER" LOGNAME="$RUNNER_USER" runuser -u "$RUNNER_USER" -- ./config.sh --labels "$RUNNER_LABELS" --url "$REPO_URL" --token "$RUNNER_REGISTRATION_TOKEN" --unattended
     set -x
     exit_code=$?
     i=$((i + 1))
@@ -90,6 +105,7 @@ fi
 touch /actions-runner/.env
 sed -i '/^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/d' /actions-runner/.env
 echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/actions-runner-job-completed-cleanup.sh" >> /actions-runner/.env
+chown -R "$RUNNER_USER:$RUNNER_USER" /actions-runner
 
 # true to skip the error and to boot vm correctly
 sed -i \
@@ -102,5 +118,5 @@ Restart=on-failure \
 RestartSec=5s \
 Slice=actions-runner.slice' \
     ./bin/actions.runner.service.template
-./svc.sh install || true
+./svc.sh install "$RUNNER_USER" || true
 ./svc.sh start || true

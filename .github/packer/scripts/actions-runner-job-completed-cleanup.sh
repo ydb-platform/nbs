@@ -29,12 +29,10 @@ remove_glob() {
 
 log "starting job completed credentials cleanup"
 
-remove_path "${S3CMD_CONFIG:-}"
 remove_path "${BAZEL_REMOTE_PASSWORD_FILE:-}"
 
 for user_home in /home/github /root; do
     remove_path "$user_home/.aws"
-    remove_path "$user_home/.s3cfg"
     remove_path "$user_home/.nebius/config.yaml"
     remove_path "$user_home/.nebius/service-account-key.json"
     remove_path "$user_home/.netrc"
@@ -44,11 +42,9 @@ for user_home in /home/github /root; do
 done
 
 remove_glob "/home/github/bazel.????"
-remove_glob "/home/github/s3cmd.????"
 
 remove_glob "/actions-runner/_work/*/*/.nebius"
 remove_glob "/actions-runner/_work/*/*/.aws"
-remove_glob "/actions-runner/_work/*/*/.s3cfg"
 remove_glob "/actions-runner/_work/*/*/.netrc"
 remove_glob "/actions-runner/_work/*/*/.bazelrc.user"
 remove_glob "/actions-runner/_work/*/*/.git/info/sparse-checkout.lock"
@@ -56,7 +52,6 @@ remove_glob "/actions-runner/_work/*/*/.git/info/sparse-checkout.lock"
 if [ -n "${GITHUB_WORKSPACE:-}" ]; then
     remove_path "$GITHUB_WORKSPACE/.nebius"
     remove_path "$GITHUB_WORKSPACE/.aws"
-    remove_path "$GITHUB_WORKSPACE/.s3cfg"
     remove_path "$GITHUB_WORKSPACE/.netrc"
     remove_path "$GITHUB_WORKSPACE/.bazelrc.user"
     remove_path "$GITHUB_WORKSPACE/.git/info/sparse-checkout.lock"

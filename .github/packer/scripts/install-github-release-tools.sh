@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INSTALL_DIR=${INSTALL_DIR:-/usr/local/bin}
+SYSTEM_INSTALL_DIR=${SYSTEM_INSTALL_DIR:-/usr/local/bin}
+INSTALL_DIR=${INSTALL_DIR:-"${HOME}/.local/bin"}
 INSTALL_CMD=${INSTALL_CMD:-/usr/bin/install}
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TOOL_VERSIONS_FILE=${TOOL_VERSIONS_FILE:-"${SCRIPT_DIR}/github-release-tools.txt"}
@@ -9,14 +10,6 @@ ACTION_VALIDATOR_VERSION=
 SHELLCHECK_VERSION=
 SHFMT_VERSION=
 YQ_VERSION=
-
-if [ "$(id -u)" -eq 0 ] || [[ "${INSTALL_DIR}" == "${HOME}/"* ]]; then
-    SUDO=()
-else
-    SUDO=(sudo)
-fi
-
-"${SUDO[@]}" "${INSTALL_CMD}" -d -m 0755 "${INSTALL_DIR}"
 
 load_tool_versions() {
     local line tool version
@@ -101,12 +94,13 @@ installed_tool_version() {
     esac
 }
 
-tool_version_matches() {
+tool_version_matches_path() {
     local tool=$1
     local expected_version=$2
-    local bin installed_version
+    local bin=$3
+    local installed_version
 
-    if ! bin=$(command -v "${tool}" 2> /dev/null); then
+    if [ ! -x "${bin}" ]; then
         return 1
     fi
 
@@ -125,14 +119,25 @@ tool_version_matches() {
     return 1
 }
 
+ensure_install_dir() {
+    "${INSTALL_CMD}" -d -m 0755 "${INSTALL_DIR}"
+    if [ -n "${GITHUB_PATH:-}" ]; then
+        case ":${PATH}:" in
+            *":${INSTALL_DIR}:"*) ;;
+            *) echo "${INSTALL_DIR}" >> "${GITHUB_PATH}" ;;
+        esac
+    fi
+}
+
 install_binary_url() {
     local name=$1
     local url=$2
     local tmp_bin
     tmp_bin=$(mktemp)
 
+    ensure_install_dir
     curl -fsSL -o "${tmp_bin}" -L "${url}"
-    "${SUDO[@]}" "${INSTALL_CMD}" -m 0755 "${tmp_bin}" "${INSTALL_DIR}/${name}"
+    "${INSTALL_CMD}" -m 0755 "${tmp_bin}" "${INSTALL_DIR}/${name}"
     rm -f "${tmp_bin}"
 }
 
@@ -161,9 +166,10 @@ install_shellcheck() {
     url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${archive}"
     tmp_dir=$(mktemp -d)
 
+    ensure_install_dir
     curl -fsSL -o "${tmp_dir}/${archive}" -L "${url}"
     tar -xJf "${tmp_dir}/${archive}" -C "${tmp_dir}"
-    "${SUDO[@]}" "${INSTALL_CMD}" -m 0755 "${tmp_dir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${INSTALL_DIR}/shellcheck"
+    "${INSTALL_CMD}" -m 0755 "${tmp_dir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${INSTALL_DIR}/shellcheck"
     rm -rf "${tmp_dir}"
 
     "${INSTALL_DIR}/shellcheck" --version
@@ -180,44 +186,53 @@ install_yq() {
 
 install_tool() {
     local tool=$1
-    local version
+    local version system_bin install_bin
 
     case "${tool}" in
         action-validator)
             version=${ACTION_VALIDATOR_VERSION}
             require_tool_version "${tool}" "${version}"
-            if tool_version_matches "${tool}" "${version}"; then
-                return
-            fi
-            install_action_validator
             ;;
         shellcheck)
             version=${SHELLCHECK_VERSION}
             require_tool_version "${tool}" "${version}"
-            if tool_version_matches "${tool}" "${version}"; then
-                return
-            fi
-            install_shellcheck
             ;;
         shfmt)
             version=${SHFMT_VERSION}
             require_tool_version "${tool}" "${version}"
-            if tool_version_matches "${tool}" "${version}"; then
-                return
-            fi
-            install_shfmt
             ;;
         yq)
             version=${YQ_VERSION}
             require_tool_version "${tool}" "${version}"
-            if tool_version_matches "${tool}" "${version}"; then
-                return
-            fi
-            install_yq
             ;;
         *)
             echo "Unknown tool: ${tool}" >&2
             exit 1
+            ;;
+    esac
+
+    system_bin="${SYSTEM_INSTALL_DIR}/${tool}"
+    install_bin="${INSTALL_DIR}/${tool}"
+    if tool_version_matches_path "${tool}" "${version}" "${system_bin}"; then
+        return
+    fi
+    if tool_version_matches_path "${tool}" "${version}" "${install_bin}"; then
+        ensure_install_dir
+        return
+    fi
+
+    case "${tool}" in
+        action-validator)
+            install_action_validator
+            ;;
+        shellcheck)
+            install_shellcheck
+            ;;
+        shfmt)
+            install_shfmt
+            ;;
+        yq)
+            install_yq
             ;;
     esac
 }
