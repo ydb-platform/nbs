@@ -137,7 +137,7 @@ echo "install rxrpc /bin/false" > /etc/modprobe.d/disable-rxrpc.conf
 
 pip3 install -r /tmp/packer/requirements.txt
 
-bash /tmp/packer/install-github-release-tools.sh action-validator shellcheck shfmt yq
+INSTALL_DIR=/usr/local/bin bash /tmp/packer/install-github-release-tools.sh action-validator shellcheck shfmt yq
 
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
