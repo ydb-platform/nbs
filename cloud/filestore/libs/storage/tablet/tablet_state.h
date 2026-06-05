@@ -245,6 +245,8 @@ private:
 
     /*const*/ ui32 MaxTabletStep = Max<ui32>();
 
+    bool CompressNodeRef = false;
+
     bool StateLoaded = false;
 
 protected:
@@ -374,7 +376,7 @@ public:
 
     bool GetCompressNodeRef() const
     {
-        return FileSystem.GetCompressNodeRef();
+        return CompressNodeRef || FileSystem.GetCompressNodeRef();
     }
 
     ui64 GetCurrentCommitId() const

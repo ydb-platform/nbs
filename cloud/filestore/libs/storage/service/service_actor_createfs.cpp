@@ -228,9 +228,6 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
             }
         }
 
-        request->Record.SetCompressNodeRef(
-            StorageConfig->GetEnableNodeRefCompression());
-
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -261,9 +258,6 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
-
-    request->Record.SetCompressNodeRef(
-        StorageConfig->GetEnableNodeRefCompression());
 
     LOG_INFO(
         ctx,
@@ -328,8 +322,7 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         return;
     }
     if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
-        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled() ||
-        StorageConfig->GetEnableNodeRefCompression())
+        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
     {
         // If no shards are to be created, but directory sharding or allocation
         // of shards of filesystem size is enabled, we need to configure the

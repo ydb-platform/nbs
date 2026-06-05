@@ -410,7 +410,6 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
         args.Request.GetForceDirectoryCreationInShards());
     config.SetStrictFileSystemSizeEnforcementEnabled(
         args.Request.GetStrictFileSystemSizeEnforcementEnabled());
-    config.SetCompressNodeRef(args.Request.GetCompressNodeRef());
 
     LOG_INFO(
         ctx,
@@ -538,7 +537,6 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
     config.SetIsFastShard(args.Request.GetIsFastShard());
     *config.MutableFastShardConfig() =
         std::move(*args.Request.MutableFastShardConfig());
-    config.SetCompressNodeRef(args.Request.GetCompressNodeRef());
 
     UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }
