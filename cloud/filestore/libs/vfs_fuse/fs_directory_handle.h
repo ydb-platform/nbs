@@ -101,6 +101,7 @@ public:
 
     // Returns the handle's current serialized size and chunk count.
     TDirectoryHandleStats GetStats() const;
+    bool IsEmpty() const;
 
     // not thread safe, use only during restoration from storage
     void ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log);

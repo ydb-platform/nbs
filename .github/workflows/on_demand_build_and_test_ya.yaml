@@ -197,6 +197,7 @@ jobs:
 
     - name: Run tests
       uses: ./.github/actions/test
+      id: test
       if: inputs.run_tests
       with:
         component: ${{ inputs.component }}
@@ -225,6 +226,7 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: failed_build
+        build_error_log_url: ${{ steps.build.outputs.build_error_log_url }}
 
     - id: failure
       name: set sleep_after_tests in case of failure

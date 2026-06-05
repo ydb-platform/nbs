@@ -195,6 +195,14 @@ void TDirectoryHandle::ResetContent()
     }
 }
 
+bool TDirectoryHandle::IsEmpty() const
+{
+    with_lock (Lock) {
+        return Content.empty() && Cookie.empty() && UpdateVersion == 0 &&
+               SerializedSize == BaseSerializedSize;
+    }
+}
+
 TString TDirectoryHandle::GetCookie()
 {
     with_lock (Lock) {

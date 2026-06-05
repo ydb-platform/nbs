@@ -242,13 +242,30 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             storage->UpdateHandle(handleId, handle, chunk);
         }
 
-        auto storage = CreateStorage(CreateStats(), 512);
+        auto timer = CreateWallClockTimer();
+        StorageStats = CreateDirectoryHandleStorageStats(timer);
+        auto stats = CreateDirectoryHandleStats(timer, StorageStats);
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto metricsRegistry = NMetrics::CreateMetricsRegistry({}, counters);
+        auto aggregatableMetricsRegistry =
+            NMetrics::CreateMetricsRegistryStub();
+        stats->RegisterCounters(metricsRegistry, aggregatableMetricsRegistry);
+
+        auto storage = CreateStorage(stats, 512);
 
         TDirectoryHandleMap handles;
         storage->LoadHandles(handles);
 
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
         UNIT_ASSERT(!handles.contains(handleId));
+
+        metricsRegistry->Update(timer->Now());
+
+        auto handleSizeLimitRejectionCount =
+            counters->FindCounter("Storage_HandleSizeLimitRejectionCount");
+        UNIT_ASSERT(handleSizeLimitRejectionCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, handleSizeLimitRejectionCount->Val());
     }
 
     Y_UNIT_TEST(ShouldDropStoredHandleWithMissingOrDuplicatedUpdateVersion)
@@ -329,6 +346,11 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             counters->FindCounter("Storage_MemoryLimiterRejectionCount");
         UNIT_ASSERT(memoryLimiterRejectionCount);
         UNIT_ASSERT_VALUES_EQUAL(0, memoryLimiterRejectionCount->Val());
+
+        auto handleSizeLimitRejectionCount =
+            counters->FindCounter("Storage_HandleSizeLimitRejectionCount");
+        UNIT_ASSERT(handleSizeLimitRejectionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, handleSizeLimitRejectionCount->Val());
 
         Limiter->CanIncreaseResult = false;
 

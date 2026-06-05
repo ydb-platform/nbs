@@ -54,6 +54,41 @@ def test_gen_summary_creates_html_and_aggregates_counters(
     assert "Summary dir file listing" in html
 
 
+def test_gen_summary_links_build_errors_in_fail_build_html(
+    tmp_path: Path, mk_testcase, write_junit_xml
+) -> None:
+    xml_path = tmp_path / "junit.xml"
+    write_junit_xml(
+        xml_path,
+        mk_testcase(
+            classname="",
+            name="unittest",
+            failure=(
+                "skipped due to a failed build\n"
+                "Depends on broken: cloud/blockstore/libs/common/ut"
+            ),
+        ),
+        suite_name="cloud/blockstore/libs/common/ut",
+    )
+
+    gs.gen_summary(
+        "",
+        str(tmp_path),
+        [("Tests", "ya-test.html", str(xml_path))],
+        build_error_log_url="build_errors.html",
+    )
+
+    html = (tmp_path / "ya-test.html").read_text()
+    assert '<h1 id="FAIL_BUILD">FAIL_BUILD (1)</h1>' in html
+    assert 'href="build_errors.html">Build errors</a>' in html
+    assert (
+        'href="build_errors.html#cloud-blockstore-libs-common-ut">BUILD ERRORS</a>'
+        in html
+    )
+    assert "cloud/blockstore/libs/common/ut/unittest" in html
+    assert "<td>/unittest</td>" not in html
+
+
 def test_gen_summary_counts_renders_plain_number_table(
     tmp_path: Path, mk_testcase, write_junit_xml
 ) -> None:
@@ -172,6 +207,32 @@ def test_write_summary_renders_expected_table_row(tmp_path: Path, monkeypatch) -
         "[1](https://summary/ya-test.html#FAIL) | 0 | 0 | "
         "[1](https://summary/ya-test.html#MUTE) |"
     ) in content
+
+
+def test_write_summary_omits_fail_build_log_link(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    line = gs.TestSummaryLine("Tests")
+    line.add(
+        gs.TestResult(
+            "cls",
+            "build_failed",
+            gs.TestStatus.FAIL_BUILD,
+            {},
+            1.0,
+            False,
+        )
+    )
+    line.add_report("ya-test.html", "https://summary/ya-test.html")
+
+    summary = gs.TestSummary()
+    summary.add_line(line)
+
+    out = tmp_path / "summary_env"
+    gs.write_summary(summary, str(out))
+    content = out.read_text()
+
+    assert "[1](https://summary/ya-test.html#FAIL_BUILD)" in content
+    assert "https://summary/build_errors.html" not in content
 
 
 def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
@@ -814,3 +875,50 @@ def test_complete_workload_checks_block_preserves_failed_build_rows() -> None:
     assert ":white_check_mark:" in updated
     assert "https://github.example/job/123" in updated
     assert "https://github.example/job/456" in updated
+
+
+def test_update_workload_check_block_adds_failed_build_log_link() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                "https://github.example/job/123",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.update_workload_check_block(
+        body,
+        "blockstore",
+        "failed_build",
+        build_error_log_url="https://logs/build_errors.html",
+    )
+
+    assert "build failed" in updated
+    assert "[log](https://logs/build_errors.html)" in updated
+    assert "file.cpp:1:1: error: broken" not in updated
+
+    completed = gs.complete_workload_checks_block(updated)
+    assert "[log](https://logs/build_errors.html)" in completed
+
+
+def test_update_workload_check_block_preserves_failed_build_log_on_completion() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "failed_build",
+                build_error_log_url="https://logs/build_errors.html",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.update_workload_check_block(body, "blockstore", "completed")
+
+    assert "https://logs/build_errors.html" in updated
+    assert gs.get_workload_check_status(updated, "blockstore") == "failed_build"

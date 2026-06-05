@@ -102,6 +102,7 @@ void TDirectoryHandleStorage::CreateRecord(
             << handleId << " from persistent storage: size "
             << handleSerializedSize << " exceeds limit "
             << PersistentHandleMaxSize);
+        Stats->IncrementHandleSizeLimitRejection();
         dropRecordsForHandle();
         return;
     }
@@ -257,6 +258,7 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
                 << handleId << " from persistent storage: "
                 << "loaded size " << handleSerializedSize << " exceeds limit "
                 << PersistentHandleMaxSize);
+            Stats->IncrementHandleSizeLimitRejection();
             oversizedHandleIds.push_back(handleId);
         }
     }

@@ -441,13 +441,21 @@ void TIndexTabletProxyActor::HandleResponse(
             nullptr);
     }
 
-    auto* x = reinterpret_cast<TMethod::TResponse::TPtr*>(&event);
-    HandleServiceTraceInfo(
-        TMethod::Name,
-        ctx,
-        TraceSerializer,
-        it->second.CallContext,
-        x->Get()->Get()->Record);
+    //
+    // It's important NOT to call Get() if we don't need it because it triggers
+    // lazy event parsing and we want to avoid doing it in TabletProxy because
+    // we have only one TabletProxy per process (i.e. it's a bottleneck).
+    //
+
+    if (it->second.CallContext->LWOrbit.HasShuttles()) {
+        auto* x = reinterpret_cast<TMethod::TResponse::TPtr*>(&event);
+        HandleServiceTraceInfo(
+            TMethod::Name,
+            ctx,
+            TraceSerializer,
+            it->second.CallContext,
+            x->Get()->Get()->Record);
+    }
 
     FILESTORE_TRACK(
         ResponseSent_TabletProxy,
