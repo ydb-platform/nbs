@@ -58,6 +58,13 @@ type Monitoring struct {
 	retriableErrorTimestampsByVolume map[string]time.Time
 }
 
+func getService(volumeId string) string {
+	if strings.Contains(volumeId, "computefilesystem") {
+		return "filestore"
+	}
+	return "nbs"
+}
+
 func (m *Monitoring) StartListening() {
 	go func() {
 		mux := http.NewServeMux()
@@ -93,13 +100,9 @@ func (m *Monitoring) ReportExternalFsMountExpirationTimes(fsMountExpTimes map[st
 }
 
 func (m *Monitoring) ReportRequestReceived(volumeId string, method string) {
-	service := "nbs"
-	if strings.Contains(volumeId, "computefilesystem") {
-		service = "filestore"
-	}
 	subregistry := m.registry.WithTags(map[string]string{
 		"method":  method,
-		"service": service,
+		"service": getService(volumeId),
 	})
 	subregistry.Counter("Count").Inc()
 	subregistry.IntGauge("InflightCount").Add(1)
@@ -115,13 +118,9 @@ func (m *Monitoring) ReportRequestCompleted(
 	completedAt time.Time,
 	elapsedTime time.Duration,
 ) {
-	service := "nbs"
-	if strings.Contains(volumeId, "computefilesystem") {
-		service = "filestore"
-	}
 	subregistry := m.registry.WithTags(map[string]string{
 		"method":  method,
-		"service": service,
+		"service": getService(volumeId),
 	})
 
 	if elapsedTime > 0 {
