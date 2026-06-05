@@ -329,3 +329,75 @@ func TestS3BucketExists(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, exists)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func writeChunkAndRequireS3StorageClass(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	s3 *persistence.S3Client,
+	config *snapshot_config.SnapshotConfig,
+	referer string,
+	chunkID string,
+	storageClass string,
+	expectedStorageClass string,
+) {
+
+	err := storage.WriteChunk(ctx, referer, common.Chunk{
+		ID:           chunkID,
+		Data:         []byte("12345678"),
+		Compression:  "",
+		StorageClass: storageClass,
+	})
+	require.NoError(t, err)
+
+	obj, err := s3.GetObject(
+		ctx,
+		config.GetS3Bucket(),
+		test.NewS3Key(config, chunkID),
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedStorageClass, obj.StorageClass)
+}
+
+func TestS3StorageClass(t *testing.T) {
+	ctx, db, s3, config := setupEnvironment(t)
+	storage := newStorage(db, s3, config, true)
+
+	writeChunkAndRequireS3StorageClass(
+		t,
+		ctx,
+		storage,
+		s3,
+		config,
+		"intelligentReferer",
+		"intelligentChunkID",
+		"INTELLIGENT_TIERING",
+		"INTELLIGENT_TIERING",
+	)
+
+	writeChunkAndRequireS3StorageClass(
+		t,
+		ctx,
+		storage,
+		s3,
+		config,
+		"standardIAReferer1",
+		"standardIAChunkID1",
+		"STANDARD_IA",
+		"STANDARD_IA",
+	)
+
+	writeChunkAndRequireS3StorageClass(
+		t,
+		ctx,
+		storage,
+		s3,
+		config,
+		"standardIAReferer2",
+		"standardIAChunkID2",
+		"STANDARD_IA",
+		"STANDARD",
+	)
+}

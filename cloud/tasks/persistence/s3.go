@@ -229,9 +229,15 @@ func (c *S3Client) GetObject(
 		return S3Object{}, errors.NewRetriableError(err)
 	}
 
+	storageClass := aws.StringValue(res.StorageClass)
+	if len(storageClass) == 0 {
+		storageClass = aws_s3.StorageClassStandard
+	}
+
 	return S3Object{
-		Data:     objData,
-		Metadata: res.Metadata,
+		Data:         objData,
+		Metadata:     res.Metadata,
+		StorageClass: storageClass,
 	}, nil
 }
 
@@ -268,7 +274,8 @@ func (c *S3Client) PutObject(
 
 		logging.Warn(
 			ctx,
-			"s3 put object with storage class %q failed with quota error, retrying without storage class",
+			"s3 put object with storage class %q failed with quota "+
+				"error, retrying without storage class",
 			object.StorageClass,
 		)
 
