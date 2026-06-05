@@ -1019,12 +1019,13 @@ func testDiskServiceCreateEncryptedDiskFromSnapshot(
 		lastSnapshotID = snapshotID2
 
 		// Fill diskID1 with random data once again.
-		_, err := nbsClient.FillEncryptedDisk(
+		_, err = nbsClient.FillEncryptedDisk(
 			ctx,
 			diskID1,
 			diskSize,
 			encryptionDesc,
 		)
+		require.NoError(t, err)
 		// Since the source disk contains data from the old and new filling,
 		// re-calculate crc32 from the disk.
 		srcDiskContentInfo, err := nbsClient.CalculateCrc32WithEncryption(
