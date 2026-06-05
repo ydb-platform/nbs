@@ -306,7 +306,8 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
         auto childLogTitle = logTitle.GetChildWithTags(childTime, tags);
         UNIT_ASSERT_STRING_CONTAINS(
             childLogTitle.GetWithTime(),
-            "[v:12345 g:5 d:disk1 str:value int:42 ui32:100 ui64:1234567890 buf:bufvalue cstr:cstring empty t:1.001s + ");
+            "[v:12345 g:5 d:disk1 str:value int:42 ui32:100 ui64:1234567890 "
+            "buf:bufvalue cstr:cstring empty t:1.001s + ");
     }
 
     Y_UNIT_TEST(GetForDiskRegistry)
