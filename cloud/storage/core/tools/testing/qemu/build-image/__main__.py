@@ -229,7 +229,7 @@ def customize(args, cidata_iso):
             "-cpu", "cortex-a72",
         ]
 
-    subprocess.check_call(cmd, timeout=25 * 60)
+    subprocess.check_call(cmd, timeout=60 * 60)
 
 
 def main(args):
