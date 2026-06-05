@@ -40,7 +40,7 @@ void TDirectoryHandleModuleStats::RegisterCounters(
                                { return self->OpenHandleCount.GetValue(); }));
     localMetricsRegistry->Register(
         {NMetrics::CreateSensor("RewindCount")},
-        NMetrics::CreateMetric([self] { return self->RewindCount.load(); }),
+        NMetrics::CreateMetric([self] { return self->RewindCount.Get(); }),
         NMetrics::EAggregationType::AT_SUM,
         NMetrics::EMetricType::MT_DERIVATIVE);
 
@@ -68,7 +68,7 @@ void TDirectoryHandleModuleStats::ChangeOpenHandleCount(i64 delta)
 
 void TDirectoryHandleModuleStats::IncrementRewindCount()
 {
-    RewindCount.fetch_add(1, std::memory_order_relaxed);
+    RewindCount.Inc();
 }
 
 void TDirectoryHandleModuleStats::UpdateStats(TInstant now)

@@ -4,12 +4,12 @@
 
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/vfs_fuse/counters/max_counter.h>
+#include <cloud/filestore/libs/vfs_fuse/counters/relaxed_counters.h>
 
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <util/system/types.h>
 
-#include <atomic>
 #include <memory>
 
 namespace NCloud::NFileStore::NFuse {
@@ -24,7 +24,7 @@ private:
     TMaxCounter<DirectoryHandleMaxBucketCount> CacheSize;
     TMaxCounter<DirectoryHandleMaxBucketCount> ChunkCount;
     TMaxCounter<DirectoryHandleMaxBucketCount> OpenHandleCount;
-    std::atomic<i64> RewindCount = 0;
+    TRelaxedCounter RewindCount;
     // Optional; when null no storage sensors are registered or updated.
     IDirectoryHandleStorageStatsPtr StorageStats;
 
