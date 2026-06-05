@@ -76,6 +76,8 @@ func nodeStructTypeString() string {
 		links: Uint32,
 		node_type: Uint32,
 		symlink_target: Utf8,
+		shard_id: Utf8,
+		shard_node_name: Utf8,
 		dev_id: Uint64>`
 }
 
@@ -97,6 +99,8 @@ func nodeStructValue(
 		persistence.StructFieldValue("links", persistence.Uint32Value(node.Links)),
 		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 		persistence.StructFieldValue("symlink_target", persistence.UTF8Value(node.LinkTarget)),
+		persistence.StructFieldValue("shard_id", persistence.UTF8Value(node.ShardFileSystemID)),
+		persistence.StructFieldValue("shard_node_name", persistence.UTF8Value(node.ShardNodeName)),
 		persistence.StructFieldValue("dev_id", persistence.Uint64Value(node.DevID)),
 	)
 }
@@ -207,6 +211,8 @@ func scanNode(result persistence.Result) (nfs.Node, error) {
 		persistence.OptionalWithDefault("links", &node.Links),
 		persistence.OptionalWithDefault("node_type", &nodeType),
 		persistence.OptionalWithDefault("symlink_target", &node.LinkTarget),
+		persistence.OptionalWithDefault("shard_id", &node.ShardFileSystemID),
+		persistence.OptionalWithDefault("shard_node_name", &node.ShardNodeName),
 		persistence.OptionalWithDefault("dev_id", &node.DevID),
 	)
 	if err != nil {
@@ -490,6 +496,8 @@ func (s *storageYDB) listNodes(
 			node.Links = a.Links
 			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
+			node.ShardFileSystemID = a.ShardFileSystemID
+			node.ShardNodeName = a.ShardNodeName
 			node.DevID = a.DevID
 			nodes[i] = node
 		}

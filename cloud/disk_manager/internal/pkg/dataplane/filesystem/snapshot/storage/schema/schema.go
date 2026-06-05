@@ -83,6 +83,8 @@ func Create(
 			persistence.WithColumn("links", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("node_type", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("symlink_target", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("shard_node_name", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("dev_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),

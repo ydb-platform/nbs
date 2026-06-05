@@ -141,7 +141,7 @@ func TestSavedNodesAreListed(t *testing.T) {
 
 	expected := []nfs.Node{
 		makeNode(parentNodeID, 10, "alpha", nfs_client.NODE_KIND_DIR),
-		makeNode(parentNodeID, 11, "beta", nfs_client.NODE_KIND_FILE),
+		makeNode(parentNodeID, 11, "beta", nfs_client.NODE_KIND_BLOCKDEV),
 		makeNode(parentNodeID, 12, "gamma", nfs_client.NODE_KIND_DIR),
 		makeNode(parentNodeID, 13, "delta", nfs_client.NODE_KIND_FILE),
 		makeNode(parentNodeID, 14, "epsilon", nfs_client.NODE_KIND_DIR),
@@ -154,6 +154,8 @@ func TestSavedNodesAreListed(t *testing.T) {
 		makeNode(parentNodeID, 21, "mu", nfs_client.NODE_KIND_FILE),
 	}
 	expected[1].DevID = 777
+	expected[3].ShardNodeName = "shard-node"
+	expected[3].ShardFileSystemID = "shard-42"
 
 	err := f.storage.SaveNodes(f.ctx, snapshotID, expected)
 	require.NoError(t, err)
