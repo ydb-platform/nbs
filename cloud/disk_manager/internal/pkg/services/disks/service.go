@@ -292,11 +292,28 @@ func (s *service) prepareCreateDiskParams(
 	}, nil
 }
 
-func (s *service) areOverlayDisksSupportedForDiskKind(kind types.DiskKind) bool {
-	return kind == types.DiskKind_DISK_KIND_SSD ||
-		kind == types.DiskKind_DISK_KIND_HDD ||
-		(s.config.GetEnableOverlayDiskRegistryBasedDisks() &&
-			nbs.IsDiskRegistryBasedDisk(kind))
+func (s *service) areOverlayDisksSupportedForDiskKind(
+	params *protos.CreateDiskParams,
+) bool {
+
+	kind := params.Kind
+	if kind == types.DiskKind_DISK_KIND_SSD || kind == types.DiskKind_DISK_KIND_HDD {
+		return true
+	}
+
+	if nbs.IsDiskRegistryBasedDisk(kind) {
+		if s.config.GetEnableOverlayDiskRegistryBasedDisks() {
+			return true
+		}
+
+		for _, folderID := range s.config.GetOverlayDiskRegistryBasedDisksFolderIdAllowList() {
+			if params.FolderId == folderID {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (s *service) isOverlayDiskAllowed(
@@ -307,7 +324,7 @@ func (s *service) isOverlayDiskAllowed(
 ) (bool, error) {
 
 	compatibleWithBaseDisksFromPools :=
-		s.areOverlayDisksSupportedForDiskKind(params.Kind) &&
+		s.areOverlayDisksSupportedForDiskKind(params) &&
 			params.BlockSize == 4096 &&
 			req.Size <= 4<<40 // 4 TB - maximum base disk size
 	if !compatibleWithBaseDisksFromPools {

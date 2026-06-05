@@ -21,4 +21,5 @@ message DisksConfig {
     optional bool DisableDiskRegistryBasedDisks = 12;
     repeated string DiskRegistryBasedDisksFolderIdAllowList = 13;
     optional bool DeleteNonExistentDisks = 14;
+    repeated string OverlayDiskRegistryBasedDisksFolderIdAllowList = 15;
 }
