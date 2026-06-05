@@ -29,6 +29,12 @@ To build run the following command from the repository root folder:
 ./ya make --build=profile -- cloud/filestore/buildall
 ```
 
+Create `qemu-bin.tar.gz` required for qemu runs:
+
+```bash
+./ya make --build=release -- cloud/storage/core/tools/testing/qemu/bin
+```
+
 ### 2. Configuring
 - prepare bin directory
 ```bash
