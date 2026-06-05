@@ -3,6 +3,7 @@ package monitoring
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -100,6 +101,9 @@ func (m *Monitoring) ReportRequestReceived(method string) {
 	subregistry.Counter("Errors")
 	subregistry.Counter("RetriableErrors")
 	subregistry.Counter("CriticalRetriableErrors")
+	subregistry.Counter("FilestoreErrors")
+	subregistry.Counter("FilestoreRetriableErrors")
+	subregistry.Counter("FilestoreCriticalRetriableErrors")
 }
 
 func (m *Monitoring) ReportRequestCompleted(
@@ -112,6 +116,8 @@ func (m *Monitoring) ReportRequestCompleted(
 	subregistry := m.registry.WithTags(map[string]string{
 		"method": method,
 	})
+
+	isFilestoreError := strings.Contains(volumeId, "computefilesystem")
 
 	if elapsedTime > 0 {
 		subregistry.DurationHistogram("Time", requestDurationBuckets()).RecordDuration(elapsedTime)
@@ -127,15 +133,24 @@ func (m *Monitoring) ReportRequestCompleted(
 			if completedAt.After(m.retriableErrorTimestampsByVolume[volumeId].
 				Add(m.cfg.RetriableErrorsDurationThreshold * 2)) {
 				subregistry.Counter("CriticalRetriableErrors").Inc()
+				if isFilestoreError {
+					subregistry.Counter("FilestoreCriticalRetriableErrors").Inc()
+				}
 			} else if completedAt.After(m.retriableErrorTimestampsByVolume[volumeId].
 				Add(m.cfg.RetriableErrorsDurationThreshold)) {
 				subregistry.Counter("RetriableErrors").Inc()
+				if isFilestoreError {
+					subregistry.Counter("FilestoreRetriableErrors").Inc()
+				}
 			}
 		} else {
 			subregistry.Counter("RetriableErrors").Inc()
 		}
 	} else {
 		subregistry.Counter("Errors").Inc()
+		if isFilestoreError {
+			subregistry.Counter("FilestoreErrors").Inc()
+		}
 	}
 	subregistry.IntGauge("InflightCount").Add(-1)
 }
