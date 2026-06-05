@@ -7,7 +7,6 @@ CreateSession
 DestroyHandle
 GetNodeAttr
 GetNodeXAttr
-ListNodeXAttr
 ListNodes
 PingSession
 ReadData
