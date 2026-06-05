@@ -765,8 +765,9 @@ void TStorageServiceActor::HandleCreateSession(
         session->CreateDestroyState =
             ESessionCreateDestroyState::STATE_CREATE_SESSION;
 
-        if (session->SessionActor) {
-            return proceed(session->SessionActor);
+        const auto sessionActor = session->GetSessionActor(seqNo);
+        if (sessionActor) {
+            return proceed(*sessionActor);
         }
     }
 
@@ -811,14 +812,24 @@ bool TStorageServiceActor::RemoveSession(
     const TActorContext& ctx)
 {
     if (auto* session = State->FindSession(sessionId, seqNo); session) {
-        if (State->IsLastSubSession(sessionId, seqNo)) {
-            LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-                "[s:%s][n:%lu] remove subsession %s self %s",
-                sessionId.Quote().c_str(),
-                seqNo,
-                ToString(session->SessionActor).c_str(),
-                ToString(SelfId()).c_str());
-        }
+        const auto subSessionCount = session->GetSubSessionCount();
+        const bool isLastSubSession = subSessionCount == 1;
+        const auto* subSession = session->FindSubSession(seqNo);
+        const auto sessionActor =
+            subSession ? subSession->SessionActor : TActorId();
+
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[s:%s][n:%lu] remove subsession %s, subsessions=%u, last=%s, self "
+            "%s",
+            sessionId.Quote().c_str(),
+            seqNo,
+            ToString(sessionActor).c_str(),
+            subSessionCount,
+            isLastSubSession ? "true" : "false",
+            ToString(SelfId()).c_str());
+
         return State->RemoveSession(sessionId, seqNo);
     }
     return false;
@@ -830,9 +841,9 @@ void TStorageServiceActor::RemoveSession(
 {
     if (auto* session = State->FindSession(sessionId); session) {
         LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-            "[s:%s]remove session %s self %s",
+            "[s:%s]remove session, subsessions=%u self %s",
             sessionId.Quote().c_str(),
-            ToString(session->SessionActor).c_str(),
+            session->GetSubSessionCount(),
             ToString(SelfId()).c_str());
 
         State->RemoveSession(sessionId);
@@ -846,16 +857,26 @@ void TStorageServiceActor::HandleSessionCreated(
     const auto* msg = ev->Get();
 
     auto* session = State->FindSession(msg->SessionId);
+    const auto sessionActor = session
+        ? session->GetSessionActor(msg->SessionSeqNo)
+        : std::optional<TActorId>();
     if (SUCCEEDED(msg->GetStatus())) {
         // in case of vhost restart we don't know session id
         // so inevitably will create new actor
         auto actorId = ev->Sender;
-        if (session &&
-            session->SessionActor &&
-            session->SessionActor != ev->Sender)
+        if (sessionActor && *sessionActor != ev->Sender)
         {
-            ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
-            actorId = session->SessionActor;
+            LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+                "%s kill stale session actor %s, new actor %s",
+                LogTag(
+                    msg->FileStore.GetFileSystemId(),
+                    msg->ClientId,
+                    msg->SessionId,
+                    msg->SessionSeqNo).c_str(),
+                ToString(*sessionActor).c_str(),
+                ToString(ev->Sender).c_str());
+
+            ctx.Send(*sessionActor, new TEvents::TEvPoisonPill());
         }
 
         if (!session) {
@@ -895,13 +916,15 @@ void TStorageServiceActor::HandleSessionCreated(
             session->UpdateSessionState(
                 msg->SessionState,
                 msg->FileStore);
-            session->AddSubSession(msg->SessionSeqNo, msg->ReadOnly);
-            session->SessionActor = actorId;
+            session->AddSubSession(
+                msg->SessionSeqNo,
+                msg->ReadOnly,
+                actorId);
         }
     } else if (session) {
         // else it's an old notify from a dead actor
         session->CreateDestroyState = ESessionCreateDestroyState::STATE_NONE;
-        if (session->SessionActor == ev->Sender) {
+        if (sessionActor && *sessionActor == ev->Sender) {
             // e.g. pipe failed or smth. client will have to restore it
             LOG_WARN(ctx, TFileStoreComponents::SERVICE,
                 "%s session failed (%s)",
