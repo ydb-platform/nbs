@@ -2,7 +2,6 @@
 set -euo pipefail
 
 SYSTEM_INSTALL_DIR=${SYSTEM_INSTALL_DIR:-/usr/local/bin}
-INSTALL_DIR=${INSTALL_DIR:-"${HOME}/.local/bin"}
 INSTALL_CMD=${INSTALL_CMD:-/usr/bin/install}
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TOOL_VERSIONS_FILE=${TOOL_VERSIONS_FILE:-"${SCRIPT_DIR}/github-release-tools.txt"}
@@ -10,6 +9,20 @@ ACTION_VALIDATOR_VERSION=
 SHELLCHECK_VERSION=
 SHFMT_VERSION=
 YQ_VERSION=
+
+if [ -z "${INSTALL_DIR+x}" ]; then
+    if [ -n "${HOME:-}" ]; then
+        INSTALL_DIR="${HOME}/.local/bin"
+    else
+        CURRENT_USER=$(id -un)
+        CURRENT_HOME=$(getent passwd "${CURRENT_USER}" | cut -d: -f6)
+        if [ -z "${CURRENT_HOME}" ]; then
+            echo "INSTALL_DIR is unset and HOME could not be resolved for ${CURRENT_USER}" >&2
+            exit 1
+        fi
+        INSTALL_DIR="${CURRENT_HOME}/.local/bin"
+    fi
+fi
 
 load_tool_versions() {
     local line tool version
