@@ -22,7 +22,6 @@ def check_rdma_connectivity(h1, h2, rdma_port=9999, timeout=10):
     )
 
     target_cmd = [
-        "sudo",
         h2.get_rdma_test_util_path(),
         "--test", "Target",
         "--host", h2.get_local_ip(),
@@ -33,7 +32,6 @@ def check_rdma_connectivity(h1, h2, rdma_port=9999, timeout=10):
     ]
 
     initiator_cmd = [
-        "sudo",
         h1.get_rdma_test_util_path(),
         "--test", "Initiator",
         "--host", h2.get_local_ip(),
