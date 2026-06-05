@@ -6,20 +6,28 @@ runs:
     - name: install build dependencies
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get -o Dpkg::Lock::Timeout=600 install -y --no-install-recommends git wget gnupg lsb-release curl xz-utils \
-            tzdata python3-dev python3-pip antlr3 libidn11-dev file distcc strace qemu-kvm \
-            qemu-utils dpkg-dev atop pigz pbzip2 xz-utils pixz gdb unzip
-        sudo apt-get -o Dpkg::Lock::Timeout=600 remove -y unattended-upgrades
-        # shellcheck disable=SC2102
-        sudo pip3 install pytest pytest-timeout pytest-xdist setproctitle grpcio grpcio-tools \
-             PyHamcrest tornado xmltodict pyarrow boto3 psutil PyGithub==2.5.0 pyinstaller \
-             cryptography protobuf packaging six pyyaml rapidgzip pyOpenSSL nebius typing-extensions==4.10.0
+        if [ "$(id -u)" -eq 0 ]; then
+            apt-get update
+            apt-get -o Dpkg::Lock::Timeout=600 install -y --no-install-recommends git wget gnupg lsb-release curl xz-utils \
+                tzdata python3-dev python3-pip antlr3 libidn11-dev file distcc strace qemu-kvm \
+                qemu-utils dpkg-dev atop pigz pbzip2 xz-utils pixz gdb unzip
+            apt-get -o Dpkg::Lock::Timeout=600 remove -y unattended-upgrades
+            # shellcheck disable=SC2102
+            pip3 install pytest pytest-timeout pytest-xdist setproctitle grpcio grpcio-tools \
+                 PyHamcrest tornado xmltodict pyarrow boto3 psutil PyGithub==2.5.0 pyinstaller \
+                 cryptography protobuf packaging six pyyaml rapidgzip pyOpenSSL nebius typing-extensions==4.10.0
+        fi
+        command -v git
+        command -v curl
+        command -v python3
+        command -v pip3
+        command -v qemu-img
+        command -v file
     - name: add user github to kvm group if exists
       shell: bash
       run: |
-        id -u github 2> /dev/null && {
-            sudo usermod -a -G kvm github
-            id github
-            grep kvm /etc/group
-        } || echo "user github not found"
+        if [ "$(id -u)" -eq 0 ] && id -u github > /dev/null 2>&1; then
+            usermod -a -G kvm github
+        fi
+        id github || true
+        grep kvm /etc/group || true

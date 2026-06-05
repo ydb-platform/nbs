@@ -129,6 +129,7 @@ def shell_quote_template_value(value) -> str:
 def render_cloud_init_runner_script(
     owner: str,
     repo: str,
+    user: str,
     token: str,
     version: str,
     sha256_by_arch: dict[str, str],
@@ -143,6 +144,7 @@ def render_cloud_init_runner_script(
         sha256_arm64=shell_quote_template_value(sha256_by_arch.get("arm64", "")),
         label=shell_quote_template_value(label),
         repo_url=shell_quote_template_value(f"https://github.com/{owner}/{repo}"),
+        runner_user=shell_quote_template_value(user),
         token=shell_quote_template_value(token),
     )
 
@@ -170,6 +172,7 @@ def generate_cloud_init_script(
     script = render_cloud_init_runner_script(
         owner=owner,
         repo=repo,
+        user=user,
         token=token,
         version=version,
         sha256_by_arch=sha256_by_arch,

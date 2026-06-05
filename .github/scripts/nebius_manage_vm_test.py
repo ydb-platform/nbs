@@ -353,7 +353,12 @@ def test_generate_cloud_init_script_renders_repo_template(monkeypatch):
     assert f"RUNNER_SHA256_ARM64={'b' * 64}" in script
     assert "UPDATE_RUNNER=true" in script
     assert "REPO_URL=https://github.com/owner/repo" in script
+    assert "RUNNER_USER=github" in script
     assert "RUNNER_REGISTRATION_TOKEN='token with spaces'" in script
+    assert "RUNNER_ALLOW_RUNASROOT" not in script
+    assert 'runuser -u "$RUNNER_USER" -- ./config.sh' in script
+    assert './svc.sh install "$RUNNER_USER"' in script
+    assert "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" in script
     assert "GITHUB_REPOSITORY_owner_repo" in script
     assert "GITHUB_SHA_abc123" in script
 
