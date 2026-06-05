@@ -1685,10 +1685,14 @@ func (s *nodeService) nodeUnstageVhostSocket(
 		nbsId, stageData.RealStagePath)
 
 	if stageData.Backend == "nbs" {
+		unixSocketPath := filepath.Join(stageData.RealStagePath, nbsSocketName)
 		nbsClient := s.getNbsClient(stageData.ClientIndex)
 		_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(stageData.RealStagePath, nbsSocketName),
+			UnixSocketPath: unixSocketPath,
 		})
+
+		log.Printf("csi.StopEndpoint[%s]: %v", unixSocketPath, err)
+
 		if err != nil {
 			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
