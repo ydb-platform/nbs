@@ -51,6 +51,7 @@ remove_glob "/actions-runner/_work/*/*/.aws"
 remove_glob "/actions-runner/_work/*/*/.s3cfg"
 remove_glob "/actions-runner/_work/*/*/.netrc"
 remove_glob "/actions-runner/_work/*/*/.bazelrc.user"
+remove_glob "/actions-runner/_work/*/*/.git/info/sparse-checkout.lock"
 
 if [ -n "${GITHUB_WORKSPACE:-}" ]; then
     remove_path "$GITHUB_WORKSPACE/.nebius"
@@ -58,6 +59,7 @@ if [ -n "${GITHUB_WORKSPACE:-}" ]; then
     remove_path "$GITHUB_WORKSPACE/.s3cfg"
     remove_path "$GITHUB_WORKSPACE/.netrc"
     remove_path "$GITHUB_WORKSPACE/.bazelrc.user"
+    remove_path "$GITHUB_WORKSPACE/.git/info/sparse-checkout.lock"
 fi
 
 log "finished job completed credentials cleanup"
