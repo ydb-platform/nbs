@@ -22,6 +22,7 @@ struct TDirectoryHandleStorageMetrics
     NMetrics::IMetricPtr ExpansionCount;
     NMetrics::IMetricPtr CompactionCount;
     NMetrics::IMetricPtr MemoryLimiterRejectionCount;
+    NMetrics::IMetricPtr HandleSizeLimitRejectionCount;
 
     void Register(
         NMetrics::IMetricsRegistry& localMetricsRegistry,
@@ -35,6 +36,7 @@ struct IDirectoryHandleStorageStats
     virtual ~IDirectoryHandleStorageStats() = default;
 
     virtual void SetCounters(TDynamicPersistentTableCounters counters) = 0;
+    virtual void IncrementHandleSizeLimitRejection() = 0;
 
     virtual TDirectoryHandleStorageMetrics CreateMetrics() const = 0;
     virtual void UpdateStats() = 0;
