@@ -504,21 +504,25 @@ runs:
                 echo "failed_tests=yes"
             } >> "$GITHUB_OUTPUT"
         fi
-    - name: copying system files
+    - name: collect VM system logs
       if: ${{ always() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        cp /var/log/kern.log "$LOG_DIR/kern.log" || true
+        mkdir -p "$LOG_DIR/system_logs"
+        if command -v actions-runner-collect-system-logs.sh > /dev/null; then
+            sudo -n actions-runner-collect-system-logs.sh || true
+        else
+            sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || cp /var/log/kern.log "$LOG_DIR/kern.log" || true
+            # shellcheck disable=SC2024
+            sudo dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
+            sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
+            sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
+        fi
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
       if: ${{ always() }}
       run: |
         echo "::group::dump-vm-artifacts"
-        mkdir -p "$LOG_DIR/system_logs"
-        # shellcheck disable=SC2024
-        dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
-        cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
-        cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
         aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
         echo "::endgroup::"
     - name: sync logs in case of cancel and additional debug info

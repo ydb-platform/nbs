@@ -187,16 +187,23 @@ def generate_cloud_init_script(
         "users": [
             {
                 "name": user,
+                "passwd": os.environ["VM_USER_PASSWD"],
+                "lock_passwd": False,
+                "shell": "/bin/bash",
+            },
+            {
+                "name": "debug",
                 "sudo": "ALL=(ALL) NOPASSWD:ALL",
                 "passwd": os.environ["VM_USER_PASSWD"],
                 "lock_passwd": False,
                 "shell": "/bin/bash",
-            }
+            },
         ],
     }
     if ssh_keys:
         logger.info("Adding SSH keys to cloud-init")
-        cloud_init["users"][0]["ssh_authorized_keys"] = ssh_keys
+        for user_config in cloud_init["users"]:
+            user_config["ssh_authorized_keys"] = ssh_keys
 
     logger.info(
         f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}"

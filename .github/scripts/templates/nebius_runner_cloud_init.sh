@@ -29,6 +29,50 @@ if [ -z "$RUNNER_HOME" ]; then
     exit 1
 fi
 
+if [ ! -x /usr/local/bin/actions-runner-collect-system-logs.sh ]; then
+    cat > /usr/local/bin/actions-runner-collect-system-logs.sh << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ne 0 ]; then
+    echo "usage: $0" >&2
+    exit 2
+fi
+
+LOG_DIR=/home/github/tmp_test/logs
+SYSTEM_LOGS_DIR=$LOG_DIR/system_logs
+KERN_LOG_PATH=$LOG_DIR/kern.log
+
+mkdir -p "$SYSTEM_LOGS_DIR"
+
+if dmesg -T > "$SYSTEM_LOGS_DIR/dmesg.log" 2> /dev/null; then
+    chmod 0644 "$SYSTEM_LOGS_DIR/dmesg.log"
+fi
+
+if [ -r /var/log/kern.log ]; then
+    install -m 0644 /var/log/kern.log "$KERN_LOG_PATH"
+fi
+
+if [ -r /var/log/syslog ]; then
+    install -m 0644 /var/log/syslog "$SYSTEM_LOGS_DIR/syslog.log"
+fi
+
+for atop_log in /var/log/atop/atop_*; do
+    if [ -r "$atop_log" ]; then
+        install -m 0644 "$atop_log" "$SYSTEM_LOGS_DIR/$(basename "$atop_log")"
+    fi
+done
+
+EOF
+    chmod 0755 /usr/local/bin/actions-runner-collect-system-logs.sh
+fi
+
+cat > "/etc/sudoers.d/99-$RUNNER_USER" << EOF
+Cmnd_Alias GITHUB_RUNNER_LOGS = /usr/local/bin/actions-runner-collect-system-logs.sh
+$RUNNER_USER ALL=(root) NOPASSWD: GITHUB_RUNNER_LOGS
+EOF
+chmod 0440 "/etc/sudoers.d/99-$RUNNER_USER"
+
 if [ "$UPDATE_RUNNER" = "true" ]; then
     mkdir -p /actions-runner
     cd /actions-runner || exit
