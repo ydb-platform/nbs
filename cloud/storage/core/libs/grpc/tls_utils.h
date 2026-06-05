@@ -12,6 +12,28 @@ namespace NCloud::NTlsUtils {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCertificatePair
+{
+    TString PrivateKeyPath;
+    TString CertChainPath;
+    TString PrivateKey;
+    TString CertChain;
+};
+
+struct TRootCaPair
+{
+    TString RootCaPath;
+    TString RootCa;
+};
+
+struct TCertificatesUpdateResult
+{
+    TVector<TMaybe<grpc_core::PemKeyCertPairList>> Certificates;
+    TMaybe<TString> RootCa;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TResultOrError<TString> TryReadFile(const TString& path);
 
 TResultOrError<void> IsValidPemCertificate(TStringBuf pem);
