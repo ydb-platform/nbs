@@ -167,6 +167,19 @@ func (t *FilesystemTraverser) runFinishedCheck(
 	ticker := time.NewTicker(t.finishedCheckInterval)
 	defer ticker.Stop()
 
+	if err := finishedCheck(ctx); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		logging.Info(
+			ctx,
+			"Traversal interrupted for %s by finished check",
+			t.filesystemSnapshotID,
+		)
+		return err
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
