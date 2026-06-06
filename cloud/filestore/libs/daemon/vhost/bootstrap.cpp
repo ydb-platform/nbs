@@ -32,6 +32,7 @@
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
@@ -569,6 +570,11 @@ void TBootstrapVhost::InitLWTrace()
 
 void TBootstrapVhost::StartComponents()
 {
+    const auto& serviceConfig = *Configs->VhostServiceConfig;
+    if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
+        NStorage::NFastShard::Init();
+    }
+
     FILESTORE_LOG_START_COMPONENT(ModuleStatsUpdater);
     FILESTORE_LOG_START_COMPONENT(TcMallocStatsUpdater);
 
@@ -599,6 +605,11 @@ void TBootstrapVhost::StopComponents()
 
     FILESTORE_LOG_STOP_COMPONENT(TcMallocStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ModuleStatsUpdater);
+
+    const auto& serviceConfig = *Configs->VhostServiceConfig;
+    if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
+        NStorage::NFastShard::Destroy();
+    }
 }
 
 void TBootstrapVhost::Drain()

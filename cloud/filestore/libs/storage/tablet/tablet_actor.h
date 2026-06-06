@@ -61,17 +61,17 @@ inline void BuildBackendInfo(
     ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
-    //
-    // Keeping it simple for now - checking only CpuWait and tablet actor cpu
-    // usage. We might decide to add some other metrics into consideration here
-    // - e.g. network usage.
-    //
-
     const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
     backendInfo->SetIsOverloaded(
         tabletActorCpuUsageRate
             >= config.GetTabletActorCpuUsageOverloadThreshold()
         || cl >= config.GetCpuLackOverloadThreshold());
+
+    const ui32 fastShardPort = config.GetFastShardServerPort();
+    if (fastShardPort) {
+        backendInfo->SetFastShardHost("localhost");
+        backendInfo->SetFastShardPort(fastShardPort);
+    }
 }
 
 template <typename T>
