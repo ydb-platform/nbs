@@ -34,6 +34,7 @@ def run_load_test(
     auth=False,
     auth_token=None,
     mon_port=None,
+    use_fast_shard_runtime=False,
 ):
     config = _expand_placeholders(config)
 
@@ -44,6 +45,9 @@ def run_load_test(
         "--tests-config",
         config,
     ]
+
+    if use_fast_shard_runtime:
+        cmd.append("--use-fast-shard-runtime")
 
     if auth and auth_token is not None:
         client_config_path = common.output_path() + "/client.txt"

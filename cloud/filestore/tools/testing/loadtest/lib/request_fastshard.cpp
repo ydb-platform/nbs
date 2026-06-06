@@ -13,7 +13,6 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/guid.h>
-#include <util/generic/scope.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 #include <util/system/mutex.h>
@@ -67,7 +66,6 @@ class TFastShardRequestGenerator final
 {
 private:
     static constexpr ui32 DefaultIoSize = 4096;
-    static constexpr ui32 Parallelism = 16;
 
     const NProto::TFastShardLoadSpec Spec;
     const TString ShardFileSystemId;
@@ -88,6 +86,7 @@ private:
 public:
     TFastShardRequestGenerator(
             NProto::TFastShardLoadSpec spec,
+            ui32 maxParallelism,
             ILoggingServicePtr /*logging*/)
         : Spec(std::move(spec))
         , ShardFileSystemId(Spec.GetShardFileSystemId())
@@ -96,8 +95,9 @@ public:
         , InitialFileSize(Spec.GetInitialFileSize())
     {
         Y_ENSURE(!ShardFileSystemId.empty(), "ShardFileSystemId must be set");
+        Y_ENSURE(maxParallelism > 0);
 
-        for (ui32 i = 0; i < Parallelism; ++i) {
+        for (ui32 i = 0; i < maxParallelism; ++i) {
             Endpoints.push_back(
                 Client.Connect("localhost", Spec.GetFastShardPort()));
             Y_ENSURE(Endpoints.back());
@@ -177,6 +177,11 @@ private:
     static void RunFiber(std::unique_ptr<TFiberState> s) noexcept
     {
         auto ptr = s->Self.lock();
+        if (!ptr) {
+            s->Promise.SetValue({s->Action, s->Started,
+                MakeError(E_CANCELLED, "shutting down")});
+            return;
+        }
 
         std::unique_ptr<IEndpoint> e;
         with_lock (ptr->EndpointsLock) {
@@ -185,7 +190,7 @@ private:
             ptr->Endpoints.pop_back();
         }
 
-        Y_DEFER {
+        auto releaseEndpoint = [&] {
             with_lock (ptr->EndpointsLock) {
                 ptr->Endpoints.push_back(std::move(e));
             }
@@ -194,6 +199,7 @@ private:
         // Create a file if the pool had nothing to offer.
         if (s->File.Handle == 0) {
             if (!ptr) {
+                releaseEndpoint();
                 s->Promise.SetValue({s->Action, s->Started,
                     MakeError(E_CANCELLED, "cancelled")});
                 return;
@@ -213,6 +219,7 @@ private:
                 ? resp.GetError()
                 : resp.GetCreateHandle().GetError();
             if (HasError(createErr)) {
+                releaseEndpoint();
                 s->Promise.SetValue({s->Action, s->Started, createErr});
                 return;
             }
@@ -267,6 +274,7 @@ private:
             ptr->ReturnFile(std::move(s->File));
         }
 
+        releaseEndpoint();
         s->Promise.SetValue({s->Action, s->Started, std::move(err)});
     }
 
@@ -329,10 +337,12 @@ private:
 
 IRequestGeneratorPtr CreateFastShardRequestGenerator(
     NProto::TFastShardLoadSpec spec,
+    ui32 maxParallelism,
     ILoggingServicePtr logging)
 {
     return std::make_shared<TFastShardRequestGenerator>(
         std::move(spec),
+        maxParallelism,
         std::move(logging));
 }
 

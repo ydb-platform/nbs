@@ -34,8 +34,6 @@ private:
     NClient::TClientConfigPtr ClientConfig;
     IClientFactoryPtr ClientFactory;
 
-    bool FastShardInitialized = false;
-
 public:
     TBootstrap(TOptionsPtr options);
     ~TBootstrap();

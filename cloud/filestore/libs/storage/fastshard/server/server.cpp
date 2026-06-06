@@ -120,14 +120,17 @@ private:
 struct TConnParams
 {
     int Fd;
-    TShardRegistry* Registry;
+    std::weak_ptr<TShardRegistry> Registry;
 };
 static_assert(sizeof(TConnParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int ConnFiberMain(TConnParams* params) noexcept
 {
     int fd = params->Fd;
-    auto* registry = params->Registry;
+    auto registry = params->Registry.lock();
+    if (!registry) {
+        return ECANCELED;
+    }
 
     for (;;) {
         // Read length prefix.
@@ -201,7 +204,7 @@ struct TAcceptParams
 {
     int ListenFd;
     int ShutdownFd;
-    TShardRegistry* Registry;
+    std::weak_ptr<TShardRegistry> Registry;
 };
 static_assert(sizeof(TAcceptParams) <= silk::FIBER_PARAMETERS_SIZE);
 
@@ -209,7 +212,10 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
 {
     int lfd = params->ListenFd;
     int sfd = params->ShutdownFd;
-    auto* registry = params->Registry;
+    auto registry = params->Registry.lock();
+    if (!registry) {
+        return ECANCELED;
+    }
 
     for (;;) {
         sockaddr_in addr{};
@@ -272,6 +278,7 @@ class TServer: public IServer
 public:
     explicit TServer(ui16 port)
         : Port(port)
+        , Registry(std::make_shared<TShardRegistry>())
     {}
 
     ~TServer() override
@@ -305,7 +312,7 @@ public:
             TAcceptParams{
                 .ListenFd = ListenFd,
                 .ShutdownFd = ShutdownFd,
-                .Registry = &Registry,
+                .Registry = Registry,
             },
             &AcceptFuture);
         Y_ENSURE(
@@ -333,12 +340,12 @@ public:
         const TString& fileSystemId,
         IFileSystemShardPtr shard) override
     {
-        Registry.Register(fileSystemId, std::move(shard));
+        Registry->Register(fileSystemId, std::move(shard));
     }
 
     void UnregisterShard(const TString& fileSystemId) override
     {
-        Registry.Unregister(fileSystemId);
+        Registry->Unregister(fileSystemId);
     }
 
 private:
@@ -380,7 +387,7 @@ private:
     ui16 Port;
     int ListenFd = -1;
     int ShutdownFd = -1;
-    TShardRegistry Registry;
+    std::shared_ptr<TShardRegistry> Registry;
     FiberFuture AcceptFuture;
 };
 

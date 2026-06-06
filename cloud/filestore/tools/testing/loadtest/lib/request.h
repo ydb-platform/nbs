@@ -90,6 +90,7 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
 
 IRequestGeneratorPtr CreateFastShardRequestGenerator(
     NProto::TFastShardLoadSpec spec,
+    ui32 maxParallelism,
     ILoggingServicePtr logging);
 
 IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
