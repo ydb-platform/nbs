@@ -50,7 +50,7 @@ func newQuotaProxy(s3URL *url.URL, quota map[string]uint64) *quotaProxy {
 			r.Out.Host = s3URL.Host
 		},
 		ModifyResponse: func(resp *http.Response) error {
-			if resp.StatusCode == http.StatusOK {
+			if resp.StatusCode < http.StatusBadRequest {
 				return nil
 			}
 
