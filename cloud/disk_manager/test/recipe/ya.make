@@ -23,8 +23,4 @@ PEERDIR(
     library/python/testing/recipe
 )
 
-DEPENDS(
-    cloud/disk_manager/test/mocks/s3_quota_proxy
-)
-
 END()
