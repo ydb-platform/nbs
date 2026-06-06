@@ -9,11 +9,11 @@ Tests {
             InitialFileSize: 4096
             Actions {
                 Action: ACTION_READ
-                Rate: 50
+                Rate: 90
             }
             Actions {
                 Action: ACTION_WRITE
-                Rate: 50
+                Rate: 10
             }
         }
         IODepth: 4

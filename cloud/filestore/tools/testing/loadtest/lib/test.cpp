@@ -588,6 +588,7 @@ private:
             case NProto::TLoadTest::kFastShardLoadSpec:
                 RequestGenerator = CreateFastShardRequestGenerator(
                     Config.GetFastShardLoadSpec(),
+                    Config.GetIODepth(),
                     Logging);
                 break;
             default:

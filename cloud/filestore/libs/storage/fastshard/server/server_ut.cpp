@@ -125,7 +125,8 @@ TEST(ServerTest, CreateNodeAndGetAttr)
             TServerFixture fixture;
             fixture.StartServer(shard);
 
-            TClient client(fixture.Port);
+            TClient client;
+            auto endpoint = client.Connect("localhost", fixture.Port);
 
             // CreateNode
             {
@@ -135,7 +136,7 @@ TEST(ServerTest, CreateNodeAndGetAttr)
                 body->SetNodeId(1);
                 body->MutableFile()->SetMode(0644);
                 body->SetName("hello.txt");
-                auto resp = client.Send(req);
+                auto resp = endpoint->Send(req);
                 EXPECT_TRUE(resp.HasCreateNode());
             }
 
@@ -146,7 +147,7 @@ TEST(ServerTest, CreateNodeAndGetAttr)
                 auto* body = req.MutableGetNodeAttr();
                 body->SetNodeId(1);
                 body->SetName("hello.txt");
-                auto resp = client.Send(req);
+                auto resp = endpoint->Send(req);
                 EXPECT_TRUE(resp.HasGetNodeAttr());
             }
 
@@ -168,14 +169,15 @@ TEST(ServerTest, UnknownShardReturnsEmptyResponse)
             TServerFixture fixture;
             fixture.StartServer(shard);
 
-            TClient client(fixture.Port);
+            TClient client;
+            auto endpoint = client.Connect("localhost", fixture.Port);
 
             TRequest req;
             req.SetFileSystemId("nonexistent-fs");
             auto* body = req.MutableGetNodeAttr();
             body->SetNodeId(1);
             body->SetName("x");
-            auto resp = client.Send(req);
+            auto resp = endpoint->Send(req);
             EXPECT_TRUE(resp.HasError());
             EXPECT_EQ(
                 resp.GetError().GetCode(),
