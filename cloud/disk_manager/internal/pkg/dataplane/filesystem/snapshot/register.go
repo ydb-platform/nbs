@@ -1,8 +1,12 @@
 package snapshot
 
 import (
+	"context"
+	"time"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config"
+	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
 	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -41,6 +45,36 @@ func validateConfig(config *snapshot_config.FilesystemSnapshotConfig) error {
 
 func Register(taskRegistry *tasks.Registry) error {
 	err := taskRegistry.Register(
+		"dataplane.DeleteFilesystemSnapshot",
+		func() tasks.Task {
+			return &deleteFilesystemSnapshotTask{}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.Register(
+		"dataplane.DeleteFilesystemSnapshotData",
+		func() tasks.Task {
+			return &deleteFilesystemSnapshotDataTask{}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.Register(
+		"dataplane.CollectFilesystemSnapshots",
+		func() tasks.Task {
+			return &collectFilesystemSnapshotsTask{}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.Register(
 		"dataplane.TransferFromFilesystemToSnapshot",
 		func() tasks.Task {
 			return &transferFromFilesystemToSnapshotTask{}
@@ -59,14 +93,55 @@ func Register(taskRegistry *tasks.Registry) error {
 }
 
 func RegisterForExecution(
+	ctx context.Context,
 	taskRegistry *tasks.Registry,
+	taskScheduler tasks.Scheduler,
 	config *snapshot_config.FilesystemSnapshotConfig,
 	factory nfs.Factory,
+	storage snapshot_storage.Storage,
 	traversalStorage traversal_storage.Storage,
 	nodesStorage nodes_storage.Storage,
 ) error {
 
 	err := validateConfig(config)
+	if err != nil {
+		return err
+	}
+
+	snapshotCollectionTimeout, err := time.ParseDuration(
+		config.GetSnapshotCollectionTimeout(),
+	)
+	if err != nil {
+		return err
+	}
+
+	collectSnapshotsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCollectSnapshotsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.DeleteFilesystemSnapshot",
+		func() tasks.Task {
+			return &deleteFilesystemSnapshotTask{
+				storage: storage,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.DeleteFilesystemSnapshotData",
+		func() tasks.Task {
+			return &deleteFilesystemSnapshotDataTask{
+				nodesStorage: nodesStorage,
+			}
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -86,7 +161,7 @@ func RegisterForExecution(
 		return err
 	}
 
-	return taskRegistry.RegisterForExecution(
+	err = taskRegistry.RegisterForExecution(
 		"dataplane.TransferFromSnapshotToFilesystem",
 		func() tasks.Task {
 			return &transferFromSnapshotToFilesystemTask{
@@ -97,4 +172,33 @@ func RegisterForExecution(
 			}
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.CollectFilesystemSnapshots",
+		func() tasks.Task {
+			return &collectFilesystemSnapshotsTask{
+				scheduler:                       taskScheduler,
+				storage:                         storage,
+				snapshotCollectionTimeout:       snapshotCollectionTimeout,
+				snapshotCollectionInflightLimit: int(config.GetSnapshotCollectionInflightLimit()),
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	taskScheduler.ScheduleRegularTasks(
+		ctx,
+		"dataplane.CollectFilesystemSnapshots",
+		tasks.TaskSchedule{
+			ScheduleInterval: collectSnapshotsTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
+	)
+
+	return nil
 }

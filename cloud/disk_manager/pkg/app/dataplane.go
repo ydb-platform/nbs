@@ -10,6 +10,7 @@ import (
 	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
+	snapshot_metadata_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
 	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -118,7 +119,14 @@ func initFilesystemDataplane(
 		return err
 	}
 
-	return initFilesystemSnapshot(taskRegistry, nfsFactory, filesystemDB, filesystemConfig)
+	return initFilesystemSnapshot(
+		ctx,
+		taskRegistry,
+		taskScheduler,
+		nfsFactory,
+		filesystemDB,
+		filesystemConfig,
+	)
 }
 
 func initFilesystemScrubbing(
@@ -165,7 +173,9 @@ func initFilesystemScrubbing(
 }
 
 func initFilesystemSnapshot(
+	ctx context.Context,
 	taskRegistry *tasks.Registry,
+	taskScheduler tasks.Scheduler,
 	nfsFactory nfs.Factory,
 	filesystemDB *persistence.YDBClient,
 	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
@@ -187,6 +197,11 @@ func initFilesystemSnapshot(
 		traversalConfig.GetTraversalQueueDeletionLimit(),
 	)
 
+	snapshotStorage := snapshot_metadata_storage.NewStorage(
+		filesystemDB,
+		snapshotConfig.GetNodesStorageFolder(),
+	)
+
 	nodesStorage := nodes_storage.NewStorage(
 		filesystemDB,
 		snapshotConfig.GetNodesStorageFolder(),
@@ -194,9 +209,12 @@ func initFilesystemSnapshot(
 	)
 
 	return filesystem_snapshot.RegisterForExecution(
+		ctx,
 		taskRegistry,
+		taskScheduler,
 		snapshotConfig,
 		nfsFactory,
+		snapshotStorage,
 		traversalStorage,
 		nodesStorage,
 	)
