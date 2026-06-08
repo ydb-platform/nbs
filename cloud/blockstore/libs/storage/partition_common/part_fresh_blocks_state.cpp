@@ -163,7 +163,9 @@ void TPartitionFreshBlocksState::ZeroFreshBlocks(
     WriteFreshBlocksImpl(
         zeroRange,
         commitId,
-        [](ui32) { return TBlockDataRef(); });
+        [](ui32) { return TBlockDataRef(); },
+        {}  // blobId
+    );
 }
 
 void TPartitionFreshBlocksState::DeleteFreshBlock(

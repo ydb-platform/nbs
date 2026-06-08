@@ -187,7 +187,7 @@ public:
         const TBlockRange32& writeRange,
         ui64 commitId,
         TSgList sglist,
-        TPartialBlobId blobId = {});
+        TPartialBlobId blobId);
 
     void ZeroFreshBlocks(const TBlockRange32& zeroRange, ui64 commitId);
 
@@ -206,7 +206,7 @@ private:
         const TBlockRange32& writeRange,
         ui64 commitId,
         auto getBlockContent,
-        TPartialBlobId blobId = {});
+        TPartialBlobId blobId);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

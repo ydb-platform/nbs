@@ -475,7 +475,8 @@ private:
                 commitId,
                 true,  // isStoredInDb
                 blockContent.AsStringBuf(),
-                {});
+                {}  // blobId
+            );
 
             db.WriteFreshBlock(blockIndex, commitId, blockContent);
 

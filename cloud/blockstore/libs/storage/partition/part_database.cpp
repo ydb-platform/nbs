@@ -156,9 +156,9 @@ bool TPartitionDatabase::ReadFreshBlocks(TVector<TOwningFreshBlock>& blocks)
                 it.GetValue<TTable::BlockIndex>(),
                 ReverseCommitId(it.GetValue<TTable::CommitId>()),
                 true  // isStoredInDb
-            },
-            TString{it.GetValue<TTable::BlockContent>()},
-            TPartialBlobId{}
+            },  /* meta */
+            TString{it.GetValue<TTable::BlockContent>()},  /* content */
+            TPartialBlobId{}  /* blobId*/
         );
 
         if (!it.Next()) {
