@@ -422,7 +422,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // Functions that compress and decompress NodeRefs
 
-void TryToEncodeShardId(
+inline void TryToEncodeShardId(
     const TString& mainFsId,
     IIndexTabletDatabase::TNodeRef& nodeRef)
 {
@@ -434,7 +434,7 @@ void TryToEncodeShardId(
     }
 }
 
-bool TryToDecodeShardId(
+inline bool TryToDecodeShardId(
     const TString& mainFsId,
     IIndexTabletDatabase::TNodeRef& nodeRef)
 {
