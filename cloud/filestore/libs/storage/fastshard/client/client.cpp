@@ -68,7 +68,7 @@ struct TEndpoint: IEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
+std::shared_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
 {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -122,7 +122,7 @@ std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
         int one = 1;
         ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
-        return std::make_unique<TEndpoint>(fd);
+        return std::make_shared<TEndpoint>(fd);
     }
 
     return nullptr;

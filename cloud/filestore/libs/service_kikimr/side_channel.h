@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 
 #include <cloud/filestore/public/api/protos/headers.pb.h>
 
@@ -31,6 +32,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISideChannelPtr CreateTCPSideChannel();
+ISideChannelPtr CreateTCPSideChannel(
+    std::shared_ptr<NStorage::NFastShard::IAsyncClient> client);
 
 }   // namespace NCloud::NFileStore

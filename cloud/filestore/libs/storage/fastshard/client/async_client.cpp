@@ -45,7 +45,7 @@ struct TAsyncEndpoint: IAsyncEndpoint
 {
     std::shared_ptr<IEndpoint> Endpoint;
 
-    explicit TAsyncEndpoint(std::unique_ptr<IEndpoint> ep)
+    explicit TAsyncEndpoint(std::shared_ptr<IEndpoint> ep)
         : Endpoint(std::move(ep))
     {}
 
@@ -100,7 +100,7 @@ int ConnectFiberMain(TConnectParams* params) noexcept
     auto ep = client->Connect(params->Host, params->Port);
     if (ep) {
         params->Promise.SetValue(
-            std::make_unique<TAsyncEndpoint>(std::move(ep)));
+            std::make_shared<TAsyncEndpoint>(std::move(ep)));
     } else {
         params->Promise.SetValue(nullptr);
     }

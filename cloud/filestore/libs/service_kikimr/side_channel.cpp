@@ -1,6 +1,5 @@
 #include "side_channel.h"
 
-#include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
@@ -31,65 +30,12 @@ private:
     // TODO: endpoint pool
     std::shared_ptr<IAsyncEndpoint> ReadyEndpoint;
 
-    TAsyncClient Client;
+    std::shared_ptr<IAsyncClient> Client;
 
-    // Returns the ready endpoint under lock, promoting ConnectFuture if done.
-    // Returns nullptr if not connected yet.
-    std::shared_ptr<IAsyncEndpoint> GetEndpointLocked()
-    {
-        if (ReadyEndpoint) {
-            return ReadyEndpoint;
-        }
-        if (!ConnectFuture.Initialized() || !ConnectFuture.HasValue()) {
-            return nullptr;
-        }
-        auto ep = ConnectFuture.ExtractValue();
-        if (ep) {
-            ReadyEndpoint = std::move(ep);
-        }
-        ConnectFuture = {};
-        return ReadyEndpoint;
-    }
-
-    template <typename TReq, typename TResp, typename FillBody, typename ExtractBody>
-    bool Dispatch(
-        std::shared_ptr<TReq> request,
-        TPromise<TResp> response,
-        FillBody fillBody,
-        ExtractBody extractBody)
-    {
-        std::shared_ptr<IAsyncEndpoint> ep;
-        {
-            auto guard = Guard(Lock);
-            if (IsOverloaded) {
-                return false;
-            }
-            ep = GetEndpointLocked();
-        }
-        if (!ep) {
-            return false;
-        }
-
-        TRequest req;
-        req.SetFileSystemId(request->GetFileSystemId());
-        fillBody(req, *request);
-
-        ep->Send(std::move(req)).Subscribe(
-            [response = std::move(response), extractBody](
-                TFuture<TResponse> f) mutable
-            {
-                auto r = f.ExtractValue();
-                TResp resp;
-                if (r.HasError()) {
-                    *resp.MutableError() = r.GetError();
-                } else {
-                    extractBody(resp, r);
-                }
-                response.SetValue(std::move(resp));
-            });
-
-        return true;
-    }
+public:
+    explicit TTCPSideChannel(std::shared_ptr<IAsyncClient> client)
+        : Client(std::move(client))
+    {}
 
 public:
     bool ExecuteRequest(
@@ -147,8 +93,71 @@ public:
         }
 
         with_lock (Lock) {
-            ConnectFuture = Client.Connect(host, port);
+            ConnectFuture = Client->Connect(host, port);
         }
+    }
+
+private:
+    // Returns the ready endpoint under lock, promoting ConnectFuture if done.
+    // Returns nullptr if not connected yet.
+    std::shared_ptr<IAsyncEndpoint> GetEndpointLocked()
+    {
+        if (ReadyEndpoint) {
+            return ReadyEndpoint;
+        }
+        if (!ConnectFuture.Initialized() || !ConnectFuture.HasValue()) {
+            return nullptr;
+        }
+        auto ep = ConnectFuture.ExtractValue();
+        if (ep) {
+            ReadyEndpoint = std::move(ep);
+        }
+        ConnectFuture = {};
+        return ReadyEndpoint;
+    }
+
+    template <
+        typename TReq,
+        typename TResp,
+        typename FillBody,
+        typename ExtractBody>
+    bool Dispatch(
+        std::shared_ptr<TReq> request,
+        TPromise<TResp> response,
+        FillBody fillBody,
+        ExtractBody extractBody)
+    {
+        std::shared_ptr<IAsyncEndpoint> ep;
+        {
+            auto guard = Guard(Lock);
+            if (IsOverloaded) {
+                return false;
+            }
+            ep = GetEndpointLocked();
+        }
+        if (!ep) {
+            return false;
+        }
+
+        TRequest req;
+        req.SetFileSystemId(request->GetFileSystemId());
+        fillBody(req, *request);
+
+        ep->Send(std::move(req)).Subscribe(
+            [response = std::move(response), extractBody](
+                TFuture<TResponse> f) mutable
+            {
+                auto r = f.ExtractValue();
+                TResp resp;
+                if (r.HasError()) {
+                    *resp.MutableError() = r.GetError();
+                } else {
+                    extractBody(resp, r);
+                }
+                response.SetValue(std::move(resp));
+            });
+
+        return true;
     }
 };
 
@@ -156,9 +165,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISideChannelPtr CreateTCPSideChannel()
+ISideChannelPtr CreateTCPSideChannel(std::shared_ptr<IAsyncClient> client)
 {
-    return std::make_shared<TTCPSideChannel>();
+    return std::make_shared<TTCPSideChannel>(std::move(client));
 }
 
 }   // namespace NCloud::NFileStore

@@ -27,21 +27,32 @@ public:
         NProtoSrv::TRequest req) = 0;
 };
 
-using IAsyncEndpointPtr = std::unique_ptr<IAsyncEndpoint>;
+using IAsyncEndpointPtr = std::shared_ptr<IAsyncEndpoint>;
+
+class IAsyncClient
+{
+public:
+    virtual ~IAsyncClient() = default;
+
+public:
+    // Returns a future that resolves to a connected endpoint on success,
+    // or to nullptr if the connection could not be established.
+    virtual NThreading::TFuture<IAsyncEndpointPtr> Connect(
+        const TString& host,
+        ui16 port) = 0;
+};
 
 // TFuture-based wrapper around TClient. May be called from any thread.
 // Requires silk::FiberScheduler to be initialized.
-class TAsyncClient
+class TAsyncClient: public IAsyncClient
 {
 public:
     TAsyncClient();
 
 public:
-    // Returns a future that resolves to a connected endpoint on success,
-    // or to nullptr if the connection could not be established.
     NThreading::TFuture<IAsyncEndpointPtr> Connect(
         const TString& host,
-        ui16 port);
+        ui16 port) override;
 
 private:
     std::shared_ptr<TClient> Client;
