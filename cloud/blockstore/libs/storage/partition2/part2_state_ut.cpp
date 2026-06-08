@@ -1418,7 +1418,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
         TVector<TOwningFreshBlock> freshBlocks;
         for (ui32 i = 0; i < 100; ++i) {
-            freshBlocks.emplace_back(TBlock{i, 1, 1, false}, ToString(i));
+            freshBlocks.emplace_back(
+                TBlock{i, 1, 1, false},
+                ToString(i),
+                TPartialBlobId{});
         }
         state.InitFreshBlocks(freshBlocks);
         state.GetCompactionMap().Update(0, 10, 10, 10, 0, false);
@@ -1431,7 +1434,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
         freshBlocks.clear();
         for (ui32 i = 100; i < 400; ++i) {
-            freshBlocks.emplace_back(TBlock{i, 1, 1, false}, ToString(i));
+            freshBlocks.emplace_back(
+                TBlock{i, 1, 1, false},
+                ToString(i),
+                TPartialBlobId{});
         }
         state.InitFreshBlocks(freshBlocks);
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
