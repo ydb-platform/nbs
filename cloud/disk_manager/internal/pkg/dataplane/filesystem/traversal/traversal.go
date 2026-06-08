@@ -149,7 +149,7 @@ func (t *FilesystemTraverser) Traverse(
 	}
 	if finishedCheck != nil {
 		eg.Go(func() error {
-			return t.runFinishedCheck(
+			return t.periodicRunFinishedCheck(
 				finishedCheckCtx,
 				finishedCheck,
 			)
@@ -159,13 +159,34 @@ func (t *FilesystemTraverser) Traverse(
 	return eg.Wait()
 }
 
-func (t *FilesystemTraverser) runFinishedCheck(
+func (t *FilesystemTraverser) periodicRunFinishedCheck(
 	ctx context.Context,
 	finishedCheck func(context.Context) error,
 ) error {
 
 	ticker := time.NewTicker(t.finishedCheckInterval)
 	defer ticker.Stop()
+
+	if err := t.checkFinished(ctx, finishedCheck); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := t.checkFinished(ctx, finishedCheck); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (t *FilesystemTraverser) checkFinished(
+	ctx context.Context,
+	finishedCheck func(context.Context) error,
+) error {
 
 	if err := finishedCheck(ctx); err != nil {
 		if ctx.Err() != nil {
@@ -180,25 +201,7 @@ func (t *FilesystemTraverser) runFinishedCheck(
 		return err
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if err := finishedCheck(ctx); err != nil {
-				if ctx.Err() != nil {
-					return nil
-				}
-
-				logging.Info(
-					ctx,
-					"Traversal interrupted for %s by finished check",
-					t.filesystemSnapshotID,
-				)
-				return err
-			}
-		}
-	}
+	return nil
 }
 
 func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
