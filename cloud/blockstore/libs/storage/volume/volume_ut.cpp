@@ -9239,7 +9239,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TVolumeClient volume(*runtime);
 
         bool gotVolumeActorId = false;
-        TActorId volumeActor;
+        TActorId volumeActorId;
         TAutoPtr<IEventHandle> delayedRequest;
 
         runtime->SetEventFilter(
@@ -9248,13 +9248,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 switch (ev->GetTypeRewrite()) {
                     case TEvBlockStore::EvUpdateVolumeConfigResponse: {
                         if (!gotVolumeActorId) {
-                            volumeActor = ev->Sender;
+                            volumeActorId = ev->Sender;
                             gotVolumeActorId = true;
                         }
                         break;
                     }
                     case TEvService::EvWriteBlocksRequest: {
-                        if (!gotVolumeActorId || ev->Sender != volumeActor) {
+                        if (!gotVolumeActorId || ev->Sender != volumeActorId) {
                             break;
                         }
                         if (!delayedRequest) {
@@ -9283,17 +9283,28 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             "AppCriticalEvents/OverlappingRequestsDetected",
             true);
 
-        // Send first request
-        volume.SendToPipe(volume.CreateWriteBlocksRequest(
-            TBlockRange64::WithLength(0, 1024),
-            clientInfo.GetClientId(),
-            1));
+        const TActorId sender = volume.GetSender();
+        runtime->Send(
+            new IEventHandle(
+                volumeActorId,
+                sender,
+                volume.CreateWriteBlocksRequest(
+                    TBlockRange64::WithLength(0, 1024),
+                    clientInfo.GetClientId(),
+                    1)
+                    .release()),
+            0);
 
-        // Send overlapping request
-        volume.SendToPipe(volume.CreateWriteBlocksRequest(
-            TBlockRange64::WithLength(0, 1024),
-            clientInfo.GetClientId(),
-            1));
+        runtime->Send(
+            new IEventHandle(
+                volumeActorId,
+                sender,
+                volume.CreateWriteBlocksRequest(
+                    TBlockRange64::WithLength(0, 1024),
+                    clientInfo.GetClientId(),
+                    1)
+                    .release()),
+            0);
 
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         runtime->Send(delayedRequest.Release());
