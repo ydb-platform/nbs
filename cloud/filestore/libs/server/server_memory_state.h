@@ -54,7 +54,7 @@ public:
             .LatestActivityTimestamp = TInstant::Now(),
             .PageSize = pageSize
         }
-        , PageMap(pageSize != 0 ? size / pageSize : 0)
+        , PageLocks(pageSize != 0 ? size / pageSize : 0)
     {
     }
 
@@ -80,11 +80,11 @@ public:
 
     bool LockPage(ui64 index)
     {
-        if (index >= PageMap.size()) {
+        if (index >= PageLocks.size()) {
             return false;
         }
 
-        if (PageMap[index].exchange(true)) {
+        if (PageLocks[index].exchange(true)) {
             return false;
         }
 
@@ -93,11 +93,11 @@ public:
 
     bool UnlockPage(ui64 index)
     {
-        if (index >= PageMap.size()) {
+        if (index >= PageLocks.size()) {
             return false;
         }
 
-        PageMap[index].store(false);
+        PageLocks[index].store(false);
         return true;
     }
 
@@ -118,7 +118,7 @@ public:
 
 private:
     TMmapRegionMetadata Metadata;
-    TVector<std::atomic<bool>> PageMap;
+    TVector<std::atomic<bool>> PageLocks;
 };
 
 struct TServerStateStats
