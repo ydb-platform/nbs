@@ -196,6 +196,9 @@ TServerState::AdjustAndLockIovecs(
     }
 
     const auto pageSize = region.GetPageSize();
+    // If page size is not specified, page size restrictions are currently not
+    // enforced. We plan to enable page size enforcement by default in the
+    // future.
     if (!pageSize) {
         return adjustedIovecs;
     }
@@ -205,6 +208,7 @@ TServerState::AdjustAndLockIovecs(
     for (; i < iovecs.size(); ++i) {
         const auto& base = iovecs[i].GetBase();
         const auto& length = iovecs[i].GetLength();
+        // The last iovec in a request may have a length smaller than PageSize.
         if (base % pageSize != 0 || length > pageSize ||
             (length < pageSize && i != iovecs.size() - 1))
         {
@@ -220,18 +224,15 @@ TServerState::AdjustAndLockIovecs(
         if (!region.LockPage(index)) {
             err = MakeError(
                 E_TRANSPORT_ERROR,
-                Sprintf(
-                    "Address range is in use: [%lu, %lu]",
-                    iovecs[i].GetBase(),
-                    iovecs[i].GetLength()));
+                Sprintf("Address range is in use: [%lu, %lu]", base, length));
             break;
         }
     }
 
-    if (i != iovecs.size()) {
+    if (HasError(err)) {
         if (i > 0) {
             for (int j = i - 1; j >= 0; --j) {
-                auto index = iovecs[j].GetBase() / pageSize;
+                ui64 index = iovecs[j].GetBase() / pageSize;
                 region.UnlockPage(index);
             }
         }
@@ -253,16 +254,17 @@ NProto::TError TServerState::UnlockIovecs(
             E_TRANSPORT_ERROR,
             Sprintf("Mmap region not found: %lu", mmapId));
     }
+
     auto& region = it->second;
-    const auto pageSize = region.GetPageSize();
-    const auto regionAddress = region.GetAddress();
+    const ui64 pageSize = region.GetPageSize();
+    const ui64 regionAddress = region.GetAddress();
     if (!pageSize) {
         return {};
     }
 
     for (const auto& iovec: iovecs) {
-        auto index = (iovec.GetBase() - regionAddress) / pageSize;
-        auto ret = region.UnlockPage(index);
+        ui64 index = (iovec.GetBase() - regionAddress) / pageSize;
+        bool ret = region.UnlockPage(index);
         Y_ASSERT(ret);
     }
 
