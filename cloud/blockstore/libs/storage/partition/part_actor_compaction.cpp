@@ -1820,6 +1820,7 @@ void TPartitionActor::CompleteCompaction(
             blobPatchingEnabled,
             mergedBlobThreshold,
             args.CommitId,
+            TabletID(),
             *Info(),
             *State,
             rangeCompaction,
