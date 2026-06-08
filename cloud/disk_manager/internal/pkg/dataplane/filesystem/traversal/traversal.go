@@ -36,6 +36,8 @@ type FilesystemTraverser struct {
 	filesystemListerFactory  listers.FilesystemListerFactory
 	storage                  storage.Storage
 	stateSaver               StateSaver
+	onListedNodes            OnListedNodesFunc
+	finishedCheck            func(context.Context) error
 	config                   *config.FilesystemTraversalConfig
 	finishedCheckInterval    time.Duration
 	rootNodeAlreadyScheduled bool
@@ -67,6 +69,8 @@ func NewFilesystemTraverser(
 	filesystemListerFactory listers.FilesystemListerFactory,
 	snapshotStorage storage.Storage,
 	stateSaver StateSaver,
+	onListedNodes OnListedNodesFunc,
+	finishedCheck func(context.Context) error,
 	config *config.FilesystemTraversalConfig,
 	rootNodeAlreadyScheduled bool,
 	rootNodeID uint64,
@@ -94,6 +98,8 @@ func NewFilesystemTraverser(
 		filesystemListerFactory:  filesystemListerFactory,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
+		onListedNodes:            onListedNodes,
+		finishedCheck:            finishedCheck,
 		config:                   config,
 		finishedCheckInterval:    finishedCheckInterval,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
@@ -101,11 +107,7 @@ func NewFilesystemTraverser(
 	}, nil
 }
 
-func (t *FilesystemTraverser) Traverse(
-	ctx context.Context,
-	onListedNodes OnListedNodesFunc,
-	finishedCheck func(context.Context) error,
-) error {
+func (t *FilesystemTraverser) Traverse(ctx context.Context) error {
 
 	ctx = logging.WithFields(
 		ctx,
@@ -144,30 +146,24 @@ func (t *FilesystemTraverser) Traverse(
 	})
 	for i := uint32(0); i < t.config.GetTraversalWorkersCount(); i++ {
 		eg.Go(func() error {
-			return t.directoryLister(ctx, onListedNodes)
+			return t.directoryLister(ctx)
 		})
 	}
-	if finishedCheck != nil {
+	if t.finishedCheck != nil {
 		eg.Go(func() error {
-			return t.periodicRunFinishedCheck(
-				finishedCheckCtx,
-				finishedCheck,
-			)
+			return t.periodicRunFinishedCheck(finishedCheckCtx)
 		})
 	}
 
 	return eg.Wait()
 }
 
-func (t *FilesystemTraverser) periodicRunFinishedCheck(
-	ctx context.Context,
-	finishedCheck func(context.Context) error,
-) error {
+func (t *FilesystemTraverser) periodicRunFinishedCheck(ctx context.Context) error {
 
 	ticker := time.NewTicker(t.finishedCheckInterval)
 	defer ticker.Stop()
 
-	if err := t.checkFinished(ctx, finishedCheck); err != nil {
+	if err := t.checkFinished(ctx); err != nil {
 		return err
 	}
 
@@ -176,19 +172,16 @@ func (t *FilesystemTraverser) periodicRunFinishedCheck(
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := t.checkFinished(ctx, finishedCheck); err != nil {
+			if err := t.checkFinished(ctx); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func (t *FilesystemTraverser) checkFinished(
-	ctx context.Context,
-	finishedCheck func(context.Context) error,
-) error {
+func (t *FilesystemTraverser) checkFinished(ctx context.Context) error {
 
-	if err := finishedCheck(ctx); err != nil {
+	if err := t.finishedCheck(ctx); err != nil {
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -258,10 +251,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 	}
 }
 
-func (t *FilesystemTraverser) directoryLister(
-	ctx context.Context,
-	onListedNodes OnListedNodesFunc,
-) error {
+func (t *FilesystemTraverser) directoryLister(ctx context.Context) error {
 
 	filesystemLister, err := t.filesystemListerFactory.CreateLister(
 		ctx,
@@ -293,7 +283,7 @@ func (t *FilesystemTraverser) directoryLister(
 				return nil
 			}
 
-			err := t.listNode(ctx, filesystemLister, node, onListedNodes)
+			err := t.listNode(ctx, filesystemLister, node)
 			if err != nil {
 				return err
 			}
@@ -311,7 +301,6 @@ func (t *FilesystemTraverser) listNode(
 	ctx context.Context,
 	filesystemLister listers.FilesystemLister,
 	node *storage.NodeQueueEntry,
-	onListedNodes OnListedNodesFunc,
 ) error {
 
 	cookie := node.Cookie
@@ -326,7 +315,7 @@ func (t *FilesystemTraverser) listNode(
 		}
 
 		if len(children) > 0 {
-			err = onListedNodes(ctx, children, filesystemLister)
+			err = t.onListedNodes(ctx, children, filesystemLister)
 			if err != nil {
 				return err
 			}
