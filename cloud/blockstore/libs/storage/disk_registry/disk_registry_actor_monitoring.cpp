@@ -345,7 +345,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     }
                     TABLED() { out << device.GetDeviceName(); }
                     TABLED() { out << device.GetSerialNumber(); }
-                    TABLED() { out << device.GetDeviceModel();}
+                    TABLED() { out << device.GetDeviceModel(); }
                     TABLED() {
                         DumpDeviceState(
                             out,
