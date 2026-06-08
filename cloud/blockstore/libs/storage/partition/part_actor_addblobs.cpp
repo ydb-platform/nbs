@@ -586,8 +586,17 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
+
+                std::optional<NProto::TBlobMeta> blobMeta;
+                if (kv.second.RecreatedBlobMeta) {
+                    blobMeta = *kv.second.RecreatedBlobMeta;
+                }
+                if (kv.second.BlobMeta) {
+                    blobMeta = *kv.second.BlobMeta;
+                }
+
                 bool inserted =
-                    State.GetCleanupQueue().Add({kv.first, DeletionCommitId});
+                    State.GetCleanupQueue().Add({kv.first, DeletionCommitId, blobMeta});
 
                 STORAGE_VERIFY_DEBUG_C(
                     inserted,

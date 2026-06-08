@@ -4,6 +4,8 @@
 
 #include "barrier.h"
 
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
+
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
@@ -17,13 +19,7 @@ struct TCleanupQueueItem
 {
     TPartialBlobId BlobId;
     ui64 CommitId = 0;
-
-    TCleanupQueueItem() = default;
-
-    TCleanupQueueItem(const TPartialBlobId& blobId, ui64 commitId)
-        : BlobId(blobId)
-        , CommitId(commitId)
-    {}
+    std::optional<NProto::TBlobMeta> BlobMeta;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

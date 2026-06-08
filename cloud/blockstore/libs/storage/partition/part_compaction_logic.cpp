@@ -211,6 +211,7 @@ public:
         ab.CompactionRangeCount =
             CompactionMap.GetRangeIndex(blockRange.End) -
             CompactionMap.GetRangeIndex(blockRange.Start) + 1;
+        ab.MergedBlockRange = blockRange;
         return true;
     }
 
@@ -230,6 +231,16 @@ public:
     }
 };
 
+bool IsBlobFullyAvailableForRangeCompaction(
+    const TAffectedBlob& ab,
+    ui64 commitId)
+{
+    const bool blobOnlyInOneCompactRange = ab.CompactionRangeCount == 1;
+
+    return ab.MaxCommitIdInCompactionRange <= commitId &&
+           blobOnlyInOneCompactRange;
+}
+
 void FillBlobsInfoToRead(
     ui64 commitId,
     bool readBlockMaskOnCompactionOptimizationEnabled,
@@ -246,14 +257,7 @@ void FillBlobsInfoToRead(
             continue;
         }
 
-        const bool blobOnlyInOneCompactRange =
-            kv.second.CompactionRangeCount == 1;
-
-        const bool blobFullyAvailableForRangeCompaction =
-            kv.second.MaxCommitIdInCompactionRange <= commitId &&
-            blobOnlyInOneCompactRange;
-
-        if (!blobFullyAvailableForRangeCompaction ||
+        if (!IsBlobFullyAvailableForRangeCompaction(kv.second, commitId) ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             state.IncrementBlockMaskReadDuringCompaction();
@@ -270,6 +274,33 @@ void FillBlobsInfoToRead(
             {
                 blobsToReadBlobMetas.emplace(mark.BlobId);
             }
+        }
+    }
+}
+
+void RecreateBlobMetasIfNeeded(TTxPartition::TRangeCompaction& args, ui64 commitId)
+{
+    for (auto& [blobId, ab]: args.AffectedBlobs) {
+
+        if (ab.MergedBlockRange.Defined()) {
+            auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
+            auto* mergedBlocks = meta.MutableMergedBlocks();
+            mergedBlocks->SetStart(ab.MergedBlockRange->Start);
+            mergedBlocks->SetEnd(ab.MergedBlockRange->End);
+            continue;
+        }
+
+        // we can recreate blob meta for mixed blobs only if they are fully
+        // available for range compaction
+        if (!IsBlobFullyAvailableForRangeCompaction(ab, commitId)) {
+            continue;
+        }
+
+        auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
+        auto* mixedBlocks = meta.MutableMixedBlocks();
+        for (const auto& affectedBlock: ab.AffectedBlocks) {
+            mixedBlocks->AddBlocks(affectedBlock.BlockIndex);
+            mixedBlocks->AddCommitIds(affectedBlock.CommitId);
         }
     }
 }
@@ -363,12 +394,12 @@ void PrepareRangeCompaction(
         for (const auto& x: liveBlocks) {
             auto ab = args.AffectedBlobs.find(x.first);
             Y_ABORT_UNLESS(ab != args.AffectedBlobs.end());
-            for (const auto blockIndex: ab->second.AffectedBlockIndices) {
+            for (const auto& affectedBlock: ab->second.AffectedBlocks) {
                 // we can actually add extra indices to skippedBlockIndices,
                 // but it does not cause data corruption - the important thing
                 // is to ensure that all skipped indices are added, not that
                 // all non-skipped are preserved
-                skippedBlockIndices.insert(blockIndex);
+                skippedBlockIndices.insert(affectedBlock.BlockIndex);
             }
             args.AffectedBlobs.erase(ab);
         }
