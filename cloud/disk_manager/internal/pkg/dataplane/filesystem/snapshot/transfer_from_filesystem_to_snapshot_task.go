@@ -66,7 +66,7 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 		false, // ignoreNotFound
 	)
 
-	traverser := traversal.NewFilesystemTraverser(
+	traverser, err := traversal.NewFilesystemTraverser(
 		snapshotID,
 		filesystem.GetFilesystemId(),
 		t.request.GetCheckpointId(),
@@ -80,6 +80,9 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 		t.state.GetRootNodeScheduled(),
 		nfs.RootNodeID,
 	)
+	if err != nil {
+		return err
+	}
 
 	return traverser.Traverse(ctx, func(
 		ctx context.Context,
@@ -129,7 +132,7 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 		)
 
 		return nil
-	})
+	}, nil)
 }
 
 func (t *transferFromFilesystemToSnapshotTask) Cancel(
