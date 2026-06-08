@@ -106,7 +106,7 @@ protected:
 
             if (!parsed) {
                 auto error = MakeError(
-                    E_FAIL,
+                    E_BADMSG,
                     TStringBuilder() << "failed to parse response json: "
                         << result.GetOutput());
                 output << FormatError(error) << Endl;
