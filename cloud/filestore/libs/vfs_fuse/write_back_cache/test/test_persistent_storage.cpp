@@ -16,7 +16,7 @@ bool TTestStorage::Empty() const
 void TTestStorage::Visit(const TVisitor& visitor)
 {
     for (const auto& it: List) {
-        visitor(it.Data);
+        visitor(it.Tag, it.Data);
     }
 }
 
@@ -54,6 +54,14 @@ void TTestStorage::Free(const void* ptr)
     Data.erase(it);
 
     SetStats();
+}
+
+void TTestStorage::SetTag(const void* ptr, ui32 tag)
+{
+    auto it = Data.find(ptr);
+    Y_ENSURE(it != Data.end(), "Entry not found");
+
+    it->second->Tag = tag;
 }
 
 void TTestStorage::UpdateStats() const
