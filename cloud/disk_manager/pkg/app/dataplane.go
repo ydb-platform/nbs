@@ -119,7 +119,14 @@ func initFilesystemDataplane(
 		return err
 	}
 
-	return initFilesystemSnapshot(taskRegistry, nfsFactory, filesystemDB, filesystemConfig)
+	return initFilesystemSnapshot(
+		ctx,
+		taskRegistry,
+		taskScheduler,
+		nfsFactory,
+		filesystemDB,
+		filesystemConfig,
+	)
 }
 
 func initFilesystemScrubbing(
@@ -166,7 +173,9 @@ func initFilesystemScrubbing(
 }
 
 func initFilesystemSnapshot(
+	ctx context.Context,
 	taskRegistry *tasks.Registry,
+	taskScheduler tasks.Scheduler,
 	nfsFactory nfs.Factory,
 	filesystemDB *persistence.YDBClient,
 	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
@@ -200,7 +209,9 @@ func initFilesystemSnapshot(
 	)
 
 	return filesystem_snapshot.RegisterForExecution(
+		ctx,
 		taskRegistry,
+		taskScheduler,
 		snapshotConfig,
 		nfsFactory,
 		snapshotStorage,

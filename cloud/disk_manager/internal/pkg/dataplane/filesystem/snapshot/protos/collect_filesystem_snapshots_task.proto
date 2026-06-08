@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package dataplane_filesystem_snapshot;
+
+import "cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/protos/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message CollectFilesystemSnapshotsTaskState {
+    repeated types.DeletingFilesystemSnapshotKey Snapshots = 1;
+}
