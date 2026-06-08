@@ -61,6 +61,7 @@ private:
     const TString DiskId;
     const ui64 DeletionCommitId;
     const ui32 MaxBlocksInBlob;
+    const bool DontReadBlobMetasOnCleanupEnabled;
     TChildLogTitle LogTitle;
 
     struct TRangeInfo
@@ -82,6 +83,7 @@ public:
             TString diskId,
             ui64 deletionCommitId,
             ui32 maxBlocksInBlob,
+            bool dontReadBlobMetasOnCleanupEnabled,
             TChildLogTitle logTitle)
         : State(state)
         , Args(args)
@@ -89,6 +91,7 @@ public:
         , DiskId(std::move(diskId))
         , DeletionCommitId(deletionCommitId)
         , MaxBlocksInBlob(maxBlocksInBlob)
+        , DontReadBlobMetasOnCleanupEnabled(dontReadBlobMetasOnCleanupEnabled)
         , LogTitle(std::move(logTitle))
     {}
 
@@ -588,11 +591,13 @@ private:
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
                 NProto::TBlobMeta blobMeta;
-                if (kv.second.RecreatedBlobMeta) {
-                    blobMeta = *kv.second.RecreatedBlobMeta;
-                }
-                if (kv.second.BlobMeta) {
-                    blobMeta = *kv.second.BlobMeta;
+                if (DontReadBlobMetasOnCleanupEnabled) {
+                    if (kv.second.RecreatedBlobMeta) {
+                        blobMeta = *kv.second.RecreatedBlobMeta;
+                    }
+                    if (kv.second.BlobMeta) {
+                        blobMeta = *kv.second.BlobMeta;
+                    }
                 }
 
                 bool inserted =
@@ -765,8 +770,8 @@ void TPartitionActor::ExecuteAddBlobs(
         PartitionConfig.GetDiskId(),
         args.DeletionCommitId,
         State->GetMaxBlocksInBlob(),
-        LogTitle.GetChild(GetCycleCount())
-    );
+        DontReadBlobMetasOnCleanupEnabled,
+        LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }
 

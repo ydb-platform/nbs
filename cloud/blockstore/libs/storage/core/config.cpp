@@ -742,6 +742,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(FreshBlocksWriter)                                                     \
     xxx(ReadBlockMaskOnCompactionOptimization)                                 \
     xxx(SplitCompactionTx)                                                     \
+    xxx(DontReadBlobMetasOnCleanup)                                            \
 
 // BLOCKSTORE_BINARY_FEATURES
 

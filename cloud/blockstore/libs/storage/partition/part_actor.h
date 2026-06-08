@@ -136,6 +136,12 @@ private:
             PartitionConfig.GetCloudId(),
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
+    const bool DontReadBlobMetasOnCleanupEnabled =
+        Config->GetDontReadBlobMetasOnCleanup() ||
+        Config->IsDontReadBlobMetasOnCleanupFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
 
     TLogTitle LogTitle;
 

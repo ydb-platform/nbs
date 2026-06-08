@@ -265,7 +265,7 @@ bool TPartitionActor::PrepareCleanup(
         const bool hasValidMetaInCleanupQueue =
             item.BlobMeta.HasMixedBlocks() || item.BlobMeta.HasMergedBlocks();
         if (hasValidMetaInCleanupQueue &&
-            Config->GetDontReadBlobMetasOnCleanup())
+            DontReadBlobMetasOnCleanupEnabled)
         {
             args.BlobsMeta.emplace_back(item.BlobMeta);
             continue;
