@@ -40,6 +40,10 @@ inputs:
     required: false
     default: "yes"
     description: "use network cache"
+outputs:
+  build_error_log_url:
+    description: "URL to Markdown summary of ya build errors"
+    value: ${{ steps.build-errors.outputs.url }}
 
 runs:
   using: composite
@@ -218,8 +222,42 @@ runs:
             echo "/home/github/.ya/tools/ not found"
         fi
         date
-        sudo -E -H -u github ./ya make "${extra_params[@]}"
+        EXIT_CODE_FILE=$(mktemp)
+        set +e
+        {
+            sudo -E -H -u github ./ya make "${extra_params[@]}"
+            echo $? > "$EXIT_CODE_FILE"
+        } |& tee "$TMP_DIR/ya_make_output.txt"
+        set -e
+        YA_MAKE_EXIT_CODE=$(< "$EXIT_CODE_FILE")
+        rm -f "$EXIT_CODE_FILE"
+        echo "YA_MAKE_EXIT_CODE=$YA_MAKE_EXIT_CODE" >> "$GITHUB_ENV"
         date
+    - name: Summarize build errors
+      id: build-errors
+      if: env.YA_MAKE_EXIT_CODE != '' && env.YA_MAKE_EXIT_CODE != '0'
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+        SUMMARY_FILE="$TMP_DIR/build_errors.html"
+        SUMMARY_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}build_errors.html"
+        python3 -m scripts.tests.ya_build_errors \
+            --evlog "$TMP_DIR/ya_evlog.jsonl" \
+            --log "$TMP_DIR/ya_log.txt" \
+            --ya-make-output-url "${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}ya_make_output.txt" \
+            --ya-log-url "${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}ya_log.txt" \
+            --evlog-url "${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}ya_evlog.jsonl" \
+            > "$SUMMARY_FILE"
+
+        if [ -s "$SUMMARY_FILE" ]; then
+            echo "url=$SUMMARY_URL" >> "$GITHUB_OUTPUT"
+            {
+                echo "### Build errors"
+                echo
+                echo "[Extracted build errors]($SUMMARY_URL)"
+            } >> "$GITHUB_STEP_SUMMARY"
+        fi
     - name: Sync logs to S3
       if: always()
       shell: bash
@@ -234,6 +272,10 @@ runs:
         echo "::group::generate-listing"
         sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/${COMPONENT_DIR}" --generate-indexes --apply
         echo "::endgroup::"
+    - name: Fail if ya make failed
+      if: env.YA_MAKE_EXIT_CODE != '' && env.YA_MAKE_EXIT_CODE != '0'
+      shell: bash
+      run: exit "$YA_MAKE_EXIT_CODE"
     - name: show free space
       if: always()
       shell: bash

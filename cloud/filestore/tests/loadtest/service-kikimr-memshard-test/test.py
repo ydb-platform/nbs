@@ -58,4 +58,5 @@ def test_memshard_read_write():
         "memshard-read-write",
         make_config(fast_shard_port),
         os.getenv("NFS_SERVER_PORT"),
+        use_fast_shard_runtime=True,
     )

@@ -169,15 +169,15 @@ void TBootstrap::Start()
         ClientFactory->Start();
     }
 
-    NStorage::NFastShard::Init();
-    FastShardInitialized = true;
+    if (Options->UseFastShardRuntime) {
+        NStorage::NFastShard::Init();
+    }
 }
 
 void TBootstrap::Stop()
 {
-    if (FastShardInitialized) {
+    if (Options->UseFastShardRuntime) {
         NStorage::NFastShard::Destroy();
-        FastShardInitialized = false;
     }
 
     if (ClientFactory) {

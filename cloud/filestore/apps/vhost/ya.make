@@ -10,10 +10,6 @@ ENDIF()
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
     SPLIT_DWARF()
-ELSE()
-    PEERDIR(
-        library/cpp/terminate_handler
-    )
 ENDIF()
 
 IF (SANITIZER_TYPE)

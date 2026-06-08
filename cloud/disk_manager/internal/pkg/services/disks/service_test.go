@@ -4,15 +4,91 @@ import (
 	"context"
 	"testing"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
+	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
+	diskService := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	require.True(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD},
+	))
+	require.True(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NONREPLICATED},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR2},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR3},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_NONREPLICATED},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_LOCAL},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_LOCAL},
+	))
+
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			FolderId: "folder-id",
+		},
+	))
+	diskService.config.OverlayDiskRegistryBasedDisksFolderIdAllowList = []string{"folder-id"}
+	require.True(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			FolderId: "folder-id",
+		},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD_LOCAL,
+			FolderId: "folder-id",
+		},
+	))
+
+	diskService.config.EnableOverlayDiskRegistryBasedDisks = proto.Bool(true)
+
+	require.True(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NONREPLICATED},
+	))
+	require.True(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR2},
+	))
+	require.True(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR3},
+	))
+	require.True(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_NONREPLICATED},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_LOCAL},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_LOCAL},
+	))
+}
 
 func TestDiskServicegetZoneIDForExistingDisk(
 	t *testing.T,

@@ -120,76 +120,81 @@ private:
 struct TConnParams
 {
     int Fd;
-    TShardRegistry* Registry;
+    std::weak_ptr<TShardRegistry> Registry;
 };
 static_assert(sizeof(TConnParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int ConnFiberMain(TConnParams* params) noexcept
 {
     int fd = params->Fd;
-    auto* registry = params->Registry;
-
-    // Read length prefix.
-    ui32 lenBe = 0;
-    if (int r = RecvAll(fd, &lenBe, sizeof(lenBe)); r) {
-        ::close(fd);
-        return r;
-    }
-    ui32 len = ntohl(lenBe);
-    if (len > MaxMessageSize) {
-        ::close(fd);
-        return EMSGSIZE;
+    auto registry = params->Registry.lock();
+    if (!registry) {
+        return ECANCELED;
     }
 
-    // Read request body.
-    TString reqBuf;
-    reqBuf.ReserveAndResize(len);
-    if (int r = RecvAll(fd, reqBuf.begin(), len); r) {
-        ::close(fd);
-        return r;
-    }
+    for (;;) {
+        // Read length prefix.
+        ui32 lenBe = 0;
+        if (int r = RecvAll(fd, &lenBe, sizeof(lenBe)); r) {
+            ::close(fd);
+            // EIO means the client closed the connection cleanly.
+            return r == EIO ? 0 : r;
+        }
+        ui32 len = ntohl(lenBe);
+        if (len > MaxMessageSize) {
+            ::close(fd);
+            return EMSGSIZE;
+        }
 
-    TRequest req;
-    if (!req.ParseFromString(reqBuf)) {
-        ::close(fd);
-        return EBADMSG;
-    }
+        // Read request body.
+        TString reqBuf;
+        reqBuf.ReserveAndResize(len);
+        if (int r = RecvAll(fd, reqBuf.begin(), len); r) {
+            ::close(fd);
+            return r;
+        }
 
-    // Route to the right shard.
-    TResponse resp;
-    auto shard = registry->Find(req.GetFileSystemId());
-    if (!shard) {
-        SILK_WARN("failed to find shard: %s", req.GetFileSystemId().c_str());
-        auto* err = resp.MutableError();
-        err->SetCode(E_NOT_FOUND);
-        err->SetMessage(
-            TStringBuilder() << "no shard registered for "
-                << req.GetFileSystemId());
-    } else {
-        resp = Dispatch(*shard, req);
-    }
+        TRequest req;
+        if (!req.ParseFromString(reqBuf)) {
+            ::close(fd);
+            return EBADMSG;
+        }
 
-    // Send response.
-    TString respBuf;
-    const bool serialized = resp.SerializeToString(&respBuf);
-    if (!serialized) {
-        SILK_ERROR("failed to serialize response");
-    }
+        // Route to the right shard.
+        TResponse resp;
+        auto shard = registry->Find(req.GetFileSystemId());
+        if (!shard) {
+            SILK_WARN(
+                "failed to find shard: %s",
+                req.GetFileSystemId().c_str());
+            auto* err = resp.MutableError();
+            err->SetCode(E_NOT_FOUND);
+            err->SetMessage(
+                TStringBuilder() << "no shard registered for "
+                    << req.GetFileSystemId());
+        } else {
+            resp = Dispatch(*shard, req);
+        }
 
-    ui32 respLenBe = htonl(static_cast<ui32>(respBuf.size()));
-    if (int r = SendAll(fd, &respLenBe, sizeof(respLenBe)); r) {
-        SILK_WARN("send resp length: %s", ::strerror(r));
-        ::close(fd);
-        return r;
-    }
-    if (int r = SendAll(fd, respBuf.data(), respBuf.size()); r) {
-        SILK_WARN("send resp body: %s", ::strerror(r));
-        ::close(fd);
-        return r;
-    }
+        // Send response.
+        TString respBuf;
+        const bool serialized = resp.SerializeToString(&respBuf);
+        if (!serialized) {
+            SILK_ERROR("failed to serialize response");
+        }
 
-    ::close(fd);
-    return 0;
+        ui32 respLenBe = htonl(static_cast<ui32>(respBuf.size()));
+        if (int r = SendAll(fd, &respLenBe, sizeof(respLenBe)); r) {
+            SILK_WARN("send resp length: %s", ::strerror(r));
+            ::close(fd);
+            return r;
+        }
+        if (int r = SendAll(fd, respBuf.data(), respBuf.size()); r) {
+            SILK_WARN("send resp body: %s", ::strerror(r));
+            ::close(fd);
+            return r;
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -199,7 +204,7 @@ struct TAcceptParams
 {
     int ListenFd;
     int ShutdownFd;
-    TShardRegistry* Registry;
+    std::weak_ptr<TShardRegistry> Registry;
 };
 static_assert(sizeof(TAcceptParams) <= silk::FIBER_PARAMETERS_SIZE);
 
@@ -207,7 +212,10 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
 {
     int lfd = params->ListenFd;
     int sfd = params->ShutdownFd;
-    auto* registry = params->Registry;
+    auto registry = params->Registry.lock();
+    if (!registry) {
+        return ECANCELED;
+    }
 
     for (;;) {
         sockaddr_in addr{};
@@ -270,6 +278,7 @@ class TServer: public IServer
 public:
     explicit TServer(ui16 port)
         : Port(port)
+        , Registry(std::make_shared<TShardRegistry>())
     {}
 
     ~TServer() override
@@ -303,7 +312,7 @@ public:
             TAcceptParams{
                 .ListenFd = ListenFd,
                 .ShutdownFd = ShutdownFd,
-                .Registry = &Registry,
+                .Registry = Registry,
             },
             &AcceptFuture);
         Y_ENSURE(
@@ -331,12 +340,12 @@ public:
         const TString& fileSystemId,
         IFileSystemShardPtr shard) override
     {
-        Registry.Register(fileSystemId, std::move(shard));
+        Registry->Register(fileSystemId, std::move(shard));
     }
 
     void UnregisterShard(const TString& fileSystemId) override
     {
-        Registry.Unregister(fileSystemId);
+        Registry->Unregister(fileSystemId);
     }
 
 private:
@@ -378,7 +387,7 @@ private:
     ui16 Port;
     int ListenFd = -1;
     int ShutdownFd = -1;
-    TShardRegistry Registry;
+    std::shared_ptr<TShardRegistry> Registry;
     FiberFuture AcceptFuture;
 };
 

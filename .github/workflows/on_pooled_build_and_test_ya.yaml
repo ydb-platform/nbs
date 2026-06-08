@@ -262,6 +262,7 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: failed_build
+        build_error_log_url: ${{ steps.build.outputs.build_error_log_url }}
 
     - id: sleep
       name: Sleep after failed tests
