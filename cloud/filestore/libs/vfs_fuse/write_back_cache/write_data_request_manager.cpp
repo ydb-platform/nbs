@@ -10,6 +10,32 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ECachedWriteDataRequestTag
+{
+    // No specific actions should be taken
+    Unflushed = 0,
+
+    // Handle associated with the request has been released.
+    // Attempts to flush the request should be made using another handle.
+    UnflushedHandleReleased = 1,
+
+    // Request has been flushed and should be evicted on restart
+    Flushed = 2,
+
+    // Used to validate deserialization
+    Max = Flushed
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TLoadedWriteDataRequest
+{
+    ECachedWriteDataRequestTag Tag = ECachedWriteDataRequestTag::Unflushed;
+    std::unique_ptr<TCachedWriteDataRequest> Request;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TStringBuf SerializeWriteDataRequest(
     const NProto::TWriteDataRequest& request,
     TMemoryOutput& memoryOutput)
@@ -116,11 +142,16 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
 {
     bool success = true;
 
-    TVector<std::unique_ptr<TCachedWriteDataRequest>> loadedRequests;
+    TVector<TLoadedWriteDataRequest> loadedRequests;
 
     PersistentStorage->Visit(
-        [this, &success, &loadedRequests](const TStringBuf allocation)
+        [this, &success, &loadedRequests](ui32 tag, const TStringBuf allocation)
         {
+            if (tag > static_cast<ui32>(ECachedWriteDataRequestTag::Max)) {
+                success = false;
+                return false;
+            }
+
             auto request = DeserializeWriteDataRequest(
                 SequenceIdGenerator->GenerateId(),
                 Timer->Now(),
@@ -131,7 +162,10 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
                 return false;
             }
 
-            loadedRequests.push_back(std::move(request));
+            loadedRequests.push_back(
+                {.Tag = static_cast<ECachedWriteDataRequestTag>(tag),
+                 .Request = std::move(request)});
+
             return true;
         });
 
@@ -140,8 +174,8 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
     }
 
     for (auto& request: loadedRequests) {
-        UnflushedRequestsPushBack(request.get());
-        visitor(std::move(request));
+        UnflushedRequestsPushBack(request.Request.get());
+        visitor(std::move(request.Request));
     }
 
     PendingRequests.Clear();

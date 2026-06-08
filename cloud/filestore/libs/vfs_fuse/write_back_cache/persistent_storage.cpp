@@ -87,8 +87,7 @@ public:
             [&visitor](ui32 checksum, ui32 tag, TStringBuf entry)
             {
                 Y_UNUSED(checksum);
-                Y_UNUSED(tag);
-                visitor({entry.data(), entry.size()});
+                visitor(tag, {entry.data(), entry.size()});
             });
 
         SetCounters();
@@ -116,6 +115,11 @@ public:
         bool success = Storage.Free(ptr);
         Y_ENSURE(success, "Failed to free pointer " << ptr);
         SetCounters();
+    }
+
+    void SetTag(const void* ptr, ui32 tag) override
+    {
+        Storage.SetTag(ptr, tag);
     }
 
     void UpdateStats() const override
