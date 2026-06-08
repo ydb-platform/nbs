@@ -3,8 +3,9 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
-#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/core/base/logoblob.h>
@@ -97,21 +98,20 @@ protected:
             return false;
         }
 
-        NPrivateProto::TDescribeBlocksResponse responseProto;
-        auto parsed = google::protobuf::util::JsonStringToMessage(
-            result.GetOutput(),
-            &responseProto).ok();
-
-        if (!parsed) {
-            auto error = MakeError(
-                E_FAIL,
-                TStringBuilder() << "failed to parse response json: "
-                    << result.GetOutput());
-            output << FormatError(error) << Endl;
-            return false;
-        }
-
         if (Proto) {
+            NPrivateProto::TDescribeBlocksResponse responseProto;
+            auto parsed = google::protobuf::util::JsonStringToMessage(
+                result.GetOutput(),
+                &responseProto).ok();
+
+            if (!parsed) {
+                auto error = MakeError(
+                    E_FAIL,
+                    TStringBuilder() << "failed to parse response json: "
+                        << result.GetOutput());
+                output << FormatError(error) << Endl;
+                return false;
+            }
             SerializeToTextFormat(responseProto, output);
             return true;
         }
