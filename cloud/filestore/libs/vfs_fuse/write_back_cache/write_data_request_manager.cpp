@@ -149,7 +149,7 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
         {
             if (tag > static_cast<ui32>(ECachedWriteDataRequestTag::Max)) {
                 success = false;
-                return false;
+                return;
             }
 
             auto request = DeserializeWriteDataRequest(
@@ -159,14 +159,12 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
 
             if (!request) {
                 success = false;
-                return false;
+                return;
             }
 
             loadedRequests.push_back(
                 {.Tag = static_cast<ECachedWriteDataRequestTag>(tag),
                  .Request = std::move(request)});
-
-            return true;
         });
 
     if (!success) {
@@ -174,8 +172,13 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
     }
 
     for (auto& request: loadedRequests) {
-        UnflushedRequestsPushBack(request.Request.get());
-        visitor(std::move(request.Request));
+        if (request.Tag == ECachedWriteDataRequestTag::Flushed) {
+            // There are no pins that may prevent flushed requests from eviction
+            PersistentStorage->Free(request.Request->GetAllocationPtr());
+        } else {
+            UnflushedRequestsPushBack(request.Request.get());
+            visitor(std::move(request.Request));
+        }
     }
 
     PendingRequests.Clear();
@@ -295,6 +298,10 @@ void TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)
     UnflushedRequestsRemove(request);
     request->Time = Timer->Now();
     FlushedRequestsPushBack(request);
+
+    PersistentStorage->SetTag(
+        request->GetAllocationPtr(),
+        static_cast<ui32>(ECachedWriteDataRequestTag::Flushed));
 }
 
 void TWriteDataRequestManager::Evict(
