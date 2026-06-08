@@ -50,7 +50,7 @@ TString Dump(TFileRingBuffer& rb)
 {
     TVector<TString> entries;
 
-    rb.Visit([&](ui32, TStringBuf entry)
+    rb.Visit([&](ui32, ui32, TStringBuf entry)
              { entries.push_back(TString(entry)); });
 
     return Dump(entries);
@@ -61,7 +61,7 @@ TStringBuf Find(TFileRingBuffer& rb, TStringBuf entry)
     TStringBuf result;
 
     rb.Visit(
-        [&](ui32, TStringBuf e)
+        [&](ui32, ui32, TStringBuf e)
         {
             if (e == entry) {
                 result = e;
@@ -550,7 +550,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         for (int i = 0; i <= 32; i++) {
             TStateWithCorruptedEntryLength s(i);
             UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
-            s.RingBuffer.Visit([] (ui32, TStringBuf) {});
+            s.RingBuffer.Visit([] (ui32, ui32, TStringBuf) {});
             UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
         }
     }
@@ -735,23 +735,23 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->ValidateMetadata());
     }
 
-    Y_UNIT_TEST(ShouldBackwardSupportFileFormat_V3_to_V4)
+    Y_UNIT_TEST(ShouldBackwardSupportFileFormat_V4_to_V5)
     {
         const auto f = TTempFileHandle();
         const ui32 dataLen = 36;
         const ui32 metadataLen = 8;
 
-        const TString fileDumpVer3 =
-            "AwAAAEgAAAAkAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAAAgBAAAAAAAACA"
-            "AAAAAAAAAAAQAAAAAAAAgAAAASj+ZzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        const TString fileDumpVer4 =
+            "BAAAAEgAAAAkAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAgBAAAAAAAACA"
+            "AAAAAAAAAAAQAAAAAAAAgAAAD56yynAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-            "AAAAAAAAAAAEZvcm1hdFYzCAAAABcbOq5Tb21lRGF0YQAAAAAAAAAAAAAAAAAAAAAA"
+            "AAAAAAAAAAAEZvcm1hdFY0CAAAABcbOq5Tb21lRGF0YQAAAAAAAAAAAAAAAAAAAAAA"
             "AAAA";
 
         {
-            TString decoded = Base64Decode(fileDumpVer3);
+            TString decoded = Base64Decode(fileDumpVer4);
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.ResizeAndRemap(0, decoded.size());
             decoded.copy(reinterpret_cast<char*>(m.Ptr()), decoded.size());
@@ -759,7 +759,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         TFileRingBuffer rb(f.GetName(), dataLen, metadataLen);
         UNIT_ASSERT(!rb.IsCorrupted());
-        UNIT_ASSERT_VALUES_EQUAL("FormatV3", rb.GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL("FormatV4", rb.GetMetadata());
         UNIT_ASSERT_VALUES_EQUAL("SomeData", rb.Front());
     }
 
@@ -1056,6 +1056,58 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         UNIT_ASSERT(!rb->IsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(data, rb->Front());
+    }
+
+    Y_UNIT_TEST(ShouldSupportTags)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        const TString data1 = "abc";
+        const TString data2 = "defg";
+
+        auto* ptr1 = rb->Alloc(data1.size()).GetResult();
+        UNIT_ASSERT(ptr1 != nullptr);
+        data1.copy(ptr1, data1.size());
+        rb->Commit();
+
+        auto* ptr2 = rb->Alloc(data2.size()).GetResult();
+        UNIT_ASSERT(ptr2 != nullptr);
+        data2.copy(ptr2, data2.size());
+        rb->Commit();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr1));
+        UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr2));
+
+        rb->SetTag(ptr1, 1);
+        rb->SetTag(ptr2, 2);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr1));
+        UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr2));
+
+        // Recreate cache - old pointers become invalid
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        const auto* ptr3 = Find(*rb, TStringBuf(data1)).data();
+        UNIT_ASSERT(ptr3 != nullptr);
+        UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr3));
+
+        const auto* ptr4 = Find(*rb, TStringBuf(data2)).data();
+        UNIT_ASSERT(ptr4 != nullptr);
+        UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr4));
+
+        rb->PopFront();
+        rb->PopFront();
+        UNIT_ASSERT(rb->Empty());
+
+        // Reuse entry
+        auto* ptr5 = rb->Alloc(data1.size()).GetResult();
+        UNIT_ASSERT(ptr5 != nullptr);
+        data1.copy(ptr5, data1.size());
+        rb->Commit();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr5));
     }
 }
 

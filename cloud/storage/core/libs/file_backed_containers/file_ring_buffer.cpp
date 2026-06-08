@@ -21,8 +21,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 VERSION_PREV = 3;
-constexpr ui32 VERSION = 4;
+constexpr ui32 VERSION_PREV = 4;
+constexpr ui32 VERSION = 5;
 constexpr ui64 INVALID_POS = Max<ui64>();
 
 // Reserve some space after header so adding new fields will not require data
@@ -52,8 +52,12 @@ static_assert(sizeof(THeader) <= HeaderReserveSize);
 struct Y_PACKED TEntryHeader
 {
 private:
+    static constexpr ui32 TagBits = 3;
+    static constexpr ui32 SizeBits = 31U - TagBits;
+    static constexpr ui32 MaxTag = (1U << TagBits) - 1;
     static constexpr ui32 FreeFlagMask = 1U << 31U;
-    static constexpr ui32 SizeMask = FreeFlagMask - 1;
+    static constexpr ui32 TagMask = MaxTag << SizeBits;
+    static constexpr ui32 SizeMask = (1 << SizeBits) - 1;
 
     ui32 DataSize = 0;
     ui32 Checksum = 0;
@@ -84,6 +88,22 @@ public:
         } else {
             DataSize &= ~FreeFlagMask;
         }
+    }
+
+    static ui32 GetMaxTag()
+    {
+        return MaxTag;
+    }
+
+    ui32 GetTag() const
+    {
+        return (DataSize & TagMask) >> SizeBits;
+    }
+
+    void SetTag(ui32 tag)
+    {
+        Y_ABORT_UNLESS(tag <= MaxTag);
+        DataSize = (DataSize & ~TagMask) | (tag << SizeBits);
     }
 
     ui32 GetChecksum() const
@@ -227,6 +247,11 @@ struct TEntryInfo
     {
         return HasValue() ? TStringBuf(Data, Header->GetDataSize())
                           : TStringBuf();
+    }
+
+    ui32 GetTag() const
+    {
+        return HasValue() ? Header->GetTag() : 0;
     }
 
     ui64 GetNextEntryPos() const
@@ -437,10 +462,10 @@ private:
 
     void Migrate()
     {
-        // In the new version, the highest bit of the entry size is treated as a
-        // free flag - need to ensure that nobody use it
+        // In the new version, the highest bits of the entry size are treated as
+        // a tag value - need to ensure that nobody use it
         VisitEntries([](const TEntryInfo& e)
-                     { Y_ABORT_UNLESS(!e.GetFreeFlag()); });
+                     { Y_ABORT_UNLESS(e.GetTag() == 0); });
 
         Header()->Version = VERSION;
         Header()->Unused = 0;
@@ -684,6 +709,7 @@ public:
 
         CurrentAllocation = Data.GetEntryHeader(writePos);
         CurrentAllocation->SetDataSize(size);
+        CurrentAllocation->SetTag(0);
         CurrentAllocation->SetFreeFlag(false);
 
         char* ptr = Data.GetEntryData(CurrentAllocation);
@@ -738,6 +764,41 @@ public:
         return true;
     }
 
+    ui32 GetMaxTag() const
+    {
+        return TEntryHeader::GetMaxTag();
+    }
+
+    ui32 GetTag(const void* ptr) const
+    {
+        if (!ValidateAccess("GetTag")) {
+            return 0;
+        }
+
+        auto it = EntryMap.find(ptr);
+        if (it == EntryMap.end()) {
+            return 0;
+        }
+
+        const auto* eh = Data.GetEntryHeader(it->second);
+        return eh->GetTag();
+    }
+
+    void SetTag(const void* ptr, ui32 tag)
+    {
+        if (!ValidateAccess("SetTag")) {
+            return;
+        }
+
+        auto it = EntryMap.find(ptr);
+        if (it == EntryMap.end()) {
+            return;
+        }
+
+        auto* eh = Data.GetEntryHeader(it->second);
+        eh->SetTag(tag);
+    }
+
     TStringBuf Front()
     {
         if (!ValidateAccess("Front")) {
@@ -784,7 +845,8 @@ public:
     {
         TVector<TBrokenFileEntry> entries;
 
-        Visit([&] (ui32 checksum, TStringBuf entry) {
+        Visit([&] (ui32 checksum, ui32 tag, TStringBuf entry) {
+            Y_UNUSED(tag);
             const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
             if (actualChecksum != checksum) {
                 entries.push_back({
@@ -807,7 +869,7 @@ public:
             [&](const TEntryInfo& e)
             {
                 if (!e.GetFreeFlag()) {
-                    visitor(e.Header->GetChecksum(), e.GetData());
+                    visitor(e.Header->GetChecksum(), e.GetTag(), e.GetData());
                 }
             });
     }
@@ -869,7 +931,8 @@ public:
         }
 
         return Header()->DataCapacity > sizeof(TEntryHeader)
-                   ? Header()->DataCapacity - sizeof(TEntryHeader)
+                   ? Min(Header()->DataCapacity - sizeof(TEntryHeader),
+                         static_cast<ui64>(TEntryHeader::MaxDataSize))
                    : 0;
     }
 
@@ -938,6 +1001,21 @@ bool TFileRingBuffer::Commit()
 bool TFileRingBuffer::Free(const void* ptr)
 {
     return Impl->Free(ptr);
+}
+
+ui32 TFileRingBuffer::GetMaxTag() const
+{
+    return Impl->GetMaxTag();
+}
+
+ui32 TFileRingBuffer::GetTag(const void* ptr) const
+{
+    return Impl->GetTag(ptr);
+}
+
+void TFileRingBuffer::SetTag(const void* ptr, ui32 tag)
+{
+    Impl->SetTag(ptr, tag);
 }
 
 TStringBuf TFileRingBuffer::Front()

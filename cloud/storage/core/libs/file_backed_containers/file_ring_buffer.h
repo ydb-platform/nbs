@@ -21,7 +21,8 @@ public:
         ui32 ActualChecksum = 0;
     };
 
-    using TVisitor = std::function<void(ui32 checksum, TStringBuf entry)>;
+    using TVisitor =
+        std::function<void(ui32 checksum, ui32 tag, TStringBuf entry)>;
 
 private:
     class TImpl;
@@ -59,6 +60,8 @@ public:
 
     // Calculate checksum for the previously allocated memory using Alloc
     // and advance the write pointer.
+    // Once committed, allocated entries become immutable - it is not allowed
+    // to modify their contents via pointer returned by Alloc.
     bool Commit();
 
     // Free memory block previously allocated with Alloc.
@@ -66,6 +69,11 @@ public:
     // Otherwise, it will be marked for deletion and removed later.
     // Returns true if the pointer was correct and hasn't been freed yet.
     bool Free(const void* ptr);
+
+    // Each entry can be tagged with a small mutable integer value [0-7]
+    ui32 GetMaxTag() const;
+    ui32 GetTag(const void* ptr) const;
+    void SetTag(const void* ptr, ui32 tag);
 
     TStringBuf Front();
     void PopFront();
