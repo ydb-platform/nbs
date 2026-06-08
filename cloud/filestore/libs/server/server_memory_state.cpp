@@ -264,10 +264,23 @@ NProto::TError TServerState::UnlockIovecs(
         return {};
     }
 
+    NProto::TError err;
+    TString failedIndexes;
     for (const auto& iovec: iovecs) {
         ui64 index = (iovec.GetBase() - regionAddress) / pageSize;
         bool ret = region.UnlockPage(index);
-        Y_DEBUG_ABORT_UNLESS(ret);
+        if (!ret) {
+            if (!failedIndexes.empty()) {
+                failedIndexes += ", ";
+            }
+            failedIndexes += std::to_string(index);
+        }
+    }
+
+    if (!failedIndexes.empty()) {
+        err = MakeError(
+            E_TRANSPORT_ERROR,
+            Sprintf("Failed to unlock pages: %s", failedIndexes.c_str()));
     }
 
     return {};

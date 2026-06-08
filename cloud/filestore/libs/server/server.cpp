@@ -722,9 +722,16 @@ private:
                     std::is_same_v<TAppContext, TFileStoreContext>)
                 {
                     if (iovecsLocked) {
-                        AppCtx.State->UnlockIovecs(
+                        auto err = AppCtx.State->UnlockIovecs(
                             Request->GetRegionId(),
                             Request->GetIovecs());
+                        if (HasError(err)) {
+                            STORAGE_ERROR(
+                                TMethod::RequestName
+                                << " #" << RequestId
+                                << " failed to unlock iovecs: "
+                                << FormatError(err));
+                        }
                     }
                 }
 
