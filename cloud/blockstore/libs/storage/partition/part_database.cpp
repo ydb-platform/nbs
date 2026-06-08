@@ -157,7 +157,8 @@ bool TPartitionDatabase::ReadFreshBlocks(TVector<TOwningFreshBlock>& blocks)
                 ReverseCommitId(it.GetValue<TTable::CommitId>()),
                 true  // isStoredInDb
             },
-            TString{it.GetValue<TTable::BlockContent>()}
+            TString{it.GetValue<TTable::BlockContent>()},
+            TPartialBlobId{}
         );
 
         if (!it.Next()) {
