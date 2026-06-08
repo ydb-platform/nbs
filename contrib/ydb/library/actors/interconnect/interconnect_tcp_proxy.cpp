@@ -334,7 +334,6 @@ namespace NActors {
 
         // Terminate handshake actor working in opposite direction, if set up.
         if (ev->Sender == IncomingHandshakeActor) {
-            LOG_LOG_IC(NActorsServices::INTERCONNECT, "ICP19", handshakeSuccessLogPriority, "incoming handshake succeeded");
             DropIncomingHandshake(false);
             DropOutgoingHandshake();
         } else if (ev->Sender == OutgoingHandshakeActor) {
