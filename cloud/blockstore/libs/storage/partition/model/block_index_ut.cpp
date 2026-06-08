@@ -18,7 +18,7 @@ TFreshBlock FindBlock(const TBlockIndex& index, ui32 blockIndex, ui64 commitId)
         TFreshBlock Block;
 
         TVisitor()
-            : Block({InvalidBlockIndex, 0, true}, 0)
+            : Block({InvalidBlockIndex, 0, true}, 0, {})
         {
         }
 
