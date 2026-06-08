@@ -4,8 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/vfs_fuse/counters/max_counter.h>
-
-#include <atomic>
+#include <cloud/filestore/libs/vfs_fuse/counters/relaxed_counters.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -25,11 +24,11 @@ class TDirectoryHandleStorageStats final
 private:
     TMaxCounter<DirectoryHandleMaxBucketCount> RawCapacityByteCounter;
     TMaxCounter<DirectoryHandleMaxBucketCount> RawUsedByteCounter;
-    std::atomic<ui64> ShrinkCounter = 0;
-    std::atomic<ui64> ExpansionCounter = 0;
-    std::atomic<ui64> CompactionCounter = 0;
-    std::atomic<ui64> MemoryLimiterRejectionCounter = 0;
-    std::atomic<ui64> HandleSizeLimitRejectionCounter = 0;
+    TRelaxedCounter ShrinkCounter;
+    TRelaxedCounter ExpansionCounter;
+    TRelaxedCounter CompactionCounter;
+    TRelaxedCounter MemoryLimiterRejectionCounter;
+    TRelaxedCounter HandleSizeLimitRejectionCounter;
 
 public:
     explicit TDirectoryHandleStorageStats(ITimerPtr timer)
@@ -41,16 +40,16 @@ public:
     {
         RawCapacityByteCounter.Set(counters.RawCapacityByteCount);
         RawUsedByteCounter.Set(counters.RawUsedByteCount);
-        ShrinkCounter.store(counters.ShrinkCount);
-        ExpansionCounter.store(counters.ExpansionCount);
-        CompactionCounter.store(counters.CompactionCount);
-        MemoryLimiterRejectionCounter.store(
+        ShrinkCounter.Set(counters.ShrinkCount);
+        ExpansionCounter.Set(counters.ExpansionCount);
+        CompactionCounter.Set(counters.CompactionCount);
+        MemoryLimiterRejectionCounter.Set(
             counters.MemoryLimiterRejectionCount);
     }
 
     void IncrementHandleSizeLimitRejection() override
     {
-        HandleSizeLimitRejectionCounter.fetch_add(1);
+        HandleSizeLimitRejectionCounter.Inc();
     }
 
     TDirectoryHandleStorageMetrics CreateMetrics() const override
@@ -63,16 +62,16 @@ public:
             .RawUsedByteMaxCount = CreateMetric(
                 [self] { return self->RawUsedByteCounter.GetValue(); }),
             .ShrinkCount =
-                CreateMetric([self] { return self->ShrinkCounter.load(); }),
+                CreateMetric([self] { return self->ShrinkCounter.Get(); }),
             .ExpansionCount =
-                CreateMetric([self] { return self->ExpansionCounter.load(); }),
+                CreateMetric([self] { return self->ExpansionCounter.Get(); }),
             .CompactionCount =
-                CreateMetric([self] { return self->CompactionCounter.load(); }),
+                CreateMetric([self] { return self->CompactionCounter.Get(); }),
             .MemoryLimiterRejectionCount = CreateMetric(
-                [self] { return self->MemoryLimiterRejectionCounter.load(); }),
+                [self] { return self->MemoryLimiterRejectionCounter.Get(); }),
             .HandleSizeLimitRejectionCount = CreateMetric(
                 [self]
-                { return self->HandleSizeLimitRejectionCounter.load(); }),
+                { return self->HandleSizeLimitRejectionCounter.Get(); }),
         };
     }
 
