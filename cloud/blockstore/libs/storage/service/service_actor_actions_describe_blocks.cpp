@@ -186,7 +186,7 @@ void TDescribeBlocksActionActor::HandleDescribeBlocksResponse(
     }
 
     if (!IndexOnly) {
-        // Fresh block content is only needed for non-index requests.
+        // Fresh block information is only needed for index-only requests.
         msg->Record.ClearFreshBlockRanges();
     }
     msg->Record.ClearDeprecatedTrace();
