@@ -234,7 +234,8 @@ TServerState::AdjustAndLockIovecs(
         if (i > 0) {
             for (int j = i - 1; j >= 0; --j) {
                 ui64 index = iovecs[j].GetBase() / pageSize;
-                region.UnlockPage(index);
+                auto ret = region.UnlockPage(index);
+                Y_DEBUG_ABORT_UNLESS(ret);
             }
         }
 
@@ -266,7 +267,7 @@ NProto::TError TServerState::UnlockIovecs(
     for (const auto& iovec: iovecs) {
         ui64 index = (iovec.GetBase() - regionAddress) / pageSize;
         bool ret = region.UnlockPage(index);
-        Y_ASSERT(ret);
+        Y_DEBUG_ABORT_UNLESS(ret);
     }
 
     return {};
