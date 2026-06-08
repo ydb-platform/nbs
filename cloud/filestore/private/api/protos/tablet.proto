@@ -210,6 +210,9 @@ message TGetStorageStatsResponse
 
     // Storage media kind.
     NCloud.NProto.EStorageMediaKind MediaKind = 3;
+
+    // Time since tablet start.
+    uint64 TabletUptimeMs = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -452,6 +455,9 @@ message TGenerateBlobIdsRequest
     // Unaligned head/tail data for internal AddData (used when tablet does
     // AddData internally in the unconfirmed flow).
     repeated TFreshDataRange UnalignedDataRanges = 7;
+
+    // If true, the service is ready to use the unconfirmed data flow.
+    bool UnconfirmedFlowRequested = 8;
 }
 
 message TGeneratedBlob
@@ -837,7 +843,10 @@ message TUnsafeChangeTabletStateRequest
     string FileSystemId = 1;
 
     // If set, only unsafe ops will be allowed.
-    bool Frozen = 2;
+    optional bool Frozen = 2;
+
+    // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
+    optional bool CompressNodeRef = 3;
 }
 
 message TUnsafeChangeTabletStateResponse
@@ -879,6 +888,8 @@ message TGetFileSystemTopologyResponse
 
     // Shard FileSystem identifiers for regular files.
     repeated string FileShardFileSystemIds = 8;
+
+    bool CompressNodeRef = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

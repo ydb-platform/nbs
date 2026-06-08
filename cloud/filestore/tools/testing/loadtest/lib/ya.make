@@ -1,5 +1,19 @@
 LIBRARY(filestore-testing-loadtest-lib)
 
+IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
+    SRCS(
+        request_fastshard.cpp
+    )
+
+    PEERDIR(
+        contrib/libs/silk/src/fibers
+    )
+ELSE()
+    SRCS(
+        request_fastshard_stub.cpp
+    )
+ENDIF()
+
 SRCS(
     client.cpp
     context.h
@@ -17,6 +31,7 @@ SRCS(
 PEERDIR(
     cloud/filestore/config
     cloud/filestore/libs/client
+    cloud/filestore/libs/storage/fastshard/client
     cloud/filestore/libs/diagnostics/events
     cloud/filestore/libs/service
     cloud/filestore/libs/service_local

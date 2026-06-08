@@ -14,21 +14,21 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const defaultUpsertBatchSize = 1000
+const defaultUpsertBatchSize int = 1000
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
 	db              *persistence.YDBClient
 	tablesPath      string
-	deleteLimit     int
+	deleteLimit     uint64
 	upsertBatchSize int
 }
 
 func NewStorage(
 	db *persistence.YDBClient,
 	tablesPath string,
-	deleteLimit int,
+	deleteLimit uint64,
 ) Storage {
 
 	return &storageYDB{
@@ -46,8 +46,7 @@ func nodeRefStructTypeString() string {
 		filesystem_snapshot_id: Utf8,
 		parent_node_id: Uint64,
 		name: Utf8,
-		child_node_id: Uint64,
-		node_type: Uint32>`
+		child_node_id: Uint64>`
 }
 
 func nodeRefStructValue(
@@ -60,7 +59,6 @@ func nodeRefStructValue(
 		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentID)),
 		persistence.StructFieldValue("name", persistence.UTF8Value(node.Name)),
 		persistence.StructFieldValue("child_node_id", persistence.Uint64Value(node.NodeID)),
-		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 	)
 }
 
@@ -76,7 +74,11 @@ func nodeStructTypeString() string {
 		ctime: Uint64,
 		size: Uint64,
 		links: Uint32,
-		symlink_target: Utf8>`
+		node_type: Uint32,
+		symlink_target: Utf8,
+		shard_id: Utf8,
+		shard_node_name: Utf8,
+		dev_id: Uint64>`
 }
 
 func nodeStructValue(
@@ -88,14 +90,18 @@ func nodeStructValue(
 		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
 		persistence.StructFieldValue("node_id", persistence.Uint64Value(node.NodeID)),
 		persistence.StructFieldValue("mode", persistence.Uint32Value(node.Mode)),
-		persistence.StructFieldValue("uid", persistence.Uint32Value(uint32(node.UID))),
-		persistence.StructFieldValue("gid", persistence.Uint32Value(uint32(node.GID))),
+		persistence.StructFieldValue("uid", persistence.Uint32Value(node.UID)),
+		persistence.StructFieldValue("gid", persistence.Uint32Value(node.GID)),
 		persistence.StructFieldValue("atime", persistence.Uint64Value(node.Atime)),
 		persistence.StructFieldValue("mtime", persistence.Uint64Value(node.Mtime)),
 		persistence.StructFieldValue("ctime", persistence.Uint64Value(node.Ctime)),
 		persistence.StructFieldValue("size", persistence.Uint64Value(node.Size)),
 		persistence.StructFieldValue("links", persistence.Uint32Value(node.Links)),
+		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 		persistence.StructFieldValue("symlink_target", persistence.UTF8Value(node.LinkTarget)),
+		persistence.StructFieldValue("shard_id", persistence.UTF8Value(node.ShardFileSystemID)),
+		persistence.StructFieldValue("shard_node_name", persistence.UTF8Value(node.ShardNodeName)),
+		persistence.StructFieldValue("dev_id", persistence.Uint64Value(node.DevID)),
 	)
 }
 
@@ -148,13 +154,11 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 		parentID    uint64
 		name        string
 		childNodeID uint64
-		nodeType    uint32
 	)
 	err := result.ScanNamed(
 		persistence.OptionalWithDefault("parent_node_id", &parentID),
 		persistence.OptionalWithDefault("name", &name),
 		persistence.OptionalWithDefault("child_node_id", &childNodeID),
-		persistence.OptionalWithDefault("node_type", &nodeType),
 	)
 	if err != nil {
 		return nfs.Node{}, err
@@ -164,7 +168,6 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 		ParentID: parentID,
 		NodeID:   childNodeID,
 		Name:     name,
-		Type:     nfs_client.NodeType(nodeType),
 	}, nil
 }
 
@@ -184,11 +187,18 @@ func scanNodeRefs(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	return nodes, nil
 }
 
 func scanNode(result persistence.Result) (nfs.Node, error) {
-	var node nfs.Node
+	var (
+		node     nfs.Node
+		nodeType uint32
+	)
 	err := result.ScanNamed(
 		persistence.OptionalWithDefault("node_id", &node.NodeID),
 		persistence.OptionalWithDefault("mode", &node.Mode),
@@ -199,12 +209,17 @@ func scanNode(result persistence.Result) (nfs.Node, error) {
 		persistence.OptionalWithDefault("ctime", &node.Ctime),
 		persistence.OptionalWithDefault("size", &node.Size),
 		persistence.OptionalWithDefault("links", &node.Links),
+		persistence.OptionalWithDefault("node_type", &nodeType),
 		persistence.OptionalWithDefault("symlink_target", &node.LinkTarget),
+		persistence.OptionalWithDefault("shard_id", &node.ShardFileSystemID),
+		persistence.OptionalWithDefault("shard_node_name", &node.ShardNodeName),
+		persistence.OptionalWithDefault("dev_id", &node.DevID),
 	)
 	if err != nil {
 		return nfs.Node{}, err
 	}
 
+	node.Type = nfs_client.NodeType(nodeType)
 	return node, nil
 }
 
@@ -223,6 +238,10 @@ func scanNodes(
 
 			attrs[node.NodeID] = node
 		}
+	}
+
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
 	}
 
 	return attrs, nil
@@ -475,7 +494,11 @@ func (s *storageYDB) listNodes(
 			node.Ctime = a.Ctime
 			node.Size = a.Size
 			node.Links = a.Links
+			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
+			node.ShardFileSystemID = a.ShardFileSystemID
+			node.ShardNodeName = a.ShardNodeName
+			node.DevID = a.DevID
 			nodes[i] = node
 		}
 	}
@@ -483,38 +506,41 @@ func (s *storageYDB) listNodes(
 	return nodes, nextCookie, nil
 }
 
-func (s *storageYDB) deleteSnapshotData(
+func (s *storageYDB) deleteFromTables(
 	ctx context.Context,
-	session *persistence.Session,
 	snapshotID string,
-) (bool, error) {
+	tables []string,
+) error {
 
-	tables := []string{
-		"node_refs",
-		"nodes",
-		"restoration_node_ids_mapping",
-		"hardlinks",
-	}
+	for {
+		var done bool
 
-	deletedCount := uint64(0)
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				deletedCount := uint64(0)
 
-	for _, table := range tables {
-		deleted, err := s.deleteFromTable(ctx, session, snapshotID, table)
+				for _, table := range tables {
+					deleted, err := s.deleteFromTable(ctx, session, snapshotID, table)
+					if err != nil {
+						return err
+					}
+
+					deletedCount += deleted
+				}
+
+				done = deletedCount == 0
+				return nil
+			},
+		)
 		if err != nil {
-			return false, err
+			return err
 		}
 
-		deletedCount += deleted
+		if done {
+			return nil
+		}
 	}
-
-	logging.Debug(
-		ctx,
-		"Deleted %v rows for snapshot %v",
-		deletedCount,
-		snapshotID,
-	)
-
-	return deletedCount == 0, nil
 }
 
 func (s *storageYDB) deleteFromTable(
@@ -546,9 +572,9 @@ func (s *storageYDB) deleteFromTable(
 
 		delete from %v on
 		select * from $to_delete;
-	`, s.tablesPath, table, snapshotIDColumn, table),
+		`, s.tablesPath, table, snapshotIDColumn, table),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(s.deleteLimit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(s.deleteLimit)),
 	)
 	if err != nil {
 		return 0, err
@@ -570,6 +596,68 @@ func (s *storageYDB) deleteFromTable(
 			err,
 		)
 	}
+
+	return count, nil
+}
+
+func (s *storageYDB) deleteFromRestorationNodeIDsMapping(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	destinationFilesystemID string,
+) (uint64, error) {
+
+	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $destination_filesystem_id as Utf8;
+		declare $limit as Uint64;
+
+		$to_delete = (
+			select source_snapshot_id, destination_filesystem_id, source_node_id
+			from restoration_node_ids_mapping
+			where source_snapshot_id = $snapshot_id
+				and destination_filesystem_id = $destination_filesystem_id
+			limit $limit
+		);
+
+		select count(*) as deleted_count from $to_delete;
+
+		delete from restoration_node_ids_mapping on
+		select * from $to_delete;
+	`, s.tablesPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$destination_filesystem_id", persistence.UTF8Value(destinationFilesystemID)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(s.deleteLimit)),
+	)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, nil
+	}
+
+	var count uint64
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("deleted_count", &count),
+	)
+	if err != nil {
+		return 0, errors.NewNonRetriableErrorf(
+			"deleteFromRestorationNodeIDsMapping: failed to parse count: %w",
+			err,
+		)
+	}
+
+	logging.Debug(
+		ctx,
+		"Deleted %v rows from restoration_node_ids_mapping for snapshot %v and destination filesystem %v",
+		count,
+		snapshotID,
+		destinationFilesystemID,
+	)
 
 	return count, nil
 }
@@ -670,6 +758,10 @@ func (s *storageYDB) getDestinationNodeIDs(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	return result, nil
 }
 
@@ -728,22 +820,53 @@ func (s *storageYDB) ListNodes(
 	return result, nextCookie, err
 }
 
+func (s *storageYDB) CleanupRestorationNodeIDsMapping(
+	ctx context.Context,
+	snapshotID string,
+	destinationFilesystemID string,
+) error {
+
+	for {
+		deletedCount := uint64(0)
+
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				deleted, err := s.deleteFromRestorationNodeIDsMapping(
+					ctx,
+					session,
+					snapshotID,
+					destinationFilesystemID,
+				)
+				if err != nil {
+					return err
+				}
+
+				deletedCount = deleted
+				return nil
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		if deletedCount == 0 {
+			return nil
+		}
+	}
+}
+
 func (s *storageYDB) DeleteSnapshotData(
 	ctx context.Context,
 	snapshotID string,
-) (bool, error) {
+) error {
 
-	var done bool
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			done, err = s.deleteSnapshotData(ctx, session, snapshotID)
-			return err
-		},
-	)
-	return done, err
+	return s.deleteFromTables(ctx, snapshotID, []string{
+		"node_refs",
+		"nodes",
+		"restoration_node_ids_mapping",
+		"hardlinks",
+	})
 }
 
 func (s *storageYDB) UpdateRestorationNodeIDMapping(
@@ -844,6 +967,10 @@ func (s *storageYDB) listHardLinks(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	nodeIDs := make([]uint64, 0, len(nodes))
 	for _, node := range nodes {
 		nodeIDs = append(nodeIDs, node.NodeID)
@@ -864,8 +991,10 @@ func (s *storageYDB) listHardLinks(
 			node.Ctime = a.Ctime
 			node.Size = a.Size
 			node.Links = a.Links
+			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
-			nodes[i] = nfs.Node(node)
+			node.DevID = a.DevID
+			nodes[i] = node
 		}
 	}
 

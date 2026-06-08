@@ -233,12 +233,14 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         config);
     UpdateLogTag();
 
-    if (GetFileSystem().GetFastShardConfig().StorageGroupsSize() == 0) {
-        FastShard =
-            NFastShard::CreateMemFileSystemShard(GetFileSystem().GetShardNo());
-    } else {
+    const auto& fastShardConfig = GetFileSystem().GetFastShardConfig();
+    if (fastShardConfig.HasPersistentConfig()) {
         // not supported yet
         FastShard = NFastShard::CreateFileSystemShardStub();
+    } else {
+        FastShard = NFastShard::CreateMemFileSystemShard(
+            GetFileSystem().GetShardNo(),
+            fastShardConfig.GetMemConfig());
     }
 
     NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
@@ -265,6 +267,12 @@ void TIndexTabletActor::CompleteAdapterLoadState(
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
+
+    if (FastShardServer) {
+        FastShardServer->RegisterShard(
+            GetFileSystemId(),
+            FastShard);
+    }
 
     RunRegularTasks(ctx);
 
@@ -315,6 +323,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
         return;
     }
+
+    ScheduleUpdateCounters(ctx);
 
     if (args.FileSystem.GetIsFastShard()) {
         BecomeAux(ctx, STATE_ADAPTER);
@@ -430,14 +440,26 @@ void TIndexTabletActor::CompleteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
 
-    if (Config->GetInMemoryIndexCacheEnabled() &&
-        Config->GetInMemoryIndexCacheLoadOnTabletStart())
-    {
-        const ui64 maxRows =
-            Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
-        const TDuration schedulePeriod =
-            Config->GetInMemoryIndexCacheLoadSchedulePeriod();
+    bool shouldScheduleNodeRefsLoad = false;
+    bool shouldScheduleNodesLoad = false;
 
+    if (Config->GetInMemoryIndexCacheEnabled()) {
+        if (Config->GetInMemoryIndexCacheLoadOnTabletStart()) {
+            shouldScheduleNodeRefsLoad = true;
+            shouldScheduleNodesLoad = true;
+        } else if (
+            Config->GetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards() &&
+            !IsMainTablet())
+        {
+            shouldScheduleNodeRefsLoad = true;
+        }
+    }
+
+    const ui64 maxRows =
+        Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
+    const TDuration schedulePeriod =
+        Config->GetInMemoryIndexCacheLoadSchedulePeriod();
+    if (shouldScheduleNodeRefsLoad) {
         // If necessary, code can iteratively call ReadNodeRefs for all nodes.
         // This will populate cache with node refs and allow us to perform
         // ListNodes using in-memory index state by knowing that the nodeRefs
@@ -456,7 +478,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
                 "",
                 maxRows,
                 schedulePeriod));
+    }
 
+    if (shouldScheduleNodesLoad) {
         // Same logic is performed for batch loading nodes as well. The only
         // difference is that we do not need to keep track of the exhaustiveness
         // of the cache

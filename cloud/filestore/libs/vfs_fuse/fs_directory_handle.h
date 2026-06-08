@@ -57,6 +57,14 @@ struct TDirectoryHandleChunk
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDirectoryHandleStats
+{
+    size_t SerializedSize = 0;
+    size_t ChunkCount = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDirectoryHandle
 {
 private:
@@ -71,7 +79,7 @@ private:
     ui64 UpdateVersion = 0;
     ui64 SerializedSize = 0;
 
-    TMutex Lock;
+    mutable TMutex Lock;
 
 public:
     const fuse_ino_t Index;
@@ -91,11 +99,9 @@ public:
     void ResetContent();
     TString GetCookie();
 
-    // Get total size of serialized content in bytes
-    size_t GetSerializedSize() const;
-
-    // Get number of chunks (UpdateVersion + 1)
-    size_t GetChunkCount() const;
+    // Returns the handle's current serialized size and chunk count.
+    TDirectoryHandleStats GetStats() const;
+    bool IsEmpty() const;
 
     // not thread safe, use only during restoration from storage
     void ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log);

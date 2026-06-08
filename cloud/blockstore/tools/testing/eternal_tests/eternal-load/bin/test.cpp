@@ -49,7 +49,9 @@ private:
 
     ITestScenarioPtr CreateTestScenario(
         IConfigHolderPtr config,
+        const TString& logTag,
         const TLog& log) const;
+
     TTestExecutorSettings ConfigureTest() const;
     int RunTest();
 
@@ -79,23 +81,27 @@ int TTest::Run()
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
             Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
 
-            ConfigHolder = CreateTestConfig(TCreateTestConfigArguments
-                {.FilePath = *Options->FilePath,
-                 .FileSize = *Options->FileSize,
-                 .TestCount = Options->TestCount,
-                 .IoDepth = Options->IoDepth,
-                 .BlockSize = Options->BlockSize,
-                 .WriteRate = Options->WriteRate,
-                 .RequestBlockCount = Options->RequestBlockCount,
-                 .WriteParts = Options->WriteParts,
-                 .AlternatingPhase = Options->AlternatingPhase,
-                 .MaxWriteRequestCount = 0,
-                 .MinReadByteCount = Options->MinReadSize,
-                 .MaxReadByteCount = Options->MaxReadSize,
-                 .MinWriteByteCount = Options->MinWriteSize,
-                 .MaxWriteByteCount = Options->MaxWriteSize,
-                 .MinRegionByteCount = Options->MinRegionSize,
-                 .MaxRegionByteCount = Options->MaxRegionSize});
+            ConfigHolder = CreateTestConfig(
+                TCreateTestConfigArguments{
+                    .FilePath = *Options->FilePath,
+                    .FileSize = *Options->FileSize,
+                    .TestCount = Options->TestCount,
+                    .IoDepth = Options->IoDepth,
+                    .BlockSize = Options->BlockSize,
+                    .WriteRate = Options->WriteRate,
+                    .RequestBlockCount = Options->RequestBlockCount,
+                    .WriteParts = Options->WriteParts,
+                    .AlternatingPhase = Options->AlternatingPhase,
+                    .MaxWriteRequestCount = 0,
+                    .MinReadByteCount = Options->MinReadSize,
+                    .MaxReadByteCount = Options->MaxReadSize,
+                    .MinWriteByteCount = Options->MinWriteSize,
+                    .MaxWriteByteCount = Options->MaxWriteSize,
+                    .MinRegionByteCount = Options->MinRegionSize,
+                    .MaxRegionByteCount = Options->MaxRegionSize,
+                    .DisableParallelReadWrite =
+                        Options->DisableParallelReadWrite,
+                });
 
             DumpConfiguration();
             break;
@@ -120,25 +126,28 @@ void TTest::DumpConfiguration()
 
 ITestScenarioPtr TTest::CreateTestScenario(
     IConfigHolderPtr config,
+    const TString& logTag,
     const TLog& log) const
 {
     switch (Options->Scenario) {
         case EScenario::Aligned:
-            return CreateAlignedTestScenario(std::move(config), log);
+            return CreateAlignedTestScenario(std::move(config), logTag, log);
 
         case EScenario::Unaligned:
-            return CreateUnalignedTestScenario(std::move(config), log);
+            return CreateUnalignedTestScenario(std::move(config), logTag, log);
 
         case EScenario::Sequential:
             return CreateSimpleTestScenario(
                 ESimpleTestScenarioMode::Sequential,
                 std::move(config),
+                logTag,
                 log);
 
         case EScenario::Random:
             return CreateSimpleTestScenario(
                 ESimpleTestScenarioMode::Random,
                 std::move(config),
+                logTag,
                 log);
 
         default:
@@ -172,7 +181,15 @@ TTestExecutorSettings TTest::ConfigureTest() const
             Y_ABORT("Unsupported EIoEngine value %d", Options->Engine);
     }
 
-    TVector<IConfigHolderPtr> testConfigs;
+    auto addTestScenario =
+        [&](const IConfigHolderPtr& config, const TString& logTag)
+    {
+        settings.TestScenarios.push_back(
+            {.TestScenario = CreateTestScenario(config, logTag, log),
+             .FilePath = config->GetConfig().GetFilePath(),
+             .FileSize = config->GetConfig().GetFileSize()});
+    };
+
     const auto& config = ConfigHolder->GetConfig();
 
     if (config.GetTestCount()) {
@@ -193,21 +210,14 @@ TTestExecutorSettings TTest::ConfigureTest() const
             IConfigHolderPtr testConfig = ConfigHolder->Clone();
             testConfig->GetConfig().SetFilePath(
                 Sprintf("%s%u%s", str1.c_str(), i, str2.c_str()));
-            testConfigs.push_back(std::move(testConfig));
+            addTestScenario(testConfig, Sprintf("[f:%u]", i));
         }
     } else {
         STORAGE_INFO("Using test file: " << config.GetFilePath());
-        testConfigs.push_back(ConfigHolder);
+        addTestScenario(ConfigHolder, "");
     }
 
     STORAGE_INFO("Using test file size: " << config.GetFileSize());
-
-    for (const auto& testConfig: testConfigs) {
-        settings.TestScenarios.push_back(
-            {.TestScenario = CreateTestScenario(testConfig, log),
-             .FilePath = testConfig->GetConfig().GetFilePath(),
-             .FileSize = testConfig->GetConfig().GetFileSize()});
-    }
 
     settings.RunInCallbacks = Options->RunInCallbacks;
     STORAGE_INFO(

@@ -253,6 +253,36 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             ReadData(tablet, handle, expected.size(), 0));
     }
 
+    Y_UNIT_TEST(ShouldNotEnableUnconfirmedFlowUnlessRequested)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto gbi = tablet.GenerateBlobIds(
+            id,
+            handle,
+            0,
+            block,
+            false /* unconfirmedFlowRequested */);
+
+        UNIT_ASSERT(!gbi->Record.GetUnconfirmedFlowEnabled());
+        AssertStorageStats(tablet, 0, 0);
+    }
+
     Y_UNIT_TEST(ShouldConfirmUnalignedHeadAndTailData)
     {
         constexpr ui32 block = 4_KB;
@@ -1439,6 +1469,120 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         UNIT_ASSERT_VALUES_EQUAL(
             expected,
             ReadData(tablet, handle, expected.size(), 0));
+    }
+
+    Y_UNIT_TEST(ShouldRestartTabletOnConfirmBlobsError)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        auto& runtime = env.GetRuntime();
+
+        TTabletRebootTracker rebootTracker;
+        auto rebootFilter = rebootTracker.GetEventFilter();
+
+        bool injectConfirmBlobsError = false;
+        bool recoveryConfirmStarted = false;
+        ui32 injectedGetErrors = 0;
+        ui32 confirmBlobsCompleted = 0;
+        ui32 failedConfirmBlobsCompleted = 0;
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                rebootFilter(runtime, ev);
+
+                switch (ev->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::
+                        EvLoadCompactionMapChunkResponse: {
+                        if (!injectConfirmBlobsError) {
+                            return false;
+                        }
+
+                        const auto* msg =
+                            ev->Get<TEvIndexTabletPrivate::
+                                        TEvLoadCompactionMapChunkResponse>();
+                        if (msg->LastRangeId == 0) {
+                            recoveryConfirmStarted = true;
+                        }
+                        return false;
+                    }
+                    case TEvBlobStorage::EvGetResult: {
+                        if (!recoveryConfirmStarted || injectedGetErrors != 0) {
+                            return false;
+                        }
+
+                        auto* msg = ev->Get<TEvBlobStorage::TEvGetResult>();
+                        msg->Status = NKikimrProto::ERROR;
+                        msg->ErrorReason = "injected ConfirmBlobs failure";
+                        ++injectedGetErrors;
+                        return false;
+                    }
+                    case TEvIndexTabletPrivate::EvConfirmBlobsCompleted: {
+                        const auto* msg = ev->Get<
+                            TEvIndexTabletPrivate::TEvConfirmBlobsCompleted>();
+                        ++confirmBlobsCompleted;
+                        if (HasError(msg->GetError())) {
+                            ++failedConfirmBlobsCompleted;
+                        }
+                        return false;
+                    }
+                }
+
+                return false;
+            });
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        injectConfirmBlobsError = true;
+        recoveryConfirmStarted = false;
+
+        tablet.RebootTablet();
+
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition =
+                    [&]()
+                {
+                    return injectedGetErrors == 1 &&
+                           failedConfirmBlobsCompleted == 1 &&
+                           confirmBlobsCompleted >= 2 &&
+                           rebootTracker.GetGenerationCount() >= 3;
+                }},
+            TDuration::Seconds(5));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, injectedGetErrors);
+        UNIT_ASSERT_VALUES_EQUAL(1, failedConfirmBlobsCompleted);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 3,
+            TStringBuilder()
+                << "Expected tablet to restart after ConfirmBlobs failure, "
+                << "generation count: " << rebootTracker.GetGenerationCount());
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.RecoverSession();
+        handle = CreateHandle(tablet, id);
+
+        AssertStorageStats(tablet, 0, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(block, 'a'),
+            ReadData(tablet, handle, block, 0));
     }
 
     Y_UNIT_TEST(ShouldDropAllConfirmedDataWhenUnrecoverableBlobExists)

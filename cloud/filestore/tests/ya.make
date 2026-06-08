@@ -22,13 +22,13 @@ RECURSE_FOR_TESTS(
     fio_index_migration
     fio_migration
     fmdtest
-    fmdtest_fastshard
     fs_posix_compliance
     guest_cache
     lease_expiration
     loadtest
     profile_log
     registration
+    scheme_cache
     service
     xfs_suite
 )

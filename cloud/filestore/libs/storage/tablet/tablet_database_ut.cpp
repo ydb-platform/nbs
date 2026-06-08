@@ -1,10 +1,13 @@
 #include "tablet_database.h"
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 #include <cloud/filestore/libs/storage/testlib/test_executor.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/pathsplit.h>
+#include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -135,14 +138,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             db.WriteNode(nodeId, commitId, attrs);
             db.WriteNode(childNodeId1, commitId, attrs);
             db.WriteNode(childNodeId2, commitId, attrs);
-            db.WriteNodeRef(nodeId, commitId, "child1", childNodeId1, "", "", false);
             db.WriteNodeRef(
-                nodeId,
-                commitId,
-                "child2",
-                childNodeId2,
-                "shard",
-                "name",
+                IIndexTabletDatabase::TNodeRef{
+                    .NodeId = nodeId,
+                    .Name = "child1",
+                    .ChildNodeId = childNodeId1,
+                    .ShardId = "",
+                    .ShardNodeName = "",
+                    .MinCommitId = commitId,
+                    .MaxCommitId = InvalidCommitId},
+                false);
+            db.WriteNodeRef(
+                IIndexTabletDatabase::TNodeRef{
+                    .NodeId = nodeId,
+                    .Name = "child2",
+                    .ChildNodeId = childNodeId2,
+                    .ShardId = "shard",
+                    .ShardNodeName = "name",
+                    .MinCommitId = commitId,
+                    .MaxCommitId = InvalidCommitId},
                 false);
         });
 
@@ -571,20 +585,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 db.WriteNode(childNodeId1, commitId, attrs);
                 db.WriteNode(childNodeId2, commitId, attrs);
                 db.WriteNodeRef(
-                    nodeId,
-                    commitId,
-                    "child1",
-                    childNodeId1,
-                    "",
-                    "",
+                    IIndexTabletDatabase::TNodeRef{
+                        .NodeId = nodeId,
+                        .Name = "child1",
+                        .ChildNodeId = childNodeId1,
+                        .ShardId = "",
+                        .ShardNodeName = "",
+                        .MinCommitId = commitId,
+                        .MaxCommitId = InvalidCommitId},
                     false);
                 db.WriteNodeRef(
-                    nodeId,
-                    commitId,
-                    "child2",
-                    childNodeId2,
-                    "",
-                    "",
+                    IIndexTabletDatabase::TNodeRef{
+                        .NodeId = nodeId,
+                        .Name = "child2",
+                        .ChildNodeId = childNodeId2,
+                        .ShardId = "",
+                        .ShardNodeName = "",
+                        .MinCommitId = commitId,
+                        .MaxCommitId = InvalidCommitId},
                     false);
             });
 

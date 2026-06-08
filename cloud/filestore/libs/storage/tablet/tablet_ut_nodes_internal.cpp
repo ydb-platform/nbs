@@ -1999,6 +1999,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.ConfigureAsShard(
             1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
             true /* directoryCreationInShardsEnabled */);
 
         const TString shardId1 = "shard1";
@@ -2099,6 +2101,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.ConfigureAsShard(
             1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
             false /* directoryCreationInShardsEnabled, doesn't matter*/);
 
         const ui64 nodeId = 111;
@@ -2121,6 +2125,39 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         UNIT_ASSERT_VALUES_EQUAL(1, responses.size());
         UNIT_ASSERT_VALUES_EQUAL(nodeId, responses[0].GetNode().GetId());
         UNIT_ASSERT_VALUES_EQUAL(4_KB, responses[0].GetNode().GetSize());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldRestoreSymLinkWithUnsafeCreateNode)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 nodeId = 111;
+        const TString target = "/target/path";
+
+        auto request =
+            tablet.CreateUnsafeCreateNodeRequest(nodeId, target.size());
+        request->Record.MutableNode()->SetType(NProto::E_LINK_NODE);
+        request->Record.SetSymLink(target);
+
+        tablet.SendRequest(std::move(request));
+        auto response = tablet.RecvUnsafeCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        auto readLinkResponse = tablet.ReadLink(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(target, readLinkResponse->Record.GetSymLink());
     }
 
     TABLET_TEST_4K_ONLY(ShouldSendGetNodeAttrRequestWithoutBehaveAsDirectoryTabletFlagUponCreateNode)
@@ -2164,6 +2201,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.ConfigureAsShard(
             1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
             true /* directoryCreationInShardsEnabled - matters for this test*/,
             TVector<TString>{shardId});
 

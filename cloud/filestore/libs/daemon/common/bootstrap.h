@@ -10,9 +10,11 @@
 #include <cloud/filestore/libs/server/public.h>
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/libs/storage/fastshard/server/server.h>
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
@@ -76,7 +78,9 @@ protected:
     ITaskQueuePtr BackgroundThreadPool;
     IProfileLogPtr ProfileLog;
     IActorSystemPtr ActorSystem;
+    NStorage::NFastShard::IServerPtr FastShardServer;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
+    ICertificateProviderPtr CertificateProvider;
 
 public:
     TBootstrapCommon(
@@ -98,6 +102,7 @@ protected:
     virtual TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) = 0;
 
     virtual void InitComponents() = 0;
+    virtual void InitActorSystemPrerequisites() = 0;
     virtual void StartComponents() = 0;
     virtual void Drain() = 0;
     virtual void StopComponents() = 0;

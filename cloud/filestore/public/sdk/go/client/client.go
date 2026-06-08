@@ -1,6 +1,8 @@
 package client
 
 import (
+	"fmt"
+
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -52,6 +54,31 @@ func (t NodeType) IsSymlink() bool {
 	return t == NODE_KIND_SYMLINK
 }
 
+func (t NodeType) String() string {
+	switch t {
+	case NODE_KIND_INVALID:
+		return "invalid"
+	case NODE_KIND_FILE:
+		return "file"
+	case NODE_KIND_DIR:
+		return "directory"
+	case NODE_KIND_LINK:
+		return "link"
+	case NODE_KIND_SOCK:
+		return "socket"
+	case NODE_KIND_SYMLINK:
+		return "symlink"
+	case NODE_KIND_FIFO:
+		return "fifo"
+	case NODE_KIND_CHARDEV:
+		return "char_device"
+	case NODE_KIND_BLOCKDEV:
+		return "block_device"
+	default:
+		return fmt.Sprintf("unknown(%d)", t)
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
@@ -77,8 +104,8 @@ type Node struct {
 	Ctime             uint64
 	Size              uint64
 	Mode              uint32
-	UID               uint64
-	GID               uint64
+	UID               uint32
+	GID               uint32
 	Links             uint32
 	Type              NodeType
 	LinkTarget        string
@@ -104,8 +131,8 @@ func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
 		Ctime:             attr.GetCTime(),
 		Size:              attr.GetSize(),
 		Mode:              attr.GetMode(),
-		UID:               uint64(attr.GetUid()),
-		GID:               uint64(attr.GetGid()),
+		UID:               attr.GetUid(),
+		GID:               attr.GetGid(),
 		Links:             attr.GetLinks(),
 		Type:              nodeType,
 		ShardFileSystemID: string(attr.GetShardFileSystemId()),
@@ -417,8 +444,8 @@ func (client *Client) CreateNode(
 		NodeId:       node.ParentID,
 		Name:         []byte(node.Name),
 		FileSystemId: session.FileSystemID,
-		Uid:          node.UID,
-		Gid:          node.GID,
+		Uid:          uint64(node.UID),
+		Gid:          uint64(node.GID),
 		Headers:      headersForSession(session),
 	}
 

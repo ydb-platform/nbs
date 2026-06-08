@@ -26,7 +26,8 @@ bool TIndexTabletActor::PrepareTx_ReadNodeRefs(
     IIndexTabletDatabase& db,
     TTxIndexTablet::TReadNodeRefs& args)
 {
-    bool ready = db.ReadNodeRefs(
+    bool ready = ReadNodeRefs(
+        db,
         args.NodeId,
         args.Cookie,
         args.Limit,

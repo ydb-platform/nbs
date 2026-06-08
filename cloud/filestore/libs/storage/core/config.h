@@ -263,6 +263,7 @@ public:
     ui64 GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio() const;
     ui64 GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity() const;
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
+    bool GetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
     bool GetUseUnlimitedBTreeNodeRefsCacheInMainTablet() const;
@@ -364,6 +365,7 @@ public:
 
     bool GetDirectoryHandlesStorageEnabled() const;
     ui64 GetDirectoryHandlesTableSize() const;
+    ui64 GetDirectoryHandlesPersistentHandleMaxSize() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
 
@@ -395,12 +397,21 @@ public:
     [[nodiscard]] TDuration GetTabletRegularTasksSchedulePeriod() const;
     [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
 
-    ui32 GetForceDestroySizeThreshold() const;
+    [[nodiscard]] ui64 GetForceDestroySizeThreshold() const;
+    [[nodiscard]] TDuration GetRestartTabletUptimeThresholdDuringDestroy() const;
 
     [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
     [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
 
     [[nodiscard]] bool GetHideFileNamesInTabletDirectoryViewer() const;
+
+    [[nodiscard]] bool GetUseCustomReadDataResponseParser() const;
+
+    [[nodiscard]] bool GetUseSchemeCache() const;
+
+    [[nodiscard]] ui32 GetFastShardServerPort() const;
+
+    [[nodiscard]] bool GetEnableNodeRefCompression() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -14,6 +14,7 @@ message TUnsafeCreateNodeRequest
 {
     string FileSystemId = 1;
     NProto.TNodeAttr Node = 2;
+    bytes SymLink = 3;
 }
 
 message TUnsafeCreateNodeResponse
@@ -97,9 +98,23 @@ message TStorageGroup
     EStorageGroupType Type = 2;
 }
 
-message TFastShardConfig
+message TPersistentFastShardConfig
 {
     repeated TStorageGroup StorageGroups = 1;
+}
+
+message TMemFastShardConfig
+{
+    bool CreateNodeUponAccess = 1;
+}
+
+message TFastShardConfig
+{
+    oneof Config
+    {
+        TPersistentFastShardConfig PersistentConfig = 1;
+        TMemFastShardConfig MemConfig = 2;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

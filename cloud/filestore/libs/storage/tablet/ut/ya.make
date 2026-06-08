@@ -7,6 +7,7 @@ SRCS(
     rebase_logic_ut.cpp
     subsessions_ut.cpp
     tablet_database_ut.cpp
+    tablet_state_iface_ut.cpp
     tablet_ut.cpp
     tablet_ut_adapter.cpp
     tablet_ut_cache.cpp

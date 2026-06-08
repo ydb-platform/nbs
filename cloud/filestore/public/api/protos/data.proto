@@ -176,6 +176,12 @@ message TReadDataRequest
     uint64 RegionId = 8;
 }
 
+// TReadDataResponse uses a custom parser implemented in
+// cloud/filestore/libs/storage/service/protobuf_utils.h
+// to optimize TReadDataActor performance.
+//
+// IMPORTANT: update the parser whenever new fields are added
+// to TReadDataResponse.
 message TReadDataResponse
 {
     // Optional error, set only if error happened.

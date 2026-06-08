@@ -2,6 +2,7 @@ package nfs
 
 import (
 	"context"
+	"fmt"
 
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nfs_protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
@@ -33,6 +34,21 @@ const (
 	NODE_KIND_CHARDEV  = nfs_client.NodeType(nfs_client.NODE_KIND_CHARDEV)
 	NODE_KIND_BLOCKDEV = nfs_client.NodeType(nfs_client.NODE_KIND_BLOCKDEV)
 )
+
+func (n Node) String() string {
+	return fmt.Sprintf(
+		"parent=%d name=%q node_id=%d type=%s uid=%d gid=%d "+
+			"shard_filesystem_id=%q shard_node_name=%q",
+		n.ParentID,
+		n.Name,
+		n.NodeID,
+		n.Type,
+		n.UID,
+		n.GID,
+		n.ShardFileSystemID,
+		n.ShardNodeName,
+	)
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

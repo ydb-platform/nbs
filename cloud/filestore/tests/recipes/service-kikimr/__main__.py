@@ -47,6 +47,7 @@ def start(argv):
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
+    parser.add_argument("--use-fast-shard-port", action="store_true", default=False)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -112,6 +113,12 @@ def start(argv):
         os.makedirs(shared_memory_base_path, exist_ok=True)
         server_config.ServerConfig.SharedMemoryBasePath = shared_memory_base_path
 
+    fast_shard_port = 0
+    if args.use_fast_shard_port:
+        import contrib.ydb.tests.library.common.yatest_common as _yatest_common
+        fast_shard_port = _yatest_common.PortManager().get_port()
+        storage_config.FastShardServerPort = fast_shard_port
+
     secure = False
     if access_service_port:
         secure = True
@@ -167,6 +174,8 @@ def start(argv):
     set_env("NFS_SERVER_PORT", str(filestore_configurator.port))
     set_env("NFS_MON_PORT", str(filestore_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
+    if fast_shard_port:
+        set_env("NFS_FAST_SHARD_PORT", str(fast_shard_port))
     set_env("NFS_CONFIG_DIR", str(filestore_configurator.configs_dir))
     set_env("NFS_RESTART_INTERVAL", str(restart_interval))
     if secure:

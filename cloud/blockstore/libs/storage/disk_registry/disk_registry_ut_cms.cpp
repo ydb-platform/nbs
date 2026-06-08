@@ -1,8 +1,9 @@
 #include "disk_registry.h"
+
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -2042,6 +2043,72 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, requestNumber.GetRequestNumber());
         UNIT_ASSERT_VALUES_EQUAL(4, requestNumber.GetDiskRegistryGeneration());
+    }
+
+    Y_UNIT_TEST_F(ShouldCompleteRemoveDeviceWhenAgentIsUnavailable, TFixture)
+    {
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto detachPathWithDependentDisk = counters->GetCounter(
+            "AppImpossibleEvents/DiskRegistryDetachPathWithDependentDisk",
+            true);
+
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            }),
+        };
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetAttachDetachPathsEnabled(true);
+        config.SetNonReplicatedInfraTimeout(TDuration::Hours(1).MilliSeconds());
+        config.SetNonReplicatedInfraUnavailableAgentTimeout(
+            TDuration::Hours(1).MilliSeconds());
+
+        SetUpRuntime(TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .With(config)
+            .Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, agents));
+        RegisterAndWaitForAgents(*Runtime, agents);
+
+        AddDevice("agent-1", "dev-1");
+        AddDevice("agent-1", "dev-2");
+
+        DiskRegistry->AllocateDisk("vol1", 20_GB);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, detachPathWithDependentDisk->Val());
+
+        ui32 cmsTimeout = 0;
+        {
+            auto [error, timeout] = RemoveHost("agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+            cmsTimeout = timeout;
+        }
+
+        Runtime->AdvanceCurrentTime(TDuration::Seconds(cmsTimeout + 1));
+
+        {
+            auto [error, timeout] = RemoveHost("agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, detachPathWithDependentDisk->Val());
     }
 
     Y_UNIT_TEST_F(ShouldRejectedCmsRequestsWhenInFlightLimitExceeded, TFixture)

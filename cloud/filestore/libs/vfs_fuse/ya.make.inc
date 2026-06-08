@@ -3,6 +3,7 @@ SRCS(
     directory_handle_cache.cpp
     directory_handle_stats.cpp
     directory_handle_storage.cpp
+    directory_handle_storage_stats.cpp
     fs.cpp
     fs_directory_content_format.cpp
     fs_directory_handle.cpp
@@ -27,6 +28,7 @@ PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/vfs
     cloud/filestore/libs/vfs/protos
+    cloud/filestore/libs/vfs_fuse/counters
     cloud/filestore/libs/vfs_fuse/protos
     cloud/filestore/libs/vfs_fuse/write_back_cache
 

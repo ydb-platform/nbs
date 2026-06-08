@@ -1575,4 +1575,27 @@ message TStorageServiceConfig
     // modification requests (AddHost, AddDevice, RemoveHost, RemoveDevice,
     // PurgeHost) are rejected with E_REJECTED. 0 means no limit.
     optional uint32 MaxInFlightCmsRequests = 498;
+
+    // If true, TVolumeActor notifies DiskRegistry about volume health changes
+    // (VOLUME_HEALTH_UNHEALTHY when the first device breaks, VOLUME_HEALTH_HEALTHY
+    // when all recovered) for non-replicated disks.
+    optional bool VolumeHealthNotificationEnabled = 499;
+
+    // Enables periodic keep-alive pings sent from overlay-disk partitions to
+    // their base-disk volume via VolumeProxy. Keeps the base-disk pipe warm so
+    // that the first user request after an idle period does not pay the cold
+    // pipe re-establishment latency. The ping interval is derived from
+    // VolumeProxyPipeInactivityTimeout (half of it), so it is always strictly
+    // smaller than the timeout and needs no separate tuning.
+    optional bool BaseDiskPipeKeepAliveEnabled = 500;
+
+    // Enables compaction by garbage ignoring zeroed blocks.
+    // Should be used only with FreshChannelWriteRequestsEnabled and
+    // FreshChannelZeroRequestsEnabled.
+    optional bool IgnoringZeroedCompactionEnabled = 501;
+
+    // Max Compaction per second (in ms). Should be less than
+    // MaxCompactionExecTimePerSecond. Used for GarbageCompaction in case when
+    // IgnoringZeroedCompactionEnabled is on.
+    optional uint32 MaxCompactionExecTimePerSecondForZeroed = 502;
 }

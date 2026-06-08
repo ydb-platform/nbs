@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -3634,6 +3635,213 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(
+        ShouldDestroyFileStoreAfterTabletRestartAndOrphanSessionsCleanup)
+    {
+        const auto idleSessionTimeout = TDuration::Hours(1);
+        const auto restartTabletUptimeThresholdDuringDestroy =
+            idleSessionTimeout;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetIdleSessionTimeout(idleSessionTimeout.MilliSeconds());
+        storageConfig.SetRestartTabletUptimeThresholdDuringDestroy(
+            restartTabletUptimeThresholdDuringDestroy.MilliSeconds());
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        const ui64 initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+
+        auto describeSessions = [&]
+        {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(fsId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(
+                    jsonResponse->Record.GetOutput(),
+                    &response)
+                    .ok());
+            return response;
+        };
+
+        auto& runtime = env.GetRuntime();
+        ui64 tabletId = 0;
+        ui32 restartTabletRequests = 0;
+        ui32 getStorageStatsResponses = 0;
+        bool patchedStorageStatsResponse = false;
+        bool blockCreateSession = false;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TResponse =
+                            TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TResponse>();
+                        if (!HasError(msg->GetError())) {
+                            const auto& desc =
+                                msg->PathDescription.GetFileStoreDescription();
+                            tabletId = desc.GetIndexTabletId();
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvGetStorageStatsResponse: {
+                        auto* msg = event->Get<
+                            TEvIndexTablet::TEvGetStorageStatsResponse>();
+                        if (++getStorageStatsResponses == 1) {
+                            msg->Record.SetTabletUptimeMs(
+                                (restartTabletUptimeThresholdDuringDestroy +
+                                 TDuration::Minutes(1))
+                                    .MilliSeconds());
+                            patchedStorageStatsResponse = true;
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvRestartTabletRequest: {
+                        if (event->Recipient ==
+                            MakeIndexTabletProxyServiceId()) {
+                            ++restartTabletRequests;
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvCreateSessionRequest: {
+                        if (blockCreateSession) {
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        blockCreateSession = true;
+
+        auto destroyFileStoreResponse =
+            service.AssertDestroyFileStoreFailed(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+
+        UNIT_ASSERT(patchedStorageStatsResponse);
+        UNIT_ASSERT_VALUES_EQUAL(1, restartTabletRequests);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, tabletId);
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        {
+            const auto response = describeSessions();
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.ClientId,
+                sessions[0].GetClientId());
+            UNIT_ASSERT(sessions[0].GetIsOrphan());
+        }
+
+        const ui32 getStorageStatsResponsesBeforeRetry =
+            getStorageStatsResponses;
+        destroyFileStoreResponse = service.AssertDestroyFileStoreFailed(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+        UNIT_ASSERT_C(
+            getStorageStatsResponses > getStorageStatsResponsesBeforeRetry,
+            getStorageStatsResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, restartTabletRequests);
+
+        TIndexTabletClient tablet(
+            runtime,
+            nodeIdx,
+            tabletId,
+            {} /* config */,
+            false /* updateConfig */);
+        tablet.AdvanceTime(idleSessionTimeout + TDuration::MilliSeconds(1));
+        tablet.CleanupSessions();
+
+        {
+            const auto response = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, response.SessionsSize());
+        }
+
+        destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotRestartTabletDuringDestroyIfRestartTabletUptimeThresholdDuringDestroyIsNotSet)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        const ui64 initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+
+        auto& runtime = env.GetRuntime();
+        ui32 restartTabletRequests = 0;
+        bool patchedStorageStatsResponse = false;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGetStorageStatsResponse: {
+                        auto* msg = event->Get<
+                            TEvIndexTablet::TEvGetStorageStatsResponse>();
+                        msg->Record.SetTabletUptimeMs(
+                            TDuration::Hours(2).MilliSeconds());
+                        patchedStorageStatsResponse = true;
+                        break;
+                    }
+                    case TEvIndexTablet::EvRestartTabletRequest: {
+                        if (event->Recipient ==
+                            MakeIndexTabletProxyServiceId()) {
+                            ++restartTabletRequests;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service.AssertDestroyFileStoreFailed(fsId);
+
+        UNIT_ASSERT(patchedStorageStatsResponse);
+        UNIT_ASSERT_VALUES_EQUAL(0, restartTabletRequests);
+    }
+
     Y_UNIT_TEST(ShouldDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
     {
         NProto::TStorageConfig storageConfig;
@@ -3645,7 +3853,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         const TString fsId = "test";
         // Size less than ForceDestroySizeThreshold
-        const auto initialBlockCount = 80_MB / DefaultBlockSize;
+        const ui64 initialBlockCount = 80_MB / DefaultBlockSize;
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
 
@@ -4423,6 +4631,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
         TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 8_KB));
     }
@@ -4433,6 +4642,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(false);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
     }
 
@@ -4442,6 +4652,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
         TestZeroCopyWrite(config, 0, std::vector<ui64>(64, 5000));
     }
@@ -4452,6 +4663,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
         TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
     }
 
@@ -4465,7 +4677,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
@@ -4491,7 +4703,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(false);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
@@ -4513,7 +4725,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         auto iovecSizes = std::vector<ui64>(32, 4_KB);
         iovecSizes[10] = 0;
         iovecSizes[20] = 0;
@@ -4527,7 +4739,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-
+        config.SetUseCustomReadDataResponseParser(true);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -4555,10 +4767,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
-    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
+    void testReadDataRequestWithIovecs(NProto::TStorageConfig config)
     {
-        TTestEnv env;
-
+        TTestEnv env({}, std::move(config));
         ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -4595,17 +4806,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetBufferFromIovecs(iovecs, data.size()),
             data);
+    }
 
-        // Passing less target data than requested size should fail
-        iovecs.pop_back();
-        service.AssertReadDataFailed(
-            headers,
-            fs,
-            nodeId,
-            handle,
-            0,
-            data.size(),
-            iovecs);
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
+    {
+        testReadDataRequestWithIovecs({});
+    }
+
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequestWithTwoStageRead)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        testReadDataRequestWithIovecs(std::move(config));
+    }
+
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequestWithCustomParserEnabled)
+    {
+        NProto::TStorageConfig config;
+        config.SetUseCustomReadDataResponseParser(true);
+        config.SetTwoStageReadEnabled(false);
+        testReadDataRequestWithIovecs(std::move(config));
     }
 
     Y_UNIT_TEST(ShouldHandleToggleServiceState)

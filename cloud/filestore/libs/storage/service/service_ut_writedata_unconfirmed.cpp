@@ -25,6 +25,7 @@
 
 #include <util/digest/city.h>
 #include <util/generic/map.h>
+#include <util/generic/maybe.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -1359,6 +1360,137 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
     // =========================================================================
     // Sharding tests
     // =========================================================================
+
+    Y_UNIT_TEST(ShouldNotEnableShardUnconfirmedFlowUnlessServiceRequested)
+    {
+        TShardedFileSystemConfig fsConfig;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAutomaticShardCreationEnabled(true);
+        storageConfig.SetAutomaticallyCreatedShardSize(1_GB);
+        storageConfig.SetShardAllocationUnit(1_GB);
+        storageConfig.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        storageConfig.SetAddingUnconfirmedDataEnabled(false);
+        storageConfig.SetUnconfirmedDataCountHardLimit(100);
+        storageConfig.SetWriteBlobThreshold(128_KB);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+
+        TTestEnvConfig envConfig;
+        envConfig.DynamicNodes = 2;
+        TTestEnv env(envConfig, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount);
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount,
+            false /* force */,
+            1 /* shardCount */);
+        WaitForTabletStart(service);
+
+        const auto shardTabletId = service.GetFileStoreInfo(fsConfig.Shard1Id)
+                                       ->Record.GetFileStore()
+                                       .GetMainTabletId();
+        UNIT_ASSERT(shardTabletId);
+
+        TIndexTabletClient shardTablet(
+            env.GetRuntime(),
+            nodeIdx,
+            shardTabletId,
+            {},
+            false /* updateConfig */);
+        NProto::TStorageConfig shardStorageConfig;
+        shardStorageConfig.SetAddingUnconfirmedDataEnabled(true);
+        shardStorageConfig.SetUnconfirmedDataCountHardLimit(100);
+        shardTablet.ChangeStorageConfig(std::move(shardStorageConfig));
+        shardTablet.RebootTablet();
+
+        THeaders headers;
+        auto session = service.InitSession(headers, fsConfig.FsId, "client");
+        UNIT_ASSERT(!session->Record.GetFileStore()
+                         .GetFeatures()
+                         .GetUnconfirmedFlowEnabled());
+
+        const auto nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
+
+        const auto handle = service
+                                .CreateHandle(
+                                    headers,
+                                    fsConfig.FsId,
+                                    nodeId,
+                                    "",
+                                    TCreateHandleArgs::RDWR)
+                                ->Record.GetHandle();
+
+        auto& runtime = env.GetRuntime();
+        TMaybe<bool> unconfirmedFlowRequested;
+        TMaybe<bool> unconfirmedFlowEnabled;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGenerateBlobIdsRequest: {
+                        const auto* msg = event->template Get<
+                            TEvIndexTablet::TEvGenerateBlobIdsRequest>();
+                        if (msg->Record.GetFileSystemId() ==
+                            fsConfig.Shard1Id) {
+                            unconfirmedFlowRequested =
+                                msg->Record.GetUnconfirmedFlowRequested();
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvGenerateBlobIdsResponse: {
+                        const auto* msg = event->template Get<
+                            TEvIndexTablet::TEvGenerateBlobIdsResponse>();
+                        unconfirmedFlowEnabled =
+                            msg->Record.GetUnconfirmedFlowEnabled();
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        const ui64 confirmRequestCount =
+            runtime.GetCounter(TEvIndexTablet::EvConfirmAddDataRequest);
+        const ui64 cancelRequestCount =
+            runtime.GetCounter(TEvIndexTablet::EvCancelAddDataRequest);
+
+        const TString data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsConfig.FsId, nodeId, handle, 0, data);
+
+        UNIT_ASSERT(unconfirmedFlowRequested.Defined());
+        UNIT_ASSERT(!*unconfirmedFlowRequested);
+        UNIT_ASSERT(unconfirmedFlowEnabled.Defined());
+        UNIT_ASSERT(!*unconfirmedFlowEnabled);
+        UNIT_ASSERT_VALUES_EQUAL(
+            confirmRequestCount,
+            runtime.GetCounter(TEvIndexTablet::EvConfirmAddDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            cancelRequestCount,
+            runtime.GetCounter(TEvIndexTablet::EvCancelAddDataRequest));
+
+        const auto actualResponse = service.ReadData(
+            headers,
+            fsConfig.FsId,
+            nodeId,
+            handle,
+            0,
+            data.size());
+        const auto actualData = actualResponse->Record.GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            CityHash64(data),
+            CityHash64(actualData),
+            "Data mismatch");
+    }
 
     Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceDataPipeDisconnect)
     {

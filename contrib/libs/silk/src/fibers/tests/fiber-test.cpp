@@ -13,6 +13,10 @@
 #include <sched.h>
 #include <unistd.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 namespace silk
 {
 
@@ -408,6 +412,60 @@ TEST(Fiber, cancelRead)
     ::close(fds[1]);
 }
 
+// connect + accept: client connect and listener accepts on loopback.
+TEST(Fiber, connectAccept)
+{
+    int listenFd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    ASSERT_GE(listenFd, 0);
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    int r = ::bind(listenFd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
+    ASSERT_EQ(r, 0);
+    r = ::listen(listenFd, 1);
+    ASSERT_EQ(r, 0);
+
+    socklen_t len = sizeof(addr);
+    r = ::getsockname(listenFd, reinterpret_cast<sockaddr *>(&addr), &len);
+    ASSERT_EQ(r, 0);
+
+    int clientFd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    ASSERT_GE(clientFd, 0);
+
+    struct Params
+    {
+        int listenFd;
+        int clientFd;
+        sockaddr_in addr;
+
+        static int fiberMain(Params * p) noexcept
+        {
+            FiberScheduler::IoFuture connectFuture;
+            FiberScheduler::connect(p->clientFd, reinterpret_cast<const sockaddr *>(&p->addr), sizeof(p->addr), &connectFuture);
+
+            uint64_t acceptedFd = 0;
+            int a = FiberScheduler::accept(p->listenFd, nullptr, nullptr, SOCK_CLOEXEC, &acceptedFd);
+            EXPECT_EQ(a, 0);
+            EXPECT_GE(static_cast<int>(acceptedFd), 0);
+
+            EXPECT_EQ(connectFuture.wait(), 0);
+
+            ::close(static_cast<int>(acceptedFd));
+
+            return 0;
+        }
+    };
+
+    r = FiberScheduler::run(Params::fiberMain, {listenFd, clientFd, addr});
+    ASSERT_EQ(r, 0);
+
+    ::close(clientFd);
+    ::close(listenFd);
+}
+
+
 // Stress: many fibers each doing a write+read through their own pipe.
 TEST(Fiber, concurrentReadWrite)
 {
@@ -574,6 +632,81 @@ TEST(Fiber, cancelSleepAfterInsert)
     r = sleeper.wait();
     ASSERT_EQ(r, ECANCELED);
 }
+
+// Cross-fiber cancel: one fiber submits a poll and blocks; a second fiber
+// (which the scheduler may run on a different CPU via work-stealing) cancels
+// it. Without the logic in cancelIo() that routes the cancel SQE to the same
+// ring as the original POLL_ADD, io_uring returns -ENOENT on the cancel and
+// the poller's wait() hangs forever.
+//
+// We repeat N times to increase the probability that work-stealing migrates
+// the canceller to a different CPU than the poller on at least some iterations.
+TEST(Fiber, cancelPollFromAnotherFiber)
+{
+    static constexpr int N = 200;
+
+    struct Ctx
+    {
+        int readFd;
+        FiberFuture pollRegistered; // poller -> canceller: poll is in the ring
+        FiberScheduler::IoFuture pollFuture;
+    };
+
+    struct Params
+    {
+        Ctx * ctx;
+
+        static int pollerMain(Params * p) noexcept
+        {
+            auto * ctx = p->ctx;
+
+            // Register an async poll (does not block yet).
+            FiberScheduler::poll(ctx->readFd, POLLIN, nullptr, &ctx->pollFuture);
+            // Signal the canceller that the SQE is now committed to a ring.
+            ctx->pollRegistered.set(0);
+            // Block until the cancel (or a spurious write) resolves us.
+            return ctx->pollFuture.wait();
+        }
+
+        static int cancellerMain(Params * p) noexcept
+        {
+            auto * ctx = p->ctx;
+
+            // Don't cancel until the poll SQE is definitely in a ring;
+            // otherwise the cancel might race and fail with -EALREADY.
+            ctx->pollRegistered.wait();
+            ctx->pollFuture.cancel();
+            return 0;
+        }
+    };
+
+    int fds[2];
+    ASSERT_EQ(::pipe(fds), 0);
+
+    for (int i = 0; i < N; ++i)
+    {
+        Ctx ctx;
+        ctx.readFd = fds[0];
+
+        FiberFuture f1, f2;
+        int r = FiberScheduler::run(Params::pollerMain, {&ctx}, &f1);
+        ASSERT_FALSE(r);
+        r = FiberScheduler::run(Params::cancellerMain, {&ctx}, &f2);
+        ASSERT_FALSE(r);
+
+        r = FiberFuture::waitWithTimeout(&f1, 1'000'000'000);
+        if (r)
+        {
+            ASSERT_EQ(r, ECANCELED);
+        }
+        r = f2.wait();
+        ASSERT_FALSE(r);
+    }
+
+    ::close(fds[0]);
+    ::close(fds[1]);
+}
+
 
 // SleepFuture reuse: reset() between calls allows the same future to be used
 // for successive sleeps.

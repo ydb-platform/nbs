@@ -23,6 +23,7 @@ message TUnalignedTestConfig {
   optional uint64 MaxWriteByteCount = 4;
   optional uint64 MinRegionByteCount = 5;
   optional uint64 MaxRegionByteCount = 6;
+  optional bool DisableParallelReadWrite = 7;
 }
 
 message TTestConfig {

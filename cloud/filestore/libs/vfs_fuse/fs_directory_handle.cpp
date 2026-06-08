@@ -195,6 +195,14 @@ void TDirectoryHandle::ResetContent()
     }
 }
 
+bool TDirectoryHandle::IsEmpty() const
+{
+    with_lock (Lock) {
+        return Content.empty() && Cookie.empty() && UpdateVersion == 0 &&
+               SerializedSize == BaseSerializedSize;
+    }
+}
+
 TString TDirectoryHandle::GetCookie()
 {
     with_lock (Lock) {
@@ -202,14 +210,14 @@ TString TDirectoryHandle::GetCookie()
     }
 }
 
-size_t TDirectoryHandle::GetSerializedSize() const
+TDirectoryHandleStats TDirectoryHandle::GetStats() const
 {
-    return SerializedSize;
-}
-
-size_t TDirectoryHandle::GetChunkCount() const
-{
-    return UpdateVersion + 1;
+    with_lock (Lock) {
+        return {
+            .SerializedSize = SerializedSize,
+            .ChunkCount = UpdateVersion + 1,
+        };
+    }
 }
 
 void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log)

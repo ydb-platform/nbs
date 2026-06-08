@@ -8,10 +8,12 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -32,6 +34,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const NClient::TClientConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TClientFactory final
     : public IClientFactory
 {
@@ -39,6 +58,7 @@ private:
     const ILoggingServicePtr Logging;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
+    const ICertificateProviderPtr CertificateProvider;
     const NClient::TClientConfigPtr ClientConfig;
 
     TVector<IFileStoreServicePtr> Clients;
@@ -48,10 +68,12 @@ public:
             ILoggingServicePtr logging,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
+            ICertificateProviderPtr certificateProvider,
             NClient::TClientConfigPtr clientConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
+        , CertificateProvider(std::move(certificateProvider))
         , ClientConfig(std::move(clientConfig))
     {}
 
@@ -73,7 +95,8 @@ public:
     {
         auto client = NClient::CreateFileStoreClient(
             ClientConfig,
-            Logging);
+            Logging,
+            CertificateProvider);
 
         client = NClient::CreateDurableClient(
             Logging,
@@ -90,7 +113,8 @@ public:
     {
         return NClient::CreateShmControlClient(
             ClientConfig,
-            Logging);
+            Logging,
+            CreateClientCertificateProvider(ClientConfig));
     }
 };
 
@@ -113,10 +137,13 @@ void TBootstrap::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
 
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
+
     ClientFactory = std::make_shared<TClientFactory>(
         Logging,
         Timer,
         Scheduler,
+        CertificateProvider,
         ClientConfig);
 }
 
@@ -134,15 +161,31 @@ void TBootstrap::Start()
         Scheduler->Start();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
+
     if (ClientFactory) {
         ClientFactory->Start();
+    }
+
+    if (Options->UseFastShardRuntime) {
+        NStorage::NFastShard::Init();
     }
 }
 
 void TBootstrap::Stop()
 {
+    if (Options->UseFastShardRuntime) {
+        NStorage::NFastShard::Destroy();
+    }
+
     if (ClientFactory) {
         ClientFactory->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Scheduler) {

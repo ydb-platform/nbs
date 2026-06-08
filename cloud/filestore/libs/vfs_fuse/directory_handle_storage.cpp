@@ -2,7 +2,11 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <util/generic/buffer.h>
+#include <util/generic/scope.h>
+#include <util/system/yassert.h>
 
 #include <utility>
 
@@ -11,28 +15,29 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 TDirectoryHandleStorage::TDirectoryHandleStorage(
-    TLog& log,
-    const TString& filePath,
-    ui64 recordsCount,
-    ui64 initialDataAreaSize,
-    ui64 maxDataAreaStepSize,
-    ui64 initialDataMoveBufferSize,
-    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
-    : Log(log)
+    TDirectoryHandleStorageArgs args)
+    : Log(std::move(args.Log))
+    , PersistentHandleMaxSize(args.PersistentHandleMaxSize)
+    , Stats(std::move(args.Stats))
 {
+    Y_ABORT_UNLESS(Stats);
+
     Table = std::make_unique<TDirectoryHandleTable>(
-        filePath,
+        args.FilePath,
         TDynamicPersistentTableConfig{
-            .MaxRecords = recordsCount,
-            .InitialDataAreaSize = initialDataAreaSize,
-            .MaxDataAreaStepSize = maxDataAreaStepSize,
-            .InitialDataMoveBufferSize = initialDataMoveBufferSize,
+            .MaxRecords = args.MaxRecords,
+            .InitialDataAreaSize = args.InitialDataAreaSize,
+            .MaxDataAreaStepSize = args.MaxDataAreaStepSize,
+            .InitialDataMoveBufferSize = args.InitialDataMoveBufferSize,
         },
-        std::move(fileMapMemoryLimiter));
+        std::move(args.FileMapMemoryLimiter));
+
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::StoreHandle(
     ui64 handleId,
+    const TDirectoryHandle& handle,
     const TDirectoryHandleChunk& initialHandleChunk)
 {
     TBuffer record = SerializeHandle(handleId, initialHandleChunk);
@@ -47,11 +52,12 @@ void TDirectoryHandleStorage::StoreHandle(
         return;
     }
 
-    CreateRecord(handleId, record);
+    CreateRecord(handleId, record, handle.GetStats().SerializedSize);
 }
 
 void TDirectoryHandleStorage::UpdateHandle(
     ui64 handleId,
+    const TDirectoryHandle& handle,
     const TDirectoryHandleChunk& handleChunk)
 {
     TBuffer record = SerializeHandle(handleId, handleChunk);
@@ -71,11 +77,36 @@ void TDirectoryHandleStorage::UpdateHandle(
         return;
     }
 
-    CreateRecord(handleId, record);
+    CreateRecord(handleId, record, handle.GetStats().SerializedSize);
 }
 
-void TDirectoryHandleStorage::CreateRecord(ui64 handleId, const TBuffer& record)
+void TDirectoryHandleStorage::CreateRecord(
+    ui64 handleId,
+    const TBuffer& record,
+    ui64 handleSerializedSize)
 {
+    const auto dropRecordsForHandle = [&]
+    {
+        RemoveRecords(handleId);
+        HandlesExcludedFromStorage.insert(handleId);
+    };
+
+    Y_DEFER
+    {
+        UpdateCounters();
+    };
+
+    if (!CanStoreHandle(handleSerializedSize)) {
+        STORAGE_WARN(
+            "Dropping directory handle "
+            << handleId << " from persistent storage: size "
+            << handleSerializedSize << " exceeds limit "
+            << PersistentHandleMaxSize);
+        Stats->IncrementHandleSizeLimitRejection();
+        dropRecordsForHandle();
+        return;
+    }
+
     auto result = CreateRecord(record);
     if (HasError(result)) {
         const auto it = HandleIdToIndices.find(handleId);
@@ -85,8 +116,7 @@ void TDirectoryHandleStorage::CreateRecord(ui64 handleId, const TBuffer& record)
             "Failed to create directory handle record for handle "
             << handleId << ", indices count: " << indexCount << ": "
             << FormatError(result.GetError()));
-        RemoveRecords(handleId);
-        HandlesExcludedFromStorage.insert(handleId);
+        dropRecordsForHandle();
         return;
     }
 
@@ -99,6 +129,7 @@ void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
     TGuard guard(TableLock);
     HandlesExcludedFromStorage.erase(handleId);
     RemoveRecords(handleId);
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
@@ -124,12 +155,14 @@ void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
             std::next(HandleIdToIndices[handleId].begin(), 1),
             HandleIdToIndices[handleId].end());
     }
+
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
     // Since we store data in chunks instead of a single block, in rare cases
-    // a crash during the reset or removal process can lead to inconsistent
+    // a crash during the removal process can lead to inconsistent
     // chunks order. We detect this inconsistency during the load phase and
     // clean data for this handle.
     struct TChunkInfo
@@ -198,11 +231,12 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
             const auto& chunk = chunks[i];
 
             if (chunk.UpdateVersion != expectedVersion) {
-                ReportDirectoryHandlesStorageError(
-                    TStringBuilder()
-                    << "Corrupted data for handle " << handleId
-                    << ": expected update version " << expectedVersion
-                    << ", got " << chunk.UpdateVersion);
+                STORAGE_ERROR(
+                    "Dropping handle "
+                    << handleId
+                    << " with incomplete chunk sequence: expected update "
+                    << "version " << expectedVersion << ", got "
+                    << chunk.UpdateVersion);
 
                 RemoveHandle(handleId);
                 handles.erase(handleId);
@@ -210,6 +244,31 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
             }
         }
     }
+
+    TVector<ui64> oversizedHandleIds;
+    if (PersistentHandleMaxSize) {
+        for (const auto& [handleId, handle]: handles) {
+            const ui64 handleSerializedSize = handle->GetStats().SerializedSize;
+            if (handleSerializedSize <= PersistentHandleMaxSize) {
+                continue;
+            }
+
+            STORAGE_WARN(
+                "Dropping directory handle "
+                << handleId << " from persistent storage: "
+                << "loaded size " << handleSerializedSize << " exceeds limit "
+                << PersistentHandleMaxSize);
+            Stats->IncrementHandleSizeLimitRejection();
+            oversizedHandleIds.push_back(handleId);
+        }
+    }
+
+    for (const auto handleId: oversizedHandleIds) {
+        RemoveHandle(handleId);
+        handles.erase(handleId);
+    }
+
+    UpdateCounters();
 }
 
 void TDirectoryHandleStorage::Clear()
@@ -218,6 +277,7 @@ void TDirectoryHandleStorage::Clear()
     Table->Clear();
     HandleIdToIndices.clear();
     HandlesExcludedFromStorage.clear();
+    UpdateCounters();
 }
 
 // TODO: We can optimize this by counting size for serialization dynamically and
@@ -270,6 +330,15 @@ TResultOrError<ui64> TDirectoryHandleStorage::CreateRecord(
     return index;
 }
 
+bool TDirectoryHandleStorage::CanStoreHandle(ui64 handleSerializedSize) const
+{
+    if (!PersistentHandleMaxSize) {
+        return true;
+    }
+
+    return handleSerializedSize <= PersistentHandleMaxSize;
+}
+
 void TDirectoryHandleStorage::RemoveRecords(ui64 handleId)
 {
     auto it = HandleIdToIndices.find(handleId);
@@ -290,25 +359,17 @@ void TDirectoryHandleStorage::RemoveRecords(ui64 handleId)
     Table->TryDeallocateMemory();
 }
 
+void TDirectoryHandleStorage::UpdateCounters()
+{
+    Stats->SetCounters(Table->GetCounters());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
-    TLog& log,
-    const TString& filePath,
-    ui64 recordsCount,
-    ui64 initialDataAreaSize,
-    ui64 maxDataAreaStepSize,
-    ui64 initialDataMoveBufferSize,
-    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
+    TDirectoryHandleStorageArgs args)
 {
-    return std::make_unique<TDirectoryHandleStorage>(
-        log,
-        filePath,
-        recordsCount,
-        initialDataAreaSize,
-        maxDataAreaStepSize,
-        initialDataMoveBufferSize,
-        std::move(fileMapMemoryLimiter));
+    return std::make_unique<TDirectoryHandleStorage>(std::move(args));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

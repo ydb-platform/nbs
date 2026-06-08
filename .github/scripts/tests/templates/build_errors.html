@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Build errors</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f7f7f7;
+            color: #222;
+        }
+
+        h1,
+        h2,
+        h3 {
+            margin-bottom: 8px;
+        }
+
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 12px 0;
+            padding: 12px;
+        }
+
+        .muted {
+            color: #666;
+        }
+
+        .target {
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        pre {
+            background: #111;
+            color: #eee;
+            overflow-x: auto;
+            padding: 10px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        code {
+            font-family: monospace;
+        }
+
+        ul {
+            padding-left: 22px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Build errors</h1>
+
+    {% if log_links %}
+    <p>
+        Full logs:
+        {% for name, url in log_links %}
+        <a href="{{ url }}">{{ name }}</a>{% if not loop.last %} | {% endif %}
+        {% endfor %}
+    </p>
+    {% endif %}
+
+    {% if configure_errors %}
+    <h2>Configure errors</h2>
+    {% for error in configure_errors %}
+    <div class="panel">
+        <div>
+            <span class="target">{{ error.where or "unknown location" }}</span>
+            {% if error.sub %}<span class="muted">({{ error.sub }})</span>{% endif %}
+        </div>
+        <pre>{{ error.message }}</pre>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if target_sections %}
+    <h2>Failed build targets</h2>
+    {% for section in target_sections %}
+    <div class="panel">
+        <h3 id="{{ section.target.name | anchor_id }}">{{ section.target.name }}</h3>
+        {% if section.target.testcase %}
+        <p class="muted">JUnit testcase: <code>{{ section.target.testcase }}</code></p>
+        {% endif %}
+
+        {% if section.blocks %}
+        {% for block in section.blocks %}
+        <p><code>{{ block.task }}</code></p>
+        <pre>{% for line in block.lines %}{{ line }}
+{% endfor %}</pre>
+        {% endfor %}
+        {% else %}
+        <p class="muted">No matching compiler error block was found in ya_log.txt for this target.</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if unmatched_blocks %}
+    <h2>Other compiler errors</h2>
+    {% for block in unmatched_blocks %}
+    <div class="panel">
+        <p><code>{{ block.task }}</code></p>
+        <pre>{% for line in block.lines %}{{ line }}
+{% endfor %}</pre>
+    </div>
+    {% endfor %}
+    {% endif %}
+</body>
+
+</html>

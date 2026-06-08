@@ -277,11 +277,6 @@ def get_runner_token(
         )
 
 
-@retry(
-    attempts=RUNNER_REGISTRATION_RETRY_ATTEMPTS,
-    interval_sec=RUNNER_REGISTRATION_RETRY_INTERVAL_SEC,
-    retry_result=lambda result: result is None,
-)
 def find_runner_by_name(
     client: Github, github_repo_owner: str, github_repo: str, vm_id: str
 ) -> Optional[str]:
@@ -306,6 +301,17 @@ def find_runner_by_name(
 
     logger.info("Runner with name %s found", vm_id)
     return runner_id
+
+
+@retry(
+    attempts=RUNNER_REGISTRATION_RETRY_ATTEMPTS,
+    interval_sec=RUNNER_REGISTRATION_RETRY_INTERVAL_SEC,
+    retry_result=lambda result: result is None,
+)
+def wait_runner_by_name(
+    client: Github, github_repo_owner: str, github_repo: str, vm_id: str
+) -> Optional[str]:
+    return find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
 
 
 def build_disk_request(
@@ -626,7 +632,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         # if it fails to do so within the timeout, we will delete the
         # VM to avoid orphaned resources
         try:
-            runner_id = find_runner_by_name(
+            runner_id = wait_runner_by_name(
                 gh, args.github_repo_owner, args.github_repo, instance_id
             )
         except Exception:

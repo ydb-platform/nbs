@@ -98,10 +98,9 @@ jobs:
           LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "self-hosted" '. + [$gh_label]')
           LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "runner_${RUNNER_FLAVOR}" '. + [$gh_label]')
           if [ "${RUNNER_LABEL}" != "none" ]; then
-            LABELS_LIST=$(echo "${LABELS_LIST}" | jq  -c --arg gh_label "${RUNNER_LABEL}" '. + [$gh_label]')
+              LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "${RUNNER_LABEL}" '. + [$gh_label]')
           fi
           echo "LABELS_LIST=${LABELS_LIST}" | tee -a "$GITHUB_OUTPUT"
-
   build-and-test:
     name: Build and test ${{ inputs.build_preset }}
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
@@ -120,6 +119,7 @@ jobs:
         chown -R root:root $GITHUB_WORKSPACE
     - name: Checkout PR
       uses: actions/checkout@v6
+      timeout-minutes: 10
       if: github.event.pull_request.head.sha != ''
       with:
         submodules: true
@@ -131,8 +131,8 @@ jobs:
       shell: bash
       run: |
         if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-          echo "Removing stale rebase state left on runner checkout"
-          rm -rf .git/rebase-merge .git/rebase-apply
+            echo "Removing stale rebase state left on runner checkout"
+            rm -rf .git/rebase-merge .git/rebase-apply
         fi
         git config user.email "robot-nbs@nebius.com"
         git config user.name "Robot NBS"
@@ -141,6 +141,7 @@ jobs:
         git submodule update --init --recursive
     - name: Checkout
       uses: actions/checkout@v6
+      timeout-minutes: 10
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: true
@@ -167,13 +168,12 @@ jobs:
         LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
         VM_PRESET=$(jq -r '.spec.resources.preset' instance.json)
         {
-          echo "LABEL=${LABEL}"
-          echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
-          echo "INSTANCE_ID=${INSTANCE_ID}"
-          echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
-          echo "VM_PRESET=${VM_PRESET}"
+            echo "LABEL=${LABEL}"
+            echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
+            echo "INSTANCE_ID=${INSTANCE_ID}"
+            echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
+            echo "VM_PRESET=${VM_PRESET}"
         } | tee -a "$GITHUB_OUTPUT"
-
     - name: Calculate threads
       id: calculate-threads
       if: always()
@@ -214,7 +214,6 @@ jobs:
         [ -f /etc/apt/apt.conf.d/50unattended-upgrades ] && echo "unattended-upgrades already installed" && exit 0
         sudo apt-get -o Dpkg::Lock::Timeout=600 update
         sudo apt-get install -y unattended-upgrades
-
     - name: Build
       id: build
       uses: ./.github/actions/build
@@ -263,6 +262,7 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: failed_build
+        build_error_log_url: ${{ steps.build.outputs.build_error_log_url }}
 
     - id: sleep
       name: Sleep after failed tests
@@ -272,7 +272,6 @@ jobs:
         SLEEP_AFTER_TESTS: ${{ inputs.sleep_after_tests || '7200' }}
       run: |
         sleep "$SLEEP_AFTER_TESTS"
-
     - name: mark workload as completed
       if: ${{ always() && steps.build.outcome != 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
       uses: ./.github/actions/workload_comment
@@ -335,6 +334,7 @@ jobs:
           chown -R root:root $GITHUB_WORKSPACE
       - name: Checkout PR
         uses: actions/checkout@v6
+        timeout-minutes: 10
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: true
@@ -346,8 +346,8 @@ jobs:
         shell: bash
         run: |
           if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-            echo "Removing stale rebase state left on runner checkout"
-            rm -rf .git/rebase-merge .git/rebase-apply
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
           fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
@@ -356,6 +356,7 @@ jobs:
           git submodule update --init --recursive
       - name: Checkout
         uses: actions/checkout@v6
+        timeout-minutes: 10
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: true
@@ -383,14 +384,13 @@ jobs:
           LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
           VM_PRESET=$(jq -r '.spec.resources.preset' instance.json)
           {
-            echo "LABEL=${LABEL}"
-            echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
-            echo "INSTANCE_ID=${INSTANCE_ID}"
-            echo "RUNNER_IPV4=${EXTERNAL_IPV4}"
-            echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
-            echo "VM_PRESET=${VM_PRESET}"
+              echo "LABEL=${LABEL}"
+              echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
+              echo "INSTANCE_ID=${INSTANCE_ID}"
+              echo "RUNNER_IPV4=${EXTERNAL_IPV4}"
+              echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
+              echo "VM_PRESET=${VM_PRESET}"
           } | tee -a "$GITHUB_OUTPUT"
-
       - name: Calculate threads
         id: calculate-threads
         if: always()

@@ -36,6 +36,10 @@ inputs:
     required: false
     default: "no"
     description: "Append resolved job link to GITHUB_STEP_SUMMARY"
+  build_error_log_url:
+    required: false
+    default: ""
+    description: "URL to extracted build error log for failed build workload rows"
 
 outputs:
   job_url:
@@ -47,7 +51,10 @@ runs:
   steps:
     - name: install dependencies
       shell: bash
-      run: pip install -r .github/scripts/requirements.txt
+      run: |
+        if ! pip install -r .github/scripts/requirements.txt; then
+            echo "::warning::Failed to install workload comment dependencies; continuing because PR comments are non-critical"
+        fi
 
     - name: resolve build preset
       id: build-preset
@@ -57,7 +64,6 @@ runs:
       run: |
         set -euo pipefail
         echo "full_build_preset=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)-${BUILD_PRESET}" >> "$GITHUB_OUTPUT"
-
     - name: initialize workload comment
       if: ${{ inputs.command == 'init' }}
       shell: bash
@@ -69,10 +75,21 @@ runs:
       run: |
         set -euo pipefail
         export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
-        python3 -m scripts.tests.workload_comment init \
-          --matrix-include "${MATRIX_INCLUDE}" \
-          --build-preset "${FULL_BUILD_PRESET}" \
-          --workload-status "${WORKLOAD_STATUS}"
+        for attempt in 1 2 3; do
+            if python3 -m scripts.tests.workload_comment init \
+                --matrix-include "${MATRIX_INCLUDE}" \
+                --build-preset "${FULL_BUILD_PRESET}" \
+                --workload-status "${WORKLOAD_STATUS}"; then
+                exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+                delay=$((attempt * 5))
+                echo "::warning::Failed to initialize workload PR comment on attempt ${attempt}; retrying in ${delay}s"
+                sleep "$delay"
+            fi
+        done
+        echo "::warning::Failed to initialize workload PR comment after 3 attempts; continuing because PR comments are non-critical"
 
     - name: update workload comment
       if: ${{ inputs.command == 'update' }}
@@ -85,18 +102,23 @@ runs:
         WORKLOAD_CHECK_STATUS: ${{ inputs.workload_check_status }}
         CURRENT_JOB_NAME: ${{ inputs.current_job_name }}
         RUNNER_NAME: ${{ inputs.runner_name }}
+        BUILD_ERROR_LOG_URL: ${{ inputs.build_error_log_url }}
       run: |
         set -euo pipefail
         export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
         JOB_URL_OUT=$(mktemp)
-        python3 -m scripts.tests.workload_comment update \
-          --build-preset "${FULL_BUILD_PRESET}" \
-          --component "${COMPONENT}" \
-          --workload-check-status "${WORKLOAD_CHECK_STATUS}" \
-          --current-job-name "${CURRENT_JOB_NAME}" \
-          --runner-name "${RUNNER_NAME}" \
-          --job-url-out "$JOB_URL_OUT"
+        if ! python3 -m scripts.tests.workload_comment update \
+            --build-preset "${FULL_BUILD_PRESET}" \
+            --component "${COMPONENT}" \
+            --workload-check-status "${WORKLOAD_CHECK_STATUS}" \
+            --current-job-name "${CURRENT_JOB_NAME}" \
+            --runner-name "${RUNNER_NAME}" \
+            --build-error-log-url "${BUILD_ERROR_LOG_URL}" \
+            --job-url-out "$JOB_URL_OUT"; then
+            echo "::warning::Failed to update workload PR comment; continuing because PR comments are non-critical"
+        fi
         echo "job_url=$(cat "$JOB_URL_OUT")" >> "$GITHUB_OUTPUT"
+        rm -f "$JOB_URL_OUT"
 
     - name: add job link to summary
       if: ${{ inputs.command == 'update' && inputs.add_summary_link == 'yes' && steps.update.outputs.job_url != '' }}
@@ -105,8 +127,8 @@ runs:
         JOB_URL: ${{ steps.update.outputs.job_url }}
       run: |
         {
-          echo "### GitHub job"
-          echo
-          echo "- [Build and test job](${JOB_URL})"
-          echo
+            echo "### GitHub job"
+            echo
+            echo "- [Build and test job](${JOB_URL})"
+            echo
         } >> "$GITHUB_STEP_SUMMARY"

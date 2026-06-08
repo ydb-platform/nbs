@@ -35,8 +35,8 @@ struct IModuleStats
     virtual TStringBuf GetName() const = 0;
 
     virtual void RegisterCounters(
-        NMetrics::IMetricsRegistry& localMetricsRegistry,
-        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) = 0;
+        const NMetrics::IMetricsRegistryPtr& localMetricsRegistry,
+        const NMetrics::IMetricsRegistryPtr& aggregatableMetricsRegistry) = 0;
 
     virtual void UpdateStats(TInstant now) = 0;
 };

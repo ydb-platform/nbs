@@ -408,8 +408,8 @@ bool TBootstrap::InitKikimrService()
         .MaxAttempts =
             Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
-        .LegacyRegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
-        .DynamicNodeRegistrationTimeout = Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
+        .NodeRegistrationTimeout =
+            Configs->StorageConfig->GetNodeRegistrationTimeout(),
         .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
         .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
         .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),

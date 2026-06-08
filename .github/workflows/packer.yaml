@@ -94,7 +94,6 @@ jobs:
         run: |
           pip install -r .github/scripts/requirements.txt
           echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
-
       - name: set up nebius cli
         id: cli
         uses: ./.github/actions/nebius_cli
@@ -106,23 +105,23 @@ jobs:
         if: inputs.image_id == '' && inputs.build_image == true
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          RUNNER_VERSION: ${{ vars.RUNNER_VERSION }}
+          RUNNER_VERSION: "latest"
         run: |
           export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-          python3 -m scripts.github_runner_release --version "${RUNNER_VERSION:-latest}"
-
+          python3 -m scripts.github_runner_release --version "${RUNNER_VERSION}"
       - name: set up packer
         if: inputs.image_id == '' && inputs.build_image == true
-        uses: hashicorp/setup-packer@v3.2.0
+        # it is pinned to commit because fix only exist there ans is not tagges
+        # and in general it is good practice to do so
+        uses: hashicorp/setup-packer@3751c32c3d7b56bc32095c10c30f337ab1f52cf5
         with:
-          version: 1.10.0
+          version: 1.15.3
 
       - name: init packer
         if: inputs.image_id == '' && inputs.build_image == true
         run: |
           cd .github/packer || exit
           packer init github-runner.pkr.hcl
-
       - name: build image
         if: inputs.image_id == '' && inputs.build_image == true
         id: build-image
@@ -136,10 +135,9 @@ jobs:
           SUBNET_ID: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
         run: |
           cd .github/packer || exit
-          packer build github-runner.pkr.hcl
+          packer build -var "RUNNER_VERSION=${RUNNER_VERSION}" -var "RUNNER_SHA256_X64=${RUNNER_SHA256_X64}" github-runner.pkr.hcl
           cat reports/manifest.json
           echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' reports/manifest.json)" >> $GITHUB_OUTPUT
-
       - name: Get latest image ID from Nebius
         id: get-image-id
         env:
@@ -147,21 +145,25 @@ jobs:
           PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
         run: |
           if [ -n "${IMAGE_ID}" ]; then
-            if [[ "${IMAGE_ID}" != computeimage-* ]]; then
-              echo "Provided image id is not valid: ${IMAGE_ID}"
-              exit 1
-            fi
-            echo "IMAGE_ID_2204=${IMAGE_ID}" >> $GITHUB_OUTPUT
-            echo "Using image id provided by inputs: ${IMAGE_ID}"
-            exit 0
+              if [[ "${IMAGE_ID}" != computeimage-* ]]; then
+                  echo "Provided image id is not valid: ${IMAGE_ID}"
+                  exit 1
+              fi
+              echo "IMAGE_ID_2204=${IMAGE_ID}" >> $GITHUB_OUTPUT
+              echo "Using image id provided by inputs: ${IMAGE_ID}"
+              exit 0
           fi
           IMAGE_ID=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id "${PARENT_ID}" --format json | jq -r .metadata.id)
           echo "IMAGE_ID_2204=$IMAGE_ID" >> $GITHUB_OUTPUT
-
       - name: Start runner
         id: start-runner
-        if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 !=
-          vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
+        if: >-
+          always() &&
+          (inputs.image_id != '' || inputs.build_image != true || steps.build-image.outcome == 'success') &&
+          steps.get-image-id.outputs.IMAGE_ID_2204 != '' &&
+          (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 ||
+          steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 ||
+          steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
@@ -183,8 +185,7 @@ jobs:
 
       - name: Stop runner
         uses: ./.github/actions/nebius_runner_remove
-        if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 !=
-          vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
+        if: always() && steps.start-runner.outcome != 'skipped'
         timeout-minutes: 60
         with:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
@@ -200,11 +201,11 @@ jobs:
         run: |
           export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
           python3 -m scripts.nebius_manage_images \
-            --new-image-id ${NEW_IMAGE_ID} \
-            --parent-id ${PARENT_ID} \
-            --remove-old-images \
-            --images-to-keep ${IMAGES_TO_KEEP} \
-            --image-variable-name NEBIUS_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
+              --new-image-id ${NEW_IMAGE_ID} \
+              --parent-id ${PARENT_ID} \
+              --remove-old-images \
+              --images-to-keep ${IMAGES_TO_KEEP} \
+              --image-variable-name NEBIUS_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
@@ -217,18 +218,18 @@ jobs:
         run: |
           export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
           python3 -m scripts.nebius_manage_images \
-            --parent-id ${LIGHT_PARENT_ID} \
-            --new-image-id ${NEW_IMAGE_ID} \
-            --remove-old-images \
-            --images-to-keep ${IMAGES_TO_KEEP} \
-            --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
+              --parent-id ${LIGHT_PARENT_ID} \
+              --new-image-id ${NEW_IMAGE_ID} \
+              --remove-old-images \
+              --images-to-keep ${IMAGES_TO_KEEP} \
+              --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
 
           python3 -m scripts.nebius_manage_images \
-            --parent-id ${HEAVY_PARENT_ID} \
-            --new-image-id ${NEW_IMAGE_ID} \
-            --remove-old-images \
-            --images-to-keep ${IMAGES_TO_KEEP} \
-            --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
+              --parent-id ${HEAVY_PARENT_ID} \
+              --new-image-id ${NEW_IMAGE_ID} \
+              --remove-old-images \
+              --images-to-keep ${IMAGES_TO_KEEP} \
+              --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
@@ -245,5 +246,5 @@ jobs:
         run: |
           export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
           python3 -m scripts.github_actions_variables \
-            --variable-name RUNNER_VERSION \
-            --value "${RUNNER_VERSION}"
+              --variable-name RUNNER_VERSION \
+              --value "${RUNNER_VERSION}"

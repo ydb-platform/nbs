@@ -2,9 +2,12 @@
 
 #include "tablet_schema.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
+
+#include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -513,23 +516,18 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
 // NodeRefs
 
 void TIndexTabletDatabase::WriteNodeRef(
-    ui64 nodeId,
-    ui64 commitId,
-    const TString& name,
-    ui64 childNodeId,
-    const TString& shardId,
-    const TString& shardNodeName,
+    const TNodeRef& nodeRef,
     bool /*markExhaustive*/)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
     Table<TTable>()
-        .Key(nodeId, name)
+        .Key(nodeRef.NodeId, nodeRef.Name)
         .Update(
-            NIceDb::TUpdate<TTable::CommitId>(commitId),
-            NIceDb::TUpdate<TTable::ChildId>(childNodeId),
-            NIceDb::TUpdate<TTable::ShardId>(shardId),
-            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName)
+            NIceDb::TUpdate<TTable::CommitId>(nodeRef.MinCommitId),
+            NIceDb::TUpdate<TTable::ChildId>(nodeRef.ChildNodeId),
+            NIceDb::TUpdate<TTable::ShardId>(nodeRef.ShardId),
+            NIceDb::TUpdate<TTable::ShardNodeName>(nodeRef.ShardNodeName)
         );
 }
 
@@ -563,15 +561,14 @@ bool TIndexTabletDatabase::ReadNodeRef(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            ref = TNodeRef {
+            ref.ConstructInPlace(
                 nodeId,
                 name,
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            };
+                maxCommitId);
         }
     }
 
@@ -589,7 +586,6 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
     ui32* skippedRefs,
     NProto::EListNodesSizeMode sizeMode)
 {
-
     using TTableBase = typename TIndexTabletSchema::NodeRefs;
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, cookie)
@@ -607,15 +603,14 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            refs.emplace_back(TNodeRef {
+            refs.emplace_back(
                 nodeId,
                 it.template GetValue<TTableBase::Name>(),
                 it.template GetValue<TTableBase::ChildId>(),
                 it.template GetValue<TTableBase::ShardId>(),
                 it.template GetValue<TTableBase::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            });
+                maxCommitId);
 
             const auto& ref = refs.back();
             // TODO(#5148): consider other size calculation modes
@@ -724,14 +719,14 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     while (it.IsValid() && maxCount > 0) {
-        refs.emplace_back(TNodeRef{
+        refs.emplace_back(
             it.GetValue<TTable::NodeId>(),
             it.GetValue<TTable::Name>(),
             it.GetValue<TTable::ChildId>(),
             it.GetValue<TTable::ShardId>(),
             it.GetValue<TTable::ShardNodeName>(),
             it.GetValue<TTable::CommitId>(),
-            InvalidCommitId});
+            InvalidCommitId);
         --maxCount;
 
         if (!it.Next()) {
@@ -2381,33 +2376,21 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeRef(
-    ui64 nodeId,
-    ui64 commitId,
-    const TString& name,
-    ui64 childNode,
-    const TString& shardId,
-    const TString& shardNodeName,
+    const TNodeRef& nodeRef,
     bool markExhaustive)
 {
-    TIndexTabletDatabase::WriteNodeRef(
-        nodeId,
-        commitId,
-        name,
-        childNode,
-        shardId,
-        shardNodeName,
-        markExhaustive);
+    TIndexTabletDatabase::WriteNodeRef(nodeRef, markExhaustive);
     NodeUpdates.emplace_back(IInMemoryIndexState::TWriteNodeRefsRequest{
-        .NodeRefsKey = {nodeId, name},
+        .NodeRefsKey = {nodeRef.NodeId, nodeRef.Name},
         .NodeRefsRow = {
-            .CommitId = commitId,
-            .ChildId = childNode,
-            .ShardId = shardId,
-            .ShardNodeName = shardNodeName}});
+            .CommitId = nodeRef.MinCommitId,
+            .ChildId = nodeRef.ChildNodeId,
+            .ShardId = nodeRef.ShardId,
+            .ShardNodeName = nodeRef.ShardNodeName}});
     if (markExhaustive) {
         NodeUpdates.emplace_back(
             IInMemoryIndexState::TMarkNodeRefsAsCachedRequest{
-                .NodeId = childNode,
+                .NodeId = nodeRef.ChildNodeId,
                 .RefsSize = 0});
     }
 }

@@ -268,7 +268,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         UNIT_ASSERT_VALUES_EQUAL(1, registerNonShardCount);
         UNIT_ASSERT_VALUES_EQUAL(0, registerShardCount);
 
-        tablet.ConfigureAsShard(1);
+        tablet.ConfigureAsShard(1, "main_fs", "main_fs_s1");
 
         UNIT_ASSERT_VALUES_EQUAL(1, registerNonShardCount);
         UNIT_ASSERT_VALUES_EQUAL(1, registerShardCount);

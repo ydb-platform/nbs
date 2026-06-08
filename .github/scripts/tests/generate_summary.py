@@ -47,6 +47,7 @@ WORKLOAD_CHECK_STATUS_ORDER = {
     "completed": 2,
     "failed_build": 3,
 }
+BUILD_ERROR_ANCHOR_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 class IssueCommentLike(Protocol):
@@ -58,6 +59,16 @@ class IssueCommentLike(Protocol):
 
 class PullRequestHeadLike(Protocol):
     sha: str
+
+
+def build_error_anchor_id(value: str) -> str:
+    return BUILD_ERROR_ANCHOR_RE.sub("-", value.strip()).strip("-") or "target"
+
+
+def build_error_target_url(build_error_log_url: str, test: "TestResult") -> str:
+    if not build_error_log_url or test.status != TestStatus.FAIL_BUILD:
+        return ""
+    return f"{build_error_log_url}#{build_error_anchor_id(test.classname)}"
 
 
 class PullRequestLike(Protocol):
@@ -179,8 +190,14 @@ class TestResult:
         return f"{self.classname}/{self.name}"
 
     @classmethod
-    def from_junit(cls, testcase: ET.Element) -> TestResult:
+    def from_junit(
+        cls,
+        testcase: ET.Element,
+        testsuite: ET.Element | None = None,
+    ) -> TestResult:
         classname = testcase.get("classname") or ""
+        if not classname and testsuite is not None:
+            classname = testsuite.get("name") or ""
         name = testcase.get("name") or ""
         is_timed_out = False
 
@@ -301,7 +318,9 @@ class TestSummary:
         return f"| {' | '.join(items)} |"
 
     def render(
-        self, add_footnote: bool = False, build_failed_count: int = 0
+        self,
+        add_footnote: bool = False,
+        build_failed_count: int = 0,
     ) -> list[str]:
         github_srv = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/nbs")
@@ -346,7 +365,8 @@ class TestSummary:
                 status_url = (
                     f"{report_url}#{status.report_anchor}" if report_url else None
                 )
-                row.append(render_pm(count, status_url, 0))
+                cell = render_pm(count, status_url, 0)
+                row.append(cell)
             result.append(self.render_line(row))
 
         if add_footnote:
@@ -396,7 +416,12 @@ def render_summary_markdown(
     )
 
 
-def render_testlist_html(rows: list[TestResult], fn: str, summary_url: str) -> None:
+def render_testlist_html(
+    rows: list[TestResult],
+    fn: str,
+    summary_url: str,
+    build_error_log_url: str = "",
+) -> None:
     templates_path = Path(__file__).with_name("templates")
 
     env = Environment(
@@ -422,13 +447,18 @@ def render_testlist_html(rows: list[TestResult], fn: str, summary_url: str) -> N
         tests=status_test,
         has_any_log=has_any_log,
         summary_url=summary_url,
+        build_error_log_url=build_error_log_url,
+        build_error_target_url=build_error_target_url,
     )
 
     with open(fn, "w") as fp:
         fp.write(content)
 
 
-def write_summary(summary: TestSummary, summary_out_env_path: str = "") -> None:
+def write_summary(
+    summary: TestSummary,
+    summary_out_env_path: str = "",
+) -> None:
     summary_fn = summary_out_env_path or os.environ.get("GITHUB_STEP_SUMMARY")
 
     with _summary_output_stream(summary_fn) as fp:
@@ -450,14 +480,15 @@ def gen_summary(
     summary_url_prefix: str,
     summary_out_folder: str,
     paths: list[TitlePathTriplet],
+    build_error_log_url: str = "",
 ) -> TestSummary:
     summary = TestSummary()
 
     for title, html_fn, path in paths:
         summary_line = TestSummaryLine(title)
 
-        for _fn, _suite, case in iter_xml_files(path):
-            test_result = TestResult.from_junit(case)
+        for _fn, suite, case in iter_xml_files(path):
+            test_result = TestResult.from_junit(case, suite)
             summary_line.add(test_result)
 
         if not summary_line.tests:
@@ -469,6 +500,7 @@ def gen_summary(
             sorted(summary_line.tests, key=lambda x: x.full_name),
             os.path.join(summary_out_folder, html_fn),
             summary_url=summary_url_prefix,
+            build_error_log_url=build_error_log_url,
         )
         summary_line.add_report(html_fn, report_url)
         summary.add_line(summary_line)
@@ -482,8 +514,8 @@ def gen_summary_counts(paths: list[TitlePathPair]) -> TestSummary:
     for title, path in paths:
         summary_line = TestSummaryLine(title)
 
-        for _fn, _suite, case in iter_xml_files(path):
-            test_result = TestResult.from_junit(case)
+        for _fn, suite, case in iter_xml_files(path):
+            test_result = TestResult.from_junit(case, suite)
             summary_line.add(test_result)
 
         if not summary_line.tests:
@@ -527,7 +559,11 @@ def get_comment_text(
         body.append("")
         body.append(f"[Test history]({test_history_url})")
 
-    body.extend(summary.render(build_failed_count=get_build_failed_count()))
+    body.extend(
+        summary.render(
+            build_failed_count=get_build_failed_count(),
+        )
+    )
 
     return body
 
@@ -632,6 +668,7 @@ def get_workload_check_line(
     component: str,
     status: str,
     job_url: str = "",
+    build_error_log_url: str = "",
 ) -> str:
     suffixes = {
         "pending": "",
@@ -642,8 +679,11 @@ def get_workload_check_line(
     label = get_workload_label(component)
     if job_url:
         label = f"[{label}]({job_url})"
+    suffix = suffixes[status]
+    if status == "failed_build" and build_error_log_url:
+        suffix = f" (build failed, [log]({build_error_log_url}))"
     return (
-        f"- {WORKLOAD_CHECK_STATUS_ICONS[status]} {label}{suffixes[status]} "
+        f"- {WORKLOAD_CHECK_STATUS_ICONS[status]} {label}{suffix} "
         f"{get_workload_check_marker(component)}"
     )
 
@@ -693,6 +733,8 @@ def replace_workload_status_block(
     lines = body.splitlines()
     insert_at = len(lines)
     for idx, line in enumerate(lines):
+        if idx == 0 and line.startswith("<!-- status "):
+            continue
         if line.startswith("> [!NOTE]") or line.startswith("> [!IMPORTANT]"):
             continue
         if line.startswith("> This is "):
@@ -704,6 +746,17 @@ def replace_workload_status_block(
 
     updated_lines = lines[:insert_at] + [status_block, ""] + lines[insert_at:]
     return "\n".join(updated_lines)
+
+
+def ensure_workload_status_block(
+    body: str,
+    build_preset: str,
+    workload_status: str,
+) -> str:
+    if WORKLOAD_STATUS_START in body and WORKLOAD_STATUS_END in body:
+        return body
+
+    return replace_workload_status_block(body, build_preset, workload_status)
 
 
 def replace_workload_checks_block(
@@ -723,6 +776,24 @@ def replace_workload_checks_block(
         body,
         checks_block,
         after_marker=WORKLOAD_STATUS_END,
+    )
+
+
+def ensure_workload_check_row(
+    body: str,
+    build_preset: str,
+    component: str,
+) -> str:
+    if get_workload_check_line_match(body, component) is not None:
+        return body
+
+    if WORKLOAD_CHECKS_START not in body or WORKLOAD_CHECKS_END not in body:
+        return replace_workload_checks_block(body, build_preset, [component])
+
+    return body.replace(
+        WORKLOAD_CHECKS_END,
+        f"{get_workload_check_line(component, 'pending')}\n{WORKLOAD_CHECKS_END}",
+        1,
     )
 
 
@@ -771,6 +842,7 @@ def update_workload_check_block(
     component: str,
     status: str,
     job_url: str = "",
+    build_error_log_url: str = "",
 ) -> str:
     match = get_workload_check_line_match(body, component)
     if match is None:
@@ -795,11 +867,12 @@ def update_workload_check_block(
 
     marker = get_workload_check_marker(component)
     pattern = re.compile(rf"^.*{re.escape(marker)}$", re.MULTILINE)
-    return pattern.sub(
-        get_workload_check_line(component, status, job_url),
+    updated = pattern.sub(
+        get_workload_check_line(component, status, job_url, build_error_log_url),
         body,
         count=1,
     )
+    return updated
 
 
 def complete_workload_checks_block(body: str) -> str:
@@ -1060,6 +1133,7 @@ def update_pr_comment_workload_check(
     is_dry_run: bool,
     workload_check_status: str,
     job_url: str = "",
+    build_error_log_url: str = "",
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,
@@ -1070,18 +1144,35 @@ def update_pr_comment_workload_check(
     comment = find_pr_comment(pr, header_prefix)
 
     if comment is None:
-        LOGGER.info("No existing comment found for workload check update")
-        return
+        LOGGER.info("Creating minimal comment for workload check update")
+        header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+        pr.create_issue_comment(
+            "\n".join(
+                get_base_comment_body(
+                    header,
+                    build_preset,
+                    is_dry_run,
+                    "in_progress",
+                    [component],
+                )
+            )
+        )
+    else:
+        LOGGER.info("Updating workload check for comment id=%s", comment.id)
 
-    LOGGER.info("Updating workload check for comment id=%s", comment.id)
     edit_pr_comment(
         pr=pr,
         header_prefix=header_prefix,
         update_body=lambda body: update_workload_check_block(
-            body,
+            ensure_workload_check_row(
+                ensure_workload_status_block(body, build_preset, "in_progress"),
+                build_preset,
+                component,
+            ),
             component,
             workload_check_status,
             job_url,
+            build_error_log_url,
         ),
         is_applied=lambda body: is_workload_check_update_applied(
             body,
@@ -1144,6 +1235,7 @@ def main() -> None:
         help="Add mark in comments that this is simulation, not real result",
     )
     parser.add_argument("--test-time", default="0", required=False)
+    parser.add_argument("--build-error-log-url", default="", required=False)
     parser.add_argument(
         "--workload-status",
         choices=("in_progress", "completed"),
@@ -1168,9 +1260,15 @@ def main() -> None:
             raise SystemExit(-1) from error
 
         summary = gen_summary(
-            args.summary_url_prefix, args.summary_out_path, title_path
+            args.summary_url_prefix,
+            args.summary_out_path,
+            title_path,
+            build_error_log_url=args.build_error_log_url,
         )
-        write_summary(summary, args.summary_out_env_path)
+        write_summary(
+            summary,
+            args.summary_out_env_path,
+        )
     elif not args.update_workload_status_only:
         LOGGER.error("No summary inputs provided")
         raise SystemExit(-1)

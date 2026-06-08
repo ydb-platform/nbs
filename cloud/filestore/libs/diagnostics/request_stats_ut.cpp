@@ -1033,6 +1033,44 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         bootstrap.Registry->GetRequestStats()->Reset();
         bootstrap.Registry->GetRequestStats()->UpdateStats(false);
     }
+
+    Y_UNIT_TEST(ShouldProperlyRegisterErrorKinds)
+    {
+        TBootstrap bootstrap;
+
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
+        UNIT_ASSERT(stats);
+
+        auto fsCounters = GetFsCounters(
+            bootstrap.Counters
+                ->FindSubgroup("component", METRIC_FS_COMPONENT)
+                ->FindSubgroup("host", "cluster"),
+            FS,
+            CLIENT,
+            CLOUD,
+            FOLDER);
+        UNIT_ASSERT(fsCounters);
+
+        auto requestCounters =
+            fsCounters->FindSubgroup("request", "CreateHandle");
+        UNIT_ASSERT(requestCounters);
+
+        {
+            auto context = MakeIntrusive<TCallContext>(FS, ui64(1));
+            context->RequestType = EFileStoreRequest::CreateHandle;
+            stats->RequestStarted(*context);
+            stats->RequestCompleted(*context, MakeError(E_TRANSPORT_ERROR));
+        }
+
+        // E_TRANSPORT_ERROR must be counted as Aborted, not Fatal
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            requestCounters->GetCounter("Errors/Aborted")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCounters->GetCounter("Errors/Fatal")->Val());
+    }
 }
 
 } // namespace NCloud::NFileStore::NStorage

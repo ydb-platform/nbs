@@ -156,6 +156,7 @@ public:
         const TString& fsId) const;
 
     ui64 GetDirectoryHandlesTableSize() const;
+    ui64 GetDirectoryHandlesPersistentHandleMaxSize() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
     bool GetGuestHandleKillPrivV2Enabled(

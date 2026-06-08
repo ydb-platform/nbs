@@ -407,6 +407,65 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         UNIT_ASSERT_VALUES_EQUAL(0, fileMapSizeController->Current);
     }
 
+    Y_UNIT_TEST(ShouldReportStorageStats)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = 128,
+                .MaxDataAreaStepSize = 128,
+                .InitialDataMoveBufferSize = 100,
+            });
+
+        const auto initialStats = table.GetCounters();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, initialStats.RawCapacityByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, initialStats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, initialStats.ExpansionCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, initialStats.CompactionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, initialStats.RawUsedByteCount);
+
+        const TString data(96, 'a');
+
+        const ui64 firstIndex = AllocAndCommitRecord(table, data);
+        const ui64 secondIndex = AllocAndCommitRecord(table, data);
+
+        auto stats = table.GetCounters();
+        UNIT_ASSERT_GT(
+            stats.RawCapacityByteCount,
+            initialStats.RawCapacityByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ExpansionCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialStats.CompactionCount,
+            stats.CompactionCount);
+        UNIT_ASSERT_GT(stats.RawUsedByteCount, 0);
+
+        UNIT_ASSERT(table.DeleteRecord(firstIndex));
+        UNIT_ASSERT(table.DeleteRecord(secondIndex));
+        table.TryDeallocateMemory();
+
+        stats = table.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialStats.RawCapacityByteCount,
+            stats.RawCapacityByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ExpansionCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialStats.CompactionCount + 1,
+            stats.CompactionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.RawUsedByteCount);
+
+        table.Clear();
+
+        stats = table.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.ExpansionCount);
+    }
+
     Y_UNIT_TEST(ShouldReturnErrorWhenFileMapSizeCannotIncrease)
     {
         TTempDir tempDir;
@@ -669,56 +728,6 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL(testData.size(), foundIds.size());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldMigrateLegacyRelativeDataOffsetsOnStartup)
-    {
-        TTempDir tempDir;
-        TString tablePath = tempDir.Path() / "test.table";
-
-        TVector<TString> payloads = {
-            TString("first_payload"),
-            TString("second_payload"),
-            TString("third_payload")};
-        TVector<ui64> indices;
-
-        {
-            auto table = CreateTable(tablePath, 32, 1024);
-
-            for (const auto& payload: payloads) {
-                indices.push_back(AllocAndCommitRecord(table, payload));
-            }
-
-            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
-
-            for (ui64 index: indices) {
-                UNIT_ASSERT_C(
-                    descriptorsPtr[index].DataOffset >=
-                        CalcDataAreaOffset(tableHeader),
-                    "Expected absolute data offset");
-                descriptorsPtr[index].DataOffset -=
-                    CalcDataAreaOffset(tableHeader);
-            }
-
-            tableHeader->Version = 1;
-        }
-
-        {
-            auto table = CreateTable(tablePath, 32, 1024);
-            auto [tableHeader, descriptorsPtr, _] = GetTableInternals(table);
-
-            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
-            UNIT_ASSERT_VALUES_EQUAL(payloads.size(), table.CountRecords());
-
-            for (size_t i = 0; i < indices.size(); ++i) {
-                TStringBuf record = table.GetRecordWithValidation(indices[i]);
-                UNIT_ASSERT_VALUES_EQUAL(payloads[i], TString(record));
-                UNIT_ASSERT_C(
-                    descriptorsPtr[indices[i]].DataOffset >=
-                        CalcDataAreaOffset(tableHeader),
-                    "Expected migrated absolute data offset");
-            }
         }
     }
 
@@ -1426,6 +1435,100 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         UNIT_ASSERT_VALUES_EQUAL(
             dataAreaSizeBeforeCompaction,
             dataAreaSizeAfterSecondAlloc);
+    }
+
+    Y_UNIT_TEST(ShouldSkipCompactionWhenShrinkCannotReduceDataArea)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "skip_compaction.table";
+
+        // DataAreaSize stays at InitialDataAreaSize, so CalcShrinkTargetSize()
+        // always rounds back up to it and shrink can never actually reduce the
+        // area. ShrinkDataArea must return early without compacting.
+        const ui64 initialDataAreaSize = 4_KB;
+        const TString payload(512, 'z');
+        const ui64 shrinkLowMemoryOpThreshold = 1;
+
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataMoveBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+                .ShrinkMode = EDynamicPersistentTableShrinkMode::AnyOp,
+            });
+
+        TVector<ui64> indices = FillTable(table, 8, payload);
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialDataAreaSize,
+            GetTableHeader(table)->DataAreaSize);
+
+        const auto baseline = table.GetCounters();
+
+        DeleteRecords(table, indices, 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, table.CountRecords());
+
+        const auto stats = table.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialDataAreaSize,
+            GetTableHeader(table)->DataAreaSize);
+        UNIT_ASSERT_VALUES_EQUAL(baseline.ShrinkCount, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            baseline.CompactionCount,
+            stats.CompactionCount);
+
+        TStringBuf survivor = table.GetRecordWithValidation(indices.front());
+        UNIT_ASSERT_VALUES_EQUAL(payload, TString(survivor));
+    }
+
+    Y_UNIT_TEST(ShouldCompactDuringShrinkWhenGapPresentAndShrinkPossible)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "shrink_with_compact.table";
+
+        // DataAreaSize has grown past InitialDataAreaSize, so
+        // CalcShrinkTargetSize() returns a value strictly less than the
+        // current size. With a non-zero gap, ShrinkDataArea must compact
+        // first (at its new position after the early-return check) and
+        // then shrink — both counters must tick by exactly one.
+        const ui64 initialDataAreaSize = 4_KB;
+        const TString payload(1_KB, 's');
+        const ui64 shrinkLowMemoryOpThreshold = 3;
+        const ui64 totalRecords = 9;
+        const ui64 keptRecords = 3;
+
+        auto table = CreateTable(
+            tablePath,
+            TTableConfig{
+                .MaxRecords = 32,
+                .InitialDataAreaSize = initialDataAreaSize,
+                .MaxDataAreaStepSize = 1_GB,
+                .InitialDataMoveBufferSize = 1_KB,
+                .ShrinkLowMemoryOpThreshold = shrinkLowMemoryOpThreshold,
+            });
+
+        TVector<ui64> indices = FillTable(table, totalRecords, payload);
+        UNIT_ASSERT_VALUES_EQUAL(16_KB, GetTableHeader(table)->DataAreaSize);
+
+        DeleteRecords(table, indices, keptRecords);
+        UNIT_ASSERT_VALUES_EQUAL(keptRecords, table.CountRecords());
+
+        const auto baseline = table.GetCounters();
+        const ui64 newIndex = AllocAndCommitRecord(table, payload);
+
+        const auto stats = table.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(8_KB, GetTableHeader(table)->DataAreaSize);
+        UNIT_ASSERT_VALUES_EQUAL(baseline.ShrinkCount + 1, stats.ShrinkCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            baseline.CompactionCount + 1,
+            stats.CompactionCount);
+
+        TStringBuf firstRecord = table.GetRecordWithValidation(indices.front());
+        UNIT_ASSERT_VALUES_EQUAL(payload, TString(firstRecord));
+        TStringBuf newRecord = table.GetRecordWithValidation(newIndex);
+        UNIT_ASSERT_VALUES_EQUAL(payload, TString(newRecord));
     }
 
     Y_UNIT_TEST(ShouldShrinkEmptyTableToInitialDataAreaOnStartup)

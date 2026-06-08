@@ -9,6 +9,7 @@ namespace NCloud::NBlockStore::NTesting {
 
 ITestScenarioPtr CreateUnalignedTestScenario(
     IConfigHolderPtr configHolder,
+    const TString& logTag,
     const TLog& log);
 
 }   // namespace NCloud::NBlockStore::NTesting

@@ -1,72 +1,97 @@
 #include "directory_handle_stats.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/label.h>
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandleStats::TDirectoryHandleStats(ITimerPtr timer)
+TDirectoryHandleModuleStats::TDirectoryHandleModuleStats(
+    ITimerPtr timer,
+    IDirectoryHandleStorageStatsPtr storageStats)
     : CacheSize(timer)
-    , ChunkCount(std::move(timer))
+    , ChunkCount(timer)
+    , OpenHandleCount(timer)
+    , StorageStats(std::move(storageStats))
 {}
 
-TStringBuf TDirectoryHandleStats::GetName() const
+TStringBuf TDirectoryHandleModuleStats::GetName() const
 {
     return "DirectoryHandles";
 }
 
-void TDirectoryHandleStats::RegisterCounters(
-    NMetrics::IMetricsRegistry& localMetricsRegistry,
-    NMetrics::IMetricsRegistry& aggregatableMetricsRegistry)
+void TDirectoryHandleModuleStats::RegisterCounters(
+    const NMetrics::IMetricsRegistryPtr& localMetricsRegistry,
+    const NMetrics::IMetricsRegistryPtr& aggregatableMetricsRegistry)
 {
-    Y_UNUSED(aggregatableMetricsRegistry);
+    auto self = shared_from_this();
 
-    CacheSize.Register(localMetricsRegistry, "MaxCacheSize");
-    ChunkCount.Register(localMetricsRegistry, "MaxChunkCount");
+    localMetricsRegistry->Register(
+        {NMetrics::CreateSensor("MaxCacheSize")},
+        NMetrics::CreateMetric([self] { return self->CacheSize.GetValue(); }));
+    localMetricsRegistry->Register(
+        {NMetrics::CreateSensor("MaxChunkCount")},
+        NMetrics::CreateMetric([self] { return self->ChunkCount.GetValue(); }));
+    localMetricsRegistry->Register(
+        {NMetrics::CreateSensor("MaxOpenHandleCount")},
+        NMetrics::CreateMetric([self]
+                               { return self->OpenHandleCount.GetValue(); }));
+    localMetricsRegistry->Register(
+        {NMetrics::CreateSensor("RewindCount")},
+        NMetrics::CreateMetric([self] { return self->RewindCount.Get(); }),
+        NMetrics::EAggregationType::AT_SUM,
+        NMetrics::EMetricType::MT_DERIVATIVE);
+
+    if (StorageStats) {
+        StorageStats->CreateMetrics().Register(
+            *localMetricsRegistry,
+            *aggregatableMetricsRegistry);
+    }
 }
 
-void TDirectoryHandleStats::ChangeCacheSize(i64 delta)
+void TDirectoryHandleModuleStats::ChangeCacheSize(i64 delta)
 {
     CacheSize.Change(delta);
 }
 
-void TDirectoryHandleStats::ChangeChunkCount(i64 delta)
+void TDirectoryHandleModuleStats::ChangeChunkCount(i64 delta)
 {
     ChunkCount.Change(delta);
 }
 
-void TDirectoryHandleStats::IncreaseCacheSize(size_t value)
+void TDirectoryHandleModuleStats::ChangeOpenHandleCount(i64 delta)
 {
-    ChangeCacheSize(static_cast<i64>(value));
+    OpenHandleCount.Change(delta);
 }
 
-void TDirectoryHandleStats::DecreaseCacheSize(size_t value)
+void TDirectoryHandleModuleStats::IncrementRewindCount()
 {
-    ChangeCacheSize(-static_cast<i64>(value));
+    RewindCount.Inc();
 }
 
-void TDirectoryHandleStats::IncreaseChunkCount(size_t value)
-{
-    ChangeChunkCount(static_cast<i64>(value));
-}
-
-void TDirectoryHandleStats::DecreaseChunkCount(size_t value)
-{
-    ChangeChunkCount(-static_cast<i64>(value));
-}
-
-void TDirectoryHandleStats::UpdateStats(TInstant now)
+void TDirectoryHandleModuleStats::UpdateStats(TInstant now)
 {
     Y_UNUSED(now);
 
     CacheSize.UpdateMax();
     ChunkCount.UpdateMax();
+    OpenHandleCount.UpdateMax();
+    if (StorageStats) {
+        StorageStats->UpdateStats();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandleStatsPtr CreateDirectoryHandleStats(ITimerPtr timer)
+TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStats(
+    ITimerPtr timer,
+    IDirectoryHandleStorageStatsPtr storageStats)
 {
-    return std::make_shared<TDirectoryHandleStats>(std::move(timer));
+    return std::make_shared<TDirectoryHandleModuleStats>(
+        std::move(timer),
+        std::move(storageStats));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

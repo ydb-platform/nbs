@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -509,8 +510,8 @@ void TBootstrapYdb::InitKikimrService()
         .MaxAttempts =
             Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
-        .LegacyRegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
-        .DynamicNodeRegistrationTimeout = Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
+        .NodeRegistrationTimeout =
+            Configs->StorageConfig->GetNodeRegistrationTimeout(),
         .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
         .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
         .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
@@ -974,6 +975,15 @@ void TBootstrapYdb::InitRdmaRequestServer()
 void TBootstrapYdb::SetupCellManager()
 {
     if (Configs->CellsConfig->GetCellsEnabled()) {
+        const auto& grpcConfig = Configs->CellsConfig->GetGrpcClientConfig();
+        TVector<NCloud::TCertificateFiles> certList {{
+            .PrivateKeyPath = grpcConfig.GetCertPrivateKeyFile(),
+            .CertChainPath  = grpcConfig.GetCertFile(),
+        }};
+        auto cellCertProvider = NCloud::CreateStaticCertificateProvider(
+            grpcConfig.GetRootCertsFile(),
+            std::move(certList));
+
         CellManager = CreateCellManager(
             Configs->CellsConfig,
             Timer,
@@ -982,6 +992,7 @@ void TBootstrapYdb::SetupCellManager()
             Monitoring,
             GetTraceSerializer(),
             ServerStats,
+            std::move(cellCertProvider),
             RdmaClient);
     } else {
         CellManager = NCells::CreateCellManagerStub();

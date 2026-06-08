@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dynamic_persistent_table_counters.h"
 #include "file_map_memory_limiter.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -138,6 +139,8 @@ public:
         ui32 Crc32 = 0;
     };
 
+    using TCounters = TDynamicPersistentTableCounters;
+
 private:
     enum class EDataRetrievalMode
     {
@@ -158,6 +161,11 @@ private:
     ui64 NextDataOffset = 0;
     ui64 HeadDataIndex = InvalidIndex;
     ui64 TailDataIndex = InvalidIndex;
+
+    ui64 ShrinkCount = 0;
+    ui64 ExpansionCount = 0;
+    ui64 CompactionCount = 0;
+    ui64 MemoryLimiterRejectionCount = 0;
 
     std::unique_ptr<TFileMap> FileMap;
     TDeque<ui64> FreeRecordIndexes;
@@ -332,7 +340,8 @@ public:
             TryCompactDataArea(dataSize);
             const ui64 requiredSize = NextDataOffset + dataSize;
             if (requiredSize > DataAreaSize) {
-                if (auto error = ExpandDataArea(requiredSize); HasError(error)) {
+                if (auto error = ExpandDataArea(requiredSize); HasError(error))
+                {
                     FreeRecordIndexes.push_back(index);
                     return error;
                 }
@@ -393,6 +402,18 @@ public:
         return NextFreeRecordIndex - FreeRecordIndexes.size();
     }
 
+    TCounters GetCounters() const
+    {
+        return {
+            .RawCapacityByteCount = GetFileMapSize(),
+            .RawUsedByteCount = GetUsedByteCount(),
+            .ShrinkCount = ShrinkCount,
+            .ExpansionCount = ExpansionCount,
+            .CompactionCount = CompactionCount,
+            .MemoryLimiterRejectionCount = MemoryLimiterRejectionCount,
+        };
+    }
+
     void TryDeallocateMemory()
     {
         if (!IsLowMemoryUsage()) {
@@ -404,7 +425,7 @@ public:
 
     void Clear()
     {
-        UpdateFileMapSize(GetFileMapSize(), 0);
+        const ui64 oldFileMapSize = GetFileMapSize();
 
         NextFreeRecordIndex = 0;
         NextDataOffset = 0;
@@ -414,6 +435,8 @@ public:
         FreeRecordIndexes.clear();
 
         FileMap->ResizeAndRemap(0, 0);
+        const ui64 newFileMapSize = GetFileMapSize();
+        UpdateFileMapSize(oldFileMapSize, newFileMapSize);
         FileMap.reset();
         Init();
     }
@@ -455,23 +478,6 @@ public:
     }
 
 private:
-    // TODO remove after migration is done
-    void MigrateDataOffsetsToAbsolute()
-    {
-        if (HeaderPtr->Version != 1) {
-            return;
-        }
-
-        for (ui64 index = 0; index < NextFreeRecordIndex; ++index) {
-            if (DescriptorsPtr[index].State == ERecordState::Free) {
-                continue;
-            }
-            DescriptorsPtr[index].DataOffset += DataAreaOffset;
-        }
-
-        HeaderPtr->Version = Version;
-    }
-
     ui64 CalcDataAreaOffset(ui64 maxRecords) const
     {
         return sizeof(THeader) + maxRecords * sizeof(TRecordDescriptor);
@@ -768,9 +774,8 @@ private:
             HeaderPtr->MaxRecords = MaxRecords;
         }
 
-        // TODO remove Version==1 after migration is done
         Y_ABORT_UNLESS(
-            HeaderPtr->Version == Version || HeaderPtr->Version == 1,
+            HeaderPtr->Version == Version,
             "Invalid header version %d",
             HeaderPtr->Version);
         Y_ABORT_UNLESS(
@@ -790,8 +795,6 @@ private:
         DataAreaSize = HeaderPtr->DataAreaSize;
 
         ResizeAndRemap();
-
-        MigrateDataOffsetsToAbsolute();
 
         ResetShrinkState();
 
@@ -957,19 +960,19 @@ private:
 
     ui64 CalcShrinkTargetSize()
     {
-        const ui64 live = GetLiveDataSize();
+        const ui64 used = GetUsedByteCount();
         const ui64 shrinkTriggerThreshold =
             PercentOf(DataAreaSize, Config.ShrinkTriggerPercent);
 
         ui64 reserve = Config.InitialDataAreaSize;
         const ui64 percentReserve =
-            PercentOf(live, Config.ShrinkReservePercent);
+            PercentOf(used, Config.ShrinkReservePercent);
         if (reserve < percentReserve) {
             reserve = percentReserve;
         }
 
-        if (live > shrinkTriggerThreshold &&
-            DataAreaSize - live >= Config.MaxDataAreaStepSize)
+        if (used > shrinkTriggerThreshold &&
+            DataAreaSize - used >= Config.MaxDataAreaStepSize)
         {
             const ui64 maxStepReserve = Config.MaxDataAreaStepSize / 2;
             if (reserve < maxStepReserve) {
@@ -981,7 +984,7 @@ private:
             reserve = Config.MaxDataAreaStepSize;
         }
 
-        ui64 target = live + reserve;
+        ui64 target = used + reserve;
         target = AlignUp(target, Config.InitialDataAreaSize);
 
         if (target > DataAreaSize) {
@@ -993,14 +996,14 @@ private:
 
     void ShrinkDataArea()
     {
-        if (GapSpaceSize != 0) {
-            CompactDataArea();
-        }
-
         const ui64 newDataAreaSize = CalcShrinkTargetSize();
         if (newDataAreaSize == DataAreaSize) {
             ResetShrinkState();
             return;
+        }
+
+        if (GapSpaceSize != 0) {
+            CompactDataArea();
         }
 
         DataAreaSize = newDataAreaSize;
@@ -1039,6 +1042,7 @@ private:
 
         NextDataOffset = newOffset;
         GapSpaceSize = 0;
+        ++CompactionCount;
     }
 
     void FinishDataAreaMove()
@@ -1077,6 +1081,7 @@ private:
         // This is intentionally a growth admission check, not a reservation.
         // Usage is charged after ResizeAndRemap() succeeds.
         if (auto error = CanGrowFileMapSize(newFileMapSize); HasError(error)) {
+            ++MemoryLimiterRejectionCount;
             return error;
         }
 
@@ -1123,18 +1128,18 @@ private:
         return FileMap ? FileMap->MappedSize() : 0;
     }
 
-    ui64 GetLiveDataSize() const
+    ui64 GetUsedByteCount() const
     {
         return NextDataOffset - GapSpaceSize;
     }
 
     bool IsLowMemoryUsage() const
     {
-        const ui64 live = GetLiveDataSize();
+        const ui64 used = GetUsedByteCount();
         const ui64 threshold =
             PercentOf(DataAreaSize, Config.ShrinkTriggerPercent);
-        return live <= threshold ||
-               (DataAreaSize - live >= Config.MaxDataAreaStepSize);
+        return used <= threshold ||
+               (DataAreaSize - used >= Config.MaxDataAreaStepSize);
     }
 
     void ResetShrinkState()
@@ -1147,7 +1152,13 @@ private:
         const ui64 oldFileMapSize = GetFileMapSize();
         FileMap->ResizeAndRemap(0, CalcFileSize(DataAreaSize));
         RefreshPointers();
-        UpdateFileMapSize(oldFileMapSize, GetFileMapSize());
+        const ui64 newFileMapSize = GetFileMapSize();
+        if (newFileMapSize > oldFileMapSize) {
+            ++ExpansionCount;
+        } else if (newFileMapSize < oldFileMapSize) {
+            ++ShrinkCount;
+        }
+        UpdateFileMapSize(oldFileMapSize, newFileMapSize);
     }
 
     void RefreshPointers()

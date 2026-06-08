@@ -43,20 +43,19 @@ runs:
       run: |
         which s3cmd || true
         which s3cmd || {
-          [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
-          touch updated
-          sudo apt-get -o Dpkg::Lock::Timeout=600 install -y --no-install-recommends s3cmd
+            [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
+            touch updated
+            sudo apt-get -o Dpkg::Lock::Timeout=600 install -y --no-install-recommends s3cmd
         }
         s3cmd --version
         which aws || true
         which aws || {
-          [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
+            [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
         }
         aws --version
-
     - name: configure s3cmd and awscli
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
@@ -79,7 +78,7 @@ runs:
         echo "S3CMD_CONFIG=$S3CMD_CONFIG" >> $GITHUB_ENV
         export GITHUB_WORKFLOW_NO_SPACES=${GITHUB_WORKFLOW// /-}
         export S3_ENDPOINT_NO_PROTOCOL=$(echo $S3_ENDPOINT | sed 's/https\?:\/\///')
-        cat <<EOF | sudo -E -H -u $USER tee $S3CMD_CONFIG
+        cat << EOF | sudo -E -H -u $USER tee $S3CMD_CONFIG
         [default]
         access_key = ${S3_KEY_ID}
         secret_key = ${S3_SECRET_ACCESS_KEY}
@@ -89,12 +88,12 @@ runs:
         EOF
 
         sudo -E -H -u $USER mkdir -p /home/$USER/.aws/
-        cat <<EOF | sudo -E -H -u $USER tee /home/$USER/.aws/credentials
+        cat << EOF | sudo -E -H -u $USER tee /home/$USER/.aws/credentials
         [default]
         aws_access_key_id = ${S3_KEY_ID}
         aws_secret_access_key = ${S3_SECRET_ACCESS_KEY}
         EOF
-        cat <<EOF | sudo -E -H -u $USER tee /home/$USER/.aws/config
+        cat << EOF | sudo -E -H -u $USER tee /home/$USER/.aws/config
         [default]
         region = ${S3_REGION}
         endpoint_url=$S3_ENDPOINT
@@ -105,12 +104,12 @@ runs:
         EOF
 
         sudo mkdir -p /root/.aws/
-        cat <<EOF | sudo tee /root/.aws/credentials
+        cat << EOF | sudo tee /root/.aws/credentials
         [default]
         aws_access_key_id = ${S3_KEY_ID}
         aws_secret_access_key = ${S3_SECRET_ACCESS_KEY}
         EOF
-        cat <<EOF | sudo tee /root/.aws/config
+        cat << EOF | sudo tee /root/.aws/config
         [default]
         region = ${S3_REGION}
         endpoint_url=$S3_ENDPOINT
@@ -124,34 +123,33 @@ runs:
 
         # shellcheck disable=SC2195
         case "$BUILD_PRESET" in
-          relwithdebinfo|release)
-            ;;
-          debug)
-            folder+="-debug"
-            ;;
-          release-asan)
-            folder+="-asan"
-            ;;
-          release-tsan)
-            folder+="-tsan"
-            ;;
-          release-msan)
-            folder+="-msan"
-            ;;
-          release-ubsan)
-            folder+="-ubsan"
-            ;;
-          *)
-            echo "Invalid preset: $BUILD_PRESET"
-            exit 1
-            ;;
+            relwithdebinfo | release) ;;
+
+            debug)
+                folder+="-debug"
+                ;;
+            release-asan)
+                folder+="-asan"
+                ;;
+            release-tsan)
+                folder+="-tsan"
+                ;;
+            release-msan)
+                folder+="-msan"
+                ;;
+            release-ubsan)
+                folder+="-ubsan"
+                ;;
+            *)
+                echo "Invalid preset: $BUILD_PRESET"
+                exit 1
+                ;;
         esac
         # shellcheck disable=SC2129
         echo "S3_BUCKET_PATH=s3://${S3_BUCKET}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
         echo "S3_URL_PREFIX=${S3_ENDPOINT}/${S3_BUCKET}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_PREFIX=https://${S3_BUCKET}.${S3_WEBSITE_SUFFIX}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_SUFFIX=${S3_WEBSITE_SUFFIX}" >> $GITHUB_ENV
-        
     - name: test s3cmd
       shell: bash
       run: sudo -E -H -u $USER s3cmd ls

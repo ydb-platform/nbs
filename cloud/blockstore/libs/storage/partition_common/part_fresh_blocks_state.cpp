@@ -26,7 +26,7 @@ namespace {
 template <typename T>
 T SafeIncrement(T counter, size_t value)
 {
-    Y_ABORT_UNLESS(counter < Max<T>() - value);
+    Y_ABORT_UNLESS(value <= Max<T>() - counter);
     return counter + value;
 }
 

@@ -391,6 +391,8 @@ void TVolumeActor::CompleteUpdateConfig(
         BecomeAux(ctx, STATE_WORK);
     }
 
+    RegisterVolumeHealthSyncActorIfNeeded(ctx);
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,

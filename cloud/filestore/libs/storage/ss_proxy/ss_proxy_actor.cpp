@@ -27,6 +27,7 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
         .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
         .SchemeShardDir = Config->GetSchemeShardDir(),
         .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+        .UseSchemeCache = Config->GetUseSchemeCache(),
     });
     StorageSSProxy = NCloud::Register(ctx, std::move(actor));
 }

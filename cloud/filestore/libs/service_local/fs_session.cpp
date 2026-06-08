@@ -43,6 +43,15 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetAsyncDestroyHandleEnabled());
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
+        // The local service publishes only the legacy ZeroCopyEnabled feature,
+        // which the FUSE config translates into both ZeroCopyReadEnabled and
+        // ZeroCopyWriteEnabled (see BuildFileSystemConfig in vfs_fuse/loop.cpp).
+        // Local zero-copy is therefore all-or-nothing for now.
+        //
+        // Do NOT remove this until the local service grows explicit
+        // ZeroCopyReadEnabled / ZeroCopyWriteEnabled config knobs and publishes
+        // them as features - otherwise VFS would lose the only signal that
+        // enables zero-copy for the local service.
         features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
         features->SetGuestPageCacheDisabled(
             Config->GetGuestPageCacheDisabled());
@@ -70,6 +79,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         if (directoryHandleStorageEnabled) {
             features->SetDirectoryHandlesTableSize(
                 Config->GetDirectoryHandlesTableSize());
+            features->SetDirectoryHandlesPersistentHandleMaxSize(
+                Config->GetDirectoryHandlesPersistentHandleMaxSize());
         }
         features->SetGuestHandleKillPrivV2Enabled(
             Config->GetGuestHandleKillPrivV2Enabled(cloudId, folderId, fsId));

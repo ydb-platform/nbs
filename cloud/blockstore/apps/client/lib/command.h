@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
 #include <library/cpp/getopt/small/last_getopt.h>
@@ -70,6 +71,7 @@ protected:
     TClientAppConfigPtr ClientConfig;
     IClientPtr Client;
     IBlockStorePtr ClientEndpoint;
+    ICertificateProviderPtr CertificateProvider;
 
     IThrottlerPtr Throttler;
 

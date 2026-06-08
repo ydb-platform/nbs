@@ -712,7 +712,7 @@ private:
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
-    TDirectoryHandleStatsPtr DirectoryHandleStats;
+    TDirectoryHandleModuleStatsPtr DirectoryHandleStats;
     TFileSystemConfigPtr FileSystemConfig;
 
     THolder<TFileLock> HandleOpsQueueFileLock;
@@ -1087,13 +1087,14 @@ private:
                     Config->GetClientId().Quote().c_str()));
             }
 
+            IDirectoryHandleStorageStatsPtr directoryHandleStorageStats;
             TDirectoryHandleStoragePtr directoryHandleStorage;
-            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
-                if (Config->GetDirectoryHandlesStoragePath()) {
-                    auto path =
-                        TFsPath(Config->GetDirectoryHandlesStoragePath()) /
-                        FileSystemConfig->GetFileSystemId() / SessionId;
+            if (Config->GetDirectoryHandlesStoragePath()) {
+                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                            FileSystemConfig->GetFileSystemId() / SessionId;
+                auto filePath = path / DirectoryHandleStorageFileName;
 
+                if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
                     auto error = CreateAndLockFile(
                         path,
                         DirectoryHandleStorageFileName,
@@ -1104,27 +1105,53 @@ private:
                         return error;
                     }
 
+                    directoryHandleStorageStats =
+                        CreateDirectoryHandleStorageStats(Timer);
+
                     directoryHandleStorage = CreateDirectoryHandleStorage(
-                        Log,
-                        path / DirectoryHandleStorageFileName,
-                        FileSystemConfig->GetDirectoryHandlesTableSize(),
-                        Config->GetDirectoryHandlesInitialDataSize(),
-                        Config->GetDirectoryHandlesMaxDataAreaStepSize(),
-                        FileSystemConfig->GetMaxBufferSize(),
-                        FileMapMemoryLimiter);
+                        {.Log = Log,
+                         .FileMapMemoryLimiter = FileMapMemoryLimiter,
+                         .Stats = directoryHandleStorageStats,
+                         .FilePath = filePath,
+                         .MaxRecords =
+                             FileSystemConfig->GetDirectoryHandlesTableSize(),
+                         .InitialDataAreaSize =
+                             Config->GetDirectoryHandlesInitialDataSize(),
+                         .MaxDataAreaStepSize =
+                             Config->GetDirectoryHandlesMaxDataAreaStepSize(),
+                         .InitialDataMoveBufferSize =
+                             FileSystemConfig->GetMaxBufferSize(),
+                         .PersistentHandleMaxSize =
+                             FileSystemConfig
+                                 ->GetDirectoryHandlesPersistentHandleMaxSize()});
 
                     DirectoryHandleStorageInitialized = true;
-                } else {
-                    STORAGE_ERROR(
-                        "[f:%s][c:%s] Error initializing "
-                        "DirectoryHandleStorage: DirectoryHandlesStoragePath "
-                        "is not set",
-                        Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str());
+                } else if (filePath.Exists()) {
+                    // The feature is disabled but a file from a previous
+                    // session with it enabled is still on disk. The file
+                    // holds only a derived view of the directory listing,
+                    // so it can be removed without any drain.
+                    try {
+                        NFs::Remove(filePath);
+                    } catch (const TSystemError& err) {
+                        ReportDirectoryHandlesStorageError(
+                            TStringBuilder()
+                            << "Failed to remove orphan directory handles "
+                            << filePath << ": " << err.AsStrBuf());
+                    }
                 }
+            } else if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
+                STORAGE_ERROR(
+                    "[f:%s][c:%s] Error initializing "
+                    "DirectoryHandleStorage: DirectoryHandlesStoragePath "
+                    "is not set",
+                    Config->GetFileSystemId().Quote().c_str(),
+                    Config->GetClientId().Quote().c_str());
             }
 
-            DirectoryHandleStats = CreateDirectoryHandleStats(Timer);
+            DirectoryHandleStats = CreateDirectoryHandleStats(
+                Timer,
+                std::move(directoryHandleStorageStats));
 
             ModuleStatsRegistry->Register(
                 {.FileSystemId = Config->GetFileSystemId(),
@@ -1257,7 +1284,10 @@ private:
             config.SetDirectoryHandlesTableSize(directoryHandlesTableSize);
         }
 
-        config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
+        if (features.HasDirectoryHandlesPersistentHandleMaxSize()) {
+            config.SetDirectoryHandlesPersistentHandleMaxSize(
+                features.GetDirectoryHandlesPersistentHandleMaxSize());
+        }
 
         config.SetGuestPageCacheDisabled(features.GetGuestPageCacheDisabled());
         config.SetExtendedAttributesDisabled(
@@ -1267,8 +1297,14 @@ private:
         config.SetMaxBackground(features.GetMaxBackground());
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
-        config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
-        config.SetZeroCopyReadEnabled(features.GetZeroCopyReadEnabled());
+        // The legacy ZeroCopyEnabled feature is a backward compatible alias
+        // that enables both read and write zero copy.
+        const bool zeroCopyEnabled = features.GetZeroCopyEnabled();
+        config.SetZeroCopyEnabled(zeroCopyEnabled);
+        config.SetZeroCopyWriteEnabled(
+            features.GetZeroCopyWriteEnabled() || zeroCopyEnabled);
+        config.SetZeroCopyReadEnabled(
+            features.GetZeroCopyReadEnabled() || zeroCopyEnabled);
 
         config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
 

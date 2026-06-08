@@ -32,6 +32,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -63,6 +64,21 @@ const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TDuration WaitTimeout = TDuration::Seconds(10);
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 TNetworkAddress CreateListenAddress(const TOptions& options)
 {
@@ -222,6 +238,10 @@ void TBootstrap::Start()
         Monitoring->Start();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
+
     if (Client) {
         Client->Start();
     }
@@ -331,6 +351,10 @@ void TBootstrap::Stop()
         Client->Stop();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
+    }
+
     if (Monitoring) {
         Monitoring->Stop();
     }
@@ -374,13 +398,16 @@ void TBootstrap::InitControlClient()
         VolumeStats,
         ClientConfig->GetInstanceId());
 
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
+
     auto [client, error] = CreateClient(
         ClientConfig,
         Timer,
         Scheduler,
         Logging,
         Monitoring,
-        ClientStats);
+        ClientStats,
+        CertificateProvider);
 
     Y_ABORT_UNLESS(!HasError(error));
     Client = std::move(client);

@@ -18,6 +18,7 @@
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
@@ -48,6 +49,7 @@ protected:
     ui32 MonitoringPort = 0;
     ui32 MonitoringThreads = 0;
     IMonitoringServicePtr Monitoring;
+    ICertificateProviderPtr CertificateProvider;
 
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;

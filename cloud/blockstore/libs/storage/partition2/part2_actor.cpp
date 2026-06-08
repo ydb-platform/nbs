@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_base_disk_keep_alive.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -318,11 +319,36 @@ void TPartitionActor::Activate(const TActorContext& ctx)
     EnqueueFlushIfNeeded(ctx);
     EnqueueCompactionIfNeeded(ctx);
 
+    StartBaseDiskKeepAliveActorIfNeeded(ctx);
+
     State->FinishLoadState();
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] State initialization finished",
         TabletID());
+}
+
+void TPartitionActor::StartBaseDiskKeepAliveActorIfNeeded(
+    const TActorContext& ctx)
+{
+    // Keep the pipe to the base-disk volume warm so that the first base-disk
+    // read after an idle period does not pay the cold pipe re-establishment
+    // latency. Ping twice per inactivity timeout to refresh the pipe before
+    // VolumeProxy would close it as idle.
+    const auto keepAliveInterval =
+        Config->GetVolumeProxyPipeInactivityTimeout() / 2;
+    if (Config->GetBaseDiskPipeKeepAliveEnabled() && State->GetBaseDiskId() &&
+        keepAliveInterval)
+    {
+        auto actorId = NCloud::Register<TBaseDiskKeepAliveActor>(
+            ctx,
+            State->GetBaseDiskId(),
+            keepAliveInterval,
+            LogTitle.GetChildWithTags(
+                GetCycleCount(),
+                {{"BaseDiskId", State->GetBaseDiskId()}}));
+        Actors.insert(actorId);
+    }
 }
 
 void TPartitionActor::Suicide(const TActorContext& ctx)

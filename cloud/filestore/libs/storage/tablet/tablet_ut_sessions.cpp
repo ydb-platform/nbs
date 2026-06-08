@@ -827,6 +827,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetServerWriteBackCacheEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
+        config.SetDirectoryHandlesStorageEnabled(true);
+        config.SetDirectoryHandlesTableSize(1000);
+        config.SetDirectoryHandlesPersistentHandleMaxSize(4_GB);
         config.SetZeroCopyWriteEnabled(true);
         config.SetGuestHandleKillPrivV2Enabled(true);
         config.SetGuestPosixAclEnabled(true);
@@ -834,6 +837,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetBlockChecksumsInProfileLogEnabled(true);
         config.SetReadBlobDisabled(true);
         config.SetWriteBlobDisabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
 
         features.SetTwoStageReadEnabled(true);
         features.SetTwoStageReadThreshold(64_KB);
@@ -851,6 +855,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetServerWriteBackCacheEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
+        features.SetDirectoryHandlesStorageEnabled(true);
+        features.SetDirectoryHandlesTableSize(1000);
+        features.SetDirectoryHandlesPersistentHandleMaxSize(4_GB);
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
         features.SetGuestPosixAclEnabled(false);
@@ -858,6 +865,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetBlockChecksumsInProfileLogEnabled(true);
         features.SetReadBlobDisabled(true);
         features.SetWriteBlobDisabled(true);
+        features.SetUseCustomReadDataResponseParser(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
@@ -998,7 +1006,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         const ui64 requestId = 111;
         const ui32 shardNo = 222;
-        tablet.ConfigureAsShard(shardNo);
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
 
         {
             tablet.SendCreateNodeRequest(

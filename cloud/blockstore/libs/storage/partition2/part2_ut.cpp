@@ -1024,6 +1024,10 @@ private:
     void HandleGetChangedBlocksRequest(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandlePingRequest(
+        const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1149,11 +1153,25 @@ void TTestVolumeProxyActor::HandleGetChangedBlocksRequest(
     ctx.Send(ev->Sender, response.release());
 }
 
+void TTestVolumeProxyActor::HandlePingRequest(
+    const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    UNIT_ASSERT_VALUES_EQUAL(BaseDiskId, msg->DiskId);
+
+    ctx.Send(
+        ev->Sender,
+        std::make_unique<TEvVolumeProxy::TEvKeepAliveResponse>().release());
+}
+
 STFUNC(TTestVolumeProxyActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocksRequest);
         HFunc(TEvService::TEvGetChangedBlocksRequest, HandleGetChangedBlocksRequest);
+        HFunc(TEvVolumeProxy::TEvKeepAliveRequest, HandlePingRequest);
 
         default:
             HandleUnexpectedEvent(
@@ -1244,12 +1262,13 @@ TPartitionWithRuntime SetupOverlayPartition(
     ui64 baseTabletId,
     const TPartitionContent& basePartitionContent = {},
     TMaybe<ui32> channelsCount = {},
-    ui32 blockSize = DefaultBlockSize)
+    ui32 blockSize = DefaultBlockSize,
+    const NProto::TStorageServiceConfig& config = DefaultConfig())
 {
     TPartitionWithRuntime result;
 
     result.Runtime = PrepareTestActorRuntime(
-        DefaultConfig(),
+        config,
         10240,
         channelsCount,
         {
@@ -7831,6 +7850,79 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(
             expectedTraceId.GetTimeToLive(),
             traceId->GetTimeToLive());
+    }
+
+    Y_UNIT_TEST(ShouldKeepBaseDiskPipeAliveWhenEnabled)
+    {
+        auto config = DefaultConfig();
+        config.SetBaseDiskPipeKeepAliveEnabled(true);
+
+        const auto keepAliveInterval = TDuration::Seconds(2);
+        config.SetVolumeProxyPipeInactivityTimeout(
+            keepAliveInterval.MilliSeconds() * 2);
+
+        auto setup = SetupOverlayPartition(
+            TestTabletId,
+            TestTabletId2,
+            {},   // basePartitionContent
+            {},   // channelsCount
+            DefaultBlockSize,
+            config);
+        auto& runtime = *setup.Runtime;
+
+        ui64 pingCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvVolumeProxy::EvKeepAliveRequest) {
+                    ++pingCount;
+                }
+                return false;
+            });
+
+        // Drive simulated time across several intervals; the keep-alive actor
+        // must keep pinging the base-disk volume periodically.
+        for (ui32 i = 0; i < 3; ++i) {
+            runtime.AdvanceCurrentTime(keepAliveInterval);
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT_GE(pingCount, 2u);
+    }
+
+    Y_UNIT_TEST(ShouldNotKeepBaseDiskPipeAliveWhenDisabled)
+    {
+        auto config = DefaultConfig();
+        config.SetBaseDiskPipeKeepAliveEnabled(false);
+
+        const auto pipeInactivityInterval = TDuration::Seconds(5);
+        config.SetVolumeProxyPipeInactivityTimeout(
+            pipeInactivityInterval.MilliSeconds());
+
+        auto setup = SetupOverlayPartition(
+            TestTabletId,
+            TestTabletId2,
+            {},
+            {},
+            DefaultBlockSize,
+            config);
+        auto& runtime = *setup.Runtime;
+
+        ui64 pingCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvVolumeProxy::EvKeepAliveRequest) {
+                    ++pingCount;
+                }
+                return false;
+            });
+
+        runtime.AdvanceCurrentTime(
+            pipeInactivityInterval + TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, pingCount);
     }
 }
 

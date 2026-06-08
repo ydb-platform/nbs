@@ -19,11 +19,13 @@
 #include <library/cpp/testing/gtest/gtest.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
 #include <util/system/tempfile.h>
+#include <util/system/thread.h>
 
 #include <vhost/blockdev.h>
 
@@ -1265,6 +1267,9 @@ private:
     std::atomic<ui64> SleepTimeMillis;
     std::atomic<ui64> TotalSleepTimeMillis;
 
+    TAdaptiveLock ThreadIdsLock;
+    THashSet<ui64> ThreadIds;
+
     IEncryptorPtr Encryptor;
 
 public:
@@ -1279,6 +1284,11 @@ public:
         const auto sleepTime = SleepTimeMillis.load();
         Sleep(TDuration::MilliSeconds(sleepTime));
         TotalSleepTimeMillis += sleepTime;
+
+        with_lock(ThreadIdsLock) {
+            ThreadIds.insert(TThread::CurrentThreadId());
+        }
+
         return Encryptor->Encrypt(src, dst, blockIndex);
     }
 
@@ -1288,6 +1298,11 @@ public:
         const auto sleepTime = SleepTimeMillis.load();
         Sleep(TDuration::MilliSeconds(sleepTime));
         TotalSleepTimeMillis += sleepTime;
+
+        with_lock (ThreadIdsLock) {
+            ThreadIds.insert(TThread::CurrentThreadId());
+        }
+
         return Encryptor->Decrypt(src, dst, blockIndex);
     }
 
@@ -1299,6 +1314,20 @@ public:
     void SetSleepTime(TDuration sleepTime)
     {
         SleepTimeMillis.store(sleepTime.MilliSeconds());
+    }
+
+    THashSet<ui64> GetThreadIds() const
+    {
+        with_lock(ThreadIdsLock) {
+            return ThreadIds;
+        }
+    }
+
+    void ClearThreadIds()
+    {
+        with_lock (ThreadIdsLock) {
+            ThreadIds.clear();
+        }
     }
 };
 
@@ -1324,6 +1353,20 @@ public:
         auto* slowEncryptor = dynamic_cast<TSlowEncryptor*>(Encryptor.get());
         EXPECT_TRUE(slowEncryptor != nullptr);
         slowEncryptor->SetSleepTime(sleepTime);
+    }
+
+    THashSet<ui64> GetThreadIds() const
+    {
+        auto* slowEncryptor = dynamic_cast<TSlowEncryptor*>(Encryptor.get());
+        EXPECT_TRUE(slowEncryptor != nullptr);
+        return slowEncryptor->GetThreadIds();
+    }
+
+    void ClearThreadIds()
+    {
+        auto* slowEncryptor = dynamic_cast<TSlowEncryptor*>(Encryptor.get());
+        EXPECT_TRUE(slowEncryptor != nullptr);
+        slowEncryptor->ClearThreadIds();
     }
 };
 
@@ -1368,6 +1411,7 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
     }
 
     SetSleepTime(TDuration::MilliSeconds(100));
+    ClearThreadIds();
 
     // read data
     {
@@ -1391,14 +1435,8 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
             readOpsResult.push_back(readOp);
         }
 
-        auto before = TInstant::Now();
-
         auto waitResult = NThreading::WaitAll(readOpsResult);
-
         waitResult.Wait();
-
-        auto after = TInstant::Now();
-        auto duration = after - before;
 
         for (size_t i = 0; i < readOpsResult.size(); ++i) {
             auto readOpResult = readOpsResult[i].GetValueSync();
@@ -1408,14 +1446,8 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
             EXPECT_EQ(makePatten(i), readData);
         }
 
-        auto expectedSleepTime = (GetTotalSleepTime() / ThreadCount) * 1.1;
-
-#if !defined(_san_enabled_)
-        EXPECT_LT(duration, expectedSleepTime);
-#else
-        Y_UNUSED(duration);
-        Y_UNUSED(expectedSleepTime);
-#endif
+        auto threadIdsCalledDecrypt = GetThreadIds();
+        EXPECT_EQ(threadIdsCalledDecrypt.size(), ThreadCount);
     }
 
     SetSleepTime(TDuration::Zero());

@@ -28,6 +28,7 @@ class TTestScenarioBase: public ITestScenario
 {
 protected:
     IConfigHolderPtr ConfigHolder;
+    const TString LogTag;
     const TLog Log;
 
     ui64 FileSize = 0;
@@ -39,6 +40,7 @@ protected:
     ui64 MaxWriteByteCount = 0;
     ui64 MinRegionByteCount = 0;
     ui64 MaxRegionByteCount = 0;
+    bool DisableParallelReadWrite = false;
 
 private:
     TVector<std::unique_ptr<ITestScenarioWorker>> Workers;
@@ -54,6 +56,7 @@ protected:
     TTestScenarioBase(
         const TTestScenarioBaseConfig& config,
         IConfigHolderPtr configHolder,
+        const TString& logTag,
         const TLog& log);
 
 public:

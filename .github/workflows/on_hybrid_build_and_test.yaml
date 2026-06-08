@@ -157,8 +157,8 @@ jobs:
         shell: bash
         run: |
           if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-            echo "Removing stale rebase state left on runner checkout"
-            rm -rf .git/rebase-merge .git/rebase-apply
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
           fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
@@ -252,7 +252,6 @@ jobs:
         run: |
           echo "sleeping ${{ needs.build-and-test.outputs.sleep_after_tests }}s"
           /usr/bin/sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
-
   release-runner:
     name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
     needs:
@@ -276,8 +275,8 @@ jobs:
         shell: bash
         run: |
           if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-            echo "Removing stale rebase state left on runner checkout"
-            rm -rf .git/rebase-merge .git/rebase-apply
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
           fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"

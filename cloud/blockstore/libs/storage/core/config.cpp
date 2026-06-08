@@ -201,10 +201,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionRangeGarbageThreshold,    ui32,      200                    )\
     xxx(MaxAffectedBlocksPerCompaction,     ui32,      8192                   )\
     xxx(V1GarbageCompactionEnabled,         bool,      false                  )\
+    xxx(IgnoringZeroedCompactionEnabled,    bool,      false                  )\
     xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
-    xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
+    xxx(MaxCompactionExecTimePerSecond,          TDuration, TDuration::Zero() )\
+    xxx(MaxCompactionExecTimePerSecondForZeroed, TDuration, TDuration::Zero() )\
     xxx(CompactionScoreHistorySize,             ui32,   10                    )\
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
@@ -511,6 +513,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, Seconds(30)     )\
                                                                                \
     xxx(CoolDownTimeoutBeforeSecureErase,          TDuration, Seconds(0)      )\
+    xxx(VolumeHealthNotificationEnabled,           bool,      false           )\
     xxx(NonReplicatedSecureEraseTimeout,           TDuration, Minutes(10)     )\
     xxx(MaxDevicesToErasePerDeviceNameForDefaultPoolKind,   ui32,   100       )\
     xxx(MaxDevicesToErasePerDeviceNameForLocalPoolKind,     ui32,   100       )\
@@ -678,6 +681,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
+    xxx(BaseDiskPipeKeepAliveEnabled,         bool,        false              )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
     xxx(ResourceMetricsUpdateInterval,        TDuration,   Seconds(1)         )\

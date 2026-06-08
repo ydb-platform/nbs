@@ -7,7 +7,9 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -73,7 +75,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
 
@@ -130,7 +132,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
         {
-            Y_UNUSED(request);
+            UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
             NProto::TPingResponse response;
 
@@ -195,7 +197,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
         {
-            Y_UNUSED(request);
+            UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
             NProto::TPingResponse response;
 
@@ -269,7 +271,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
         {
-            Y_UNUSED(request);
+            UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
             NProto::TPingResponse response;
 
@@ -331,7 +333,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
+
                 ++requestsCount;
 
                 NProto::TPingResponse response;
@@ -502,7 +505,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto client = std::make_shared<TTestService>();
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
                 return promise.GetFuture();
             };
 
@@ -559,7 +562,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto client = std::make_shared<TTestService>();
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
                 auto& error = *response.MutableError();
@@ -1245,7 +1248,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 return MakeFuture<NProto::TPingResponse>(
                     TErrorResponse(E_REJECTED));
@@ -1355,7 +1358,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
                 if (!requestCount++) {
@@ -1432,7 +1435,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
                 if (!requestCount++) {
@@ -1493,6 +1496,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
+
                 const auto& headers = request->GetHeaders();
                 const auto requestTimeoutMsec = headers.GetRequestTimeout();
                 UNIT_ASSERT_EQUAL(

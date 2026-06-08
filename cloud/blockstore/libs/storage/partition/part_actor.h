@@ -178,9 +178,11 @@ private:
 
     NActors::TActorId FreshBlocksWriter;
 
+    NActors::TActorId BaseDiskKeepAliveActorId;
+
     TPartitionThreadSafeStatePtr SharedState;
 
-    TRequestInfoPtr Poisoner;
+    TVector<TRequestInfoPtr> PendingPoisonPills;
 
 public:
     TPartitionActor(
@@ -753,6 +755,8 @@ private:
 
     void MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx);
     void ClearBaseDiskIdToTabletIdMapping(const NActors::TActorContext& ctx);
+
+    void StartBaseDiskKeepAliveActorIfNeeded(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);

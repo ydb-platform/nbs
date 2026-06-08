@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/libs/storage/fastshard/server/server.h>
 
 #include <cloud/storage/core/libs/kikimr/public.h>
 
@@ -22,6 +23,7 @@ NActors::IActorPtr CreateIndexTablet(
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
     TSystemCountersPtr systemCounters,
-    NMetrics::IMetricsRegistryPtr metricsRegistry);
+    NMetrics::IMetricsRegistryPtr metricsRegistry,
+    NFastShard::IServerPtr fastShardServer);
 
 }   // namespace NCloud::NFileStore::NStorage

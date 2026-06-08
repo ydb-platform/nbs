@@ -10,15 +10,21 @@ apt-get install qemu-kvm
 usermod -a -G kvm $USER
 ```
 
+### 3. clone nbs repository and submodules
+```
+git clone --recurse-submodules git@github.com:ydb-platform/nbs.git
+```
+
+If you already cloned the repository without submodules, run the following command from the repository root folder:
+```
+git submodule update --init
+```
+
 # How to build and run
 
 ### 1. Building
 To build run the following command from the repository root folder:
 
-```bash
-./ya make -r -- cloud/filestore/buildall -D CFLAGS="-fno-omit-frame-pointer"
-```
-or
 ```bash
 ./ya make --build=profile -- cloud/filestore/buildall
 ```

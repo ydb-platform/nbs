@@ -32,6 +32,8 @@ constexpr TTestScenarioBaseConfig BaseConfig = {
 
 constexpr size_t RegionBlockByteCount = 1_KB;
 
+constexpr size_t InvalidRegionIndex = Max<size_t>();
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -165,6 +167,12 @@ struct TReadRegionInfo
     TRegionMetadata AfterRead;
 };
 
+struct TRegionUsage
+{
+    size_t ReadCount = 0;
+    size_t WriteCount = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class T>
@@ -222,19 +230,26 @@ private:
 
     TMutex Lock;
     TVector<TRegionMetadata> RegionMetadata;
-    // Workers are not allowed to concurrently write to the same region.
-    // When a worker starts writing to a region, it sets the corresponding flag
-    // to true. When the write is complete, the flag is reset to false.
-    TVector<bool> RegionLockedForWriteFlags;
+
+    // Used to prevent concurrent reads or writes.
+    // Current restrictions:
+    // - no more than one worker can write the same region;
+    // - if DisableParallelReadWrite is set: the same region cannot be
+    //   simultaneously read and written.
+    TVector<TRegionUsage> RegionUsage;
+
     std::atomic<ui64> NextSeqNum = 0;
     ui64 FileSize = 0;
 
     std::atomic<ui64> ValidationOffset = 0;
     std::atomic<ui64> ValidatedByteCount = 0;
-    bool ShouldValidate = false;
+    std::atomic<bool> ShouldValidate = false;
 
 public:
-    TUnalignedTestScenario(IConfigHolderPtr configHolder, const TLog& log);
+    TUnalignedTestScenario(
+        IConfigHolderPtr configHolder,
+        const TString& logTag,
+        const TLog& log);
 
 private:
     ui64 GetNextRegionByteCount(ui64 remainingFileSize) const;
@@ -244,14 +259,16 @@ private:
     bool InitialValidationInProgress() const;
 
     void Read(IService& service, TVector<char>& readBuffer);
-    void Read(
+    bool Read(
         IService& service,
         ui64 offset,
         ui64 length,
         bool isInitialValidation,
         TVector<char>& readBuffer);
-    TVector<TReadRegionInfo> GetReadRegions(ui64 offset, ui64 length) const;
-    void UpdateReadRegions(TVector<TReadRegionInfo>& regions) const;
+
+    TVector<TReadRegionInfo> GetAndLockReadRegions(ui64 offset, ui64 length);
+    void UpdateAndUnlockReadRegions(TVector<TReadRegionInfo>& regions);
+
     void ValidateReadData(
         IService& service,
         TStringBuf readBuffer,
@@ -272,8 +289,9 @@ private:
         size_t index,
         TVector<char>& writeBuffer);
     void WriteEnd(IService& service, size_t index);
-    size_t AcquireRandomRegion();
-    void ReleaseRegion(size_t index);
+
+    bool CanReadRegion(const TRegionUsage& regionUsage) const;
+    bool CanWriteRegion(const TRegionUsage& regionUsage) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -335,7 +353,13 @@ public:
 
             case EOperation::WriteBegin:
                 WriteRegionIndex = TestScenario->WriteBegin(service);
-                Operation = EOperation::WriteRegionData;
+                if (WriteRegionIndex == InvalidRegionIndex) {
+                    // No regions are available for writing, will read instead
+                    TestScenario->Read(service, ReadBuffer);
+                    Operation = EOperation::Idle;
+                } else {
+                    Operation = EOperation::WriteRegionData;
+                }
                 break;
 
             case EOperation::WriteRegionData:
@@ -374,8 +398,9 @@ public:
 
 TUnalignedTestScenario::TUnalignedTestScenario(
         IConfigHolderPtr configHolder,
+        const TString& logTag,
         const TLog& log)
-    : TTestScenarioBase(BaseConfig, std::move(configHolder), log)
+    : TTestScenarioBase(BaseConfig, std::move(configHolder), logTag, log)
 {
     auto& config = ConfigHolder->GetConfig();
     for (ui32 i = 0; i < config.GetIoDepth(); ++i) {
@@ -417,8 +442,8 @@ bool TUnalignedTestScenario::GenerateRegionMetadata()
 
     if (size < minSize) {
         STORAGE_ERROR(
-            "File size " << size << " is less than the minimal allowed size "
-                         << minSize);
+            LogTag << " File size " << size
+                   << " is less than the minimal allowed size " << minSize);
         return false;
     }
 
@@ -455,19 +480,19 @@ bool TUnalignedTestScenario::ValidateRegionMetadata() const
         const auto& metadata = RegionMetadata[i];
         if (metadata.Offset != offset) {
             STORAGE_ERROR(
-                "File format error: region #"
-                << i << " is not contiguous (expected offset " << offset
-                << ", found " << metadata.Offset << ")");
+                LogTag << " File format error: region #" << i
+                       << " is not contiguous (expected offset " << offset
+                       << ", found " << metadata.Offset << ")");
             return false;
         }
         if (metadata.Offset > FileSize ||
             metadata.ByteCount > FileSize - metadata.Offset)
         {
             STORAGE_ERROR(
-                "File format error: region #"
-                << i << " points outside the file (offset " << metadata.Offset
-                << ", size " << metadata.ByteCount << ", file size " << FileSize
-                << ")");
+                LogTag << " File format error: region #" << i
+                       << " points outside the file (offset " << metadata.Offset
+                       << ", size " << metadata.ByteCount << ", file size "
+                       << FileSize << ")");
             return false;
         }
         offset += metadata.ByteCount;
@@ -482,14 +507,14 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
 
     TFileHeader header;
     if (file.Read(&header, sizeof(TFileHeader)) != sizeof(TFileHeader)) {
-        STORAGE_ERROR("Cannot read file header");
+        STORAGE_ERROR(LogTag << " Cannot read file header");
         return false;
     }
 
     if (header.Magic == TFileHeader::ExpectedMagic) {
         auto actualCrc32 = Crc32c(&header, offsetof(TFileHeader, Crc32));
         if (header.Crc32 != actualCrc32) {
-            STORAGE_ERROR("Header CRC mismatch");
+            STORAGE_ERROR(LogTag << " Header CRC mismatch");
             return false;
         }
 
@@ -498,7 +523,7 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
             if (file.Read(&metadata, sizeof(TRegionMetadata)) !=
                 sizeof(TRegionMetadata))
             {
-                STORAGE_ERROR("Cannot read test metadata");
+                STORAGE_ERROR(LogTag << " Cannot read test metadata");
                 return false;
             }
         }
@@ -513,7 +538,7 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
         header.RegionCount = RegionMetadata.size();
         header.Crc32 = Crc32c(&header, offsetof(TFileHeader, Crc32));
         if (file.Write(&header, sizeof(TFileHeader)) != sizeof(TFileHeader)) {
-            STORAGE_ERROR("Cannot write file header");
+            STORAGE_ERROR(LogTag << " Cannot write file header");
             return false;
         }
 
@@ -521,7 +546,7 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
             if (file.Write(&metadata, sizeof(TRegionMetadata)) !=
                 sizeof(TRegionMetadata))
             {
-                STORAGE_ERROR("Cannot write test metadata");
+                STORAGE_ERROR(LogTag << " Cannot write test metadata");
                 return false;
             }
         }
@@ -530,23 +555,25 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
 
     if (GetWorkerCount() > RegionMetadata.size()) {
         STORAGE_ERROR(
-            "The number of workers "
-            << GetWorkerCount()
-            << " is greater than the number of regions in the file "
-            << RegionMetadata.size());
+            LogTag << " The number of workers " << GetWorkerCount()
+                   << " is greater than the number of regions in the file "
+                   << RegionMetadata.size());
         return false;
     }
 
-    RegionLockedForWriteFlags = TVector<bool>(RegionMetadata.size(), false);
+    RegionUsage = TVector<TRegionUsage>(RegionMetadata.size());
 
-    STORAGE_INFO("File format: " << RegionMetadata.size() << " regions");
+    STORAGE_INFO(
+        LogTag << " File format: " << RegionMetadata.size() << " regions");
 
     for (const auto& metadata: RegionMetadata) {
         if (metadata.NewState.SeqNum != 0) {
             STORAGE_INFO(
-                "Test file contains written data and will be fully validated "
-                "before writing new data");
+                LogTag << " Test file contains written data and will be fully"
+                          " validated before writing new data");
             ShouldValidate = true;
+            ValidationOffset = RegionMetadata.front().Offset;
+            ValidatedByteCount = ValidationOffset.load();
             break;
         }
     }
@@ -563,36 +590,57 @@ void TUnalignedTestScenario::Read(
     ITestExecutorIOService& service,
     TVector<char>& readBuffer)
 {
-    auto len =
-        Min(RandomNumberFromRange(MinReadByteCount, MaxReadByteCount),
-            readBuffer.size(),
-            FileSize);
+    while (true) {
+        auto len =
+            Min(RandomNumberFromRange(MinReadByteCount, MaxReadByteCount),
+                readBuffer.size(),
+                FileSize);
 
-    if (ShouldValidate) {
-        auto offset = ValidationOffset.fetch_add(len);
-        if (offset == 0) {
-            STORAGE_INFO("Starting sequential read validation");
+        if (ShouldValidate) {
+            auto offset = ValidationOffset.fetch_add(len);
+            if (offset == 0) {
+                STORAGE_INFO(LogTag << " Starting sequential read validation");
+            }
+            if (offset < FileSize) {
+                len = Min(len, FileSize - offset);
+                bool status = Read(service, offset, len, true, readBuffer);
+                Y_ABORT_UNLESS(
+                    status,
+                    "Initial read validation failed - not allowed to read "
+                    "range [%lu, %lu)",
+                    offset,
+                    offset + len);
+                return;
+            }
         }
-        if (offset < FileSize) {
-            len = Min(len, FileSize - offset);
-            Read(service, offset, len, true, readBuffer);
-            return;
+
+        auto randomOffset = RandomNumber(FileSize - len + 1);
+
+        if (Read(service, randomOffset, len, false, readBuffer)) {
+            break;
         }
+
+        // If we reach here, it means the generated read request intersects with
+        // in-flight write requests - we need to retry
+        // It is guaranteed that at least one region is not being written so
+        // eventually we will succeed
     }
-
-    auto randomOffset = RandomNumber(FileSize - len + 1);
-
-    Read(service, randomOffset, len, false, readBuffer);
 }
 
-void TUnalignedTestScenario::Read(
+bool TUnalignedTestScenario::Read(
     IService& service,
     ui64 offset,
     ui64 length,
     bool isInitialValidation,
     TVector<char>& readBuffer)
 {
-    auto regions = GetReadRegions(offset, length);
+    auto regions = GetAndLockReadRegions(offset, length);
+    if (regions.empty()) {
+        // Skip read if it overlaps with a region that is being written
+        // A caller is expected to try again with different range
+        return false;
+    }
+
     auto buffer = TStringBuf(readBuffer.data(), length);
 
     service.Read(
@@ -605,7 +653,7 @@ void TUnalignedTestScenario::Read(
          buffer,
          isInitialValidation]() mutable
         {
-            UpdateReadRegions(regions);
+            UpdateAndUnlockReadRegions(regions);
             ValidateReadData(service, buffer, regions);
             if (isInitialValidation) {
                 auto prev = ValidatedByteCount.fetch_add(buffer.size());
@@ -613,15 +661,17 @@ void TUnalignedTestScenario::Read(
                 Y_ABORT_UNLESS(prev + buffer.size() <= FileSize);
                 if (prev + buffer.size() == FileSize) {
                     ShouldValidate = false;
-                    STORAGE_INFO("Finished sequential read validation");
+                    STORAGE_INFO(LogTag << " Finished sequential read validation");
                 }
             }
         });
+
+    return true;
 }
 
-TVector<TReadRegionInfo> TUnalignedTestScenario::GetReadRegions(
+TVector<TReadRegionInfo> TUnalignedTestScenario::GetAndLockReadRegions(
     ui64 offset,
-    ui64 length) const
+    ui64 length)
 {
     auto guard = Guard(Lock);
 
@@ -642,16 +692,28 @@ TVector<TReadRegionInfo> TUnalignedTestScenario::GetReadRegions(
         }
     }
 
+    for (const auto& region: res) {
+        if (!CanReadRegion(RegionUsage[region.Index])) {
+            return {};
+        }
+    }
+
+    for (const auto& region: res) {
+        RegionUsage[region.Index].ReadCount++;
+    }
+
     return res;
 }
 
-void TUnalignedTestScenario::UpdateReadRegions(
-    TVector<TReadRegionInfo>& regions) const
+void TUnalignedTestScenario::UpdateAndUnlockReadRegions(
+    TVector<TReadRegionInfo>& regions)
 {
     auto guard = Guard(Lock);
 
     for (auto& region: regions) {
         region.AfterRead = RegionMetadata[region.Index];
+        Y_ABORT_UNLESS(RegionUsage[region.Index].ReadCount > 0);
+        RegionUsage[region.Index].ReadCount--;
     }
 }
 
@@ -736,7 +798,7 @@ void TUnalignedTestScenario::ValidateReadDataRegion(
             RegionMetadata[regionIndex].Offset + offsetInRegion + offset;
 
         TStringBuilder sb;
-        sb << "Read validation failed";
+        sb << LogTag << " Read validation failed";
         sb << "\nWrong data at file range [" << offsetInFile << ", "
            << offsetInFile + fragment.size() << "], Region: " << regionIndex
            << ", OffsetInRegion: " << offsetInRegion + offset;
@@ -810,12 +872,21 @@ size_t TUnalignedTestScenario::WriteBegin(IService& service)
     auto guard = Guard(Lock);
     size_t index = 0;
 
+    bool hasAvailableRegions = AnyOf(
+        RegionUsage,
+        [this](const TRegionUsage& region) { return CanWriteRegion(region); });
+
+    if (!hasAvailableRegions) {
+        // There are no available regions for writing
+        // A caller is expected to read instead
+        return InvalidRegionIndex;
+    }
+
     while (true) {
-        // The number of workers is guaranteed to be not greater than the
-        // number of regions, so this loop will eventually terminate
         index = RandomNumber(RegionMetadata.size());
-        if (!RegionLockedForWriteFlags[index]) {
-            RegionLockedForWriteFlags[index] = true;
+        if (CanWriteRegion(RegionUsage[index])) {
+            Y_ABORT_UNLESS(RegionUsage[index].WriteCount == 0);
+            RegionUsage[index].WriteCount = 1;
             break;
         }
     }
@@ -829,8 +900,8 @@ size_t TUnalignedTestScenario::WriteBegin(IService& service)
         };
     } else {
         STORAGE_DEBUG(
-            "Writing to region #"
-            << index << " was interrupted in the previous test run, restoring");
+            LogTag << " Writing to region #" << index
+                   << " was interrupted in the previous test run, restoring");
     }
 
     guard.Release();
@@ -898,10 +969,23 @@ void TUnalignedTestScenario::WriteEnd(IService& service, size_t index)
         [this, index]()
         {
             auto guard = Guard(Lock);
-            Y_ABORT_UNLESS(RegionLockedForWriteFlags[index]);
-            RegionLockedForWriteFlags[index] = false;
+            Y_ABORT_UNLESS(RegionUsage[index].WriteCount == 1);
+            RegionUsage[index].WriteCount = 0;
             RegionMetadata[index].CurrentState = RegionMetadata[index].NewState;
         });
+}
+
+bool TUnalignedTestScenario::CanReadRegion(
+    const TRegionUsage& regionUsage) const
+{
+    return !DisableParallelReadWrite || regionUsage.WriteCount == 0;
+}
+
+bool TUnalignedTestScenario::CanWriteRegion(
+    const TRegionUsage& regionUsage) const
+{
+    return regionUsage.WriteCount == 0 &&
+           (!DisableParallelReadWrite || regionUsage.ReadCount == 0);
 }
 
 }   // namespace
@@ -910,10 +994,11 @@ void TUnalignedTestScenario::WriteEnd(IService& service, size_t index)
 
 ITestScenarioPtr CreateUnalignedTestScenario(
     IConfigHolderPtr configHolder,
+    const TString& logTag,
     const TLog& log)
 {
     return ITestScenarioPtr(
-        new TUnalignedTestScenario(std::move(configHolder), log));
+        new TUnalignedTestScenario(std::move(configHolder), logTag, log));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

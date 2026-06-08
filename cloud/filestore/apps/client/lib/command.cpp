@@ -7,6 +7,7 @@
 #include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
@@ -33,6 +34,21 @@ const TString DefaultVhostConfigFile = "/Berkanavt/nfs-vhost/cfg/nfs-client.txt"
 const TString DefaultVhostLocalConfigFile =
     "/Berkanavt/nfs-vhost/cfg/nfs-client-local.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nfs-server/cfg/nfs-iam.txt";
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 }   // namespace
 
@@ -228,6 +244,8 @@ void TCommand::Init()
     }
 
     ClientConfig = std::make_shared<TClientConfig>(config);
+
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
 }
 
 void TCommand::Start()
@@ -243,12 +261,20 @@ void TCommand::Start()
     if (Monitoring) {
         Monitoring->Start();
     }
+
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
 }
 
 void TCommand::Stop()
 {
     if (IamClient) {
         IamClient->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Monitoring) {
@@ -326,7 +352,10 @@ void TFileStoreServiceCommand::Init()
         Timer,
         Scheduler,
         CreateRetryPolicy(ClientConfig),
-        CreateFileStoreClient(ClientConfig, Logging));
+        CreateFileStoreClient(
+            ClientConfig,
+            Logging,
+            CertificateProvider));
 }
 
 void TFileStoreServiceCommand::Start()
@@ -549,7 +578,10 @@ void TEndpointCommand::Init()
         Timer,
         Scheduler,
         CreateRetryPolicy(ClientConfig),
-        CreateEndpointManagerClient(ClientConfig, Logging));
+        CreateEndpointManagerClient(
+            ClientConfig,
+            Logging,
+            CreateClientCertificateProvider(ClientConfig)));
 }
 
 void TEndpointCommand::Start()

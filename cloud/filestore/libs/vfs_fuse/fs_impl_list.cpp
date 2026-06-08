@@ -111,8 +111,12 @@ void TFileSystem::ReadDir(
     };
 
     if (!offset) {
-        // directory contents need to be refreshed on rewinddir()
-        DirectoryHandleCache->ResetHandle(fi->fh, handle);
+        // Directory contents need to be refreshed on rewinddir(). Skip the
+        // cache call when the handle has nothing to drop (e.g. the first
+        // ReadDir after OpenDir).
+        if (!handle->IsEmpty()) {
+            DirectoryHandleCache->ResetHandle(fi->fh);
+        }
     } else if (auto content = handle->ReadContent(size, offset, Log)) {
         reply(*this, *content);
         return;
@@ -234,7 +238,10 @@ void TFileSystem::ReadDir(
                          << " limit: " << size << " actual size "
                          << handleChunk.DirectoryContent.GetSize());
 
-                self->DirectoryHandleCache->AppendChunk(fh, handleChunk);
+                self->DirectoryHandleCache->AppendChunk(
+                    fh,
+                    handle,
+                    handleChunk);
 
                 reply(*self, handleChunk.DirectoryContent);
             });

@@ -1275,6 +1275,50 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT_EQUAL_C(8_GB, requestBytes->Val(), requestBytes->Val());
     }
 
+    Y_UNIT_TEST(ShouldNotRegisterOrAccountThrottlingMetrics)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCounters(
+            {.Options =
+                 TRequestCounters::EOption::ThrottlingHistogramsDisabled});
+        requestCounters.Register(*monitoring->GetCounters());
+
+        auto writeBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        AddRequestStats(
+            requestCounters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(200),
+                 .PostponedTime = TDuration::MilliSeconds(50),
+                 .BackoffTime = TDuration::MilliSeconds(30),
+                 .ShapingTime = TDuration::MilliSeconds(40)},
+            });
+
+        requestCounters.UpdateStats(true);
+
+        // Time percentile must still be reported
+        {
+            auto p100 = writeBlocks->GetSubgroup("percentiles", "Time")
+                            ->GetSubgroup("units", "usec")
+                            ->GetCounter("100");
+            UNIT_ASSERT_VALUES_UNEQUAL(0, p100->Val());
+        }
+
+        for (const TString histogram:
+             {"ExecutionTime", "ThrottlerDelay", "BackoffTime", "ShapingTime"})
+        {
+            auto percentilesGroup =
+                writeBlocks->FindSubgroup("percentiles", histogram);
+            UNIT_ASSERT_C(
+                !percentilesGroup,
+                "Percentiles for " << histogram << " should not be registered");
+        }
+    }
+
     Y_UNIT_TEST(ShouldFillTimePercentilesForDifferentSizeClassesSeparately)
     {
         auto monitoring = CreateMonitoringServiceStub();

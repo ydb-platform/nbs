@@ -26,6 +26,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -51,6 +52,21 @@ namespace {
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nbs-server/cfg/nbs-iam.txt";
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 }   // namespace
 
@@ -422,13 +438,16 @@ void TCommand::Init()
             VolumeStats,
             ClientConfig->GetInstanceId());
 
+        CertificateProvider = CreateClientCertificateProvider(ClientConfig);
+
         auto [client, error] = CreateClient(
             ClientConfig,
             Timer,
             Scheduler,
             Logging,
             Monitoring,
-            ClientStats);
+            ClientStats,
+            CertificateProvider);
 
         Y_ABORT_UNLESS(!HasError(error));
         Client = std::move(client);
@@ -637,6 +656,10 @@ void TCommand::Start()
         Monitoring->Start();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
+
     if (Client) {
         Client->Start();
     }
@@ -674,6 +697,10 @@ void TCommand::Stop()
 
     if (Client) {
         Client->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Monitoring) {

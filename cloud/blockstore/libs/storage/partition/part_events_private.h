@@ -177,6 +177,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(AddBlobs,                  __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
     xxx(Compaction,                __VA_ARGS__)                                \
+    xxx(CompactionReadBlobInfo,    __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
     xxx(ScanDiskBatch,             __VA_ARGS__)                                \
@@ -301,7 +302,10 @@ struct TEvPartitionPrivate
     enum ECompactionMode
     {
         RangeCompaction,
-        GarbageCompaction
+        GarbageCompaction,
+        // Similar to GarbageCompaction, but does not treat previously used
+        // blocks that are now zeroed as garbage.
+        IgnoringZeroedCompaction
     };
 
     struct TCompactionRequest
@@ -340,6 +344,31 @@ struct TEvPartitionPrivate
 
     struct TCompactionResponse
     {
+    };
+
+    //
+    // CompactionReadBlobInfo
+    //
+
+    struct TCompactionReadBlobInfoRequest
+    {
+        TVector<TPartialBlobId> BlobsToReadBlockMasks;
+        TVector<TPartialBlobId> BlobsToReadBlobMetas;
+
+        TCompactionReadBlobInfoRequest() = default;
+
+        TCompactionReadBlobInfoRequest(
+                TVector<TPartialBlobId> blobsToReadBlockMasks,
+                TVector<TPartialBlobId> blobsToReadBlobMetas)
+            : BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
+            , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
+        {}
+    };
+
+    struct TCompactionReadBlobInfoResponse
+    {
+        TVector<TBlockMask> BlockMasksForBlobs;
+        TVector<NProto::TBlobMeta> BlobMetasForBlobs;
     };
 
     //

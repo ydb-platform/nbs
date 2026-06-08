@@ -43,6 +43,7 @@ public:
     TSimpleTestScenario(
         ESimpleTestScenarioMode mode,
         IConfigHolderPtr configHolder,
+        const TString& logTag,
         const TLog& log);
 };
 
@@ -155,8 +156,9 @@ private:
 TSimpleTestScenario::TSimpleTestScenario(
         ESimpleTestScenarioMode mode,
         IConfigHolderPtr configHolder,
+        const TString& logTag,
         const TLog& log)
-    : TTestScenarioBase(BaseConfig, std::move(configHolder), log)
+    : TTestScenarioBase(BaseConfig, std::move(configHolder), logTag, log)
     , Mode(mode)
 {
     auto& config = ConfigHolder->GetConfig();
@@ -172,10 +174,11 @@ TSimpleTestScenario::TSimpleTestScenario(
 ITestScenarioPtr CreateSimpleTestScenario(
     ESimpleTestScenarioMode mode,
     IConfigHolderPtr configHolder,
+    const TString& logTag,
     const TLog& log)
 {
     return ITestScenarioPtr(
-        new TSimpleTestScenario(mode, std::move(configHolder), log));
+        new TSimpleTestScenario(mode, std::move(configHolder), logTag, log));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

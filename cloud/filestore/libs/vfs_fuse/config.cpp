@@ -45,6 +45,7 @@ namespace {
     xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\
                                                                                \
     xxx(DirectoryHandlesTableSize,      ui64,   100'000                       )\
+    xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\
                                                                                \
     xxx(GuestKeepCacheAllowed,        bool,     false                         )\
     xxx(MaxBackground,                ui32,     0                             )\

@@ -452,6 +452,14 @@ func checkActionError(errorProto *coreprotos.TError) error {
 	return nil
 }
 
+func getUnsafeCreateNodeType(nodeType nfs_client.NodeType) uint32 {
+	if nodeType == NODE_KIND_SYMLINK {
+		return uint32(NODE_KIND_LINK)
+	}
+
+	return uint32(nodeType)
+}
+
 func (c *client) UnsafeCreateNode(
 	ctx context.Context,
 	filesystemID string,
@@ -466,12 +474,13 @@ func (c *client) UnsafeCreateNode(
 		"unsafecreatenode",
 		&private_protos.TUnsafeCreateNodeRequest{
 			FileSystemId: filesystemID,
+			SymLink:      []byte(node.LinkTarget),
 			Node: &protos.TNodeAttr{
 				Id:    node.NodeID,
-				Type:  uint32(node.Type),
+				Type:  getUnsafeCreateNodeType(node.Type),
 				Mode:  node.Mode,
-				Uid:   uint32(node.UID),
-				Gid:   uint32(node.GID),
+				Uid:   node.UID,
+				Gid:   node.GID,
 				ATime: node.Atime,
 				MTime: node.Mtime,
 				CTime: node.Ctime,

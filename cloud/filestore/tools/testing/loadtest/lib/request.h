@@ -88,6 +88,11 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     TString filesystemId,
     NProto::THeaders headers);
 
+IRequestGeneratorPtr CreateFastShardRequestGenerator(
+    NProto::TFastShardLoadSpec spec,
+    ui32 maxParallelism,
+    ILoggingServicePtr logging);
+
 IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
     ILoggingServicePtr logging,

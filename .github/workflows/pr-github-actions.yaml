@@ -153,43 +153,88 @@ jobs:
         if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
-      - name: get reporter name
-        uses: haya14busa/action-cond@v1
-        id: reporter
-        with:
-          cond: ${{ github.event_name == 'pull_request' }}
-          if_true: "github-pr-review"
-          if_false: "github-check"
 
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements_dev.txt
 
+      - name: Prepare s3
+        if: ${{ env.ACT != 'true' }}
+        id: s3
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ vars.POOLED_LIGHT_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: "relwithdebinfo"
+          install: false
+
+      - name: install shell linters
+        run: bash .github/packer/scripts/install-github-release-tools.sh shellcheck shfmt
+
       - name: generate shellscripts from github actions
         run: |
           python3 .github/scripts/shell_extractor.py
-          find .temporary/ -type f -name "*.sh";
-
-      - name: shellcheck for .github dir
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: .github
-        env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086"
-
-      - name: shellcheck for github actions shell scripts in .temporary dir
-        uses: ludeeus/action-shellcheck@master
-        env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086"
-        with:
-          scandir: .temporary
+          find .temporary/ -type f -name "*.sh"
+      - name: shellcheck
+        id: shellcheck
+        uses: ./.github/actions/shellcheck
 
       - name: shfmt
-        uses: librarian/action-shfmt@v0.0.1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: .github/
-          shfmt_flags: "-i 4 -ci -kp -bn -sr"
+        id: shfmt
+        uses: ./.github/actions/shfmt
 
+      - name: comment on issue
+        if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() && (steps.shellcheck.outputs.has_report == 'true' || steps.shfmt.outputs.has_report == 'true') }}
+        uses: actions/github-script@v9
+        env:
+          SHELLCHECK_HAS_REPORT: ${{ steps.shellcheck.outputs.has_report }}
+          SHFMT_HAS_REPORT: ${{ steps.shfmt.outputs.has_report }}
+          SHELLCHECK_EXIT_CODE: ${{ steps.shellcheck.outputs.exit_code }}
+          SHFMT_EXIT_CODE: ${{ steps.shfmt.outputs.exit_code }}
+        with:
+          script: |
+            const s3_path = process.env.S3_URL_PREFIX;
+            const lines = [];
+            if (process.env.SHELLCHECK_HAS_REPORT == 'true') {
+              const status = process.env.SHELLCHECK_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
+              lines.push('shellcheck - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shellcheck.log)');
+            }
+            if (process.env.SHFMT_HAS_REPORT == 'true') {
+              const status = process.env.SHFMT_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
+              lines.push('shfmt - ' + status + ' [log](' + s3_path + '/test_reports/ga-scripts-shfmt.log)');
+            }
+            const success =
+              process.env.SHELLCHECK_EXIT_CODE == '0' &&
+              process.env.SHFMT_EXIT_CODE == '0';
+            const status_emoji = success ? ':green_circle:' : ':red_circle:';
+            let comment = 'status: ' + status_emoji + '\n\n' + lines.join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            })
+
+      - name: fail on shell checks
+        if: ${{ always() }}
+        env:
+          SHELLCHECK_EXIT_CODE: ${{ steps.shellcheck.outputs.exit_code }}
+          SHFMT_EXIT_CODE: ${{ steps.shfmt.outputs.exit_code }}
+        run: |
+          status=0
+          if [ "${SHELLCHECK_EXIT_CODE:-1}" != "0" ]; then
+              echo "::error::shellcheck failed"
+              status=1
+          fi
+          if [ "${SHFMT_EXIT_CODE:-1}" != "0" ]; then
+              echo "::error::shfmt failed"
+              status=1
+          fi
+          exit "$status"
   python:
     needs: [set-env, check-running-allowed, check-trigger-label]
     if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
@@ -207,14 +252,6 @@ jobs:
         run: git config core.sparseCheckout false
         continue-on-error: true
 
-      - name: get reporter name
-        uses: haya14busa/action-cond@v1
-        id: reporter
-        with:
-          cond: ${{ github.event_name == 'pull_request' }}
-          if_true: "github-pr-review"
-          if_false: "github-check"
-
       - name: Prepare s3
         if: ${{ env.ACT != 'true' }}
         id: s3
@@ -230,43 +267,34 @@ jobs:
           install: false
 
       - name: set up python environment
-        uses: actions/setup-python@v5.0.0
+        uses: actions/setup-python@v6.2.0
         with:
+          # used in ubuntu 22.04
           python-version: "3.10"
 
       - name: set up dependencies
         run: |
           pip install -r .github/scripts/requirements.txt
           pip install -r .github/scripts/requirements_dev.txt
-
       - name: flake8
-        if: ${{ env.ACT != 'true' }}
-        uses: reviewdog/action-flake8@v3.8.0
+        id: flake8
+        uses: ./.github/actions/lint_report
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: .github/
-          reporter: ${{ steps.reporter.outputs.value }}
-          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503"
-
-      - name: flake8 (act)
-        if: ${{ env.ACT == 'true' }}
-        run: |
-          pip install flake8==7.3.0
-          flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503 .github/
+          title: "GA Scripts flake8"
+          tool: flake8
+          report_name: ga-scripts-flake8
+          show_summary_table: "false"
+          command: flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503 .github/
 
       - name: black
-        if: ${{ env.ACT != 'true' }}
-        uses: reviewdog/action-black@v3.10.2
+        id: black
+        uses: ./.github/actions/lint_report
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: .github/
-          reporter: ${{ steps.reporter.outputs.value }}
-
-      - name: black (act)
-        if: ${{ env.ACT == 'true' }}
-        run: |
-          pip install black==26.3.1
-          black --check .github/
+          title: "GA Scripts black"
+          tool: black
+          report_name: ga-scripts-black
+          show_summary_table: "false"
+          command: black --check .github/
 
       - name: pytest
         id: pytest
@@ -275,24 +303,23 @@ jobs:
           set -x
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           pytest --tb=short --disable-warnings --maxfail=1 \
-            --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
-            --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
-            --self-contained-html \
-            .github/scripts/*_test.py \
-            .github/scripts/tests
-
+              --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
+              --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
+              --self-contained-html \
+              .github/scripts/*_test.py \
+              .github/scripts/tests
       - name: Upload pytest test results artifact
-        if: ${{ env.ACT != 'true' &&always() }}
+        if: ${{ env.ACT != 'true' && always() }}
         id: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ga-scripts-pytest-results
           path: ga-scripts-pytest-results.xml
 
       - name: Upload pytest html report artifact
-        if: ${{ env.ACT != 'true' &&always() }}
+        if: ${{ env.ACT != 'true' && always() }}
         id: upload-html
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ga-scripts-pytest-report-html
           path: ga-scripts-pytest-report.html
@@ -303,7 +330,6 @@ jobs:
           set -x
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
-
       - name: build pytest summary table
         if: ${{ always() }}
         id: pytest-summary
@@ -313,14 +339,13 @@ jobs:
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           SUMMARY_OUT=$(mktemp)
           python3 -m scripts.tests.pytest_summary \
-            --title "GA Scripts pytest" \
-            ga-scripts-pytest-results.xml > "$SUMMARY_OUT"
+              --title "GA Scripts pytest" \
+              ga-scripts-pytest-results.xml > "$SUMMARY_OUT"
           {
-            echo "markdown<<EOF"
-            cat "$SUMMARY_OUT"
-            echo "EOF"
+              echo "markdown<<EOF"
+              cat "$SUMMARY_OUT"
+              echo "EOF"
           } >> "$GITHUB_OUTPUT"
-
       - name: add test report links to summary
         if: ${{ always() }}
         shell: bash
@@ -328,35 +353,41 @@ jobs:
           PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         run: |
           {
-            echo "### GA Scripts pytest reports"
-            if [ -n "${PYTEST_SUMMARY_MARKDOWN}" ]; then
-              echo
-              printf '%s\n' "${PYTEST_SUMMARY_MARKDOWN}"
-              echo
-            fi
-            if [ "${ACT}" = "true" ]; then
-              echo "- Local act run: reports were written to ga-scripts-pytest-report.html and ga-scripts-pytest-results.xml"
-            else
-              echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
-              echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
-              echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
-              echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
-            fi
+              echo "### GA Scripts pytest reports"
+              if [ -n "${PYTEST_SUMMARY_MARKDOWN}" ]; then
+                  echo
+                  printf '%s\n' "${PYTEST_SUMMARY_MARKDOWN}"
+                  echo
+              fi
+              if [ "${ACT}" = "true" ]; then
+                  echo "- Local act run: reports were written to ga-scripts-pytest-report.html and ga-scripts-pytest-results.xml"
+              else
+                  echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
+                  echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
+                  echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
+                  echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
+              fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: comment on issue (${{ steps.pytest.outcome }})
+      - name: comment on issue
         if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v9
         env:
           STEP_OUTCOME: ${{ steps.pytest.outcome }}
+          FLAKE8_EXIT_CODE: ${{ steps.flake8.outputs.exit_code }}
+          BLACK_EXIT_CODE: ${{ steps.black.outputs.exit_code }}
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
           PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         with:
           script: |
             const outcome = process.env.STEP_OUTCOME;
-            const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
+            const flake8ExitCode = process.env.FLAKE8_EXIT_CODE || '1';
+            const blackExitCode = process.env.BLACK_EXIT_CODE || '1';
+            const success = outcome == 'success' && flake8ExitCode == '0' && blackExitCode == '0';
+            const status_emoji = success ? ':green_circle:' : ':red_circle:';
             const s3_path = process.env.S3_URL_PREFIX;
+            const flake8Status = flake8ExitCode == '0' ? ':green_circle:' : ':red_circle:';
+            const blackStatus = blackExitCode == '0' ? ':green_circle:' : ':red_circle:';
             let comment =
               'status: ' + status_emoji +
               ' [GA scripts pytest result (artifact)](' + process.env.ARTIFACT_URL + ')' +
@@ -367,6 +398,9 @@ jobs:
             if (process.env.PYTEST_SUMMARY_MARKDOWN) {
               comment += '\n\n' + process.env.PYTEST_SUMMARY_MARKDOWN;
             }
+            comment +=
+              '\n\nblack - ' + blackStatus + ' [log](' + s3_path + '/test_reports/ga-scripts-black.log)' +
+              '\nflake8 - ' + flake8Status + ' [log](' + s3_path + '/test_reports/ga-scripts-flake8.log)';
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -375,6 +409,27 @@ jobs:
               body: comment
             })
 
+      - name: fail on python checks
+        if: ${{ always() }}
+        env:
+          FLAKE8_EXIT_CODE: ${{ steps.flake8.outputs.exit_code }}
+          BLACK_EXIT_CODE: ${{ steps.black.outputs.exit_code }}
+          PYTEST_OUTCOME: ${{ steps.pytest.outcome }}
+        run: |
+          status=0
+          if [ "${FLAKE8_EXIT_CODE:-1}" != "0" ]; then
+              echo "::error::flake8 failed"
+              status=1
+          fi
+          if [ "${BLACK_EXIT_CODE:-1}" != "0" ]; then
+              echo "::error::black failed"
+              status=1
+          fi
+          if [ "${PYTEST_OUTCOME}" != "success" ]; then
+              echo "::error::pytest failed"
+              status=1
+          fi
+          exit "$status"
   workflows:
     needs: [set-env, check-running-allowed, check-trigger-label]
     if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
@@ -394,11 +449,8 @@ jobs:
         shell: bash
         run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
-      - name: install action-validator with asdf
-        uses: asdf-vm/actions/install@v4.0.1
-        with:
-          tool_versions: |
-            action-validator 0.8.0
+      - name: install action-validator
+        run: bash .github/packer/scripts/install-github-release-tools.sh action-validator
 
       - name: Prepare s3
         id: s3
@@ -418,7 +470,12 @@ jobs:
         run: |
           set -x
           export TMP_OUT=$(mktemp)
-          find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read -r path; do echo Checking $path; action-validator --verbose $path; done > $TMP_OUT
+          {
+              find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read -r path; do
+                  echo "Checking $path"
+                  action-validator --verbose "$path"
+              done
+          } > "$TMP_OUT"
 
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
@@ -427,14 +484,12 @@ jobs:
           echo "OUTPUT_FILE=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
           chown github:github $TMP_OUT
           chmod 644 $TMP_OUT
-
       - name: upload workflow lint results
         if: ${{ always() }}
         id: upload-workflow-lint-to-s3
         run: |
           set -x
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
-
       - name: comment on issue
         uses: actions/github-script@v9
         if: ${{ github.event_name == 'pull_request' }}
@@ -476,8 +531,8 @@ jobs:
         shell: bash
         run: |
           if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-            echo "Removing stale rebase state left on runner checkout"
-            rm -rf .git/rebase-merge .git/rebase-apply
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
           fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
@@ -539,6 +594,7 @@ jobs:
         continue-on-error: true
       - name: set up dependencies
         run: pip install -r .github/scripts/requirements.txt
+        continue-on-error: true
       - name: finalize workload comments
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -548,6 +604,7 @@ jobs:
           export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
           python3 -m scripts.tests.finalize_workload_comments \
-            --matrix-include "$MATRIX_INCLUDE" \
-            --platform-name "$platform_name" \
-            --workload-status completed
+              --matrix-include "$MATRIX_INCLUDE" \
+              --platform-name "$platform_name" \
+              --workload-status completed
+        continue-on-error: true

@@ -5,9 +5,14 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/string/builder.h>
+#include <util/system/spinlock.h>
+
+#include <sys/stat.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -22,7 +27,7 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
     NProto::TNodeAttr attrs;
     attrs.SetId(id);
     attrs.SetType(NProto::E_REGULAR_NODE);
-    attrs.SetMode(mode);
+    attrs.SetMode(S_IFREG | mode);
     attrs.SetATime(now);
     attrs.SetMTime(now);
     attrs.SetCTime(now);
@@ -66,6 +71,7 @@ class TMemFileSystemShard: public IFileSystemShard
 {
 private:
     const ui32 ShardNo;
+    const NProtoPrivate::TMemFastShardConfig Config;
 
     TDirectoryNode Root;
     THashMap<ui64, NProto::TNodeAttr> Attrs;
@@ -74,33 +80,40 @@ private:
     ui64 LastNodeId = RootNodeId;
     ui64 LastHandleId = 0;
 
+    TAdaptiveLock Lock;
+
 public:
-    explicit TMemFileSystemShard(ui32 shardNo)
+    TMemFileSystemShard(
+            ui32 shardNo,
+            const NProtoPrivate::TMemFastShardConfig& config)
         : ShardNo(shardNo)
+        , Config(config)
     {}
 
 public:
     TFuture<NProtoPrivate::TGetNodeAttrBatchResponse>
     GetNodeAttrBatch(NProtoPrivate::TGetNodeAttrBatchRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProtoPrivate::TGetNodeAttrBatchResponse response;
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return MakeFuture(std::move(response));
         }
         for (const auto& name: request.GetNames()) {
-            const auto* p = Root.Name2Id.FindPtr(name);
-            if (!p) {
+            ui64 nodeId;
+            if (!FindNodeId(name, &nodeId)) {
                 *response.MutableError() =
                     ErrorInvalidTarget(request.GetNodeId(), name);
                 return MakeFuture(std::move(response));
             }
 
-            const auto* a = Attrs.FindPtr(*p);
+            const auto* a = Attrs.FindPtr(nodeId);
             if (!a) {
                 *response.MutableError() = MakeError(
                     E_INVALID_STATE,
-                    TStringBuilder() << "can't find attrs for " << *p);
+                    TStringBuilder() << "can't find attrs for " << nodeId);
                 return MakeFuture(std::move(response));
             }
 
@@ -114,6 +127,8 @@ public:
     TFuture<NProto::TGetNodeAttrResponse>
     GetNodeAttr(NProto::TGetNodeAttrRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TGetNodeAttrResponse response;
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
@@ -121,19 +136,14 @@ public:
         }
 
         ui64 nodeId = request.GetNodeId();
-        if (!request.GetName().empty()) {
-            const auto* p = Root.Name2Id.FindPtr(request.GetName());
-            if (!p) {
-                *response.MutableError() =
-                    ErrorInvalidTarget(request.GetNodeId(), request.GetName());
-                return MakeFuture(std::move(response));
-            }
-
-            nodeId = *p;
+        if (request.GetName() && !FindNodeId(request.GetName(), &nodeId)) {
+            *response.MutableError() =
+                ErrorInvalidTarget(request.GetNodeId(), request.GetName());
+            return MakeFuture(std::move(response));
         }
 
-        const auto* a = Attrs.FindPtr(nodeId);
-        if (!a) {
+        NProto::TNodeAttr* a = nullptr;
+        if (!FindAttrs(nodeId, &a)) {
             NProto::TError e;
             if (!request.GetName().empty()) {
                 e = MakeError(
@@ -153,9 +163,11 @@ public:
     TFuture<NProto::TSetNodeAttrResponse>
     SetNodeAttr(NProto::TSetNodeAttrRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TSetNodeAttrResponse response;
-        auto* a = Attrs.FindPtr(request.GetNodeId());
-        if (!a) {
+        NProto::TNodeAttr* a = nullptr;
+        if (!FindAttrs(request.GetNodeId(), &a)) {
             *response.MutableError() = ErrorInvalidTarget(request.GetNodeId());
             return MakeFuture(std::move(response));
         }
@@ -199,6 +211,8 @@ public:
     TFuture<NProto::TCreateNodeResponse>
     CreateNode(NProto::TCreateNodeRequest request) override
     {
+        auto g = Guard(Lock);
+
         if (!request.HasFile()) {
             return NotImplemented<NProto::TCreateNodeResponse>(request);
         }
@@ -215,16 +229,11 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        const ui64 nodeId = ShardedId(++LastNodeId, ShardNo);
-        auto& a = Attrs[nodeId];
-        a = CreateAttrs(
-            nodeId,
+        const auto& a = CreateNodeImpl(
             request.GetFile().GetMode(),
-            0 /* size */,
             request.GetUid(),
             request.GetGid());
-        Files[nodeId];
-        nodeRef = nodeId;
+        nodeRef = a.GetId();
 
         *response.MutableNode() = a;
         return MakeFuture(std::move(response));
@@ -233,6 +242,8 @@ public:
     TFuture<NProto::TUnlinkNodeResponse>
     UnlinkNode(NProto::TUnlinkNodeRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TUnlinkNodeResponse response;
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
@@ -241,7 +252,10 @@ public:
 
         auto it = Root.Name2Id.find(request.GetName());
         if (it == Root.Name2Id.end()) {
-            *response.MutableError() = ErrorInvalidTarget(request.GetNodeId());
+            if (!Config.GetCreateNodeUponAccess()) {
+                *response.MutableError() =
+                    ErrorInvalidTarget(request.GetNodeId());
+            }
             return MakeFuture(std::move(response));
         }
 
@@ -262,6 +276,8 @@ public:
     TFuture<NProto::TCreateHandleResponse>
     CreateHandle(NProto::TCreateHandleRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TCreateHandleResponse response;
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
@@ -274,8 +290,7 @@ public:
 
         NProto::TNodeAttr* a = nullptr;
         if (request.GetName().empty()) {
-            a = Attrs.FindPtr(request.GetNodeId());
-            if (!a) {
+            if (!FindAttrs(request.GetNodeId(), &a)) {
                 *response.MutableError() =
                     ErrorInvalidTarget(request.GetNodeId());
                 return MakeFuture(std::move(response));
@@ -284,16 +299,16 @@ public:
             auto it = Root.Name2Id.find(request.GetName());
             if (it == Root.Name2Id.end()) {
                 if (HasFlag(flags, createFlag)) {
-                    const ui64 nodeId = ShardedId(++LastNodeId, ShardNo);
-                    it = Root.Name2Id.insert({request.GetName(), nodeId}).first;
-                    a = &Attrs[nodeId];
-                    *a = CreateAttrs(
-                        nodeId,
+                    a = &CreateNodeImpl(
                         request.GetMode(),
-                        0 /* size */,
                         request.GetUid(),
                         request.GetGid());
-                    Files[nodeId];
+                    const bool inserted = Root.Name2Id.insert({
+                        request.GetName(),
+                        a->GetId()}).second;
+                    Y_ABORT_UNLESS(inserted);
+                } else if (Config.GetCreateNodeUponAccess()) {
+                    a = &CreateDefaultNode(request.GetName());
                 } else {
                     *response.MutableError() = ErrorInvalidTarget(
                         request.GetNodeId(),
@@ -325,6 +340,8 @@ public:
     TFuture<NProto::TDestroyHandleResponse>
     DestroyHandle(NProto::TDestroyHandleRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TDestroyHandleResponse response;
         auto it = Handles.find(request.GetHandle());
         if (it == Handles.end()) {
@@ -348,6 +365,8 @@ public:
     TFuture<NProto::TAllocateDataResponse>
     AllocateData(NProto::TAllocateDataRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TAllocateDataResponse response;
 
         auto hit = Handles.find(request.GetHandle());
@@ -416,6 +435,8 @@ public:
     TFuture<NProto::TWriteDataResponse>
     WriteData(NProto::TWriteDataRequest request) override
     {
+        auto g = Guard(Lock);
+
         NProto::TWriteDataResponse response;
 
         auto hit = Handles.find(request.GetHandle());
@@ -455,6 +476,8 @@ public:
     TFuture<NProto::TReadDataResponse>
     ReadData(NProto::TReadDataRequest request) override
     {
+        auto g = Guard(Lock);
+
         if (request.IovecsSize()) {
             return NotImplemented<NProto::TReadDataResponse>(request);
         }
@@ -516,13 +539,73 @@ private:
         *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
         return MakeFuture(std::move(response));
     }
+
+    NProto::TNodeAttr& CreateNodeImpl(ui32 mode, ui64 uid, ui64 gid)
+    {
+        const ui64 nodeId = ShardedId(++LastNodeId, ShardNo);
+        auto& a = Attrs[nodeId];
+        a = CreateAttrs(
+            nodeId,
+            mode,
+            0 /* size */,
+            uid,
+            gid);
+        Files[nodeId];
+        return a;
+    }
+
+    NProto::TNodeAttr& CreateDefaultNode(const TString& name)
+    {
+        constexpr ui32 DefaultMode = 0664;
+        constexpr ui64 DefaultUid = 1000;
+        constexpr ui64 DefaultGid = 1000;
+        auto& a = CreateNodeImpl(DefaultMode, DefaultUid, DefaultGid);
+        if (name) {
+            const bool inserted = Root.Name2Id.insert({name, a.GetId()}).second;
+            Y_ABORT_UNLESS(inserted);
+        }
+        return a;
+    }
+
+    bool FindAttrs(ui64 nodeId, NProto::TNodeAttr** a)
+    {
+        *a = Attrs.FindPtr(nodeId);
+        if (*a) {
+            return true;
+        }
+
+        if (Config.GetCreateNodeUponAccess()) {
+            *a = &CreateDefaultNode({} /* name */);
+            return true;
+        }
+
+        return false;
+    }
+
+    bool FindNodeId(const TString& name, ui64* nodeId)
+    {
+        auto* p = Root.Name2Id.FindPtr(name);
+        if (p) {
+            *nodeId = *p;
+            return true;
+        }
+
+        if (Config.GetCreateNodeUponAccess()) {
+            *nodeId = CreateDefaultNode(name).GetId();
+            return true;
+        }
+
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileSystemShardPtr CreateMemFileSystemShard(ui32 shardNo)
+IFileSystemShardPtr CreateMemFileSystemShard(
+    ui32 shardNo,
+    const NProtoPrivate::TMemFastShardConfig& config)
 {
-    return std::make_shared<TMemFileSystemShard>(shardNo);
+    return std::make_shared<TMemFileSystemShard>(shardNo, config);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

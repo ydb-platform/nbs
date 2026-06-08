@@ -191,12 +191,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     //
 
     virtual void WriteNodeRef(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name,
-        ui64 childNode,
-        const TString& shardId,
-        const TString& shardNodeName,
+        const TNodeRef& nodeRef,
         bool markExhaustive);
 
     virtual void DeleteNodeRef(ui64 nodeId, const TString& name);
@@ -693,14 +688,7 @@ public:
         ui64& nextNodeId,
         TString& nextCookie) override;
 
-    void WriteNodeRef(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name,
-        ui64 childNode,
-        const TString& shardId,
-        const TString& shardNodeName,
-        bool markExhaustive) override;
+    void WriteNodeRef(const TNodeRef& nodeRef, bool markExhaustive) override;
 
     void DeleteNodeRef(ui64 nodeId, const TString& name) override;
 

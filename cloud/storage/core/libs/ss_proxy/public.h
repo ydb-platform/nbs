@@ -16,6 +16,7 @@ struct TSSProxyConfig
     TString SchemeShardDir;
     TString PathDescriptionBackupFilePath;
     bool FallbackMode = false;
+    bool UseSchemeCache = false;
 };
 
 }   // namespace NCloud::NStorage

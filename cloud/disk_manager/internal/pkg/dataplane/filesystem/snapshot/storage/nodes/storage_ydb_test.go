@@ -46,7 +46,7 @@ func newStorage(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	storageFolder string,
-	deleteLimit int,
+	deleteLimit uint64,
 ) Storage {
 
 	err := schema.Create(ctx, storageFolder, db, false)
@@ -75,7 +75,7 @@ func (f *fixture) teardown() {
 	f.cancel()
 }
 
-func createFixture(t *testing.T, deleteLimit int) *fixture {
+func createFixture(t *testing.T, deleteLimit uint64) *fixture {
 	ctx, cancel := context.WithCancel(test.NewContext())
 
 	db, err := newYDB(ctx)
@@ -141,7 +141,7 @@ func TestSavedNodesAreListed(t *testing.T) {
 
 	expected := []nfs.Node{
 		makeNode(parentNodeID, 10, "alpha", nfs_client.NODE_KIND_DIR),
-		makeNode(parentNodeID, 11, "beta", nfs_client.NODE_KIND_FILE),
+		makeNode(parentNodeID, 11, "beta", nfs_client.NODE_KIND_BLOCKDEV),
 		makeNode(parentNodeID, 12, "gamma", nfs_client.NODE_KIND_DIR),
 		makeNode(parentNodeID, 13, "delta", nfs_client.NODE_KIND_FILE),
 		makeNode(parentNodeID, 14, "epsilon", nfs_client.NODE_KIND_DIR),
@@ -153,6 +153,9 @@ func TestSavedNodesAreListed(t *testing.T) {
 		makeNode(parentNodeID, 20, "lambda", nfs_client.NODE_KIND_DIR),
 		makeNode(parentNodeID, 21, "mu", nfs_client.NODE_KIND_FILE),
 	}
+	expected[1].DevID = 777
+	expected[3].ShardNodeName = "shard-node"
+	expected[3].ShardFileSystemID = "shard-42"
 
 	err := f.storage.SaveNodes(f.ctx, snapshotID, expected)
 	require.NoError(t, err)
@@ -186,7 +189,7 @@ func TestSavedNodesAreListed(t *testing.T) {
 }
 
 func TestDeleteSnapshotData(t *testing.T) {
-	deleteLimit := 2
+	deleteLimit := uint64(2)
 	f := createFixture(t, deleteLimit)
 	defer f.teardown()
 
@@ -251,15 +254,8 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, listed)
 
-	for i := 0; i < 5; i++ {
-		done, err := f.storage.DeleteSnapshotData(f.ctx, snapshotID)
-		require.NoError(t, err)
-		require.False(t, done)
-	}
-
-	done, err := f.storage.DeleteSnapshotData(f.ctx, snapshotID)
+	err = f.storage.DeleteSnapshotData(f.ctx, snapshotID)
 	require.NoError(t, err)
-	require.True(t, done)
 
 	listed, nextCookie, err := f.storage.ListNodes(
 		f.ctx,
@@ -360,6 +356,75 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 	require.Empty(t, result)
 }
 
+func TestCleanupRestorationNodeIDsMapping(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-cleanup"
+	dstFilesystemID := "dst-filesystem"
+	otherDstFilesystemID := "other-dst-filesystem"
+
+	nodeIDMapping := make(map[uint64]uint64, 10000)
+	for i := uint64(0); i < 10000; i++ {
+		nodeIDMapping[i] = i + 100000
+	}
+
+	err := f.storage.UpdateRestorationNodeIDMapping(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		nodeIDMapping,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.UpdateRestorationNodeIDMapping(
+		f.ctx,
+		snapshotID,
+		otherDstFilesystemID,
+		nodeIDMapping,
+	)
+	require.NoError(t, err)
+
+	srcNodeIDs := make([]uint64, 10000)
+	for i := uint64(0); i < 10000; i++ {
+		srcNodeIDs[i] = i
+	}
+
+	mapping, err := f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcNodeIDs,
+	)
+	require.NoError(t, err)
+	require.Len(t, mapping, 10000)
+
+	err = f.storage.CleanupRestorationNodeIDsMapping(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+	)
+	require.NoError(t, err)
+
+	mapping, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcNodeIDs,
+	)
+	require.NoError(t, err)
+	require.Empty(t, mapping)
+
+	mapping, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		otherDstFilesystemID,
+		srcNodeIDs,
+	)
+	require.NoError(t, err)
+	require.Len(t, mapping, 10000)
+}
+
 func makeHardlinkNode(
 	parentID uint64,
 	nodeID uint64,
@@ -392,11 +457,7 @@ func compareNodes(
 	require.Equal(t, len(expected), len(actual))
 	for i := range expected {
 		e := expected[i]
-		// nodeType is not stored in the hardlinks table, it is deduced by
-		// order of creation, so we won't check it in this test.
-		e.Type = 0
 		a := actual[i]
-		a.Type = 0
 		require.Equal(t, e, a)
 	}
 }

@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
 SRCS(
     helpers_ut.cpp
+    protobuf_utils_ut.cpp
     service_ut.cpp
     service_ut_helpers.cpp
     service_ut_parentless.cpp
