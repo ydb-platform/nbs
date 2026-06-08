@@ -665,21 +665,24 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_EQUAL(4, rb.GetVersion());
     }
 
-    Y_UNIT_TEST(ShouldGetMaxObservedAllocationByteCount)
+    Y_UNIT_TEST(ShouldGetMaxObservedEntryByteCount)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 36;
-        TFileRingBuffer rb(f.GetName(), len);
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
 
-        UNIT_ASSERT_EQUAL(0, rb.GetMaxObservedAllocationByteCount());
-        UNIT_ASSERT(rb.PushBack("abcd"));
-        UNIT_ASSERT_EQUAL(4, rb.GetMaxObservedAllocationByteCount());
-        UNIT_ASSERT(rb.PushBack("ef"));
-        UNIT_ASSERT_EQUAL(4, rb.GetMaxObservedAllocationByteCount());
-        UNIT_ASSERT(rb.PushBack("ghijk"));
-        UNIT_ASSERT_EQUAL(5, rb.GetMaxObservedAllocationByteCount());
-        UNIT_ASSERT(!rb.PushBack("1234567890"));
-        UNIT_ASSERT_EQUAL(5, rb.GetMaxObservedAllocationByteCount());
+        UNIT_ASSERT_EQUAL(0, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT(rb->PushBack("abcd"));
+        UNIT_ASSERT_EQUAL(4, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT(rb->PushBack("ef"));
+        UNIT_ASSERT_EQUAL(4, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT(rb->PushBack("ghijk"));
+        UNIT_ASSERT_EQUAL(5, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT(!rb->PushBack("1234567890"));
+        UNIT_ASSERT_EQUAL(5, rb->GetMaxObservedEntryByteCount());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+        UNIT_ASSERT_EQUAL(5, rb->GetMaxObservedEntryByteCount());
     }
 
     Y_UNIT_TEST(ShouldGetAndSetMetadata_ZeroMetadataCapacity)

@@ -132,7 +132,7 @@ private:
             .RawUsedBytesCount = Storage.GetRawUsedBytesCount(),
             .EntryCount = Storage.Size(),
             .MaxObservedEntryByteCount =
-                Storage.GetMaxObservedAllocationByteCount(),
+                Storage.GetMaxObservedEntryByteCount(),
             .Version = Storage.GetVersion(),
             .IsCorrupted = Storage.IsCorrupted(),
         });
