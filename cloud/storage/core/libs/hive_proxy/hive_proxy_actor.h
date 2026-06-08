@@ -153,6 +153,71 @@ private:
 
     using TCreateOrLookupRequestQueue = TDeque<TCreateOrLookupRequest>;
 
+    struct TBootExternalWaiterInfo
+    {
+        TRequestInfo Request;
+        TInstant Deadline;
+
+        TBootExternalWaiterInfo(TRequestInfo request, TInstant deadline)
+            : Request(std::move(request))
+            , Deadline(deadline)
+        {}
+
+        bool IsExpired(const TInstant& now) const
+        {
+            return Deadline != TInstant::Zero() && Deadline <= now;
+        }
+    };
+
+    // TInflightBootRequest contains several waiting clients.
+    // The associated TBootRequestActor sends a single
+    // TEvInitiateTabletExternalBoot to HIVE and reports the result back to
+    // THiveProxyActor, which fans the response out to every waiter.
+    struct TInflightBootRequest
+    {
+        NActors::TActorId BootRequestActor;
+        TVector<TBootExternalWaiterInfo> Waiters;
+        // Time of the currently scheduled TEvBootExternalTimeout, if any.
+        // Used to ignore stale wakeups when the schedule changes.
+        TInstant NextWakeupAt;
+        TInstant NearestDeadline;
+        // When the entry has no waiters, the moment after which the idle actor
+        // is torn down. TInstant::Zero() means "wait for a hive answer".
+        TInstant NoWaitersDeadline;
+        // Generation of the current boot episode. Assigned from
+        // THiveProxyActor::NextBootGeneration when a actor is spawned and
+        // return back via TEvBootExternalCompleted so completions belonging to
+        // an already-finished/torn-down episode can be detected and dropped.
+        ui32 Generation = 0;
+
+        void AddWaiter(TRequestInfo r, TInstant deadline)
+        {
+            Waiters.emplace_back(std::move(r), deadline);
+
+            if (deadline != TInstant::Zero() &&
+                (NearestDeadline == TInstant::Zero() ||
+                 deadline < NearestDeadline))
+            {
+                NearestDeadline = deadline;
+            }
+        }
+
+        void RecomputeNearestDeadline()
+        {
+            NearestDeadline = TInstant::Zero();
+            for (const auto& w: Waiters) {
+                if (w.Deadline == TInstant::Zero()) {
+                    continue;
+                }
+                if (NearestDeadline == TInstant::Zero() ||
+                    w.Deadline < NearestDeadline)
+                {
+                    NearestDeadline = w.Deadline;
+                }
+            }
+        }
+    };
+
     struct THiveState
     {
         THashMap<ui64, TLockState> LockStates;
@@ -161,6 +226,9 @@ private:
         THashSet<NActors::TActorId> Actors;
         THashMap<ui64, TTabletStats> UpdatedTabletMetrics;
         bool ScheduledSendTabletMetrics = false;
+
+        // tabletId -> in-flight TEvBootExternalRequest dedup entry
+        THashMap<ui64, TInflightBootRequest> InflightBootRequests;
     };
 
 private:
@@ -168,8 +236,12 @@ private:
 
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
     THashMap<ui64, THiveState> HiveStates;
+    // Monotonic source of boot-episode generations. Never reused, so a stale
+    // TEvBootExternalCompleted is always distinguishable from a fresh episode.
+    ui32 NextBootGeneration = 0;
 
     const TDuration LockExpireTimeout;
+    const TDuration ExternalBootRequestIdleTimeout;
     const int LogComponent;
 
     TString TabletBootInfoBackupFilePath;
@@ -289,6 +361,23 @@ private:
     void HandleRequestFinished(
         const TEvHiveProxyPrivate::TEvRequestFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleBootExternalCompleted(
+        const TEvHiveProxyPrivate::TEvBootExternalCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleBootExternalTimeout(
+        const TEvHiveProxyPrivate::TEvBootExternalTimeout::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    // Schedule TEvBootExternalTimeout for the smallest waiter deadline (if any)
+    // in the given inflight entry. Idempotent: writes NextWakeupAt and skips
+    // scheduling when nothing changed.
+    void ScheduleBootExternalTimeoutIfNeeded(
+        const NActors::TActorContext& ctx,
+        TInflightBootRequest& inflight,
+        ui64 hive,
+        ui64 tabletId);
 
     void HandleTabletMetrics(
         const NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,

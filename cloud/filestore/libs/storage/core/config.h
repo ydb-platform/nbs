@@ -410,6 +410,8 @@ public:
     [[nodiscard]] bool GetUseSchemeCache() const;
 
     [[nodiscard]] ui32 GetFastShardServerPort() const;
+
+    [[nodiscard]] TDuration GetExternalBootRequestIdleTimeout() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

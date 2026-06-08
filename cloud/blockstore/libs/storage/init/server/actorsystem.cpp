@@ -148,6 +148,8 @@ public:
                     Args.StorageConfig->GetPipeClientMinRetryTime(),
                 .HiveLockExpireTimeout =
                     Args.StorageConfig->GetHiveLockExpireTimeout(),
+                .ExternalBootRequestIdleTimeout =
+                    Args.StorageConfig->GetExternalBootRequestIdleTimeout(),
                 .LogComponent = TBlockStoreComponents::HIVE_PROXY,
                 .TabletBootInfoBackupFilePath =
                     Args.TemporaryServer

@@ -140,6 +140,8 @@ public:
                     Args.StorageConfig->GetPipeClientMinRetryTime(),
                 // HiveLockExpireTimeout, used by NBS, doesn't matter
                 .HiveLockExpireTimeout = TDuration::Seconds(1),
+                .ExternalBootRequestIdleTimeout =
+                    Args.StorageConfig->GetExternalBootRequestIdleTimeout(),
                 .LogComponent = TFileStoreComponents::HIVE_PROXY,
                 .TabletBootInfoBackupFilePath =
                     Args.StorageConfig->GetTabletBootInfoBackupFilePath(),

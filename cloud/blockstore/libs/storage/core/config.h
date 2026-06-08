@@ -133,6 +133,7 @@ public:
     TDuration GetMinExternalBootRequestTimeout() const;
     TDuration GetExternalBootRequestTimeoutIncrement() const;
     TDuration GetMaxExternalBootRequestTimeout() const;
+    [[nodiscard]] TDuration GetExternalBootRequestIdleTimeout() const;
     bool GetDisableLocalService() const;
     ui32 GetPipeClientRetryCount() const;
     TDuration GetPipeClientMinRetryTime() const;

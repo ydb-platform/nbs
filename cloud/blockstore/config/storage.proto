@@ -1588,4 +1588,11 @@ message TStorageServiceConfig
     // VolumeProxyPipeInactivityTimeout (half of it), so it is always strictly
     // smaller than the timeout and needs no separate tuning.
     optional bool BaseDiskPipeKeepAliveEnabled = 500;
+
+    // How long a deduplicated external-boot actor is kept alive after its
+    // last waiter has expired (in milliseconds). Within this window a new
+    // TEvBootExternalRequest for the same tabletId reuses the still-pending
+    // HIVE call instead of issuing a new one.
+    // 0 - the worker is kept until HIVE replies.
+    optional uint32 ExternalBootRequestIdleTimeout = 501;
 }

@@ -242,6 +242,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MinExternalBootRequestTimeout, TDuration, Seconds(1)                  )\
     xxx(MaxExternalBootRequestTimeout, TDuration, Seconds(30)                 )\
     xxx(ExternalBootRequestTimeoutIncrement, TDuration, MSeconds(500)         )\
+    xxx(ExternalBootRequestIdleTimeout,      TDuration, Seconds(30)           )\
     xxx(PipeClientRetryCount,          ui32,      4                           )\
     xxx(PipeClientMinRetryTime,        TDuration, Seconds(1)                  )\
     xxx(PipeClientMaxRetryTime,        TDuration, Seconds(4)                  )\
