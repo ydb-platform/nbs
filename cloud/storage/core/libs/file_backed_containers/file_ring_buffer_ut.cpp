@@ -656,6 +656,32 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_EQUAL(28, rb.GetAvailableByteCount());
     }
 
+    Y_UNIT_TEST(ShouldGetVersion)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        UNIT_ASSERT_EQUAL(4, rb.GetVersion());
+    }
+
+    Y_UNIT_TEST(ShouldGetMaxObservedAllocationByteCount)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        UNIT_ASSERT_EQUAL(0, rb.GetMaxObservedAllocationByteCount());
+        UNIT_ASSERT(rb.PushBack("abcd"));
+        UNIT_ASSERT_EQUAL(4, rb.GetMaxObservedAllocationByteCount());
+        UNIT_ASSERT(rb.PushBack("ef"));
+        UNIT_ASSERT_EQUAL(4, rb.GetMaxObservedAllocationByteCount());
+        UNIT_ASSERT(rb.PushBack("ghijk"));
+        UNIT_ASSERT_EQUAL(5, rb.GetMaxObservedAllocationByteCount());
+        UNIT_ASSERT(!rb.PushBack("1234567890"));
+        UNIT_ASSERT_EQUAL(5, rb.GetMaxObservedAllocationByteCount());
+    }
+
     Y_UNIT_TEST(ShouldGetAndSetMetadata_ZeroMetadataCapacity)
     {
         const auto f = TTempFileHandle();
