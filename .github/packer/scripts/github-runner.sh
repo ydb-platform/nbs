@@ -164,6 +164,8 @@ chown -R "${USER_TO_CREATE}:${USER_TO_CREATE}" /actions-runner
 tee -a /etc/security/limits.conf << EOF
 * soft core unlimited
 * hard core unlimited
+* soft memlock unlimited
+* hard memlock unlimited
 EOF
 
 echo "Defaults rlimit_core=default" | tee /etc/sudoers.d/98-rlimit
