@@ -366,6 +366,7 @@ def test_generate_cloud_init_script_renders_repo_template(monkeypatch):
     assert 'runuser -u "$RUNNER_USER" -- ./config.sh' in script
     assert './svc.sh install "$RUNNER_USER"' in script
     assert "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" in script
+    assert "LimitMEMLOCK=infinity" in script
     assert "kernel.dmesg_restrict=0" not in script
     assert "NOPASSWD:ALL" not in script
     assert "actions-runner-collect-system-logs.sh" in script

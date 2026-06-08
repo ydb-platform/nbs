@@ -21,6 +21,8 @@ chmod 1777 /coredumps
 grep -qF "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" /etc/sysctl.conf || echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" >> /etc/sysctl.conf
 grep -qF "kernel.core_uses_pid=1" /etc/sysctl.conf || echo "kernel.core_uses_pid=1" >> /etc/sysctl.conf
 grep -qF "fs.suid_dumpable=0" /etc/sysctl.conf || echo "fs.suid_dumpable=0" >> /etc/sysctl.conf
+grep -qF "* soft memlock unlimited" /etc/security/limits.conf || echo "* soft memlock unlimited" >> /etc/security/limits.conf
+grep -qF "* hard memlock unlimited" /etc/security/limits.conf || echo "* hard memlock unlimited" >> /etc/security/limits.conf
 sysctl -p || true
 
 RUNNER_HOME=$(getent passwd "$RUNNER_USER" | cut -d: -f6)
@@ -158,6 +160,7 @@ OOMPolicy=continue \
 OOMScoreAdjust=-900 \
 Delegate=yes \
 TasksMax=infinity \
+LimitMEMLOCK=infinity \
 Restart=on-failure \
 RestartSec=5s \
 Slice=actions-runner.slice' \
