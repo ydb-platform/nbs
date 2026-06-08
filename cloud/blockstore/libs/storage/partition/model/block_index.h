@@ -42,15 +42,6 @@ public:
         TStringBuf blockContent,
         TPartialBlobId blobId);
 
-    bool AddBlock(
-        ui32 blockIndex,
-        ui64 commitId,
-        bool isStoredInDb,
-        TStringBuf blockContent)
-    {
-        return AddBlock(blockIndex, commitId, isStoredInDb, blockContent, {});
-    }
-
     bool RemoveBlock(ui32 blockIndex, ui64 commitId, bool isStoredInDb);
 
     void FindBlocks(

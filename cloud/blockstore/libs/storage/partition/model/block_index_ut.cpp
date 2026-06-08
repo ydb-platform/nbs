@@ -50,7 +50,7 @@ Y_UNIT_TEST_SUITE(TPartition1BlockIndexTest)
         ui64 commitId = 0;
 
         TBlockIndex index;
-        index.AddBlock(0, ++commitId, true, "x");
+        index.AddBlock(0, ++commitId, true, "x", {});
 
         auto block = FindBlock(index, 0, commitId);
         UNIT_ASSERT_VALUES_EQUAL(block.Meta.CommitId, 1);
@@ -66,8 +66,8 @@ Y_UNIT_TEST_SUITE(TPartition1BlockIndexTest)
         ui64 commitId = 0;
 
         TBlockIndex index;
-        index.AddBlock(0, ++commitId, true, "x");
-        index.AddBlock(0, ++commitId, false, "y");
+        index.AddBlock(0, ++commitId, true, "x", {});
+        index.AddBlock(0, ++commitId, false, "y", {});
 
         auto block = FindBlock(index, 0, commitId);
         UNIT_ASSERT_VALUES_EQUAL(block.Meta.CommitId, 2);
