@@ -230,6 +230,7 @@ TServerState::AdjustAndLockIovecs(
     }
 
     if (HasError(err)) {
+        // Unlock previously locked pages in case of error
         if (i > 0) {
             for (int j = i - 1; j >= 0; --j) {
                 ui64 index = iovecs[j].GetBase() / pageSize;
