@@ -521,6 +521,15 @@ private:
                     State.CalculateNewlyZeroedBlocks(kv.first, usedBlockCount);
             }
 
+            const ui32 prevNewlyZeroedBlocks =
+                State.GetCompactionMap().Get(kv.first).NewlyZeroedBlocks;
+            const i64 newlyZeroedBlocksDiff =
+                static_cast<i64>(newlyZeroedBlocks) - prevNewlyZeroedBlocks;
+            State.SetNewlyZeroedBlocks(static_cast<ui32>(std::max(
+                static_cast<i64>(State.GetNewlyZeroedBlocks()) +
+                    newlyZeroedBlocksDiff,
+                0L)));
+
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,

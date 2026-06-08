@@ -1588,4 +1588,14 @@ message TStorageServiceConfig
     // VolumeProxyPipeInactivityTimeout (half of it), so it is always strictly
     // smaller than the timeout and needs no separate tuning.
     optional bool BaseDiskPipeKeepAliveEnabled = 500;
+
+    // Enables compaction by garbage ignoring zeroed blocks.
+    // Should be used only with FreshChannelWriteRequestsEnabled and
+    // FreshChannelZeroRequestsEnabled.
+    optional bool IgnoringZeroedCompactionEnabled = 501;
+
+    // Max Compaction per second (in ms). Should be less than
+    // MaxCompactionExecTimePerSecond. Used for GarbageCompaction in case when
+    // IgnoringZeroedCompactionEnabled is on.
+    optional uint32 MaxCompactionExecTimePerSecondForZeroed = 502;
 }

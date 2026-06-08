@@ -160,6 +160,15 @@ def storage_config_with_compaction_merged_blob_threshold_hdd():
     return storage
 
 
+def storage_config_with_ignoring_zeroed_compaction_enabled():
+    storage = default_storage_config()
+    storage.FreshChannelWriteRequestsEnabled = True
+    storage.FreshChannelZeroRequestsEnabled = True
+    storage.IgnoringZeroedCompactionEnabled = True
+
+    return storage
+
+
 class TestCase(object):
 
     def __init__(
@@ -316,6 +325,14 @@ TESTS = [
             storage_config_with_read_block_mask_on_compaction_optimization_enabled(
                 True
             ),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-ignoring-zeroed-compaction",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-ignoring-zeroed-compaction.txt",
+        [
+            storage_config_with_ignoring_zeroed_compaction_enabled(),
         ],
         None,
     ),
