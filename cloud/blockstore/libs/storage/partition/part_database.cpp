@@ -1297,13 +1297,14 @@ bool TPartitionDatabase::ReadCheckpoints(
 
 void TPartitionDatabase::WriteCleanupQueue(
     const TPartialBlobId& blobId,
-    ui64 commitId)
+    ui64 commitId,
+    const NProto::TBlobMeta& blobMeta)
 {
     using TTable = TPartitionSchema::CleanupQueue;
 
     Table<TTable>()
         .Key(commitId, blobId.CommitId(), blobId.UniqueId())
-        .Update();
+        .Update<TTable::BlobMeta>(blobMeta);
 }
 
 void TPartitionDatabase::DeleteCleanupQueue(
@@ -1336,7 +1337,9 @@ bool TPartitionDatabase::ReadCleanupQueue(TVector<TCleanupQueueItem>& items)
             it.GetValue<TTable::CommitId>(),
             it.GetValue<TTable::BlobId>());
 
-        items.emplace_back(blobId, commitId);
+        auto blobMeta = it.GetValue<TTable::BlobMeta>();
+
+        items.emplace_back(blobId, commitId, std::move(blobMeta));
 
         if (!it.Next()) {
             return false;   // not ready

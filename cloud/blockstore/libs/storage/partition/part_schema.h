@@ -258,11 +258,17 @@ struct TPartitionSchema
         {
         };
 
+        struct BlobMeta: public Column<4, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TBlobMeta;
+        };
+
         using TKey = TableKey<DeletionCommitId, CommitId, BlobId>;
         using TColumns = TableColumns<
             DeletionCommitId,
             CommitId,
-            BlobId
+            BlobId,
+            BlobMeta
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

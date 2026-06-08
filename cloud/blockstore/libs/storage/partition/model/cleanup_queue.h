@@ -19,7 +19,7 @@ struct TCleanupQueueItem
 {
     TPartialBlobId BlobId;
     ui64 CommitId = 0;
-    std::optional<NProto::TBlobMeta> BlobMeta;
+    NProto::TBlobMeta BlobMeta;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -657,6 +657,8 @@ void CompleteRangeCompaction(
         }
     }
 
+    RecreateBlobMetasIfNeeded(args, commitId);
+
     rangeCompactionInfos.emplace_back(
         args.BlockRange,
         patchingCandidate,

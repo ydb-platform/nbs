@@ -261,7 +261,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 TBlockMask{});
         });
 
-        state.GetCleanupQueue().Add({blobId, executor.CommitId()});
+        state.GetCleanupQueue().Add({blobId, executor.CommitId(), {}});
 
         TTxPartition::TRangeCompaction args(
             0,

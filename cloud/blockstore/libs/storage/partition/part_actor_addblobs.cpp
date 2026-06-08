@@ -369,8 +369,9 @@ private:
         if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
             // blob already could be garbage, but we should keep it
             // as there could be active readers (or even checkpoint)
-            db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
-            State.GetCleanupQueue().Add({ blob.BlobId, DeletionCommitId });
+            db.WriteCleanupQueue(blob.BlobId, DeletionCommitId, blobMeta);
+            State.GetCleanupQueue().Add(
+                {blob.BlobId, DeletionCommitId, blobMeta});
         }
 
         // move blocks from FreshBlocks to MixedBlocks
@@ -586,8 +587,7 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-
-                std::optional<NProto::TBlobMeta> blobMeta;
+                NProto::TBlobMeta blobMeta;
                 if (kv.second.RecreatedBlobMeta) {
                     blobMeta = *kv.second.RecreatedBlobMeta;
                 }
@@ -604,7 +604,7 @@ private:
                     TabletId,
                     "Cleanup queue: blob already in cleanup queue");
                 if (inserted) {
-                    db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                    db.WriteCleanupQueue(kv.first, DeletionCommitId, blobMeta);
                 }
             }
         }

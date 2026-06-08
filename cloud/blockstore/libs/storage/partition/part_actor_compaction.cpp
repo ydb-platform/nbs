@@ -716,9 +716,6 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 if (affectedBlob.BlockMask) {
                     affectedBlob.BlockMask.GetRef() |= blockMask;
                 }
-                if (affectedBlob.BlobMeta && blob.BlobMeta) {
-                    affectedBlob.BlobMeta->MergeFrom(blob.BlobMeta.GetRef());
-                }
             }
         }
 

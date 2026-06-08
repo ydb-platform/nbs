@@ -1585,4 +1585,6 @@ message TStorageServiceConfig
     // read into a separate transaction issued by TCompactionActor instead of
     // doing it inside the main TCompaction prepare phase.
     optional bool SplitCompactionTxEnabled = 500;
+
+    optional bool DontReadBlobMetasOnCleanup = 501;
 }

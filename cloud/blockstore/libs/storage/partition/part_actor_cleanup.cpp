@@ -1,5 +1,6 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -14,6 +15,66 @@ using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool MixedBlocksEqual(
+    const NProto::TBlobMeta::TMixedBlocks& lhs,
+    const NProto::TBlobMeta::TMixedBlocks& rhs)
+{
+    if (lhs.BlocksSize() != rhs.BlocksSize() ||
+        lhs.CommitIdsSize() != rhs.CommitIdsSize())
+    {
+        return false;
+    }
+
+    for (size_t i = 0; i < lhs.BlocksSize(); ++i) {
+        if (lhs.GetBlocks(i) != rhs.GetBlocks(i)) {
+            return false;
+        }
+
+        if (lhs.CommitIdsSize() > 0 &&
+            lhs.GetCommitIds(i) != rhs.GetCommitIds(i))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool MergedBlocksEqual(
+    const NProto::TBlobMeta::TMergedBlocks& lhs,
+    const NProto::TBlobMeta::TMergedBlocks& rhs)
+{
+    return lhs.GetStart() == rhs.GetStart() &&
+           lhs.GetEnd() == rhs.GetEnd();
+}
+
+bool CleanupBlobMetaBlocksEqual(
+    const NProto::TBlobMeta& lhs,
+    const NProto::TBlobMeta& rhs)
+{
+    if (lhs.HasMixedBlocks() != rhs.HasMixedBlocks() ||
+        lhs.HasMergedBlocks() != rhs.HasMergedBlocks())
+    {
+        return false;
+    }
+
+    if (lhs.HasMixedBlocks()) {
+        return MixedBlocksEqual(lhs.GetMixedBlocks(), rhs.GetMixedBlocks());
+    }
+
+    if (lhs.HasMergedBlocks()) {
+        return MergedBlocksEqual(lhs.GetMergedBlocks(), rhs.GetMergedBlocks());
+    }
+
+    return true;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -200,11 +261,35 @@ bool TPartitionActor::PrepareCleanup(
     bool ready = true;
 
     for (const auto& item: args.CleanupQueue) {
+        // no need to read blob meta for blobs with already known blocks
+        const bool hasValidMetaInCleanupQueue =
+            item.BlobMeta.HasMixedBlocks() || item.BlobMeta.HasMergedBlocks();
+        if (hasValidMetaInCleanupQueue &&
+            Config->GetDontReadBlobMetasOnCleanup())
+        {
+            args.BlobsMeta.emplace_back(item.BlobMeta);
+            continue;
+        }
+
         TMaybe<NProto::TBlobMeta> blobMeta;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
             Y_ABORT_UNLESS(blobMeta.Defined(),
                 "Could not read meta data for blob: %s",
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
+
+            if (hasValidMetaInCleanupQueue &&
+                !CleanupBlobMetaBlocksEqual(item.BlobMeta, blobMeta.GetRef()))
+            {
+                ReportCleanupBlobMetaBlocksMismatch(
+                    {{"disk", PartitionConfig.GetDiskId()},
+                     {"tablet_id", TabletID()},
+                     {"volume_tablet_id", VolumeTabletId},
+                     {"blob", ToString(MakeBlobId(TabletID(), item.BlobId))},
+                     {"cleanup_queue_blob_meta",
+                      item.BlobMeta.ShortUtf8DebugString()},
+                     {"read_blob_meta",
+                      blobMeta.GetRef().ShortUtf8DebugString()}});
+            }
 
             args.BlobsMeta.emplace_back(std::move(blobMeta.GetRef()));
         } else {
