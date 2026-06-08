@@ -176,8 +176,8 @@ TServerState::AdjustAndLockIovecs(
     }
 
     auto& region = it->second;
-    const size_t regionAddress = region.GetAddress();
-    const size_t regionSize = region.GetSize();
+    const ui64 regionAddress = region.GetAddress();
+    const ui64 regionSize = region.GetSize();
 
     auto adjustedIovecs = iovecs;
     for (auto& iovec: adjustedIovecs) {

@@ -24,7 +24,7 @@ struct TMmapRegionMetadata
 {
     TString FilePath;
     void* Address = nullptr;
-    size_t Size = 0;   // in bytes
+    ui64 Size = 0;   // in bytes
     ui64 Id = 0;
     TInstant LatestActivityTimestamp;
     ui32 PageSize = 0;   // in bytes
@@ -43,7 +43,7 @@ public:
     TMmapRegion(
             TString filePath,
             void* address,
-            size_t size,
+            ui64 size,
             ui64 id,
             ui32 pageSize)
         : Metadata{
@@ -106,12 +106,12 @@ public:
         return Metadata.PageSize;
     }
 
-    size_t GetAddress() const
+    ui64 GetAddress() const
     {
-        return reinterpret_cast<size_t>(Metadata.Address);
+        return reinterpret_cast<ui64>(Metadata.Address);
     }
 
-    size_t GetSize() const
+    ui64 GetSize() const
     {
         return Metadata.Size;
     }
