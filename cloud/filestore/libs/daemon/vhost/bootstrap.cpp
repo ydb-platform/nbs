@@ -33,6 +33,7 @@
 #include <cloud/filestore/libs/service_null/service.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
+#include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
@@ -218,12 +219,15 @@ private:
         return true;
     }
 
-    static ISideChannelPtr CreateSideChannel(
-        NProto::ESideChannelType sideChannelType)
+    ISideChannelPtr CreateSideChannel(NProto::ESideChannelType sideChannelType)
     {
         switch (sideChannelType) {
             case NProto::SCT_NONE: return nullptr;
-            case NProto::SCT_TCP: return CreateTCPSideChannel();
+            case NProto::SCT_TCP: {
+                return CreateTCPSideChannel(
+                    *Logging,
+                    std::make_shared<NStorage::NFastShard::TAsyncClient>());
+            }
         }
 
         Y_ABORT("sct=%d", static_cast<int>(sideChannelType));

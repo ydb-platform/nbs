@@ -17,24 +17,87 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TEndpointPool: public TThrRefBase
+{
+private:
+    TLog Log;
+    TAdaptiveLock Lock;
+    TDeque<IAsyncEndpointPtr> Endpoints;
+    ui32 Generation = 0;
+
+public:
+    explicit TEndpointPool(TLog log)
+        : Log(std::move(log))
+    {}
+
+public:
+    IAsyncEndpointPtr Pop(ui32* generation)
+    {
+        IAsyncEndpointPtr e;
+
+        with_lock(Lock) {
+            if (!Endpoints) {
+                return nullptr;
+            }
+
+            e = Endpoints.front();
+            Endpoints.pop_front();
+            *generation = Generation;
+        }
+
+        STORAGE_DEBUG("endpoint popped from pool, generation=" << *generation);
+        return e;
+    }
+
+    void Push(IAsyncEndpointPtr e, ui32 generation)
+    {
+        with_lock (Lock) {
+            if (generation < Generation) {
+                return;
+            }
+
+            Endpoints.push_back(std::move(e));
+        }
+
+        STORAGE_DEBUG("endpoint added to pool, generation=" << generation);
+    }
+
+    ui32 AddressChanged()
+    {
+        ui32 generation = 0;
+        with_lock (Lock) {
+            Endpoints.clear();
+            generation = ++Generation;
+        }
+
+        STORAGE_DEBUG("address changed, generation=" << generation);
+        return generation;
+    }
+};
+
+using TEndpointPoolPtr = TIntrusivePtr<TEndpointPool>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TTCPSideChannel: public ISideChannel
 {
 private:
     TAdaptiveLock Lock;
 
-    bool IsOverloaded = false;
-    // Set once on the first Update() with a valid port; never reset.
-    bool ConnectStarted = false;
-    TFuture<IAsyncEndpointPtr> ConnectFuture;
-    // Promoted from ConnectFuture once HasValue() is true.
-    // TODO: endpoint pool
-    std::shared_ptr<IAsyncEndpoint> ReadyEndpoint;
+    TString Host;
+    ui16 Port = 0;
 
+    TLog Log;
     std::shared_ptr<IAsyncClient> Client;
+    TEndpointPoolPtr EndpointPool;
 
 public:
-    explicit TTCPSideChannel(std::shared_ptr<IAsyncClient> client)
-        : Client(std::move(client))
+    TTCPSideChannel(
+            ILoggingService& logging,
+            std::shared_ptr<IAsyncClient> client)
+        : Log(logging.CreateLog("TCP_SIDE_CHANNEL"))
+        , Client(std::move(client))
+        , EndpointPool(MakeIntrusive<TEndpointPool>(Log))
     {}
 
 public:
@@ -46,7 +109,7 @@ public:
         Y_UNUSED(callContext);
 
         return Dispatch(
-            std::move(request),
+            *request,
             std::move(response),
             [](TRequest& req, const NProto::TReadDataRequest& body) {
                 *req.MutableReadData() = body;
@@ -64,7 +127,7 @@ public:
         Y_UNUSED(callContext);
 
         return Dispatch(
-            std::move(request),
+            *request,
             std::move(response),
             [](TRequest& req, const NProto::TWriteDataRequest& body) {
                 *req.MutableWriteData() = body;
@@ -78,86 +141,124 @@ public:
     {
         const ui32 port = backendInfo.GetFastShardPort();
         const TString& host = backendInfo.GetFastShardHost();
-        bool shouldConnect = false;
 
+        ui32 generation = 0;
         with_lock (Lock) {
-            IsOverloaded = backendInfo.GetIsOverloaded();
-            shouldConnect = host && port != 0 && !ConnectStarted;
-            if (shouldConnect) {
-                ConnectStarted = true;
+            if (Host != host || Port != port) {
+                generation = EndpointPool->AddressChanged();
+                STORAGE_INFO("updated side channel connection params"
+                    << ": host=" << host
+                    << ", port=" << port
+                    << ", generation=" << generation);
             }
+
+            Host = host;
+            Port = port;
         }
 
-        if (!shouldConnect) {
-            return;
-        }
-
-        with_lock (Lock) {
-            ConnectFuture = Client->Connect(host, port);
-        }
+        TryConnect().Subscribe(
+            [
+                ep = EndpointPool,
+                generation
+            ] (const TFuture<IAsyncEndpointPtr>& f) {
+                ep->Push(UnsafeExtractValue(f), generation);
+            });
     }
 
 private:
-    // Returns the ready endpoint under lock, promoting ConnectFuture if done.
-    // Returns nullptr if not connected yet.
-    std::shared_ptr<IAsyncEndpoint> GetEndpointLocked()
-    {
-        if (ReadyEndpoint) {
-            return ReadyEndpoint;
-        }
-        if (!ConnectFuture.Initialized() || !ConnectFuture.HasValue()) {
-            return nullptr;
-        }
-        auto ep = ConnectFuture.ExtractValue();
-        if (ep) {
-            ReadyEndpoint = std::move(ep);
-        }
-        ConnectFuture = {};
-        return ReadyEndpoint;
-    }
-
-    template <
-        typename TReq,
-        typename TResp,
-        typename FillBody,
-        typename ExtractBody>
+    template <typename TReq,
+              typename TResp,
+              typename TFillBody,
+              typename TExtractBody>
     bool Dispatch(
-        std::shared_ptr<TReq> request,
+        const TReq& request,
         TPromise<TResp> response,
-        FillBody fillBody,
-        ExtractBody extractBody)
+        TFillBody fillBody,
+        TExtractBody extractBody)
     {
-        std::shared_ptr<IAsyncEndpoint> ep;
+        ui32 generation = 0;
+        IAsyncEndpointPtr e = EndpointPool->Pop(&generation);
+
+        auto send = [response = std::move(response), extractBody](
+            TFuture<TResponse> f) mutable
         {
-            auto guard = Guard(Lock);
-            if (IsOverloaded) {
-                return false;
+            auto r = f.ExtractValue();
+            TResp resp;
+            if (r.HasError()) {
+                *resp.MutableError() = r.GetError();
+            } else {
+                extractBody(resp, r);
             }
-            ep = GetEndpointLocked();
+            response.SetValue(std::move(resp));
+        };
+
+        TRequest req;
+        req.SetFileSystemId(request.GetFileSystemId());
+        fillBody(req, request);
+
+        if (e) {
+            auto result = e->Send(std::move(req));
+            result.Subscribe([
+                ep = EndpointPool,
+                e = std::move(e),
+                generation
+            ] (const TFuture<TResponse>&) mutable {
+                ep->Push(std::move(e), generation);
+            });
+            result.Subscribe(std::move(send));
+
+            return true;
         }
-        if (!ep) {
+
+        auto connection = TryConnect();
+        if (!connection.Initialized()) {
             return false;
         }
 
-        TRequest req;
-        req.SetFileSystemId(request->GetFileSystemId());
-        fillBody(req, *request);
-
-        ep->Send(std::move(req)).Subscribe(
-            [response = std::move(response), extractBody](
-                TFuture<TResponse> f) mutable
-            {
-                auto r = f.ExtractValue();
-                TResp resp;
-                if (r.HasError()) {
-                    *resp.MutableError() = r.GetError();
-                } else {
-                    extractBody(resp, r);
-                }
-                response.SetValue(std::move(resp));
+        connection.Subscribe([
+            req = std::move(req),
+            send = std::move(send),
+            ep = EndpointPool,
+            generation
+        ] (const TFuture<IAsyncEndpointPtr>& f) mutable {
+            auto e = UnsafeExtractValue(f);
+            auto result = e->Send(std::move(req));
+            result.Subscribe([
+                ep = std::move(ep),
+                e = std::move(e),
+                generation
+            ] (const TFuture<TResponse>&) mutable {
+                ep->Push(std::move(e), generation);
             });
+            result.Subscribe(std::move(send));
+        });
 
         return true;
+    }
+
+    TFuture<IAsyncEndpointPtr> TryConnect()
+    {
+        TString host;
+        ui16 port = 0;
+        with_lock (Lock) {
+            if (!Host || !Port) {
+                return {};
+            }
+
+            host = Host;
+            port = Port;
+        }
+
+        auto connection = Client->Connect(Host, Port);
+        connection.Subscribe([
+            Log = Log,
+            host = std::move(host),
+            port = port
+        ] (const TFuture<IAsyncEndpointPtr>&) {
+            STORAGE_INFO("connected to host=" << host << ", port=" << port);
+        });
+
+        return connection;
     }
 };
 
@@ -165,9 +266,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISideChannelPtr CreateTCPSideChannel(std::shared_ptr<IAsyncClient> client)
+ISideChannelPtr CreateTCPSideChannel(
+    ILoggingService& logging,
+    std::shared_ptr<IAsyncClient> client)
 {
-    return std::make_shared<TTCPSideChannel>(std::move(client));
+    return std::make_shared<TTCPSideChannel>(
+        logging,
+        std::move(client));
 }
 
 }   // namespace NCloud::NFileStore
