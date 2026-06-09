@@ -32,7 +32,13 @@ public:
         TLog log,
         TString logTag)
         : Stats(std::move(stats))
-        , Storage(config.FilePath, config.DataCapacity, config.MetadataCapacity)
+        , Storage(
+              TFileRingBufferArgs{
+                  .FilePath = config.FilePath,
+                  .DataCapacity = config.DataCapacity,
+                  .MetadataCapacity = config.MetadataCapacity,
+                  .Version = EFileRingBufferVersion::V6,
+              })
         , Config(std::move(config))
         , Log(std::move(log))
         , LogTag(std::move(logTag))
