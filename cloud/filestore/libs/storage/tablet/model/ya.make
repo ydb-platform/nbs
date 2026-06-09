@@ -16,6 +16,7 @@ SRCS(
     block_list_decode.cpp
     block_list_encode.cpp
     block_list_spec.cpp
+    block_range_overlay.cpp
     channels.cpp
     compaction_map.cpp
     deletion_markers.cpp
