@@ -47,10 +47,12 @@ struct TFreshBlock
 {
     TBlock Meta;
     TStringBuf Content;
+    TPartialBlobId BlobId;
 
-    TFreshBlock(TBlock meta, TStringBuf content)
+    TFreshBlock(TBlock meta, TStringBuf content, TPartialBlobId blobId)
         : Meta(meta)
         , Content(content)
+        , BlobId(blobId)
     {
     }
 };
@@ -61,10 +63,12 @@ struct TOwningFreshBlock
 {
     TBlock Meta;
     TString Content;
+    TPartialBlobId BlobId;
 
-    TOwningFreshBlock(TBlock meta, TString content)
+    TOwningFreshBlock(TBlock meta, TString content, TPartialBlobId blobId)
         : Meta(meta)
         , Content(std::move(content))
+        , BlobId(blobId)
     {
     }
 };

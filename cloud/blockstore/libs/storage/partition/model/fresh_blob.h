@@ -54,8 +54,9 @@ TString BuildWriteFreshBlocksBlobContent(
 TString BuildZeroFreshBlocksBlobContent(TBlockRange32 blockRange);
 
 NProto::TError ParseFreshBlobContent(
-    const ui64 commitId,
-    const ui32 blockSize,
+    ui64 commitId,
+    TPartialBlobId blobId,
+    ui32 blockSize,
     const TString& buffer,
     TVector<TOwningFreshBlock>& result);
 

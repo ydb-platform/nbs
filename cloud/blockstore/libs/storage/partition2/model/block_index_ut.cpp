@@ -13,7 +13,7 @@ Y_UNIT_TEST_SUITE(TBlockIndexTest)
         ui64 commitId = 0;
 
         TBlockIndex index;
-        index.AddBlock(0, "x", ++commitId);
+        index.AddBlock(0, "x", ++commitId, InvalidCommitId, {});
 
         const auto* block = index.FindBlock(0, commitId);
         UNIT_ASSERT(block);
@@ -29,8 +29,8 @@ Y_UNIT_TEST_SUITE(TBlockIndexTest)
         ui64 commitId = 0;
 
         TBlockIndex index;
-        index.AddBlock(0, "x", ++commitId);
-        index.AddBlock(0, "y", ++commitId);
+        index.AddBlock(0, "x", ++commitId, InvalidCommitId, {});
+        index.AddBlock(0, "y", ++commitId, InvalidCommitId, {});
 
         const auto* block = index.FindBlock(0, commitId);
         UNIT_ASSERT(block);
@@ -48,9 +48,9 @@ Y_UNIT_TEST_SUITE(TBlockIndexTest)
         ui64 commitId = 0;
 
         TBlockIndex index;
-        index.AddBlock(0, "x", ++commitId);
+        index.AddBlock(0, "x", ++commitId, InvalidCommitId, {});
         UNIT_ASSERT_EQUAL(index.AddDeletedBlock(0, ++commitId), 1);
-        index.AddBlock(0, "y", ++commitId);
+        index.AddBlock(0, "y", ++commitId, InvalidCommitId, {});
 
         const auto* block = index.FindBlock(0, commitId);
         UNIT_ASSERT(block);

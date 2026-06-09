@@ -592,6 +592,7 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
         ui64 CommitId;
         const TBlockRange32 DescribeRange;
+        const bool IndexOnly;
 
         struct TBlockMark
         {
@@ -600,9 +601,11 @@ struct TTxPartition
             TBlockMark(
                     ui32 blockIndex,
                     ui64 minCommitId,
-                    TString content)
+                    TString content,
+                    TPartialBlobId blobId)
                 : BlockIndex(blockIndex)
                 , MinCommitId(minCommitId)
+                , BlobId(blobId)
                 , Content(std::move(content))
             {}
 
@@ -635,10 +638,12 @@ struct TTxPartition
         TDescribeBlocks(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
-                const TBlockRange32& describeRange)
+                const TBlockRange32& describeRange,
+                bool indexOnly)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , DescribeRange(describeRange)
+            , IndexOnly(indexOnly)
             , Marks(DescribeRange.Size())
         {}
 
@@ -656,12 +661,13 @@ struct TTxPartition
         void MarkBlock(
             ui32 blockIndex,
             ui64 minCommitId,
-            TStringBuf content)
+            TStringBuf content,
+            TPartialBlobId blobId)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
 
             if (mark.MinCommitId < minCommitId) {
-                mark = TBlockMark(blockIndex, minCommitId, TString{content});
+                mark = TBlockMark(blockIndex, minCommitId, TString{content}, blobId);
             }
         }
 

@@ -108,6 +108,9 @@ message TDescribeBlocksRequest
 
     // Additional flags. Do we need it?
     uint32 Flags = 7;
+
+    // If true, return only index information (no BlocksContent in FreshBlockRanges).
+    bool IndexOnly = 8;
 }
 
 // Represents blocks range with content.
@@ -116,6 +119,7 @@ message TFreshBlockRange
     uint32 StartIndex = 1;
     uint32 BlocksCount = 2;
     bytes BlocksContent = 3;
+    NKikimrProto.TLogoBlobID BlobId = 4;
 }
 
 // Represents range of consecutive blocks inside some blob.

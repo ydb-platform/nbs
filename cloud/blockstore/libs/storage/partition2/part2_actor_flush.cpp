@@ -341,8 +341,13 @@ public:
         , MaxCommitId(maxCommitId)
     {}
 
-    void Visit(const TBlock& block, TStringBuf blockContent) override
+    void Visit(
+        const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& blobId) override
     {
+        Y_UNUSED(blobId);
+
         if (block.MinCommitId > MaxCommitId) {
             return;
         }

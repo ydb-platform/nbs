@@ -64,6 +64,7 @@ private:
 
     TString BlobContent;
     ui64 BlobSize = 0;
+    TPartialBlobId BlobId;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
