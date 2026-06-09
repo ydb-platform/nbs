@@ -346,6 +346,7 @@ void TIndexTabletActor::UpdateMetrics(
     Store(
         Metrics.CMGarbageBlocksCount,
         compactionStats.TotalGarbageBlocksCount);
+    Store(Metrics.CollectCommitId, GetCollectCommitId());
 
     TString backpressureReason;
     Store(
