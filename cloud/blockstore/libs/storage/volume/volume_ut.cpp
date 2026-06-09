@@ -9283,6 +9283,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             "AppCriticalEvents/OverlappingRequestsDetected",
             true);
 
+        // Send first request
         const TActorId sender = volume.GetSender();
         runtime->Send(
             new IEventHandle(
@@ -9295,6 +9296,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     .release()),
             0);
 
+        // Send overlapping request
         runtime->Send(
             new IEventHandle(
                 volumeActorId,
@@ -9370,11 +9372,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             "AppCriticalEvents/OverlappingRequestsDetected",
             true);
 
+        // Send first request
         volume.SendToPipe(volume.CreateWriteBlocksRequest(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1));
 
+        // Send overlapping request
         volume.SendToPipe(volume.CreateWriteBlocksRequest(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
