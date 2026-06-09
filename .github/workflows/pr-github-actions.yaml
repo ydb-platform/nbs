@@ -602,7 +602,7 @@ jobs:
           submodules: false
           sparse-checkout: '.github'
           clean: true
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
         run: git config core.sparseCheckout false
