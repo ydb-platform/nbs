@@ -23,6 +23,31 @@ using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+double CalculateBackpressureFeature(
+    ui64 softLimit,
+    ui64 hardLimit,
+    ui64 value)
+{
+    if (value >= hardLimit) {
+        return 1.0;
+    }
+
+    if (softLimit >= hardLimit || value <= softLimit) {
+        return 0.0;
+    }
+
+    return static_cast<double>(value - softLimit) /
+        static_cast<double>(hardLimit - softLimit);
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 const TIndexTabletActor::TStateInfo TIndexTabletActor::States[STATE_MAX] = {
     { "Boot",   (IActor::TReceiveFunc)&TIndexTabletActor::StateBoot   },
     { "Init",   (IActor::TReceiveFunc)&TIndexTabletActor::StateInit   },
@@ -318,6 +343,22 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
     };
 }
 
+TThresholds TIndexTabletActor::BuildBackpressureSoftThresholds() const
+{
+    return {
+        .Flush = Config->GetFlushThresholdForBackpressureSoft(),
+        .FlushBytes = Config->GetFlushBytesThresholdForBackpressureSoft(),
+        .FlushBytesItemCount =
+            Config->GetFlushBytesItemCountThresholdForBackpressureSoft(),
+        .CompactionScore =
+            ScaleCompactionThreshold(
+                Config->GetCompactionThresholdForBackpressureSoft()),
+        .CleanupScore = Config->GetCleanupThresholdForBackpressureSoft(),
+        .CollectGarbage =
+            Config->GetCollectGarbageThresholdForBackpressureSoft(),
+    };
+}
+
 TIndexTabletState::TBackpressureValues
 TIndexTabletActor::GetBackpressureValues() const
 {
@@ -333,6 +374,59 @@ TIndexTabletActor::GetBackpressureValues() const
         .CleanupScore = GetRangeToCleanup().Score,
         .CollectGarbage = GetGarbageQueueSize(),
     };
+}
+
+void TIndexTabletActor::UpdateWriteCostMultiplierDueToBackpressure()
+{
+    if (!Config->GetEnableSoftBackpressure()) {
+        AccessThrottlingPolicy().UpdateWriteCostMultiplierDueToBackpressure(0.0);
+        return;
+    }
+
+    const auto bpThresholds = BuildBackpressureThresholds();
+    const auto bpSoftThresholds = BuildBackpressureSoftThresholds();
+    const auto bpValues = GetBackpressureValues();
+
+    double backpressure = 0.0;
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.Flush,
+            bpThresholds.Flush,
+            bpValues.Flush));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.FlushBytes,
+            bpThresholds.FlushBytes,
+            bpValues.FlushBytes));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.FlushBytesItemCount,
+            bpThresholds.FlushBytesItemCount,
+            bpValues.FlushBytesItemCount));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.CompactionScore,
+            bpThresholds.CompactionScore,
+            bpValues.CompactionScore));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.CleanupScore,
+            bpThresholds.CleanupScore,
+            bpValues.CleanupScore));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.CollectGarbage,
+            bpThresholds.CollectGarbage,
+            bpValues.CollectGarbage));
+
+    AccessThrottlingPolicy().UpdateWriteCostMultiplierDueToBackpressure(
+        backpressure);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

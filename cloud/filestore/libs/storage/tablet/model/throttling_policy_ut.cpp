@@ -4,6 +4,8 @@
 
 #include <util/generic/size_literals.h>
 
+#include <utility>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -407,6 +409,40 @@ Y_UNIT_TEST_SUITE(TIndexTabletThrottlingPolicyTest)
         DO_TEST(tp, 30'319, 10'010'000, 1_GB, static_cast<ui32>(EOpType::Write));
         DO_TEST(tp, 0, 11'025'900, 1_GB, static_cast<ui32>(EOpType::Read));
         DO_TEST(tp, 0, 11'025'900, 1_GB, static_cast<ui32>(EOpType::Write));
+    }
+
+    Y_UNIT_TEST(WriteCostMultiplierDueToBackpressure)
+    {
+        const auto config = MakeConfig(
+            1_MB,             // maxReadBandwidth
+            1_MB,             // maxWriteBandwidth
+            10,               // maxReadIops
+            10,               // maxWriteIops
+            100,              // burstPercentage
+            0,                // boostTime
+            0,                // boostRefillTime
+            0,                // boostPercentage
+            1_GB,             // maxPostponedWeight
+            TDuration::Max(), // maxPostponedTime
+            5,                // maxWriteCostMultiplier
+            1                 // defaultPostponedRequestWeight
+        );
+        TThrottlingPolicy tp(config);
+
+        for (const auto& [backpressure, multiplier]: {
+                 std::pair<double, double>{0.0, 1.0},
+                 std::pair<double, double>{0.5, 3.0},
+                 std::pair<double, double>{1.0, 5.0},
+                 std::pair<double, double>{2.0, 5.0},
+                 std::pair<double, double>{-1.0, 1.0},
+             })
+        {
+            tp.UpdateWriteCostMultiplierDueToBackpressure(backpressure);
+            UNIT_ASSERT_DOUBLES_EQUAL(
+                multiplier,
+                tp.GetWriteCostMultiplier(),
+                1e-5);
+        }
     }
 }
 

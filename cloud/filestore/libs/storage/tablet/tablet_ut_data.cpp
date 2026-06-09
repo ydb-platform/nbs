@@ -2593,6 +2593,88 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST_16K(ShouldThrottleWritesDueToSoftBackpressureIfEnabled)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        auto runTest = [&] (bool softBackpressureEnabled) {
+            NProto::TStorageConfig storageConfig;
+            storageConfig.SetThrottlingEnabled(true);
+            storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
+            if (softBackpressureEnabled) {
+                storageConfig.SetEnableSoftBackpressure(true);
+            }
+            storageConfig.SetFlushThresholdForBackpressureSoft(block);
+            storageConfig.SetFlushThresholdForBackpressure(3 * block);
+
+            TTestEnv env({}, storageConfig);
+
+            ui32 nodeIdx = env.AddDynamicNode();
+            ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+            TIndexTabletClient tablet(
+                env.GetRuntime(),
+                nodeIdx,
+                tabletId,
+                tabletConfig);
+            tablet.InitSession("client", "session");
+
+            TFileSystemConfig config = tabletConfig;
+            config.PerformanceProfile.ThrottlingEnabled = true;
+            config.PerformanceProfile.MaxReadIops = 20;
+            config.PerformanceProfile.MaxWriteIops = 20;
+            config.PerformanceProfile.MaxReadBandwidth = block * 4;
+            config.PerformanceProfile.MaxWriteBandwidth = block * 4;
+            config.PerformanceProfile.MaxPostponedWeight = 1; // reject delayed writes
+            config.PerformanceProfile.MaxWriteCostMultiplier = 5;
+            config.PerformanceProfile.MaxPostponedTime =
+                TDuration::Seconds(25).MilliSeconds();
+            config.PerformanceProfile.MaxPostponedCount = 64;
+            config.PerformanceProfile.BurstPercentage = 100;
+            config.PerformanceProfile.DefaultPostponedRequestWeight = 1_KB;
+            tablet.UpdateConfig(config);
+
+            auto id = CreateNode(
+                tablet,
+                TCreateNodeArgs::File(RootNodeId, "test"));
+            ui64 handle = CreateHandle(tablet, id);
+
+            tablet.SendWriteDataRequest(handle, 0, block, 'a');
+            tablet.AssertWriteDataQuickResponse(S_OK);
+
+            tablet.SendWriteDataRequest(handle, block, block, 'b');
+            tablet.AssertWriteDataQuickResponse(S_OK);
+
+            // quota: 4 blocks,
+            // we added 2 blocks
+            // with backpressure our multiplier will increase to 3 and won't fit
+            tablet.SendWriteDataRequest(handle, 2 * block, block, 'c');
+            tablet.AssertWriteDataQuickResponse(
+                softBackpressureEnabled ? E_FS_THROTTLED : S_OK);
+
+            // in case we were throttled, disable throttling and write the new block
+            if (softBackpressureEnabled) {
+                auto request = tablet.CreateWriteDataRequest(
+                    handle,
+                    2 * block,
+                    block,
+                    'c');
+                request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+                tablet.SendRequest(std::move(request));
+                tablet.AssertWriteDataQuickResponse(S_OK);
+            }
+
+            // check that in both cases we reject next write
+            tablet.SendWriteDataRequest(handle, 3 * block, block, 'd');
+            tablet.AssertWriteDataQuickResponse(E_REJECTED);
+
+            tablet.DestroyHandle(handle);
+        };
+
+        runTest(false);
+        runTest(true);
+    }
+
     TABLET_TEST_16K(ShouldRejectWritesDueToBackpressure)
     {
         const auto block = tabletConfig.BlockSize;
