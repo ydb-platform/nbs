@@ -67,7 +67,7 @@ public:
     // Returns true if the pointer was correct and hasn't been freed yet.
     bool Free(const void* ptr);
 
-    TStringBuf Front() const;
+    TStringBuf Front();
     void PopFront();
     ui64 Size() const;
     bool Empty() const;

@@ -1,11 +1,14 @@
 #include "file_ring_buffer.h"
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 #include <util/stream/mem.h>
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 #include <util/system/align.h>
 #include <util/system/compiler.h>
 #include <util/system/filemap.h>
@@ -526,6 +529,18 @@ private:
         }
     }
 
+    bool ValidateAccess(const char* name) const
+    {
+        if (IsCorrupted()) {
+            ReportAccessToCorruptedFileRingBufferError(Sprintf(
+                "An attempt to access an entry in a corrupted TFileRingBuffer "
+                "from %s has been made",
+                name));
+            return false;
+        }
+        return true;
+    }
+
 public:
     TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
@@ -573,6 +588,10 @@ public:
 
     bool PushBack(TStringBuf data)
     {
+        if (!ValidateAccess("PushBack")) {
+            return false;
+        }
+
         auto allocationStatus = Alloc(data.size());
         if (HasError(allocationStatus) ||
             allocationStatus.GetResult() == nullptr)
@@ -593,7 +612,7 @@ public:
                 "Previous allocation is not committed");
         }
 
-        if (IsCorrupted()) {
+        if (!ValidateAccess("Alloc")) {
             return MakeError(E_INVALID_STATE, "Buffer is corrupted");
         }
 
@@ -701,7 +720,7 @@ public:
 
     bool Free(const void* ptr)
     {
-        if (IsCorrupted()) {
+        if (!ValidateAccess("Free")) {
             return false;
         }
 
@@ -719,13 +738,16 @@ public:
         return true;
     }
 
-    TStringBuf Front() const
+    TStringBuf Front()
     {
+        if (!ValidateAccess("Front")) {
+            return {};
+        }
+
         auto e = GetFrontEntry();
 
         if (e.IsInvalid()) {
-            // corruption
-            // TODO: report?
+            SetCorrupted();
             return {};
         }
 
@@ -734,6 +756,10 @@ public:
 
     void PopFront()
     {
+        if (!ValidateAccess("PopFront")) {
+            return;
+        }
+
         auto cur = GetFrontEntry();
         if (!cur.HasValue()) {
             return;
@@ -773,6 +799,10 @@ public:
 
     void Visit(const TVisitor& visitor)
     {
+        if (!ValidateAccess("Visit")) {
+            return;
+        }
+
         VisitEntries(
             [&](const TEntryInfo& e)
             {
@@ -789,7 +819,12 @@ public:
 
     void SetCorrupted()
     {
-        Corrupted = true;
+        if (!Corrupted) {
+            Corrupted = true;
+            ReportFileRingBufferCorruptionDetectedError(
+                "Corruption detected in FileRingBuffer, path: " +
+                Map.GetFile().GetName());
+        }
     }
 
     ui64 GetRawCapacity() const
@@ -905,7 +940,7 @@ bool TFileRingBuffer::Free(const void* ptr)
     return Impl->Free(ptr);
 }
 
-TStringBuf TFileRingBuffer::Front() const
+TStringBuf TFileRingBuffer::Front()
 {
     return Impl->Front();
 }
