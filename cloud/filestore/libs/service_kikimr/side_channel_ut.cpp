@@ -78,6 +78,20 @@ struct TTestAsyncClient: public IAsyncClient
 
         return e;
     }
+
+    void FailConnection(TConnInfo* connInfo)
+    {
+        auto g = Guard(Lock);
+        if (Endpoints.empty()) {
+            return;
+        }
+
+        UNIT_ASSERT(Endpoints.front().Initialized());
+        Endpoints.front().SetValue(nullptr);
+        Endpoints.pop_front();
+        *connInfo = std::move(ConnInfos.front());
+        ConnInfos.pop_front();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -287,6 +301,56 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
         }
 
         UNIT_ASSERT(!client->CompleteConnection(&connInfo));
+
+        for (ui32 i = 0; i < writeCount; ++i) {
+            UNIT_ASSERT(!writeResponses[i].HasValue());
+        }
+
+        for (ui32 i = 0; i < writeCount; ++i) {
+            es[i]->Reply(WriteResp(MakeError(S_ALREADY)));
+            UNIT_ASSERT(writeResponses[i].HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                writeResponses[i].GetValue().GetError().GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleConnectionFailure)
+    {
+        auto logging = CreateLoggingService("console", { TLOG_DEBUG });
+        auto client = std::make_shared<TTestAsyncClient>();
+        auto sideChannel = CreateTCPSideChannel(*logging, client);
+
+        NProto::TBackendInfo backendInfo;
+        backendInfo.SetFastShardHost("h1");
+        backendInfo.SetFastShardPort(111);
+        sideChannel->Update(backendInfo);
+
+        TConnInfo connInfo;
+        client->FailConnection(&connInfo);
+        UNIT_ASSERT_VALUES_EQUAL("h1", connInfo.Host);
+        UNIT_ASSERT_VALUES_EQUAL(111, connInfo.Port);
+
+        UNIT_ASSERT(!client->CompleteConnection(&connInfo));
+
+        auto writeResponse = NewPromise<NProto::TWriteDataResponse>();
+        bool success = sideChannel->ExecuteRequest(
+            CC(),
+            WriteReq(1, 1_KB, TString(1_KB, 'a')),
+            writeResponse);
+        UNIT_ASSERT(success);
+
+        client->FailConnection(&connInfo);
+        UNIT_ASSERT_VALUES_EQUAL("h1", connInfo.Host);
+        UNIT_ASSERT_VALUES_EQUAL(111, connInfo.Port);
+
+        UNIT_ASSERT(!client->CompleteConnection(&connInfo));
+
+        UNIT_ASSERT(writeResponse.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_UNAVAILABLE,
+            writeResponse.GetValue().GetError().GetCode(),
+            writeResponse.GetValue().GetError().GetMessage());
     }
 }
 

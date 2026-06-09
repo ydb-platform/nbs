@@ -35,7 +35,7 @@ public:
     {
         IAsyncEndpointPtr e;
 
-        with_lock(Lock) {
+        with_lock (Lock) {
             if (!Endpoints) {
                 return nullptr;
             }
@@ -51,6 +51,10 @@ public:
 
     void Push(IAsyncEndpointPtr e, ui32 generation)
     {
+        if (!e) {
+            return;
+        }
+
         with_lock (Lock) {
             if (generation < Generation) {
                 return;
@@ -222,6 +226,14 @@ private:
             generation
         ] (const TFuture<IAsyncEndpointPtr>& f) mutable {
             auto e = UnsafeExtractValue(f);
+
+            if (!e) {
+                TResponse errorResponse;
+                errorResponse.MutableError()->SetCode(E_UNAVAILABLE);
+                send(MakeFuture(std::move(errorResponse)));
+                return;
+            }
+
             auto result = e->Send(std::move(req));
             result.Subscribe([
                 ep = std::move(ep),
@@ -254,8 +266,13 @@ private:
             Log = Log,
             host = std::move(host),
             port = port
-        ] (const TFuture<IAsyncEndpointPtr>&) {
-            STORAGE_INFO("connected to host=" << host << ", port=" << port);
+        ] (const TFuture<IAsyncEndpointPtr>& f) {
+            if (f.GetValue()) {
+                STORAGE_INFO("connected to host=" << host << ", port=" << port);
+            } else {
+                STORAGE_WARN("failed to connect to host=" << host
+                    << ", port=" << port);
+            }
         });
 
         return connection;

@@ -40,6 +40,7 @@
 
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
+#include <util/system/hostname.h>
 
 #include <atomic>
 
@@ -69,7 +70,7 @@ inline void BuildBackendInfo(
 
     const ui32 fastShardPort = config.GetFastShardServerPort();
     if (fastShardPort) {
-        backendInfo->SetFastShardHost("localhost");
+        backendInfo->SetFastShardHost(FQDNHostName());
         backendInfo->SetFastShardPort(fastShardPort);
     }
 }

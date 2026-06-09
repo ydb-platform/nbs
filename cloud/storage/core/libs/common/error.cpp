@@ -186,7 +186,7 @@ EDiagnosticsErrorKind GetDiagnosticsErrorKind(const NProto::TError& e)
 
 bool IsConnectionError(const NProto::TError& e)
 {
-    return e.GetCode() == E_GRPC_UNAVAILABLE;
+    return e.GetCode() == E_GRPC_UNAVAILABLE || e.GetCode() == E_UNAVAILABLE;
 }
 
 NJson::TJsonValue FormatErrorJson(const NProto::TError& e)
