@@ -273,9 +273,11 @@ public:
 
     void Visit(
         const TBlock& block,
-        TStringBuf blockContent) override
+        TStringBuf blockContent,
+        const TPartialBlobId& blobId) override
     {
         Y_UNUSED(blockContent);
+        Y_UNUSED(blobId);
         Args.MarkBlock(block, Low);
     }
 

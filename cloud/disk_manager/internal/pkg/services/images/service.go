@@ -28,6 +28,7 @@ func (s *service) CreateImage(
 	rand.Seed(time.Now().UnixNano())
 	useS3 := common.Find(s.config.GetUseS3ForFolder(), req.FolderId) ||
 		rand.Uint32()%100 < s.config.GetUseS3Percentage()
+	storageClass := s.config.GetS3DefaultStorageClass()
 
 	pools := make([]*types.DiskPool, 0)
 	if req.Pooled || s.config.GetConfigurePoolsByDefault() {
@@ -93,11 +94,12 @@ func (s *service) CreateImage(
 			"images.CreateImageFromURL",
 			"",
 			&protos.CreateImageFromURLRequest{
-				SrcURL:     src.SrcUrl.Url,
-				DstImageId: req.DstImageId,
-				FolderId:   req.FolderId,
-				DiskPools:  pools,
-				UseS3:      useS3,
+				SrcURL:       src.SrcUrl.Url,
+				DstImageId:   req.DstImageId,
+				FolderId:     req.FolderId,
+				DiskPools:    pools,
+				UseS3:        useS3,
+				StorageClass: storageClass,
 			},
 		)
 	case *disk_manager.CreateImageRequest_SrcDiskId:
@@ -124,6 +126,7 @@ func (s *service) CreateImage(
 				FolderId:                         req.FolderId,
 				DiskPools:                        pools,
 				UseS3:                            useS3,
+				StorageClass:                     storageClass,
 				RetryBrokenDRBasedDiskCheckpoint: s.config.GetRetryBrokenDRBasedDiskCheckpoint(),
 			},
 		)

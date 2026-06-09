@@ -16,6 +16,7 @@ message TDescribeBlocksRequest
     uint32 BlocksCount = 3;
     string CheckpointId = 4;
     uint32 BlocksCountToRead = 5;
+    bool IndexOnly = 6;
 }
 
 message TFreshBlockRange
@@ -23,6 +24,7 @@ message TFreshBlockRange
     uint32 StartIndex = 1;
     uint32 BlocksCount = 2;
     bytes BlocksContent = 3;
+    TLogoBlobID BlobId = 4;
 }
 
 message TRangeInBlob

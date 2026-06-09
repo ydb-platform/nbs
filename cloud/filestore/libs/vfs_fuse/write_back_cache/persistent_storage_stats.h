@@ -15,6 +15,8 @@ struct TPersistentStorageMetrics
         NMetrics::IMetricPtr RawUsedByteMaxCount;
         NMetrics::IMetricPtr EntryCount;
         NMetrics::IMetricPtr EntryMaxCount;
+        NMetrics::IMetricPtr MaxObservedEntryByteCount;
+        NMetrics::IMetricPtr Version;
         NMetrics::IMetricPtr Corrupted;
     };
 
@@ -27,15 +29,24 @@ struct TPersistentStorageMetrics
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPersistentStorageCounters
+{
+    ui64 RawCapacityBytesCount = 0;
+    ui64 RawUsedBytesCount = 0;
+    ui64 EntryCount = 0;
+    ui64 MaxObservedEntryByteCount = 0;
+    ui32 Version = 0;
+    bool IsCorrupted = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IPersistentStorageStats
 {
     virtual ~IPersistentStorageStats() = default;
 
     virtual void SetPersistentStorageCounters(
-        ui64 rawCapacityBytesCount,
-        ui64 rawUsedBytesCount,
-        ui64 entryCount,
-        bool isCorrupted) = 0;
+        const TPersistentStorageCounters& counters) = 0;
 
     virtual TPersistentStorageMetrics CreateMetrics() const = 0;
     virtual void UpdateStats() = 0;

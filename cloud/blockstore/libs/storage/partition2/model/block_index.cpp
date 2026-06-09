@@ -66,7 +66,8 @@ bool TBlockIndex::AddBlock(
     ui32 blockIndex,
     TStringBuf blockContent,
     ui64 minCommitId,
-    ui64 maxCommitId)
+    ui64 maxCommitId,
+    TPartialBlobId blobId)
 {
     TImpl::TBlockMap::iterator it;
     bool inserted;
@@ -85,7 +86,8 @@ bool TBlockIndex::AddBlock(
             maxCommitId,
             false,
         },
-        content
+        content,
+        blobId
     );
 
     return inserted;

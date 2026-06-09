@@ -362,6 +362,91 @@ def test_update_pr_comment_updates_existing_comment() -> None:
     assert gs.get_comment_revision(existing.body) == 4
 
 
+def test_update_pr_comment_retries_lost_concurrent_summary_edit(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        id = 1001
+
+        def __init__(self, body: str) -> None:
+            self.body = body
+            self.edits = []
+
+        def edit(self, body: str) -> None:
+            self.edits.append(body)
+            self.body = body
+            if len(self.edits) == 1:
+                self.body = gs.bump_comment_revision(
+                    "\n".join([initial_body, "", "", concurrent_summary])
+                )
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self, comment: FakeComment) -> None:
+            self._comment = comment
+            self.created = []
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return [self._comment]
+
+        def create_issue_comment(self, body: str) -> None:
+            self.created.append(body)
+
+    initial_body = "\n".join(
+        [
+            (
+                "<!-- status pr=77, run=12, build_preset=linux, "
+                "dry_run=False, revision=0 -->"
+            ),
+            "> [!NOTE]",
+            "> This is an automated comment that will be appended during run.",
+            "",
+            gs.WORKLOAD_STATUS_START,
+            "> [!NOTE]",
+            "> This comment will be updated after all workloads complete.",
+            gs.WORKLOAD_STATUS_END,
+        ]
+    )
+    concurrent_summary = (
+        ":green_circle: **linux** target: **cloud/blockstore/**: "
+        "all tests PASSED for commit abc123."
+    )
+    existing = FakeComment(initial_body)
+    pr = FakePR(existing)
+
+    summary = gs.TestSummary()
+    line = gs.TestSummaryLine("Tests")
+    line.add(gs.TestResult("cls", "ok", gs.TestStatus.PASS, {}, 0.1, False))
+    line.add_report("ya-test.html", "https://summary/ya-test.html")
+    summary.add_line(line)
+
+    gs.update_pr_comment(
+        run_number=12,
+        pr=pr,
+        summary=summary,
+        build_preset="linux",
+        test_history_url="",
+        test_target="cloud/filestore/",
+        test_time="0",
+        is_dry_run=False,
+        workload_status="in_progress",
+    )
+
+    assert len(pr.created) == 0
+    assert len(existing.edits) == 2
+    assert concurrent_summary in existing.body
+    assert "target: **cloud/filestore/**" in existing.body
+    assert "all tests PASSED for commit abc123." in existing.body
+    assert gs.get_comment_revision(existing.body) == 2
+
+
 def test_update_pr_comment_workload_status_only_preserves_existing_body() -> None:
     class FakeHead:
         sha = "abc123"

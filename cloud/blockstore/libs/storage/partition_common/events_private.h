@@ -404,16 +404,19 @@ struct TEvPartitionCommonPrivate
     {
         ui64 CommitId;
         ui64 BlobSize;
+        TPartialBlobId BlobId;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
 
         TAddFreshBlocksRequest(
                 ui64 commitId,
                 ui64 blobSize,
+                TPartialBlobId blobId,
                 TVector<TBlockRange32> blockRanges,
                 TVector<IWriteBlocksHandlerPtr> writeHandlers)
             : CommitId(commitId)
             , BlobSize(blobSize)
+            , BlobId(blobId)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
         {}

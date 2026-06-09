@@ -21,6 +21,7 @@ RECURSE_FOR_TESTS(
     disk_service_max_free_bytes_policy_test
     facade_test
     image_service_nemesis_test
+    image_service_s3_quota_test
     image_service_test
     filesystem_scrubbing_test
     filesystem_service_nemesis_test

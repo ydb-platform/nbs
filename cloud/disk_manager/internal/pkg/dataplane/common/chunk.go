@@ -10,12 +10,13 @@ import (
 var zeroes = make([]byte, 1024*1024)
 
 type Chunk struct {
-	ID          string
-	Index       uint32
-	Data        []byte
-	Zero        bool
-	StoredInS3  bool
-	Compression string
+	ID           string
+	Index        uint32
+	Data         []byte
+	Zero         bool
+	StoredInS3   bool
+	Compression  string
+	StorageClass string
 }
 
 func (chunk Chunk) Checksum() uint32 {

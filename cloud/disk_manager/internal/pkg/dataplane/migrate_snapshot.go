@@ -82,6 +82,7 @@ func (t *migrateSnapshotTask) Run(
 		t.dstStorage,
 		true, // ignoreZeroChunks
 		t.useS3,
+		"", // storageClass
 	)
 	defer target.Close(ctx)
 

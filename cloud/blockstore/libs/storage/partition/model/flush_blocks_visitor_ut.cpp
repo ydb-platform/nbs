@@ -38,7 +38,8 @@ void VisitDataBlock(
 {
     const TFreshBlock block{
         TBlock(blockIndex, 1, false),
-        content
+        content,
+        {}
     };
 
     visitor.Visit(block);

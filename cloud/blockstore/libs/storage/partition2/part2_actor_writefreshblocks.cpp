@@ -63,6 +63,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
     TString BlobContent;
+    TPartialBlobId BlobId;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
@@ -237,7 +238,7 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
 
     const auto [generation, step] = ParseCommitId(CommitId);
 
-    TPartialBlobId blobId(
+    BlobId = TPartialBlobId(
         generation,
         step,
         Channel,
@@ -248,7 +249,7 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
         CombinedContext,
-        blobId,
+        BlobId,
         std::move(BlobContent),
         0,  // blockSizeForChecksums
         false);  // async
@@ -277,6 +278,7 @@ void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
     using TEvent = TEvPartitionPrivate::TEvAddFreshBlocksRequest;
     auto request = std::make_unique<TEvent>(
         CommitId,
+        BlobId,
         std::move(BlockRanges),
         std::move(WriteHandlers),
         FirstRequestDeletionId);
@@ -567,7 +569,7 @@ void TPartitionActor::HandleAddFreshBlocks(
             const auto& sgList = guard.Get();
             for (const auto idx: xrange(*blockRange)) {
                 TBlock block(idx, msg->CommitId, InvalidCommitId, false);
-                State->WriteFreshBlock(block, sgList[idx - blockRange->Start]);
+                State->WriteFreshBlock(block, sgList[idx - blockRange->Start], msg->BlobId);
             }
         } else {
             LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,

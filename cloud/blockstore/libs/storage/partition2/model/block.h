@@ -134,10 +134,12 @@ struct TOwningFreshBlock
 {
     TBlock Meta;
     TString Content;
+    TPartialBlobId BlobId;
 
-    TOwningFreshBlock(TBlock meta, TString content)
+    TOwningFreshBlock(TBlock meta, TString content, TPartialBlobId blobId)
         : Meta(meta)
         , Content(std::move(content))
+        , BlobId(blobId)
     {}
 };
 
