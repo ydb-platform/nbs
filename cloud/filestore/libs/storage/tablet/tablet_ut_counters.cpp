@@ -974,21 +974,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             Env.GetRuntime().DispatchEvents(options);
         };
 
-        auto readSensor = [&]() -> i64
-        {
-            i64 v = -1;
-            registry->Visit(TInstant::Zero(), Visitor);
-            Visitor.ValidateExpectedCountersWithPredicate({
-                {{{"sensor", "CollectCommitId"}, {"filesystem", "test"}},
-                 [&v](i64 val)
-                 {
-                     v = val;
-                     return true;
-                 }},
-            });
-            return v;
-        };
-
         Tablet->InitSession("client", "session");
 
         auto moveBarrier = [&]()
@@ -1003,15 +988,32 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             Tablet->CollectGarbage();
         };
 
-        moveBarrier();
-        advanceTime();
-        const i64 first = readSensor();
-        UNIT_ASSERT_GT(first, 0);
+        const TVector<TTestRegistryVisitor::TLabel> sensorLabels{
+            {"sensor", "CollectCommitId"},
+            {"filesystem", "test"},
+        };
 
         moveBarrier();
         advanceTime();
-        const i64 second = readSensor();
-        UNIT_ASSERT_GT(second, first);
+
+        i64 first = 0;
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCountersWithPredicate({
+            {sensorLabels,
+             [&first](i64 val)
+             {
+                 first = val;
+                 return val > 0;
+             }},
+        });
+
+        moveBarrier();
+        advanceTime();
+
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCountersWithPredicate({
+            {sensorLabels, [&first](i64 val) { return val > first; }},
+        });
     }
 
     Y_UNIT_TEST(ShouldPersistUsedDirectHandlesCountAfterRestart)
