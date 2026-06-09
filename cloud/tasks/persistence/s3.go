@@ -267,6 +267,8 @@ func (c *S3Client) PutObject(
 		return wrapError(err)
 	}
 
+	c.metrics.OnQuotaExceeded(ctx, "PutObject")
+
 	if len(object.StorageClass) == 0 {
 		return wrapError(err)
 	}
