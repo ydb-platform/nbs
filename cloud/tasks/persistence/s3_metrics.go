@@ -49,6 +49,7 @@ func (m *s3Metrics) StatCall(
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("errors/timeout")
 		canceledCounter := subRegistry.Counter("errors/canceled")
+		subRegistry.Counter("errors/quotaExceeded")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
 
 		if m.availabilityMonitoring != nil {
@@ -122,6 +123,15 @@ func (m *s3Metrics) OnRetry(req *request.Request) {
 	// Should initialize all counters before using them, to avoid 'no data'.
 	retryCounter := subRegistry.Counter("retry")
 	retryCounter.Inc()
+}
+
+func (m *s3Metrics) OnQuotaExceeded(ctx context.Context, name string) {
+	subRegistry := m.registry.WithTags(map[string]string{
+		"call": name,
+	})
+
+	quotaExceededCounter := subRegistry.Counter("errors/quotaExceeded")
+	quotaExceededCounter.Inc()
 }
 
 func newS3Metrics(

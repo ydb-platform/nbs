@@ -17,6 +17,7 @@ message CreateImageFromDiskRequest {
     repeated types.DiskPool DiskPools = 6;
     bool UseS3 = 8;
     bool RetryBrokenDRBasedDiskCheckpoint = 9;
+    string StorageClass = 10;
 }
 
 message CreateImageFromDiskTaskState {

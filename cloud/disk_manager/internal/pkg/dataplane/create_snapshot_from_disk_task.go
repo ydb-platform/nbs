@@ -316,6 +316,7 @@ func (t *createSnapshotFromDiskTask) run(
 		t.storage,
 		ignoreZeroChunks,
 		t.request.UseS3,
+		t.request.StorageClass,
 	)
 	defer target.Close(ctx)
 
