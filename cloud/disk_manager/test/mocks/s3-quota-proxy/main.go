@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -36,6 +37,9 @@ type quotaReservation struct {
 	storageClass string
 	size         uint64
 }
+
+var quotaExceededError = errors.New("Quota limit exceeded")
+var unknownStorageClassError = errors.New("Unknown storage class")
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -83,14 +87,26 @@ func parseQuotaSpecs(specs []string) map[string]uint64 {
 	return quota
 }
 
+func replyClientError(w http.ResponseWriter, code string, message string) {
+	w.Header().Set("Content-Type", "application/xml")
+	w.WriteHeader(http.StatusBadRequest)
+	_, _ = fmt.Fprintf(
+		w,
+		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"+
+			"<Error><Code>%s</Code><Message>%s</Message></Error>",
+		code,
+		message,
+	)
+}
+
 func (p *quotaProxy) reserve(
 	storageClass string,
 	size uint64,
-) (*quotaReservation, bool) {
+) (*quotaReservation, error) {
 
 	storageClass = normalizeStorageClass(storageClass)
 	if len(storageClass) == 0 {
-		return nil, true
+		return nil, nil
 	}
 
 	p.mu.Lock()
@@ -98,18 +114,22 @@ func (p *quotaProxy) reserve(
 
 	quota, ok := p.quota[storageClass]
 	if !ok {
-		return nil, true
+		if storageClass == "STANDARD" || storageClass == "" {
+			return nil, nil
+		}
+
+		return nil, unknownStorageClassError
 	}
 
 	if size > quota {
-		return nil, false
+		return nil, quotaExceededError
 	}
 
 	p.quota[storageClass] -= size
 	return &quotaReservation{
 		storageClass: storageClass,
 		size:         size,
-	}, true
+	}, nil
 }
 
 func (p *quotaProxy) releaseReservation(ctx context.Context) {
@@ -147,30 +167,36 @@ func (p *quotaProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	storageClass := r.Header.Get(storageClassHeader)
 	size := uint64(r.ContentLength)
 
-	reservation, ok := p.reserve(storageClass, size)
-	if !ok {
-		w.Header().Set("Content-Type", "application/xml")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(
+	reservation, err := p.reserve(storageClass, size)
+	if err == nil {
+		if reservation != nil {
+			ctx := context.WithValue(
+				r.Context(),
+				quotaReservationKey{},
+				reservation,
+			)
+			r = r.WithContext(ctx)
+		}
+
+		p.proxy.ServeHTTP(w, r)
+
+		return
+	}
+
+	if errors.Is(err, quotaExceededError) {
+		replyClientError(
 			w,
-			"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"+
-				"<Error><Code>%s</Code><Message>%s</Message></Error>",
 			quotaErrCode,
 			"Quota limit exceeded",
 		)
 		return
 	}
 
-	if reservation != nil {
-		ctx := context.WithValue(
-			r.Context(),
-			quotaReservationKey{},
-			reservation,
-		)
-		r = r.WithContext(ctx)
-	}
-
-	p.proxy.ServeHTTP(w, r)
+	replyClientError(
+		w,
+		"unknown_error",
+		fmt.Sprintf("Unknown error: %v", err),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
