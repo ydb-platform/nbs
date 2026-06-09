@@ -37,6 +37,19 @@ func (s *StorageMock) ListNodes(
 	return res, args.String(1), args.Error(2)
 }
 
+func (s *StorageMock) ListNodesByShard(
+	ctx context.Context,
+	snapshotID string,
+	shardFilesystemID string,
+	limit int,
+	offset int,
+) ([]nfs.Node, error) {
+
+	args := s.Called(ctx, snapshotID, shardFilesystemID, limit, offset)
+	res, _ := args.Get(0).([]nfs.Node)
+	return res, args.Error(1)
+}
+
 func (s *StorageMock) DeleteSnapshotData(
 	ctx context.Context,
 	snapshotID string,

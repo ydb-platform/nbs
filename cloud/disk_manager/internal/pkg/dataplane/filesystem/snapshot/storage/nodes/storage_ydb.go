@@ -62,6 +62,55 @@ func nodeRefStructValue(
 	)
 }
 
+type nodeRefByShard struct {
+	shardFilesystemID string
+	parentNodeID      uint64
+	name              string
+	nodeID            uint64
+	storeAsChild      bool
+}
+
+func nodeRefByShardStructTypeString() string {
+	return `Struct<
+		filesystem_snapshot_id: Utf8,
+		shard_filesystem_id: Utf8,
+		parent_node_id: Uint64,
+		name: Utf8,
+		node_id: Uint64,
+		store_as_child: Bool>`
+}
+
+func nodeRefByShardStructValue(
+	snapshotID string,
+	nodeRef nodeRefByShard,
+) persistence.Value {
+
+	return persistence.StructValue(
+		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.StructFieldValue("shard_filesystem_id", persistence.UTF8Value(nodeRef.shardFilesystemID)),
+		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(nodeRef.parentNodeID)),
+		persistence.StructFieldValue("name", persistence.UTF8Value(nodeRef.name)),
+		persistence.StructFieldValue("node_id", persistence.Uint64Value(nodeRef.nodeID)),
+		persistence.StructFieldValue("store_as_child", persistence.BoolValue(nodeRef.storeAsChild)),
+	)
+}
+
+func scanNodeRefByShard(result persistence.Result) (nodeRefByShard, error) {
+	var nodeRef nodeRefByShard
+	err := result.ScanNamed(
+		persistence.OptionalWithDefault("shard_filesystem_id", &nodeRef.shardFilesystemID),
+		persistence.OptionalWithDefault("parent_node_id", &nodeRef.parentNodeID),
+		persistence.OptionalWithDefault("name", &nodeRef.name),
+		persistence.OptionalWithDefault("node_id", &nodeRef.nodeID),
+		persistence.OptionalWithDefault("store_as_child", &nodeRef.storeAsChild),
+	)
+	if err != nil {
+		return nodeRefByShard{}, err
+	}
+
+	return nodeRef, nil
+}
+
 func nodeStructTypeString() string {
 	return `Struct<
 		filesystem_snapshot_id: Utf8,
@@ -324,6 +373,83 @@ func (s *storageYDB) saveNodes(
 	})
 }
 
+func (s *storageYDB) saveNodesByShard(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	nodes []nfs.Node,
+) error {
+
+	parentNodeIDs := make([]uint64, 0, len(nodes))
+	seenParentNodeIDs := make(map[uint64]struct{})
+	for _, node := range nodes {
+		if _, ok := seenParentNodeIDs[node.ParentID]; ok {
+			continue
+		}
+
+		seenParentNodeIDs[node.ParentID] = struct{}{}
+		parentNodeIDs = append(parentNodeIDs, node.ParentID)
+	}
+
+	parentAttrs, err := s.fetchNodeAttrs(ctx, session, snapshotID, parentNodeIDs)
+	if err != nil {
+		return err
+	}
+
+	nodeRefs := make([]nodeRefByShard, 0, len(nodes)*2)
+	for _, node := range nodes {
+		if len(node.ShardFileSystemID) == 0 {
+			continue
+		}
+		if len(node.ShardNodeName) == 0 {
+			continue
+		}
+
+		nodeRefs = append(nodeRefs, nodeRefByShard{
+			shardFilesystemID: node.ShardFileSystemID,
+			parentNodeID:      node.ParentID,
+			name:              node.Name,
+			nodeID:            node.NodeID,
+			storeAsChild:      false,
+		})
+	}
+
+	for _, node := range nodes {
+		parent, ok := parentAttrs[node.ParentID]
+		if !ok || len(parent.ShardFileSystemID) == 0 {
+			continue
+		}
+
+		nodeRefs = append(nodeRefs, nodeRefByShard{
+			shardFilesystemID: parent.ShardFileSystemID,
+			parentNodeID:      node.ParentID,
+			name:              node.Name,
+			nodeID:            node.NodeID,
+			storeAsChild:      true,
+		})
+	}
+
+	values := make([]persistence.Value, 0, len(nodeRefs))
+	for _, nodeRef := range nodeRefs {
+		values = append(values, nodeRefByShardStructValue(snapshotID, nodeRef))
+	}
+
+	return s.upsertInBatches(values, func(batch []persistence.Value) error {
+		_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $node_refs as List<%v>;
+
+			upsert into node_refs_by_shard
+			select *
+			from AS_TABLE($node_refs)
+		`, s.tablesPath, nodeRefByShardStructTypeString()),
+			persistence.ValueParam("$node_refs", persistence.ListValue(batch...)),
+		)
+		return err
+	})
+}
+
 func (s *storageYDB) saveHardlinks(
 	ctx context.Context,
 	session *persistence.Session,
@@ -352,6 +478,63 @@ func (s *storageYDB) saveHardlinks(
 		)
 		return err
 	})
+}
+
+func (s *storageYDB) listNodeRefsByShard(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	shardFilesystemID string,
+	limit int,
+	offset int,
+) ([]nodeRefByShard, error) {
+
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $shard_filesystem_id as Utf8;
+		declare $limit as Uint64;
+		declare $offset as Uint64;
+
+		select *
+		from node_refs_by_shard
+		where filesystem_snapshot_id = $snapshot_id
+			and shard_filesystem_id = $shard_filesystem_id
+		order by parent_node_id, name
+		limit $limit
+		offset $offset
+	`, s.tablesPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$shard_filesystem_id", persistence.UTF8Value(shardFilesystemID)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$offset", persistence.Uint64Value(uint64(offset))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var nodeRefs []nodeRefByShard
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			nodeRef, err := scanNodeRefByShard(res)
+			if err != nil {
+				return nil, errors.NewNonRetriableErrorf(
+					"listNodeRefsByShard: failed to parse row: %w",
+					err,
+				)
+			}
+
+			nodeRefs = append(nodeRefs, nodeRef)
+		}
+	}
+
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
+	return nodeRefs, nil
 }
 
 func (s *storageYDB) listNodeRefs(
@@ -504,6 +687,65 @@ func (s *storageYDB) listNodes(
 	}
 
 	return nodes, nextCookie, nil
+}
+
+func (s *storageYDB) listNodesByShard(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	shardFilesystemID string,
+	limit int,
+	offset int,
+) ([]nfs.Node, error) {
+
+	nodeRefsByShard, err := s.listNodeRefsByShard(
+		ctx,
+		session,
+		snapshotID,
+		shardFilesystemID,
+		limit,
+		offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeIDs := make([]uint64, 0, len(nodeRefsByShard))
+	for _, nodeRefByShard := range nodeRefsByShard {
+		nodeIDs = append(nodeIDs, nodeRefByShard.nodeID)
+	}
+
+	attrs, err := s.fetchNodeAttrs(ctx, session, snapshotID, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make([]nfs.Node, 0, len(nodeRefsByShard))
+	for _, nodeRefByShard := range nodeRefsByShard {
+		node, ok := attrs[nodeRefByShard.nodeID]
+		if !ok {
+			return nil, errors.NewNonRetriableErrorf(
+				"node not found: snapshot_id=%v node_id=%v",
+				snapshotID,
+				nodeRefByShard.nodeID,
+			)
+		}
+
+		if nodeRefByShard.storeAsChild {
+			node.ParentID = nodeRefByShard.parentNodeID
+			node.Name = nodeRefByShard.name
+			node.NodeID = 0
+		} else {
+			node.ParentID = uint64(nfs.RootNodeID)
+			node.Name = node.ShardNodeName
+			node.ShardFileSystemID = ""
+			node.ShardNodeName = ""
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	return nodes, nil
 }
 
 func (s *storageYDB) deleteFromTables(
@@ -786,6 +1028,11 @@ func (s *storageYDB) SaveNodes(
 				return err
 			}
 
+			err = s.saveNodesByShard(ctx, session, snapshotID, nodes)
+			if err != nil {
+				return err
+			}
+
 			return s.saveHardlinks(ctx, session, snapshotID, nodes)
 		},
 	)
@@ -818,6 +1065,34 @@ func (s *storageYDB) ListNodes(
 		},
 	)
 	return result, nextCookie, err
+}
+
+func (s *storageYDB) ListNodesByShard(
+	ctx context.Context,
+	snapshotID string,
+	shardFilesystemID string,
+	limit int,
+	offset int,
+) ([]nfs.Node, error) {
+
+	var result []nfs.Node
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			result, err = s.listNodesByShard(
+				ctx,
+				session,
+				snapshotID,
+				shardFilesystemID,
+				limit,
+				offset,
+			)
+			return err
+		},
+	)
+	return result, err
 }
 
 func (s *storageYDB) CleanupRestorationNodeIDsMapping(
@@ -863,6 +1138,7 @@ func (s *storageYDB) DeleteSnapshotData(
 
 	return s.deleteFromTables(ctx, snapshotID, []string{
 		"node_refs",
+		"node_refs_by_shard",
 		"nodes",
 		"restoration_node_ids_mapping",
 		"hardlinks",
