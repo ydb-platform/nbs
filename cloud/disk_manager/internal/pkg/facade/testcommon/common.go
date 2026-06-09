@@ -1040,7 +1040,12 @@ func GetCounter(
 	require.NoError(t, err)
 
 	retrievedMetrics, ok := metricFamilies[name]
-	require.True(t, ok)
+	if !ok {
+		t.Logf("counter with name %s is not found", name)
+		t.Logf("Metric families: %v", metricFamilies)
+		return 0, false
+	}
+
 	for _, metricValue := range retrievedMetrics.GetMetric() {
 		if metricMatchesLabel(labels, metricValue) {
 			return metricValue.GetCounter().GetValue(), true
