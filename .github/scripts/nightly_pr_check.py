@@ -43,6 +43,8 @@ LABEL_TO_WORKFLOWS = {
 COMMENT_MARKER_PREFIX = "<!-- nbs-nightly-pr-check"
 CANCEL_VERIFY_INTERVAL_SECONDS = 5
 CANCEL_VERIFY_TIMEOUT_SECONDS = 120
+INITIAL_DISCOVERY_INTERVAL_SECONDS = 5
+INITIAL_DISCOVERY_TIMEOUT_SECONDS = 60
 logger = setup_logger()
 
 
@@ -189,33 +191,32 @@ def status_icon(run: WorkflowRun) -> str:
     return ":red_circle:"
 
 
+def status_text(run: WorkflowRun) -> str:
+    if run.error:
+        return run.error
+    if run.conclusion:
+        return run.conclusion
+    return run.status
+
+
 def render_comment(
     marker: str,
-    pr_number: int,
-    head_ref: str,
     runs: list[WorkflowRun],
     final: bool,
 ) -> str:
     comment_marker = get_comment_marker(marker)
+    workflow_status = "finished" if final else "running"
     lines = [
         comment_marker,
-        f"### Nightly PR checks for #{pr_number}",
+        "> [!TIP]",
+        f"> Nightly workflows are **{workflow_status}**.",
         "",
-        f"Marker: `{marker}`",
-        f"Ref: `{head_ref}`",
-        "",
-        "| Workflow | Status | Result | Trigger |",
-        "| --- | --- | --- | --- |",
     ]
-
     for run in runs:
         workflow = f"`{run.workflow}`"
         if run.url:
             workflow = f"[`{run.workflow}`]({run.url})"
-        result = run.error or run.conclusion or ""
-        lines.append(
-            f"| {workflow} | {status_icon(run)} `{run.status}` | `{result}` | `{run.label}` |"
-        )
+        lines.append(f"- {status_icon(run)} {workflow} - `{status_text(run)}`")
 
     failed_jobs = [
         (run, job)
@@ -224,35 +225,14 @@ def render_comment(
         if job.get("conclusion") not in (None, "success", "skipped")
     ]
     if failed_jobs:
-        lines.extend(
-            [
-                "",
-                "#### Failed jobs",
-                "",
-                "| Workflow | Job | Result |",
-                "| --- | --- | --- |",
-            ]
-        )
+        lines.extend(["", "Failed jobs:"])
         for run, job in failed_jobs[:25]:
             job_name = job.get("name", "")
             job_url = job.get("html_url", run.url)
             job_result = job.get("conclusion") or job.get("status") or ""
-            lines.append(
-                f"| `{run.workflow}` | [{job_name}]({job_url}) | `{job_result}` |"
-            )
+            lines.append(f"- [`{job_name}`]({job_url}) - `{job_result}`")
         if len(failed_jobs) > 25:
-            lines.append(f"| ... | {len(failed_jobs) - 25} more failed jobs | |")
-
-    lines.extend(
-        [
-            "",
-            "Detailed test summaries and S3 report links are available in the spawned workflow runs.",
-        ]
-    )
-    if not final:
-        lines.append(
-            "This comment will be updated until all requested nightly workflows complete."
-        )
+            lines.append(f"- ... and {len(failed_jobs) - 25} more failed jobs")
 
     return "\n".join(lines)
 
@@ -381,6 +361,34 @@ def discover_missing_runs(
             continue
         run.run_id = int(workflow_run.id)
         run.url = workflow_run.html_url or ""
+
+
+def all_discovered(runs: list[WorkflowRun]) -> bool:
+    return all(run.error or run.run_id is not None for run in runs)
+
+
+def wait_for_initial_discovery(
+    repo: Repository,
+    runs: list[WorkflowRun],
+    head_ref: str,
+    marker: str,
+    dispatched_at: datetime,
+) -> None:
+    deadline = time.monotonic() + INITIAL_DISCOVERY_TIMEOUT_SECONDS
+    while True:
+        discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
+        if all_discovered(runs):
+            return
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            missing = [
+                run.workflow for run in runs if run.run_id is None and not run.error
+            ]
+            logger.warning("Timed out waiting to discover spawned runs: %s", missing)
+            return
+
+        time.sleep(min(INITIAL_DISCOVERY_INTERVAL_SECONDS, remaining))
 
 
 def cancel_started_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
@@ -517,9 +525,7 @@ def cancel_mode() -> int:
     )
     refresh_runs(repo, runs)
     cancel_started_runs(repo, runs)
-    upsert_comment(
-        pr_object, marker, render_comment(marker, pr_number, head_ref, runs, final=True)
-    )
+    upsert_comment(pr_object, marker, render_comment(marker, runs, final=True))
     return 1 if any(run.error for run in runs) else 0
 
 
@@ -565,7 +571,7 @@ def main() -> int:
         upsert_comment(
             pr_object,
             marker,
-            render_comment(marker, pr_number, head_ref, runs, final=True),
+            render_comment(marker, runs, final=True),
         )
         return 1
 
@@ -580,10 +586,11 @@ def main() -> int:
                 run.conclusion = "failure"
                 run.error = str(error)
 
+        wait_for_initial_discovery(repo, runs, head_ref, marker, dispatched_at)
         upsert_comment(
             pr_object,
             marker,
-            render_comment(marker, pr_number, head_ref, runs, final=False),
+            render_comment(marker, runs, final=False),
         )
 
         deadline = time.monotonic() + args.timeout_seconds
@@ -601,7 +608,7 @@ def main() -> int:
                 upsert_comment(
                     pr_object,
                     marker,
-                    render_comment(marker, pr_number, head_ref, runs, final=True),
+                    render_comment(marker, runs, final=True),
                 )
                 return 1 if any_failed(runs) else 0
 
@@ -614,7 +621,7 @@ def main() -> int:
         upsert_comment(
             pr_object,
             marker,
-            render_comment(marker, pr_number, head_ref, runs, final=True),
+            render_comment(marker, runs, final=True),
         )
         return 1
 
@@ -624,9 +631,7 @@ def main() -> int:
             run.status = "completed"
             run.conclusion = "timed_out"
 
-    upsert_comment(
-        pr_object, marker, render_comment(marker, pr_number, head_ref, runs, final=True)
-    )
+    upsert_comment(pr_object, marker, render_comment(marker, runs, final=True))
     return 1
 
 
