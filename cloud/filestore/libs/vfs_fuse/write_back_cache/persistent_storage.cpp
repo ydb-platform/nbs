@@ -62,6 +62,8 @@ public:
         json.BeginObject()
             .WriteKey("FilePath")
             .WriteString(Config.FilePath)
+            .WriteKey("Version")
+            .WriteULongLong(Storage.GetVersion())
             .WriteKey("RawCapacityByteCount")
             .WriteULongLong(Storage.GetRawCapacity())
             .WriteKey("RawUsedByteCount")
@@ -126,11 +128,15 @@ public:
 private:
     void SetCounters()
     {
-        Stats->SetPersistentStorageCounters(
-            /* rawCapacityBytesCount = */ Storage.GetRawCapacity(),
-            /* rawUsedBytesCount = */ Storage.GetRawUsedBytesCount(),
-            /* entryCount = */ Storage.Size(),
-            /* isCorrupted = */ Storage.IsCorrupted());
+        Stats->SetPersistentStorageCounters({
+            .RawCapacityBytesCount = Storage.GetRawCapacity(),
+            .RawUsedBytesCount = Storage.GetRawUsedBytesCount(),
+            .EntryCount = Storage.Size(),
+            .MaxObservedEntryByteCount =
+                Storage.GetMaxObservedEntryByteCount(),
+            .Version = Storage.GetVersion(),
+            .IsCorrupted = Storage.IsCorrupted(),
+        });
     }
 };
 

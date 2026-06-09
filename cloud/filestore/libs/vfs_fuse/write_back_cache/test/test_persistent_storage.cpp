@@ -67,11 +67,14 @@ void TTestStorage::SetCapacity(size_t capacity)
 
 void TTestStorage::SetStats()
 {
-    Stats->SetPersistentStorageCounters(
-        /* rawCapacityBytesCount = */ Capacity,
-        /* rawUsedBytesCount = */ Data.size(),
-        /* entryCount = */ Data.size(),
-        /* isCorrupted = */ false);
+    Stats->SetPersistentStorageCounters({
+        .RawCapacityBytesCount = Capacity,
+        .RawUsedBytesCount = Data.size(),
+        .EntryCount = Data.size(),
+        .MaxObservedEntryByteCount = 0,
+        .Version = 1,
+        .IsCorrupted = false,
+    });
 }
 
 ////////////////////////////////////////////////////////////////////////////////

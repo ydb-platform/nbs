@@ -318,6 +318,7 @@ private:
     bool Corrupted = false;
 
     TEntryHeader* CurrentAllocation = nullptr;
+    ui64 MaxObservedEntryByteCount = 0;
 
     // Map of non-free entries: data ptr -> pos
     THashMap<const void*, ui64> EntryMap;
@@ -606,6 +607,9 @@ public:
             {
                 if (!e.GetFreeFlag()) {
                     EntryMap[e.Data] = e.ActualPos;
+                    MaxObservedEntryByteCount = Max<ui64>(
+                        MaxObservedEntryByteCount,
+                        e.Header->GetDataSize());
                 }
             });
 
@@ -709,6 +713,9 @@ public:
                 }
             }
         }
+
+        MaxObservedEntryByteCount =
+            Max(MaxObservedEntryByteCount, size);
 
         CurrentAllocation = Data.GetEntryHeader(writePos);
         CurrentAllocation->SetDataSize(size);
@@ -905,6 +912,16 @@ public:
         return res + Header()->WritePos - Header()->ReadPos;
     }
 
+    ui32 GetVersion() const
+    {
+        return Header()->Version;
+    }
+
+    ui64 GetMaxObservedEntryByteCount() const
+    {
+        return MaxObservedEntryByteCount;
+    }
+
     ui64 GetAvailableByteCount() const
     {
         if (IsCorrupted()) {
@@ -1069,6 +1086,16 @@ ui64 TFileRingBuffer::GetRawCapacity() const
 ui64 TFileRingBuffer::GetRawUsedBytesCount() const
 {
     return Impl->GetRawUsedBytesCount();
+}
+
+ui32 TFileRingBuffer::GetVersion() const
+{
+    return Impl->GetVersion();
+}
+
+ui64 TFileRingBuffer::GetMaxObservedEntryByteCount() const
+{
+    return Impl->GetMaxObservedEntryByteCount();
 }
 
 ui64 TFileRingBuffer::GetAvailableByteCount() const

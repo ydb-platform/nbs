@@ -85,6 +85,8 @@ public:
     void SetCorrupted();
     ui64 GetRawCapacity() const;
     ui64 GetRawUsedBytesCount() const;
+    ui32 GetVersion() const;
+    ui64 GetMaxObservedEntryByteCount() const;
 
     // Returns the number of bytes that can be allocated in the buffer without
     // exceeding its capacity (PushBack will succeed).

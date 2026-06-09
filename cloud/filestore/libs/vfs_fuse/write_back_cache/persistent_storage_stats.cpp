@@ -21,19 +21,22 @@ private:
     TRelaxedCounter RawCapacityBytesCounter;
     TRelaxedCombinedMaxCounter<> RawUsedBytesCounter;
     TRelaxedCombinedMaxCounter<> EntryCounter;
+    TRelaxedCounter MaxObservedEntryByteCount;
+    TRelaxedCounter VersionCounter;
     TRelaxedCounter CorruptedCounter;
 
 public:
     void SetPersistentStorageCounters(
-        ui64 rawCapacityBytesCount,
-        ui64 rawUsedBytesCount,
-        ui64 entryCount,
-        bool isCorrupted) override
+        const TPersistentStorageCounters& counters) override
     {
-        RawCapacityBytesCounter.Set(static_cast<i64>(rawCapacityBytesCount));
-        RawUsedBytesCounter.Set(static_cast<i64>(rawUsedBytesCount));
-        EntryCounter.Set(static_cast<i64>(entryCount));
-        CorruptedCounter.Set(isCorrupted ? 1 : 0);
+        RawCapacityBytesCounter.Set(
+            static_cast<i64>(counters.RawCapacityBytesCount));
+        RawUsedBytesCounter.Set(static_cast<i64>(counters.RawUsedBytesCount));
+        EntryCounter.Set(static_cast<i64>(counters.EntryCount));
+        MaxObservedEntryByteCount.Set(
+            static_cast<i64>(counters.MaxObservedEntryByteCount));
+        VersionCounter.Set(static_cast<i64>(counters.Version));
+        CorruptedCounter.Set(counters.IsCorrupted ? 1 : 0);
     }
 
     TPersistentStorageMetrics CreateMetrics() const override
@@ -52,6 +55,10 @@ public:
                     [self] { return self->EntryCounter.GetCurrent(); }),
                 .EntryMaxCount = CreateMetric(
                     [self] { return self->EntryCounter.GetMax(); }),
+                .MaxObservedEntryByteCount = CreateMetric(
+                    [self] { return self->MaxObservedEntryByteCount.Get(); }),
+                .Version =
+                    CreateMetric([self] { return self->VersionCounter.Get(); }),
                 .Corrupted = CreateMetric(
                     [self] { return self->CorruptedCounter.Get(); }),
             }};
@@ -100,6 +107,18 @@ void TPersistentStorageMetrics::Register(
         {CreateSensor("Storage_EntryMaxCount")},
         Storage.EntryMaxCount,
         EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_MaxObservedEntryByteCount")},
+        Storage.MaxObservedEntryByteCount,
+        EAggregationType::AT_MAX,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_Version")},
+        Storage.Version,
+        EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 
     aggregatableMetricsRegistry.Register(
