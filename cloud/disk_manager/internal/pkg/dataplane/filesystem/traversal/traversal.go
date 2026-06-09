@@ -108,7 +108,6 @@ func NewFilesystemTraverser(
 }
 
 func (t *FilesystemTraverser) Traverse(ctx context.Context) error {
-
 	ctx = logging.WithFields(
 		ctx,
 		logging.Bool("FILESYSTEM_TRAVERSAL_IN_PROGRESS", true),
@@ -159,7 +158,6 @@ func (t *FilesystemTraverser) Traverse(ctx context.Context) error {
 }
 
 func (t *FilesystemTraverser) periodicRunFinishedCheck(ctx context.Context) error {
-
 	ticker := time.NewTicker(t.finishedCheckInterval)
 	defer ticker.Stop()
 
