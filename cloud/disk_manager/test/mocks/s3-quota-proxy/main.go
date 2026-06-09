@@ -228,7 +228,7 @@ func main() {
 	var quotaSpecs []string
 
 	rootCmd := &cobra.Command{
-		Use:   "s3quota-proxy",
+		Use:   "s3-quota-proxy",
 		Short: "S3 quota proxy mock",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := run(context.Background(), port, s3Port, quotaSpecs)

@@ -279,6 +279,7 @@ func (c *S3Client) PutObject(
 			object.StorageClass,
 		)
 
+		
 		input.Body = bytes.NewReader(object.Data)
 		input.StorageClass = nil
 		_, err = c.s3.PutObjectWithContext(ctx, input)

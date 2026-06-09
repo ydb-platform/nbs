@@ -282,7 +282,7 @@ PlacementGroupConfig: <
 >
 """
 
-IMAGE_S3_DEFAULT_STORAGE_CLASS_CONFIG_TEMPLATE = """\
+IMAGE_S3_DEFAULT_STORAGE_CLASS_CONFIG_TEMPLATE = """
     S3DefaultStorageClass: "{storage_class}"
 """
 

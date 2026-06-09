@@ -2,5 +2,5 @@ RECURSE(
     compute
     kms
     metadata
-    s3_quota_proxy
+    s3-quota-proxy
 )

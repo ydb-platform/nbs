@@ -6,6 +6,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 func TestImageServiceCreateImageFromDiskWithS3StorageClassQuotaFallback(t *testing.T) {
 	ctx := testcommon.NewContext()
 
