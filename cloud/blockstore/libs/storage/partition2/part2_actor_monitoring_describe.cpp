@@ -211,6 +211,10 @@ bool TPartitionActor::PrepareDescribeBlob(
 
     State->FindFreshBlocks(visitor);
 
+    if (!args.Blocks.empty()) {
+        return true;
+    }
+
     TMaybe<TBlockList> blockList;
     if (!db.ReadBlockList(args.BlobId, blockList)) {
         return false;

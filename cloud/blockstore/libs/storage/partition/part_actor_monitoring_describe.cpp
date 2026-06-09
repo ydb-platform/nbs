@@ -317,6 +317,11 @@ bool TPartitionActor::PrepareDescribeBlob(
         TBlockRange32::Max(),
         Max<ui64>()  // maxCommitId
     );
+
+    if (!args.BlockMarks.empty()) {
+        return true;
+    }
+
     return db.FindBlocksInBlobsIndex(
         visitor,
         State->GetMaxBlocksInBlob(),
