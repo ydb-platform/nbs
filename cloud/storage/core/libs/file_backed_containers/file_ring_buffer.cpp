@@ -49,6 +49,9 @@ struct THeader
 
 static_assert(sizeof(THeader) <= HeaderReserveSize);
 
+// Entry header layout (lower bits come first):
+// [ DataSize (28 bits) | Tag (3 bits) | FreeFlag (1 bit) ]
+// [ Checksum (32 bits) ]
 struct Y_PACKED TEntryHeader
 {
 private:

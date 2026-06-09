@@ -755,12 +755,21 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.ResizeAndRemap(0, decoded.size());
             decoded.copy(reinterpret_cast<char*>(m.Ptr()), decoded.size());
+            // Check version before migration
+            UNIT_ASSERT_VALUES_EQUAL(4, *reinterpret_cast<ui32*>(m.Ptr()));
         }
 
         TFileRingBuffer rb(f.GetName(), dataLen, metadataLen);
         UNIT_ASSERT(!rb.IsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL("FormatV4", rb.GetMetadata());
         UNIT_ASSERT_VALUES_EQUAL("SomeData", rb.Front());
+
+        {
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.ResizeAndRemap(0, f.GetLength());
+            // Check version after migration
+            UNIT_ASSERT_VALUES_EQUAL(5, *reinterpret_cast<ui32*>(m.Ptr()));
+        }
     }
 
     Y_UNIT_TEST(ShouldResizeMetadata)
