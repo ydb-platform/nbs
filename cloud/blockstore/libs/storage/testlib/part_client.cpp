@@ -398,6 +398,14 @@ TPartitionClient::CreateDescribeBlocksRequest(
     return CreateDescribeBlocksRequest(range.Start, range.Size(), checkpointId);
 }
 
+std::unique_ptr<TEvVolume::TEvDescribeBlobRequest>
+TPartitionClient::CreateDescribeBlobRequest(const NKikimr::TLogoBlobID& blobId)
+{
+    auto request = std::make_unique<TEvVolume::TEvDescribeBlobRequest>();
+    LogoBlobIDFromLogoBlobID(blobId, request->Record.MutableBlobId());
+    return request;
+}
+
 std::unique_ptr<TEvVolume::TEvGetUsedBlocksRequest>
 TPartitionClient::CreateGetUsedBlocksRequest()
 {
