@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/block_ranges.h>
 #include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -2077,7 +2078,7 @@ struct TTxIndexTablet
         ui64 NodeId = InvalidNodeId;
         TMaybe<TByteRange> ReadAheadRange;
         TMaybe<IIndexTabletDatabase::TNode> Node;
-        TVector<TBlockDataRef> Blocks;
+        TBlockRanges BlockRanges;
         TVector<TBlockBytes> Bytes;
 
         // NOTE: should persist state across tx restarts
@@ -2101,7 +2102,9 @@ struct TTxIndexTablet
             , Buffer(std::move(buffer))
             , DescribeOnly(describeOnly)
             , ExplicitNodeId(request.GetNodeId())
-            , Blocks(AlignedByteRange.BlockCount())
+            , BlockRanges(
+                IntegerCast<ui32>(AlignedByteRange.FirstBlock()),
+                IntegerCast<ui32>(AlignedByteRange.BlockCount()))
             , Bytes(AlignedByteRange.BlockCount())
         {
             Y_DEBUG_ABORT_UNLESS(AlignedByteRange.IsAligned());
@@ -2117,7 +2120,10 @@ struct TTxIndexTablet
             ReadAheadRange.Clear();
             Node.Clear();
 
-            std::fill(Blocks.begin(), Blocks.end(), TBlockDataRef());
+            BlockRanges = TBlockRanges(
+                IntegerCast<ui32>(AlignedByteRange.FirstBlock()),
+                IntegerCast<ui32>(AlignedByteRange.BlockCount()));
+
             std::fill(Bytes.begin(), Bytes.end(), TBlockBytes());
 
             // deliberately not calling TProfileAware::Clear()
