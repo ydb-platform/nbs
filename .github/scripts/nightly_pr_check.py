@@ -14,6 +14,8 @@ from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from .helpers import setup_logger
+
 LABEL_TO_WORKFLOWS = {
     "nightly-tests": ["nightly.yaml"],
     "nightly-asan": ["nightly-asan.yaml"],
@@ -37,6 +39,7 @@ LABEL_TO_WORKFLOWS = {
 
 COMMENT_MARKER = "<!-- nbs-nightly-pr-check -->"
 GITHUB_API = "https://api.github.com"
+logger = setup_logger()
 
 
 @dataclass
@@ -122,6 +125,7 @@ def dispatch_workflow(
     ref: str,
     marker: str,
 ) -> None:
+    logger.info("Dispatching %s on ref %s with marker %s", workflow, ref, marker)
     path = repo_path(repository, f"/actions/workflows/{quote(workflow)}/dispatches")
     api_request(
         "POST",
@@ -142,7 +146,7 @@ def find_workflow_run(
     workflow: str,
     branch: str,
     marker: str,
-    dispatched_at: datetime,
+    dispatched_at: datetime | None = None,
 ) -> dict[str, Any] | None:
     query = urlencode(
         {
@@ -159,14 +163,31 @@ def find_workflow_run(
         if marker not in title:
             continue
         created_at = parse_github_time(run.get("created_at"))
-        if created_at and created_at < dispatched_at:
+        if dispatched_at is not None and created_at and created_at < dispatched_at:
             continue
         candidates.append(run)
 
     if not candidates:
+        logger.info(
+            "No run found yet for workflow=%s branch=%s marker=%s",
+            workflow,
+            branch,
+            marker,
+        )
         return None
 
-    return sorted(candidates, key=lambda run: run.get("run_number", 0), reverse=True)[0]
+    result = sorted(candidates, key=lambda run: run.get("run_number", 0), reverse=True)[
+        0
+    ]
+    logger.info(
+        "Found run workflow=%s id=%s status=%s conclusion=%s url=%s",
+        workflow,
+        result.get("id"),
+        result.get("status"),
+        result.get("conclusion"),
+        result.get("html_url"),
+    )
+    return result
 
 
 def get_workflow_run(repository: str, token: str, run_id: int) -> dict[str, Any]:
@@ -188,6 +209,7 @@ def get_workflow_jobs(repository: str, token: str, run_id: int) -> list[dict[str
 
 
 def cancel_workflow_run(repository: str, token: str, run_id: int) -> None:
+    logger.info("Requesting cancellation for run_id=%s", run_id)
     api_request("POST", repo_path(repository, f"/actions/runs/{run_id}/cancel"), token)
 
 
@@ -282,6 +304,7 @@ def upsert_comment(repository: str, token: str, pr_number: int, body: str) -> No
         if COMMENT_MARKER not in comment.get("body", ""):
             continue
         comment_id = comment["id"]
+        logger.info("Updating sticky PR comment id=%s", comment_id)
         api_request(
             "PATCH",
             repo_path(repository, f"/issues/comments/{comment_id}"),
@@ -290,6 +313,7 @@ def upsert_comment(repository: str, token: str, pr_number: int, body: str) -> No
         )
         return
 
+    logger.info("Creating sticky PR comment for PR #%s", pr_number)
     api_request("POST", comments_path, token, {"body": body})
 
 
@@ -302,6 +326,13 @@ def refresh_runs(repository: str, token: str, runs: list[WorkflowRun]) -> None:
         run.conclusion = payload.get("conclusion")
         run.url = payload.get("html_url") or run.url
         run.jobs = get_workflow_jobs(repository, token, run.run_id)
+        logger.info(
+            "Refreshed %s: id=%s status=%s conclusion=%s",
+            run.workflow,
+            run.run_id,
+            run.status,
+            run.conclusion,
+        )
 
 
 def all_done(runs: list[WorkflowRun]) -> bool:
@@ -348,6 +379,10 @@ def cancel_started_runs(repository: str, token: str, runs: list[WorkflowRun]) ->
     for run in runs:
         if run.run_id is None:
             if not run.error:
+                logger.warning(
+                    "Cannot cancel %s: spawned run was not discovered",
+                    run.workflow,
+                )
                 run.error = (
                     "collector was cancelled before the spawned run was discovered"
                 )
@@ -356,6 +391,11 @@ def cancel_started_runs(repository: str, token: str, runs: list[WorkflowRun]) ->
             continue
 
         if run.status == "completed":
+            logger.info(
+                "Skipping cancellation for completed run %s id=%s",
+                run.workflow,
+                run.run_id,
+            )
             continue
 
         try:
@@ -371,16 +411,19 @@ def cancel_started_runs(repository: str, token: str, runs: list[WorkflowRun]) ->
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=("dispatch-and-collect", "cancel"),
+        default="dispatch-and-collect",
+    )
     parser.add_argument("--poll-interval-seconds", type=int, default=60)
     parser.add_argument("--timeout-seconds", type=int, default=21600)
     return parser.parse_args()
 
 
-def main() -> int:
-    signal.signal(signal.SIGINT, request_cancellation)
-    signal.signal(signal.SIGTERM, request_cancellation)
-
-    args = parse_args()
+def load_context() -> (
+    tuple[str, str, dict[str, Any], int, str, str, set[str], list[WorkflowRun], str]
+):
     token = os.environ["GITHUB_TOKEN"]
     repository = os.environ["GITHUB_REPOSITORY"]
     event = load_event()
@@ -390,12 +433,68 @@ def main() -> int:
     head_repo = pr["head"]["repo"]["full_name"]
     labels = {label["name"] for label in pr.get("labels", [])}
     runs = selected_workflows(labels)
+    marker = f"pr-{pr_number}-run-{os.environ['GITHUB_RUN_ID']}-attempt-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
+    return token, repository, pr, pr_number, head_ref, head_repo, labels, runs, marker
+
+
+def cancel_mode() -> int:
+    token, repository, _pr, pr_number, head_ref, _head_repo, _labels, runs, marker = (
+        load_context()
+    )
 
     if not runs:
-        print("No nightly PR labels found; nothing to dispatch")
+        logger.info("No nightly PR labels found; nothing to cancel")
         return 0
 
-    marker = f"pr-{pr_number}-run-{os.environ['GITHUB_RUN_ID']}-attempt-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
+    logger.info(
+        "Cancellation mode started for PR #%s, ref=%s, marker=%s, workflows=%s",
+        pr_number,
+        head_ref,
+        marker,
+        [run.workflow for run in runs],
+    )
+    discover_missing_runs(
+        repository,
+        token,
+        runs,
+        head_ref,
+        marker,
+        dispatched_at=None,
+    )
+    refresh_runs(repository, token, runs)
+    cancel_started_runs(repository, token, runs)
+    upsert_comment(
+        repository,
+        token,
+        pr_number,
+        render_comment(marker, pr_number, head_ref, runs, final=True),
+    )
+    return 0
+
+
+def main() -> int:
+    signal.signal(signal.SIGINT, request_cancellation)
+    signal.signal(signal.SIGTERM, request_cancellation)
+
+    args = parse_args()
+    if args.mode == "cancel":
+        return cancel_mode()
+
+    token, repository, _pr, pr_number, head_ref, head_repo, _labels, runs, marker = (
+        load_context()
+    )
+
+    if not runs:
+        logger.info("No nightly PR labels found; nothing to dispatch")
+        return 0
+
+    logger.info(
+        "Dispatch-and-collect mode started for PR #%s, ref=%s, marker=%s, workflows=%s",
+        pr_number,
+        head_ref,
+        marker,
+        [run.workflow for run in runs],
+    )
 
     if head_repo != repository:
         for run in runs:

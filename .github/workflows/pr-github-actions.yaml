@@ -611,6 +611,12 @@ jobs:
         uses: ./.github/actions/nightly_pr_check
         with:
           github_token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+      - name: Cancel dispatched nightly builds
+        if: ${{ cancelled() }}
+        uses: ./.github/actions/nightly_pr_check
+        with:
+          mode: cancel
+          github_token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
 
   finalize-build-and-test-comments:
     needs: [check-running-allowed, create-build-and-test-target-var, build_and_test]
