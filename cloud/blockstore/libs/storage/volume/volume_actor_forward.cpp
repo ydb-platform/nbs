@@ -680,8 +680,7 @@ void TVolumeActor::ForwardRequest(
             return;
         }
 
-        if (!State->IsDiskRegistryMediaKind() &&
-            State->GetPartitions().size() > 1 &&
+        if (State->GetPartitions().size() > 1 &&
             !State->GetPartition(blobId.TabletID()))
         {
             replyError(MakeError(
