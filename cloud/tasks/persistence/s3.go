@@ -241,6 +241,8 @@ func (c *S3Client) GetObject(
 	}, nil
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func (c *S3Client) PutObject(
 	ctx context.Context,
 	bucket string,
@@ -256,6 +258,60 @@ func (c *S3Client) PutObject(
 
 	defer c.metrics.StatCall(ctx, "PutObject", bucket, key)(&err)
 
+	err = c.putObjectWithStorageClass(ctx, bucket, key, object)
+	if err == nil {
+		return nil
+	}
+
+	if !isQuotaLimitExceeded(err) {
+		return wrapError(err)
+	}
+
+	if len(object.StorageClass) == 0 {
+		return wrapError(err)
+	}
+
+	logging.Debug(
+		ctx,
+		"s3 put object with storage class %q failed with quota "+
+			"error, retrying without storage class",
+		object.StorageClass,
+	)
+
+	err = c.putObject(ctx, bucket, key, object)
+	return wrapError(err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *S3Client) putObject(
+	ctx context.Context,
+	bucket string,
+	key string,
+	object S3Object,
+) error {
+
+	input := &aws_s3.PutObjectInput{
+		Bucket:          &bucket,
+		Key:             &key,
+		Body:            bytes.NewReader(object.Data),
+		Metadata:        object.Metadata,
+		ContentEncoding: aws.String("application/octet-stream"),
+	}
+
+	_, err := c.s3.PutObjectWithContext(ctx, input)
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *S3Client) putObjectWithStorageClass(
+	ctx context.Context,
+	bucket string,
+	key string,
+	object S3Object,
+) error {
+
 	input := &aws_s3.PutObjectInput{
 		Bucket:          &bucket,
 		Key:             &key,
@@ -267,37 +323,35 @@ func (c *S3Client) PutObject(
 		input.StorageClass = aws.String(object.StorageClass)
 	}
 
-	_, err = c.s3.PutObjectWithContext(ctx, input)
-	if aerr, ok := err.(awserr.Error); ok &&
-		aerr.Code() == s3ErrCodeQuotaLimitExceeded &&
-		len(object.StorageClass) != 0 {
-
-		logging.Warn(
-			ctx,
-			"s3 put object with storage class %q failed with quota "+
-				"error, retrying without storage class",
-			object.StorageClass,
-		)
-
-		
-		input.Body = bytes.NewReader(object.Data)
-		input.StorageClass = nil
-		_, err = c.s3.PutObjectWithContext(ctx, input)
-	}
-
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case aws_s3.ErrCodeNoSuchBucket:
-				return errors.NewNonRetriableError(err)
-			}
-		}
-
-		return errors.NewRetriableError(err)
-	}
-
-	return nil
+	_, err := c.s3.PutObjectWithContext(ctx, input)
+	return err
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func wrapError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if aerr, ok := err.(awserr.Error); ok {
+		switch aerr.Code() {
+		case aws_s3.ErrCodeNoSuchBucket:
+			return errors.NewNonRetriableError(err)
+		}
+	}
+
+	return errors.NewRetriableError(err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func isQuotaLimitExceeded(err error) bool {
+	aerr, ok := err.(awserr.Error)
+	return ok && aerr.Code() == s3ErrCodeQuotaLimitExceeded
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func (c *S3Client) DeleteObject(
 	ctx context.Context,
