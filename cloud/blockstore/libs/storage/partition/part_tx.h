@@ -876,7 +876,7 @@ struct TTxPartition
         TDescribeBlob(
                 TRequestInfoPtr requestInfo,
                 const TPartialBlobId& blobId,
-                bool httpInfo = false)
+                bool httpInfo)
             : RequestInfo(std::move(requestInfo))
             , HttpInfo(httpInfo)
             , BlobId(blobId)

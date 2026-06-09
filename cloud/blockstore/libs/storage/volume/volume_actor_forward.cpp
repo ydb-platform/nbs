@@ -666,6 +666,13 @@ void TVolumeActor::ForwardRequest(
     };
 
     if constexpr (IsDescribeBlobMethod<TMethod>) {
+        if (State->IsDiskRegistryMediaKind()) {
+            replyError(MakeError(
+                E_NOT_IMPLEMENTED,
+                "DescribeBlob is not implemented for DiskRegistry disks"));
+            return;
+        }
+
         const auto blobId =
             NKikimr::LogoBlobIDFromLogoBlobID(msg->Record.GetBlobId());
         if (!blobId) {
