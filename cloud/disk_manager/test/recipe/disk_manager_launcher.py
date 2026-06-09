@@ -669,16 +669,15 @@ class DiskManagerLauncher:
                     )
                 )
             image_s3_default_storage_class_config = ""
+            image_use_s3_percentage = "0"
             if image_s3_default_storage_class:
+                image_use_s3_percentage = "100"
                 image_s3_default_storage_class_config = (
                     IMAGE_S3_DEFAULT_STORAGE_CLASS_CONFIG_TEMPLATE.format(
                         storage_class=image_s3_default_storage_class,
                     )
                 )
 
-            image_use_s3_percentage = "0"
-            if image_s3_default_storage_class:
-                image_use_s3_percentage = "100"
             with open(self.config_file, "w") as f:
                 self.__server_config = CONTROLPLANE_CONFIG_TEMPLATE.format(
                     port=self.__port,
