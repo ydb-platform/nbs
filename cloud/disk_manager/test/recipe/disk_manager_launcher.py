@@ -220,7 +220,7 @@ PoolsConfig: <
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
     ClearDeletedImagesTaskScheduleInterval: "2s"
-{image_s3_default_storage_class_config}
+    S3DefaultStorageClass: "{image_s3_default_storage_class}"
     DefaultDiskPoolConfigs: [
         <
             ZoneId: "zone-a"
@@ -280,10 +280,6 @@ PlacementGroupConfig: <
     DeletedPlacementGroupExpirationTimeout: "1s"
     ClearDeletedPlacementGroupsTaskScheduleInterval: "2s"
 >
-"""
-
-IMAGE_S3_DEFAULT_STORAGE_CLASS_CONFIG_TEMPLATE = """
-    S3DefaultStorageClass: "{storage_class}"
 """
 
 S3_CONFIG_TEMPLATE = """
@@ -668,15 +664,9 @@ class DiskManagerLauncher:
                         cert_file=cert_file,
                     )
                 )
-            image_s3_default_storage_class_config = ""
             image_use_s3_percentage = "0"
             if image_s3_default_storage_class:
                 image_use_s3_percentage = "100"
-                image_s3_default_storage_class_config = (
-                    IMAGE_S3_DEFAULT_STORAGE_CLASS_CONFIG_TEMPLATE.format(
-                        storage_class=image_s3_default_storage_class,
-                    )
-                )
 
             with open(self.config_file, "w") as f:
                 self.__server_config = CONTROLPLANE_CONFIG_TEMPLATE.format(
@@ -707,9 +697,7 @@ class DiskManagerLauncher:
                     use_s3_percentage="0" if s3_port is None else "100",
                     retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
                     cell_selection_policy=cell_selection_policy,
-                    image_s3_default_storage_class_config=(
-                        image_s3_default_storage_class_config
-                    ),
+                    image_s3_default_storage_class=image_s3_default_storage_class,
                     image_use_s3_percentage=image_use_s3_percentage,
                     deleted_disk_expiration_timeout=deleted_disk_expiration_timeout,
                     released_slot_expiration_timeout=released_slot_expiration_timeout,
