@@ -14793,6 +14793,60 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             blobIdFromContent,
             LogoBlobIDFromLogoBlobID(fr.GetBlobId()));
     }
+
+    Y_UNIT_TEST(ShouldHandleDescribeBlobRequestForFreshBlob)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::MakeOneBlock(0);
+        partition.WriteBlocks(range, char(1));
+
+        auto request = partition.CreateDescribeBlocksRequest(range);
+        request->Record.SetIndexOnly(true);
+        partition.SendToPipe(std::move(request));
+        const auto describeResponse =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, describeResponse->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, describeResponse->Record.FreshBlockRangesSize());
+
+        const auto freshBlobId = LogoBlobIDFromLogoBlobID(
+            describeResponse->Record.GetFreshBlockRanges(0).GetBlobId());
+        UNIT_ASSERT(freshBlobId.IsValid());
+
+        const auto response = partition.DescribeBlob(freshBlobId);
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.BlocksSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBlocks(0).GetBlockIndex());
+    }
+
+    Y_UNIT_TEST(ShouldHandleDescribeBlobRequestForMergedBlob)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(11, 4);
+        partition.WriteBlocks(range, char(1));
+        partition.Flush();
+
+        const auto describeBlocks = partition.DescribeBlocks(range);
+        UNIT_ASSERT_VALUES_EQUAL(1, describeBlocks->Record.BlobPiecesSize());
+
+        const auto blobId = LogoBlobIDFromLogoBlobID(
+            describeBlocks->Record.GetBlobPieces(0).GetBlobId());
+        UNIT_ASSERT(blobId.IsValid());
+
+        const auto response = partition.DescribeBlob(blobId);
+        UNIT_ASSERT_VALUES_EQUAL(range.Size(), response->Record.BlocksSize());
+
+        for (ui32 i = 0; i < range.Size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                range.Start + i,
+                response->Record.GetBlocks(i).GetBlockIndex());
+            UNIT_ASSERT_VALUES_EQUAL(i, response->Record.GetBlocks(i).GetBlobOffset());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
