@@ -260,6 +260,7 @@ struct TCompactionScores
 {
     float Score = 0;
     ui32 GarbageScore = 0;
+    ui32 IgnoringZeroedScore = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -596,6 +597,7 @@ private:
     TInstant LastCompactionRangeCountPerRunTs;
     ui64 BlobsProcessedDuringCompaction = 0;
     ui64 BlockMaskReadDuringCompaction = 0;
+    ui32 NewlyZeroedBlocks = 0;
 
 public:
     TOperationState& GetCompactionState(ECompactionType type);
@@ -647,6 +649,12 @@ public:
         return CompactionMap.GetTopByGarbageBlockCount().Stat.GarbageBlockCount();
     }
 
+    ui32 GetCompactionIgnoringZeroedScore() const
+    {
+        return CompactionMap.GetTopByGarbageIgnoringZeroed()
+            .Stat.GarbageIgnoringZeroed();
+    }
+
     float GetCompactionScore() const
     {
         return CompactionMap.GetTop().Stat.CompactionScore.Score;
@@ -694,6 +702,21 @@ public:
     TInstant GetLastCompactionRangeCountPerRunTime() const
     {
         return LastCompactionRangeCountPerRunTs;
+    }
+
+    void SetNewlyZeroedBlocks(ui32 value)
+    {
+        NewlyZeroedBlocks = value;
+    }
+
+    ui32 GetNewlyZeroedBlocks() const
+    {
+        return NewlyZeroedBlocks;
+    }
+
+    ui64 GetUsedBlocksIgnoringZeroed() const
+    {
+        return GetUsedBlocksCount() + GetNewlyZeroedBlocks();
     }
 
     void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);

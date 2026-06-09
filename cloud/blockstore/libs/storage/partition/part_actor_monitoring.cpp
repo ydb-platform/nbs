@@ -332,6 +332,7 @@ void DumpCompactionScoreHistory(
                     TABLED() { out << "Ts"; }
                     TABLED() { out << "Score"; }
                     TABLED() { out << "GarbageScore"; }
+                    TABLED() { out << "IgnoringZeroedScore"; }
                 }
             }
             TABLEBODY() {
@@ -342,6 +343,7 @@ void DumpCompactionScoreHistory(
                         TABLED() { out << s.Ts; }
                         TABLED() { out << s.Value.Score; }
                         TABLED() { out << s.Value.GarbageScore; }
+                        TABLED() { out << s.Value.IgnoringZeroedScore; }
                     }
                 }
             }

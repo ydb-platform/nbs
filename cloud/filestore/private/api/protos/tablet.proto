@@ -888,6 +888,8 @@ message TGetFileSystemTopologyResponse
 
     // Shard FileSystem identifiers for regular files.
     repeated string FileShardFileSystemIds = 8;
+
+    bool CompressNodeRef = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

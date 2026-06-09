@@ -11,4 +11,5 @@ message FilesystemTraversalConfig {
     optional uint64 SelectNodesToListLimit = 2 [default = 1000];
     optional string StorageFolder = 3 [default = "filesystem/traversal"];
     optional uint64 TraversalQueueDeletionLimit = 4 [default = 1000];
+    optional string FinishedCheckInterval = 5 [default = "1s"];
 }

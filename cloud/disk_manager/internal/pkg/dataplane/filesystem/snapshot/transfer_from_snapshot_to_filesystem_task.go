@@ -292,7 +292,7 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		int(t.config.GetFetchNodesFromStorageLimit()),
 	)
 
-	traverser := traversal.NewFilesystemTraverser(
+	traverser, err := traversal.NewFilesystemTraverser(
 		t.traversalID(execCtx),
 		t.filesystemID(),
 		t.snapshotID(), //  use snapshotID as checkpointID to read nodes from snapshot storage
@@ -306,6 +306,9 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		t.state.GetRootNodeScheduled(),
 		nfs.RootNodeID,
 	)
+	if err != nil {
+		return err
+	}
 
 	err = traverser.Traverse(ctx, func(
 		ctx context.Context,
@@ -375,7 +378,7 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		}
 
 		return nil
-	})
+	}, nil)
 	if err != nil {
 		return err
 	}

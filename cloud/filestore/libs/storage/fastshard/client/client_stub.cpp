@@ -8,24 +8,10 @@ using namespace NProtoSrv;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TClient::TClient(ui16 port)
-    : Port(port)
+std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
 {
-    Y_UNUSED(Port);
-}
-
-TResponse TClient::Send(const TRequest& req)
-{
-    Y_UNUSED(req);
-
-    TResponse resp;
-    *resp.MutableError() = MakeError(E_NOT_IMPLEMENTED);
-    return resp;
-}
-
-int TClient::Connect()
-{
-    return -1;
+    Y_UNUSED(host, port);
+    return nullptr;
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

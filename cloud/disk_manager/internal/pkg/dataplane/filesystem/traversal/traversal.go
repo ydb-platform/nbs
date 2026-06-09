@@ -2,6 +2,8 @@ package traversal
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -34,6 +37,7 @@ type FilesystemTraverser struct {
 	storage                  storage.Storage
 	stateSaver               StateSaver
 	config                   *config.FilesystemTraversalConfig
+	finishedCheckInterval    time.Duration
 	rootNodeAlreadyScheduled bool
 	rootNodeID               uint64
 }
@@ -66,7 +70,20 @@ func NewFilesystemTraverser(
 	config *config.FilesystemTraversalConfig,
 	rootNodeAlreadyScheduled bool,
 	rootNodeID uint64,
-) *FilesystemTraverser {
+) (*FilesystemTraverser, error) {
+
+	finishedCheckInterval, err := time.ParseDuration(
+		config.GetFinishedCheckInterval(),
+	)
+	if err != nil {
+		return nil, errors.NewNonRetriableError(err)
+	}
+
+	if finishedCheckInterval <= 0 {
+		return nil, errors.NewNonRetriableError(
+			fmt.Errorf("finished check interval should be positive"),
+		)
+	}
 
 	return &FilesystemTraverser{
 		scheduledNodes:           make(chan *storage.NodeQueueEntry),
@@ -78,14 +95,16 @@ func NewFilesystemTraverser(
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
 		config:                   config,
+		finishedCheckInterval:    finishedCheckInterval,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 		rootNodeID:               rootNodeID,
-	}
+	}, nil
 }
 
 func (t *FilesystemTraverser) Traverse(
 	ctx context.Context,
 	onListedNodes OnListedNodesFunc,
+	finishedCheck func(context.Context) error,
 ) error {
 
 	ctx = logging.WithFields(
@@ -116,17 +135,73 @@ func (t *FilesystemTraverser) Traverse(
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
+	finishedCheckCtx, cancelFinishedCheck := context.WithCancel(ctx)
+
 	eg.Go(func() error {
+		defer cancelFinishedCheck()
+
 		return t.directoryScheduler(ctx)
 	})
-
 	for i := uint32(0); i < t.config.GetTraversalWorkersCount(); i++ {
 		eg.Go(func() error {
 			return t.directoryLister(ctx, onListedNodes)
 		})
 	}
+	if finishedCheck != nil {
+		eg.Go(func() error {
+			return t.periodicRunFinishedCheck(
+				finishedCheckCtx,
+				finishedCheck,
+			)
+		})
+	}
 
 	return eg.Wait()
+}
+
+func (t *FilesystemTraverser) periodicRunFinishedCheck(
+	ctx context.Context,
+	finishedCheck func(context.Context) error,
+) error {
+
+	ticker := time.NewTicker(t.finishedCheckInterval)
+	defer ticker.Stop()
+
+	if err := t.checkFinished(ctx, finishedCheck); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := t.checkFinished(ctx, finishedCheck); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (t *FilesystemTraverser) checkFinished(
+	ctx context.Context,
+	finishedCheck func(context.Context) error,
+) error {
+
+	if err := finishedCheck(ctx); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		logging.Info(
+			ctx,
+			"Traversal interrupted for %s by finished check",
+			t.filesystemSnapshotID,
+		)
+		return err
+	}
+
+	return nil
 }
 
 func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
