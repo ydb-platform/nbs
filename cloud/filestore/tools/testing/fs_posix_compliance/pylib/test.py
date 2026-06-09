@@ -37,6 +37,10 @@ def get_local_service_suites():
 
 
 def __run_test_suite(target_path, suite, tests, verbose=False):
+    # Some tests expect 002 umask
+    # cloud/filestore/tests/fs_posix_compliance/mount-local-test : open/02.t : +not ok 2 (line: 12)
+    os.umask(0o002)
+
     env = os.environ.copy()
 
     test_tool = common.binary_path(__tests_bin)
