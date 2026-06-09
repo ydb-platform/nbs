@@ -369,18 +369,18 @@ func TestListNodesByShardReturnsShardAndParentRefs(t *testing.T) {
 			"shard-3",
 			"child-a-in-shard",
 		),
+		makeNodeRestoredAsNode(
+			31,
+			"child-same-shard",
+			nfs_client.NODE_KIND_FILE,
+			"child-same-shard-in-shard",
+		),
 		makeNodeRestoredAsRef(
 			10,
 			31,
 			"child-same-shard",
 			nfs_client.NODE_KIND_FILE,
 			"shard-1",
-			"child-same-shard-in-shard",
-		),
-		makeNodeRestoredAsNode(
-			31,
-			"child-same-shard",
-			nfs_client.NODE_KIND_FILE,
 			"child-same-shard-in-shard",
 		),
 	}

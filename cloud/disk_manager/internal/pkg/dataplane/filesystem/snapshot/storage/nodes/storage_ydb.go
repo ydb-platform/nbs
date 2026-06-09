@@ -501,7 +501,7 @@ func (s *storageYDB) listNodeRefsByShard(
 		from node_refs_by_shard
 		where filesystem_snapshot_id = $snapshot_id
 			and shard_filesystem_id = $shard_filesystem_id
-		order by parent_node_id, name
+		order by parent_node_id, name, store_as_child
 		limit $limit
 		offset $offset
 	`, s.tablesPath),

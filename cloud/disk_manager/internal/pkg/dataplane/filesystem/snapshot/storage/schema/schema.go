@@ -84,6 +84,7 @@ func Create(
 				"shard_filesystem_id",
 				"parent_node_id",
 				"name",
+				"store_as_child",
 			),
 		),
 		dropUnusedColumns,
