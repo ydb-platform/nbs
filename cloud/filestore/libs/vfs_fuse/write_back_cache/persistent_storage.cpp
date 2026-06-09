@@ -84,9 +84,10 @@ public:
     void Visit(const TVisitor& visitor) override
     {
         Storage.Visit(
-            [&visitor](ui32 checksum, TStringBuf entry)
+            [&visitor](ui32 checksum, ui32 tag, TStringBuf entry)
             {
                 Y_UNUSED(checksum);
+                Y_UNUSED(tag);
                 visitor({entry.data(), entry.size()});
             });
 
