@@ -41,6 +41,8 @@ LABEL_TO_WORKFLOWS = {
 }
 
 COMMENT_MARKER_PREFIX = "<!-- nbs-nightly-pr-check"
+CANCEL_VERIFY_INTERVAL_SECONDS = 5
+CANCEL_VERIFY_TIMEOUT_SECONDS = 120
 logger = setup_logger()
 
 
@@ -166,7 +168,15 @@ def get_workflow_jobs(run: GithubWorkflowRun) -> list[dict[str, Any]]:
 
 def cancel_workflow_run(repo: Repository, run_id: int) -> None:
     logger.info("Requesting cancellation for run_id=%s", run_id)
-    repo.get_workflow_run(run_id).cancel()
+    accepted = repo.get_workflow_run(run_id).cancel()
+
+    logger.info(
+        "Cancellation request for run_id=%s accepted=%s",
+        run_id,
+        accepted,
+    )
+    if not accepted:
+        raise RuntimeError("GitHub did not accept the workflow cancellation request")
 
 
 def status_icon(run: WorkflowRun) -> str:
@@ -274,22 +284,65 @@ def upsert_comment(pr: PullRequest, marker: str, body: str) -> None:
     )
 
 
+def refresh_run(repo: Repository, run: WorkflowRun) -> None:
+    if run.run_id is None:
+        return
+
+    workflow_run = repo.get_workflow_run(run.run_id)
+    run.status = workflow_run.status or run.status
+    run.conclusion = workflow_run.conclusion
+    run.url = workflow_run.html_url or run.url
+    run.jobs = get_workflow_jobs(workflow_run)
+    logger.info(
+        "Refreshed %s: id=%s status=%s conclusion=%s",
+        run.workflow,
+        run.run_id,
+        run.status,
+        run.conclusion,
+    )
+
+
 def refresh_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
     for run in runs:
-        if run.run_id is None:
-            continue
-        workflow_run = repo.get_workflow_run(run.run_id)
-        run.status = workflow_run.status or run.status
-        run.conclusion = workflow_run.conclusion
-        run.url = workflow_run.html_url or run.url
-        run.jobs = get_workflow_jobs(workflow_run)
+        refresh_run(repo, run)
+
+
+def wait_for_cancellation(
+    repo: Repository, run: WorkflowRun, timeout_seconds: int
+) -> bool:
+    if run.run_id is None:
+        return False
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        refresh_run(repo, run)
+        if run.status == "completed" or run.conclusion == "cancelled":
+            logger.info(
+                "Run %s id=%s stopped after cancellation request: conclusion=%s",
+                run.workflow,
+                run.run_id,
+                run.conclusion,
+            )
+            return True
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            logger.warning(
+                "Run %s id=%s is still %s after %ss cancellation wait",
+                run.workflow,
+                run.run_id,
+                run.status,
+                timeout_seconds,
+            )
+            return False
+
         logger.info(
-            "Refreshed %s: id=%s status=%s conclusion=%s",
+            "Waiting for run %s id=%s to stop after cancellation request: status=%s",
             run.workflow,
             run.run_id,
             run.status,
-            run.conclusion,
         )
+        time.sleep(min(CANCEL_VERIFY_INTERVAL_SECONDS, remaining))
 
 
 def all_done(runs: list[WorkflowRun]) -> bool:
@@ -312,7 +365,7 @@ def discover_missing_runs(
     runs: list[WorkflowRun],
     head_ref: str,
     marker: str,
-    dispatched_at: datetime,
+    dispatched_at: datetime | None,
 ) -> None:
     for run in runs:
         if run.error or run.run_id is not None:
@@ -345,7 +398,7 @@ def cancel_started_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
                 run.conclusion = "cancelled"
             continue
 
-        if run.status == "completed":
+        if run.status == "completed" or run.conclusion == "cancelled":
             logger.info(
                 "Skipping cancellation for completed run %s id=%s",
                 run.workflow,
@@ -355,13 +408,27 @@ def cancel_started_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
 
         try:
             cancel_workflow_run(repo, run.run_id)
-            run.error = "collector job was cancelled; requested cancellation for this nightly run"
-            run.status = "completed"
-            run.conclusion = "cancelled"
+            if wait_for_cancellation(
+                repo,
+                run,
+                timeout_seconds=CANCEL_VERIFY_TIMEOUT_SECONDS,
+            ):
+                continue
+
+            run.error = (
+                "collector job was cancelled; GitHub accepted cancellation, "
+                f"but the nightly run stayed {run.status}"
+            )
         except Exception as error:
+            try:
+                refresh_run(repo, run)
+            except Exception:
+                logger.exception(
+                    "Failed to refresh %s id=%s after cancellation failure",
+                    run.workflow,
+                    run.run_id,
+                )
             run.error = f"collector job was cancelled; failed to cancel run: {error}"
-            run.status = "completed"
-            run.conclusion = "cancelled"
 
 
 def parse_args() -> argparse.Namespace:
@@ -417,8 +484,8 @@ def load_context() -> tuple[
 
 def cancel_mode() -> int:
     (
-        token,
-        repository,
+        _token,
+        _repository,
         repo,
         _pr,
         pr_object,
@@ -453,7 +520,7 @@ def cancel_mode() -> int:
     upsert_comment(
         pr_object, marker, render_comment(marker, pr_number, head_ref, runs, final=True)
     )
-    return 0
+    return 1 if any(run.error for run in runs) else 0
 
 
 def main() -> int:
@@ -465,7 +532,7 @@ def main() -> int:
         return cancel_mode()
 
     (
-        token,
+        _token,
         repository,
         repo,
         _pr,
