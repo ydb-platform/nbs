@@ -96,10 +96,9 @@ def is_arm():
 
 def get_qemu_kvm():
     bindir = _get_qemu_bindir()
+    qemu_system_bin = "qemu-system-x86_64"
     if is_arm():
         qemu_system_bin = "qemu-system-aarch64"
-    else:
-        qemu_system_bin = "qemu-system-x86_64"
 
     qemu_kvm = os.path.join(bindir, "usr", "bin", qemu_system_bin)
     if not os.path.exists(qemu_kvm):
@@ -117,8 +116,11 @@ def get_qemu_firmware():
     return qemu_firmware
 
 
-def get_qemu_bios():
-    if not is_arm():
+def get_qemu_bios(is_arm_host=None):
+    if is_arm_host is None:
+        is_arm_host = is_arm()
+
+    if not is_arm_host:
         return None
 
     bindir = _get_qemu_bindir()

@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import platform
 import stat
 import time
 import uuid
@@ -9,6 +8,7 @@ import yatest.common
 import yatest.common.network
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
+from .common import get_qemu_bios, is_arm as is_arm_host
 from .qmp import QmpClient
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,10 @@ class Qemu:
 
         self.qemu_kvm = qemu_kvm
         self.qemu_firmware = qemu_firmware
+        self.is_arm = is_arm_host() if is_arm is None else is_arm
         self.qemu_bios = qemu_bios
+        if self.qemu_bios is None:
+            self.qemu_bios = get_qemu_bios(self.is_arm)
         self.rootfs = rootfs
         self.kernel = kernel
         self.kcmdline = kcmdline
@@ -110,11 +113,6 @@ class Qemu:
         self.virtio = virtio
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
-        self.is_arm = (
-            platform.machine().lower() in ("aarch64", "arm64")
-            if is_arm is None
-            else is_arm
-        )
 
         # TODO(proller): Temporary disable reconnect and migration for arm, while preparing proper qemu binary
         self.reconnect = reconnect if reconnect is not None else 0 if self.is_arm else 1
