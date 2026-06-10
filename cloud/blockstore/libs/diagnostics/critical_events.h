@@ -3,22 +3,12 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
-
-#include <variant>
+#include <cloud/blockstore/libs/common/printable_params.h>
 
 namespace NCloud::NBlockStore {
 
-using TValue = std::variant<
-    TString,
-    int,
-    ui16,
-    ui32,
-    ui64,
-    TBlockRange64,
-    TStringBuf,
-    const char* const>;
-
-using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
+using TCritEventParams =
+    std::initializer_list<std::pair<TStringBuf, TPrintableValue>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

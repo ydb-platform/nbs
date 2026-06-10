@@ -199,6 +199,7 @@ struct TTabletMetrics
     std::atomic<i64> CMMixedBlobsCount{0};
     std::atomic<i64> CMDeletionMarkersCount{0};
     std::atomic<i64> CMGarbageBlocksCount{0};
+    std::atomic<i64> CollectCommitId{0};
 
     // Backpressure Write throttling
     std::atomic<i64> IsWriteAllowed{0};

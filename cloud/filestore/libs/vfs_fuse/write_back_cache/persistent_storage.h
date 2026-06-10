@@ -16,7 +16,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 // Non-thread safe
 struct IPersistentStorage
 {
-    using TVisitor = TFunctionRef<void(TStringBuf buffer)>;
+    using TVisitor = TFunctionRef<void(ui32 tag, TStringBuf buffer)>;
     using TAllocationWriter = TFunctionRef<void(char* ptr, size_t size)>;
 
     virtual ~IPersistentStorage() = default;
@@ -58,6 +58,10 @@ struct IPersistentStorage
 
     // Frees a previously allocated buffer.
     virtual void Free(const void* ptr) = 0;
+
+    // Once committed, entries should remain immutable.
+    // But it is possible to assign a small mutable tag to the entry.
+    virtual void SetTag(const void* ptr, ui32 tag) = 0;
 
     virtual void UpdateStats() const = 0;
 };

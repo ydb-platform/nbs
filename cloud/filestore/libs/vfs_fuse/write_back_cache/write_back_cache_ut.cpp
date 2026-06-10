@@ -2228,6 +2228,37 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
         UNIT_ASSERT(drain.HasValue());
     }
+
+    Y_UNIT_TEST(ShouldEvictFlushedRequestsOnRestart)
+    {
+        TBootstrap b;
+
+        auto readPromise = NewPromise<NProto::TReadDataResponse>();
+
+        b.Session->ReadDataHandler = [&](auto, auto)
+        {
+            return readPromise.GetFuture();
+        };
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.WriteToCacheSync(2, 0, "def");
+
+        // Prevent WriteData request from eviction by starting overlapping
+        // ReadData request that will never complete
+        auto readFuture = b.ReadFromCache(1, 0, 10);
+        UNIT_ASSERT(!readFuture.HasValue());
+
+        b.FlushCache(1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.FlushedQueue.Count->Get());
+
+        b.RecreateCache();
+
+        // Ensure that WriteData request is evicted
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.FlushedQueue.Count->Get());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

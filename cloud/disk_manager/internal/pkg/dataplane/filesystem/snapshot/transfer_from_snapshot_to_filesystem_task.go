@@ -292,28 +292,10 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		int(t.config.GetFetchNodesFromStorageLimit()),
 	)
 
-	traverser, err := traversal.NewFilesystemTraverser(
-		t.traversalID(execCtx),
-		t.filesystemID(),
-		t.snapshotID(), //  use snapshotID as checkpointID to read nodes from snapshot storage
-		filesystemListerFactory,
-		t.traversalStorage,
-		func(ctx context.Context) error {
-			t.state.RootNodeScheduled = true
-			return execCtx.SaveState(ctx)
-		},
-		t.config.GetTraversalConfig(),
-		t.state.GetRootNodeScheduled(),
-		nfs.RootNodeID,
-	)
-	if err != nil {
-		return err
-	}
-
-	err = traverser.Traverse(ctx, func(
+	onListedNodes := func(
 		ctx context.Context,
 		nodes []nfs.Node,
-		filesystemLister listers.FilesystemLister,
+		_ listers.FilesystemLister,
 	) error {
 		if len(nodes) == 0 {
 			return nil
@@ -378,7 +360,29 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		}
 
 		return nil
-	}, nil)
+	}
+
+	traverser, err := traversal.NewFilesystemTraverser(
+		t.traversalID(execCtx),
+		t.filesystemID(),
+		t.snapshotID(), //  use snapshotID as checkpointID to read nodes from snapshot storage
+		filesystemListerFactory,
+		t.traversalStorage,
+		func(ctx context.Context) error {
+			t.state.RootNodeScheduled = true
+			return execCtx.SaveState(ctx)
+		},
+		onListedNodes,
+		nil,
+		t.config.GetTraversalConfig(),
+		t.state.GetRootNodeScheduled(),
+		nfs.RootNodeID,
+	)
+	if err != nil {
+		return err
+	}
+
+	err = traverser.Traverse(ctx)
 	if err != nil {
 		return err
 	}
