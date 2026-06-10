@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
+import requests
 from botocore.exceptions import BotoCoreError, ClientError
 from github import Auth as GithubAuth, Github
 from github.PullRequest import PullRequest
@@ -20,6 +21,8 @@ from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
 
 from .helpers import (
     find_current_job_url,
+    format_github_response_debug,
+    github_api_headers,
     get_build_preset_from_workflow_name,
     get_s3_report_uri,
     get_s3_report_url,
@@ -68,6 +71,13 @@ class WorkflowRun:
     conclusion: str | None = None
     summaries: list[dict[str, str]] = field(default_factory=list)
     error: str = ""
+
+
+@dataclass(frozen=True)
+class CancelRequestResult:
+    accepted: bool
+    status_code: int
+    debug: str
 
 
 class CancellationRequested(Exception):
@@ -355,17 +365,29 @@ def fetch_run_summaries(
     return []
 
 
-def cancel_workflow_run(repo: Repository, run_id: int) -> None:
-    logger.info("Requesting cancellation for run_id=%s", run_id)
-    accepted = repo.get_workflow_run(run_id).cancel()
-
-    logger.info(
-        "Cancellation request for run_id=%s accepted=%s",
-        run_id,
-        accepted,
+def cancel_workflow_run(repo: Repository, run_id: int) -> CancelRequestResult:
+    url = f"https://api.github.com/repos/{repo.full_name}/actions/runs/{run_id}/cancel"
+    logger.info("Requesting cancellation for run_id=%s via %s", run_id, url)
+    response = requests.post(
+        url,
+        headers=github_api_headers(os.environ.get("GITHUB_TOKEN")),
+        timeout=30,
     )
-    if not accepted:
-        raise RuntimeError("GitHub did not accept the workflow cancellation request")
+    debug = format_github_response_debug(response)
+    accepted = response.status_code == 202
+    if accepted:
+        logger.info("Cancellation request for run_id=%s accepted: %s", run_id, debug)
+    else:
+        logger.warning(
+            "Cancellation request for run_id=%s was not accepted: %s",
+            run_id,
+            debug,
+        )
+    return CancelRequestResult(
+        accepted=accepted,
+        status_code=response.status_code,
+        debug=debug,
+    )
 
 
 def status_icon(run: WorkflowRun) -> str:
@@ -597,14 +619,25 @@ def cancel_started_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> N
 
         if run.status == "completed" or run.conclusion == "cancelled":
             logger.info(
-                "Skipping cancellation for completed run %s id=%s",
+                "Skipping cancellation for completed run %s id=%s status=%s conclusion=%s url=%s",
                 run.workflow,
                 run.run_id,
+                run.status,
+                run.conclusion,
+                run.url,
             )
             continue
 
         try:
-            cancel_workflow_run(repo, run.run_id)
+            logger.info(
+                "Cancelling run workflow=%s id=%s status=%s conclusion=%s url=%s",
+                run.workflow,
+                run.run_id,
+                run.status,
+                run.conclusion,
+                run.url,
+            )
+            cancel_result = cancel_workflow_run(repo, run.run_id)
             if wait_for_cancellation(
                 s3,
                 repo,
@@ -613,10 +646,16 @@ def cancel_started_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> N
             ):
                 continue
 
-            run.error = (
-                "collector job was cancelled; GitHub accepted cancellation, "
-                f"but the nightly run stayed {run.status}"
-            )
+            if cancel_result.accepted:
+                run.error = (
+                    "collector job was cancelled; GitHub accepted cancellation, "
+                    f"but the nightly run stayed {run.status}"
+                )
+            else:
+                run.error = (
+                    "collector job was cancelled; GitHub did not accept cancellation "
+                    f"({cancel_result.debug}); nightly run stayed {run.status}"
+                )
         except Exception as error:
             try:
                 refresh_run(s3, repo, run)
