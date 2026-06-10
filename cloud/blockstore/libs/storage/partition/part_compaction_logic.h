@@ -103,6 +103,7 @@ void PrepareRangeCompaction(
     const NActors::TActorContext& ctx,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
+    const bool mixedBlocksBloomFilterEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,

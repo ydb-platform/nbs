@@ -414,6 +414,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsMixedBlocksBloomFilterFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -824,6 +829,8 @@ public:
     [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
 
     [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
+
+    [[nodiscard]] bool GetMixedBlocksBloomFilterEnabled() const;
 };
 
 ui64 GetAllocationUnit(

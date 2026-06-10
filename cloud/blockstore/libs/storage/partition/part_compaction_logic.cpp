@@ -176,6 +176,7 @@ public:
                 << ", actual: " << compactionRangeCount);
 
         ab.CompactionRangeCount = compactionRangeCount;
+        ab.IndexKind = EChannelDataKind::Mixed;
 
         Args.MarkBlock(
             blockIndex,
@@ -194,6 +195,7 @@ public:
         ab.CompactionRangeCount =
             CompactionMap.GetRangeIndex(blockRange.End) -
             CompactionMap.GetRangeIndex(blockRange.Start) + 1;
+        ab.IndexKind = EChannelDataKind::Merged;
         return true;
     }
 
@@ -305,39 +307,30 @@ TCompactionResultBlobIds DetermineCompactionResultBlobIds(
     return result;
 }
 
-void ApplyIncrementalCompactionSkipping(
-    const TStorageConfig& config,
+ui32 ApplyBlobAndByteCountSkipping(
+    THashMap<TPartialBlobId, ui32, TPartialBlobIdHash>& blobsToSkip,
     ui32 maxSkippedBlobs,
-    const TActorContext& ctx,
-    const TString& logTitle,
-    TPartitionState& state,
-    TTxPartition::TRangeCompaction& args)
+    ui32 blockSize,
+    const TStorageConfig& config)
 {
-    THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> liveBlocks;
-    for (const auto& m: args.BlockMarks) {
-        if (m.CommitId && m.BlobId) {
-            ++liveBlocks[m.BlobId];
-        }
-    }
-
     TVector<TPartialBlobId> blobIds;
-    blobIds.reserve(liveBlocks.size());
-    for (const auto& x: liveBlocks) {
+    blobIds.reserve(blobsToSkip.size());
+    for (const auto& x: blobsToSkip) {
         blobIds.push_back(x.first);
     }
 
     Sort(
         blobIds,
         [&](const TPartialBlobId& l, const TPartialBlobId& r)
-        { return liveBlocks[l] < liveBlocks[r]; });
+        { return blobsToSkip[l] < blobsToSkip[r]; });
 
     auto it = blobIds.begin();
-    args.BlobsSkipped = blobIds.size();
+    size_t skippedBlobs = blobIds.size();
     ui32 blocks = 0;
 
     while (it != blobIds.end()) {
-        const ui32 bytes = blocks * state.GetBlockSize();
-        const bool blobCountOk = args.BlobsSkipped <= maxSkippedBlobs;
+        const ui32 bytes = blocks * blockSize;
+        const bool blobCountOk = skippedBlobs <= maxSkippedBlobs;
         const bool byteCountOk =
             bytes >= config.GetTargetCompactionBytesPerOp();
 
@@ -345,35 +338,88 @@ void ApplyIncrementalCompactionSkipping(
             break;
         }
 
-        blocks += liveBlocks[*it];
-        --args.BlobsSkipped;
+        blocks += blobsToSkip[*it];
+        --skippedBlobs;
         ++it;
     }
 
-    // liveBlocks will contain only skipped blobs after this
     for (auto it2 = blobIds.begin(); it2 != it; ++it2) {
-        liveBlocks.erase(*it2);
+        blobsToSkip.erase(*it2);
     }
 
-    while (it != blobIds.end()) {
-        args.BlocksSkipped += liveBlocks[*it];
-        ++it;
+    return blocks;
+}
+
+ui32 ApplyMixedBlocksSkipping(
+    THashMap<TPartialBlobId, ui32, TPartialBlobIdHash>& blobsToSkip,
+    TTxPartition::TRangeCompaction& args)
+{
+    ui32 blocks = 0;
+
+    // we should not skip mixed blocks for range compaction, because of bloom
+    // filter
+    TVector<TPartialBlobId> mixedBlobIds;
+    for (const auto& liveBlock: blobsToSkip) {
+        auto* ab = args.AffectedBlobs.FindPtr(liveBlock.first);
+        Y_ABORT_UNLESS(ab);
+        if (ab->IndexKind == EChannelDataKind::Mixed) {
+            mixedBlobIds.push_back(liveBlock.first);
+        }
+    }
+
+    for (const auto& mixedBlobId: mixedBlobIds) {
+        blocks += blobsToSkip[mixedBlobId];
+        blobsToSkip.erase(mixedBlobId);
+    }
+
+    return blocks;
+}
+
+void ApplyIncrementalCompactionSkipping(
+    const TStorageConfig& config,
+    ui32 maxSkippedBlobs,
+    const bool mixedBlocksBloomFilterEnabled,
+    const TActorContext& ctx,
+    const TString& logTitle,
+    TPartitionState& state,
+    TTxPartition::TRangeCompaction& args)
+{
+    THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> blobsToSkip;
+    for (const auto& m: args.BlockMarks) {
+        if (m.CommitId && m.BlobId) {
+            ++blobsToSkip[m.BlobId];
+        }
+    }
+
+    ui32 blocks = ApplyBlobAndByteCountSkipping(
+        blobsToSkip,
+        maxSkippedBlobs,
+        state.GetBlockSize(),
+        config);
+
+    if (mixedBlocksBloomFilterEnabled) {
+        blocks += ApplyMixedBlocksSkipping(blobsToSkip, args);
+    }
+
+    args.BlobsSkipped = blobsToSkip.size();
+    for (const auto& [_, skippedBlockCount]: blobsToSkip) {
+        args.BlocksSkipped += skippedBlockCount;
     }
 
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Dropping last %u blobs, %u blocks, remaining blobs: %u, "
+        "%s Dropping %u blobs, %u blocks, remaining blobs: %u, "
         "blocks: %u",
         logTitle.c_str(),
         args.BlobsSkipped,
         args.BlocksSkipped,
-        liveBlocks.size(),
+        blobsToSkip.size(),
         blocks);
 
     THashSet<ui32> skippedBlockIndices;
 
-    for (const auto& x: liveBlocks) {
+    for (const auto& x: blobsToSkip) {
         auto ab = args.AffectedBlobs.find(x.first);
         Y_ABORT_UNLESS(ab != args.AffectedBlobs.end());
         for (const ui32 blockIndex: ab->second.AffectedBlockIndices) {
@@ -386,7 +432,7 @@ void ApplyIncrementalCompactionSkipping(
         args.AffectedBlobs.erase(ab);
     }
 
-    if (liveBlocks.size()) {
+    if (blobsToSkip.size()) {
         TAffectedBlocks affectedBlocks;
         for (const auto& b: args.AffectedBlocks) {
             if (!skippedBlockIndices.contains(b.BlockIndex)) {
@@ -396,7 +442,7 @@ void ApplyIncrementalCompactionSkipping(
         args.AffectedBlocks = std::move(affectedBlocks);
 
         for (auto& m: args.BlockMarks) {
-            if (liveBlocks.contains(m.BlobId)) {
+            if (blobsToSkip.contains(m.BlobId)) {
                 m = {};
             }
         }
@@ -673,6 +719,7 @@ void PrepareRangeCompaction(
     const TActorContext& ctx,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
+    const bool mixedBlocksBloomFilterEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -702,6 +749,7 @@ void PrepareRangeCompaction(
         ApplyIncrementalCompactionSkipping(
             config,
             maxSkippedBlobs,
+            mixedBlocksBloomFilterEnabled,
             ctx,
             logTitle,
             state,

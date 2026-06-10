@@ -1598,4 +1598,7 @@ message TStorageServiceConfig
     // MaxCompactionExecTimePerSecond. Used for GarbageCompaction in case when
     // IgnoringZeroedCompactionEnabled is on.
     optional uint32 MaxCompactionExecTimePerSecondForZeroed = 502;
+
+    // Enables mixed blocks bloom filter.
+    optional bool MixedBlocksBloomFilterEnabled = 503;
 }

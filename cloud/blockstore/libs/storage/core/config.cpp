@@ -705,6 +705,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
                                                                                \
     xxx(SplitByCompactionRangeMaxBlobCount,   ui64,        0                  )\
+    xxx(MixedBlocksBloomFilterEnabled,        bool,        true               )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -743,6 +744,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(EnableVhostDiscardOnVolumeRestart)                                     \
     xxx(FreshBlocksWriter)                                                     \
     xxx(ReadBlockMaskOnCompactionOptimization)                                 \
+    xxx(MixedBlocksBloomFilter)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 

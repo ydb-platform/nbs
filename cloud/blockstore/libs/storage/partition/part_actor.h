@@ -130,6 +130,12 @@ private:
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
     const ui64 VolumeTabletId;
+    const bool MixedBlocksBloomFilterEnabled =
+        Config->IsMixedBlocksBloomFilterFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId()) ||
+        Config->GetMixedBlocksBloomFilterEnabled();
 
     TLogTitle LogTitle;
 

@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/core)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    blocks_bloom_filter_ut.cpp
     block_handler_ut.cpp
     bs_group_operation_tracker_ut.cpp
     compaction_map_ut.cpp

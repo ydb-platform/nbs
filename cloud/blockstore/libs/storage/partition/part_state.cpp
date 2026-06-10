@@ -83,6 +83,7 @@ TPartitionState::TPartitionState(
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
+    , MixedBlocksBloomFilter(GetMaxBlocksInBlob(), maxBlobsPerRange * 2, 0.01)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
@@ -419,6 +420,7 @@ void TPartitionState::WriteMixedBlock(
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
+    MixedBlocksBloomFilter.AddBlocks(TBlockRange32::WithLength(block.BlockIndex, 1));
     db.WriteMixedBlock(block);
 }
 
@@ -440,6 +442,8 @@ void TPartitionState::WriteMixedBlocks(
              blockIndex,
              blobOffset,
              compactionRangeCount});
+        MixedBlocksBloomFilter.AddBlocks(
+            TBlockRange32::WithLength(blockIndex, 1));
         ++blobOffset;
     }
 
@@ -520,6 +524,26 @@ void TPartitionState::RaiseRangeTemperature(ui32 rangeIdx)
 ui64 TPartitionState::GetMixedIndexCacheMemSize() const
 {
     return MixedIndexCacheAllocator.GetBytesAllocated();
+}
+
+void TPartitionState::AddSecondaryBloomFilterForRange(ui32 rangeIndex)
+{
+    MixedBlocksBloomFilter.AddSecondaryBloomFilter(rangeIndex);
+}
+
+void TPartitionState::PromoteSecondaryBloomFilterForRange(ui32 rangeIndex)
+{
+    MixedBlocksBloomFilter.PromoteSecondaryBloomFilter(rangeIndex);
+}
+
+void TPartitionState::DropSecondaryBloomFilterForRange(ui32 rangeIndex)
+{
+    MixedBlocksBloomFilter.DropSecondaryBloomFilter(rangeIndex);
+}
+
+bool TPartitionState::HasMixedBlocksInBloomFilterForBlocks(const TBlockRange32& range) const
+{
+    return MixedBlocksBloomFilter.HasRangeInMixedIndex(range);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

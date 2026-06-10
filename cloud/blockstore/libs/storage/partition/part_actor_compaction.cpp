@@ -1617,6 +1617,14 @@ void TPartitionActor::HandleCompaction(
 
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
+    if (MixedBlocksBloomFilterEnabled) {
+        // Add new bloom filters for ranges. If compaction will be successful,
+        // we will promote added bloom filter to primary.
+        for (const auto& range: ranges) {
+            State->AddSecondaryBloomFilterForRange(range.first);
+        }
+    }
+
     auto tx = CreateTx<TCompaction>(
         requestInfo,
         commitId,
@@ -1654,6 +1662,18 @@ void TPartitionActor::HandleCompactionCompleted(
             LogTitle.GetWithTime().c_str(),
             commitId,
             FormatError(msg->GetError()).c_str());
+    }
+
+    if (MixedBlocksBloomFilterEnabled) {
+        for (const auto& range: msg->AffectedRanges) {
+            const auto rangeIndex =
+                State->GetCompactionMap().GetRangeIndex(range.Start);
+            if (HasError(msg->GetError())) {
+                State->DropSecondaryBloomFilterForRange(rangeIndex);
+            } else {
+                State->PromoteSecondaryBloomFilterForRange(rangeIndex);
+            }
+        }
     }
 
     UpdateStats(msg->Stats);
@@ -1765,6 +1785,7 @@ bool TPartitionActor::PrepareCompaction(
             ctx,
             TabletID(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
+            MixedBlocksBloomFilterEnabled,
             ready,
             db,
             *State,

@@ -131,6 +131,9 @@ struct TAffectedBlob
     TMaybe<TBlockMask> BlockMask;
     TVector<ui32> AffectedBlockIndices;
 
+    // can be mixed or merged
+    std::optional<EChannelDataKind> IndexKind;
+
     // Filled only if a flag is set. BlobMeta is needed only to do some extra
     // consistency checks.
     TMaybe<NProto::TBlobMeta> BlobMeta;
