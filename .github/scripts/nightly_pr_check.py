@@ -199,6 +199,7 @@ def get_run_attempt(workflow_run: GithubWorkflowRun) -> int:
 
 
 def fetch_summary_payload(s3: Any, summary_json_uri: str) -> dict[str, Any] | None:
+    logger.info("Fetching summary json %s", summary_json_uri)
     try:
         bucket, key = parse_s3_path(summary_json_uri)
         response = s3.get_object(Bucket=bucket, Key=key)
@@ -229,19 +230,38 @@ def list_summary_json_uris(
     )
     prefix_uri = get_s3_report_uri(prefix)
     if not prefix_uri:
+        logger.warning(
+            "Cannot list summary reports: empty S3 URI for workflow=%s run_id=%s attempt=%s",
+            workflow_file,
+            workflow_run.id,
+            get_run_attempt(workflow_run),
+        )
         return []
 
     try:
         bucket, key_prefix = parse_s3_path(prefix_uri)
+        logger.info(
+            "Listing summary reports for workflow=%s run_id=%s attempt=%s under bucket=%s prefix=%s uri=%s",
+            workflow_file,
+            workflow_run.id,
+            get_run_attempt(workflow_run),
+            bucket,
+            key_prefix,
+            prefix_uri,
+        )
         paginator = s3.get_paginator("list_objects_v2")
-        keys = [
-            content["Key"]
-            for page in paginator.paginate(Bucket=bucket, Prefix=key_prefix)
-            for content in page.get("Contents", [])
-            if content["Key"].endswith("/summary.json")
-        ]
+        keys = []
+        object_count = 0
+        for page in paginator.paginate(Bucket=bucket, Prefix=key_prefix):
+            contents = page.get("Contents", [])
+            object_count += len(contents)
+            keys.extend(
+                content["Key"]
+                for content in contents
+                if content["Key"].endswith("/summary.json")
+            )
     except (BotoCoreError, ClientError, KeyError, ValueError) as error:
-        logger.info("Failed to list summary reports under %s: %s", prefix_uri, error)
+        logger.warning("Failed to list summary reports under %s: %s", prefix_uri, error)
         return []
 
     def sort_key(key: str) -> tuple[int, str]:
@@ -251,6 +271,13 @@ def list_summary_json_uris(
             retry = 0
         return retry, key
 
+    logger.info(
+        "Found %d objects and %d summary reports under %s: %s",
+        object_count,
+        len(keys),
+        prefix_uri,
+        keys[:20],
+    )
     return [
         get_s3_report_uri(key, bucket=bucket)
         for key in sorted(keys, key=sort_key, reverse=True)
@@ -362,6 +389,20 @@ def fetch_run_summaries(
     if summaries:
         return summaries
 
+    logger.warning(
+        "No summary reports found for workflow=%s run_id=%s attempt=%s. Expected at least one summary.json under %s",
+        workflow_file,
+        run.id,
+        get_run_attempt(run),
+        get_s3_report_uri(
+            get_s3_workflow_reports_path(
+                repository=repo.full_name,
+                workflow_file=workflow_file,
+                run_id=run.id,
+                run_attempt=get_run_attempt(run),
+            )
+        ),
+    )
     return []
 
 
