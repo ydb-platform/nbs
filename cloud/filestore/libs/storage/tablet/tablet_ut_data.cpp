@@ -3943,6 +3943,83 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldLoadCompactionMapWithLargeRangeIdsInBackground)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TVector<NProtoPrivate::TCompactionRangeStats> ranges;
+        NProtoPrivate::TCompactionRangeStats range;
+        range.SetRangeId(111);
+        range.SetBlobCount(1);
+        range.SetDeletionCount(2);
+        ranges.push_back(range);
+        range.SetRangeId(2222);
+        ranges.push_back(range);
+        range.SetRangeId(33333);
+        ranges.push_back(range);
+        range.SetRangeId(Max<ui32>());
+        ranges.push_back(range);
+        tablet.WriteCompactionMap(ranges);
+
+        TAutoPtr<IEventHandle> loadChunk;
+        ui32 loadChunkCount = 0;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    ++loadChunkCount;
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, loadChunkCount);
+
+        auto response = tablet.GetStorageStats(10);
+        const auto& stats = response->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.GetUsedCompactionRanges());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1024,
+            stats.GetAllocatedCompactionRanges());
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.CompactionRangeStatsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "r=111 b=1 d=2 g=0",
+            CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "r=2222 b=1 d=2 g=0",
+            CompactionRangeToString(stats.GetCompactionRangeStats(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "r=33333 b=1 d=2 g=0",
+            CompactionRangeToString(stats.GetCompactionRangeStats(2)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "r=4294967295 b=1 d=2 g=0",
+            CompactionRangeToString(stats.GetCompactionRangeStats(3)));
+    }
+
     TABLET_TEST(
         ShouldRejectOverlappingWriteWithUnconfirmedDataDuringCompactionMapLoading)
     {
