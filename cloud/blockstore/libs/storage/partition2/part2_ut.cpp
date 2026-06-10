@@ -7935,7 +7935,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
     Y_UNIT_TEST(ShouldNotReturnBlobIdForFreshBlocksInDescribeWhenIndexOnlyIsOff)
     {
-        auto runtime = PrepareTestActorRuntime();
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
@@ -7956,7 +7959,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
     Y_UNIT_TEST(ShouldReturnBlobIdForFreshBlocksInDescribeWhenIndexOnlyIsTrue)
     {
-        auto runtime = PrepareTestActorRuntime();
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
@@ -7997,6 +8003,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, response->Record.FreshBlockRangesSize());
         const auto& fr = response->Record.GetFreshBlockRanges(0);
         UNIT_ASSERT(fr.GetBlocksContent().empty());
+        UNIT_ASSERT(LogoBlobIDFromLogoBlobID(fr.GetBlobId()).IsValid());
         UNIT_ASSERT_VALUES_EQUAL(
             blobIdFromContent,
             LogoBlobIDFromLogoBlobID(fr.GetBlobId()));
@@ -8004,7 +8011,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
     Y_UNIT_TEST(ShouldHandleDescribeBlobRequestForFreshBlob)
     {
-        auto runtime = PrepareTestActorRuntime();
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
