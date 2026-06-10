@@ -4,6 +4,7 @@
 
 #include <silk/fibers/fiber.h>
 
+#include <util/generic/scope.h>
 #include <util/generic/string.h>
 
 #include <arpa/inet.h>
@@ -84,6 +85,10 @@ std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
     if (gai != 0) {
         return nullptr;
     }
+
+    Y_DEFER {
+        ::freeaddrinfo(res);
+    };
 
     for (addrinfo* ai = res; ai != nullptr; ai = ai->ai_next) {
         int fd = ::socket(
