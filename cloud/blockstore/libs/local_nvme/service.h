@@ -23,10 +23,14 @@ struct ILocalNVMeService: public IStartable
     [[nodiscard]] virtual auto ListNVMeDevices() -> NThreading::TFuture<
         TResultOrError<TVector<NProto::TNVMeDevice>>> = 0;
 
-    [[nodiscard]] virtual auto AcquireNVMeDevice(const TString& serialNumber)
+    [[nodiscard]] virtual auto AcquireNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId)
         -> NThreading::TFuture<TResultOrError<NProto::TNVMeDevice>> = 0;
 
-    [[nodiscard]] virtual auto ReleaseNVMeDevice(const TString& serialNumber)
+    [[nodiscard]] virtual auto ReleaseNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId)
         -> NThreading::TFuture<NProto::TError> = 0;
 };
 
