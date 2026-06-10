@@ -17,6 +17,7 @@ PEERDIR(
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics
 
+    library/cpp/monlib/dynamic_counters
     library/cpp/threading/future
 )
 

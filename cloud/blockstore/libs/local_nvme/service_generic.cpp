@@ -9,9 +9,10 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TExecutorPtr executor)
+    TExecutorPtr executor,
+    NMonitoring::TDynamicCountersPtr counters)
 {
-    Y_UNUSED(config, logging, deviceProvider, nvmeManager, executor);
+    Y_UNUSED(config, logging, deviceProvider, nvmeManager, executor, counters);
 
     return CreateLocalNVMeServiceStub();
 }

@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/threading/future/future.h>
 
@@ -628,8 +629,11 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor,
-    ISysFsPtr sysFs)
+    ISysFsPtr sysFs,
+    NMonitoring::TDynamicCountersPtr counters)
 {
+    Y_UNUSED(counters);
+
     return std::make_shared<TLocalNVMeService>(
         std::move(config),
         std::move(logging),
@@ -644,7 +648,8 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TExecutorPtr executor)
+    TExecutorPtr executor,
+    NMonitoring::TDynamicCountersPtr counters)
 {
     return CreateLocalNVMeService(
         std::move(config),
@@ -652,7 +657,8 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
         std::move(deviceProvider),
         std::move(nvmeManager),
         std::move(executor),
-        CreateSysFs("/sys"));
+        CreateSysFs("/sys"),
+        std::move(counters));
 }
 
 }   // namespace NCloud::NBlockStore

@@ -11,7 +11,9 @@
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -222,6 +224,8 @@ struct TTestSysFs final: ISysFs
 
 struct TFixtureBase: public NUnitTest::TBaseFixture
 {
+    IMonitoringServicePtr Monitoring;
+
     TString StateCacheFile;
     TVector<NProto::TNVMeDevice> Devices;
 
@@ -235,6 +239,8 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
+        Monitoring = CreateMonitoringServiceStub();
+
         SysFs = std::make_shared<TTestSysFs>();
 
         PrepareDevices();
@@ -270,7 +276,8 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
             std::move(deviceProvider),
             std::static_pointer_cast<INvmeManager>(NVMeManager),
             Executor,
-            std::static_pointer_cast<ISysFs>(SysFs));
+            std::static_pointer_cast<ISysFs>(SysFs),
+            Monitoring->GetCounters());
     }
 
     void PrepareDevices()

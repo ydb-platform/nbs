@@ -8,7 +8,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockStorePtr CreateLocalNVMeServiceProxy(
+IBlockStorePtr CreateLocalNVMeBlockStoreProxy(
     IBlockStorePtr blockStoreService,
     ILocalNVMeServicePtr localNVMeService);
 

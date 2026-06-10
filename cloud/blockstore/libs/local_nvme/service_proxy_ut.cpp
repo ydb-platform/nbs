@@ -120,7 +120,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             std::make_move_iterator(list.MutableDevices()->begin()),
             std::make_move_iterator(list.MutableDevices()->end()));
 
-        BlockStore = CreateLocalNVMeServiceProxy(
+        BlockStore = CreateLocalNVMeBlockStoreProxy(
             std::static_pointer_cast<IBlockStore>(TestBlockStore),
             std::static_pointer_cast<ILocalNVMeService>(TestLocalNVMeService));
     }

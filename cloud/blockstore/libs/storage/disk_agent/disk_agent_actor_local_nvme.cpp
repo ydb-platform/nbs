@@ -21,6 +21,15 @@ void TDiskAgentActor::HandleListNVMeDevices(
         return;
     }
 
+    if (!LocalNVMeService) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
+                MakeError(E_INVALID_STATE, "Local NVMe service is not initialized"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
     LocalNVMeService->ListNVMeDevices().Subscribe(
         [actorSystem = TActivationContext::ActorSystem(),
          replyTo = ev->Sender,
@@ -51,6 +60,15 @@ void TDiskAgentActor::HandleAcquireNVMeDevice(
         auto response =
             std::make_unique<TEvDiskAgentPrivate::TEvAcquireNVMeDeviceResponse>(
                 MakeError(E_REJECTED, "Not ready"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
+    if (!LocalNVMeService) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
+                MakeError(E_INVALID_STATE, "Local NVMe service is not initialized"));
         NCloud::Reply(ctx, *ev, std::move(response));
 
         return;
@@ -89,6 +107,15 @@ void TDiskAgentActor::HandleReleaseNVMeDevice(
         auto response =
             std::make_unique<TEvDiskAgentPrivate::TEvReleaseNVMeDeviceResponse>(
                 MakeError(E_REJECTED, "Not ready"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
+    if (!LocalNVMeService) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
+                MakeError(E_INVALID_STATE, "Local NVMe service is not initialized"));
         NCloud::Reply(ctx, *ev, std::move(response));
 
         return;

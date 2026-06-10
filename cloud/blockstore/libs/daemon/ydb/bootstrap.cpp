@@ -157,6 +157,51 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TLocalNVMeServiceProxy final: public ILocalNVMeService
+{
+private:
+    ILocalNVMeServicePtr Impl;
+
+public:
+    void Init(ILocalNVMeServicePtr impl)
+    {
+        Impl = std::move(impl);
+    }
+
+    void Start() final
+    {
+        Y_ABORT_UNLESS(Impl);
+        Impl->Start();
+    }
+
+    void Stop() final
+    {
+        Y_ABORT_UNLESS(Impl);
+        Impl->Stop();
+        Impl.reset();
+    }
+
+    [[nodiscard]] auto ListNVMeDevices() -> NThreading::TFuture<
+        TResultOrError<TVector<NProto::TNVMeDevice>>> final
+    {
+        return Impl->ListNVMeDevices();
+    }
+
+    [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
+        -> NThreading::TFuture<TResultOrError<NProto::TNVMeDevice>> final
+    {
+        return Impl->AcquireNVMeDevice(serialNumber);
+    }
+
+    [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
+        -> NThreading::TFuture<NProto::TError> final
+    {
+        return Impl->ReleaseNVMeDevice(serialNumber);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWarmupBSGroupConnectionsActor final
     : public NActors::TActorBootstrapped<TWarmupBSGroupConnectionsActor>
 {
@@ -805,18 +850,18 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("PartitionBudgetManager initialized")
 
+    std::shared_ptr<TLocalNVMeServiceProxy> localNVMeServiceProxy;
+
     if (Configs->LocalNVMeConfig->GetDevicesSourceUri()) {
         LocalNVMeDeviceProvider =
             ServerModuleFactories->LocalNVMeDeviceProviderFactory(
                 logging,
                 Configs->LocalNVMeConfig->GetDevicesSourceUri());
 
-        LocalNVMeService = CreateLocalNVMeService(
-            Configs->LocalNVMeConfig,
-            logging,
-            LocalNVMeDeviceProvider,
-            NvmeManager,
-            Executor);
+        // To use counters, we have to defer LocalNVMeService creation until
+        // ActorSystem is initialized.
+        localNVMeServiceProxy = std::make_shared<TLocalNVMeServiceProxy>();
+        LocalNVMeService = localNVMeServiceProxy;
     } else {
         LocalNVMeDeviceProvider = CreateLocalNVMeDeviceProviderStub();
         LocalNVMeService = CreateLocalNVMeServiceStub();
@@ -900,6 +945,20 @@ void TBootstrapYdb::InitKikimrService()
         auto serverGroup = rootGroup->GetSubgroup("component", "server");
         auto isSpareNode = serverGroup->GetCounter("IsSpareNode", false);
         *isSpareNode = 1;
+    }
+
+    if (localNVMeServiceProxy) {
+        auto counters = Monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "local_nvme");
+
+        localNVMeServiceProxy->Init(CreateLocalNVMeService(
+            Configs->LocalNVMeConfig,
+            logging,
+            LocalNVMeDeviceProvider,
+            NvmeManager,
+            Executor,
+            std::move(counters)));
     }
 
     TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
