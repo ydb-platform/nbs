@@ -149,6 +149,13 @@ runs:
         echo "S3_BUCKET_PATH=s3://${S3_BUCKET}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
         echo "S3_URL_PREFIX=${S3_ENDPOINT}/${S3_BUCKET}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_PREFIX=https://${S3_BUCKET}.${S3_WEBSITE_SUFFIX}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
+        workflow_file="${GITHUB_WORKFLOW_REF%%@*}"
+        workflow_file="${workflow_file##*/}"
+        if [ -z "$workflow_file" ]; then
+            workflow_file="${GITHUB_WORKFLOW_NO_SPACES}"
+        fi
+        echo "S3_REPORTS_BUCKET_PATH=s3://${S3_BUCKET}/reports/${{ github.repository }}/${workflow_file}/${{ github.run_id }}/${{ github.run_attempt || '1' }}" >> $GITHUB_ENV
+        echo "S3_REPORTS_WEBSITE_PREFIX=https://${S3_BUCKET}.${S3_WEBSITE_SUFFIX}/reports/${{ github.repository }}/${workflow_file}/${{ github.run_id }}/${{ github.run_attempt || '1' }}" >> $GITHUB_ENV
         echo "S3_WEBSITE_SUFFIX=${S3_WEBSITE_SUFFIX}" >> $GITHUB_ENV
     - name: test s3cmd
       shell: bash

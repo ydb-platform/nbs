@@ -607,6 +607,17 @@ jobs:
         if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
+      - name: Prepare s3cmd
+        uses: ./.github/actions/s3cmd
+        continue-on-error: true
+        with:
+          s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: relwithdebinfo
       - name: Dispatch and collect nightly builds
         uses: ./.github/actions/nightly_pr_check
         with:

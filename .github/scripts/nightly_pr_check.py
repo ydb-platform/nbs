@@ -11,12 +11,21 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from github import Auth as GithubAuth, Github
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
 
-from .helpers import setup_logger
+from .helpers import (
+    get_build_preset_from_job_name,
+    get_s3_report_path_from_job_name,
+    get_s3_report_uri,
+    get_s3_report_url,
+    parse_s3_path,
+    setup_logger,
+)
 from .tests import generate_summary as gs
 
 LABEL_TO_WORKFLOWS = {
@@ -45,6 +54,7 @@ CANCEL_VERIFY_INTERVAL_SECONDS = 5
 CANCEL_VERIFY_TIMEOUT_SECONDS = 120
 INITIAL_DISCOVERY_INTERVAL_SECONDS = 5
 INITIAL_DISCOVERY_TIMEOUT_SECONDS = 60
+SUMMARY_ATTEMPTS_TO_CHECK = 10
 logger = setup_logger()
 
 
@@ -156,16 +166,150 @@ def find_workflow_run(
     return result
 
 
-def get_workflow_jobs(run: GithubWorkflowRun) -> list[dict[str, Any]]:
-    return [
-        {
+def get_summary_job_label(job_name: str) -> str:
+    build_preset = get_build_preset_from_job_name(job_name)
+    if build_preset is not None:
+        return build_preset
+    return job_name
+
+
+def get_summary_report_path(
+    repo: Repository,
+    workflow_run: GithubWorkflowRun,
+    job_name: str,
+    filename: str,
+    summary_attempt: int,
+) -> str:
+    try:
+        workflow_name = repo.get_workflow(workflow_run.workflow_id).name
+    except Exception as error:
+        logger.info(
+            "Failed to fetch workflow metadata for run_id=%s: %s",
+            workflow_run.id,
+            error,
+        )
+        workflow_name = workflow_run.name or ""
+
+    run_attempt = getattr(workflow_run, "run_attempt", None) or 1
+    return get_s3_report_path_from_job_name(
+        repository=repo.full_name,
+        workflow_name=workflow_name,
+        run_id=workflow_run.id,
+        run_attempt=run_attempt,
+        job_name=job_name,
+        relative_path=f"summary/{summary_attempt}/{filename}",
+        folder_prefix=os.environ.get("S3_FOLDER_PREFIX", "nebius-"),
+    )
+
+
+def link_count(value: int, url: str, anchor: str | None = None) -> str:
+    if value == 0:
+        return "0"
+    href = f"{url}#{anchor}" if anchor else url
+    return f"[{value}]({href})"
+
+
+def fetch_summary_markdown(
+    s3: Any,
+    repo: Repository,
+    workflow_run: GithubWorkflowRun,
+    job_name: str,
+) -> str:
+    summary_json_url = ""
+    payload = None
+    summary_attempt = 0
+    for attempt in range(SUMMARY_ATTEMPTS_TO_CHECK, 0, -1):
+        summary_json_path = get_summary_report_path(
+            repo,
+            workflow_run,
+            job_name,
+            "summary.json",
+            attempt,
+        )
+        summary_json_uri = get_s3_report_uri(summary_json_path)
+        if not summary_json_uri:
+            return ""
+
+        try:
+            bucket, key = parse_s3_path(summary_json_uri)
+            response = s3.get_object(Bucket=bucket, Key=key)
+            payload = json.loads(response["Body"].read().decode("utf-8"))
+            summary_attempt = attempt
+            summary_json_url = summary_json_uri
+            break
+        except (
+            BotoCoreError,
+            ClientError,
+            json.JSONDecodeError,
+            KeyError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            logger.info("Failed to fetch summary json %s: %s", summary_json_uri, error)
+
+    if payload is None:
+        return ""
+
+    reports = payload.get("reports") if isinstance(payload, dict) else None
+    if not reports:
+        logger.info("No summary reports found in %s", summary_json_url)
+        return ""
+
+    report = reports[0]
+    if not isinstance(report, dict):
+        logger.info("Invalid summary report in %s", summary_json_url)
+        return ""
+    report_url = report.get("report_url") or get_s3_report_url(
+        get_summary_report_path(
+            repo,
+            workflow_run,
+            job_name,
+            "ya-test.html",
+            summary_attempt,
+        )
+    )
+    counts = report.get("counts") or {}
+    total = int(report.get("total") or sum(int(value) for value in counts.values()))
+    statuses = gs.TestStatus.summary_table_order()
+    headers = ["TESTS"] + [status.summary_header for status in statuses]
+    separators = ["---:"] * len(headers)
+    values = [link_count(total, report_url)]
+    values.extend(
+        link_count(int(counts.get(status.name, 0)), report_url, status.report_anchor)
+        for status in statuses
+    )
+
+    return "\n".join(
+        [
+            f"| {' | '.join(headers)} |",
+            f"| {' | '.join(separators)} |",
+            f"| {' | '.join(values)} |",
+        ]
+    )
+
+
+def get_workflow_jobs(
+    s3: Any,
+    repo: Repository,
+    run: GithubWorkflowRun,
+) -> list[dict[str, Any]]:
+    jobs = []
+    for job in run.jobs():
+        job_info = {
             "name": job.name,
             "html_url": job.html_url,
             "status": job.status,
             "conclusion": job.conclusion,
         }
-        for job in run.jobs()
-    ]
+        if job.conclusion not in (None, "success", "skipped"):
+            job_info["summary_markdown"] = fetch_summary_markdown(
+                s3,
+                repo,
+                run,
+                job.name or "",
+            )
+        jobs.append(job_info)
+    return jobs
 
 
 def cancel_workflow_run(repo: Repository, run_id: int) -> None:
@@ -234,6 +378,19 @@ def render_comment(
         if len(failed_jobs) > 25:
             lines.append(f"- ... and {len(failed_jobs) - 25} more failed jobs")
 
+    summaries = [
+        (job.get("name", ""), job.get("html_url", ""), job["summary_markdown"])
+        for _run, job in failed_jobs
+        if job.get("summary_markdown")
+    ]
+    if summaries:
+        lines.extend(["", "Summaries:"])
+        for job_name, job_url, summary in summaries[:10]:
+            lines.append(f"[`{get_summary_job_label(job_name)}`]({job_url})")
+            lines.extend(summary.splitlines())
+        if len(summaries) > 10:
+            lines.append(f"- ... and {len(summaries) - 10} more summaries")
+
     return "\n".join(lines)
 
 
@@ -264,7 +421,7 @@ def upsert_comment(pr: PullRequest, marker: str, body: str) -> None:
     )
 
 
-def refresh_run(repo: Repository, run: WorkflowRun) -> None:
+def refresh_run(s3: Any, repo: Repository, run: WorkflowRun) -> None:
     if run.run_id is None:
         return
 
@@ -272,7 +429,7 @@ def refresh_run(repo: Repository, run: WorkflowRun) -> None:
     run.status = workflow_run.status or run.status
     run.conclusion = workflow_run.conclusion
     run.url = workflow_run.html_url or run.url
-    run.jobs = get_workflow_jobs(workflow_run)
+    run.jobs = get_workflow_jobs(s3, repo, workflow_run)
     logger.info(
         "Refreshed %s: id=%s status=%s conclusion=%s",
         run.workflow,
@@ -282,20 +439,20 @@ def refresh_run(repo: Repository, run: WorkflowRun) -> None:
     )
 
 
-def refresh_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
+def refresh_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> None:
     for run in runs:
-        refresh_run(repo, run)
+        refresh_run(s3, repo, run)
 
 
 def wait_for_cancellation(
-    repo: Repository, run: WorkflowRun, timeout_seconds: int
+    s3: Any, repo: Repository, run: WorkflowRun, timeout_seconds: int
 ) -> bool:
     if run.run_id is None:
         return False
 
     deadline = time.monotonic() + timeout_seconds
     while True:
-        refresh_run(repo, run)
+        refresh_run(s3, repo, run)
         if run.status == "completed" or run.conclusion == "cancelled":
             logger.info(
                 "Run %s id=%s stopped after cancellation request: conclusion=%s",
@@ -391,7 +548,7 @@ def wait_for_initial_discovery(
         time.sleep(min(INITIAL_DISCOVERY_INTERVAL_SECONDS, remaining))
 
 
-def cancel_started_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
+def cancel_started_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> None:
     for run in runs:
         if run.run_id is None:
             if not run.error:
@@ -417,6 +574,7 @@ def cancel_started_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
         try:
             cancel_workflow_run(repo, run.run_id)
             if wait_for_cancellation(
+                s3,
                 repo,
                 run,
                 timeout_seconds=CANCEL_VERIFY_TIMEOUT_SECONDS,
@@ -429,7 +587,7 @@ def cancel_started_runs(repo: Repository, runs: list[WorkflowRun]) -> None:
             )
         except Exception as error:
             try:
-                refresh_run(repo, run)
+                refresh_run(s3, repo, run)
             except Exception:
                 logger.exception(
                     "Failed to refresh %s id=%s after cancellation failure",
@@ -509,6 +667,7 @@ def cancel_mode() -> int:
         logger.info("No nightly PR labels found; nothing to cancel")
         return 0
 
+    s3 = boto3.client("s3")
     logger.info(
         "Cancellation mode started for PR #%s, ref=%s, marker=%s, workflows=%s",
         pr_number,
@@ -523,8 +682,8 @@ def cancel_mode() -> int:
         marker,
         dispatched_at=None,
     )
-    refresh_runs(repo, runs)
-    cancel_started_runs(repo, runs)
+    refresh_runs(s3, repo, runs)
+    cancel_started_runs(s3, repo, runs)
     upsert_comment(pr_object, marker, render_comment(marker, runs, final=True))
     return 1 if any(run.error for run in runs) else 0
 
@@ -555,6 +714,7 @@ def main() -> int:
         logger.info("No nightly PR labels found; nothing to dispatch")
         return 0
 
+    s3 = boto3.client("s3")
     logger.info(
         "Dispatch-and-collect mode started for PR #%s, ref=%s, marker=%s, workflows=%s",
         pr_number,
@@ -587,11 +747,8 @@ def main() -> int:
                 run.error = str(error)
 
         wait_for_initial_discovery(repo, runs, head_ref, marker, dispatched_at)
-        upsert_comment(
-            pr_object,
-            marker,
-            render_comment(marker, runs, final=False),
-        )
+        posted_comment_body = render_comment(marker, runs, final=False)
+        upsert_comment(pr_object, marker, posted_comment_body)
 
         deadline = time.monotonic() + args.timeout_seconds
         while time.monotonic() < deadline:
@@ -602,22 +759,28 @@ def main() -> int:
                 marker,
                 dispatched_at,
             )
-            refresh_runs(repo, runs)
+            refresh_runs(s3, repo, runs)
 
             if all_done(runs):
+                posted_comment_body = render_comment(marker, runs, final=True)
                 upsert_comment(
                     pr_object,
                     marker,
-                    render_comment(marker, runs, final=True),
+                    posted_comment_body,
                 )
                 return 1 if any_failed(runs) else 0
+
+            current_comment_body = render_comment(marker, runs, final=False)
+            if current_comment_body != posted_comment_body:
+                upsert_comment(pr_object, marker, current_comment_body)
+                posted_comment_body = current_comment_body
 
             time.sleep(args.poll_interval_seconds)
 
     except CancellationRequested:
         discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
-        refresh_runs(repo, runs)
-        cancel_started_runs(repo, runs)
+        refresh_runs(s3, repo, runs)
+        cancel_started_runs(s3, repo, runs)
         upsert_comment(
             pr_object,
             marker,

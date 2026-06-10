@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 import datetime
 from typing import Callable, List, Tuple
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -48,6 +48,123 @@ SAN_PRESET_BY_SAN = {
     "msan": "release-msan",
     "ubsan": "release-ubsan",
 }
+
+
+def get_build_preset_folder_suffix(build_preset: str) -> str | None:
+    if build_preset in ("relwithdebinfo", "release"):
+        return ""
+    if build_preset == "debug":
+        return "-debug"
+    if build_preset in SAN_PRESETS:
+        return SAN_SUFFIX.get(build_preset.removeprefix("release-"))
+    return None
+
+
+def get_build_preset_from_job_name(job_name: str) -> str | None:
+    match = re.search(r"Build and test (?P<preset>[a-z0-9_-]+) \[", job_name)
+    if match is not None:
+        return match.group("preset")
+
+    match = re.search(
+        r"\((?P<preset>relwithdebinfo|release|debug|release-[^)]+)\)",
+        job_name,
+    )
+    if match is not None:
+        return match.group("preset")
+
+    return None
+
+
+def get_arch_from_job_name(job_name: str) -> str | None:
+    if "x86_64" in job_name:
+        return "x86-64"
+    if "arm64" in job_name.lower():
+        return "arm64"
+    return None
+
+
+def get_s3_website_origin(
+    bucket: str | None = None, website_suffix: str | None = None
+) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    website_suffix = (
+        website_suffix or os.environ.get("S3_WEBSITE_SUFFIX") or ""
+    ).strip()
+    if not bucket or not website_suffix:
+        return ""
+    return f"https://{bucket}.{website_suffix}"
+
+
+def get_s3_report_uri(path: str, bucket: str | None = None) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    if not bucket or not path:
+        return ""
+    return f"s3://{bucket}/{path}"
+
+
+def get_s3_report_url(
+    path: str,
+    bucket: str | None = None,
+    website_suffix: str | None = None,
+) -> str:
+    origin = get_s3_website_origin(bucket=bucket, website_suffix=website_suffix)
+    if not origin or not path:
+        return ""
+    return f"{origin}/{quote(path, safe='/')}"
+
+
+def get_s3_report_path(
+    *,
+    repository: str,
+    workflow_name: str,
+    run_id: int | str,
+    run_attempt: int | str,
+    arch: str,
+    build_preset: str,
+    relative_path: str,
+    folder_prefix: str | None = None,
+) -> str:
+    suffix = get_build_preset_folder_suffix(build_preset)
+    if suffix is None:
+        return ""
+
+    folder_prefix = (
+        folder_prefix
+        if folder_prefix is not None
+        else os.environ.get("S3_FOLDER_PREFIX", "nebius-")
+    )
+    workflow_folder = workflow_name.replace(" ", "-")
+    return (
+        f"{repository}/{workflow_folder}/{run_id}/{run_attempt}/"
+        f"{folder_prefix}{arch}{suffix}/{relative_path.lstrip('/')}"
+    )
+
+
+def get_s3_report_path_from_job_name(
+    *,
+    repository: str,
+    workflow_name: str,
+    run_id: int | str,
+    run_attempt: int | str,
+    job_name: str,
+    relative_path: str,
+    folder_prefix: str | None = None,
+) -> str:
+    build_preset = get_build_preset_from_job_name(job_name)
+    arch = get_arch_from_job_name(job_name)
+    if build_preset is None or arch is None:
+        return ""
+
+    return get_s3_report_path(
+        repository=repository,
+        workflow_name=workflow_name,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        arch=arch,
+        build_preset=build_preset,
+        relative_path=relative_path,
+        folder_prefix=folder_prefix,
+    )
 
 
 DEFAULT_BUILD_TARGET = "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"

@@ -476,6 +476,46 @@ def write_summary(
         fp.write("\n")
 
 
+def write_summary_json(
+    summary: TestSummary,
+    summary_out_folder: str,
+    build_failed_count: int = 0,
+) -> None:
+    payload = {
+        "reports": [
+            {
+                "title": line.title,
+                "report_url": line.report_url,
+                "total": line.test_count,
+                "counts": {
+                    status.name: (
+                        max(build_failed_count, line.count(status))
+                        if status == TestStatus.FAIL_BUILD
+                        else line.count(status)
+                    )
+                    for status in TestStatus.summary_table_order()
+                },
+                "tests": [
+                    {
+                        "classname": test.classname,
+                        "name": test.name,
+                        "full_name": test.full_name,
+                        "status": test.status.name,
+                        "status_label": test.status.label,
+                        "elapsed_seconds": test.elapsed,
+                        "is_timed_out": test.is_timed_out,
+                    }
+                    for test in sorted(line.tests, key=attrgetter("full_name"))
+                ],
+            }
+            for line in summary.lines
+        ],
+    }
+
+    with open(os.path.join(summary_out_folder, "summary.json"), "w") as fp:
+        json.dump(payload, fp, separators=(",", ":"))
+
+
 def gen_summary(
     summary_url_prefix: str,
     summary_out_folder: str,
@@ -1270,6 +1310,11 @@ def main() -> None:
         write_summary(
             summary,
             args.summary_out_env_path,
+        )
+        write_summary_json(
+            summary,
+            args.summary_out_path,
+            build_failed_count=get_build_failed_count(),
         )
     elif not args.update_workload_status_only:
         LOGGER.error("No summary inputs provided")
