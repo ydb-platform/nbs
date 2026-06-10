@@ -1690,6 +1690,8 @@ func (c *client) Stat(
 		diskID,
 	)
 
+	// Hotfix for https://github.com/ydb-platform/nbs/issues/6175
+	// TODO: (jkuradobery) remove after NBS fix is released and rolled out.
 	if blocksCount == 0 && isDiskRegistryBasedDisk(volume.StorageMediaKind) {
 		blocksCount = volume.BlocksCount
 	}
