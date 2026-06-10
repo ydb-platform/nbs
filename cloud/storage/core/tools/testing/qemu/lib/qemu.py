@@ -115,8 +115,11 @@ class Qemu:
             if is_arm is None
             else is_arm
         )
+
+        # TODO(proller): Temporary disable reconnect and migration for arm, while preparing proper qemu binary
         self.reconnect = reconnect if reconnect is not None else 0 if self.is_arm else 1
         self.migration = "" if self.is_arm else ",migration=external"
+
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
         self.backup_rootfs = backup_rootfs
