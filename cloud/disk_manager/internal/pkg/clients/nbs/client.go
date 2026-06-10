@@ -1682,8 +1682,13 @@ func (c *client) Stat(
 		return DiskStats{}, err
 	}
 
+	blocksCount := volumeStats.LogicalUsedBlocksCount
+	if blocksCount == 0 {
+		blocksCount = volume.BlocksCount
+	}
+
 	return DiskStats{
-		StorageSize: uint64(volume.BlockSize) * volumeStats.LogicalUsedBlocksCount,
+		StorageSize: uint64(volume.BlockSize) * blocksCount,
 	}, nil
 }
 
