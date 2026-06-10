@@ -252,15 +252,6 @@ private:
         } else {
             promise.SetValue(std::move(response));
         }
-
-        if constexpr (TBlockStoreMethodTraits<TRequest>::IsLocalRequest()) {
-            if (hasError) {
-                // Cancel all sub requests in case of error.
-                for (auto& subRequest: SubRequests) {
-                    subRequest->Sglist.Close();
-                }
-            }
-        }
     }
 };
 
