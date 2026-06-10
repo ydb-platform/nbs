@@ -47,6 +47,7 @@ on:
         default: "unittest"
         description: "type of tests to run"
         options:
+          - unittest
           - unittest,clang_tidy,gtest
           - py3test,py2test,pytest,flake8,black,py2_flake8
           - go_test,gofmt

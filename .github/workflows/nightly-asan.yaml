@@ -1,8 +1,8 @@
 name: Nightly build (asan)
 run-name: |
   ${{ github.event_name == 'workflow_dispatch'
-      && format('Nightly build (asan) (manual)')
-      || format('Nightly build (asan) (schedule)')
+      && 'Nightly build (asan) (manual)'
+      || 'Nightly build (asan) (schedule)'
     }}
 on:
   schedule:
