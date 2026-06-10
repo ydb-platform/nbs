@@ -100,7 +100,7 @@ public:
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
         bool alwaysAllocateLocalDisks,
-        bool attachDetachPathsEnabled = false);
+        bool attachDetachPathsEnabled);
 
     [[nodiscard]] size_t Size() const
     {

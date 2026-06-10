@@ -405,7 +405,8 @@ TDiskRegistryState::TDiskRegistryState(
         CollectDirtyDeviceUUIDs(dirtyDevices),
         std::move(suspendedDevices),
         CollectAllocatedDevices(disks),
-        StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks())
+        StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks(),
+        StorageConfig->GetAttachDetachPathsEnabled())
     , BrokenDisks(std::move(brokenDisks))
     , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
