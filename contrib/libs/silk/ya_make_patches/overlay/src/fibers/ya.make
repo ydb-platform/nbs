@@ -6,6 +6,10 @@ LICENSE_TEXTS(${ARCADIA_ROOT}/contrib/libs/silk/LICENSE)
 
 CXXFLAGS(-std=c++20)
 
+IF (SANITIZER_TYPE == undefined)
+    CXXFLAGS(-fno-sanitize=function)
+ENDIF()
+
 PEERDIR(
     contrib/libs/silk/src/util
     contrib/libs/liburing
