@@ -1683,7 +1683,14 @@ func (c *client) Stat(
 	}
 
 	blocksCount := volumeStats.LogicalUsedBlocksCount
-	if blocksCount == 0 {
+	logging.Info(
+		ctx,
+		"Stat returned logical used blocks count %v for disk %v",
+		blocksCount,
+		diskID,
+	)
+
+	if blocksCount == 0 && isDiskRegistryBasedDisk(volume.StorageMediaKind) {
 		blocksCount = volume.BlocksCount
 	}
 

@@ -99,18 +99,28 @@ func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
 		name                string
 		kind                disk_manager.DiskKind
 		diskSize            int64
+		writeBlock          bool
 		expectedStorageSize int64
 	}{
 		{
 			name:                "ssd",
 			kind:                disk_manager.DiskKind_DISK_KIND_SSD,
 			diskSize:            2 * blockSize,
+			writeBlock:          true,
 			expectedStorageSize: blockSize,
+		},
+		{
+			name:                "hdd",
+			kind:                disk_manager.DiskKind_DISK_KIND_HDD,
+			diskSize:            2 * blockSize,
+			writeBlock:          false,
+			expectedStorageSize: 0,
 		},
 		{
 			name:                "ssd_nonreplicated",
 			kind:                disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 			diskSize:            nrdDiskSize,
+			writeBlock:          true,
 			expectedStorageSize: nrdDiskSize,
 		},
 	} {
@@ -136,15 +146,17 @@ func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
 			require.NoError(t, err)
 			defer testcommon.DeleteDisk(t, ctx, client, diskID)
 
-			nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
-			block := make([]byte, blockSize)
-			block[0] = 1
-			err = nbsClient.Write(
-				diskID,
-				0, // startIndex
-				block,
-			)
-			require.NoError(t, err)
+			if testCase.writeBlock {
+				nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+				block := make([]byte, blockSize)
+				block[0] = 1
+				err = nbsClient.Write(
+					diskID,
+					0, // startIndex
+					block,
+				)
+				require.NoError(t, err)
+			}
 
 			reqCtx = testcommon.GetRequestContext(t, ctx)
 			stats, err := client.StatDisk(reqCtx, &disk_manager.StatDiskRequest{
