@@ -60,6 +60,13 @@ INITIAL_DISCOVERY_INTERVAL_SECONDS = 5
 INITIAL_DISCOVERY_TIMEOUT_SECONDS = 60
 logger = setup_logger()
 
+S3_REPORT_CONTEXT_ENV_KEYS = (
+    "S3_BUCKET",
+    "S3_BUCKET_PATH",
+    "S3_REPORTS_BUCKET_PATH",
+    "S3_WEBSITE_SUFFIX",
+)
+
 
 @dataclass
 class WorkflowRun:
@@ -198,6 +205,42 @@ def get_run_attempt(workflow_run: GithubWorkflowRun) -> int:
     return getattr(workflow_run, "run_attempt", None) or 1
 
 
+def get_reports_bucket() -> str:
+    bucket = os.environ.get("S3_BUCKET", "").strip()
+    if bucket:
+        return bucket
+
+    for env_name in ("S3_REPORTS_BUCKET_PATH", "S3_BUCKET_PATH"):
+        env_value = os.environ.get(env_name, "").strip()
+        if not env_value:
+            continue
+        try:
+            bucket, _key = parse_s3_path(env_value)
+        except ValueError as error:
+            logger.warning(
+                "Cannot derive S3 bucket from %s=%r: %s", env_name, env_value, error
+            )
+            continue
+        logger.info("Derived S3 bucket %s from %s", bucket, env_name)
+        return bucket
+
+    logger.warning(
+        "Cannot derive S3 bucket: none of %s are set to a usable value",
+        ", ".join(S3_REPORT_CONTEXT_ENV_KEYS),
+    )
+    return ""
+
+
+def log_s3_report_context() -> None:
+    logger.info(
+        "S3 report context: %s",
+        {
+            env_name: os.environ.get(env_name, "")
+            for env_name in S3_REPORT_CONTEXT_ENV_KEYS
+        },
+    )
+
+
 def fetch_summary_payload(s3: Any, summary_json_uri: str) -> dict[str, Any] | None:
     logger.info("Fetching summary json %s", summary_json_uri)
     try:
@@ -228,13 +271,16 @@ def list_summary_json_uris(
         run_id=workflow_run.id,
         run_attempt=get_run_attempt(workflow_run),
     )
-    prefix_uri = get_s3_report_uri(prefix)
+    reports_bucket = get_reports_bucket()
+    prefix_uri = get_s3_report_uri(prefix, bucket=reports_bucket)
     if not prefix_uri:
         logger.warning(
-            "Cannot list summary reports: empty S3 URI for workflow=%s run_id=%s attempt=%s",
+            "Cannot list summary reports: empty S3 URI for workflow=%s run_id=%s attempt=%s bucket=%r prefix=%r",
             workflow_file,
             workflow_run.id,
             get_run_attempt(workflow_run),
+            reports_bucket,
+            prefix,
         )
         return []
 
@@ -286,12 +332,15 @@ def list_summary_json_uris(
 
 def get_report_url_from_summary_uri(summary_json_uri: str) -> str:
     try:
-        _bucket, key = parse_s3_path(summary_json_uri)
+        bucket, key = parse_s3_path(summary_json_uri)
     except ValueError:
         return ""
     if not key.endswith("/summary.json"):
         return ""
-    return get_s3_report_url(f"{key.removesuffix('/summary.json')}/ya-test.html")
+    return get_s3_report_url(
+        f"{key.removesuffix('/summary.json')}/ya-test.html",
+        bucket=bucket,
+    )
 
 
 def get_summary_component(summary_json_uri: str) -> str:
@@ -400,7 +449,8 @@ def fetch_run_summaries(
                 workflow_file=workflow_file,
                 run_id=run.id,
                 run_attempt=get_run_attempt(run),
-            )
+            ),
+            bucket=get_reports_bucket(),
         ),
     )
     return []
@@ -787,6 +837,7 @@ def cancel_mode() -> int:
         return 0
 
     s3 = boto3.client("s3")
+    log_s3_report_context()
     logger.info(
         "Cancellation mode started for PR #%s, ref=%s, marker=%s, workflows=%s",
         pr_number,
@@ -839,6 +890,7 @@ def main() -> int:
         return 0
 
     s3 = boto3.client("s3")
+    log_s3_report_context()
     logger.info(
         "Dispatch-and-collect mode started for PR #%s, ref=%s, marker=%s, workflows=%s",
         pr_number,
