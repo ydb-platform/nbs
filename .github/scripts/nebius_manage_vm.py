@@ -27,6 +27,7 @@ from .helpers import (
 )
 from github import Auth as GithubAuth
 from github import Github
+from github import GithubException
 
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
@@ -661,8 +662,19 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 def remove_runner_from_github(
     client: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
 ) -> str:
-    runner_id = find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
     repo = os.environ.get("GITHUB_REPOSITORY")
+
+    try:
+        runner_id = find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
+    except GithubException as e:
+        if e.status != 401:
+            raise
+        logger.error(
+            "Failed to check GitHub runner with name %s due to authentication error; continuing VM removal",
+            vm_id,
+            exc_info=True,
+        )
+        return "auth_failed"
 
     if runner_id is None:
         # this is not critical error, just log it and be done with it,
@@ -670,7 +682,19 @@ def remove_runner_from_github(
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
 
-    runner = client.get_repo(repo).get_self_hosted_runner(runner_id)
+    try:
+        runner = client.get_repo(repo).get_self_hosted_runner(runner_id)
+    except GithubException as e:
+        if e.status != 401:
+            raise
+        logger.error(
+            "Failed to get GitHub runner with name %s and id %s due to authentication error; continuing VM removal",
+            vm_id,
+            runner_id,
+            exc_info=True,
+        )
+        return "auth_failed"
+
     if runner is None:
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
@@ -911,6 +935,11 @@ async def remove_vm(sdk: SDK, args: argparse.Namespace):
         return
     elif result == "failed":
         logger.error("Failed to remove runner with name %s, we can ignore it", args.id)
+    elif result == "auth_failed":
+        logger.error(
+            "Failed to inspect runner with name %s due to GitHub authentication error, we can ignore it",
+            args.id,
+        )
     elif result == "removed" or result == "would_remove":
         logger.info("Runner with name %s removed from github", args.id)
 
