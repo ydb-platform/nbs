@@ -55,3 +55,45 @@ message TQueryAvailableStorageResponse
 
     repeated TAvailableStorageInfo AvailableStorage = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Query known storage endpoint
+
+message TKnownPathInfo
+{
+    // Path to device.
+    string Path = 1;
+
+    // Storage pool name.
+    string StoragePoolName = 2;
+
+    // Storage pool kind.
+    EStoragePoolKind StoragePoolKind = 3;
+}
+
+message TKnownStorageInfos
+{
+    // FQDN of the agent on which devices are located.
+    string AgentId = 1;
+
+    // List of known devices path info.
+    repeated TKnownPathInfo KnownPathInfos = 2;
+}
+
+message TQueryKnownStorageRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of agent ids.
+    repeated string AgentIds = 2;
+}
+
+message TQueryKnownStorageResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of known storage.
+    repeated TKnownStorageInfos KnownStorage = 2;
+}

@@ -32,6 +32,7 @@
 #include "ping.h"
 #include "query_agents_info.h"
 #include "query_available_storage.h"
+#include "query_known_storage.h"
 #include "read_blocks.h"
 #include "refresh_endpoint.h"
 #include "resize_volume.h"
@@ -90,6 +91,7 @@ struct THandlerFactory
         { "ping", NewPingCommand },
         { "queryagentsinfo", NewQueryAgentsInfoCommand },
         { "queryavailablestorage", NewQueryAvailableStorageCommand },
+        { "queryknownstorage", NewQueryKnownStorageCommand },
         { "readblocks", NewReadBlocksCommand },
         { "refreshendpoint", NewRefreshEndpointCommand },
         { "resizevolume", NewResizeVolumeCommand },
