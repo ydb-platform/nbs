@@ -74,7 +74,7 @@ private:
     const ui64 InitialFileSize;
 
     TClient Client;
-    TDeque<std::unique_ptr<IEndpoint>> Endpoints;
+    TDeque<std::shared_ptr<IEndpoint>> Endpoints;
     TAdaptiveLock EndpointsLock;
 
     TVector<std::pair<ui64, NProto::EAction>> Actions;
@@ -183,7 +183,7 @@ private:
             return;
         }
 
-        std::unique_ptr<IEndpoint> e;
+        std::shared_ptr<IEndpoint> e;
         with_lock (ptr->EndpointsLock) {
             Y_ABORT_UNLESS(ptr->Endpoints.size());
             e = std::move(ptr->Endpoints.back());
