@@ -1,11 +1,12 @@
 #include "critical_events.h"
 
 #include "public.h"
-#include <util/string/builder.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore {
 
@@ -17,28 +18,6 @@ template <typename... Ts>
 TStringBuilder& operator<<(TStringBuilder& sb, const std::variant<Ts...>& v)
 {
     std::visit([&sb](const auto& arg) { sb << arg; }, v);
-    return sb;
-}
-
-template <typename T>
-TString FormatKeyValueList(
-    const TVector<std::pair<TStringBuf, T>>& keyValues)
-{
-    TStringBuilder sb;
-    bool first = true;
-    for (const auto& [key, value]: keyValues) {
-        if (!first) {
-            sb << "; ";
-        }
-        sb << key << "=";
-        if (std::holds_alternative<TString>(value)) {
-            sb << std::get<TString>(value).Quote();
-        } else {
-            sb << value;
-        }
-
-        first = false;
-    }
     return sb;
 }
 
@@ -83,18 +62,18 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     }                                                                          \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+        const TCritEventParams& keyValues)                                     \
     {                                                                          \
         TString msg =                                                          \
-            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+            ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     TString Report##name(                                                      \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+        const TCritEventParams& keyValues)                                     \
     {                                                                          \
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
-            FormatKeyValueList(keyValues),                                     \
+            PrintParams(keyValues),                                            \
             false);                                                            \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
@@ -116,18 +95,18 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     }                                                                          \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+        const TCritEventParams& keyValues)                                     \
     {                                                                          \
         TString msg =                                                          \
-            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+            ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     TString Report##name(                                                      \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+        const TCritEventParams& keyValues)                                     \
     {                                                                          \
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
-            FormatKeyValueList(keyValues),                                     \
+            PrintParams(keyValues),                                            \
             false); /* verifyDebug */                                          \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
@@ -150,18 +129,18 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     }                                                                          \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+        const TCritEventParams& keyValues)                                     \
     {                                                                          \
         TString msg =                                                          \
-            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+            ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     TString Report##name(                                                      \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+        const TCritEventParams& keyValues)                                     \
     {                                                                          \
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
-            FormatKeyValueList(keyValues),                                     \
+            PrintParams(keyValues),                                            \
             true); /* verifyDebug */                                           \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \

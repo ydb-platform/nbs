@@ -1,9 +1,9 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/printable_params.h>
+
 #include <util/generic/string.h>
 #include <util/system/types.h>
-
-#include <span>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -133,12 +133,12 @@ public:
 
     [[nodiscard]] TChildLogTitle GetChildWithTags(
         ui64 startTime,
-        std::span<const std::pair<TString, TString>> additionalTags) const;
+        TPrintableParams additionalTags) const;
 
     [[nodiscard]] TChildLogTitle GetChildWithTags(
         ui64 startTime,
-        std::initializer_list<std::pair<TString, TString>> additionalTags)
-        const;
+        std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+            additionalTags) const;
 
     [[nodiscard]] TString Get(EDetails details) const;
 
