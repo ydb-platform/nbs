@@ -35,6 +35,8 @@ WORKLOAD_COMMENT_EDIT_ATTEMPTS = 5
 WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS = float(
     os.environ.get("WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", "1.0")
 )
+SUMMARY_JSON_SCHEMA = "nbs-test-summary"
+SUMMARY_JSON_SCHEMA_VERSION = 1
 WORKLOAD_CHECK_STATUS_ICONS = {
     "pending": ":white_circle:",
     "running": ":hourglass_flowing_sand:",
@@ -482,6 +484,8 @@ def write_summary_json(
     build_failed_count: int = 0,
 ) -> None:
     payload = {
+        "schema": SUMMARY_JSON_SCHEMA,
+        "schema_version": SUMMARY_JSON_SCHEMA_VERSION,
         "reports": [
             {
                 "title": line.title,

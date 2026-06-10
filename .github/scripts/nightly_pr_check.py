@@ -20,9 +20,9 @@ from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
 
 from .helpers import (
     get_build_preset_from_workflow_name,
-    get_s3_report_path_from_workflow_name,
     get_s3_report_uri,
     get_s3_report_url,
+    get_s3_workflow_reports_path,
     parse_s3_path,
     setup_logger,
 )
@@ -54,7 +54,6 @@ CANCEL_VERIFY_INTERVAL_SECONDS = 5
 CANCEL_VERIFY_TIMEOUT_SECONDS = 300
 INITIAL_DISCOVERY_INTERVAL_SECONDS = 5
 INITIAL_DISCOVERY_TIMEOUT_SECONDS = 60
-SUMMARY_ATTEMPTS_TO_CHECK = 10
 logger = setup_logger()
 
 
@@ -66,7 +65,7 @@ class WorkflowRun:
     url: str = ""
     status: str = "dispatching"
     conclusion: str | None = None
-    jobs: list[dict[str, Any]] = field(default_factory=list)
+    summaries: list[dict[str, str]] = field(default_factory=list)
     error: str = ""
 
 
@@ -166,40 +165,15 @@ def find_workflow_run(
     return result
 
 
-def get_summary_job_label(workflow: str, job_name: str) -> str:
+def get_summary_label(workflow: str, summary_json_uri: str = "") -> str:
     build_preset = get_build_preset_from_workflow_name(workflow)
+    if summary_json_uri:
+        component = get_summary_component(summary_json_uri)
+        if component:
+            return f"{build_preset or workflow}/{component}"
     if build_preset is not None:
         return build_preset
-    return job_name
-
-
-def get_summary_report_path(
-    repo: Repository,
-    workflow_run: GithubWorkflowRun,
-    job_name: str,
-    filename: str,
-    summary_attempt: int,
-) -> str:
-    try:
-        workflow_name = repo.get_workflow(workflow_run.workflow_id).name
-    except Exception as error:
-        logger.info(
-            "Failed to fetch workflow metadata for run_id=%s: %s",
-            workflow_run.id,
-            error,
-        )
-        workflow_name = workflow_run.name or ""
-
-    run_attempt = getattr(workflow_run, "run_attempt", None) or 1
-    return get_s3_report_path_from_workflow_name(
-        repository=repo.full_name,
-        workflow_name=workflow_name,
-        run_id=workflow_run.id,
-        run_attempt=run_attempt,
-        job_name=job_name,
-        relative_path=f"summary/{summary_attempt}/{filename}",
-        folder_prefix=os.environ.get("S3_FOLDER_PREFIX", "nebius-"),
-    )
+    return workflow
 
 
 def link_count(value: int, url: str, anchor: str | None = None) -> str:
@@ -209,58 +183,109 @@ def link_count(value: int, url: str, anchor: str | None = None) -> str:
     return f"[{value}]({href})"
 
 
-def is_ignored_failed_job(job_name: str) -> bool:
-    leaf_name = job_name.rsplit(" / ", 1)[-1].strip()
-    return leaf_name.startswith("Sleep ") and "if build failed" in leaf_name
+def get_run_attempt(workflow_run: GithubWorkflowRun) -> int:
+    return getattr(workflow_run, "run_attempt", None) or 1
 
 
-def is_failed_job(job: dict[str, Any]) -> bool:
-    if job.get("conclusion") in (None, "success", "skipped"):
-        return False
-    return not is_ignored_failed_job(job.get("name", ""))
+def fetch_summary_payload(s3: Any, summary_json_uri: str) -> dict[str, Any] | None:
+    try:
+        bucket, key = parse_s3_path(summary_json_uri)
+        response = s3.get_object(Bucket=bucket, Key=key)
+        return json.loads(response["Body"].read().decode("utf-8"))
+    except (
+        BotoCoreError,
+        ClientError,
+        json.JSONDecodeError,
+        KeyError,
+        UnicodeDecodeError,
+        ValueError,
+    ) as error:
+        logger.info("Failed to fetch summary json %s: %s", summary_json_uri, error)
+        return None
 
 
-def fetch_summary_markdown(
+def list_summary_json_uris(
     s3: Any,
     repo: Repository,
+    workflow_file: str,
     workflow_run: GithubWorkflowRun,
-    job_name: str,
-) -> str:
-    summary_json_url = ""
-    payload = None
-    summary_attempt = 0
-    for attempt in range(SUMMARY_ATTEMPTS_TO_CHECK, 0, -1):
-        summary_json_path = get_summary_report_path(
-            repo,
-            workflow_run,
-            job_name,
-            "summary.json",
-            attempt,
-        )
-        summary_json_uri = get_s3_report_uri(summary_json_path)
-        if not summary_json_uri:
-            return ""
+) -> list[str]:
+    prefix = get_s3_workflow_reports_path(
+        repository=repo.full_name,
+        workflow_file=workflow_file,
+        run_id=workflow_run.id,
+        run_attempt=get_run_attempt(workflow_run),
+    )
+    prefix_uri = get_s3_report_uri(prefix)
+    if not prefix_uri:
+        return []
 
+    try:
+        bucket, key_prefix = parse_s3_path(prefix_uri)
+        paginator = s3.get_paginator("list_objects_v2")
+        keys = [
+            content["Key"]
+            for page in paginator.paginate(Bucket=bucket, Prefix=key_prefix)
+            for content in page.get("Contents", [])
+            if content["Key"].endswith("/summary.json")
+        ]
+    except (BotoCoreError, ClientError, KeyError, ValueError) as error:
+        logger.info("Failed to list summary reports under %s: %s", prefix_uri, error)
+        return []
+
+    def sort_key(key: str) -> tuple[int, str]:
         try:
-            bucket, key = parse_s3_path(summary_json_uri)
-            response = s3.get_object(Bucket=bucket, Key=key)
-            payload = json.loads(response["Body"].read().decode("utf-8"))
-            summary_attempt = attempt
-            summary_json_url = summary_json_uri
-            break
-        except (
-            BotoCoreError,
-            ClientError,
-            json.JSONDecodeError,
-            KeyError,
-            UnicodeDecodeError,
-            ValueError,
-        ) as error:
-            logger.info("Failed to fetch summary json %s: %s", summary_json_uri, error)
+            retry = int(key.rsplit("/", 2)[-2])
+        except ValueError:
+            retry = 0
+        return retry, key
 
+    return [
+        get_s3_report_uri(key, bucket=bucket)
+        for key in sorted(keys, key=sort_key, reverse=True)
+    ]
+
+
+def get_report_url_from_summary_uri(summary_json_uri: str) -> str:
+    try:
+        _bucket, key = parse_s3_path(summary_json_uri)
+    except ValueError:
+        return ""
+    if not key.endswith("/summary.json"):
+        return ""
+    return get_s3_report_url(f"{key.removesuffix('/summary.json')}/ya-test.html")
+
+
+def get_summary_component(summary_json_uri: str) -> str:
+    try:
+        _bucket, key = parse_s3_path(summary_json_uri)
+    except ValueError:
+        return ""
+
+    parts = key.split("/")
+    if len(parts) < 8 or parts[0] != "reports" or parts[-1] != "summary.json":
+        return ""
+
+    relative_parts = parts[7:-1]
+    if len(relative_parts) <= 1:
+        return ""
+    return "/".join(relative_parts[:-1])
+
+
+def render_summary_markdown(
+    payload: dict[str, Any] | None,
+    summary_json_url: str,
+    fallback_report_url: str = "",
+) -> str:
     if payload is None:
         return ""
 
+    logger.info(
+        "Using summary json %s schema=%s version=%s",
+        summary_json_url,
+        payload.get("schema") if isinstance(payload, dict) else None,
+        payload.get("schema_version") if isinstance(payload, dict) else None,
+    )
     reports = payload.get("reports") if isinstance(payload, dict) else None
     if not reports:
         logger.info("No summary reports found in %s", summary_json_url)
@@ -270,14 +295,10 @@ def fetch_summary_markdown(
     if not isinstance(report, dict):
         logger.info("Invalid summary report in %s", summary_json_url)
         return ""
-    report_url = report.get("report_url") or get_s3_report_url(
-        get_summary_report_path(
-            repo,
-            workflow_run,
-            job_name,
-            "ya-test.html",
-            summary_attempt,
-        )
+    report_url = (
+        report.get("report_url")
+        or get_report_url_from_summary_uri(summary_json_url)
+        or fallback_report_url
     )
     counts = report.get("counts") or {}
     total = int(report.get("total") or sum(int(value) for value in counts.values()))
@@ -299,28 +320,38 @@ def fetch_summary_markdown(
     )
 
 
-def get_workflow_jobs(
+def build_summary_entry(
+    workflow_file: str,
+    summary_json_uri: str,
+    summary_markdown: str,
+) -> dict[str, str]:
+    return {
+        "label": get_summary_label(workflow_file, summary_json_uri),
+        "summary_markdown": summary_markdown,
+    }
+
+
+def fetch_run_summaries(
     s3: Any,
     repo: Repository,
+    workflow_file: str,
     run: GithubWorkflowRun,
-) -> list[dict[str, Any]]:
-    jobs = []
-    for job in run.jobs():
-        job_info = {
-            "name": job.name,
-            "html_url": job.html_url,
-            "status": job.status,
-            "conclusion": job.conclusion,
-        }
-        if is_failed_job(job_info):
-            job_info["summary_markdown"] = fetch_summary_markdown(
-                s3,
-                repo,
-                run,
-                job.name or "",
+) -> list[dict[str, str]]:
+    summaries = []
+    for summary_json_uri in list_summary_json_uris(s3, repo, workflow_file, run):
+        summary_markdown = render_summary_markdown(
+            fetch_summary_payload(s3, summary_json_uri),
+            summary_json_uri,
+        )
+        if summary_markdown:
+            summaries.append(
+                build_summary_entry(workflow_file, summary_json_uri, summary_markdown)
             )
-        jobs.append(job_info)
-    return jobs
+
+    if summaries:
+        return summaries
+
+    return []
 
 
 def cancel_workflow_run(repo: Repository, run_id: int) -> None:
@@ -373,22 +404,17 @@ def render_comment(
             workflow = f"[`{run.workflow}`]({run.url})"
         lines.append(f"- {status_icon(run)} {workflow} - `{status_text(run)}`")
 
-    failed_jobs = [(run, job) for run in runs for job in run.jobs if is_failed_job(job)]
     summaries = [
-        (
-            run.workflow,
-            job.get("name", ""),
-            job.get("html_url", ""),
-            job["summary_markdown"],
-        )
-        for run, job in failed_jobs
-        if job.get("summary_markdown")
+        summary
+        for run in runs
+        for summary in run.summaries
+        if summary.get("summary_markdown")
     ]
     if summaries:
         lines.extend(["", "Summaries:"])
-        for workflow, job_name, job_url, summary in summaries[:10]:
-            lines.append(f"[`{get_summary_job_label(workflow, job_name)}`]({job_url})")
-            lines.extend(summary.splitlines())
+        for summary in summaries[:10]:
+            lines.append(f"`{summary.get('label', 'summary')}`")
+            lines.extend(summary["summary_markdown"].splitlines())
         if len(summaries) > 10:
             lines.append(f"- ... and {len(summaries) - 10} more summaries")
 
@@ -430,7 +456,8 @@ def refresh_run(s3: Any, repo: Repository, run: WorkflowRun) -> None:
     run.status = workflow_run.status or run.status
     run.conclusion = workflow_run.conclusion
     run.url = workflow_run.html_url or run.url
-    run.jobs = get_workflow_jobs(s3, repo, workflow_run)
+    if run.status == "completed":
+        run.summaries = fetch_run_summaries(s3, repo, run.workflow, workflow_run)
     logger.info(
         "Refreshed %s: id=%s status=%s conclusion=%s",
         run.workflow,

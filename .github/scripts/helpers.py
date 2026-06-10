@@ -50,16 +50,6 @@ SAN_PRESET_BY_SAN = {
 }
 
 
-def get_build_preset_folder_suffix(build_preset: str) -> str | None:
-    if build_preset in ("relwithdebinfo", "release"):
-        return ""
-    if build_preset == "debug":
-        return "-debug"
-    if build_preset in SAN_PRESETS:
-        return SAN_SUFFIX.get(build_preset.removeprefix("release-"))
-    return None
-
-
 def get_build_preset_from_workflow_name(workflow_name: str) -> str | None:
     normalized = workflow_name.strip().lower()
     if normalized in ("nightly.yaml", "nightly build"):
@@ -75,14 +65,6 @@ def get_build_preset_from_workflow_name(workflow_name: str) -> str | None:
     if match is not None:
         return SAN_PRESET_BY_SAN[match.group("san")]
 
-    return None
-
-
-def get_arch_from_job_name(job_name: str) -> str | None:
-    if "x86_64" in job_name:
-        return "x86-64"
-    if "arm64" in job_name.lower():
-        return "arm64"
     return None
 
 
@@ -116,57 +98,17 @@ def get_s3_report_url(
     return f"{origin}/{quote(path, safe='/')}"
 
 
-def get_s3_report_path(
+def get_s3_workflow_reports_path(
     *,
     repository: str,
-    workflow_name: str,
+    workflow_file: str,
     run_id: int | str,
     run_attempt: int | str,
-    arch: str,
-    build_preset: str,
-    relative_path: str,
-    folder_prefix: str | None = None,
+    relative_path: str = "",
 ) -> str:
-    suffix = get_build_preset_folder_suffix(build_preset)
-    if suffix is None:
-        return ""
-
-    folder_prefix = (
-        folder_prefix
-        if folder_prefix is not None
-        else os.environ.get("S3_FOLDER_PREFIX", "nebius-")
-    )
-    workflow_folder = workflow_name.replace(" ", "-")
     return (
-        f"{repository}/{workflow_folder}/{run_id}/{run_attempt}/"
-        f"{folder_prefix}{arch}{suffix}/{relative_path.lstrip('/')}"
-    )
-
-
-def get_s3_report_path_from_workflow_name(
-    *,
-    repository: str,
-    workflow_name: str,
-    run_id: int | str,
-    run_attempt: int | str,
-    job_name: str,
-    relative_path: str,
-    folder_prefix: str | None = None,
-) -> str:
-    build_preset = get_build_preset_from_workflow_name(workflow_name)
-    arch = get_arch_from_job_name(job_name)
-    if build_preset is None or arch is None:
-        return ""
-
-    return get_s3_report_path(
-        repository=repository,
-        workflow_name=workflow_name,
-        run_id=run_id,
-        run_attempt=run_attempt,
-        arch=arch,
-        build_preset=build_preset,
-        relative_path=relative_path,
-        folder_prefix=folder_prefix,
+        f"reports/{repository}/{workflow_file}/{run_id}/{run_attempt}/"
+        f"{relative_path.lstrip('/')}"
     )
 
 
