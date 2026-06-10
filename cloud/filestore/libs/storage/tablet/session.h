@@ -258,9 +258,14 @@ public:
     NActors::TActorId UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner)
+        const NActors::TActorId& owner,
+        ui32 tabletGeneration)
     {
-        auto result = SubSessions.UpdateSubSession(seqNo, readOnly, owner);
+        auto result = SubSessions.UpdateSubSession(
+            seqNo,
+            readOnly,
+            owner,
+            tabletGeneration);
         UpdateSeqNo();
         return result;
     }

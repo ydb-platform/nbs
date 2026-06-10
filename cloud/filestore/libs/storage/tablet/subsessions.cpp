@@ -11,7 +11,28 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t MaxSubSessions = 2;
+constexpr ui64 SubSessionOwnerGenerationBits = 32;
+constexpr ui64 SubSessionOwnerGenerationMask =
+    (ui64(1) << SubSessionOwnerGenerationBits) - 1;
 
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui64 MakeSubSessionOwnerGeneration(ui32 tabletGeneration, ui32 ownerGeneration)
+{
+    return (ui64(tabletGeneration) << SubSessionOwnerGenerationBits) |
+           ownerGeneration;
+}
+
+ui32 ExtractTabletGeneration(ui64 ownerGeneration)
+{
+    return static_cast<ui32>(ownerGeneration >> SubSessionOwnerGenerationBits);
+}
+
+ui32 ExtractSubSessionOwnerGeneration(ui64 ownerGeneration)
+{
+    return static_cast<ui32>(ownerGeneration & SubSessionOwnerGenerationMask);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,13 +40,18 @@ constexpr size_t MaxSubSessions = 2;
 NActors::TActorId TSubSessions::AddSubSession(
     ui64 seqNo,
     bool readOnly,
-    const NActors::TActorId& owner)
+    const NActors::TActorId& owner,
+    ui32 tabletGeneration)
 {
     MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
     if (!readOnly) {
         MaxSeenRwSeqNo = std::max(MaxSeenRwSeqNo, seqNo);
     }
-    SubSessions.push_back({seqNo, readOnly, owner});
+    SubSessions.push_back({
+        seqNo,
+        readOnly,
+        owner,
+        MakeSubSessionOwnerGeneration(tabletGeneration, 1)});
     if (SubSessions.size() > MaxSubSessions) {
         auto loSeqNo = std::min_element(
             SubSessions.begin(),
@@ -43,7 +69,8 @@ NActors::TActorId TSubSessions::AddSubSession(
 NActors::TActorId TSubSessions::UpdateSubSession(
     ui64 seqNo,
     bool readOnly,
-    const NActors::TActorId& owner)
+    const NActors::TActorId& owner,
+    ui32 tabletGeneration)
 {
     MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
     if (!readOnly) {
@@ -59,11 +86,15 @@ NActors::TActorId TSubSessions::UpdateSubSession(
         if (subsession->Owner != owner) {
             auto toKill = subsession->Owner;
             subsession->Owner = owner;
+            subsession->OwnerGeneration = MakeSubSessionOwnerGeneration(
+                tabletGeneration,
+                ExtractSubSessionOwnerGeneration(
+                    subsession->OwnerGeneration) + 1);
             return toKill;
         }
         return {};
     }
-    return AddSubSession(seqNo, readOnly, owner);
+    return AddSubSession(seqNo, readOnly, owner, tabletGeneration);
 }
 
 ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)

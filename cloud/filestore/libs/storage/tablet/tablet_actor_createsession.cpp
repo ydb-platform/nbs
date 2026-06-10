@@ -296,6 +296,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 ctx);
             args.SessionInterrupted = true;
             if (toKill != owner) {
+                const auto subSession =
+                    session->SubSessions.GetSubSessionBySeqNo(seqNo);
+                if (subSession) {
+                    args.OwnerGeneration = subSession->OwnerGeneration;
+                } else {
+                    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+                        "%s CreateSession c:%s, s:%s, seqno:%lu recovered "
+                        "by session, but subsession was not found",
+                        LogTag.c_str(),
+                        clientId.c_str(),
+                        session->GetSessionId().c_str(),
+                        seqNo);
+                }
                 LOG_INFO(ctx, TFileStoreComponents::TABLET,
                     "%s CreateSession c:%s, s:%s, seqno:%lu recovered by session",
                     LogTag.c_str(),
@@ -341,6 +354,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 readOnly,
                 owner,
                 ctx);
+            const auto subSession =
+                session->SubSessions.GetSubSessionBySeqNo(seqNo);
+            if (subSession) {
+                args.OwnerGeneration = subSession->OwnerGeneration;
+            } else {
+                LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+                    "%s CreateSession c:%s, s:%s, seqno:%lu recovered by "
+                    "client, but subsession was not found",
+                    LogTag.c_str(),
+                    clientId.c_str(),
+                    session->GetSessionId().c_str(),
+                    seqNo);
+            }
             args.SessionInterrupted = true;
 
             return;
@@ -367,7 +393,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
 
     auto sessionOptions = TSession::CreateSessionOptions(Config);
 
-    CreateSession(
+    auto* newSession = CreateSession(
         db,
         clientId,
         args.SessionId,
@@ -377,6 +403,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         readOnly,
         owner,
         sessionOptions);
+    const auto subSession =
+        newSession->SubSessions.GetSubSessionBySeqNo(seqNo);
+    if (subSession) {
+        args.OwnerGeneration = subSession->OwnerGeneration;
+    } else {
+        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession c:%s, s:%s, seqno:%lu created new session, "
+            "but subsession was not found",
+            LogTag.c_str(),
+            clientId.c_str(),
+            newSession->GetSessionId().c_str(),
+            seqNo);
+    }
 }
 
 void TIndexTabletActor::CompleteTx_CreateSession(
@@ -423,6 +462,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
     response->Record.SetSessionState(session->GetSessionState());
+    response->Record.SetOwnerGeneration(args.OwnerGeneration);
     if (!args.Request.GetNoFileStoreInfo()) {
         auto& fileStore = *response->Record.MutableFileStore();
         Convert(GetFileSystem(), fileStore);

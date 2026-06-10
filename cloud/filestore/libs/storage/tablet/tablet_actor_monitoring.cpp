@@ -728,6 +728,7 @@ void DumpSessions(
                     TABLEH() { out << "Recovery"; }
                     TABLEH() { out << "SeqNo"; }
                     TABLEH() { out << "ReadOnly"; }
+                    TABLEH() { out << "OwnerGeneration"; }
                     TABLEH() { out << "Owner"; }
                     TABLEH() { out << "Deadline"; }
                 }
@@ -750,6 +751,7 @@ void DumpSessions(
                         }
                         TABLED() { out << ss.SeqNo; }
                         TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
+                        TABLED() { out << ss.OwnerGeneration; }
                         TABLED() { out << ToString(ss.Owner); }
                         TABLED() { out << session.InactivityDeadline.ToString(); }
                     }

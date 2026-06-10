@@ -538,6 +538,7 @@ struct TTxIndexTablet
 
         TString SessionId;
         bool SessionInterrupted = false;
+        ui64 OwnerGeneration = 0;
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
@@ -554,6 +555,7 @@ struct TTxIndexTablet
 
             SessionId.clear();
             SessionInterrupted = false;
+            OwnerGeneration = 0;
         }
     };
 
