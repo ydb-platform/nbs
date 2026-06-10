@@ -219,6 +219,7 @@ public:
 
         Ydb::Discovery::NodeRegistrationResult result;
         result.set_node_id(1001);
+        result.set_expire(Max<ui64>());
         result.set_scope_tablet_id(72057594037968897);
         result.set_scope_path_id(1);
 
@@ -227,12 +228,16 @@ public:
         staticNode->set_address("localhost");
         staticNode->set_host("localhost");
         staticNode->set_port(StaticNodeIcPort);
+        staticNode->set_resolve_host("localhost");
+        staticNode->set_address("localhost");
 
         auto* selfNode = result.add_nodes();
         selfNode->set_node_id(1001);
         selfNode->set_address("localhost");
         selfNode->set_host("localhost");
         selfNode->set_port(DynamicNodeIcPort);
+        selfNode->set_resolve_host("localhost");
+        selfNode->set_address("localhost");
 
         operation->mutable_result()->PackFrom(result);
 
