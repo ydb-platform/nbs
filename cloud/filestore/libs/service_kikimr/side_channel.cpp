@@ -36,13 +36,14 @@ public:
         IAsyncEndpointPtr e;
 
         with_lock (Lock) {
+            *generation = Generation;
+
             if (!Endpoints) {
                 return nullptr;
             }
 
             e = Endpoints.front();
             Endpoints.pop_front();
-            *generation = Generation;
         }
 
         STORAGE_DEBUG("endpoint popped from pool, generation=" << *generation);
@@ -105,6 +106,8 @@ public:
     {}
 
 public:
+    // TODO(#5894) zero-copy io support
+
     bool ExecuteRequest(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request,
@@ -160,7 +163,12 @@ public:
             Port = port;
         }
 
-        TryConnect().Subscribe(
+        auto connection = TryConnect();
+        if (!connection.Initialized()) {
+            return;
+        }
+
+        connection.Subscribe(
             [
                 ep = EndpointPool,
                 generation
@@ -183,17 +191,32 @@ private:
         ui32 generation = 0;
         IAsyncEndpointPtr e = EndpointPool->Pop(&generation);
 
-        auto send = [response = std::move(response), extractBody](
-            TFuture<TResponse> f) mutable
+        auto complete = [
+            response = std::move(response),
+            ep = EndpointPool,
+            extractBody
+        ](IAsyncEndpointPtr e, ui32 generation, TResponse r) mutable
         {
-            auto r = f.ExtractValue();
             TResp resp;
+            bool shardMoved = false;
             if (r.HasError()) {
-                *resp.MutableError() = r.GetError();
+                if (r.GetError().GetCode() == E_NOT_FOUND) {
+                    shardMoved = true;
+                    *resp.MutableError() = MakeError(
+                        E_REJECTED,
+                        TStringBuilder() << "shard moved: "
+                            << FormatError(r.GetError()));
+                } else {
+                    *resp.MutableError() = r.GetError();
+                }
             } else {
                 extractBody(resp, r);
             }
             response.SetValue(std::move(resp));
+
+            if (!shardMoved) {
+                ep->Push(std::move(e), generation);
+            }
         };
 
         TRequest req;
@@ -203,13 +226,13 @@ private:
         if (e) {
             auto result = e->Send(std::move(req));
             result.Subscribe([
+                complete = std::move(complete),
                 ep = EndpointPool,
                 e = std::move(e),
                 generation
-            ] (const TFuture<TResponse>&) mutable {
-                ep->Push(std::move(e), generation);
+            ] (const TFuture<TResponse>& f) mutable {
+                complete(std::move(e), generation, UnsafeExtractValue(f));
             });
-            result.Subscribe(std::move(send));
 
             return true;
         }
@@ -221,7 +244,7 @@ private:
 
         connection.Subscribe([
             req = std::move(req),
-            send = std::move(send),
+            complete = std::move(complete),
             ep = EndpointPool,
             generation
         ] (const TFuture<IAsyncEndpointPtr>& f) mutable {
@@ -230,19 +253,19 @@ private:
             if (!e) {
                 TResponse errorResponse;
                 errorResponse.MutableError()->SetCode(E_UNAVAILABLE);
-                send(MakeFuture(std::move(errorResponse)));
+                complete(nullptr, 0, std::move(errorResponse));
                 return;
             }
 
             auto result = e->Send(std::move(req));
             result.Subscribe([
+                complete = std::move(complete),
                 ep = std::move(ep),
                 e = std::move(e),
                 generation
-            ] (const TFuture<TResponse>&) mutable {
-                ep->Push(std::move(e), generation);
+            ] (const TFuture<TResponse>& f) mutable {
+                complete(std::move(e), generation, UnsafeExtractValue(f));
             });
-            result.Subscribe(std::move(send));
         });
 
         return true;
@@ -261,7 +284,7 @@ private:
             port = Port;
         }
 
-        auto connection = Client->Connect(Host, Port);
+        auto connection = Client->Connect(host, port);
         connection.Subscribe([
             Log = Log,
             host = std::move(host),

@@ -44,6 +44,7 @@ struct TEndpoint: IEndpoint
 
         ui32 lenBe = htonl(static_cast<ui32>(reqBuf.size()));
         int r = SendAll(Fd, &lenBe, sizeof(lenBe));
+        // TODO(#5894): don't abort, return error in resp instead
         Y_ABORT_UNLESS(r == 0, "send length failed: %d", r);
         r = SendAll(Fd, reqBuf.data(), reqBuf.size());
         Y_ABORT_UNLESS(r == 0, "send body failed: %d", r);
