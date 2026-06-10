@@ -19,8 +19,8 @@ from github.Repository import Repository
 from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
 
 from .helpers import (
-    get_build_preset_from_job_name,
-    get_s3_report_path_from_job_name,
+    get_build_preset_from_workflow_name,
+    get_s3_report_path_from_workflow_name,
     get_s3_report_uri,
     get_s3_report_url,
     parse_s3_path,
@@ -166,8 +166,8 @@ def find_workflow_run(
     return result
 
 
-def get_summary_job_label(job_name: str) -> str:
-    build_preset = get_build_preset_from_job_name(job_name)
+def get_summary_job_label(workflow: str, job_name: str) -> str:
+    build_preset = get_build_preset_from_workflow_name(workflow)
     if build_preset is not None:
         return build_preset
     return job_name
@@ -191,7 +191,7 @@ def get_summary_report_path(
         workflow_name = workflow_run.name or ""
 
     run_attempt = getattr(workflow_run, "run_attempt", None) or 1
-    return get_s3_report_path_from_job_name(
+    return get_s3_report_path_from_workflow_name(
         repository=repo.full_name,
         workflow_name=workflow_name,
         run_id=workflow_run.id,
@@ -207,6 +207,17 @@ def link_count(value: int, url: str, anchor: str | None = None) -> str:
         return "0"
     href = f"{url}#{anchor}" if anchor else url
     return f"[{value}]({href})"
+
+
+def is_ignored_failed_job(job_name: str) -> bool:
+    leaf_name = job_name.rsplit(" / ", 1)[-1].strip()
+    return leaf_name.startswith("Sleep ") and "if build failed" in leaf_name
+
+
+def is_failed_job(job: dict[str, Any]) -> bool:
+    if job.get("conclusion") in (None, "success", "skipped"):
+        return False
+    return not is_ignored_failed_job(job.get("name", ""))
 
 
 def fetch_summary_markdown(
@@ -301,7 +312,7 @@ def get_workflow_jobs(
             "status": job.status,
             "conclusion": job.conclusion,
         }
-        if job.conclusion not in (None, "success", "skipped"):
+        if is_failed_job(job_info):
             job_info["summary_markdown"] = fetch_summary_markdown(
                 s3,
                 repo,
@@ -362,31 +373,21 @@ def render_comment(
             workflow = f"[`{run.workflow}`]({run.url})"
         lines.append(f"- {status_icon(run)} {workflow} - `{status_text(run)}`")
 
-    failed_jobs = [
-        (run, job)
-        for run in runs
-        for job in run.jobs
-        if job.get("conclusion") not in (None, "success", "skipped")
-    ]
-    if failed_jobs:
-        lines.extend(["", "Failed jobs:"])
-        for run, job in failed_jobs[:25]:
-            job_name = job.get("name", "")
-            job_url = job.get("html_url", run.url)
-            job_result = job.get("conclusion") or job.get("status") or ""
-            lines.append(f"- [`{job_name}`]({job_url}) - `{job_result}`")
-        if len(failed_jobs) > 25:
-            lines.append(f"- ... and {len(failed_jobs) - 25} more failed jobs")
-
+    failed_jobs = [(run, job) for run in runs for job in run.jobs if is_failed_job(job)]
     summaries = [
-        (job.get("name", ""), job.get("html_url", ""), job["summary_markdown"])
-        for _run, job in failed_jobs
+        (
+            run.workflow,
+            job.get("name", ""),
+            job.get("html_url", ""),
+            job["summary_markdown"],
+        )
+        for run, job in failed_jobs
         if job.get("summary_markdown")
     ]
     if summaries:
         lines.extend(["", "Summaries:"])
-        for job_name, job_url, summary in summaries[:10]:
-            lines.append(f"[`{get_summary_job_label(job_name)}`]({job_url})")
+        for workflow, job_name, job_url, summary in summaries[:10]:
+            lines.append(f"[`{get_summary_job_label(workflow, job_name)}`]({job_url})")
             lines.extend(summary.splitlines())
         if len(summaries) > 10:
             lines.append(f"- ... and {len(summaries) - 10} more summaries")

@@ -60,17 +60,20 @@ def get_build_preset_folder_suffix(build_preset: str) -> str | None:
     return None
 
 
-def get_build_preset_from_job_name(job_name: str) -> str | None:
-    match = re.search(r"Build and test (?P<preset>[a-z0-9_-]+) \[", job_name)
-    if match is not None:
-        return match.group("preset")
+def get_build_preset_from_workflow_name(workflow_name: str) -> str | None:
+    normalized = workflow_name.strip().lower()
+    if normalized in ("nightly.yaml", "nightly build"):
+        return "relwithdebinfo"
 
-    match = re.search(
-        r"\((?P<preset>relwithdebinfo|release|debug|release-[^)]+)\)",
-        job_name,
+    match = re.fullmatch(
+        r"nightly(?: build)? \((?P<san>asan|tsan|msan|ubsan)\)", normalized
     )
     if match is not None:
-        return match.group("preset")
+        return SAN_PRESET_BY_SAN[match.group("san")]
+
+    match = re.fullmatch(r"nightly-(?P<san>asan|tsan|msan|ubsan)\.yaml", normalized)
+    if match is not None:
+        return SAN_PRESET_BY_SAN[match.group("san")]
 
     return None
 
@@ -140,7 +143,7 @@ def get_s3_report_path(
     )
 
 
-def get_s3_report_path_from_job_name(
+def get_s3_report_path_from_workflow_name(
     *,
     repository: str,
     workflow_name: str,
@@ -150,7 +153,7 @@ def get_s3_report_path_from_job_name(
     relative_path: str,
     folder_prefix: str | None = None,
 ) -> str:
-    build_preset = get_build_preset_from_job_name(job_name)
+    build_preset = get_build_preset_from_workflow_name(workflow_name)
     arch = get_arch_from_job_name(job_name)
     if build_preset is None or arch is None:
         return ""
