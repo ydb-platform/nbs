@@ -421,8 +421,6 @@ auto TLocalNVMeService::BindDeviceToDriver(
             SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
             return MakeError(S_OK);
         });
-
-    return {};
 }
 
 auto TLocalNVMeService::AcquireDevice(TCont* c, const TString& serialNumber)
