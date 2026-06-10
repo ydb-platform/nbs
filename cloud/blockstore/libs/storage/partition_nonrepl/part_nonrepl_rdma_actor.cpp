@@ -32,6 +32,7 @@ bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
 {
     switch (err.GetCode()) {
         case E_RDMA_UNAVAILABLE:
+        case E_RDMA_RETRY_EXCEEDED:
         case E_TIMEOUT:
         case E_REJECTED:
             return true;
@@ -439,6 +440,10 @@ void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
         Y_ABORT_UNLESS(idx < static_cast<ui32>(devices.size()));
 
         const auto& deviceUUID = devices[idx].GetDeviceUUID();
+
+        if (error.GetCode() == E_RDMA_RETRY_EXCEEDED) {
+            SendRdmaUnavailableIfNeeded(ctx);
+        }
 
         if (!NeedToNotifyAboutDeviceRequestError(error)) {
             TimedOutDeviceCtxByDeviceUUID.erase(deviceUUID);
