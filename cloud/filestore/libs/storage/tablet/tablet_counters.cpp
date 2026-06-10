@@ -280,6 +280,7 @@ void TTabletMetrics::Register(
     REGISTER_LOCAL(
         CollectGarbageBackpressureThreshold,
         EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CollectCommitId, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
