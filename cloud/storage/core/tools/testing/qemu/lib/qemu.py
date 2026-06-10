@@ -160,16 +160,12 @@ class Qemu:
 
         cmd = [
             "-chardev",
-            "socket,id=vhost0,path={},reconnect={}".format(
-                vhost_socket, self.reconnect
-            ),
+            f"socket,id=vhost0,path={vhost_socket},reconnect={self.reconnect}",
         ]
         cmd += [
             "-device",
             "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
-            "num-request-queues={},queue-size=512{}".format(
-                self.num_request_queues, self.migration
-            ),
+            f"num-request-queues={self.num_request_queues},queue-size=512{self.migration}",
         ]
         return cmd
 
@@ -299,14 +295,12 @@ class Qemu:
             if self.use_virtiofs_server:
                 cmd += [
                     "-chardev",
-                    "socket,id={},path={},reconnect={}".format(
-                        tag, vhost_socket, self.reconnect
-                    ),
+                    f"socket,id={tag},path={vhost_socket},reconnect={self.reconnect}",
                 ]
                 cmd += [
                     "-device",
-                    "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},"
-                    "queue-size=512{}".format(tag, tag, tag, self.migration),
+                    f"vhost-user-fs-pci,chardev={tag},id=vhost-user-{tag},tag={tag},"
+                    f"queue-size=512{self.migration}",
                 ]
             else:
                 cmd += ["-virtfs",
