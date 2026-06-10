@@ -12,7 +12,14 @@ from library.python.retry import retry
 import library.python.testing.recipe
 
 from .qemu import Qemu
-from .common import SshToGuest, get_mount_paths, env_with_guest_index, get_qemu_kvm, get_qemu_firmware
+from .common import (
+    SshToGuest,
+    env_with_guest_index,
+    get_mount_paths,
+    get_qemu_bios,
+    get_qemu_firmware,
+    get_qemu_kvm,
+)
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,
@@ -82,6 +89,7 @@ def start_instance(args, inst_index):
 
     qemu = Qemu(qemu_kvm=_get_qemu_kvm(args),
                 qemu_firmware=_get_qemu_firmware(args),
+                qemu_bios=get_qemu_bios(),
                 rootfs=_get_rootfs(args),
                 kernel=_get_kernel(args),
                 kcmdline=_get_kcmdline(args),

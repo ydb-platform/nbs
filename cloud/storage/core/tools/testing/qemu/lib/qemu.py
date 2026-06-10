@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import platform
 import stat
 import time
 import uuid
@@ -86,7 +87,10 @@ class Qemu:
                  inst_index=0,
                  shared_nic_port=0,
                  use_virtiofs_server=False,
-                 num_request_queues=1):
+                 num_request_queues=1,
+                 is_arm=None,
+                 reconnect=None,
+                 qemu_bios=None):
 
         self.ssh_port = 0
         self.qmp = None
@@ -96,6 +100,7 @@ class Qemu:
 
         self.qemu_kvm = qemu_kvm
         self.qemu_firmware = qemu_firmware
+        self.qemu_bios = qemu_bios
         self.rootfs = rootfs
         self.kernel = kernel
         self.kcmdline = kcmdline
@@ -105,6 +110,13 @@ class Qemu:
         self.virtio = virtio
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
+        self.is_arm = (
+            platform.machine().lower() in ("aarch64", "arm64")
+            if is_arm is None
+            else is_arm
+        )
+        self.reconnect = reconnect if reconnect is not None else 0 if self.is_arm else 1
+        self.migration = "" if self.is_arm else ",migration=external"
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
         self.backup_rootfs = backup_rootfs
@@ -143,11 +155,19 @@ class Qemu:
         if vhost_socket is None:
             raise QemuException("Cannot find nfs vhost socket path")
 
-        cmd = ["-chardev",
-               "socket,id=vhost0,path={},reconnect=1".format(vhost_socket)]
-        cmd += ["-device",
-                "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=%s,queue-size=512,migration=external"
-                % self.num_request_queues]
+        cmd = [
+            "-chardev",
+            "socket,id=vhost0,path={},reconnect={}".format(
+                vhost_socket, self.reconnect
+            ),
+        ]
+        cmd += [
+            "-device",
+            "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
+            "num-request-queues={},queue-size=512{}".format(
+                self.num_request_queues, self.migration
+            ),
+        ]
         return cmd
 
     def _get_virtioblk_options(self, vhost_socket):
@@ -240,6 +260,12 @@ class Qemu:
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),
         ]
 
+        if self.qemu_bios:
+            cmd += ["-bios", self.qemu_bios]
+
+        if self.is_arm:
+            cmd += ["-machine", "virt"]
+
         if self.shared_nic_port:
             nic_mac = "52:54:00:12:56:{:02x}".format(self.inst_index)
             if self.inst_index == 0:
@@ -268,10 +294,17 @@ class Qemu:
 
         for tag, path, vhost_socket in self.mount_paths:
             if self.use_virtiofs_server:
-                cmd += ["-chardev",
-                        "socket,id={},path={},reconnect=1".format(tag, vhost_socket)]
-                cmd += ["-device",
-                        "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},queue-size=512,migration=external".format(tag, tag, tag)]
+                cmd += [
+                    "-chardev",
+                    "socket,id={},path={},reconnect={}".format(
+                        tag, vhost_socket, self.reconnect
+                    ),
+                ]
+                cmd += [
+                    "-device",
+                    "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},"
+                    "queue-size=512{}".format(tag, tag, tag, self.migration),
+                ]
             else:
                 cmd += ["-virtfs",
                         "local,path={path},mount_tag={tag},security_model=none".format(tag=tag, path=path)]
