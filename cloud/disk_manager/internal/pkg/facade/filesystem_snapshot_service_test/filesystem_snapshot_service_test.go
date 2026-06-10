@@ -175,7 +175,9 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 
 	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateFilesystemSnapshot(
@@ -455,7 +457,7 @@ func TestFilesystemSnapshotHardlinks(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
-	session.Close(ctx)
+	_ = session.Close(ctx)
 
 	checkCopyFilesystemThroughSnapshot(
 		t,

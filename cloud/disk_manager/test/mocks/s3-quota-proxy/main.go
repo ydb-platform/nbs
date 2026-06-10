@@ -38,8 +38,8 @@ type quotaReservation struct {
 	size         uint64
 }
 
-var quotaExceededError = errors.New("Quota limit exceeded")
-var unknownStorageClassError = errors.New("Unknown storage class")
+var errQuotaExceeded = errors.New("Quota limit exceeded")
+var errUnknownStorageClass = errors.New("Unknown storage class")
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -118,11 +118,11 @@ func (p *quotaProxy) reserve(
 			return nil, nil
 		}
 
-		return nil, unknownStorageClassError
+		return nil, errUnknownStorageClass
 	}
 
 	if size > quota {
-		return nil, quotaExceededError
+		return nil, errQuotaExceeded
 	}
 
 	p.quota[storageClass] -= size
@@ -183,7 +183,7 @@ func (p *quotaProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if errors.Is(err, quotaExceededError) {
+	if errors.Is(err, errQuotaExceeded) {
 		replyClientError(
 			w,
 			quotaErrCode,
