@@ -92,6 +92,7 @@ func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
 
 	const (
 		blockSize   = 4096
+		writeSize   = 4 * 1024 * 1024
 		nrdDiskSize = 262144 * blockSize
 	)
 
@@ -105,9 +106,9 @@ func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
 		{
 			name:                "ssd",
 			kind:                disk_manager.DiskKind_DISK_KIND_SSD,
-			diskSize:            2 * blockSize,
+			diskSize:            2 * writeSize,
 			writeBlock:          true,
-			expectedStorageSize: blockSize,
+			expectedStorageSize: writeSize,
 		},
 		{
 			name:                "hdd",
@@ -148,7 +149,7 @@ func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
 
 			if testCase.writeBlock {
 				nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
-				block := make([]byte, blockSize)
+				block := make([]byte, writeSize)
 				block[0] = 1
 				err = nbsClient.Write(
 					diskID,
