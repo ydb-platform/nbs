@@ -1483,6 +1483,175 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, configMismatch->Val());
     }
+
+    Y_UNIT_TEST(ShouldNotAllocateDevicesOnDetachedPath)
+    {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
+        TDeviceList deviceList{
+            {},     // dirtyDevices
+            {},     // suspendedDevices
+            {},     // allocatedDevices
+            false,  // alwaysAllocateLocalDisks
+            true    // attachDetachPathsEnabled
+        };
+
+        NProto::TAgentConfig agent = CreateAgentConfig("foo", 1000, "rack-1");
+        (*agent.MutablePathAttachStates())["/some/device"] =
+            NProto::PATH_ATTACH_STATE_DETACHED;
+
+        deviceList.UpdateDevices(agent, poolConfigs);
+
+        const auto devices = deviceList.AllocateDevices(
+            "disk",
+            {
+                .ForbiddenRacks = {},
+                .LogicalBlockSize = DefaultBlockSize,
+                .BlockCount = DefaultBlockCount,
+            });
+        UNIT_ASSERT(devices.empty());
+    }
+
+    Y_UNIT_TEST(ShouldNotAllocateDevicesWithMissingPathState)
+    {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
+        TDeviceList deviceList{
+            {},     // dirtyDevices
+            {},     // suspendedDevices
+            {},     // allocatedDevices
+            false,  // alwaysAllocateLocalDisks
+            true    // attachDetachPathsEnabled
+        };
+
+        // No PathAttachStates set — every device is implicitly not attached.
+        NProto::TAgentConfig agent = CreateAgentConfig("foo", 1000, "rack-1");
+
+        deviceList.UpdateDevices(agent, poolConfigs);
+
+        const auto devices = deviceList.AllocateDevices(
+            "disk",
+            {
+                .ForbiddenRacks = {},
+                .LogicalBlockSize = DefaultBlockSize,
+                .BlockCount = DefaultBlockCount,
+            });
+        UNIT_ASSERT(devices.empty());
+    }
+
+    Y_UNIT_TEST(ShouldAllocateDevicesOnAttachedPath)
+    {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
+        TDeviceList deviceList{
+            {},     // dirtyDevices
+            {},     // suspendedDevices
+            {},     // allocatedDevices
+            false,  // alwaysAllocateLocalDisks
+            true    // attachDetachPathsEnabled
+        };
+
+        NProto::TAgentConfig agent = CreateAgentConfig("foo", 1000, "rack-1");
+        (*agent.MutablePathAttachStates())["/some/device"] =
+            NProto::PATH_ATTACH_STATE_ATTACHED;
+
+        deviceList.UpdateDevices(agent, poolConfigs);
+
+        const auto devices = deviceList.AllocateDevices(
+            "disk",
+            {
+                .ForbiddenRacks = {},
+                .LogicalBlockSize = DefaultBlockSize,
+                .BlockCount = DefaultBlockCount,
+            });
+        UNIT_ASSERT(!devices.empty());
+    }
+
+    Y_UNIT_TEST(ShouldIgnorePathAttachStateWhenFeatureDisabled)
+    {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
+        // Default constructor: AttachDetachPathsEnabled = false.
+        TDeviceList deviceList;
+
+        NProto::TAgentConfig agent = CreateAgentConfig("foo", 1000, "rack-1");
+        (*agent.MutablePathAttachStates())["/some/device"] =
+            NProto::PATH_ATTACH_STATE_DETACHED;
+
+        deviceList.UpdateDevices(agent, poolConfigs);
+
+        const auto devices = deviceList.AllocateDevices(
+            "disk",
+            {
+                .ForbiddenRacks = {},
+                .LogicalBlockSize = DefaultBlockSize,
+                .BlockCount = DefaultBlockCount,
+            });
+        UNIT_ASSERT(!devices.empty());
+    }
+
+    Y_UNIT_TEST(ShouldAllocateOnlyDevicesOnAttachedPaths)
+    {
+        // Agent with 10 devices split evenly across two paths:
+        //   "/dev/attached" — 5 devices (indices 0,2,4,6,8)
+        //   "/dev/detached" — 5 devices (indices 1,3,5,7,9)
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
+        TDeviceList deviceList{
+            {},     // dirtyDevices
+            {},     // suspendedDevices
+            {},     // allocatedDevices
+            false,  // alwaysAllocateLocalDisks
+            true    // attachDetachPathsEnabled
+        };
+
+        NProto::TAgentConfig agent = CreateAgentConfig(
+            "foo",
+            1000,
+            "rack-1",
+            "",
+            {"/dev/attached", "/dev/detached"},
+            10);
+
+        (*agent.MutablePathAttachStates())["/dev/attached"] =
+            NProto::PATH_ATTACH_STATE_ATTACHED;
+        (*agent.MutablePathAttachStates())["/dev/detached"] =
+            NProto::PATH_ATTACH_STATE_DETACHED;
+
+        deviceList.UpdateDevices(agent, poolConfigs);
+
+        // Exactly 5 free devices (those on the attached path).
+        const ui32 attachedCount = 5;
+
+        {
+            const auto devices = deviceList.AllocateDevices(
+                "disk-full",
+                {
+                    .ForbiddenRacks = {},
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = attachedCount * DefaultBlockCount,
+                });
+            UNIT_ASSERT_VALUES_EQUAL(attachedCount, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    "/dev/attached",
+                    d.GetDeviceName(),
+                    d.GetDeviceUUID());
+            }
+        }
+
+        {
+            // All attached devices are now allocated; no more free.
+            const auto devices = deviceList.AllocateDevices(
+                "disk-extra",
+                {
+                    .ForbiddenRacks = {},
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = DefaultBlockCount,
+                });
+            UNIT_ASSERT(devices.empty());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
