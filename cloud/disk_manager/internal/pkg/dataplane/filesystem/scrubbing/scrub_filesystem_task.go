@@ -74,25 +74,7 @@ func (t *scrubFilesystemTask) Run(
 	)
 
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()
-	traverser, err := traversal.NewFilesystemTraverser(
-		t.getSnapshotID(execCtx),
-		filesystem.GetFilesystemId(),
-		t.request.GetFilesystemCheckpointId(),
-		filesystemListerFactory,
-		t.storage,
-		func(ctx context.Context) error {
-			t.state.RootNodeScheduled = true
-			return execCtx.SaveState(ctx)
-		},
-		t.config.GetTraversalConfig(),
-		rootNodeAlreadyScheduled,
-		nfs.RootNodeID,
-	)
-	if err != nil {
-		return err
-	}
-
-	return traverser.Traverse(ctx, func(
+	onListedNodes := func(
 		ctx context.Context,
 		nodes []nfs.Node,
 		_ listers.FilesystemLister,
@@ -104,7 +86,29 @@ func (t *scrubFilesystemTask) Run(
 		}
 
 		return nil
-	}, nil)
+	}
+
+	traverser, err := traversal.NewFilesystemTraverser(
+		t.getSnapshotID(execCtx),
+		filesystem.GetFilesystemId(),
+		t.request.GetFilesystemCheckpointId(),
+		filesystemListerFactory,
+		t.storage,
+		func(ctx context.Context) error {
+			t.state.RootNodeScheduled = true
+			return execCtx.SaveState(ctx)
+		},
+		onListedNodes,
+		nil,
+		t.config.GetTraversalConfig(),
+		rootNodeAlreadyScheduled,
+		nfs.RootNodeID,
+	)
+	if err != nil {
+		return err
+	}
+
+	return traverser.Traverse(ctx)
 }
 
 func (t *scrubFilesystemTask) Cancel(
