@@ -494,7 +494,7 @@ runs:
             if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ] && [ -f "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" ]; then
                 sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress \
                     "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" \
-                    "$S3_REPORTS_BUCKET_PATH/${i}/summary.json"
+                    "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}${i}/summary.json"
             fi
             touch "$LOG_DIR/${i}_artifacts_synced"
             echo "::endgroup::"
