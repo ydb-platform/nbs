@@ -172,12 +172,28 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
     }
 
     for (auto& request: loadedRequests) {
-        if (request.Tag == ECachedWriteDataRequestTag::Flushed) {
-            // There are no pins that may prevent flushed requests from eviction
-            PersistentStorage->Free(request.Request->GetAllocationPtr());
-        } else {
-            UnflushedRequestsPushBack(request.Request.get());
-            visitor(std::move(request.Request));
+        switch (request.Tag) {
+            case ECachedWriteDataRequestTag::Unflushed: {
+                UnflushedRequestsPushBack(request.Request.get());
+                visitor(
+                    std::move(request.Request),
+                    /* handleReleased = */ false);
+                break;
+            }
+            case ECachedWriteDataRequestTag::UnflushedHandleReleased: {
+                UnflushedRequestsPushBack(request.Request.get());
+                visitor(
+                    std::move(request.Request),
+                    /* handleReleased = */ true);
+                break;
+            }
+            case ECachedWriteDataRequestTag::Flushed: {
+                // There could be pins that prevented flushed requests from
+                // eviction before restart, but they are erased on restart
+                // so nothing prevents flushed requests from being removed
+                PersistentStorage->Free(request.Request->GetAllocationPtr());
+                break;
+            }
         }
     }
 
@@ -302,6 +318,14 @@ void TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)
     PersistentStorage->SetTag(
         request->GetAllocationPtr(),
         static_cast<ui32>(ECachedWriteDataRequestTag::Flushed));
+}
+
+void TWriteDataRequestManager::SetHandleReleasedTag(
+    TCachedWriteDataRequest* request)
+{
+    PersistentStorage->SetTag(
+        request->GetAllocationPtr(),
+        static_cast<ui32>(ECachedWriteDataRequestTag::UnflushedHandleReleased));
 }
 
 void TWriteDataRequestManager::Evict(

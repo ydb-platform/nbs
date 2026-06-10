@@ -412,17 +412,28 @@ private:
         auto batchBuilder =
             RequestBuilder->CreateWriteDataRequestBatchBuilder(nodeId);
 
-        State.VisitUnflushedRequests(
+        auto handle = State.VisitUnflushedRequests(
             nodeId,
             [&batchBuilder](const TCachedWriteDataRequest* request)
             {
                 return batchBuilder->AddRequest(
-                    request->GetHandle(),
                     request->GetOffset(),
                     request->GetBuffer());
             });
 
-        auto writeDataBatch = batchBuilder->Build();
+        if (handle == NProto::E_INVALID_HANDLE) {
+            // It is not possible to flush data when all handles are released
+            // Note: this will not be needed after switching to handleless IO
+            State.FlushFailed(
+                nodeId,
+                MakeError(
+                    E_REJECTED,
+                    "There are no live handles to flush data for node %lu",
+                    nodeId));
+            return;
+        }
+
+        auto writeDataBatch = batchBuilder->Build(handle);
 
         auto flushState = std::make_shared<TNodeFlushState>(
             nodeId,

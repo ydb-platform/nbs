@@ -174,14 +174,13 @@ public:
     /* Ensures that the handle is safe to be destroyed.
      *
      * The method returns a future that is fulfilled when there are no unflushed
-     * or pending WriteData requests associated with the handle. Unlike
-     * FlushNodeData, it doesn't fail if flush fails and waits instead.
+     * or pending WriteData requests associated with the handle.
      *
-     * If all handles used by WriteBackCache for the node are requested for the
-     * release and flush fails:
-     * - unflushed WriteData requests are dropped;
-     * - pending WriteData requests are failed;
-     * - executing ReleaseHandle requests return an error.
+     * If an error occurs during flushing WriteData requests, returns the error
+     * (the same as for FlushNodeData) and tags unflushed WriteData requests
+     * associated with the handle - they will be attempted to be flushed again
+     * later via another known live handle. If there are no remaining live
+     * handles, all unflushed requests are dropped.
      *
      * Note: the method doesn't call Session::DestroyHandle
      */

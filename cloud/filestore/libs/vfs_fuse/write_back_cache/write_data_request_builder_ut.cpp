@@ -103,13 +103,13 @@ struct TBootstrap
             const auto& e = entries.Entries[i];
             const auto& buffer = entries.Buffers[i];
 
-            if (!batchBuilder->AddRequest(/* handle = */ 0, e.Offset, buffer)) {
+            if (!batchBuilder->AddRequest(e.Offset, buffer)) {
                 break;
             }
             requestCount++;
         }
 
-        auto res = batchBuilder->Build();
+        auto res = batchBuilder->Build(0);
 
         Y_ABORT_UNLESS(res.AffectedRequestCount == requestCount);
         return res.AffectedRequestCount;

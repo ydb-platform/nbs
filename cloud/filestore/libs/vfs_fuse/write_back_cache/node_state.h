@@ -10,6 +10,7 @@
 
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/set.h>
 
@@ -35,8 +36,11 @@ struct TReleaseHandleRequest: public TIntrusiveListItem<TReleaseHandleRequest>
 
 struct THandleState
 {
-    // Number of pending and unflushed requests associated with the handle
-    ui64 ActiveWriteDataRequestCount = 0;
+    // Pending requests from TNodeState::Cache filtered by Handle
+    TIntrusiveList<TPendingWriteDataRequest, THandleStateTag> PendingRequests;
+
+    // Unflushed requests from TNodeState::Cache filtered by Handle
+    TIntrusiveList<TCachedWriteDataRequest, THandleStateTag> UnflushedRequests;
 
     // The field is initialized when ReleaseHandle request is made.
     // Only one ReleaseHandle request may be active at a time for a handle.
@@ -121,11 +125,8 @@ struct TNodeState
     // Key: handle
     THashMap<ui64, THandleState> Handles;
 
-    // Number of handles that have been requested for release.
-    // When HandleToReleaseCount == Handles.size(), the next flush failure
-    // will cause all pending requests to be failed and cached data to be
-    // dropped
-    size_t HandleToReleaseCount = 0;
+    // Handles that have THandleState::ReleaseHandleRequest initialized
+    THashSet<ui64> HandlesWithReleaseRequests;
 
     // Requests with SequenceId > BarrierId are prevented from being flushed
     TMap<ui64, std::unique_ptr<TBarrier>> Barriers;
@@ -136,7 +137,7 @@ struct TNodeState
             Y_ABORT_UNLESS(FlushRequests.empty());
             Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
             Y_ABORT_UNLESS(Handles.empty());
-            Y_ABORT_UNLESS(HandleToReleaseCount == 0);
+            Y_ABORT_UNLESS(HandlesWithReleaseRequests.empty());
             return true;
         }
         return false;
@@ -165,7 +166,7 @@ struct TNodeState
                        : ENodeFlushStatus::NothingToFlush;
         }
 
-        if (HandleToReleaseCount > 0) {
+        if (!HandlesWithReleaseRequests.empty()) {
             // Non-zero value of HandleToReleaseCount indicates that there are
             // handles that are requested for release but cannot be released
             // because there are pending or unflushed WriteData requests
