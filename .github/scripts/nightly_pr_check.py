@@ -19,6 +19,7 @@ from github.Repository import Repository
 from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
 
 from .helpers import (
+    find_current_job_url,
     get_build_preset_from_workflow_name,
     get_s3_report_uri,
     get_s3_report_url,
@@ -389,6 +390,7 @@ def render_comment(
     marker: str,
     runs: list[WorkflowRun],
     final: bool,
+    collector_url: str = "",
 ) -> str:
     comment_marker = get_comment_marker(marker)
     workflow_status = "finished" if final else "running"
@@ -398,6 +400,8 @@ def render_comment(
         f"> Nightly workflows are **{workflow_status}**.",
         "",
     ]
+    if collector_url:
+        lines.extend([f"Collector: [nightly-builds job]({collector_url})", ""])
     for run in runs:
         workflow = f"`{run.workflow}`"
         if run.url:
@@ -649,6 +653,7 @@ def load_context() -> tuple[
     set[str],
     list[WorkflowRun],
     str,
+    str,
 ]:
     token = os.environ["GITHUB_TOKEN"]
     repository = os.environ["GITHUB_REPOSITORY"]
@@ -661,6 +666,10 @@ def load_context() -> tuple[
     labels = {label["name"] for label in pr.get("labels", [])}
     runs = selected_workflows(labels)
     marker = f"pr-{pr_number}-run-{os.environ['GITHUB_RUN_ID']}-attempt-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
+    collector_url = find_current_job_url(
+        os.environ.get("GITHUB_JOB", "nightly-builds"),
+        os.environ.get("RUNNER_NAME", ""),
+    )
     return (
         token,
         repository,
@@ -673,6 +682,7 @@ def load_context() -> tuple[
         labels,
         runs,
         marker,
+        collector_url,
     )
 
 
@@ -689,6 +699,7 @@ def cancel_mode() -> int:
         _labels,
         runs,
         marker,
+        collector_url,
     ) = load_context()
 
     if not runs:
@@ -712,7 +723,11 @@ def cancel_mode() -> int:
     )
     refresh_runs(s3, repo, runs)
     cancel_started_runs(s3, repo, runs)
-    upsert_comment(pr_object, marker, render_comment(marker, runs, final=True))
+    upsert_comment(
+        pr_object,
+        marker,
+        render_comment(marker, runs, final=True, collector_url=collector_url),
+    )
     return 1 if any(run.error for run in runs) else 0
 
 
@@ -736,6 +751,7 @@ def main() -> int:
         _labels,
         runs,
         marker,
+        collector_url,
     ) = load_context()
 
     if not runs:
@@ -759,7 +775,7 @@ def main() -> int:
         upsert_comment(
             pr_object,
             marker,
-            render_comment(marker, runs, final=True),
+            render_comment(marker, runs, final=True, collector_url=collector_url),
         )
         return 1
 
@@ -775,7 +791,12 @@ def main() -> int:
                 run.error = str(error)
 
         wait_for_initial_discovery(repo, runs, head_ref, marker, dispatched_at)
-        posted_comment_body = render_comment(marker, runs, final=False)
+        posted_comment_body = render_comment(
+            marker,
+            runs,
+            final=False,
+            collector_url=collector_url,
+        )
         upsert_comment(pr_object, marker, posted_comment_body)
 
         deadline = time.monotonic() + args.timeout_seconds
@@ -790,7 +811,12 @@ def main() -> int:
             refresh_runs(s3, repo, runs)
 
             if all_done(runs):
-                posted_comment_body = render_comment(marker, runs, final=True)
+                posted_comment_body = render_comment(
+                    marker,
+                    runs,
+                    final=True,
+                    collector_url=collector_url,
+                )
                 upsert_comment(
                     pr_object,
                     marker,
@@ -798,7 +824,12 @@ def main() -> int:
                 )
                 return 1 if any_failed(runs) else 0
 
-            current_comment_body = render_comment(marker, runs, final=False)
+            current_comment_body = render_comment(
+                marker,
+                runs,
+                final=False,
+                collector_url=collector_url,
+            )
             if current_comment_body != posted_comment_body:
                 upsert_comment(pr_object, marker, current_comment_body)
                 posted_comment_body = current_comment_body
@@ -812,7 +843,7 @@ def main() -> int:
         upsert_comment(
             pr_object,
             marker,
-            render_comment(marker, runs, final=True),
+            render_comment(marker, runs, final=True, collector_url=collector_url),
         )
         return 1
 
@@ -822,7 +853,11 @@ def main() -> int:
             run.status = "completed"
             run.conclusion = "timed_out"
 
-    upsert_comment(pr_object, marker, render_comment(marker, runs, final=True))
+    upsert_comment(
+        pr_object,
+        marker,
+        render_comment(marker, runs, final=True, collector_url=collector_url),
+    )
     return 1
 
 
