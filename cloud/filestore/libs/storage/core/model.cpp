@@ -470,18 +470,19 @@ void SetupFileStorePerformanceAndChannels(
     OverrideStorageMediaKind(config, fileStore);
 
 #define SETUP_PARAMETER_SIMPLE(name, ...)                                      \
-    fileStore.SetPerformanceProfile##name(                                     \
-        clientProfile.Get##name()                                              \
-            ? clientProfile.Get##name()                                        \
-            : name(config, fileStore));                                        \
-// SETUP_PARAMETER_AU
+    if (clientProfile.Has##name()) {                                           \
+        fileStore.SetPerformanceProfile##name(clientProfile.Get##name());      \
+    } else if (!fileStore.HasPerformanceProfile##name()) {                     \
+        fileStore.SetPerformanceProfile##name(name(config, fileStore));        \
+    };                                                                         \
+// SETUP_PARAMETER_SIMPLE
 
 #define SETUP_PARAMETER_AU(name, ...)                                          \
     fileStore.SetPerformanceProfile##name(                                     \
         clientProfile.Get##name()                                              \
             ? clientProfile.Get##name()                                        \
             : name(config, fileStore, allocationUnitCount));                   \
-// SETUP_PARAMETER_SIMPLE
+// SETUP_PARAMETER_AU
 
     PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(SETUP_PARAMETER_SIMPLE);
     PERFORMANCE_PROFILE_PARAMETERS_AU(SETUP_PARAMETER_AU);
