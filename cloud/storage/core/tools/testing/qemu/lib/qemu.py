@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import platform
 import stat
 import time
 import uuid
@@ -9,6 +8,7 @@ import yatest.common
 import yatest.common.network
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
+from .common import get_qemu_bios, is_arm as is_arm_host
 from .qmp import QmpClient
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,10 @@ class Qemu:
 
         self.qemu_kvm = qemu_kvm
         self.qemu_firmware = qemu_firmware
+        self.is_arm = is_arm_host() if is_arm is None else is_arm
         self.qemu_bios = qemu_bios
+        if self.qemu_bios is None:
+            self.qemu_bios = get_qemu_bios(self.is_arm)
         self.rootfs = rootfs
         self.kernel = kernel
         self.kcmdline = kcmdline
@@ -110,7 +113,6 @@ class Qemu:
         self.virtio = virtio
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
-        self.is_arm = platform.machine().lower() in ("aarch64", "arm64") if is_arm is None else is_arm
         self.reconnect = reconnect if reconnect is not None else 0 if self.is_arm else 1
         self.migration = "" if self.is_arm else ",migration=external"
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
@@ -151,14 +153,14 @@ class Qemu:
         if vhost_socket is None:
             raise QemuException("Cannot find nfs vhost socket path")
 
-        cmd = ["-chardev",
-               "socket,id=vhost0,path={},reconnect={}".format(vhost_socket, self.reconnect)]
+        cmd = [
+            "-chardev",
+            f"socket,id=vhost0,path={vhost_socket},reconnect={self.reconnect}",
+        ]
         cmd += [
             "-device",
             "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
-            "num-request-queues={},queue-size=512{}".format(
-                self.num_request_queues,
-                self.migration),
+            f"num-request-queues={self.num_request_queues},queue-size=512{self.migration}",
         ]
         return cmd
 
@@ -286,12 +288,14 @@ class Qemu:
 
         for tag, path, vhost_socket in self.mount_paths:
             if self.use_virtiofs_server:
-                cmd += ["-chardev",
-                        "socket,id={},path={},reconnect={}".format(tag, vhost_socket, self.reconnect)]
+                cmd += [
+                    "-chardev",
+                    f"socket,id={tag},path={vhost_socket},reconnect={self.reconnect}",
+                ]
                 cmd += [
                     "-device",
-                    "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},"
-                    "queue-size=512{}".format(tag, tag, tag, self.migration),
+                    f"vhost-user-fs-pci,chardev={tag},id=vhost-user-{tag},tag={tag},"
+                    f"queue-size=512{self.migration}",
                 ]
             else:
                 cmd += ["-virtfs",
