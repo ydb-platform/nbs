@@ -1,23 +1,13 @@
 name: Nightly build (asan)
 run-name: |
   ${{ github.event_name == 'workflow_dispatch'
-      && (
-            inputs.comment != ''
-            && format('Nightly build (asan) (manual) (comment: {0})', inputs.comment)
-            || format('Nightly build (asan) (manual)')
-          )
+      && format('Nightly build (asan) (manual)')
       || format('Nightly build (asan) (schedule)')
     }}
 on:
   schedule:
     - cron: "30 6 * * *"
   workflow_dispatch:
-    inputs:
-      comment:
-        description: 'Comment'
-        type: string
-        required: false
-        default: ""
 
 jobs:
   build:
@@ -28,8 +18,8 @@ jobs:
       mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
       allow_split_workload: false
       vm_preset: ${{ vars.POOLED_HEAVY_VM_PRESET_NIGHTLY }}
-      build_target: 'cloud/storage/'
-      test_target: 'cloud/storage/'
+      build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
+      test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest"
       test_size: small,medium,large
       build_preset: release-asan
