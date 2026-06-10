@@ -15,4 +15,6 @@ PEERDIR(
     cloud/blockstore/tests/python/lib
 )
 
+ENV(SANITIZER_TYPE=${SANITIZER_TYPE})
+
 END()

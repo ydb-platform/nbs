@@ -234,6 +234,9 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
 def test_null_backend(nbs, agent_ids, disk_agent_configurators):
 
+    if os.environ.get("SANITIZER_TYPE") == "memory":
+        pytest.skip("ReadBlocks hangs under MSAN")
+
     client = CreateTestClient(f"localhost:{nbs.port}")
 
     agent_id = agent_ids[0]
