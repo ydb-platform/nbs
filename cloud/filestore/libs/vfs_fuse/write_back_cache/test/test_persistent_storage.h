@@ -16,6 +16,7 @@ private:
     struct TEntry: public TIntrusiveListItem<TEntry>
     {
         TString Data;
+        ui32 Tag = 0;
     };
 
     const IPersistentStorageStatsPtr Stats;
@@ -33,6 +34,7 @@ public:
     TResultOrError<char*> Alloc(size_t size) override;
     void Commit() override;
     void Free(const void* ptr) override;
+    void SetTag(const void* ptr, ui32 tag) override;
     void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);

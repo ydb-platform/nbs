@@ -99,8 +99,9 @@ struct TBootstrap
     {
         TString res;
         Storage->Visit(
-            [&res](TStringBuf entry)
+            [&res](ui32 tag, TStringBuf entry)
             {
+                Y_UNUSED(tag);
                 if (!res.empty()) {
                     res += ",";
                 }
