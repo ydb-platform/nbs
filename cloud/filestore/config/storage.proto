@@ -795,7 +795,7 @@ message TStorageConfig
     optional bool EnableNodeRefCompression = 504;
 
     // Feature flag and soft thresholds for backpressure throttling.
-    optional bool EnableSoftBackpressure = 505;
+    optional bool SoftBackpressureEnabled = 505;
     optional uint32 FlushThresholdForBackpressureSoft = 506;
     optional uint32 CleanupThresholdForBackpressureSoft = 507;
     optional uint32 CompactionThresholdForBackpressureSoft = 508;

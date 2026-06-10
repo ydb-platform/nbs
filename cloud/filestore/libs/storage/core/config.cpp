@@ -356,7 +356,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
                                                                                \
-    xxx(EnableSoftBackpressure,                 bool,   false                 )\
+    xxx(SoftBackpressureEnabled,                bool,   false                 )\
     xxx(FlushThresholdForBackpressureSoft,             ui32,    32_MB         )\
     xxx(CleanupThresholdForBackpressureSoft,           ui32,    8192          )\
     xxx(CompactionThresholdForBackpressureSoft,        ui32,    50            )\

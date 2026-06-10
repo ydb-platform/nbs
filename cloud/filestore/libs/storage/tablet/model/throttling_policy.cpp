@@ -240,10 +240,10 @@ ui64 TThrottlingPolicy::CalculatePostponedWeight() const
 void TThrottlingPolicy::UpdateWriteCostMultiplierDueToBackpressure(
     double backpressure)
 {
-    const auto maxMultiplier = Max(
+    const double maxMultiplier = Max(
         Impl->Config.DefaultThresholds.MaxWriteCostMultiplier,
         1.0);
-    const auto clamped = Min(Max(backpressure, 0.0), 1.0);
+    const double clamped = Min(Max(backpressure, 0.0), 1.0);
 
     Impl->WriteCostMultiplier = 1.0 + (clamped * (maxMultiplier - 1.0));
 }

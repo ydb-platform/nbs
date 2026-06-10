@@ -378,7 +378,7 @@ TIndexTabletActor::GetBackpressureValues() const
 
 void TIndexTabletActor::UpdateWriteCostMultiplierDueToBackpressure()
 {
-    if (!Config->GetEnableSoftBackpressure()) {
+    if (!Config->GetSoftBackpressureEnabled()) {
         AccessThrottlingPolicy().UpdateWriteCostMultiplierDueToBackpressure(0.0);
         return;
     }

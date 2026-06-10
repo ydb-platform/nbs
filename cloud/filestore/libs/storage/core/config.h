@@ -413,7 +413,7 @@ public:
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
-    bool GetEnableSoftBackpressure() const;
+    bool GetSoftBackpressureEnabled() const;
     ui32 GetFlushThresholdForBackpressureSoft() const;
     ui32 GetCleanupThresholdForBackpressureSoft() const;
     ui32 GetCompactionThresholdForBackpressureSoft() const;

@@ -80,7 +80,7 @@ void TIndexTabletActor::HandleUpdateLeakyBucketCounters(
     const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& /*ev*/,
     const NActors::TActorContext& ctx)
 {
-    // update write cost mulitplier for metrics
+    // update write cost multiplier for metrics
     UpdateWriteCostMultiplierDueToBackpressure();
 
     const ui64 currentRate = std::ceil(
