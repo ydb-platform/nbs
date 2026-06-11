@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/storage/core/protos/error.pb.h>
 
@@ -39,9 +40,9 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TVector<NActors::TActorId> Replicas;
     const typename TMethod::TRequest::ProtoRecordType Request;
-    const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 NonreplicatedRequestCounter;
+    const TChildLogTitle LogTitle;
 
     TVector<TCallContextPtr> ForkedCallContexts;
     ui32 Responses = 0;
@@ -52,9 +53,9 @@ public:
         TRequestInfoPtr requestInfo,
         TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
-        TString diskId,
         NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter);
+        ui64 nonreplicatedRequestCounter,
+        const TChildLogTitle& logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -86,15 +87,15 @@ TMirrorRequestActor<TMethod>::TMirrorRequestActor(
         TRequestInfoPtr requestInfo,
         TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
-        TString diskId,
         NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter)
+        ui64 nonreplicatedRequestCounter,
+        const TChildLogTitle& logTitle)
     : RequestInfo(std::move(requestInfo))
     , Replicas(std::move(replicas))
     , Request(std::move(request))
-    , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
+    , LogTitle(logTitle.MakeChild({{"multi_agent", "mir_req" }}))
 {
     Y_DEBUG_ABORT_UNLESS(!Replicas.empty());
 }
@@ -194,8 +195,8 @@ void TMirrorRequestActor<TMethod>::HandleUndelivery(
     Y_UNUSED(ev);
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s request undelivered to some nonrepl partitions",
-        DiskId.c_str(),
+        "%s %s request undelivered to some nonrepl partitions",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
     *ReplicasCollectiveResponse.MutableError() = MakeError(
@@ -219,8 +220,8 @@ void TMirrorRequestActor<TMethod>::HandleResponse(
 
     if (HasError(msg->Record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s got error from nonreplicated partition: %s",
-            DiskId.c_str(),
+            "%s %s got error from nonreplicated partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }
