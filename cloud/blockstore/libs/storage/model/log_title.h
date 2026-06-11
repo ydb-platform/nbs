@@ -164,6 +164,7 @@ private:
     TChildLogTitle(TString cachedPrefix, ui64 startTime);
 
 public:
+    [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
     [[nodiscard]] TString GetWithTime() const;
 };
 

@@ -326,6 +326,15 @@ TChildLogTitle::TChildLogTitle(TString cachedPrefix, ui64 startTime)
     , StartTime(startTime)
 {}
 
+TChildLogTitle TChildLogTitle::GetChild(const ui64 startTime) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " + " << FormatDuration(duration);
+    return {childPrefix, startTime};
+}
+
 TString TChildLogTitle::GetWithTime() const
 {
     const auto duration = CyclesToDurationSafe(GetCycleCount() - StartTime);
