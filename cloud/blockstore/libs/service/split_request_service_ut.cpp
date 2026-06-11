@@ -872,6 +872,60 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             FormatError(result.GetError()));
     }
 
+    Y_UNIT_TEST(ShouldCancelSubRequestSglistsOnWriteBlocksLocalError)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        const TString data = "aabbccddeeffgghhjjkk";
+        auto range =
+            TBlockRange64::WithLength(1, data.size() / DefaultBlockSize);
+
+        auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        env.SetupRequest(request, range, data);
+        auto future = env.SplitRequestService->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+        UNIT_ASSERT_VALUES_EQUAL(false, future.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            testBlockStore.WriteBlocksLocalPromises.size());
+        auto* firstWrite = testBlockStore.WriteBlocksLocalPromises.FindPtr(
+            TBlockRange64::WithLength(1, 5));
+        auto* secondWrite = testBlockStore.WriteBlocksLocalPromises.FindPtr(
+            TBlockRange64::WithLength(6, 5));
+        UNIT_ASSERT(firstWrite != nullptr);
+        UNIT_ASSERT(secondWrite != nullptr);
+
+        // Second sub-request sglist is valid before first error
+        {
+            auto guard = secondWrite->Request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+        }
+
+        // Complete first sub-request with error
+        {
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeError(E_REJECTED);
+            firstWrite->Promise.SetValue(std::move(response));
+        }
+
+        const auto& result = future.GetValue(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
+
+        // Second sub-request sglist must be closed after parent sglist is
+        // closed
+        {
+            auto guard = secondWrite->Request->Sglist.Acquire();
+            UNIT_ASSERT(!guard);
+        }
+    }
+
     Y_UNIT_TEST(ShouldReplyErrorWithoutMount)
     {
         TTestEnvironment env;

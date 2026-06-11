@@ -166,47 +166,45 @@ class TCompositeRequest
           TCompositeRequest<TRequest, TResponse>>
 {
 private:
-    const TVector<std::shared_ptr<TRequest>> SubRequests;
+    std::shared_ptr<TRequest> Request;
     TVector<TResponse> SubResponses;
     TPromise<TResponse> Promise = NewPromise<TResponse>();
 
-    std::shared_ptr<TRequest> Request;
     TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
 
 public:
-    explicit TCompositeRequest(
-        std::shared_ptr<TRequest> request,
-        const TVector<TBlockRange64>& subRanges,
-        ui32 blockSize)
-        : SubRequests(
-              CreateSubRequests(request, subRanges, blockSize))
-    {
-        SubResponses.resize(SubRequests.size());
-        Request = std::move(request);
-    }
+    explicit TCompositeRequest(std::shared_ptr<TRequest> request)
+        : Request(std::move(request))
+    {}
 
     TFuture<TResponse> RunSubRequests(
         TCallContextPtr callContext,
-        IBlockStore* service)
+        IBlockStore* service,
+        const TVector<TBlockRange64>& subRanges,
+        ui32 blockSize)
     {
-        if (SubRequests.empty()) {
+        auto subRequests = CreateSubRequests(Request, subRanges, blockSize);
+
+        if (subRequests.empty()) {
             TResponse response;
             *response.MutableError() =
                 MakeError(E_CANCELLED, "failed to acquire sglist");
             return MakeFuture(std::move(response));
         }
 
+        SubResponses.resize(subRequests.size());
+
         // Acquire the future before subscribing to sub-request callbacks.
         // A sub-request can be completed synchronously and swapped with another
         // Promise inside the OnSubResponse() function.
         auto future = Promise.GetFuture();
 
-        for (size_t i = 0; i < SubRequests.size(); ++i) {
+        for (size_t i = 0; i < subRequests.size(); ++i) {
             auto subFuture = TBlockStoreAdapter::Execute(
                 service,
                 callContext,
-                SubRequests[i]);
+                subRequests[i]);
             subFuture.Subscribe(
                 [self = this->shared_from_this(), requestIndex = i]   //
                 (const TFuture<TResponse>& f)
@@ -237,7 +235,7 @@ private:
             }
 
             const bool isLastResponse =
-                SubResponseReceived == SubRequests.size();
+                SubResponseReceived == SubResponses.size();
 
             if (!isLastResponse && !hasError) {
                 return;
@@ -509,13 +507,13 @@ TFuture<TResponse> TSplitRequestService::ExecuteRequestWithSplit(
 
     auto compositeRequest =
         std::make_shared<TCompositeRequest<TRequest, TResponse>>(
-            std::move(request),
-            config->Split(range),
-            config->BlockSize);
+            std::move(request));
 
     return compositeRequest->RunSubRequests(
         std::move(callContext),
-        Service.get());
+        Service.get(),
+        config->Split(range),
+        config->BlockSize);
 }
 
 void TSplitRequestService::OnMountVolume(
