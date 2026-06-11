@@ -165,9 +165,10 @@ void TDeviceList::UpdateDevices(
 
         const ui64 deviceSize = device.GetBlockSize() * device.GetBlocksCount();
 
-        const bool isFree = !AllocatedDevices.contains(uuid) &&
+        const bool isFree = IsDeviceAllocationAllowed(device, agent) &&
+                            !AllocatedDevices.contains(uuid) &&
                             !DirtyDevices.contains(uuid) &&
-                            IsDeviceAllocationAllowed(device, agent);
+                            !SuspendedDevices.contains(uuid);
 
         const auto* poolConfig = poolConfigs.FindPtr(device.GetPoolName());
         if (!poolConfig || poolConfig->GetKind() != device.GetPoolKind() ||
@@ -284,10 +285,6 @@ bool TDeviceList::IsDeviceAllocationAllowed(
     }
 
     if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
-        return false;
-    }
-
-    if (IsSuspendedDevice(device.GetDeviceUUID())) {
         return false;
     }
 

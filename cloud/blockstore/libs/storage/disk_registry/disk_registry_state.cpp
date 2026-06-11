@@ -7440,6 +7440,10 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
+        if (DeviceList.IsSuspendedDevice(device.GetDeviceUUID())) {
+            continue;
+        }
+
         const ui64 au = GetAllocationUnit(device.GetPoolName());
         auto& auChunks = chunks[au];
         auChunks.ChunkSize = au;
