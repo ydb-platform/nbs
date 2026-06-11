@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/partition/model)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    background_ops_throttling_ut.cpp
     barrier_ut.cpp
     block_index_ut.cpp
     block_mask_ut.cpp
