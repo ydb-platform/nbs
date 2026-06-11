@@ -7445,6 +7445,17 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
+        if (StorageConfig->GetAttachDetachPathsEnabled()) {
+            auto it = agent->GetPathAttachStates().find(device.GetDeviceName());
+            if (it == agent->GetPathAttachStates().end()) {
+                continue;
+            }
+
+            if (it->second != NProto::PATH_ATTACH_STATE_ATTACHED) {
+                continue;
+            }
+        }
+
         const ui64 au = GetAllocationUnit(device.GetPoolName());
         auto& auChunks = chunks[au];
         auChunks.ChunkSize = au;
