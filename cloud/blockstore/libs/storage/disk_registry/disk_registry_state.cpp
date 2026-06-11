@@ -7426,8 +7426,16 @@ auto TDiskRegistryState::QueryAvailableStorage(
     THashMap<ui64, TAgentStorageInfo> chunks;
 
     for (const auto& device: agent->GetDevices()) {
+        if (device.GetPoolKind() != poolKind) {
+            continue;
+        }
+
+        if (poolName && device.GetPoolName() != poolName) {
+            continue;
+        }
+
         if (!DeviceList
-                 .IsDeviceAllocationAllowed(poolKind, poolName, device, *agent))
+                 .IsDeviceAllocationAllowed(device, *agent))
         {
             continue;
         }

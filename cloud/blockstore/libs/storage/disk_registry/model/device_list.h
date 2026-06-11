@@ -154,8 +154,6 @@ public:
         NProto::EAgentState agentState) const;
 
     [[nodiscard]] bool IsDeviceAllocationAllowed(
-        NProto::EDevicePoolKind poolKind,
-        const TString& poolName,
         const NProto::TDeviceConfig& device,
         const NProto::TAgentConfig& agent) const;
 

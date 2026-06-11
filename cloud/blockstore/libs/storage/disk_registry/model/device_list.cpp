@@ -167,11 +167,7 @@ void TDeviceList::UpdateDevices(
 
         const bool isFree = !AllocatedDevices.contains(uuid) &&
                             !DirtyDevices.contains(uuid) &&
-                            IsDeviceAllocationAllowed(
-                                device.GetPoolKind(),
-                                device.GetPoolName(),
-                                device,
-                                agent);
+                            IsDeviceAllocationAllowed(device, agent);
 
         const auto* poolConfig = poolConfigs.FindPtr(device.GetPoolName());
         if (!poolConfig || poolConfig->GetKind() != device.GetPoolKind() ||
@@ -277,48 +273,33 @@ bool TDeviceList::IsDeviceAllocationAllowedOnAgent(
 }
 
 bool TDeviceList::IsDeviceAllocationAllowed(
-    NProto::EDevicePoolKind poolKind,
-    const TString& poolName,
     const NProto::TDeviceConfig& device,
     const NProto::TAgentConfig& agent) const
 {
-    if (!IsDeviceAllocationAllowedOnAgent(poolKind, agent.GetState())) {
-        Cerr << "Device allocation not allowed on agent: " << device.GetDeviceUUID() << Endl;
-        return false;
-    }
-
-    if (device.GetPoolKind() != poolKind) {
-        Cerr << "Device pool kind mismatch: " << device.GetDeviceUUID() << Endl;
-        return false;
-    }
-
-    if (poolName && device.GetPoolName() != poolName) {
-        Cerr << "Device pool name mismatch: " << device.GetDeviceUUID() << Endl;
+    if (!IsDeviceAllocationAllowedOnAgent(
+            device.GetPoolKind(),
+            agent.GetState()))
+    {
         return false;
     }
 
     if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
-        Cerr << "Device state is not online: " << device.GetDeviceUUID() << Endl;
         return false;
     }
 
     if (IsSuspendedDevice(device.GetDeviceUUID())) {
-        Cerr << "Device is suspended: " << device.GetDeviceUUID() << Endl;
         return false;
     }
 
     if (!AttachDetachPathsEnabled) {
-        Cerr << "Attach detach paths are not enabled: " << device.GetDeviceUUID() << Endl;
         return true;
     }
 
     auto it = agent.GetPathAttachStates().find(device.GetDeviceName());
     if (it == agent.GetPathAttachStates().end()) {
-        Cerr << "Device path attach state not found: " << device.GetDeviceUUID() << Endl;
         return false;
     }
 
-    Cerr << "Device path attach state: " << device.GetDeviceUUID() << Endl;
     return it->second == NProto::PATH_ATTACH_STATE_ATTACHED;
 }
 
