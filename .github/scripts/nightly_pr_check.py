@@ -353,7 +353,7 @@ def get_summary_component(summary_json_uri: str) -> str:
     if len(parts) < 8 or parts[0] != "reports" or parts[-1] != "summary.json":
         return ""
 
-    relative_parts = parts[7:-1]
+    relative_parts = parts[6:-1]
     if len(relative_parts) <= 1:
         return ""
     return "/".join(relative_parts[:-1])
@@ -693,7 +693,12 @@ def wait_for_initial_discovery(
         time.sleep(min(INITIAL_DISCOVERY_INTERVAL_SECONDS, remaining))
 
 
-def cancel_started_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> None:
+def cancel_started_runs(
+    s3: Any,
+    repo: Repository,
+    runs: list[WorkflowRun],
+    cancellation_reason: str = "collector job was cancelled",
+) -> None:
     for run in runs:
         if run.run_id is None:
             if not run.error:
@@ -702,7 +707,7 @@ def cancel_started_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> N
                     run.workflow,
                 )
                 run.error = (
-                    "collector was cancelled before the spawned run was discovered"
+                    f"{cancellation_reason} before the spawned run was discovered"
                 )
                 run.status = "completed"
                 run.conclusion = "cancelled"
@@ -739,12 +744,12 @@ def cancel_started_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> N
 
             if cancel_result.accepted:
                 run.error = (
-                    "collector job was cancelled; GitHub accepted cancellation, "
+                    f"{cancellation_reason}; GitHub accepted cancellation, "
                     f"but the nightly run stayed {run.status}"
                 )
             else:
                 run.error = (
-                    "collector job was cancelled; GitHub did not accept cancellation "
+                    f"{cancellation_reason}; GitHub did not accept cancellation "
                     f"({cancel_result.debug}); nightly run stayed {run.status}"
                 )
         except Exception as error:
@@ -756,7 +761,7 @@ def cancel_started_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> N
                     run.workflow,
                     run.run_id,
                 )
-            run.error = f"collector job was cancelled; failed to cancel run: {error}"
+            run.error = f"{cancellation_reason}; failed to cancel run: {error}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -979,18 +984,45 @@ def main() -> int:
         )
         return 1
 
-    for run in runs:
-        if run.status != "completed":
-            run.error = "timed out waiting for workflow completion"
-            run.status = "completed"
-            run.conclusion = "timed_out"
+    discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
+    refresh_runs(s3, repo, runs)
+    timed_out_runs = [run for run in runs if run.status != "completed"]
+    if timed_out_runs:
+        logger.warning(
+            "Collector timed out after %ss; cancelling unfinished nightly runs: %s",
+            args.timeout_seconds,
+            [
+                {
+                    "workflow": run.workflow,
+                    "run_id": run.run_id,
+                    "status": run.status,
+                    "conclusion": run.conclusion,
+                    "url": run.url,
+                }
+                for run in timed_out_runs
+            ],
+        )
+        cancel_started_runs(
+            s3,
+            repo,
+            timed_out_runs,
+            cancellation_reason="collector timed out",
+        )
+        for run in timed_out_runs:
+            if not run.error:
+                run.error = (
+                    "timed out waiting for workflow completion; cancellation requested"
+                )
+            if run.status != "completed":
+                run.status = "completed"
+                run.conclusion = "timed_out"
 
     upsert_comment(
         pr_object,
         marker,
         render_comment(marker, runs, final=True, collector_url=collector_url),
     )
-    return 1
+    return 1 if timed_out_runs or any_failed(runs) else 0
 
 
 if __name__ == "__main__":

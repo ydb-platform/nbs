@@ -21,6 +21,10 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r .github/scripts/requirements.txt
+
     - name: Run nightly PR check collector
       shell: bash
       env:
