@@ -317,13 +317,11 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             startTime,
             TLogTitle::TPartitionNonrepl{.DiskId = "disk1"}};
 
-        // root:       [nrd:disk1 t:50ms + ?]
-        // child:      [nrd:disk1 t:50ms + 25ms + ?]
-        // grandchild: [nrd:disk1 t:50ms + 25ms + 10ms + ?]
-        const ui64 childTime = GetCyclesPerMillisecond() * 50;
-        const ui64 grandChildTime = childTime + GetCyclesPerMillisecond() * 25;
+        const ui64 childTime = GetCyclesPerMillisecond() * 1001;
+        const ui64 grandChildTime =
+            childTime + GetCyclesPerMillisecond() * 1001;
         const ui64 greatGrandChildTime =
-            grandChildTime + GetCyclesPerMillisecond() * 10;
+            grandChildTime + GetCyclesPerMillisecond() * 1001;
 
         auto child = logTitle.GetChild(childTime);
         auto grandChild = child.GetChild(grandChildTime);
@@ -331,15 +329,15 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
 
         UNIT_ASSERT_STRING_CONTAINS(
             child.GetWithTime(),
-            "[nrd:disk1 t:50ms + ");
+            "[nrd:disk1 t:1.001s + ");
 
         UNIT_ASSERT_STRING_CONTAINS(
             grandChild.GetWithTime(),
-            "[nrd:disk1 t:50ms + 25ms + ");
+            "[nrd:disk1 t:1.001s + 1.001s + ");
 
         UNIT_ASSERT_STRING_CONTAINS(
             greatGrandChild.GetWithTime(),
-            "[nrd:disk1 t:50ms + 25ms + 10ms + ");
+            "[nrd:disk1 t:1.001s + 1.001s + 1.001s + ");
     }
 
     Y_UNIT_TEST(GetForDiskRegistry)
