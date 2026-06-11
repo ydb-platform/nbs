@@ -833,11 +833,15 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
             }
         }
     } catch (...) {
-        TryForceReconnect();
+        RDMA_ERROR(
+            "failed to allocate request with exception: "
+            << CurrentExceptionMessage());
+        Counters->Error();
+        Disconnect();
         return MakeError(
             E_RDMA_UNAVAILABLE,
             TStringBuilder()
-                << "unable to allocate request with exception: "
+                << "failed to allocate request with exception: "
                 << CurrentExceptionMessage());
     }
 
