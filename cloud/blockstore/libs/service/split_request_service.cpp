@@ -169,7 +169,7 @@ private:
     const TVector<std::shared_ptr<TRequest>> SubRequests;
     TVector<TResponse> SubResponses;
     TPromise<TResponse> Promise = NewPromise<TResponse>();
-
+    std::shared_ptr<TRequest> Request;
     TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
 
@@ -179,9 +179,10 @@ public:
         const TVector<TBlockRange64>& subRanges,
         ui32 blockSize)
         : SubRequests(
-              CreateSubRequests(std::move(request), subRanges, blockSize))
+              CreateSubRequests(request, subRanges, blockSize))
     {
         SubResponses.resize(SubRequests.size());
+        Request = std::move(request);
     }
 
     TFuture<TResponse> RunSubRequests(
@@ -251,6 +252,12 @@ private:
                          : MergeReadResponses(SubResponses));
         } else {
             promise.SetValue(std::move(response));
+        }
+        if constexpr (TBlockStoreMethodTraits<TRequest>::IsLocalRequest()) {
+            if (hasError) {
+                // Cancel all sub requests in case of error.
+                Request->Sglist.Close();
+            }
         }
     }
 };
