@@ -149,9 +149,15 @@ public:
     void MarkDeviceAllocated(const TDiskId& diskId, const TDeviceId& id);
     bool ReleaseDevice(const TDeviceId& id);
 
-    [[nodiscard]] bool DevicesAllocationAllowed(
+    [[nodiscard]] bool IsDeviceAllocationAllowedOnAgent(
         NProto::EDevicePoolKind poolKind,
         NProto::EAgentState agentState) const;
+
+    [[nodiscard]] bool IsDeviceAllocationAllowed(
+        NProto::EDevicePoolKind poolKind,
+        const TString& poolName,
+        const NProto::TDeviceConfig& device,
+        const NProto::TAgentConfig& agent) const;
 
     TVector<NProto::TDeviceConfig> AllocateDevices(
         const TDiskId& diskId,

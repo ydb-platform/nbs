@@ -7422,38 +7422,14 @@ auto TDiskRegistryState::QueryAvailableStorage(
             "agent " << agentId.Quote() << " not found");
     }
 
-    if (!DeviceList.DevicesAllocationAllowed(poolKind, agent->GetState())) {
-        return TVector<TAgentStorageInfo>{};
-    }
 
     THashMap<ui64, TAgentStorageInfo> chunks;
 
     for (const auto& device: agent->GetDevices()) {
-        if (device.GetPoolKind() != poolKind) {
+        if (!DeviceList
+                 .IsDeviceAllocationAllowed(poolKind, poolName, device, *agent))
+        {
             continue;
-        }
-
-        if (poolName && device.GetPoolName() != poolName) {
-            continue;
-        }
-
-        if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
-            continue;
-        }
-
-        if (DeviceList.IsSuspendedDevice(device.GetDeviceUUID())) {
-            continue;
-        }
-
-        if (StorageConfig->GetAttachDetachPathsEnabled()) {
-            auto it = agent->GetPathAttachStates().find(device.GetDeviceName());
-            if (it == agent->GetPathAttachStates().end()) {
-                continue;
-            }
-
-            if (it->second != NProto::PATH_ATTACH_STATE_ATTACHED) {
-                continue;
-            }
         }
 
         const ui64 au = GetAllocationUnit(device.GetPoolName());
