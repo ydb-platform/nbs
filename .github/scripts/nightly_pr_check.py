@@ -7,7 +7,7 @@ import os
 import signal
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import boto3
@@ -66,8 +66,9 @@ INITIAL_DISCOVERY_TIMEOUT_SECONDS = 60
 INITIAL_DISCOVERY_RETRY_ATTEMPTS = (
     INITIAL_DISCOVERY_TIMEOUT_SECONDS // INITIAL_DISCOVERY_INTERVAL_SECONDS + 1
 )
+DISPATCH_DISCOVERY_GRACE_SECONDS = 2
 COLLECTOR_POLL_INTERVAL_SECONDS = 60
-COLLECTOR_TIMEOUT_SECONDS = 21600
+COLLECTOR_TIMEOUT_SECONDS = 28800
 COLLECTOR_POLL_RETRY_ATTEMPTS = (
     COLLECTOR_TIMEOUT_SECONDS // COLLECTOR_POLL_INTERVAL_SECONDS + 1
 )
@@ -100,7 +101,7 @@ class CancelRequestResult:
     debug: str
 
 
-class CancellationRequested(Exception):
+class CancellationRequested(BaseException):
     pass
 
 
@@ -171,7 +172,20 @@ def find_workflow_run(
         created_at = run.created_at
         if created_at is not None and created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
-        if dispatched_at is not None and created_at and created_at < dispatched_at:
+        if (
+            dispatched_at is not None
+            and created_at
+            and created_at
+            < dispatched_at - timedelta(seconds=DISPATCH_DISCOVERY_GRACE_SECONDS)
+        ):
+            logger.info(
+                "Skipping older run workflow=%s id=%s created_at=%s dispatched_at=%s marker=%s",
+                workflow,
+                run.id,
+                created_at,
+                dispatched_at,
+                marker,
+            )
             continue
         candidates.append(run)
 

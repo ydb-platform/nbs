@@ -594,7 +594,7 @@ jobs:
         )
       }}
     runs-on: [self-hosted, "self-hosted", "runner_light"]
-    timeout-minutes: 370
+    timeout-minutes: 540
     steps:
       - name: checkout workflow scripts
         uses: actions/checkout@v6
