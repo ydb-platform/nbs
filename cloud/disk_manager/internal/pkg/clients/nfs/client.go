@@ -495,7 +495,12 @@ func (c *client) UnsafeCreateNode(
 		return err
 	}
 
-	return checkActionError(response.Error)
+	err = checkActionError(response.Error)
+	if err == nil || isAlreadyExistsError(err) {
+		return nil
+	}
+
+	return err
 }
 
 func (c *client) UnsafeCreateNodeRef(
@@ -525,10 +530,19 @@ func (c *client) UnsafeCreateNodeRef(
 		response,
 	)
 	if err != nil {
+		if isAlreadyExistsError(err) {
+			return nil
+		}
+
 		return err
 	}
 
-	return checkActionError(response.Error)
+	err = checkActionError(response.Error)
+	if err != nil && isAlreadyExistsError(err) {
+		return nil
+	}
+
+	return err
 }
 
 func (c *client) ConfigureAsShard(
