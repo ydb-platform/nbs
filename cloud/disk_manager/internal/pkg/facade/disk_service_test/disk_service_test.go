@@ -83,6 +83,98 @@ func TestDiskServiceShouldFailToCreateSsdNonreplIfNotAllowed(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	const (
+		blockSize   = 4096
+		writeSize   = 4 * 1024 * 1024
+		nrdDiskSize = 262144 * blockSize
+	)
+
+	for _, testCase := range []struct {
+		name                string
+		kind                disk_manager.DiskKind
+		diskSize            int64
+		writeBlock          bool
+		expectedStorageSize int64
+	}{
+		{
+			name:                "ssd",
+			kind:                disk_manager.DiskKind_DISK_KIND_SSD,
+			diskSize:            2 * writeSize,
+			writeBlock:          true,
+			expectedStorageSize: writeSize,
+		},
+		{
+			name:                "hdd",
+			kind:                disk_manager.DiskKind_DISK_KIND_HDD,
+			diskSize:            2 * blockSize,
+			writeBlock:          false,
+			expectedStorageSize: 0,
+		},
+		{
+			name:                "ssd_nonreplicated",
+			kind:                disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			diskSize:            nrdDiskSize,
+			writeBlock:          true,
+			expectedStorageSize: nrdDiskSize,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+
+			reqCtx := testcommon.GetRequestContext(t, ctx)
+			operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+				Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+					SrcEmpty: &empty.Empty{},
+				},
+				Size: testCase.diskSize,
+				Kind: testCase.kind,
+				DiskId: &disk_manager.DiskId{
+					ZoneId: "zone-a",
+					DiskId: diskID,
+				},
+				FolderId: "folder",
+			})
+			require.NoError(t, err)
+			require.NotEmpty(t, operation)
+			err = internal_client.WaitOperation(ctx, client, operation.Id)
+			require.NoError(t, err)
+			defer testcommon.DeleteDisk(t, ctx, client, diskID)
+
+			if testCase.writeBlock {
+				nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+				block := make([]byte, writeSize)
+				block[0] = 1
+				err = nbsClient.Write(
+					diskID,
+					0, // startIndex
+					block,
+				)
+				require.NoError(t, err)
+			}
+
+			reqCtx = testcommon.GetRequestContext(t, ctx)
+			stats, err := client.StatDisk(reqCtx, &disk_manager.StatDiskRequest{
+				DiskId: &disk_manager.DiskId{
+					ZoneId: "zone-a",
+					DiskId: diskID,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, stats)
+			require.Equal(t, testCase.expectedStorageSize, stats.StorageSize)
+		})
+	}
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 // NBS-3424: TODO: enable this test.
 func TestDiskServiceShouldFailCreateDiskFromNonExistingImage(t *testing.T) {
 	/*
