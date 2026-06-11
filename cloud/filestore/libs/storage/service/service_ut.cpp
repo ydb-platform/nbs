@@ -907,6 +907,89 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroySession(headers);
     }
 
+    Y_UNIT_TEST(ShouldKeepDifferentSessionActorsForSeveralSubSessions)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        TActorId subSessionActor0;
+        TActorId subSessionActor1;
+        ui32 subSessionActor0Pings = 0;
+        ui32 subSessionActor1Pings = 0;
+        bool capturePings = false;
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvServicePrivate::EvSessionCreated: {
+                    const auto* msg =
+                        event->Get<TEvServicePrivate::TEvSessionCreated>();
+                    if (msg->ClientId == "client" &&
+                        msg->FileStore.GetFileSystemId() == "test")
+                    {
+                        if (msg->SessionSeqNo == 0) {
+                            subSessionActor0 = event->Sender;
+                        } else if (msg->SessionSeqNo == 1) {
+                            subSessionActor1 = event->Sender;
+                        }
+                    }
+
+                    break;
+                }
+
+                case TEvServicePrivate::EvPingSession: {
+                    if (capturePings) {
+                        if (event->Recipient == subSessionActor0) {
+                            ++subSessionActor0Pings;
+                        } else if (event->Recipient == subSessionActor1) {
+                            ++subSessionActor1Pings;
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto headers = service.InitSession("test", "client");
+        service.PingSession(headers);
+
+        THeaders restoredHeaders;
+        // Recover the same client session without specifying SessionId.
+        // The tablet should return the same SessionId and create a new
+        // subsession for seqNo=1.
+        service.InitSession(
+            restoredHeaders,
+            "test",
+            "client",
+            "",     // checkpointId
+            true,   // restoreClientSession
+            1);
+
+        UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, restoredHeaders.SessionId);
+        UNIT_ASSERT(subSessionActor0);
+        UNIT_ASSERT(subSessionActor1);
+        UNIT_ASSERT_VALUES_UNEQUAL(subSessionActor0, subSessionActor1);
+
+        capturePings = true;
+        service.PingSession(headers);
+        service.PingSession(restoredHeaders);
+        capturePings = false;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, subSessionActor0Pings);
+        UNIT_ASSERT_VALUES_EQUAL(1, subSessionActor1Pings);
+
+        service.DestroySession(restoredHeaders);
+        service.DestroySession(headers);
+    }
+
     Y_UNIT_TEST(ShouldNotPingAndDestroyInvalidSession)
     {
         TTestEnv env;

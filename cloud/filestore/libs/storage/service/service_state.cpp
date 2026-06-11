@@ -192,7 +192,6 @@ TSessionInfo* TStorageServiceState::CreateSession(
         session->SessionState = std::move(sessionState);
         session->MediaKind = mediaKind,
         session->RequestStats = std::move(requestStats);
-        session->SessionActor = sessionActor;
         session->TabletId = tabletId;
 
         Sessions.PushBack(session.get());
@@ -205,7 +204,7 @@ TSessionInfo* TStorageServiceState::CreateSession(
         sessionInfo = it->second;
     }
 
-    sessionInfo->AddSubSession(seqNo, readOnly);
+    sessionInfo->AddSubSession(seqNo, readOnly, sessionActor);
 
     return sessionInfo;
 }

@@ -19,14 +19,22 @@ void TStorageServiceActor::HandleGetSessionEvents(
     const auto sessionId = GetSessionId(msg->Record);
 
     auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId || sessionId != session->SessionId) {
+    const auto sessionActor = session
+        ? session->GetSessionActor(seqNo)
+        : std::optional<TActorId>();
+
+    if (!session ||
+        session->ClientId != clientId ||
+        sessionId != session->SessionId ||
+        !sessionActor)
+    {
         auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
     // forward request to the session actor
-    ctx.Send(ev->Forward(session->SessionActor));
+    ctx.Send(ev->Forward(*sessionActor));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
