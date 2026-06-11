@@ -6,6 +6,9 @@
         "uri": "file://test.test_create_unlink_steal/create_unlink_steal_results.txt"
     },
     "test.test_create_unlink_steal_list_nodes_internal": {
-        "uri": "file://test.test_create_unlink_steal_list_nodes_internal/create_unlink_steal_results.txt"
+        "uri": "file://test.test_create_unlink_steal_list_nodes_internal/create_unlink_steal_list_nodes_internal_results.txt"
+    },
+    "test.test_create_unlink_steal_list_nodes_internal_more_producers": {
+        "uri": "file://test.test_create_unlink_steal_list_nodes_internal_more_producers/create_unlink_steal_list_nodes_internal_more_producers_results.txt"
     }
 }
