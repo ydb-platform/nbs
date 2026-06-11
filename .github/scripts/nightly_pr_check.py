@@ -6,7 +6,6 @@ import json
 import os
 import signal
 import sys
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -28,6 +27,7 @@ from .helpers import (
     get_s3_report_url,
     get_s3_workflow_reports_path,
     parse_s3_path,
+    retry,
     setup_logger,
 )
 from .tests import generate_summary as gs
@@ -56,8 +56,19 @@ LABEL_TO_WORKFLOWS = {
 COMMENT_MARKER_PREFIX = "<!-- nbs-nightly-pr-check"
 CANCEL_VERIFY_INTERVAL_SECONDS = 5
 CANCEL_VERIFY_TIMEOUT_SECONDS = 300
+CANCEL_VERIFY_RETRY_ATTEMPTS = (
+    CANCEL_VERIFY_TIMEOUT_SECONDS // CANCEL_VERIFY_INTERVAL_SECONDS + 1
+)
 INITIAL_DISCOVERY_INTERVAL_SECONDS = 5
 INITIAL_DISCOVERY_TIMEOUT_SECONDS = 60
+INITIAL_DISCOVERY_RETRY_ATTEMPTS = (
+    INITIAL_DISCOVERY_TIMEOUT_SECONDS // INITIAL_DISCOVERY_INTERVAL_SECONDS + 1
+)
+COLLECTOR_POLL_INTERVAL_SECONDS = 60
+COLLECTOR_TIMEOUT_SECONDS = 21600
+COLLECTOR_POLL_RETRY_ATTEMPTS = (
+    COLLECTOR_TIMEOUT_SECONDS // COLLECTOR_POLL_INTERVAL_SECONDS + 1
+)
 logger = setup_logger()
 
 S3_REPORT_CONTEXT_ENV_KEYS = (
@@ -589,42 +600,33 @@ def refresh_runs(s3: Any, repo: Repository, runs: list[WorkflowRun]) -> None:
         refresh_run(s3, repo, run)
 
 
-def wait_for_cancellation(
-    s3: Any, repo: Repository, run: WorkflowRun, timeout_seconds: int
-) -> bool:
+@retry(
+    attempts=CANCEL_VERIFY_RETRY_ATTEMPTS,
+    interval_sec=CANCEL_VERIFY_INTERVAL_SECONDS,
+    retry_result=lambda result: result is False,
+)
+def wait_for_cancellation(s3: Any, repo: Repository, run: WorkflowRun) -> bool:
     if run.run_id is None:
         return False
 
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        refresh_run(s3, repo, run)
-        if run.status == "completed" or run.conclusion == "cancelled":
-            logger.info(
-                "Run %s id=%s stopped after cancellation request: conclusion=%s",
-                run.workflow,
-                run.run_id,
-                run.conclusion,
-            )
-            return True
-
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            logger.warning(
-                "Run %s id=%s is still %s after %ss cancellation wait",
-                run.workflow,
-                run.run_id,
-                run.status,
-                timeout_seconds,
-            )
-            return False
-
+    refresh_run(s3, repo, run)
+    if run.status == "completed" or run.conclusion == "cancelled":
         logger.info(
-            "Waiting for run %s id=%s to stop after cancellation request: status=%s",
+            "Run %s id=%s stopped after cancellation request: conclusion=%s",
             run.workflow,
             run.run_id,
-            run.status,
+            run.conclusion,
         )
-        time.sleep(min(CANCEL_VERIFY_INTERVAL_SECONDS, remaining))
+        return True
+
+    logger.info(
+        "Waiting for run %s id=%s to stop after cancellation request: status=%s timeout=%ss",
+        run.workflow,
+        run.run_id,
+        run.status,
+        CANCEL_VERIFY_TIMEOUT_SECONDS,
+    )
+    return False
 
 
 def all_done(runs: list[WorkflowRun]) -> bool:
@@ -669,28 +671,67 @@ def all_discovered(runs: list[WorkflowRun]) -> bool:
     return all(run.error or run.run_id is not None for run in runs)
 
 
+@retry(
+    attempts=INITIAL_DISCOVERY_RETRY_ATTEMPTS,
+    interval_sec=INITIAL_DISCOVERY_INTERVAL_SECONDS,
+    retry_result=lambda result: result is False,
+)
 def wait_for_initial_discovery(
     repo: Repository,
     runs: list[WorkflowRun],
     head_ref: str,
     marker: str,
     dispatched_at: datetime,
-) -> None:
-    deadline = time.monotonic() + INITIAL_DISCOVERY_TIMEOUT_SECONDS
-    while True:
-        discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
-        if all_discovered(runs):
-            return
+) -> bool:
+    discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
+    if all_discovered(runs):
+        return True
 
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            missing = [
-                run.workflow for run in runs if run.run_id is None and not run.error
-            ]
-            logger.warning("Timed out waiting to discover spawned runs: %s", missing)
-            return
+    missing = [run.workflow for run in runs if run.run_id is None and not run.error]
+    logger.info("Waiting to discover spawned runs: %s", missing)
+    return False
 
-        time.sleep(min(INITIAL_DISCOVERY_INTERVAL_SECONDS, remaining))
+
+@retry(
+    attempts=COLLECTOR_POLL_RETRY_ATTEMPTS,
+    interval_sec=COLLECTOR_POLL_INTERVAL_SECONDS,
+    retry_result=lambda result: not result[0],
+)
+def poll_runs_until_done(
+    s3: Any,
+    repo: Repository,
+    pr: PullRequest,
+    runs: list[WorkflowRun],
+    head_ref: str,
+    marker: str,
+    dispatched_at: datetime,
+    collector_url: str,
+    comment_state: dict[str, str],
+) -> tuple[bool, str]:
+    discover_missing_runs(
+        repo,
+        runs,
+        head_ref,
+        marker,
+        dispatched_at,
+    )
+    refresh_runs(s3, repo, runs)
+
+    previous_comment_body = comment_state["body"]
+    if all_done(runs):
+        return True, previous_comment_body
+
+    current_comment_body = render_comment(
+        marker,
+        runs,
+        final=False,
+        collector_url=collector_url,
+    )
+    if current_comment_body != previous_comment_body:
+        upsert_comment(pr, marker, current_comment_body)
+        comment_state["body"] = current_comment_body
+
+    return False, comment_state["body"]
 
 
 def cancel_started_runs(
@@ -734,14 +775,16 @@ def cancel_started_runs(
                 run.url,
             )
             cancel_result = cancel_workflow_run(repo, run.run_id)
-            if wait_for_cancellation(
-                s3,
-                repo,
-                run,
-                timeout_seconds=CANCEL_VERIFY_TIMEOUT_SECONDS,
-            ):
+            if wait_for_cancellation(s3, repo, run):
                 continue
 
+            logger.warning(
+                "Run %s id=%s is still %s after %ss cancellation wait",
+                run.workflow,
+                run.run_id,
+                run.status,
+                CANCEL_VERIFY_TIMEOUT_SECONDS,
+            )
             if cancel_result.accepted:
                 run.error = (
                     f"{cancellation_reason}; GitHub accepted cancellation, "
@@ -771,8 +814,6 @@ def parse_args() -> argparse.Namespace:
         choices=("dispatch-and-collect", "cancel"),
         default="dispatch-and-collect",
     )
-    parser.add_argument("--poll-interval-seconds", type=int, default=60)
-    parser.add_argument("--timeout-seconds", type=int, default=21600)
     return parser.parse_args()
 
 
@@ -927,7 +968,11 @@ def main() -> int:
                 run.conclusion = "failure"
                 run.error = str(error)
 
-        wait_for_initial_discovery(repo, runs, head_ref, marker, dispatched_at)
+        if not wait_for_initial_discovery(repo, runs, head_ref, marker, dispatched_at):
+            missing = [
+                run.workflow for run in runs if run.run_id is None and not run.error
+            ]
+            logger.warning("Timed out waiting to discover spawned runs: %s", missing)
         posted_comment_body = render_comment(
             marker,
             runs,
@@ -936,42 +981,30 @@ def main() -> int:
         )
         upsert_comment(pr_object, marker, posted_comment_body)
 
-        deadline = time.monotonic() + args.timeout_seconds
-        while time.monotonic() < deadline:
-            discover_missing_runs(
-                repo,
-                runs,
-                head_ref,
-                marker,
-                dispatched_at,
-            )
-            refresh_runs(s3, repo, runs)
-
-            if all_done(runs):
-                posted_comment_body = render_comment(
-                    marker,
-                    runs,
-                    final=True,
-                    collector_url=collector_url,
-                )
-                upsert_comment(
-                    pr_object,
-                    marker,
-                    posted_comment_body,
-                )
-                return 1 if any_failed(runs) else 0
-
-            current_comment_body = render_comment(
+        poll_done, posted_comment_body = poll_runs_until_done(
+            s3=s3,
+            repo=repo,
+            pr=pr_object,
+            runs=runs,
+            head_ref=head_ref,
+            marker=marker,
+            dispatched_at=dispatched_at,
+            collector_url=collector_url,
+            comment_state={"body": posted_comment_body},
+        )
+        if poll_done:
+            posted_comment_body = render_comment(
                 marker,
                 runs,
-                final=False,
+                final=True,
                 collector_url=collector_url,
             )
-            if current_comment_body != posted_comment_body:
-                upsert_comment(pr_object, marker, current_comment_body)
-                posted_comment_body = current_comment_body
-
-            time.sleep(args.poll_interval_seconds)
+            upsert_comment(
+                pr_object,
+                marker,
+                posted_comment_body,
+            )
+            return 1 if any_failed(runs) else 0
 
     except CancellationRequested:
         discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
@@ -990,7 +1023,7 @@ def main() -> int:
     if timed_out_runs:
         logger.warning(
             "Collector timed out after %ss; cancelling unfinished nightly runs: %s",
-            args.timeout_seconds,
+            COLLECTOR_TIMEOUT_SECONDS,
             [
                 {
                     "workflow": run.workflow,

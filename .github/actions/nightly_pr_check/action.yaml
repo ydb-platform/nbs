@@ -9,14 +9,6 @@ inputs:
   github_token:
     required: true
     description: "GitHub token with actions:write and issues:write access"
-  poll_interval_seconds:
-    required: false
-    default: "60"
-    description: "Delay between workflow status polls"
-  timeout_seconds:
-    required: false
-    default: "21600"
-    description: "Maximum time to wait for dispatched nightly workflows"
 
 runs:
   using: composite
@@ -30,12 +22,8 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         MODE: ${{ inputs.mode }}
-        POLL_INTERVAL_SECONDS: ${{ inputs.poll_interval_seconds }}
-        TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
       run: |
         set -euo pipefail
         export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
         python3 -m scripts.nightly_pr_check \
-            --mode "$MODE" \
-            --poll-interval-seconds "$POLL_INTERVAL_SECONDS" \
-            --timeout-seconds "$TIMEOUT_SECONDS"
+            --mode "$MODE"
