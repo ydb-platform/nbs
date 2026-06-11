@@ -17,6 +17,7 @@ from github import Auth as GithubAuth, Github
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from .helpers import (
     find_current_job_url,
@@ -32,6 +33,7 @@ from .helpers import (
 )
 from .tests import generate_summary as gs
 
+SCRIPT_DIR = os.path.dirname(__file__)
 LABEL_TO_WORKFLOWS = {
     "nightly-tests": ["nightly.yaml"],
     "nightly-asan": ["nightly-asan.yaml"],
@@ -510,43 +512,46 @@ def status_text(run: WorkflowRun) -> str:
     return run.status
 
 
+def workflow_markdown(run: WorkflowRun) -> str:
+    workflow = f"`{run.workflow}`"
+    if run.url:
+        return f"[`{run.workflow}`]({run.url})"
+    return workflow
+
+
 def render_comment(
     marker: str,
     runs: list[WorkflowRun],
     final: bool,
     collector_url: str = "",
 ) -> str:
-    comment_marker = get_comment_marker(marker)
-    workflow_status = "finished" if final else "running"
-    lines = [
-        comment_marker,
-        "> [!TIP]",
-        f"> Nightly workflows are **{workflow_status}**.",
-        "",
-    ]
-    if collector_url:
-        lines.extend([f"Collector: [nightly-builds job]({collector_url})", ""])
-    for run in runs:
-        workflow = f"`{run.workflow}`"
-        if run.url:
-            workflow = f"[`{run.workflow}`]({run.url})"
-        lines.append(f"- {status_icon(run)} {workflow} - `{status_text(run)}`")
-
     summaries = [
         summary
         for run in runs
         for summary in run.summaries
         if summary.get("summary_markdown")
     ]
-    if summaries:
-        lines.extend(["", "Summaries:"])
-        for summary in summaries[:10]:
-            lines.append(f"`{summary.get('label', 'summary')}`")
-            lines.extend(summary["summary_markdown"].splitlines())
-        if len(summaries) > 10:
-            lines.append(f"- ... and {len(summaries) - 10} more summaries")
-
-    return "\n".join(lines)
+    comment_template = Environment(
+        loader=FileSystemLoader(os.path.join(SCRIPT_DIR, "templates")),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        undefined=StrictUndefined,
+    ).get_template("nightly_pr_comment.md.j2")
+    return comment_template.render(
+        comment_marker=get_comment_marker(marker),
+        workflow_status="finished" if final else "running",
+        collector_url=collector_url,
+        runs=[
+            {
+                "icon": status_icon(run),
+                "workflow": workflow_markdown(run),
+                "status": status_text(run),
+            }
+            for run in runs
+        ],
+        summaries=summaries[:10],
+        omitted_summary_count=max(0, len(summaries) - 10),
+    ).rstrip()
 
 
 def get_comment_marker(marker: str) -> str:
