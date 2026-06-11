@@ -74,9 +74,14 @@ message THeaders
 
 message TBackendInfo
 {
-    // Using a single boolean flag for now. Maybe we'll add more details in the
-    // future but for now keeping it simple.
     bool IsOverloaded = 1;
+
+    // Host and port of the fastshard TCP server co-located with this backend.
+    // Non-empty only when the server has a fastshard port configured.
+    // The side channel in the vhost uses these to establish a direct TCP
+    // connection for latency-critical IO, bypassing the actor system.
+    string FastShardHost = 2;
+    uint32 FastShardPort = 3;
 }
 
 message TResponseHeaders

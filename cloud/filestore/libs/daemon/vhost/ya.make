@@ -18,6 +18,8 @@ PEERDIR(
     cloud/filestore/libs/service_kikimr
     cloud/filestore/libs/service_local
     cloud/filestore/libs/service_null
+    cloud/filestore/libs/storage/fastshard/bootstrap
+    cloud/filestore/libs/storage/fastshard/client
     cloud/filestore/libs/vfs_fuse/vhost
     cloud/filestore/libs/vhost
 
