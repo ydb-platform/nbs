@@ -700,7 +700,7 @@ def wait_for_initial_discovery(
     runs: list[WorkflowRun],
     head_ref: str,
     marker: str,
-    dispatched_at: datetime,
+    dispatched_at: datetime | None,
 ) -> bool:
     discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
     if all_discovered(runs):
@@ -910,13 +910,18 @@ def cancel_mode() -> int:
         marker,
         [run.workflow for run in runs],
     )
-    discover_missing_runs(
+    if not wait_for_initial_discovery(
         repo,
         runs,
         head_ref,
         marker,
         dispatched_at=None,
-    )
+    ):
+        missing = [run.workflow for run in runs if run.run_id is None and not run.error]
+        logger.warning(
+            "Timed out waiting to discover spawned runs before cancellation: %s",
+            missing,
+        )
     refresh_runs(s3, repo, runs)
     cancel_started_runs(s3, repo, runs)
     upsert_comment(
@@ -1026,7 +1031,14 @@ def main() -> int:
             return 1 if any_failed(runs) else 0
 
     except CancellationRequested:
-        discover_missing_runs(repo, runs, head_ref, marker, dispatched_at)
+        if not wait_for_initial_discovery(repo, runs, head_ref, marker, dispatched_at):
+            missing = [
+                run.workflow for run in runs if run.run_id is None and not run.error
+            ]
+            logger.warning(
+                "Timed out waiting to discover spawned runs before cancellation: %s",
+                missing,
+            )
         refresh_runs(s3, repo, runs)
         cancel_started_runs(s3, repo, runs)
         upsert_comment(
