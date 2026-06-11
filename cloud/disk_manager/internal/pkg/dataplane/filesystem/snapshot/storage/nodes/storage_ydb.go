@@ -485,8 +485,8 @@ func (s *storageYDB) listNodeRefsByShard(
 	session *persistence.Session,
 	snapshotID string,
 	shardFilesystemID string,
-	limit int,
-	offset int,
+	limit uint64,
+	offset uint64,
 ) ([]nodeRefByShard, error) {
 
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
@@ -507,8 +507,8 @@ func (s *storageYDB) listNodeRefsByShard(
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 		persistence.ValueParam("$shard_filesystem_id", persistence.UTF8Value(shardFilesystemID)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
-		persistence.ValueParam("$offset", persistence.Uint64Value(uint64(offset))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
+		persistence.ValueParam("$offset", persistence.Uint64Value(offset)),
 	)
 	if err != nil {
 		return nil, err
@@ -694,8 +694,8 @@ func (s *storageYDB) listNodesByShard(
 	session *persistence.Session,
 	snapshotID string,
 	shardFilesystemID string,
-	limit int,
-	offset int,
+	limit uint64,
+	offset uint64,
 ) ([]nfs.Node, error) {
 
 	nodeRefsByShard, err := s.listNodeRefsByShard(
@@ -710,8 +710,14 @@ func (s *storageYDB) listNodesByShard(
 		return nil, err
 	}
 
+	uniqueNodeIDs := make(map[uint64]struct{}, len(nodeRefsByShard))
 	nodeIDs := make([]uint64, 0, len(nodeRefsByShard))
 	for _, nodeRefByShard := range nodeRefsByShard {
+		if _, ok := uniqueNodeIDs[nodeRefByShard.nodeID]; ok {
+			continue
+		}
+
+		uniqueNodeIDs[nodeRefByShard.nodeID] = struct{}{}
 		nodeIDs = append(nodeIDs, nodeRefByShard.nodeID)
 	}
 
@@ -1071,8 +1077,8 @@ func (s *storageYDB) ListNodesByShard(
 	ctx context.Context,
 	snapshotID string,
 	shardFilesystemID string,
-	limit int,
-	offset int,
+	limit uint64,
+	offset uint64,
 ) ([]nfs.Node, error) {
 
 	var result []nfs.Node

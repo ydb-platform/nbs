@@ -27,8 +27,8 @@ type Storage interface {
 		ctx context.Context,
 		snapshotID string,
 		shardFilesystemID string,
-		limit int,
-		offset int,
+		limit uint64,
+		offset uint64,
 	) ([]nfs.Node, error)
 
 	DeleteSnapshotData(

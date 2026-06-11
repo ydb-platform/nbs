@@ -41,8 +41,8 @@ func (s *StorageMock) ListNodesByShard(
 	ctx context.Context,
 	snapshotID string,
 	shardFilesystemID string,
-	limit int,
-	offset int,
+	limit uint64,
+	offset uint64,
 ) ([]nfs.Node, error) {
 
 	args := s.Called(ctx, snapshotID, shardFilesystemID, limit, offset)
