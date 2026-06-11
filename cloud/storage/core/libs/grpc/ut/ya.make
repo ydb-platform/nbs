@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/storage/core/libs/grpc)
 SRCS(
     executor_ut.cpp
     init_ut.cpp
+    tls_certificate_provider_ut.cpp
     tls_utils_ut.cpp
     utils_ut.cpp
 )

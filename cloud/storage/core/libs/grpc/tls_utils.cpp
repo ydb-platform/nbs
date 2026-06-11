@@ -1,5 +1,6 @@
 #include "tls_utils.h"
 
+#include <util/generic/yexception.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 
@@ -140,6 +141,13 @@ TResultOrError<TVector<TX509Ptr>> ParseNonEmptyPemCertificates(
         return TErrorResponse(E_INVALID_STATE, message);
     }
     return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsEmptyPair(const TCertificateFiles& certPair)
+{
+    return !certPair.PrivateKeyPath && !certPair.CertChainPath;
 }
 
 }   // namespace
@@ -380,87 +388,144 @@ TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
     return result;
 }
 
+TVector<TCertificatePair> LoadCertificatePairs(
+    TVector<TCertificateFiles> certificates)
+{
+    TVector<TCertificatePair> result;
+    for (size_t i = 0; i < certificates.size(); ++i) {
+        auto& cert = certificates[i];
+        if (IsEmptyPair(cert)) {
+            continue;
+        }
+        if (!cert.PrivateKeyPath) {
+            ythrow yexception()
+                << "Empty PrivateKeyPath for certificate #" << i;
+        }
+        if (!cert.CertChainPath) {
+            ythrow yexception()
+                << "Empty CertChainPath for certificate #" << i;
+        }
+        auto privateKey = TryReadFile(cert.PrivateKeyPath);
+        if (HasError(privateKey.GetError())) {
+            ythrow yexception() << privateKey.GetError().GetMessage();
+        }
+        auto certChain = TryReadFile(cert.CertChainPath);
+        if (HasError(certChain.GetError())) {
+            ythrow yexception() << certChain.GetError().GetMessage();
+        }
+        result.push_back({
+            .Files = std::move(cert),
+            .PrivateKey = privateKey.ExtractResult(),
+            .CertChain = certChain.ExtractResult(),
+        });
+    }
+    return result;
+}
+
+TRootCaPair LoadRootCaPair(TString rootCaPath)
+{
+    if (!rootCaPath) {
+        return {};
+    }
+    auto content = TryReadFile(rootCaPath);
+    if (HasError(content.GetError())) {
+        ythrow yexception() << content.GetError().GetMessage();
+    }
+    return {
+        .RootCaPath = std::move(rootCaPath),
+        .RootCa = content.ExtractResult(),
+    };
+}
+
+TVector<TCertificateFiles> PrepareAndValidateCertificates(
+    TVector<TCertificateFiles> certificates)
+{
+    TVector<TCertificateFiles> res;
+    for (size_t i = 0; i < certificates.size(); ++i) {
+        auto& cert = certificates[i];
+        if (IsEmptyPair(cert)) {
+            continue;
+        }
+        if (!cert.PrivateKeyPath) {
+            ythrow yexception()
+                << "Empty PrivateKeyPath for certificate #"
+                << i;
+        }
+        if (!cert.CertChainPath) {
+            ythrow yexception()
+                << "Empty CertChainPath for certificate #"
+                << i;
+        }
+        res.emplace_back(std::move(cert));
+    }
+    return res;
+}
+
 TCertificatesUpdateResult UpdateCertificates(
     const TVector<TCertificatePair>& certificates,
     const TRootCaPair& root,
     TLog& log)
 {
-    TVector<TMaybe<PemKeyCertPairList>> identities(
-        Certificates.size());
-    TVector<TMaybe<ui64>> certNotAfterTs(Certificates.size());
+    TLog& Log = log;
 
-    const TMaybe<TString> oldRoot = RootCertificate;
-    const bool needsRoot = !!GetRootCertPath();
+    TCertificatesUpdateResult updateResult;
+    updateResult.Certificates.resize(certificates.size());
+
+    const bool needsRoot = !root.RootCaPath.empty();
     if (!needsRoot) {
-        RootCertificate = Nothing();
+        updateResult.RootCa = Nothing();
     } else {
         auto rootResult =
-            NTlsUtils::ReadAndValidateRootCertificate(RootCertPath);
+            NTlsUtils::ReadAndValidateRootCertificate(root.RootCaPath);
         if (HasError(rootResult.GetError())) {
             STORAGE_WARN(
                 "Root certificate update is skipped: "
-                << rootResult.GetError().GetMessage());
+                << FormatError(rootResult.GetError()));
+            updateResult.RootCa = root.RootCa.empty()
+                ? Nothing()
+                : TMaybe<TString>(root.RootCa);
         } else {
-            RootCertificate = rootResult.ExtractResult();
+            updateResult.RootCa = rootResult.ExtractResult();
         }
     }
 
-    for (size_t i = 0; i < Certificates.size(); ++i) {
-        const auto& files = Certificates[i].Files;
-        auto identityResult =
-            NTlsUtils::ReadAndValidateIdentityPair(files);
-        if (!HasError(identityResult.GetError())) {
-            identities[i] = identityResult.ExtractResult();
-        } else {
+    for (size_t i = 0; i < certificates.size(); ++i) {
+        const auto& cert = certificates[i];
+        auto identityResult = NTlsUtils::ReadAndValidateIdentityPair(cert.Files);
+        if (HasError(identityResult.GetError())) {
             STORAGE_WARN(
                 "Identity certificate update is skipped for "
-                << files.CertChainPath.Quote() << ": "
-                << identityResult.GetError().GetMessage());
-        }
-
-        if (identities[i].Defined()) {
-            const auto& pair = identities[i]->front();
-            auto notAfterTs =
-                NTlsUtils::GetCertificateNotAfterTimestampSec(
-                    pair.cert_chain());
-            if (HasError(notAfterTs.GetError())) {
-                STORAGE_WARN(
-                    "Unable to parse certificate notAfter date for "
-                    << files.CertChainPath.Quote() << ": "
-                    << FormatError(notAfterTs.GetError()));
-                identities[i] = Nothing();
-            } else {
-                certNotAfterTs[i] = notAfterTs.ExtractResult();
+                << cert.Files.CertChainPath.Quote() << ": "
+                << FormatError(identityResult.GetError()));
+            if (!cert.PrivateKey.empty() && !cert.CertChain.empty()) {
+                grpc_core::PemKeyCertPairList fallback;
+                fallback.emplace_back(cert.PrivateKey, cert.CertChain);
+                updateResult.Certificates[i] = TCertificate{
+                    .CertificatesChain = std::move(fallback),
+                };
             }
-        }
-    }
-
-    const bool rootChanged = oldRoot != RootCertificate;
-    bool hasUpdates = rootChanged;
-
-    for (size_t i = 0; i < Certificates.size(); ++i) {
-        if (Certificates[i].Metrics && certNotAfterTs[i].Defined()) {
-            *Certificates[i].Metrics->GetCounter(
-                "ExpireTs",
-                false) = *certNotAfterTs[i];
-        }
-
-        if (!identities[i].Defined()) {
-            continue;
-        }
-        const bool identityChanged =
-            identities[i] != Certificates[i].IdentityKeyCertPairs;
-        if (!rootChanged && !identityChanged) {
             continue;
         }
 
-        Certificates[i].IdentityKeyCertPairs = *identities[i];
-        hasUpdates = true;
+        TCertificate newCert;
+        newCert.CertificatesChain = identityResult.ExtractResult();
+
+        const auto& pair = newCert.CertificatesChain.front();
+        auto notAfterTs =
+            NTlsUtils::GetCertificateNotAfterTimestampSec(pair.cert_chain());
+        if (HasError(notAfterTs.GetError())) {
+            STORAGE_WARN(
+                "Unable to parse certificate notAfter date for "
+                << cert.Files.CertChainPath.Quote() << ": "
+                << FormatError(notAfterTs.GetError()));
+        } else {
+            newCert.NotValidAfter = TInstant::Seconds(notAfterTs.ExtractResult());
+        }
+
+        updateResult.Certificates[i] = std::move(newCert);
     }
 
-    if (hasUpdates || initial) {
-        static_cast<TDerived*>(this)->OnCertificateUpdated();
-    }
+    return updateResult;
 }
 
 }   // namespace NCloud::NTlsUtils

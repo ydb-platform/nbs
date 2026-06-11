@@ -2,7 +2,9 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <grpcpp/security/credentials.h>
 #include <grpcpp/security/server_credentials.h>
@@ -36,10 +38,34 @@ struct ICertificateProvider
         CreateSecureServerCredentials() = 0;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 ICertificateProviderPtr CreateStaticCertificateProvider(
-    const TString& rootCertPath,
+    TString rootCertPath,
     TVector<TCertificateFiles> certificates);
 
 ICertificateProviderPtr CreateCertificateProviderStub();
+
+ICertificateProviderPtr CreatePeriodicCertificateProvider(
+    ILoggingServicePtr logging,
+    TString logComponent,
+    NMonitoring::TDynamicCountersPtr serverGroup,
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates,
+    TDuration refreshInterval,
+    ISchedulerPtr scheduler);
+
+// Convenience wrapper: uses CreateStaticCertificateProvider when
+// refreshInterval is zero, CreateCertificateProviderStub when no
+// certificates pass validation, and CreatePeriodicCertificateProvider
+// otherwise.
+ICertificateProviderPtr CreateCertificateProvider(
+    ILoggingServicePtr logging,
+    TString logComponent,
+    NMonitoring::TDynamicCountersPtr serverGroup,
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates,
+    TDuration refreshInterval,
+    ISchedulerPtr scheduler);
 
 }   // namespace NCloud

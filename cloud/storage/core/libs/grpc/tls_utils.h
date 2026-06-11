@@ -3,6 +3,7 @@
 #include "tls_certificate_provider.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h>
 
@@ -14,8 +15,7 @@ namespace NCloud::NTlsUtils {
 
 struct TCertificatePair
 {
-    TString PrivateKeyPath;
-    TString CertChainPath;
+    TCertificateFiles Files;
     TString PrivateKey;
     TString CertChain;
 };
@@ -26,9 +26,15 @@ struct TRootCaPair
     TString RootCa;
 };
 
+struct TCertificate
+{
+    grpc_core::PemKeyCertPairList CertificatesChain;
+    TInstant NotValidAfter;
+};
+
 struct TCertificatesUpdateResult
 {
-    TVector<TMaybe<grpc_core::PemKeyCertPairList>> Certificates;
+    TVector<TMaybe<TCertificate>> Certificates;
     TMaybe<TString> RootCa;
 };
 
@@ -54,5 +60,22 @@ TResultOrError<TString> ReadAndValidateRootCertificate(
 
 TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
     const TCertificateFiles& files);
+
+TVector<TCertificateFiles> PrepareAndValidateCertificates(
+    TVector<TCertificateFiles> certificates);
+
+// Reads certificate files at startup. Throws yexception on any read error.
+// Skips pairs where both paths are empty; throws if only one path is empty.
+TVector<TCertificatePair> LoadCertificatePairs(
+    TVector<TCertificateFiles> certificates);
+
+// Reads the root CA file. Throws yexception on read error.
+// Returns an empty TRootCaPair if rootCaPath is empty.
+TRootCaPair LoadRootCaPair(TString rootCaPath);
+
+TCertificatesUpdateResult UpdateCertificates(
+    const TVector<TCertificatePair>& certificates,
+    const TRootCaPair& root,
+    TLog& log);
 
 }   // namespace NCloud::NTlsUtils
