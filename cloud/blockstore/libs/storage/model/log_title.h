@@ -165,6 +165,16 @@ private:
 
 public:
     [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
+
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        TPrintableParams additionalTags) const;
+
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+            additionalTags) const;
+
     [[nodiscard]] TString GetWithTime() const;
 };
 

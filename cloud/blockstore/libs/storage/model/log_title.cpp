@@ -335,6 +335,31 @@ TChildLogTitle TChildLogTitle::GetChild(const ui64 startTime) const
     return {childPrefix, startTime};
 }
 
+TChildLogTitle TChildLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    TPrintableParams additionalTags) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+
+    if (!additionalTags.empty()) {
+        childPrefix << " " << PrintParams(additionalTags);
+    }
+
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " + " << FormatDuration(duration);
+
+    return {childPrefix, startTime};
+}
+
+TChildLogTitle TChildLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+        additionalTags) const
+{
+    return GetChildWithTags(startTime, TPrintableParams(additionalTags));
+}
+
 TString TChildLogTitle::GetWithTime() const
 {
     const auto duration = CyclesToDurationSafe(GetCycleCount() - StartTime);
