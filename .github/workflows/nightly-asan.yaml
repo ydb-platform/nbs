@@ -1,7 +1,11 @@
 name: Nightly build (asan)
 run-name: |
   ${{ github.event_name == 'workflow_dispatch'
-      && format('Nightly build (asan) (manual)')
+      && (
+            inputs.comment != ''
+            && format('Nightly build (asan) (manual) (comment: {0})', inputs.comment)
+            || format('Nightly build (asan) (manual)')
+          )
       || format('Nightly build (asan) (schedule)')
     }}
 on:
