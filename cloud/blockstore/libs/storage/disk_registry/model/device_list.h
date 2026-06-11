@@ -149,10 +149,6 @@ public:
     void MarkDeviceAllocated(const TDiskId& diskId, const TDeviceId& id);
     bool ReleaseDevice(const TDeviceId& id);
 
-    [[nodiscard]] bool IsDeviceAllocationAllowedOnAgent(
-        NProto::EDevicePoolKind poolKind,
-        NProto::EAgentState agentState) const;
-
     [[nodiscard]] bool IsDeviceAllocationAllowed(
         const NProto::TDeviceConfig& device,
         const NProto::TAgentConfig& agent) const;

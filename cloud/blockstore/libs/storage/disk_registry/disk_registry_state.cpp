@@ -7434,9 +7434,7 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
-        if (!DeviceList
-                 .IsDeviceAllocationAllowed(device, *agent))
-        {
+        if (!DeviceList.IsDeviceAllocationAllowed(device, *agent)) {
             continue;
         }
 

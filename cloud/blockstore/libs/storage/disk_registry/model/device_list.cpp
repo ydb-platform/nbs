@@ -253,34 +253,13 @@ TDeviceList::TDiskId TDeviceList::FindDiskId(const TDeviceId& id) const
     return {};
 }
 
-bool TDeviceList::IsDeviceAllocationAllowedOnAgent(
-    NProto::EDevicePoolKind poolKind,
-    NProto::EAgentState agentState) const
-{
-    if (agentState == NProto::AGENT_STATE_UNAVAILABLE) {
-        return false;
-    }
-
-    if (agentState == NProto::AGENT_STATE_ONLINE) {
-        return true;
-    }
-
-    Y_DEBUG_ABORT_UNLESS(agentState == NProto::AGENT_STATE_WARNING);
-    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
-        return AlwaysAllocateLocalDisks;
-    }
-
-    return false;
-}
-
 bool TDeviceList::IsDeviceAllocationAllowed(
     const NProto::TDeviceConfig& device,
     const NProto::TAgentConfig& agent) const
 {
-    if (!IsDeviceAllocationAllowedOnAgent(
-            device.GetPoolKind(),
-            agent.GetState()))
-    {
+    const NProto::EAgentState agentState = agent.GetState();
+
+    if (agentState == NProto::AGENT_STATE_UNAVAILABLE) {
         return false;
     }
 
@@ -288,16 +267,25 @@ bool TDeviceList::IsDeviceAllocationAllowed(
         return false;
     }
 
-    if (!AttachDetachPathsEnabled) {
+    if (AttachDetachPathsEnabled) {
+        auto it = agent.GetPathAttachStates().find(device.GetDeviceName());
+        if (it == agent.GetPathAttachStates().end() ||
+            it->second != NProto::PATH_ATTACH_STATE_ATTACHED)
+        {
+            return false;
+        }
+    }
+
+    if (agentState == NProto::AGENT_STATE_ONLINE) {
         return true;
     }
 
-    auto it = agent.GetPathAttachStates().find(device.GetDeviceName());
-    if (it == agent.GetPathAttachStates().end()) {
-        return false;
+    Y_DEBUG_ABORT_UNLESS(agentState == NProto::AGENT_STATE_WARNING);
+    if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
+        return AlwaysAllocateLocalDisks;
     }
 
-    return it->second == NProto::PATH_ATTACH_STATE_ATTACHED;
+    return false;
 }
 
 NProto::TDeviceConfig TDeviceList::AllocateDevice(
