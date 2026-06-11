@@ -169,6 +169,7 @@ private:
     const TVector<std::shared_ptr<TRequest>> SubRequests;
     TVector<TResponse> SubResponses;
     TPromise<TResponse> Promise = NewPromise<TResponse>();
+
     std::shared_ptr<TRequest> Request;
     TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
@@ -253,6 +254,7 @@ private:
         } else {
             promise.SetValue(std::move(response));
         }
+
         if constexpr (TBlockStoreMethodTraits<TRequest>::IsLocalRequest()) {
             if (hasError) {
                 // Cancel all sub requests in case of error.
