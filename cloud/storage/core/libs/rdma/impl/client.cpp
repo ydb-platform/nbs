@@ -833,6 +833,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
             }
         }
     } catch (...) {
+        TryForceReconnect();
         return MakeError(
             E_RDMA_UNAVAILABLE,
             TStringBuilder()
