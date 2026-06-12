@@ -405,7 +405,8 @@ TDiskRegistryState::TDiskRegistryState(
         CollectDirtyDeviceUUIDs(dirtyDevices),
         std::move(suspendedDevices),
         CollectAllocatedDevices(disks),
-        StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks())
+        StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks(),
+        StorageConfig->GetAttachDetachPathsEnabled())
     , BrokenDisks(std::move(brokenDisks))
     , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
@@ -7421,9 +7422,6 @@ auto TDiskRegistryState::QueryAvailableStorage(
             "agent " << agentId.Quote() << " not found");
     }
 
-    if (!DeviceList.DevicesAllocationAllowed(poolKind, agent->GetState())) {
-        return TVector<TAgentStorageInfo>{};
-    }
 
     THashMap<ui64, TAgentStorageInfo> chunks;
 
@@ -7436,7 +7434,7 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
-        if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
+        if (!DeviceList.IsDeviceAllocationAllowed(device, *agent)) {
             continue;
         }
 
