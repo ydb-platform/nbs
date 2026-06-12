@@ -492,6 +492,10 @@ func (c *client) UnsafeCreateNode(
 		response,
 	)
 	if err != nil {
+		if isAlreadyExistsError(err) {
+			return nil
+		}
+
 		return err
 	}
 
@@ -525,6 +529,10 @@ func (c *client) UnsafeCreateNodeRef(
 		response,
 	)
 	if err != nil {
+		if isAlreadyExistsError(err) {
+			return nil
+		}
+
 		return err
 	}
 
