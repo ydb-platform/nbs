@@ -276,11 +276,6 @@ void TWriteBackCacheState::VisitUnflushedRequests(
         return;
     }
 
-    Y_ABORT_UNLESS(
-        nodeState->Cache.HasUnflushedRequests(),
-        "Node %lu has no unflushed requests but has live handles",
-        nodeId);
-
     const ui64 maxSequenceId = nodeState->Barriers.empty()
                                    ? Max<ui64>()
                                    : nodeState->Barriers.cbegin()->first;
