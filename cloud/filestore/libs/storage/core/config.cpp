@@ -355,6 +355,15 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FastShardServerPort,                    ui32,   0                     )\
                                                                                \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
+                                                                               \
+    xxx(SoftBackpressureEnabled,                bool,   false                 )\
+    xxx(FlushThresholdForBackpressureSoft,             ui32,    32_MB         )\
+    xxx(CleanupThresholdForBackpressureSoft,           ui32,    8192          )\
+    xxx(CompactionThresholdForBackpressureSoft,        ui32,    50            )\
+    xxx(FlushBytesThresholdForBackpressureSoft,        ui64,    32_MB         )\
+    xxx(FlushBytesItemCountThresholdForBackpressureSoft,                       \
+                                                       ui64,    125'000       )\
+    xxx(CollectGarbageThresholdForBackpressureSoft,    ui64,    256_GB        )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

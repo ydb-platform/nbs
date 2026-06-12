@@ -435,9 +435,11 @@ private:
         const NProto::TSessionEvent& event);
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
+    TBackpressureThresholds BuildBackpressureSoftThresholds() const;
     TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
+    void UpdateWriteCostMultiplierDueToBackpressure();
 
     void ExecuteTx_AddBlob_Write(
         const NActors::TActorContext& ctx,
