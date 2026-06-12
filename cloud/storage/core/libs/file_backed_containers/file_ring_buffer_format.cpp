@@ -1,11 +1,10 @@
 #include "file_ring_buffer_format.h"
 
+#include <util/digest/numeric.h>
 #include <util/generic/utility.h>
 #include <util/system/align.h>
 #include <util/system/compiler.h>
 #include <util/system/yassert.h>
-
-#include <atomic>
 
 namespace NCloud {
 
@@ -58,7 +57,7 @@ public:
     // Treats memory at position pos as TEntryHeader and memory right after
     // the header as entry data.
     // Checks for alignment if RequireAlignment is set.
-    // Ensures that [pos, pos + sizeof(TEntryHeader + dataSize) is within data
+    // Ensures that [pos, pos + sizeof(TEntryHeader) + dataSize is within data
     // bounds.
     // Returns pointer to entry data or nullptr if it is outside data bounds
     // or is not aligned.
@@ -111,6 +110,8 @@ private:
         ui32 Checksum = 0;
     };
 
+    static_assert(sizeof(TEntryHeader) == sizeof(ui64));
+
     TData<TEntryHeader, false> Data;
 
     static constexpr ui32 MaxDataSize = (1U << 31U) - 1U;
@@ -147,8 +148,9 @@ public:
         ui64 pos,
         const TFileRingBufferEntryHeader& header) override
     {
-        Y_ABORT_UNLESS(header.DataSize <= MaxDataSize);
-        Y_ABORT_UNLESS(header.Tag == 0);
+        if (header.DataSize > MaxDataSize || header.Tag != 0) {
+            return false;
+        }
 
         auto* eh = Data.GetEntryHeaderPtr(pos);
         if (eh == nullptr) {
@@ -210,6 +212,8 @@ private:
         ui32 Checksum = 0;
     };
 
+    static_assert(sizeof(TEntryHeader) == sizeof(ui64));
+
     TData<TEntryHeader, false> Data;
 
 public:
@@ -243,8 +247,9 @@ public:
         ui64 pos,
         const TFileRingBufferEntryHeader& header) override
     {
-        Y_ABORT_UNLESS(header.DataSize <= MaxDataSize);
-        Y_ABORT_UNLESS(header.Tag <= MaxTag);
+        if (header.DataSize > MaxDataSize || header.Tag > MaxTag) {
+            return false;
+        }
 
         auto* eh = Data.GetEntryHeaderPtr(pos);
         if (eh == nullptr) {
@@ -287,12 +292,7 @@ class TFileRingBufferDataProcessorV6
     , public IFileRingBufferDataProcessor
 {
 private:
-    struct TEntryHeader
-    {
-        std::atomic<ui64> Value = 0;
-    };
-
-    TData<TEntryHeader, true> Data;
+    TData<ui64, true> Data;
 
 public:
     explicit TFileRingBufferDataProcessorV6(std::span<char> data)
@@ -313,13 +313,13 @@ public:
         if (eh == nullptr) {
             return {};
         }
-        ui64 value = eh->Value.load(std::memory_order_relaxed);
+        ui64 value = __atomic_load_n(eh, __ATOMIC_RELAXED);
         ui32 lower = static_cast<ui32>(value);
         ui32 upper = static_cast<ui32>(value >> 32U);
 
         return {
             .DataSize = lower & MaxDataSize,
-            .DataChecksum = upper ^ lower,
+            .DataChecksum = upper ^ IntHash(lower),
             .Tag = (lower >> TagShift) & MaxTag,
             .FreeFlag = (lower & FreeFlagMask) != 0,
         };
@@ -329,8 +329,9 @@ public:
         ui64 pos,
         const TFileRingBufferEntryHeader& header) override
     {
-        Y_ABORT_UNLESS(header.DataSize <= MaxDataSize);
-        Y_ABORT_UNLESS(header.Tag <= MaxTag);
+        if (header.DataSize > MaxDataSize || header.Tag > MaxTag) {
+            return false;
+        }
 
         auto* eh = Data.GetEntryHeaderPtr(pos);
         if (eh == nullptr) {
@@ -339,18 +340,17 @@ public:
 
         ui32 lower = header.DataSize | (header.Tag << TagShift) |
                      (header.FreeFlag ? FreeFlagMask : 0);
-        ui32 upper = header.DataChecksum ^ lower;
+        ui32 upper = header.DataChecksum ^ IntHash(lower);
+        ui64 value = (static_cast<ui64>(upper) << 32U) | lower;
 
-        eh->Value.store(
-            (static_cast<ui64>(upper) << 32U) | lower,
-            std::memory_order_relaxed);
+        __atomic_store_n(eh, value, __ATOMIC_RELAXED);
 
         return true;
     }
 
     ui64 GetEntrySize(ui64 dataSize) const override
     {
-        return sizeof(TEntryHeader) + AlignUp(dataSize, sizeof(ui64));
+        return sizeof(ui64) + AlignUp(dataSize, sizeof(ui64));
     }
 
     ui64 GetMaxAllocationByteCount(ui64 maxEntrySize) const override

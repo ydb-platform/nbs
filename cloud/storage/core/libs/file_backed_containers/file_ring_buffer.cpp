@@ -184,6 +184,12 @@ private:
             return TEntryInfo::CreateInvalid();
         }
 
+        if (eh.FreeFlag && eh.DataChecksum != 0 &&
+            Header()->Version >= EVersion::V6)
+        {
+            return TEntryInfo::CreateInvalid();
+        }
+
         return TEntryInfo::Create(pos, eh, data);
     }
 
@@ -633,6 +639,7 @@ public:
         }
 
         auto eh = Data->ReadEntryHeader(it->second);
+        eh.DataChecksum = 0;
         eh.FreeFlag = true;
         Data->WriteEntryHeader(it->second, eh);
 
