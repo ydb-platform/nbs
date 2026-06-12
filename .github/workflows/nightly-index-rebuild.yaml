@@ -20,7 +20,7 @@ jobs:
       if: ${{ always() }}
       run: git config core.sparseCheckout false
       continue-on-error: true
-    - name: Prepare AWS CLI
+    - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:
         s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
@@ -30,6 +30,7 @@ jobs:
         s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
         folder_prefix: nebius-
         build_preset: "release"
+        user: github
     - name: Create indices for main repo
       if: ${{ github.repository == 'ydb-platform/nbs'}}
       shell: bash

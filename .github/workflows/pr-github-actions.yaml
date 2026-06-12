@@ -328,8 +328,8 @@ jobs:
         if: ${{ env.ACT != 'true' && always() }}
         run: |
           set -x
-          aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
-          aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
       - name: build pytest summary table
         if: ${{ always() }}
         id: pytest-summary
@@ -482,13 +482,14 @@ jobs:
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)" >> "$GITHUB_OUTPUT"
           echo "S3_WEBSITE_PREFIX=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
           echo "OUTPUT_FILE=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
+          chown github:github $TMP_OUT
           chmod 644 $TMP_OUT
       - name: upload workflow lint results
         if: ${{ always() }}
         id: upload-workflow-lint-to-s3
         run: |
           set -x
-          aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
       - name: comment on issue
         uses: actions/github-script@v9
         if: ${{ github.event_name == 'pull_request' }}

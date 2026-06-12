@@ -597,7 +597,9 @@ func newInMemoryTestShardBackup(
 
 func (i inMemoryTestShardBackup) restore(ctx context.Context) {
 	for _, node := range i.nodesInShard {
-		i.restoreNode(ctx, node)
+		for attempt := 0; attempt < 2; attempt++ {
+			i.restoreNode(ctx, node)
+		}
 	}
 
 	for _, node := range i.nodesInShard {
@@ -606,7 +608,9 @@ func (i inMemoryTestShardBackup) restore(ctx context.Context) {
 		}
 
 		for _, child := range i.nodesByParent[node.NodeID] {
-			i.createChildRef(ctx, node.NodeID, child)
+			for attempt := 0; attempt < 2; attempt++ {
+				i.createChildRef(ctx, node.NodeID, child)
+			}
 		}
 	}
 }

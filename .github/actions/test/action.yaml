@@ -106,8 +106,17 @@ runs:
       env:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
+        mkdir -p /coredumps
+        chmod 1777 /coredumps
+        echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" | sudo tee -a /etc/sysctl.conf
+        echo "kernel.core_uses_pid=1" | sudo tee -a /etc/sysctl.conf
+        echo "fs.suid_dumpable=0" | sudo tee -a /etc/sysctl.conf
+        sudo sysctl -p
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR \
+                               $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
+                               $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
         # shellcheck disable=SC2193
         if [ "$CLEAN_YA_DIR" == "yes" ] && [ -d /home/github/.ya/ ]; then
             echo "Cleaning ya dir"
@@ -124,6 +133,7 @@ runs:
         echo -n "$BAZEL_REMOTE_PASSWORD" > "$BAZEL_REMOTE_PASSWORD_FILE"
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
+        chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
     - name: ya test
       id: check_test_results
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -251,13 +261,13 @@ runs:
             RETRIES=$((RETRIES - 1))
             i=$((i + 1))
             RETRY_LOG_DIR="$LOG_DIR/$i"
-            mkdir -p "$RETRY_LOG_DIR"
+            sudo -E -H -u github mkdir -p "$RETRY_LOG_DIR"
             echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
             echo "::group::ya-make-test-${i}"
             EXIT_CODE_FILE=$(mktemp)
             set +e
             {
-                ./ya make "${test_size[@]/#/--test-size=}" \
+                sudo -E -H -u github ./ya make "${test_size[@]/#/--test-size=}" \
                     "${test_type[@]/#/--test-type=}" \
                     "${extra_params[@]}" \
                     --junit "${JUNIT_REPORT_XML}.${i}" \
@@ -315,7 +325,7 @@ runs:
 
             echo "::group::s3-sync-logs"
             if [ "$SYNC_TO_S3" = "true" ]; then
-                aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}${i}/"
+                sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}${i}/"
             fi
             echo "::endgroup::"
 
@@ -330,10 +340,10 @@ runs:
                 MUTED_CONFIG=".github/config/muted_ya.txt"
                 echo "::endgroup::"
                 echo "::group::postprocess-junit-${i}"
-                mkdir -p "$ARTIFACTS_DIR/${COMPONENT_DIR}"
-                mkdir -p "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}"
-                gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}orig_junit.${i}.xml.gz"
-                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                sudo -E -H -u github mkdir -p "$ARTIFACTS_DIR/${COMPONENT_DIR}"
+                sudo -E -H -u github mkdir -p "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}"
+                sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}orig_junit.${i}.xml.gz"
+                sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                     python3 -m scripts.tests.transform_ya_junit -i \
                     -m "${MUTED_CONFIG}" \
                     --ya-out "$OUT_DIR" \
@@ -352,7 +362,7 @@ runs:
                 FAIL_CHECKER_EXIT_CODE_FILE=$(mktemp)
                 set +e
                 {
-                    PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                    sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                         python3 -m scripts.tests.fail_checker "${JUNIT_REPORT_XML}.${i}"
                     echo $? > "$FAIL_CHECKER_EXIT_CODE_FILE"
                 } |& tee fail-checker-output.log
@@ -375,7 +385,7 @@ runs:
                 if [ "$FAIL_CHECKER_RC" -ne 0 ]; then
                     NEED_COPYING=1
                     echo "::group::Copy-failed-tests-data"
-                    PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                    sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                         python3 -m scripts.tests.fail_checker "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
                         echo $path
                         find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
@@ -387,6 +397,7 @@ runs:
                 fi
             fi
             if [ "$NEED_COPYING" -ne "0" ]; then
+                chown -R github:github "$TESTS_DATA_DIR"
                 echo "::group::remove-binaries-from-tests-data-dir"
                 find "$TESTS_DATA_DIR" -type f -print0 | while IFS= read -r -d '' file; do
                     if file --mime-type "$file" | grep -q 'application/x-executable'; then
@@ -415,16 +426,16 @@ runs:
                 echo "::group::s3-sync-test-data"
                 if [ "$SYNC_TO_S3" = "true" ]; then
                     du -h "$TESTS_DATA_DIR/"
-                    aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${COMPONENT_DIR}${i}/"
+                    sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${COMPONENT_DIR}${i}/"
                 fi
                 touch "$LOG_DIR/${i}_test_data_synced"
                 echo "::endgroup::"
             fi
             # shellcheck disable=SC2024
-            gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}transformed_junit.${i}.xml.gz"
+            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}transformed_junit.${i}.xml.gz"
 
             echo "::group::write-summary-${i}"
-            mkdir -p $ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}
+            sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}
 
             cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
 
@@ -451,7 +462,8 @@ runs:
             fi
 
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
-            PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+            chown github:github $SUMMARY_OUT_ENV_PATH
+            sudo -E -H -u github env PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tests.generate_summary \
                 --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
                 --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
@@ -478,7 +490,7 @@ runs:
             fi
 
             echo "::group::s3-sync"
-            aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+            sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
             touch "$LOG_DIR/${i}_artifacts_synced"
             echo "::endgroup::"
 
@@ -504,26 +516,24 @@ runs:
                 echo "failed_tests=yes"
             } >> "$GITHUB_OUTPUT"
         fi
-    - name: collect VM system logs
+    - name: copying system files
       if: ${{ always() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        mkdir -p "$LOG_DIR/system_logs"
-        if command -v actions-runner-collect-system-logs.sh > /dev/null; then
-            sudo -n actions-runner-collect-system-logs.sh || true
-        else
-            sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || cp /var/log/kern.log "$LOG_DIR/kern.log" || true
-            # shellcheck disable=SC2024
-            sudo dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
-            sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
-            sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
-        fi
+        sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || true
+        sudo chown -R github:github "$LOG_DIR/kern.log" || true
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
       if: ${{ always() }}
       run: |
         echo "::group::dump-vm-artifacts"
-        aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
+        sudo mkdir -p "$LOG_DIR/system_logs"
+        # shellcheck disable=SC2024
+        sudo dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
+        sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
+        sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
+        sudo chown -R github:github "$LOG_DIR/system_logs/" || true
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
         echo "::endgroup::"
     - name: sync logs in case of cancel and additional debug info
       if: ${{ cancelled() }}
@@ -540,7 +550,9 @@ runs:
         perf report --stdio -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf_report.log" 2>&1 || true
         perf script -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf.out" 2>&1 || true
 
-        aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
+        sudo chown -R github:github "$LOG_DIR/"
+
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
 
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
             echo "Syncing artifacts dir"
@@ -554,7 +566,7 @@ runs:
                 done
                 echo "::endgroup::"
             fi
-            aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
+            sudo -E -H -u github aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
         fi
     - name: Finish with END_EXIT_CODE
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -570,7 +582,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
-        aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/"
         echo "::endgroup::"
     - name: Display links to s3 summary
       if: always()
@@ -639,9 +651,9 @@ runs:
             if [ "$EXTENSION" = "tar.xz" ]; then COMPRESS_ARGS='pixz -1'; fi
             if [ "$EXTENSION" = "tar.bz2" ]; then COMPRESS_ARGS=pbzip2; fi
             if [ "$EXTENSION" = "tar.gz" ]; then COMPRESS_ARGS=pigz; fi
-            time tar -S -C /home/github -I "$COMPRESS_ARGS" -c -f /home/github/tmp/ya.${EXTENSION} /home/github/.ya
+            sudo -E -H -u github time tar -S -C /home/github -I "$COMPRESS_ARGS" -c -f /home/github/tmp/ya.${EXTENSION} /home/github/.ya
             ls -lsha /home/github/tmp/ya.${EXTENSION}
-            time aws s3 cp --no-progress /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}"
+            sudo -E -H -u github time aws s3 cp --no-progress /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}"
             echo "${S3_WEBSITE_PREFIX}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_web_url.txt
             echo "${S3_BUCKET_PATH}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_s3_url.txt
             df -h
@@ -664,7 +676,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::generate-listing"
-        python3 .github/scripts/index.py "$S3_BUCKET_PATH/" --generate-indexes --apply
+        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/" --generate-indexes --apply
         echo "::endgroup::"
     - name: show free space
       if: always()
@@ -676,6 +688,7 @@ runs:
       shell: bash
       run: |
         echo "::group::clean-up"
-        rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
-               $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
+        sudo -E -H -u github rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
+                                    $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
+        chown -R root:root $GITHUB_WORKSPACE
         echo "::endgroup::"
