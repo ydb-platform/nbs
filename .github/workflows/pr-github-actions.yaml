@@ -576,6 +576,58 @@ jobs:
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
 
+  nightly-builds:
+    needs: [check-running-allowed, check-trigger-label]
+    if: >-
+      ${{
+        needs.check-running-allowed.outputs.result == 'true' &&
+        needs.check-trigger-label.outputs.allowed == 'true' &&
+        (
+          contains(github.event.pull_request.labels.*.name, 'nightly-tests') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-asan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-tsan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-msan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-ubsan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-sanitizers') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-all')
+        )
+      }}
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    timeout-minutes: 540
+    steps:
+      - name: checkout workflow scripts
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          clean: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+      - name: Prepare s3cmd
+        uses: ./.github/actions/s3cmd
+        continue-on-error: true
+        with:
+          s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: relwithdebinfo
+      - name: Dispatch and collect nightly builds
+        uses: ./.github/actions/nightly_pr_check
+        with:
+          github_token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+      - name: Cancel dispatched nightly builds
+        if: ${{ cancelled() }}
+        uses: ./.github/actions/nightly_pr_check
+        with:
+          mode: cancel
+          github_token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+
   finalize-build-and-test-comments:
     needs: [check-running-allowed, create-build-and-test-target-var, build_and_test]
     if: ${{ always() && needs.check-running-allowed.outputs.result == 'true' && needs.create-build-and-test-target-var.outputs.matrix_include != '' }}
