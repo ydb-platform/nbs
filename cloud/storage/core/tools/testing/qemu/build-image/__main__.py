@@ -75,13 +75,15 @@ def write_user_data(filename, args):
             "acl",
             "btop",
             "fio",
+            "ibverbs-utils",  # rdma
             "iotop",
             "mc",
-            "mysql-server",
             "nfs-common",
-            "postgresql",
+            "perftest",
+            "rdma-core",
             "sysbench",
             "tmux",
+            "util-linux",  # flock
             "xattr",
         ]
 
@@ -135,16 +137,14 @@ def write_user_data(filename, args):
             'append': True,
         })
 
+    if args.release in ["noble"]:
+        user_data['packages'].append("linux-generic-hwe-24.04")
+        # linux-generic-hwe-24.04-edge for linux 7+ kernel
+
     if args.plain_pwd:
         user_data['runcmd'].append(
             "echo '### use login: %s password: qemupass' >> /etc/issue" % args.user,
         )
-
-    if args.with_rdma:
-        user_data['runcmd'].extend([
-            "apt install -y linux-modules-extra-`uname -r` rdma-core ibverbs-utils perftest",
-            "bash -c 'echo rdma_rxe >> /etc/modules'",
-        ])
 
     with open(filename, 'w') as f:
         f.write('#cloud-config\n' + yaml.dump(user_data))
@@ -229,7 +229,7 @@ def customize(args, cidata_iso):
             "-cpu", "cortex-a72",
         ]
 
-    subprocess.check_call(cmd, timeout=25 * 60)
+    subprocess.check_call(cmd, timeout=60 * 60)
 
 
 def main(args):
@@ -259,7 +259,6 @@ def parse_args():
                         required=True)
     parser.add_argument("--plain-pwd", help="Use password for user login", action='store_true')
     parser.add_argument("--no-resize", help="do not attempt to resize partitions", action='store_true')
-    parser.add_argument("--with-rdma", help="Install rdma packages", action='store_true')
     parser.add_argument(
         "--packages",
         help="Comma-separated list of packages to install (overrides default package list)",
