@@ -118,6 +118,11 @@ unzip awscliv2.zip
 sudo ./aws/install
 rm -rf awscliv2.zip
 
+# mime types for ya make logs and other outputs
+MIME_TYPES_PLAINTEXT_LINE="text/plain out err log stderr stdout trace jsonl backtrace args"
+MIME_TYPES_FILE='/etc/mime.types'
+grep -qF -- "$MIME_TYPES_PLAINTEXT_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPES_PLAINTEXT_LINE" | tee -a "$MIME_TYPES_FILE" || true
+
 adduser --gecos "" --disabled-password --shell /bin/bash "${USER_TO_CREATE}"
 set +x
 usermod --password "${PASSWORD_HASH//$/\\$}" "${USER_TO_CREATE}"

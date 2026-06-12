@@ -19,6 +19,13 @@ except ImportError:
 FORCE_TEXT_PLAIN_PATTERNS = (
     r".*stdout.*",
     r".*stderr.*",
+    r".*\.log",
+    r".*\.out",
+    r".*\.err",
+    r".*\.trace",
+    r".*\.jsonl",
+    r".*\.backtrace",
+    r".*\.args",
 )
 
 
