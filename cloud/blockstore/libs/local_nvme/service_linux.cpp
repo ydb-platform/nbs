@@ -662,7 +662,7 @@ auto TLocalNVMeService::GetVfioDevName(TCont* c, const TString& pciAddress)
     // appear.
     // Retry to avoid racing with asynchronous vfio<N> creation.
 
-    for (ui32 attempt = 0;; ++attempt) {
+    for (ui32 attempt = 0; attempt != VfioDeviceMaxRetries; ++attempt) {
         auto [vfioDevice, error] = SafeExecute<TResultOrError<TString>>(
             [&] { return SysFs->GetVfioDeviceForPCIDevice(pciAddress); });
 
@@ -670,32 +670,28 @@ auto TLocalNVMeService::GetVfioDevName(TCont* c, const TString& pciAddress)
             return error;
         }
 
-        if (!vfioDevice && attempt < VfioDeviceMaxRetries) {
-            STORAGE_DEBUG(
-                "vfio device for PCI address "
-                << pciAddress << " was not found, retry (attempts: "
-                << attempt + 1 << "/" << VfioDeviceMaxRetries << ")");
-
-            const int ec = c->SleepT(VfioDeviceRetryDelay);
-            if (ec == ECANCELED) {
-                return ServiceDestroyedError;
-            }
-
-            Y_DEBUG_ABORT_UNLESS(ec == ETIMEDOUT, "SleepT: %d", ec);
-
-            continue;
+        if (vfioDevice) {
+            return vfioDevice;
         }
 
-        if (!vfioDevice) {
-            return MakeError(
-                E_NOT_FOUND,
-                TStringBuilder() << "vfio device for PCI address " << pciAddress
-                                 << " was not found after "
-                                 << VfioDeviceMaxRetries << " retries");
+        STORAGE_DEBUG(
+            "vfio device for PCI address "
+            << pciAddress << " was not found, retry (attempts: " << attempt + 1
+            << "/" << VfioDeviceMaxRetries << ")");
+
+        const int ec = c->SleepT(VfioDeviceRetryDelay);
+        if (ec == ECANCELED) {
+            return ServiceDestroyedError;
         }
 
-        return vfioDevice;
+        Y_DEBUG_ABORT_UNLESS(ec == ETIMEDOUT, "SleepT: %d", ec);
     }
+
+    return MakeError(
+        E_NOT_FOUND,
+        TStringBuilder() << "vfio device for PCI address " << pciAddress
+                         << " was not found after " << VfioDeviceMaxRetries
+                         << " retries");
 }
 
 auto TLocalNVMeService::GetNVMeCtrlPath(const NProto::TNVMeDevice& device)
