@@ -221,7 +221,7 @@ public:
     {
         return {
             .MaxAllocationByteCount = GetMaxAllocationByteCount(Data.Size()),
-            .MaxTag = 0,
+            .MaxTag = MaxTag,
         };
     }
 
@@ -303,7 +303,7 @@ public:
     {
         return {
             .MaxAllocationByteCount = GetMaxAllocationByteCount(Data.Size()),
-            .MaxTag = 0,
+            .MaxTag = MaxTag,
         };
     }
 

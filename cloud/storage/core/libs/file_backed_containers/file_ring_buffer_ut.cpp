@@ -1154,6 +1154,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
             auto rb = std::make_unique<TFileRingBuffer>(args);
 
+            UNIT_ASSERT_VALUES_EQUAL(7, rb->GetMaxTag());
+
             const TString data1 = "abc";
             const TString data2 = "defg";
 
