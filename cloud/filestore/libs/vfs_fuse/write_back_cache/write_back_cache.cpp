@@ -439,14 +439,26 @@ private:
             // It is not possible to flush data when all handles are released
             // TODO(#6201): this will not be needed after adding support for
             // handleless IO
-            State.FlushFailed(
+            auto retryStatus = State.FlushFailed(
                 flushState->GetNodeId(),
                 MakeError(
                     E_REJECTED,
                     "There are no known live handles to flush data for node "
                     "%lu",
                     flushState->GetNodeId()));
-            return;
+
+            // A live handle could appear between GetLiveHandle and FlushFailed
+            if (retryStatus == EFlushRetryStatus::ShouldNotRetry) {
+                return;
+            }
+
+            handle = State.GetLiveHandle(flushState->GetNodeId());
+
+            Y_ABORT_UNLESS(
+                handle != NProto::E_INVALID_HANDLE,
+                "There are no known live handles to flush data for node %lu, "
+                "but FlushFailed returned ShouldRetry",
+                flushState->GetNodeId());
         }
 
         auto requests = flushState->BeginFlush();
