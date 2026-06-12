@@ -40,7 +40,7 @@ void TDiskAgentMock::HandleAcquireNVMeDevice(
 {
     auto* msg = ev->Get();
 
-    LocalNVMeService->AcquireNVMeDevice(msg->SerialNumber)
+    LocalNVMeService->AcquireNVMeDevice(msg->SerialNumber, TString())
         .Subscribe(
             [actorSystem = TActivationContext::ActorSystem(),
              replyTo = ev->Sender,
@@ -69,7 +69,7 @@ void TDiskAgentMock::HandleReleaseNVMeDevice(
 {
     auto* msg = ev->Get();
 
-    LocalNVMeService->ReleaseNVMeDevice(msg->SerialNumber)
+    LocalNVMeService->ReleaseNVMeDevice(msg->SerialNumber, TString())
         .Subscribe(
             [actorSystem = TActivationContext::ActorSystem(),
              replyTo = ev->Sender,
