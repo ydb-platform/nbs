@@ -998,6 +998,57 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             UNIT_ASSERT_VALUES_EQUAL(2, result.Replicas[1].size());
         });
     }
+
+    Y_UNIT_TEST(ShouldQueryOnlyAttachedPathsWhenAttachDetachEnabled)
+    {
+        auto agent = AgentConfig(1, {
+            Device("dev-1", "uuid-1"),
+            Device("dev-2", "uuid-2"),
+            Device("dev-3", "uuid-3"),
+        });
+
+        (*agent.MutablePathAttachStates())["dev-1"] =
+            NProto::PATH_ATTACH_STATE_ATTACHED;
+        (*agent.MutablePathAttachStates())["dev-2"] =
+            NProto::PATH_ATTACH_STATE_DETACHED;
+        // dev-3 has no path attach state entry.
+
+        auto makeState = [&] (bool attachDetachEnabled) {
+            auto storageConfig = CreateDefaultStorageConfigProto();
+            storageConfig.SetAttachDetachPathsEnabled(attachDetachEnabled);
+
+            return TDiskRegistryStateBuilder()
+                .WithStorageConfig(std::move(storageConfig))
+                .WithKnownAgents({agent})
+                .Build();
+        };
+
+        {
+            auto statePtr = makeState(false);
+            auto [infos, error] = statePtr->QueryAvailableStorage(
+                agent.GetAgentId(),
+                TString {},
+                NProto::DEVICE_POOL_KIND_DEFAULT);
+            UNIT_ASSERT(!HasError(error));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, infos.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, infos[0].ChunkCount);
+            UNIT_ASSERT_VALUES_EQUAL(3, infos[0].FreeChunks);
+        }
+
+        {
+            auto statePtr = makeState(true);
+            auto [infos, error] = statePtr->QueryAvailableStorage(
+                agent.GetAgentId(),
+                TString {},
+                NProto::DEVICE_POOL_KIND_DEFAULT);
+            UNIT_ASSERT(!HasError(error));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, infos.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, infos[0].ChunkCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, infos[0].FreeChunks);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

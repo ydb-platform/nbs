@@ -2,7 +2,12 @@ import logging
 import yatest.common as common
 import time
 
-from .common import get_mount_paths, get_qemu_kvm, get_qemu_firmware
+from .common import (
+    get_mount_paths,
+    get_qemu_bios,
+    get_qemu_firmware,
+    get_qemu_kvm,
+)
 from .qemu import Qemu
 
 EMU_NET = "10.0.2.0/24"
@@ -16,6 +21,7 @@ class QemuWithMigration:
         self.qemu = Qemu(
             qemu_kvm=get_qemu_kvm(),
             qemu_firmware=get_qemu_firmware(),
+            qemu_bios=get_qemu_bios(),
             rootfs=common.build_path("cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img"),
             kernel=None,
             kcmdline=None,

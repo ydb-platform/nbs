@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import tarfile
 import yatest.common as common
 
@@ -89,9 +90,17 @@ def _unpack_qemu_bindir(bindir):
         tf.extractall(bindir)
 
 
+def is_arm():
+    return platform.machine().lower() in ("aarch64", "arm64")
+
+
 def get_qemu_kvm():
     bindir = _get_qemu_bindir()
-    qemu_kvm = os.path.join(bindir, "usr", "bin", "qemu-system-x86_64")
+    qemu_system_bin = "qemu-system-x86_64"
+    if is_arm():
+        qemu_system_bin = "qemu-system-aarch64"
+
+    qemu_kvm = os.path.join(bindir, "usr", "bin", qemu_system_bin)
     if not os.path.exists(qemu_kvm):
         _unpack_qemu_bindir(bindir)
 
@@ -105,3 +114,18 @@ def get_qemu_firmware():
         _unpack_qemu_bindir(bindir)
 
     return qemu_firmware
+
+
+def get_qemu_bios(is_arm_host=None):
+    if is_arm_host is None:
+        is_arm_host = is_arm()
+
+    if not is_arm_host:
+        return None
+
+    bindir = _get_qemu_bindir()
+    qemu_bios = os.path.join(bindir, "usr", "share", "qemu-efi-aarch64", "QEMU_EFI.fd")
+    if not os.path.exists(qemu_bios):
+        _unpack_qemu_bindir(bindir)
+
+    return qemu_bios
