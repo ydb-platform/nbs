@@ -285,16 +285,17 @@ private:
         return Header()->Version != Args.Version;
     }
 
-    bool TryMigrate()
+    void TryMigrate()
     {
-        if (!IsMigrationNeeded()) {
-            return true;
+        if (!IsMigrationNeeded() || IsCorrupted()) {
+            return;
         }
 
+        // Migration to any version can be performed when the buffer is empty
         if (Empty()) {
             Header()->Version = Args.Version;
             CreateDataProcessor(Args.Version);
-            return true;
+            return;
         }
 
         // Transition V4 -> V5 can be made without emptying the buffer
@@ -309,16 +310,6 @@ private:
 
             Header()->Version = EVersion::V5;
         }
-
-        return !IsMigrationNeeded();
-    }
-
-    // Migration to any version can be performed when the buffer is empty
-    void Migrate()
-    {
-        Y_ABORT_UNLESS(Empty());
-        Header()->Version = Args.Version;
-        CreateDataProcessor(Args.Version);
     }
 
     void ResizeMetadata(ui64 desiredMetadataCapacity)
@@ -404,6 +395,10 @@ private:
         } else {
             Header()->ReadPos = front.ActualPos;
         }
+
+        if (IsMigrationNeeded()) {
+            TryMigrate();
+        }
     }
 
     void WriteSlackSpaceMarker(ui64 pos)
@@ -424,7 +419,7 @@ private:
     }
 
 public:
-    TImpl(const TFileRingBufferArgs& args)
+    explicit TImpl(const TFileRingBufferArgs& args)
         : Args(args)
         , Map(args.FilePath, TMemoryMapCommon::oRdWr)
     {
@@ -470,14 +465,8 @@ public:
                 }
             });
 
-        if (IsCorrupted()) {
-            return;
-        }
-
-        EraseFreeEntriesFromFront();
-
-        if (IsMigrationNeeded()) {
-            TryMigrate();
+        if (!IsCorrupted()) {
+            EraseFreeEntriesFromFront();
         }
     }
 
@@ -517,7 +506,7 @@ public:
                 "Zero size allocations are not allowed");
         }
 
-        if (IsMigrationNeeded() && !TryMigrate()) {
+        if (IsMigrationNeeded()) {
             // Return "storage is full" error.
             // Migration will happen when the buffer is emptied.
             return nullptr;
@@ -799,13 +788,13 @@ public:
         return MaxObservedEntryByteCount;
     }
 
-    ui64 GetAvailableByteCount()
+    ui64 GetAvailableByteCount() const
     {
         if (IsCorrupted()) {
             return 0;
         }
 
-        if (IsMigrationNeeded() && !TryMigrate()) {
+        if (IsMigrationNeeded()) {
             return 0;
         }
 
