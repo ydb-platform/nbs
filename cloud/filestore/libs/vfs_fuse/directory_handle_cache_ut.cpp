@@ -367,6 +367,38 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         UNIT_ASSERT_GT(memoryLimiterRejectionCount->Val(), 0);
     }
+
+    Y_UNIT_TEST(ShouldInvalidateEntriesForDirectoryHandles)
+    {
+        auto cache = TDirectoryHandleCache(Log, CreateStats(), nullptr);
+
+        auto a = cache.FindHandle(cache.CreateHandle(42));
+        auto b = cache.FindHandle(cache.CreateHandle(43));
+        auto aa = cache.FindHandle(cache.CreateHandle(42));
+
+        UNIT_ASSERT(a);
+        UNIT_ASSERT(b);
+        UNIT_ASSERT(aa);
+
+        cache.InvalidateEntries(42, 7);
+
+        UNIT_ASSERT_VALUES_EQUAL(7, a->GetEntryVersion());
+        UNIT_ASSERT_VALUES_EQUAL(1, b->GetEntryVersion());
+        UNIT_ASSERT_VALUES_EQUAL(7, aa->GetEntryVersion());
+
+        cache.InvalidateEntries(42, 3);
+
+        UNIT_ASSERT_VALUES_EQUAL(7, a->GetEntryVersion());
+        UNIT_ASSERT_VALUES_EQUAL(1, b->GetEntryVersion());
+        UNIT_ASSERT_VALUES_EQUAL(7, aa->GetEntryVersion());
+
+        cache.InvalidateEntries(43, 8);
+
+        UNIT_ASSERT_VALUES_EQUAL(7, a->GetEntryVersion());
+        UNIT_ASSERT_VALUES_EQUAL(8, b->GetEntryVersion());
+        UNIT_ASSERT_VALUES_EQUAL(7, aa->GetEntryVersion());
+    }
+
 }
 
 }   // namespace NCloud::NFileStore::NFuse

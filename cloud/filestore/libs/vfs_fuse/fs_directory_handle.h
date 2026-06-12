@@ -25,7 +25,7 @@ struct TDirectoryContent
     TBufferPtr Content = nullptr;
     size_t Offset = 0;
     size_t Size = 0;
-    ui64 AttrVersion = 0;
+    ui64 CacheVersion = 0;
 
     const char* GetData() const
     {
@@ -71,12 +71,13 @@ private:
     struct TContent
     {
         TBufferPtr Buffer;
-        ui64 AttrVersion = 0;
+        ui64 CacheVersion = 0;
     };
 
     TString Cookie;
     TMap<ui64, TContent> Content;
     ui64 UpdateVersion = 0;
+    ui64 EntryVersion = 1;
     ui64 SerializedSize = 0;
 
     mutable TMutex Lock;
@@ -91,7 +92,7 @@ public:
         size_t size,
         size_t offset,
         const TBufferPtr& content,
-        ui64 attrVersion,
+        ui64 cacheVersion,
         TString cookie);
 
     TMaybe<TDirectoryContent>
@@ -102,6 +103,9 @@ public:
     // Returns the handle's current serialized size and chunk count.
     TDirectoryHandleStats GetStats() const;
     bool IsEmpty() const;
+
+    ui64 GetEntryVersion() const;
+    void InvalidateEntries(ui64 version);
 
     // not thread safe, use only during restoration from storage
     void ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log);

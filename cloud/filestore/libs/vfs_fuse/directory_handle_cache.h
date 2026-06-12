@@ -44,6 +44,8 @@ public:
         const std::shared_ptr<TDirectoryHandle>& handle,
         const TDirectoryHandleChunk& handleChunk);
 
+    void InvalidateEntries(fuse_ino_t directoryIno, ui64 version);
+
     void Clear();
     void Reset();
 };

@@ -156,7 +156,7 @@ void TFileSystem::Create(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -170,6 +170,9 @@ void TFileSystem::Create(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                if (HasFlag(flags, NProto::TCreateHandleRequest::E_CREATE)) {
+                    self->InvalidateDirectoryEntriesInCache(parent);
+                }
                 self->ReplyCreateWithCache(
                     *callContext,
                     error,

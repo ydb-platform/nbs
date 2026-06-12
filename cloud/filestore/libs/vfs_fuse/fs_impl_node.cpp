@@ -37,7 +37,7 @@ void TFileSystem::Lookup(
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (auto future) {
@@ -129,6 +129,7 @@ void TFileSystem::MkDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntriesInCache(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -170,6 +171,7 @@ void TFileSystem::RmDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntriesInCache(parent);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
@@ -233,6 +235,7 @@ void TFileSystem::MkNode(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntriesInCache(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -274,6 +277,7 @@ void TFileSystem::Unlink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntriesInCache(parent);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
@@ -318,6 +322,7 @@ void TFileSystem::Rename(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntriesInCache(parent, newparent);
                 // TODO: update tree
                 self->ReplyError(*callContext, error, req, 0);
             }
@@ -359,6 +364,7 @@ void TFileSystem::SymLink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntriesInCache(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -403,6 +409,7 @@ void TFileSystem::Link(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntriesInCache(newparent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
