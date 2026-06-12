@@ -140,7 +140,7 @@ runs:
         fi
 
         if [ "${has_report}" = "true" ] && [ "${ACT:-}" != "true" ] && [ -n "${S3_BUCKET_PATH:-}" ]; then
-            aws s3 cp --acl public-read --follow-symlinks --no-progress "${HTML_PATH}" "$S3_BUCKET_PATH/test_reports/${HTML_PATH}"
-            aws s3 cp --acl public-read --follow-symlinks --no-progress "${JUNIT_PATH}" "$S3_BUCKET_PATH/test_reports/${JUNIT_PATH}"
-            aws s3 cp --acl public-read --follow-symlinks --no-progress "${LOG_PATH}" "$S3_BUCKET_PATH/test_reports/${LOG_PATH}"
+            sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "${HTML_PATH}" "$S3_BUCKET_PATH/test_reports/${HTML_PATH}"
+            sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "${JUNIT_PATH}" "$S3_BUCKET_PATH/test_reports/${JUNIT_PATH}"
+            sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "${LOG_PATH}" "$S3_BUCKET_PATH/test_reports/${LOG_PATH}"
         fi
