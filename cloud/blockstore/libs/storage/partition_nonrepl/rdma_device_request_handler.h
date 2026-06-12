@@ -144,11 +144,15 @@ private:
         }
 
         if (result.MsgId != TDerived::ExpectedMsgId) {
-            return MakeError(
-                E_FAIL,
-                TStringBuilder() << "RDMA response message type mismatch:"
-                                 << " expected " << TDerived::ExpectedMsgId
-                                 << ", got " << result.MsgId);
+            auto msg = TStringBuilder()
+                       << "RDMA response message type mismatch:"
+                       << " expected " << TDerived::ExpectedMsgId << ", got "
+                       << result.MsgId;
+            ReportRdmaMessageTypeMismatch(
+                msg,
+                {{"MsgId", result.MsgId},
+                 {"ExpectedMsgId", TDerived::ExpectedMsgId}});
+            return MakeError(E_FAIL, std::move(msg));
         }
 
         auto& proto =
