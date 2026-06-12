@@ -1,6 +1,10 @@
 UNITTEST_FOR(cloud/blockstore/vhost-server)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+IF (SANITIZER_TYPE)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+ENDIF()
 
 SRCS(
     backend.cpp
