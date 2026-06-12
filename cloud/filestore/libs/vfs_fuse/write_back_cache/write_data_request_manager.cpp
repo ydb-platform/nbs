@@ -320,7 +320,7 @@ void TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)
         static_cast<ui32>(ECachedWriteDataRequestTag::Flushed));
 }
 
-void TWriteDataRequestManager::SetHandleReleasedTag(
+void TWriteDataRequestManager::SetHandleReleased(
     TCachedWriteDataRequest* request)
 {
     PersistentStorage->SetTag(

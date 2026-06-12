@@ -105,7 +105,7 @@ public:
      * the persistent storage.
      * This allows the request to be properly handled after restart.
      */
-    void SetHandleReleasedTag(TCachedWriteDataRequest* request);
+    void SetHandleReleased(TCachedWriteDataRequest* request);
 
     // Removes previously flushed request from the persistent storage
     void Evict(std::unique_ptr<TCachedWriteDataRequest> request);

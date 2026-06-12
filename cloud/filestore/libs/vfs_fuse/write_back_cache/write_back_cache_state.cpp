@@ -265,9 +265,30 @@ void TWriteBackCacheState::UnpinNodeStates(TPin pinId)
     Nodes.Unpin(pinId);
 }
 
-ui64 TWriteBackCacheState::VisitUnflushedRequests(
+void TWriteBackCacheState::VisitUnflushedRequests(
     ui64 nodeId,
     const TEntryVisitor& visitor) const
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    const auto* nodeState = Nodes.GetNodeState(nodeId);
+    if (nodeState == nullptr) {
+        return;
+    }
+
+    Y_ABORT_UNLESS(
+        nodeState->Cache.HasUnflushedRequests(),
+        "Node %lu has no unflushed requests but has live handles",
+        nodeId);
+
+    const ui64 maxSequenceId = nodeState->Barriers.empty()
+                                   ? Max<ui64>()
+                                   : nodeState->Barriers.cbegin()->first;
+
+    nodeState->Cache.VisitUnflushedRequests(visitor, maxSequenceId);
+}
+
+ui64 TWriteBackCacheState::GetLiveHandle(ui64 nodeId) const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
@@ -281,20 +302,8 @@ ui64 TWriteBackCacheState::VisitUnflushedRequests(
         return NProto::E_INVALID_HANDLE;
     }
 
-    Y_ABORT_UNLESS(
-        nodeState->Cache.HasUnflushedRequests(),
-        "Node %lu has no unflushed requests but has live handles",
-        nodeId);
-
     // Choose any live handle for flush
-    const ui64 handle = nodeState->Handles.cbegin()->first;
-
-    const ui64 maxSequenceId = nodeState->Barriers.empty()
-                                   ? Max<ui64>()
-                                   : nodeState->Barriers.cbegin()->first;
-
-    nodeState->Cache.VisitUnflushedRequests(visitor, maxSequenceId);
-    return handle;
+    return nodeState->Handles.cbegin()->first;
 }
 
 void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
@@ -411,7 +420,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
         while (!handleState.UnflushedRequests.Empty()) {
             auto* request = handleState.UnflushedRequests.PopFront();
-            RequestManager.SetHandleReleasedTag(request);
+            RequestManager.SetHandleReleased(request);
         }
 
         if (handleState.ReleaseHandleRequest) {

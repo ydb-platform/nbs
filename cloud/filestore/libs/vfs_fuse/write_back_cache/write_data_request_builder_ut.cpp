@@ -109,7 +109,7 @@ struct TBootstrap
             requestCount++;
         }
 
-        auto res = batchBuilder->Build(0);
+        auto res = batchBuilder->Build();
 
         Y_ABORT_UNLESS(res.AffectedRequestCount == requestCount);
         return res.AffectedRequestCount;

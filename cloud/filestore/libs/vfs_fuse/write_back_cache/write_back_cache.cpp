@@ -412,7 +412,7 @@ private:
         auto batchBuilder =
             RequestBuilder->CreateWriteDataRequestBatchBuilder(nodeId);
 
-        auto handle = State.VisitUnflushedRequests(
+        State.VisitUnflushedRequests(
             nodeId,
             [&batchBuilder](const TCachedWriteDataRequest* request)
             {
@@ -421,19 +421,7 @@ private:
                     request->GetBuffer());
             });
 
-        if (handle == NProto::E_INVALID_HANDLE) {
-            // It is not possible to flush data when all handles are released
-            // Note: this will not be needed after switching to handleless IO
-            State.FlushFailed(
-                nodeId,
-                MakeError(
-                    E_REJECTED,
-                    "There are no live handles to flush data for node %lu",
-                    nodeId));
-            return;
-        }
-
-        auto writeDataBatch = batchBuilder->Build(handle);
+        auto writeDataBatch = batchBuilder->Build();
 
         auto flushState = std::make_shared<TNodeFlushState>(
             nodeId,
@@ -445,6 +433,22 @@ private:
 
     void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
+        auto handle = State.GetLiveHandle(flushState->GetNodeId());
+
+        if (handle == NProto::E_INVALID_HANDLE) {
+            // It is not possible to flush data when all handles are released
+            // TODO(#6201): this will not be needed after adding support for
+            // handleless IO
+            State.FlushFailed(
+                flushState->GetNodeId(),
+                MakeError(
+                    E_REJECTED,
+                    "There are no known live handles to flush data for node "
+                    "%lu",
+                    flushState->GetNodeId()));
+            return;
+        }
+
         auto requests = flushState->BeginFlush();
 
         for (size_t i = 0; i < requests.size(); ++i) {
@@ -455,6 +459,8 @@ private:
             callContext->RequestSize =
                 NCloud::NFileStore::CalculateByteCount(*request) -
                 request->GetBufferOffset();
+
+            request->SetHandle(handle);
 
             auto callback = [ptr = weak_from_this(), flushState, i](
                                 const auto& future) mutable

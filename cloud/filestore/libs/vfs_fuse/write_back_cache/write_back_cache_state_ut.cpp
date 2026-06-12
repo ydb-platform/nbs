@@ -1269,19 +1269,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         b.State->AddReleaseHandleRequest(1, 101);
 
-        auto handle1 =
-            b.State->VisitUnflushedRequests(1, [](auto) { return true; });
-
         // Note: the code depends on the implementation of THashMap
         // If the implementation changes, this test may need to be updated
-        UNIT_ASSERT_VALUES_EQUAL(101, handle1);
+        UNIT_ASSERT_VALUES_EQUAL(101, b.State->GetLiveHandle(1));
 
         b.State->FlushFailed(1, error);
 
-        auto handle2 =
-            b.State->VisitUnflushedRequests(1, [](auto) { return true; });
-
-        UNIT_ASSERT_VALUES_EQUAL(102, handle2);
+        UNIT_ASSERT_VALUES_EQUAL(102, b.State->GetLiveHandle(1));
     }
 
     Y_UNIT_TEST(ShouldFailPendingRequestsOnFlushFailure)
@@ -1302,13 +1296,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->FlushFailed(1, MakeError(E_FAIL, "Flush failed"));
 
         UNIT_ASSERT(w1.HasValue());
-        UNIT_ASSERT(w1.GetValue().GetCode() == E_FAIL);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, w1.GetValue().GetCode());
         UNIT_ASSERT(!w2.HasValue());
 
         b.State->FlushFailed(1, MakeError(E_FS_NOSPC, "No space left"));
 
         UNIT_ASSERT(w2.HasValue());
-        UNIT_ASSERT(w2.GetValue().GetCode() == E_FS_NOSPC);
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, w2.GetValue().GetCode());
     }
 }
 

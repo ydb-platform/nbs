@@ -242,7 +242,7 @@ public:
         return true;
     }
 
-    TWriteDataRequestBatch Build(ui64 handle) override
+    TWriteDataRequestBatch Build() override
     {
         if (InputRequests.empty()) {
             return {};
@@ -251,7 +251,7 @@ public:
         auto dataParts = BuildDisjointRequestDataParts(InputRequests);
 
         TWriteDataRequestBatch res;
-        res.Requests = BuildRequestsFromParts(dataParts, handle);
+        res.Requests = BuildRequestsFromParts(dataParts);
         res.AffectedRequestCount = InputRequests.size();
 
         return res;
@@ -259,8 +259,7 @@ public:
 
 private:
     TVector<std::shared_ptr<NProto::TWriteDataRequest>> BuildRequestsFromParts(
-        const TVector<TWriteDataRequestPart>& dataParts,
-        ui64 handle)
+        const TVector<TWriteDataRequestPart>& dataParts)
     {
         TVector<std::shared_ptr<NProto::TWriteDataRequest>> res;
 
@@ -286,7 +285,6 @@ private:
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(Config.FileSystemId);
                 request->SetNodeId(NodeId);
-                request->SetHandle(handle);
                 request->SetOffset(reader.GetOffset());
 
                 if (Config.ZeroCopyWriteEnabled) {

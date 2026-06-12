@@ -2270,11 +2270,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         });
 
         TVector<TPromise<NProto::TWriteDataResponse>> writeRequests;
+        TVector<ui64> writeHandles;
 
-        b.Session->WriteDataHandler = [&](auto, auto)
+        b.Session->WriteDataHandler = [&](auto, auto request)
         {
             auto promise = NewPromise<NProto::TWriteDataResponse>();
             writeRequests.push_back(promise);
+            writeHandles.push_back(request->GetHandle());
             return promise;
         };
 
@@ -2291,6 +2293,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         auto releaseFuture = b.Cache.ReleaseHandle(1, 102);
 
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
         NProto::TWriteDataResponse errorResponse;
         errorResponse.MutableError()->SetCode(E_FAIL);
         completeNext(std::move(errorResponse));
@@ -2303,6 +2309,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         auto flushFuture = b.Cache.FlushNodeData(1);
         b.RunAllScheduledTasks();
+
+        // An attempt to retry flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
         completeNext({});
 
         // After a successful flush attempt, WriteBackCache contains 1 WriteData
@@ -2312,9 +2323,46 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(flushFuture.HasValue());
         UNIT_ASSERT(HasError(flushFuture.GetValue()));
 
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldRetryFlushWithLiveHandle)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .UseTestTimerAndScheduler = true,
+        });
+
+        TVector<ui64> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            writeHandles.push_back(request->GetHandle());
+            NProto::TWriteDataResponse errorResponse;
+            errorResponse.MutableError()->SetCode(E_FAIL);
+            return MakeFuture(std::move(errorResponse));
+        };
+
+        b.WriteToCacheSync(1, 101, 1, "abc");
+        b.WriteToCacheSync(1, 102, 10, "123");
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
+
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        // Confirm that handle 101 is released
+        UNIT_ASSERT(releaseFuture.HasValue());
+        UNIT_ASSERT(HasError(releaseFuture.GetValue()));
+
+        // Flush should be retried using handle 102
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
     }
 }
 

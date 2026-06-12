@@ -133,12 +133,14 @@ public:
     void UnpinNodeStates(TPin pinId);
 
     // Visit unflushed cached requests in the increasing order of SequenceId.
-    // Returns a live handle that should be used for flushing requests or
-    // NProto::E_INVALID_HANDLE if there are no unflushed requests with live
-    // handles.
-    ui64 VisitUnflushedRequests(
+    void VisitUnflushedRequests(
         ui64 nodeId,
         const TEntryVisitor& visitor) const;
+
+    // Returns a known live handle that should be used for flushing requests or
+    // NProto::E_INVALID_HANDLE if there are no unflushed requests with live
+    // handles
+    ui64 GetLiveHandle(ui64 nodeId) const;
 
     // Inform that the first |requestCount| unflushed changes requests have
     // been flushed
