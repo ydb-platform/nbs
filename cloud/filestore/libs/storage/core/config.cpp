@@ -252,16 +252,18 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UseUnlimitedBTreeNodeRefsCacheInMainTablet,     bool,       false     )\
     xxx(UseUnlimitedBTreeNodeRefsCacheInShards,         bool,       false     )\
                                                                                \
-    xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
+    xxx(NonNetworkMetricsBalancingFactor,               ui32,       1_KB      )\
                                                                                \
-    xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
+    xxx(AsyncDestroyHandleEnabled,                      bool,       false     )\
+    xxx(TabletUnsafeAsyncReadOnlyCreateHandleEnabled,   bool,       false     )\
+    xxx(TabletUnsafeAsyncDestroyHandleEnabled,          bool,       false     )\
     xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
                                                                                \
     xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
                                                                                \
-    xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
+    xxx(MultipleStageRequestThrottlingEnabled,          bool,       false     )\
                                                                                \
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \

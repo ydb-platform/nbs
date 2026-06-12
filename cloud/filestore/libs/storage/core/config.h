@@ -270,6 +270,8 @@ public:
     bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
+    bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     void Dump(IOutputStream& out) const;

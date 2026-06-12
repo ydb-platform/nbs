@@ -598,6 +598,14 @@ private:
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TListNodes& args);
 
+    void CompleteCreateHandle(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TCreateHandle& args);
+
+    void CompleteDestroyHandle(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TDestroyHandle& args);
+
     //
     // Common event handlers.
     //

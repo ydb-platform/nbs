@@ -802,4 +802,10 @@ message TStorageConfig
     optional uint64 FlushBytesThresholdForBackpressureSoft = 509;
     optional uint64 FlushBytesItemCountThresholdForBackpressureSoft = 510;
     optional uint64 CollectGarbageThresholdForBackpressureSoft = 511;
+
+    // Makes tablet's CreateHandle op handler reply before the tx is committed.
+    optional bool TabletUnsafeAsyncReadOnlyCreateHandleEnabled = 512;
+
+    // Makes tablet's DestroyHandle op handler reply before the tx is committed.
+    optional bool TabletUnsafeAsyncDestroyHandleEnabled = 513;
 }
