@@ -4,13 +4,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 from github import Auth as GithubAuth, Github
 from github.PullRequest import PullRequest
 
-from ..helpers import setup_logger
+from ..helpers import find_current_job_url, setup_logger
 from . import generate_summary as gs
 
 
@@ -26,71 +24,6 @@ def get_pull_request() -> PullRequest:
 def iter_components(matrix_include: str) -> list[str]:
     matrix = json.loads(matrix_include)
     return [entry["component"] for entry in matrix.get("include", [])]
-
-
-def fetch_jobs() -> list[dict]:
-    owner, repo = os.environ["GITHUB_REPOSITORY"].split("/", 1)
-    run_id = os.environ["GITHUB_RUN_ID"]
-    run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
-    url = (
-        f"https://api.github.com/repos/{owner}/{repo}/actions/runs/"
-        f"{run_id}/attempts/{run_attempt}/jobs?per_page=100"
-    )
-    request = Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    with urlopen(request) as response:
-        payload = json.load(response)
-    return payload.get("jobs", [])
-
-
-def get_run_url() -> str:
-    return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-
-
-def job_name_matches(expected_name: str, actual_name: str) -> bool:
-    if actual_name == expected_name:
-        return True
-
-    reusable_prefix = f"/ {expected_name}"
-    if actual_name.endswith(reusable_prefix):
-        return True
-
-    return False
-
-
-def find_current_job_url(current_job_name: str, runner_name: str) -> str:
-    try:
-        jobs = fetch_jobs()
-    except HTTPError:
-        return get_run_url()
-
-    matching_jobs = [
-        job
-        for job in jobs
-        if job_name_matches(current_job_name, job.get("name", ""))
-        and job.get("status") in ("queued", "in_progress", "completed")
-    ]
-
-    if runner_name:
-        for job in matching_jobs:
-            if job.get("runner_name") != runner_name:
-                continue
-            html_url = job.get("html_url")
-            if html_url:
-                return html_url
-
-    for job in matching_jobs:
-        html_url = job.get("html_url")
-        if html_url:
-            return html_url
-
-    return get_run_url()
 
 
 def write_output(path: str, value: str) -> None:
