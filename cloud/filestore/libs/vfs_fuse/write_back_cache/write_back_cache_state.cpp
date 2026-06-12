@@ -322,13 +322,17 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
             nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
         RequestManager.SetFlushed(cachedRequest);
 
-        auto& handleState = nodeState.Handles[cachedRequest->GetHandle()];
-        handleState.UnflushedRequests.Remove(cachedRequest);
+        auto* handleState =
+            nodeState.Handles.FindPtr(cachedRequest->GetHandle());
 
-        CheckAndProcessEmptyHandleState(
-            nodeState,
-            cachedRequest->GetHandle(),
-            handleState);
+        if (handleState) {
+            handleState->UnflushedRequests.Remove(cachedRequest);
+
+            CheckAndProcessEmptyHandleState(
+                nodeState,
+                cachedRequest->GetHandle(),
+                *handleState);
+        }
     }
 
     TriggerFlushCompletions(nodeState);
