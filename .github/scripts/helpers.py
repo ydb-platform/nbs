@@ -11,7 +11,9 @@ import time
 from dataclasses import dataclass
 import datetime
 from typing import Callable, List, Tuple
-from urllib.parse import urlparse
+from urllib.error import HTTPError
+from urllib.parse import quote, urlparse
+from urllib.request import Request, urlopen
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -48,6 +50,133 @@ SAN_PRESET_BY_SAN = {
     "msan": "release-msan",
     "ubsan": "release-ubsan",
 }
+
+
+def get_build_preset_from_workflow_name(workflow_name: str) -> str | None:
+    normalized = workflow_name.strip().lower()
+    if normalized in ("nightly.yaml", "nightly build"):
+        return "relwithdebinfo"
+
+    match = re.fullmatch(
+        r"nightly(?: build)? \((?P<san>asan|tsan|msan|ubsan)\)", normalized
+    )
+    if match is not None:
+        return SAN_PRESET_BY_SAN[match.group("san")]
+
+    match = re.fullmatch(r"nightly-(?P<san>asan|tsan|msan|ubsan)\.yaml", normalized)
+    if match is not None:
+        return SAN_PRESET_BY_SAN[match.group("san")]
+
+    return None
+
+
+def get_s3_website_origin(
+    bucket: str | None = None, website_suffix: str | None = None
+) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    website_suffix = (
+        website_suffix or os.environ.get("S3_WEBSITE_SUFFIX") or ""
+    ).strip()
+    if not bucket or not website_suffix:
+        return ""
+    return f"https://{bucket}.{website_suffix}"
+
+
+def get_s3_report_uri(path: str, bucket: str | None = None) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    if not bucket or not path:
+        return ""
+    return f"s3://{bucket}/{path}"
+
+
+def get_s3_report_url(
+    path: str,
+    bucket: str | None = None,
+    website_suffix: str | None = None,
+) -> str:
+    origin = get_s3_website_origin(bucket=bucket, website_suffix=website_suffix)
+    if not origin or not path:
+        return ""
+    return f"{origin}/{quote(path, safe='/')}"
+
+
+def get_s3_workflow_reports_path(
+    *,
+    repository: str,
+    workflow_file: str,
+    run_id: int | str,
+    run_attempt: int | str,
+    relative_path: str = "",
+) -> str:
+    return (
+        f"reports/{repository}/{workflow_file}/{run_id}/{run_attempt}/"
+        f"{relative_path.lstrip('/')}"
+    )
+
+
+def get_run_url() -> str:
+    return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+
+
+def fetch_jobs() -> list[dict]:
+    owner, repo = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+    run_id = os.environ["GITHUB_RUN_ID"]
+    run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
+    url = (
+        f"https://api.github.com/repos/{owner}/{repo}/actions/runs/"
+        f"{run_id}/attempts/{run_attempt}/jobs?per_page=100"
+    )
+    request = Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    with urlopen(request) as response:
+        payload = json.load(response)
+    return payload.get("jobs", [])
+
+
+def job_name_matches(expected_name: str, actual_name: str) -> bool:
+    if actual_name == expected_name:
+        return True
+
+    reusable_prefix = f"/ {expected_name}"
+    if actual_name.endswith(reusable_prefix):
+        return True
+
+    return False
+
+
+def find_current_job_url(current_job_name: str, runner_name: str) -> str:
+    try:
+        jobs = fetch_jobs()
+    except HTTPError:
+        return get_run_url()
+
+    matching_jobs = [
+        job
+        for job in jobs
+        if job_name_matches(current_job_name, job.get("name", ""))
+        and job.get("status") in ("queued", "in_progress", "completed")
+    ]
+
+    if runner_name:
+        for job in matching_jobs:
+            if job.get("runner_name") != runner_name:
+                continue
+            html_url = job.get("html_url")
+            if html_url:
+                return html_url
+
+    for job in matching_jobs:
+        html_url = job.get("html_url")
+        if html_url:
+            return html_url
+
+    return get_run_url()
 
 
 DEFAULT_BUILD_TARGET = "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"

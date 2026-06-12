@@ -509,7 +509,11 @@ def write_summary_json(
                 "report_url": line.report_url,
                 "total": line.test_count,
                 "counts": {
-                    status.name: line.count(status)
+                    status.name: (
+                        max(build_failed_count, line.count(status))
+                        if status == TestStatus.FAIL_BUILD
+                        else line.count(status)
+                    )
                     for status in TestStatus.summary_table_order()
                 },
                 "tests": [

@@ -1,13 +1,23 @@
 name: Nightly build (tsan)
 run-name: |
   ${{ github.event_name == 'workflow_dispatch'
-      && 'Nightly build (tsan) (manual)'
-      || 'Nightly build (tsan) (schedule)'
+      && (
+            inputs.comment != ''
+            && format('Nightly build (tsan) (manual) (comment: {0})', inputs.comment)
+            || format('Nightly build (tsan) (manual)')
+          )
+      || format('Nightly build (tsan) (schedule)')
     }}
 on:
   schedule:
     - cron: "30 23 * * *"
   workflow_dispatch:
+    inputs:
+      comment:
+        description: 'Comment'
+        type: string
+        required: false
+        default: ""
 
 jobs:
   build:
