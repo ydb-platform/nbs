@@ -10,6 +10,18 @@ outputs:
   matrix_include:
     description: "JSON for strategy.matrix (include)"
     value: ${{ steps.plan.outputs.matrix_include }}
+  matrix_include_asan:
+    description: "JSON for ASAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_asan }}
+  matrix_include_tsan:
+    description: "JSON for TSAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_tsan }}
+  matrix_include_msan:
+    description: "JSON for MSAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_msan }}
+  matrix_include_ubsan:
+    description: "JSON for UBSAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_ubsan }}
 
 runs:
   using: "composite"

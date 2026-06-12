@@ -1,5 +1,5 @@
 name: Orchestrator (heavy)
-run-name: ${{ format('Orchestrator (heavy)')  }}
+run-name: Orchestrator (heavy)
       
 on:
   # schedule:
