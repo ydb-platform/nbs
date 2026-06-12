@@ -823,13 +823,26 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         std::move(handler),
         std::move(context));
 
-    with_lock (AllocationLock) {
-        if (requestBytes) {
-            req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
+    try {
+        with_lock (AllocationLock) {
+            if (requestBytes) {
+                req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
+            }
+            if (responseBytes) {
+                req->OutBuffer = RecvBuffers.AcquireBuffer(responseBytes);
+            }
         }
-        if (responseBytes) {
-            req->OutBuffer = RecvBuffers.AcquireBuffer(responseBytes);
-        }
+    } catch (...) {
+        RDMA_ERROR(
+            "failed to allocate request with exception: "
+            << CurrentExceptionMessage());
+        Counters->Error();
+        Disconnect();
+        return MakeError(
+            E_RDMA_UNAVAILABLE,
+            TStringBuilder()
+                << "failed to allocate request with exception: "
+                << CurrentExceptionMessage());
     }
 
     req->RequestBuffer = TStringBuf {
