@@ -102,7 +102,10 @@ public:
     {
         Y_UNUSED(ctx);
 
-        return LocalNVMeService->AcquireNVMeDevice(request->GetSerialNumber())
+        return LocalNVMeService
+            ->AcquireNVMeDevice(
+                request->GetSerialNumber(),
+                request->GetHeaders().GetIdempotenceId())
             .Apply(
                 [](const auto& future)
                 {
@@ -123,7 +126,10 @@ public:
     {
         Y_UNUSED(ctx);
 
-        return LocalNVMeService->ReleaseNVMeDevice(request->GetSerialNumber())
+        return LocalNVMeService
+            ->ReleaseNVMeDevice(
+                request->GetSerialNumber(),
+                request->GetHeaders().GetIdempotenceId())
             .Apply(
                 [](const auto& future)
                 {

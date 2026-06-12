@@ -30,9 +30,13 @@ public:
             TVector<NProto::TNVMeDevice>{});
     }
 
-    [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
+    [[nodiscard]] auto AcquireNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId)
         -> TFuture<TResultOrError<NProto::TNVMeDevice>> final
     {
+        Y_UNUSED(idempotenceId);
+
         if (!serialNumber) {
             return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(
                 MakeError(E_ARGUMENT, "Serial number is empty"));
@@ -44,9 +48,12 @@ public:
                 << "Device " << serialNumber.Quote() << " not found"));
     }
 
-    [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] auto ReleaseNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId) -> TFuture<NProto::TError> final
     {
+        Y_UNUSED(idempotenceId);
+
         if (!serialNumber) {
             return MakeFuture(MakeError(E_ARGUMENT, "Serial number is empty"));
         }
