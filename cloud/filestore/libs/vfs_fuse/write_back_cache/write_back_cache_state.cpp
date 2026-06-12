@@ -321,18 +321,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
         auto* cachedRequest =
             nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
         RequestManager.SetFlushed(cachedRequest);
-
-        auto* handleState =
-            nodeState.Handles.FindPtr(cachedRequest->GetHandle());
-
-        if (handleState) {
-            handleState->UnflushedRequests.Remove(cachedRequest);
-
-            CheckAndProcessEmptyHandleState(
-                nodeState,
-                cachedRequest->GetHandle(),
-                *handleState);
-        }
+        RemoveActiveRequestFromHandleState(nodeState, cachedRequest);
     }
 
     TriggerFlushCompletions(nodeState);
@@ -805,17 +794,41 @@ void TWriteBackCacheState::ProcessPendingRequests()
     }
 }
 
-void TWriteBackCacheState::CheckAndProcessEmptyHandleState(
+void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
+    TNodeState& nodeState,
+    TPendingWriteDataRequest* request)
+{
+    auto handle = request->GetRequest().GetHandle();
+    auto& handleState = nodeState.Handles[handle];
+
+    handleState.PendingRequests.Remove(request);
+    if (!handleState.HasRequests()) {
+        TriggerReleaseHandleCompletion(nodeState, handle, handleState);
+        nodeState.Handles.erase(handle);
+    }
+}
+
+void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
+    TNodeState& nodeState,
+    TCachedWriteDataRequest* request)
+{
+    auto handle = request->GetHandle();
+    auto* handleState = nodeState.Handles.FindPtr(request->GetHandle());
+
+    if (handleState) {
+        handleState->UnflushedRequests.Remove(request);
+        if (!handleState->HasRequests()) {
+            TriggerReleaseHandleCompletion(nodeState, handle, *handleState);
+            nodeState.Handles.erase(handle);
+        }
+    }
+}
+
+void TWriteBackCacheState::TriggerReleaseHandleCompletion(
     TNodeState& nodeState,
     ui64 handle,
     THandleState& handleState)
 {
-    if (!handleState.PendingRequests.Empty() ||
-        !handleState.UnflushedRequests.Empty())
-    {
-        return;
-    }
-
     if (handleState.ReleaseHandleRequest) {
         Stats->RequestCompleted(
             ERequestType::ReleaseHandle,
@@ -826,10 +839,9 @@ void TWriteBackCacheState::CheckAndProcessEmptyHandleState(
 
         nodeState.HandlesWithReleaseRequests.erase(handle);
     }
-
-    nodeState.Handles.erase(handle);
 }
 
+// nodeState becomes unusable after this call
 void TWriteBackCacheState::DropCachedData(
     ui64 nodeId,
     TNodeState& nodeState,
@@ -882,18 +894,7 @@ void TWriteBackCacheState::FailPendingRequest(
         std::move(request->AccessPromise()),
         error);
 
-    auto& handleState = nodeState.Handles[request->GetRequest().GetHandle()];
-
-    handleState.PendingRequests.Remove(request);
-
-    // Since no data loss has taken place and errors have been already
-    // reported by failing WriteData requests, we respond to Flush and
-    // ReleaseHandle with success
-    CheckAndProcessEmptyHandleState(
-        nodeState,
-        request->GetRequest().GetHandle(),
-        handleState);
-
+    RemoveActiveRequestFromHandleState(nodeState, request);
     TriggerFlushCompletions(nodeState);
 }
 

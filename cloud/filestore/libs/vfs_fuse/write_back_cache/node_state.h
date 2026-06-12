@@ -45,6 +45,11 @@ struct THandleState
     // The field is initialized when ReleaseHandle request is made.
     // Only one ReleaseHandle request may be active at a time for a handle.
     std::unique_ptr<TReleaseHandleRequest> ReleaseHandleRequest;
+
+    bool HasRequests() const
+    {
+        return !PendingRequests.Empty() || !UnflushedRequests.Empty();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,7 +172,7 @@ struct TNodeState
         }
 
         if (!HandlesWithReleaseRequests.empty()) {
-            // Non-zero value of HandleToReleaseCount indicates that there are
+            // Non-empty HandlesWithReleaseRequests indicates that there are
             // handles that are requested for release but cannot be released
             // because there are pending or unflushed WriteData requests
             // associated with them. We need to flush these requests first.

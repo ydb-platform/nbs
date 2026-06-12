@@ -132,7 +132,7 @@ public:
     TPin PinNodeStates();
     void UnpinNodeStates(TPin pinId);
 
-    // Visit unflushed cached requests in the increasing order of SequenceId.
+    // Visit unflushed cached requests in the increasing order of SequenceId
     void VisitUnflushedRequests(
         ui64 nodeId,
         const TEntryVisitor& visitor) const;
@@ -196,12 +196,15 @@ private:
     void CheckAndAcquireBarriers(TNodeState& nodeState);
     void ProcessPendingRequests();
 
-    // Checks if there exist pending or unflushed WriteData requests
-    // associated with the handle. If there are no, then:
-    // - completes corresponding ReleaseHandle request (if initialized);
-    // - removes handle state from node state.
-    // Note: handleState will become unusable after this call.
-    void CheckAndProcessEmptyHandleState(
+    void RemoveActiveRequestFromHandleState(
+        TNodeState& nodeState,
+        TPendingWriteDataRequest* request);
+
+    void RemoveActiveRequestFromHandleState(
+        TNodeState& nodeState,
+        TCachedWriteDataRequest* request);
+
+    void TriggerReleaseHandleCompletion(
         TNodeState& nodeState,
         ui64 handle,
         THandleState& handleState);
