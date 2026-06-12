@@ -54,6 +54,7 @@ public:
 
     ~TChunk()
     {
+        MemoryRegion.reset();
         free(Address);
     }
 
