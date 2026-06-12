@@ -241,8 +241,9 @@ private:
                 addr.get(),
                 chunkSize,
                 Flags);
-            Y_UNUSED(addr.release());
-            return new TChunk(std::move(mr), custom);
+            auto* chunk = new TChunk(std::move(mr), custom);
+            addr.release();
+            return chunk;
         }
         return new TChunk(addr.release(), chunkSize, 0, custom);
     }
