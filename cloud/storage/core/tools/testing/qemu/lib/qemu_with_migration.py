@@ -32,8 +32,7 @@ class QemuWithMigration:
             qemu_options=[],
             vhost_socket="",
             enable_kvm=True,
-            use_virtiofs_server=True,
-        )
+            use_virtiofs_server=True)
 
         self.socket_generator = socket_generator
 

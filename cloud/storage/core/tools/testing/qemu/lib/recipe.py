@@ -103,8 +103,7 @@ def start_instance(args, inst_index):
                 inst_index=inst_index,
                 shared_nic_port=args.shared_nic_port,
                 use_virtiofs_server=use_virtiofs_server,
-                num_request_queues=_get_num_request_queues(args),
-            )
+                num_request_queues=_get_num_request_queues(args))
 
     qemu.set_mount_paths(mount_paths)
     qemu.start()
