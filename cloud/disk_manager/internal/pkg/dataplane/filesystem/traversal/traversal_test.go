@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
@@ -61,6 +63,12 @@ func newStorage(
 	require.NotNil(t, storage)
 
 	return storage
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func checkContextNotCancelled(ctx context.Context) error {
+	return ctx.Err()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,7 +147,24 @@ func (f *fixture) getFilesAfterTraversal(
 
 	workersCount := uint32(10)
 	selectNodesToListLimit := uint64(10)
-	traverser := NewFilesystemTraverser(
+	actualNodeNames := []string{}
+	nodesMutex := &sync.Mutex{}
+	onListedNodes := func(
+		ctx context.Context,
+		nodes []nfs.Node,
+		_ listers.FilesystemLister,
+	) error {
+
+		nodesMutex.Lock()
+		defer nodesMutex.Unlock()
+		for _, node := range nodes {
+			actualNodeNames = append(actualNodeNames, node.Name)
+		}
+
+		return nil
+	}
+
+	traverser, err := NewFilesystemTraverser(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
@@ -154,6 +179,8 @@ func (f *fixture) getFilesAfterTraversal(
 		func(ctx context.Context) error {
 			return nil
 		},
+		onListedNodes,
+		checkContextNotCancelled,
 		&traversal_config.FilesystemTraversalConfig{
 			TraversalWorkersCount:  &workersCount,
 			SelectNodesToListLimit: &selectNodesToListLimit,
@@ -161,26 +188,9 @@ func (f *fixture) getFilesAfterTraversal(
 		false,
 		nfs.RootNodeID,
 	)
+	require.NoError(t, err)
 
-	actualNodeNames := []string{}
-	nodesMutex := &sync.Mutex{}
-	err := traverser.Traverse(
-		f.ctx,
-		func(
-			ctx context.Context,
-			nodes []nfs.Node,
-			_ listers.FilesystemLister,
-		) error {
-
-			nodesMutex.Lock()
-			defer nodesMutex.Unlock()
-			for _, node := range nodes {
-				actualNodeNames = append(actualNodeNames, node.Name)
-			}
-
-			return nil
-		},
-	)
+	err = traverser.Traverse(f.ctx)
 	require.NoError(t, err)
 
 	return actualNodeNames
@@ -251,6 +261,96 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
 }
 
+func TestTraversalFinishedCheckError(t *testing.T) {
+	fixture := newFixture(t)
+	defer fixture.close(t)
+
+	filesystemID := t.Name()
+	fixture.prepareFilesystem(t, filesystemID)
+	defer fixture.cleanupFilesystem(t, filesystemID)
+
+	rootChildren := make([]nfs_testing.Node, 0, 100)
+	for i := 0; i < 100; i++ {
+		rootChildren = append(
+			rootChildren,
+			nfs_testing.Dir(
+				fmt.Sprintf("dir-%d", i),
+				nfs_testing.File("file"),
+			),
+		)
+	}
+
+	fsModel := fixture.fillFilesystem(
+		t,
+		filesystemID,
+		nfs_testing.Root(rootChildren...),
+	)
+	defer fsModel.Close()
+
+	workersCount := uint32(2)
+	selectNodesToListLimit := uint64(100)
+	finishedCheckInterval := "1ms"
+	expectedError := task_errors.NewNonRetriableErrorf("finished check error")
+	listingCountToInterrupt := 2
+	listingCount := 0
+	listingCountMutex := &sync.Mutex{}
+	listingCountReached := make(chan int, 1)
+	onListedNodes := func(
+		ctx context.Context,
+		nodes []nfs.Node,
+		_ listers.FilesystemLister,
+	) error {
+
+		listingCountMutex.Lock()
+		listingCount++
+		if listingCount == listingCountToInterrupt {
+			listingCountReached <- listingCount
+		}
+		listingCountMutex.Unlock()
+
+		time.Sleep(10 * time.Millisecond)
+		return nil
+	}
+	finishedCheck := func(ctx context.Context) error {
+		select {
+		case <-listingCountReached:
+			return expectedError
+		default:
+			return ctx.Err()
+		}
+	}
+
+	traverser, err := NewFilesystemTraverser(
+		fmt.Sprintf("snapshot_%v", filesystemID),
+		filesystemID,
+		"",
+		listers.NewFilestoreListerFactory(
+			fixture.client,
+			1000,  // listNodesMaxBytes
+			true,  // readOnly
+			false, // unsafe
+			false, // ignoreNotFound
+		),
+		fixture.storage,
+		func(ctx context.Context) error {
+			return nil
+		},
+		onListedNodes,
+		finishedCheck,
+		&traversal_config.FilesystemTraversalConfig{
+			TraversalWorkersCount:  &workersCount,
+			SelectNodesToListLimit: &selectNodesToListLimit,
+			FinishedCheckInterval:  &finishedCheckInterval,
+		},
+		false,
+		nfs.RootNodeID,
+	)
+	require.NoError(t, err)
+
+	err = traverser.Traverse(fixture.ctx)
+	require.ErrorIs(t, err, expectedError)
+}
+
 func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 	fixture := newFixture(t)
 	defer fixture.close(t)
@@ -279,7 +379,16 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 
 	workersCount := uint32(10)
 	selectNodesToListLimit := uint64(10)
-	traverser := NewFilesystemTraverser(
+	expectedError := fmt.Errorf("some error")
+	onListedNodes := func(
+		ctx context.Context,
+		nodes []nfs.Node,
+		_ listers.FilesystemLister,
+	) error {
+		return expectedError
+	}
+
+	traverser, err := NewFilesystemTraverser(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
@@ -294,6 +403,8 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		func(ctx context.Context) error {
 			return nil
 		},
+		onListedNodes,
+		checkContextNotCancelled,
 		&traversal_config.FilesystemTraversalConfig{
 			TraversalWorkersCount:  &workersCount,
 			SelectNodesToListLimit: &selectNodesToListLimit,
@@ -301,18 +412,9 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		false,
 		nfs.RootNodeID,
 	)
+	require.NoError(t, err)
 
-	expectedError := fmt.Errorf("some error")
-	err = traverser.Traverse(
-		fixture.ctx,
-		func(
-			ctx context.Context,
-			nodes []nfs.Node,
-			_ listers.FilesystemLister,
-		) error {
-			return expectedError
-		},
-	)
+	err = traverser.Traverse(fixture.ctx)
 	require.Error(t, err)
 	require.ErrorIs(t, err, expectedError)
 }
@@ -452,7 +554,15 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 
 	listerMock.On("Close", mock.Anything).Return(nil)
 
-	traverser := NewFilesystemTraverser(
+	onListedNodes := func(
+		ctx context.Context,
+		nodes []nfs.Node,
+		_ listers.FilesystemLister,
+	) error {
+		return nil
+	}
+
+	traverser, err := NewFilesystemTraverser(
 		snapshotID,
 		filesystemID,
 		checkpointID,
@@ -461,21 +571,15 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 		func(ctx context.Context) error {
 			return nil
 		},
+		onListedNodes,
+		nil,
 		config,
 		false, // rootNodeAlreadyScheduled
 		nfs.RootNodeID,
 	)
+	require.NoError(t, err)
 
-	err := traverser.Traverse(
-		ctx,
-		func(
-			ctx context.Context,
-			nodes []nfs.Node,
-			_ listers.FilesystemLister,
-		) error {
-			return nil
-		},
-	)
+	err = traverser.Traverse(ctx)
 	require.NoError(t, err)
 
 	storageMock.AssertExpectations(t)

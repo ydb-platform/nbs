@@ -19,10 +19,12 @@ struct TFreshBlock
 {
     TBlock Meta;
     TStringBuf Content;
+    TPartialBlobId BlobId;
 
-    TFreshBlock(TBlock meta, TStringBuf content)
+    TFreshBlock(TBlock meta, TStringBuf content, TPartialBlobId blobId)
         : Meta(meta)
         , Content(content)
+        , BlobId(blobId)
     {
     }
 };
@@ -43,7 +45,9 @@ public:
         ui32 blockIndex,
         TStringBuf blockContent,
         ui64 minCommitId,
-        ui64 maxCommitId = InvalidCommitId);
+        ui64 maxCommitId,
+        TPartialBlobId blobId);
+
     bool RemoveBlock(ui32 blockIndex, ui64 minCommitId);
 
     ui64 AddDeletedBlock(ui32 blockIndex, ui64 maxCommitId);

@@ -676,6 +676,7 @@ func TestTransferFromDiskToSnapshot(t *testing.T) {
 						storage,
 						false, // ignoreZeroChunks
 						testCase.useS3,
+						"", // storageClass
 					)
 				},
 			}
@@ -713,6 +714,7 @@ func TestTransferFromSnapshotToDisk(t *testing.T) {
 						storage,
 						false, // ignoreZeroChunks
 						testCase.useS3,
+						"", // storageClass
 					)
 				},
 			}
@@ -765,6 +767,7 @@ func TestTransferFromSnapshotToSnapshot(t *testing.T) {
 						storage,
 						false, // ignoreZeroChunks
 						testCase.useS3,
+						"", // storageClass
 					)
 				},
 			}
@@ -780,6 +783,7 @@ func TestTransferFromSnapshotToSnapshot(t *testing.T) {
 						storage,
 						false, // ignoreZeroChunks
 						testCase.useS3,
+						"", // storageClass
 					)
 				},
 			}
@@ -820,6 +824,7 @@ func TestTransferFromDiskToIncrementalSnapshot(t *testing.T) {
 						storage,
 						false, // ignoreZeroChunks
 						testCase.useS3,
+						"", // storageClass
 					)
 				},
 			}
@@ -898,6 +903,7 @@ func TestTransferFromDiskToIncrementalSnapshotWhenBaseSnapshotIsSmall(t *testing
 				storage,
 				false, // ignoreZeroChunks
 				true,  // useS3
+				"",    // storageClass
 			)
 		},
 	}

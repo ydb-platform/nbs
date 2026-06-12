@@ -97,8 +97,10 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
     BLOCKSTORE_SIMPLE_COUNTER(FreshBlocksQueued);
     BLOCKSTORE_SIMPLE_COUNTER(CompactionScore);
     BLOCKSTORE_SIMPLE_COUNTER(CompactionGarbageScore);
+    BLOCKSTORE_SIMPLE_COUNTER(CompactionIgnoringZeroedScore);
     BLOCKSTORE_SIMPLE_COUNTER(CleanupQueueBytes);
     BLOCKSTORE_SIMPLE_COUNTER(GarbageQueueBytes);
+    BLOCKSTORE_SIMPLE_COUNTER(NewlyZeroedBlocks);
 #undef BLOCKSTORE_SIMPLE_COUNTER
 
 
@@ -147,6 +149,10 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
         BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByGarbageBlocksPerRange);
     out.CompactionByGarbageBlocksPerDisk_Throughput =
         BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByGarbageBlocksPerDisk);
+    out.CompactionByIgnoringZeroedPerRange_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByIgnoringZeroedPerRange);
+    out.CompactionByIgnoringZeroedPerDisk_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByIgnoringZeroedPerDisk);
 
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 

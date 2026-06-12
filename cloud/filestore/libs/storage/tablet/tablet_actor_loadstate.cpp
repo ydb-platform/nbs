@@ -608,9 +608,10 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkResponse(
         s.MaxLoadedInOrderRangeId =
             Max(s.MaxLoadedInOrderRangeId, msg->LastRangeId);
 
-        if (msg->LastRangeId == 0) {
-            // Nothing was loaded - it means that there are no more ranges to
-            // load => we have already loaded everything
+        if (msg->LastRangeId == 0 || msg->LastRangeId == Max<ui32>()) {
+            // Either nothing was loaded or the last loaded range id is the
+            // maximum possible range id. It means that there are no more ranges
+            // to load => we have already loaded everything
             s.Finished = true;
 
             // TODO(#5376) Confirm blobs async with load. Load the chunks

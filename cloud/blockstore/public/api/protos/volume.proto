@@ -419,6 +419,9 @@ message TVolumeStats
 
     // Number of blobs processed during compaction.
     uint64 BlobsProcessedDuringCompaction = 31;
+
+    // Number of garbage blocks in the most dirty range ignoring zeroed blocks.
+    uint32 CompactionIgnoringZeroedScore = 32;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

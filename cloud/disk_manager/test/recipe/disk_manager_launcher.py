@@ -220,6 +220,7 @@ PoolsConfig: <
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
     ClearDeletedImagesTaskScheduleInterval: "2s"
+    S3DefaultStorageClass: "{image_s3_default_storage_class}"
     DefaultDiskPoolConfigs: [
         <
             ZoneId: "zone-a"
@@ -243,6 +244,7 @@ ImagesConfig: <
         >
     ]
     RetryBrokenDRBasedDiskCheckpoint: {retry_broken_disk_registry_based_disk_checkpoint}
+    UseS3Percentage: {image_use_s3_percentage}
 >
 SnapshotsConfig: <
     DeletedSnapshotExpirationTimeout: "1s"
@@ -584,6 +586,7 @@ class DiskManagerLauncher:
         list_nodes_max_bytes=0,
         snapshot_list_nodes_max_bytes=100,
         scrubbing_config_content="",
+        image_s3_default_storage_class="",
         # 100s is long enough in tests with concurrent resource creation and deletion to prevent
         # creating an already deleted resourse (see #5539).
         deleted_disk_expiration_timeout="100s",
@@ -669,6 +672,10 @@ class DiskManagerLauncher:
                         cert_file=cert_file,
                     )
                 )
+            image_use_s3_percentage = "0"
+            if image_s3_default_storage_class:
+                image_use_s3_percentage = "100"
+
             with open(self.config_file, "w") as f:
                 self.__server_config = CONTROLPLANE_CONFIG_TEMPLATE.format(
                     port=self.__port,
@@ -698,6 +705,8 @@ class DiskManagerLauncher:
                     use_s3_percentage="0" if s3_port is None else "100",
                     retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
                     cell_selection_policy=cell_selection_policy,
+                    image_s3_default_storage_class=image_s3_default_storage_class,
+                    image_use_s3_percentage=image_use_s3_percentage,
                     deleted_disk_expiration_timeout=deleted_disk_expiration_timeout,
                     released_slot_expiration_timeout=released_slot_expiration_timeout,
                 )

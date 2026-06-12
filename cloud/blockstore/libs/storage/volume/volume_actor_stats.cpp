@@ -53,11 +53,13 @@ constexpr double GetMetricsMultiplicator(
     xxx(CheckpointBytes,                                           __VA_ARGS__)\
     xxx(CompactionScore,                                           __VA_ARGS__)\
     xxx(CompactionGarbageScore,                                    __VA_ARGS__)\
+    xxx(CompactionIgnoringZeroedScore,                             __VA_ARGS__)\
     xxx(CleanupQueueBytes,                                         __VA_ARGS__)\
     xxx(GarbageQueueBytes,                                         __VA_ARGS__)\
     xxx(ChannelHistorySize,                                        __VA_ARGS__)\
     xxx(UnconfirmedBlobCount,                                      __VA_ARGS__)\
     xxx(ConfirmedBlobCount,                                        __VA_ARGS__)\
+    xxx(NewlyZeroedBlocks,                                         __VA_ARGS__)\
 // BLOCKSTORE_CACHED_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////

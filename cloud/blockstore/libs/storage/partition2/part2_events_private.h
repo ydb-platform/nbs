@@ -249,16 +249,19 @@ struct TEvPartitionPrivate
     struct TAddFreshBlocksRequest
     {
         const ui64 CommitId;
+        const TPartialBlobId BlobId;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
         const ui64 FirstRequestDeletionId;
 
         TAddFreshBlocksRequest(
                 ui64 commitId,
+                TPartialBlobId blobId,
                 TVector<TBlockRange32> blockRanges,
                 TVector<IWriteBlocksHandlerPtr> writeHandlers,
                 ui64 firstRequestDeletionId)
             : CommitId(commitId)
+            , BlobId(blobId)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
             , FirstRequestDeletionId(firstRequestDeletionId)

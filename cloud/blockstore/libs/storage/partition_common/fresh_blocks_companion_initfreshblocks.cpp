@@ -59,6 +59,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
     for (const auto& blob: msg->Blobs) {
         auto error = ParseFreshBlobContent(
             blob.CommitId,
+            blob.BlobId,
             PartitionConfig.GetBlockSize(),
             blob.Data,
             blocks);

@@ -22,6 +22,11 @@ variable "USER_TO_CREATE" {
   default = "github"
 }
 
+variable "DEBUG_USER" {
+  type    = string
+  default = "debug"
+}
+
 variable "ORG" {
   type    = string
   default = "ydb-platform"
@@ -128,6 +133,11 @@ build {
   }
 
   provisioner "file" {
+    source      = "${path.cwd}/scripts/actions-runner-collect-system-logs.sh"
+    destination = "${local.tmp_directory}/actions-runner-collect-system-logs.sh"
+  }
+
+  provisioner "file" {
     source      = "${path.cwd}/scripts/install-github-release-tools.sh"
     destination = "${local.tmp_directory}/install-github-release-tools.sh"
   }
@@ -142,6 +152,7 @@ build {
       "RUNNER_VERSION=${var.RUNNER_VERSION}",
       "RUNNER_SHA256_X64=${var.RUNNER_SHA256_X64}",
       "USER_TO_CREATE=${var.USER_TO_CREATE}",
+      "DEBUG_USER=${var.DEBUG_USER}",
       "PASSWORD_HASH=${var.PASSWORD_HASH}",
       "GITHUB_TOKEN=${var.GITHUB_TOKEN}",
       "ORG=${var.ORG}",

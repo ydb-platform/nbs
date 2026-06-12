@@ -245,6 +245,8 @@ private:
 
     /*const*/ ui32 MaxTabletStep = Max<ui32>();
 
+    bool CompressNodeRef = false;
+
     bool StateLoaded = false;
 
 protected:
@@ -336,7 +338,7 @@ public:
 
     TString GetMainFileSystemId() const
     {
-        // As of now TFileSystem::MainFIleSystemId is empty for the main
+        // As of now TFileSystem::MainFileSystemId is empty for the main
         // filesystem. It should be fixed. TODO(#6065)
         STORAGE_VERIFY_DEBUG(
             FileSystem.GetShardNo() == 0 || FileSystem.GetMainFileSystemId(),
@@ -374,7 +376,7 @@ public:
 
     bool GetCompressNodeRef() const
     {
-        return FileSystem.GetCompressNodeRef();
+        return CompressNodeRef || FileSystem.GetCompressNodeRef();
     }
 
     ui64 GetCurrentCommitId() const

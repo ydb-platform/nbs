@@ -98,11 +98,11 @@ struct TBlobCompactionRequest
 
 void PrepareRangeCompaction(
     const TStorageConfig& config,
-    ui32 maxSkippedBlobs,
-    ui64 commitId,
+    const ui32 maxSkippedBlobs,
+    const ui64 commitId,
     const NActors::TActorContext& ctx,
-    ui64 tabletId,
-    bool readBlockMaskOnCompactionOptimizationEnabled,
+    const ui64 tabletId,
+    const bool readBlockMaskOnCompactionOptimizationEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -110,9 +110,10 @@ void PrepareRangeCompaction(
     const TString& logTitle);
 
 void CompleteRangeCompaction(
-    bool blobPatchingEnabled,
-    ui32 mergedBlobThreshold,
-    ui64 commitId,
+    const bool blobPatchingEnabled,
+    const ui32 mergedBlobThreshold,
+    const ui64 commitId,
+    const ui64 tabletId,
     NKikimr::TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,

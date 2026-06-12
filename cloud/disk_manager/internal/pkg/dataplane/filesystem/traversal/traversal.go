@@ -2,6 +2,8 @@ package traversal
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -33,7 +36,10 @@ type FilesystemTraverser struct {
 	filesystemListerFactory  listers.FilesystemListerFactory
 	storage                  storage.Storage
 	stateSaver               StateSaver
+	onListedNodes            OnListedNodesFunc
+	finishedCheck            func(context.Context) error
 	config                   *config.FilesystemTraversalConfig
+	finishedCheckInterval    time.Duration
 	rootNodeAlreadyScheduled bool
 	rootNodeID               uint64
 }
@@ -63,10 +69,25 @@ func NewFilesystemTraverser(
 	filesystemListerFactory listers.FilesystemListerFactory,
 	snapshotStorage storage.Storage,
 	stateSaver StateSaver,
+	onListedNodes OnListedNodesFunc,
+	finishedCheck func(context.Context) error,
 	config *config.FilesystemTraversalConfig,
 	rootNodeAlreadyScheduled bool,
 	rootNodeID uint64,
-) *FilesystemTraverser {
+) (*FilesystemTraverser, error) {
+
+	finishedCheckInterval, err := time.ParseDuration(
+		config.GetFinishedCheckInterval(),
+	)
+	if err != nil {
+		return nil, errors.NewNonRetriableError(err)
+	}
+
+	if finishedCheckInterval <= 0 {
+		return nil, errors.NewNonRetriableError(
+			fmt.Errorf("finished check interval should be positive"),
+		)
+	}
 
 	return &FilesystemTraverser{
 		scheduledNodes:           make(chan *storage.NodeQueueEntry),
@@ -77,17 +98,16 @@ func NewFilesystemTraverser(
 		filesystemListerFactory:  filesystemListerFactory,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
+		onListedNodes:            onListedNodes,
+		finishedCheck:            finishedCheck,
 		config:                   config,
+		finishedCheckInterval:    finishedCheckInterval,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 		rootNodeID:               rootNodeID,
-	}
+	}, nil
 }
 
-func (t *FilesystemTraverser) Traverse(
-	ctx context.Context,
-	onListedNodes OnListedNodesFunc,
-) error {
-
+func (t *FilesystemTraverser) Traverse(ctx context.Context) error {
 	ctx = logging.WithFields(
 		ctx,
 		logging.Bool("FILESYSTEM_TRAVERSAL_IN_PROGRESS", true),
@@ -116,17 +136,63 @@ func (t *FilesystemTraverser) Traverse(
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
+	finishedCheckCtx, cancelFinishedCheck := context.WithCancel(ctx)
+
 	eg.Go(func() error {
+		defer cancelFinishedCheck()
+
 		return t.directoryScheduler(ctx)
 	})
-
 	for i := uint32(0); i < t.config.GetTraversalWorkersCount(); i++ {
 		eg.Go(func() error {
-			return t.directoryLister(ctx, onListedNodes)
+			return t.directoryLister(ctx)
+		})
+	}
+	if t.finishedCheck != nil {
+		eg.Go(func() error {
+			return t.periodicRunFinishedCheck(finishedCheckCtx)
 		})
 	}
 
 	return eg.Wait()
+}
+
+func (t *FilesystemTraverser) periodicRunFinishedCheck(ctx context.Context) error {
+	ticker := time.NewTicker(t.finishedCheckInterval)
+	defer ticker.Stop()
+
+	if err := t.checkFinished(ctx); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := t.checkFinished(ctx); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (t *FilesystemTraverser) checkFinished(ctx context.Context) error {
+
+	if err := t.finishedCheck(ctx); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		logging.Info(
+			ctx,
+			"Traversal interrupted for %s by finished check",
+			t.filesystemSnapshotID,
+		)
+		return err
+	}
+
+	return nil
 }
 
 func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
@@ -183,10 +249,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 	}
 }
 
-func (t *FilesystemTraverser) directoryLister(
-	ctx context.Context,
-	onListedNodes OnListedNodesFunc,
-) error {
+func (t *FilesystemTraverser) directoryLister(ctx context.Context) error {
 
 	filesystemLister, err := t.filesystemListerFactory.CreateLister(
 		ctx,
@@ -218,7 +281,7 @@ func (t *FilesystemTraverser) directoryLister(
 				return nil
 			}
 
-			err := t.listNode(ctx, filesystemLister, node, onListedNodes)
+			err := t.listNode(ctx, filesystemLister, node)
 			if err != nil {
 				return err
 			}
@@ -236,7 +299,6 @@ func (t *FilesystemTraverser) listNode(
 	ctx context.Context,
 	filesystemLister listers.FilesystemLister,
 	node *storage.NodeQueueEntry,
-	onListedNodes OnListedNodesFunc,
 ) error {
 
 	cookie := node.Cookie
@@ -251,7 +313,7 @@ func (t *FilesystemTraverser) listNode(
 		}
 
 		if len(children) > 0 {
-			err = onListedNodes(ctx, children, filesystemLister)
+			err = t.onListedNodes(ctx, children, filesystemLister)
 			if err != nil {
 				return err
 			}

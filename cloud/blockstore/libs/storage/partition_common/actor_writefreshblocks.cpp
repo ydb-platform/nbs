@@ -159,7 +159,7 @@ void TWriteFreshBlocksActor::WriteBlob(const NActors::TActorContext& ctx)
 
     const auto [generation, step] = ParseCommitId(CommitId);
 
-    TPartialBlobId blobId(
+    BlobId = TPartialBlobId(
         generation,
         step,
         Channel,
@@ -170,7 +170,7 @@ void TWriteFreshBlocksActor::WriteBlob(const NActors::TActorContext& ctx)
 
     auto request = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
         CombinedContext,
-        blobId,
+        BlobId,
         std::move(BlobContent),
         0,      // blockSizeForChecksums
         false); // async
@@ -194,6 +194,7 @@ void TWriteFreshBlocksActor::AddBlocks(const NActors::TActorContext& ctx)
             CombinedContext,
             CommitId,
             BlobSize,
+            BlobId,
             std::move(BlockRanges),
             std::move(WriteHandlers));
 

@@ -262,7 +262,7 @@ TEST(TRdmaClientTest, ShouldDetachFromPoller)
             client->Stop();
         };
 
-        auto shared = client->StartEndpoint("::", 10020).ExtractValueSync();
+        auto shared = client->StartEndpoint("::", 10020).GetValue(5s);
         ASSERT_EQ(2u, shared.use_count());
 
         shared->Stop().Wait();
@@ -279,7 +279,7 @@ TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
             NVerbs::CreateTestVerbs(MakeIntrusive<NVerbs::TTestContext>());
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = TDuration::Seconds(5);
+        clientConfig->MaxReconnectDelay = 5s;
 
         auto logging = CreateLoggingService(
             "console",
@@ -301,7 +301,7 @@ TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
             10020);
 
         try {
-            clientEndpoint.GetValue(TDuration::Seconds(10));
+            clientEndpoint.GetValue(10s);
             FAIL() << "expected exception";
         } catch (const TServiceError& e) {
             ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -314,7 +314,7 @@ TEST(TRdmaClientTest, ShouldHandleGetAddressInfoError)
         auto verbs = NVerbs::CreateTestVerbs(context);
         auto monitoring = CreateMonitoringServiceStub();
         auto config = std::make_shared<TClientConfig>();
-        config->MaxReconnectDelay = TDuration::Seconds(5);
+        config->MaxReconnectDelay = 5s;
 
         auto logging = CreateLoggingService(
             "console",
@@ -344,7 +344,7 @@ TEST(TRdmaClientTest, ShouldHandleGetAddressInfoError)
 
         try {
             auto clientEndpoint = client->StartEndpoint("::", 10020);
-            clientEndpoint.GetValue(TDuration::Seconds(10));
+            clientEndpoint.GetValue(10s);
             FAIL() << "expected exception";
         } catch (const TServiceError& e) {
             ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -366,8 +366,8 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = TDuration::Seconds(4);
-        clientConfig->MaxResponseDelay = TDuration::Seconds(4);
+        clientConfig->MaxReconnectDelay = 5s;
+        clientConfig->MaxResponseDelay = 4s;
 
         auto logging = CreateLoggingService(
             "console",
@@ -478,7 +478,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                 }
             } else {
                 // do not complete request to trigger timeout
-                ev.WaitT(TDuration::Seconds(5));
+                ev.WaitT(5s);
                 ASSERT_TRUE(response.Received);
 
                 NProto::TError error =
@@ -602,8 +602,6 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = 1s;
-        clientConfig->MaxResponseDelay = 1s;
 
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -671,8 +669,6 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = 1s;
-        clientConfig->MaxResponseDelay = 1s;
 
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -686,9 +682,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint("::", 10020);
-
-        auto ep = clientEndpoint.GetValue(5s);
+        auto ep = client->StartEndpoint("::", 10020).GetValue(5s);
 
         struct TResponse
         {
@@ -782,8 +776,6 @@ TEST(TRdmaClientTest, ShouldReconnect)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
-        clientConfig->MaxResponseDelay = TDuration::Seconds(1);
 
         auto logging = CreateLoggingService(
             "console",
@@ -823,7 +815,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
             testContext->ReqIds.push_back(msg->ReqId);
         };
 
-        auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
+        auto ep = clientEndpoint.GetValue(5s);
 
         Disconnect(testContext);
 
@@ -894,7 +886,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
             }
         }
 
-        ev.WaitT(TDuration::Seconds(5));
+        ev.WaitT(5s);
         ASSERT_TRUE(response.Received);
         ASSERT_EQ(0u, response.Status);
     }
@@ -907,8 +899,7 @@ TEST(TRdmaClientTest, ShouldForceReconnect)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
-        clientConfig->MaxResponseDelay = TDuration::Seconds(1);
+        clientConfig->MaxReconnectDelay = 5s;
 
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -923,7 +914,7 @@ TEST(TRdmaClientTest, ShouldForceReconnect)
         };
 
         auto clientEndpoint = client->StartEndpoint("::", 10020);
-        auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
+        auto ep = clientEndpoint.GetValue(5s);
 
         // Increase reconnect timer delay up to "MaxReconnectDelay".
         for (int i = 0; i < 10; i++) {
@@ -968,8 +959,7 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
             client->Stop();
         };
 
-        auto endpoint = client->StartEndpoint("::", 10020)
-            .GetValue(TDuration::Seconds(5));
+        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
 
         auto counters = GetClientCounters(monitoring);
 
@@ -1045,8 +1035,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
     auto verbs = NVerbs::CreateTestVerbs(testContext);
     auto monitoring = CreateMonitoringServiceStub();
     auto clientConfig = std::make_shared<TClientConfig>();
-    clientConfig->MaxReconnectDelay = 1s;
-    clientConfig->MaxResponseDelay = 1s;
+    clientConfig->MaxReconnectDelay = 5s;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1115,8 +1104,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
     auto verbs = NVerbs::CreateTestVerbs(testContext);
     auto monitoring = CreateMonitoringServiceStub();
     auto clientConfig = std::make_shared<TClientConfig>();
-    clientConfig->MaxReconnectDelay = 2s;
-    clientConfig->MaxResponseDelay = 2s;
+    clientConfig->MaxReconnectDelay = 5s;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1147,7 +1135,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
     };
 
     try {
-        client->StartEndpoint("::", 10020).GetValue(15s);
+        client->StartEndpoint("::", 10020).GetValue(10s);
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -1166,7 +1154,6 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
     auto monitoring = CreateMonitoringServiceStub();
     auto clientConfig = std::make_shared<TClientConfig>();
     clientConfig->MaxReconnectDelay = 5s;
-    clientConfig->MaxResponseDelay = 1s;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1217,7 +1204,7 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
             sizeof(acceptMsg));
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).GetValue(15s);
+    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
     ASSERT_TRUE(endpoint);
 
     ASSERT_EQ(RDMA_PROTO_VERSION, firstConnectVersion.load());
@@ -1237,7 +1224,6 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
     clientConfig->SendQueueSize = 16;
     clientConfig->RecvQueueSize = 4;
     clientConfig->MaxReconnectDelay = 5s;
-    clientConfig->MaxResponseDelay = 1s;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1295,7 +1281,7 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
             sizeof(acceptMsg));
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).GetValue(15s);
+    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
     ASSERT_TRUE(endpoint);
 
     // initial attempt uses configured queue sizes
@@ -1320,8 +1306,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
     auto verbs = NVerbs::CreateTestVerbs(testContext);
     auto monitoring = CreateMonitoringServiceStub();
     auto clientConfig = std::make_shared<TClientConfig>();
-    clientConfig->MaxReconnectDelay = 2s;
-    clientConfig->MaxResponseDelay = 2s;
+    clientConfig->MaxReconnectDelay = 5s;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1352,7 +1337,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
     };
 
     try {
-        client->StartEndpoint("::", 10020).GetValue(15s);
+        client->StartEndpoint("::", 10020).GetValue(10s);
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();

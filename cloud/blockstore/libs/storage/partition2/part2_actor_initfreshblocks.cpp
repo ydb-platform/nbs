@@ -152,6 +152,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
     for (const auto& blob: msg->Blobs) {
         auto error = ParseFreshBlobContent(
             blob.CommitId,
+            blob.BlobId,
             State->GetBlockSize(),
             blob.Data,
             blocks,

@@ -80,8 +80,9 @@ TString BuildZeroFreshBlocksBlobContent(TBlockRange32 blockRange)
 }
 
 NProto::TError ParseFreshBlobContent(
-    const ui64 commitId,
-    const ui32 blockSize,
+    ui64 commitId,
+    TPartialBlobId blobId,
+    ui32 blockSize,
     const TString& buffer,
     TVector<TOwningFreshBlock>& result)
 {
@@ -118,7 +119,7 @@ NProto::TError ParseFreshBlobContent(
             auto block = TBlock(blockIndex, commitId, IsStoredInDb);
 
             if (meta.GetIsZero()) {
-                result.emplace_back(block, TString());
+                result.emplace_back(block, TString(), blobId);
                 continue;
             }
 
@@ -131,7 +132,7 @@ NProto::TError ParseFreshBlobContent(
             }
 
             TString content(buffer.data() + offset, blockSize);
-            result.emplace_back(block, std::move(content));
+            result.emplace_back(block, std::move(content), blobId);
 
             offset += blockSize;
         }

@@ -16,7 +16,7 @@ bool TTestStorage::Empty() const
 void TTestStorage::Visit(const TVisitor& visitor)
 {
     for (const auto& it: List) {
-        visitor(it.Data);
+        visitor(it.Tag, it.Data);
     }
 }
 
@@ -56,6 +56,14 @@ void TTestStorage::Free(const void* ptr)
     SetStats();
 }
 
+void TTestStorage::SetTag(const void* ptr, ui32 tag)
+{
+    auto it = Data.find(ptr);
+    Y_ENSURE(it != Data.end(), "Entry not found");
+
+    it->second->Tag = tag;
+}
+
 void TTestStorage::UpdateStats() const
 {}
 
@@ -67,11 +75,14 @@ void TTestStorage::SetCapacity(size_t capacity)
 
 void TTestStorage::SetStats()
 {
-    Stats->SetPersistentStorageCounters(
-        /* rawCapacityBytesCount = */ Capacity,
-        /* rawUsedBytesCount = */ Data.size(),
-        /* entryCount = */ Data.size(),
-        /* isCorrupted = */ false);
+    Stats->SetPersistentStorageCounters({
+        .RawCapacityBytesCount = Capacity,
+        .RawUsedBytesCount = Data.size(),
+        .EntryCount = Data.size(),
+        .MaxObservedEntryByteCount = 0,
+        .Version = 1,
+        .IsCorrupted = false,
+    });
 }
 
 ////////////////////////////////////////////////////////////////////////////////

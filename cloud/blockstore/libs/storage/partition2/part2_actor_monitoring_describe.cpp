@@ -35,9 +35,13 @@ public:
         : Args(args)
     {}
 
-    void Visit(const TBlock& block, TStringBuf blockContent) override
+    void Visit(
+        const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& blobId) override
     {
         Y_UNUSED(blockContent);
+        Y_UNUSED(blobId);
         AddBlock(block, {}, 0);
     }
 

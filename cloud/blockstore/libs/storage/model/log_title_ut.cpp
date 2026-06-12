@@ -261,7 +261,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
         logTitle1.SetGeneration(5);
 
-        std::pair<TString, TString> tags[] = {{"cp", "123"}};
+        const std::pair<TStringBuf, TPrintableValue> tags[] = {{"cp", "123"}};
 
         auto childLogTitle = logTitle1.GetChildWithTags(
             startTime + GetCyclesPerMillisecond() * 1001,
@@ -270,6 +270,44 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
         UNIT_ASSERT_STRING_CONTAINS(
             childLogTitle.GetWithTime(),
             "[v:12345 g:5 d:disk1 cp:123 t:1.001s + 1.");
+    }
+
+    Y_UNIT_TEST(GetChildWithTags)
+    {
+        const ui64 startTime = 1234;
+        TLogTitle logTitle(
+            startTime,
+            TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
+
+        auto childLogTitle = logTitle.GetChildWithTags(
+            startTime,
+            {{"flag", std::monostate{}}, {"diskId", "disk1"}});
+        const auto title = childLogTitle.GetWithTime();
+        UNIT_ASSERT_STRING_CONTAINS(title, "[v:12345 g:? d:disk1 flag diskId:disk1 t:");
+    }
+
+    Y_UNIT_TEST(GetChildWithTagsDifferentValueTypes)
+    {
+        const ui64 startTime = 0;
+        TLogTitle logTitle(
+            startTime,
+            TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
+        logTitle.SetGeneration(5);
+        const ui64 childTime = GetCyclesPerMillisecond() * 1001;
+
+        const std::pair<TStringBuf, TPrintableValue> tags[] = {
+            {"str", "value"},
+            {"int", 42},
+            {"ui32", ui32(100)},
+            {"ui64", ui64(1234567890)},
+            {"buf", TStringBuf("bufvalue")},
+            {"cstr", "cstring"},
+            {"empty", std::monostate{}}};
+        auto childLogTitle = logTitle.GetChildWithTags(childTime, tags);
+        UNIT_ASSERT_STRING_CONTAINS(
+            childLogTitle.GetWithTime(),
+            "[v:12345 g:5 d:disk1 str:value int:42 ui32:100 ui64:1234567890 "
+            "buf:bufvalue cstr:cstring empty t:1.001s + ");
     }
 
     Y_UNIT_TEST(GetForDiskRegistry)

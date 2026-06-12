@@ -961,6 +961,61 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         checkHandlesCounters(0, 0);
     }
 
+    Y_UNIT_TEST_F(ShouldReportCollectCommitId, TEnv)
+    {
+        auto registry = Env.GetRegistry();
+
+        auto advanceTime = [&]()
+        {
+            Tablet->AdvanceTime(TDuration::Seconds(15));
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            Env.GetRuntime().DispatchEvents(options);
+        };
+
+        Tablet->InitSession("client", "session");
+
+        auto moveBarrier = [&]()
+        {
+            const auto nodeId =
+                CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            const auto handle = CreateHandle(*Tablet, nodeId);
+            Tablet->WriteData(handle, 0, 256_KB, 'a');
+            Tablet->Flush();
+            Tablet->DestroyHandle(handle);
+            Tablet->UnlinkNode(RootNodeId, "test", false);
+            Tablet->CollectGarbage();
+        };
+
+        const TVector<TTestRegistryVisitor::TLabel> sensorLabels{
+            {"sensor", "CollectCommitId"},
+            {"filesystem", "test"},
+        };
+
+        moveBarrier();
+        advanceTime();
+
+        i64 first = 0;
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCountersWithPredicate({
+            {sensorLabels,
+             [&first](i64 val)
+             {
+                 first = val;
+                 return val > 0;
+             }},
+        });
+
+        moveBarrier();
+        advanceTime();
+
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCountersWithPredicate({
+            {sensorLabels, [&first](i64 val) { return val > first; }},
+        });
+    }
+
     Y_UNIT_TEST(ShouldPersistUsedDirectHandlesCountAfterRestart)
     {
         TTestEnv env;

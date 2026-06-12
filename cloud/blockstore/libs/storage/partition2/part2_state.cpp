@@ -685,7 +685,8 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
             meta.BlockIndex,
             freshBlock.Content,
             meta.MinCommitId,
-            meta.MaxCommitId);
+            meta.MaxCommitId,
+            freshBlock.BlobId);
 
         Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
             meta.BlockIndex,
@@ -697,13 +698,15 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
 
 void TPartitionState::WriteFreshBlock(
     const TBlock& block,
-    TBlockDataRef blockContent)
+    TBlockDataRef blockContent,
+    TPartialBlobId blobId)
 {
     bool added = FreshBlocks.AddBlock(
         block.BlockIndex,
         blockContent.AsStringBuf(),
         block.MinCommitId,
-        block.MaxCommitId);
+        block.MaxCommitId,
+        blobId);
 
     Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
         block.BlockIndex,
@@ -750,7 +753,7 @@ void TPartitionState::FindFreshBlocks(
 {
     for (const auto& block: blocks) {
         Y_ABORT_UNLESS(block.Content.size() == Config.GetBlockSize());
-        visitor.Visit(block.Meta, block.Content);
+        visitor.Visit(block.Meta, block.Content, block.BlobId);
     }
 }
 

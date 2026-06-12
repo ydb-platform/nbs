@@ -302,7 +302,10 @@ struct TEvPartitionPrivate
     enum ECompactionMode
     {
         RangeCompaction,
-        GarbageCompaction
+        GarbageCompaction,
+        // Similar to GarbageCompaction, but does not treat previously used
+        // blocks that are now zeroed as garbage.
+        IgnoringZeroedCompaction
     };
 
     struct TCompactionRequest

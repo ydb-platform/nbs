@@ -22,7 +22,7 @@ public:
 class TClient
 {
 public:
-    std::unique_ptr<IEndpoint> Connect(const TString& host, ui16 port);
+    std::shared_ptr<IEndpoint> Connect(const TString& host, ui16 port);
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

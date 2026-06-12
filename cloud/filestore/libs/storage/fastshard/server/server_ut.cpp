@@ -1,3 +1,4 @@
+#include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/storage/fastshard/client/client.h>
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
@@ -25,6 +26,10 @@ using silk::FiberFuture;
 using silk::FiberScheduler;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Silk test environment.
@@ -189,4 +194,68 @@ TEST(ServerTest, UnknownShardReturnsEmptyResponse)
         0);
 
     EXPECT_EQ(result, 0);
+}
+
+TEST(ServerTest, AsyncClientCreateNodeAndGetAttr)
+{
+    NCloud::NFileStore::NProtoPrivate::TMemFastShardConfig cfg;
+    cfg.SetCreateNodeUponAccess(true);
+    auto shard = CreateMemFileSystemShard(1, cfg);
+
+    TServerFixture fixture;
+    fixture.StartServer(shard);
+
+    TAsyncClient client;
+    auto endpoint =
+        client.Connect("localhost", fixture.Port).ExtractValue(WaitTimeout);
+    EXPECT_NE(endpoint, nullptr);
+
+    // CreateNode
+    {
+        TRequest req;
+        req.SetFileSystemId("test-fs");
+        req.MutableCreateNode()->SetNodeId(1);
+        req.MutableCreateNode()->MutableFile()->SetMode(0644);
+        req.MutableCreateNode()->SetName("async.txt");
+        auto resp = endpoint->Send(std::move(req)).ExtractValue(WaitTimeout);
+        EXPECT_TRUE(resp.HasCreateNode());
+    }
+
+    // GetNodeAttr
+    {
+        TRequest req;
+        req.SetFileSystemId("test-fs");
+        req.MutableGetNodeAttr()->SetNodeId(1);
+        req.MutableGetNodeAttr()->SetName("async.txt");
+        auto resp = endpoint->Send(std::move(req)).ExtractValue(WaitTimeout);
+        EXPECT_TRUE(resp.HasGetNodeAttr());
+    }
+
+    fixture.StopServer();
+}
+
+TEST(ServerTest, AsyncClientUnknownShardReturnsError)
+{
+    NCloud::NFileStore::NProtoPrivate::TMemFastShardConfig cfg;
+    auto shard = CreateMemFileSystemShard(1, cfg);
+
+    TServerFixture fixture;
+    fixture.StartServer(shard);
+
+    TAsyncClient client;
+    auto endpoint =
+        client.Connect("localhost", fixture.Port).ExtractValue(WaitTimeout);
+    EXPECT_NE(endpoint, nullptr);
+
+    TRequest req;
+    req.SetFileSystemId("nonexistent-fs");
+    req.MutableGetNodeAttr()->SetNodeId(1);
+    req.MutableGetNodeAttr()->SetName("x");
+    auto resp = endpoint->Send(std::move(req)).ExtractValue(WaitTimeout);
+    EXPECT_TRUE(resp.HasError());
+    EXPECT_EQ(
+        resp.GetError().GetCode(),
+        static_cast<ui32>(NCloud::E_NOT_FOUND));
+
+    fixture.StopServer();
 }

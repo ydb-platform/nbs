@@ -6,11 +6,11 @@
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
-#include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
@@ -9034,6 +9034,74 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 S_OK,
                 response->GetError().GetCode(),
                 response->GetErrorReason());
+        }
+    }
+
+    SERVICE_TEST(ShouldSetCompressNodeRefFlag)
+    {
+        config.SetEnableNodeRefCompression(true);
+
+        {
+            // Create a filesystem with 2 shards.
+            TShardedFileSystemConfig fsConfig;
+            CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+            // Check that the CompressNodeRef flag is set for the main
+            // filesystem and all shards.
+            const auto mainFsTopology =
+                GetFileSystemTopology(service, fsConfig.FsId);
+            UNIT_ASSERT(mainFsTopology.GetCompressNodeRef());
+
+            const auto shard1Topology =
+                GetFileSystemTopology(service, fsConfig.Shard1Id);
+            UNIT_ASSERT(shard1Topology.GetCompressNodeRef());
+
+            const auto shard2Topology =
+                GetFileSystemTopology(service, fsConfig.Shard2Id);
+            UNIT_ASSERT(shard2Topology.GetCompressNodeRef());
+
+            // Resize the filesystem to have 3 shards, check that the new shard
+            // has CompressNodeRef.
+            service.ResizeFileStore(
+                fsConfig.FsId,
+                fsConfig.MainFsBlockCount * 3 / 2);
+            WaitForTabletStart(service);
+
+            const auto shard3Topology =
+                GetFileSystemTopology(service, fsConfig.FsId + "_s3");
+            UNIT_ASSERT(shard3Topology.GetCompressNodeRef());
+        }
+
+        {
+            // Create a filesystem without shards.
+            TTestEnv env({}, config);
+
+            ui32 nodeIdx = env.AddDynamicNode();
+
+            TServiceClient service(env.GetRuntime(), nodeIdx);
+
+            const ui64 fsSize = 1000;
+            const ui64 shardsCount = 2;
+            const TString fsId = "test";
+            service.CreateFileStore(fsId, fsSize);
+
+            const auto mainFsTopology =
+                GetFileSystemTopology(service, fsId);
+            UNIT_ASSERT(mainFsTopology.GetCompressNodeRef());
+
+            // Resize the filesystem to have 2 shards, check the new shards have
+            // CompressNodeRef.
+            service
+                .ResizeFileStore(fsId, fsSize, false /* force */, shardsCount);
+            WaitForTabletStart(service);
+
+            const auto shard1Topology =
+                GetFileSystemTopology(service, fsId + "_s1");
+            UNIT_ASSERT(shard1Topology.GetCompressNodeRef());
+
+            const auto shard2Topology =
+                GetFileSystemTopology(service, fsId + "_s2");
+            UNIT_ASSERT(shard2Topology.GetCompressNodeRef());
         }
     }
 }

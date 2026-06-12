@@ -71,6 +71,13 @@ def parse_args(args):
     parser.add_argument("--filesystem-dataplane-enabled", action='store_true', default=False)
     parser.add_argument("--list-nodes-max-bytes", type=int, default=0)
     parser.add_argument(
+        "--image-s3-storage-class",
+        dest="image_s3_default_storage_class",
+        type=str,
+        default="",
+    )
+    parser.add_argument("--s3-quota", action='append', default=[])
+    parser.add_argument(
         "--regular-filesystem-scrubbing-config",
         type=str,
         default="",
@@ -108,7 +115,7 @@ def start(argv):
     if args.certs_only:
         return
 
-    s3 = S3Launcher()
+    s3 = S3Launcher(quotas=args.s3_quota)
     s3.start()
     set_env("DISK_MANAGER_RECIPE_S3_PORT", str(s3.port))
 
@@ -390,6 +397,7 @@ def start(argv):
             disable_disk_registry_based_disks=args.disable_disk_registry_based_disks,
             retry_broken_disk_registry_based_disk_checkpoint=args.retry_broken_disk_registry_based_disk_checkpoint,
             cell_selection_policy=args.cell_selection_policy,
+            image_s3_default_storage_class=args.image_s3_default_storage_class,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()

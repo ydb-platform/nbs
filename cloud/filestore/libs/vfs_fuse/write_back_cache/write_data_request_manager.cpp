@@ -10,6 +10,32 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ECachedWriteDataRequestTag
+{
+    // No specific actions should be taken
+    Unflushed = 0,
+
+    // Handle associated with the request has been released.
+    // Attempts to flush the request should be made using another handle.
+    UnflushedHandleReleased = 1,
+
+    // Request has been flushed and should be evicted on restart
+    Flushed = 2,
+
+    // Used to validate deserialization
+    Max = Flushed
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TLoadedWriteDataRequest
+{
+    ECachedWriteDataRequestTag Tag = ECachedWriteDataRequestTag::Unflushed;
+    std::unique_ptr<TCachedWriteDataRequest> Request;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TStringBuf SerializeWriteDataRequest(
     const NProto::TWriteDataRequest& request,
     TMemoryOutput& memoryOutput)
@@ -116,11 +142,16 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
 {
     bool success = true;
 
-    TVector<std::unique_ptr<TCachedWriteDataRequest>> loadedRequests;
+    TVector<TLoadedWriteDataRequest> loadedRequests;
 
     PersistentStorage->Visit(
-        [this, &success, &loadedRequests](const TStringBuf allocation)
+        [this, &success, &loadedRequests](ui32 tag, const TStringBuf allocation)
         {
+            if (tag > static_cast<ui32>(ECachedWriteDataRequestTag::Max)) {
+                success = false;
+                return;
+            }
+
             auto request = DeserializeWriteDataRequest(
                 SequenceIdGenerator->GenerateId(),
                 Timer->Now(),
@@ -128,11 +159,12 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
 
             if (!request) {
                 success = false;
-                return false;
+                return;
             }
 
-            loadedRequests.push_back(std::move(request));
-            return true;
+            loadedRequests.push_back(
+                {.Tag = static_cast<ECachedWriteDataRequestTag>(tag),
+                 .Request = std::move(request)});
         });
 
     if (!success) {
@@ -140,8 +172,13 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
     }
 
     for (auto& request: loadedRequests) {
-        UnflushedRequestsPushBack(request.get());
-        visitor(std::move(request));
+        if (request.Tag == ECachedWriteDataRequestTag::Flushed) {
+            // There are no pins that may prevent flushed requests from eviction
+            PersistentStorage->Free(request.Request->GetAllocationPtr());
+        } else {
+            UnflushedRequestsPushBack(request.Request.get());
+            visitor(std::move(request.Request));
+        }
     }
 
     PendingRequests.Clear();
@@ -261,6 +298,10 @@ void TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)
     UnflushedRequestsRemove(request);
     request->Time = Timer->Now();
     FlushedRequestsPushBack(request);
+
+    PersistentStorage->SetTag(
+        request->GetAllocationPtr(),
+        static_cast<ui32>(ECachedWriteDataRequestTag::Flushed));
 }
 
 void TWriteDataRequestManager::Evict(

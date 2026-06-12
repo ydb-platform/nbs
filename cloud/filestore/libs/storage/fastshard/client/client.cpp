@@ -4,6 +4,7 @@
 
 #include <silk/fibers/fiber.h>
 
+#include <util/generic/scope.h>
 #include <util/generic/string.h>
 
 #include <arpa/inet.h>
@@ -44,6 +45,7 @@ struct TEndpoint: IEndpoint
 
         ui32 lenBe = htonl(static_cast<ui32>(reqBuf.size()));
         int r = SendAll(Fd, &lenBe, sizeof(lenBe));
+        // TODO(#5894): don't abort, return error in resp instead
         Y_ABORT_UNLESS(r == 0, "send length failed: %d", r);
         r = SendAll(Fd, reqBuf.data(), reqBuf.size());
         Y_ABORT_UNLESS(r == 0, "send body failed: %d", r);
@@ -68,7 +70,7 @@ struct TEndpoint: IEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
+std::shared_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
 {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -84,6 +86,10 @@ std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
     if (gai != 0) {
         return nullptr;
     }
+
+    Y_DEFER {
+        ::freeaddrinfo(res);
+    };
 
     for (addrinfo* ai = res; ai != nullptr; ai = ai->ai_next) {
         int fd = ::socket(
@@ -122,7 +128,7 @@ std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
         int one = 1;
         ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
-        return std::make_unique<TEndpoint>(fd);
+        return std::make_shared<TEndpoint>(fd);
     }
 
     return nullptr;

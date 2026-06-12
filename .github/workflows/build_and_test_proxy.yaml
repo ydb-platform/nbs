@@ -147,7 +147,7 @@ jobs:
           workload_status: in_progress
 
   on_demand:
-    if: ${{ inputs.mode == 'on_demand' }}
+    if: ${{ !cancelled() && inputs.mode == 'on_demand' && needs.plan.result == 'success' && (needs.prepare-pr-comment.result == 'success' || needs.prepare-pr-comment.result == 'skipped') }}
     uses: ./.github/workflows/on_demand_build_and_test.yaml
     name: On-demand build and test
     needs:
@@ -172,7 +172,7 @@ jobs:
     secrets: inherit
 
   pooled:
-    if: ${{ inputs.mode == 'pooled' }}
+    if: ${{ !cancelled() && inputs.mode == 'pooled' && needs.plan.result == 'success' && (needs.prepare-pr-comment.result == 'success' || needs.prepare-pr-comment.result == 'skipped') }}
     uses: ./.github/workflows/on_pooled_build_and_test.yaml
     name: Pooled build and test
     needs:
@@ -196,7 +196,7 @@ jobs:
     secrets: inherit
 
   hybrid:
-    if: ${{ inputs.mode == 'hybrid' }}
+    if: ${{ !cancelled() && inputs.mode == 'hybrid' && needs.plan.result == 'success' && (needs.prepare-pr-comment.result == 'success' || needs.prepare-pr-comment.result == 'skipped') }}
     uses: ./.github/workflows/on_hybrid_build_and_test.yaml
     name: Hybrid build and test
     needs:

@@ -21,14 +21,14 @@ RECURSE_FOR_TESTS(
     disk_service_max_free_bytes_policy_test
     facade_test
     image_service_nemesis_test
+    image_service_s3_quota_test
     image_service_test
     filesystem_scrubbing_test
     filesystem_service_nemesis_test
     filesystem_scrubbing_nemesis_test
     filesystem_service_test
     filesystem_snapshot_service_test
-    filesystem_snapshot_transfer_test
-    filesystem_snapshot_transfer_nemesis_test
+    filesystem_snapshot_service_nemesis_test
     placement_group_service_nemesis_test
     placement_group_service_test
     private_service_nemesis_test

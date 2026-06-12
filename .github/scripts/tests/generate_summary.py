@@ -1016,6 +1016,15 @@ def update_pr_comment(
         is_dry_run,
     )
     comment = find_pr_comment(pr, header_prefix)
+    comment_text = get_comment_text(
+        pr,
+        summary,
+        build_preset,
+        test_history_url,
+        test_target,
+        test_time,
+    )
+    comment_block = "\n".join(comment_text)
 
     if comment is None:
         body = get_base_comment_body(
@@ -1024,36 +1033,29 @@ def update_pr_comment(
             is_dry_run,
             workload_status,
         )
-    else:
-        body = [
-            replace_workload_status_block(
-                comment.body,
-                build_preset,
-                workload_status,
-            ),
-            "",
-            "",
-        ]
-
-    body.extend(
-        get_comment_text(
-            pr,
-            summary,
-            build_preset,
-            test_history_url,
-            test_target,
-            test_time,
-        )
-    )
-
-    body = "\n".join(body)
-
-    if comment is None:
+        body.extend(comment_text)
         LOGGER.info("Creating new comment")
-        pr.create_issue_comment(body)
-    else:
-        LOGGER.info("Updating existing comment")
-        comment.edit(bump_comment_revision(body))
+        pr.create_issue_comment("\n".join(body))
+        return
+
+    def append_summary_if_missing(body: str) -> str:
+        body = replace_workload_status_block(
+            body,
+            build_preset,
+            workload_status,
+        )
+        if comment_block in body:
+            return body
+        return "\n".join([body, "", "", comment_block])
+
+    LOGGER.info("Updating existing comment")
+    edit_pr_comment(
+        pr=pr,
+        header_prefix=header_prefix,
+        update_body=append_summary_if_missing,
+        is_applied=lambda body: comment_block in body,
+        operation=f"test summary for {build_preset}",
+    )
 
 
 def update_pr_comment_workload_status(

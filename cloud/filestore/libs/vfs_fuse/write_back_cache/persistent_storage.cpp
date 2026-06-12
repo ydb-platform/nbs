@@ -62,6 +62,8 @@ public:
         json.BeginObject()
             .WriteKey("FilePath")
             .WriteString(Config.FilePath)
+            .WriteKey("Version")
+            .WriteULongLong(Storage.GetVersion())
             .WriteKey("RawCapacityByteCount")
             .WriteULongLong(Storage.GetRawCapacity())
             .WriteKey("RawUsedByteCount")
@@ -84,10 +86,10 @@ public:
     void Visit(const TVisitor& visitor) override
     {
         Storage.Visit(
-            [&visitor](ui32 checksum, TStringBuf entry)
+            [&visitor](ui32 checksum, ui32 tag, TStringBuf entry)
             {
                 Y_UNUSED(checksum);
-                visitor({entry.data(), entry.size()});
+                visitor(tag, {entry.data(), entry.size()});
             });
 
         SetCounters();
@@ -117,6 +119,11 @@ public:
         SetCounters();
     }
 
+    void SetTag(const void* ptr, ui32 tag) override
+    {
+        Storage.SetTag(ptr, tag);
+    }
+
     void UpdateStats() const override
     {
         Stats->UpdateStats();
@@ -125,11 +132,15 @@ public:
 private:
     void SetCounters()
     {
-        Stats->SetPersistentStorageCounters(
-            /* rawCapacityBytesCount = */ Storage.GetRawCapacity(),
-            /* rawUsedBytesCount = */ Storage.GetRawUsedBytesCount(),
-            /* entryCount = */ Storage.Size(),
-            /* isCorrupted = */ Storage.IsCorrupted());
+        Stats->SetPersistentStorageCounters({
+            .RawCapacityBytesCount = Storage.GetRawCapacity(),
+            .RawUsedBytesCount = Storage.GetRawUsedBytesCount(),
+            .EntryCount = Storage.Size(),
+            .MaxObservedEntryByteCount =
+                Storage.GetMaxObservedEntryByteCount(),
+            .Version = Storage.GetVersion(),
+            .IsCorrupted = Storage.IsCorrupted(),
+        });
     }
 };
 
