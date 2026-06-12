@@ -1,8 +1,8 @@
 #pragma once
 
-#include <util/system/types.h>
-
 #include <util/generic/maybe.h>
+
+#include <util/system/types.h>
 
 namespace NLastGetopt {
     class TOpts;
