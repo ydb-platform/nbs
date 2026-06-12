@@ -29,13 +29,21 @@ TDirectoryHandleStats SumDirectoryHandlesStats(
 TDirectoryHandleCache::TDirectoryHandleCache(
     TLog log,
     TDirectoryHandleModuleStatsPtr stats,
-    TDirectoryHandleStoragePtr storage)
+    TDirectoryHandleStoragePtr storage,
+    TDirectoryEntryVersionCache* directoryEntryVersionCache)
     : Log(std::move(log))
     , Storage(std::move(storage))
+    , DirectoryEntryVersionCache(directoryEntryVersionCache)
     , Stats(std::move(stats))
 {
     if (Storage) {
         Storage->LoadHandles(Handles);
+    }
+
+    if (DirectoryEntryVersionCache) {
+        for (const auto& [_, handle]: Handles) {
+            DirectoryEntryVersionCache->RegisterHandle(handle->Index);
+        }
     }
 
     IncreaseStats(SumDirectoryHandlesStats(Handles), Handles.size());
@@ -50,6 +58,10 @@ ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
         do {
             handleId = RandomNumber<ui64>();
         } while (!Handles.try_emplace(handleId, handle).second);
+
+        if (DirectoryEntryVersionCache) {
+            DirectoryEntryVersionCache->RegisterHandle(ino);
+        }
 
         // A fresh handle has exactly one chunk (the default one we're about
         // to store); its serialized size equals BaseSerializedSize. Build
@@ -80,8 +92,12 @@ void TDirectoryHandleCache::RemoveHandle(ui64 handleId)
     with_lock (Lock) {
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
+            const auto ino = it->second->Index;
             DecreaseStats(it->second->GetStats(), 1);
             Handles.erase(it);
+            if (DirectoryEntryVersionCache) {
+                DirectoryEntryVersionCache->UnregisterHandle(ino);
+            }
         }
 
         if (Storage) {
@@ -97,10 +113,14 @@ bool TDirectoryHandleCache::RemoveHandle(ui64 handleId, fuse_ino_t ino)
     with_lock (Lock) {
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            isConsistent = it->second->Index == ino;
+            const auto handleIno = it->second->Index;
+            isConsistent = handleIno == ino;
 
             DecreaseStats(it->second->GetStats(), 1);
             Handles.erase(it);
+            if (DirectoryEntryVersionCache) {
+                DirectoryEntryVersionCache->UnregisterHandle(handleIno);
+            }
         }
 
         if (Storage) {
@@ -156,6 +176,11 @@ void TDirectoryHandleCache::Clear()
     with_lock (Lock) {
         STORAGE_DEBUG("clear directory cache of size %lu", Handles.size());
         DecreaseStats(SumDirectoryHandlesStats(Handles), Handles.size());
+        if (DirectoryEntryVersionCache) {
+            for (const auto& [_, handle]: Handles) {
+                DirectoryEntryVersionCache->UnregisterHandle(handle->Index);
+            }
+        }
         Handles.clear();
     }
 }
@@ -165,6 +190,11 @@ void TDirectoryHandleCache::Reset()
     with_lock (Lock) {
         STORAGE_DEBUG("reset directory cache of size %lu", Handles.size());
         DecreaseStats(SumDirectoryHandlesStats(Handles), Handles.size());
+        if (DirectoryEntryVersionCache) {
+            for (const auto& [_, handle]: Handles) {
+                DirectoryEntryVersionCache->UnregisterHandle(handle->Index);
+            }
+        }
         Handles.clear();
 
         if (Storage) {

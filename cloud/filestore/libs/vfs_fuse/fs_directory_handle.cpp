@@ -129,18 +129,24 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t size,
     size_t offset,
     const TBufferPtr& content,
-    ui64 attrVersion,
+    ui64 cacheVersion,
     TString cookie)
 {
     size_t end = offset + content->size();
     TDirectoryHandleChunk chunk{
         .Key = end,
         .Index = Index,
-        .DirectoryContent = {content, 0, size}};
+        .DirectoryContent = {
+            .Content = content,
+            .Offset = 0,
+            .Size = size,
+            .CacheVersion = cacheVersion,
+        },
+    };
 
     with_lock (Lock) {
         Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-        Content[end] = {.Buffer = content, .AttrVersion = attrVersion};
+        Content[end] = {.Buffer = content, .CacheVersion = cacheVersion};
         Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
@@ -155,14 +161,14 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
 {
     size_t end = 0;
     TBufferPtr content = nullptr;
-    ui64 attrVersion = 0;
+    ui64 cacheVersion = 0;
 
     with_lock (Lock) {
         auto it = Content.upper_bound(offset);
         if (it != Content.end()) {
             end = it->first;
             content = it->second.Buffer;
-            attrVersion = it->second.AttrVersion;
+            cacheVersion = it->second.CacheVersion;
         } else if (Cookie) {
             return Nothing();
         }
@@ -179,7 +185,7 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
             .Content = content,
             .Offset = offset,
             .Size = size,
-            .AttrVersion = attrVersion};
+            .CacheVersion = cacheVersion};
     }
 
     return result;

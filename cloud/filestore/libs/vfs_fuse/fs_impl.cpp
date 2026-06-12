@@ -24,6 +24,11 @@ ELogPriority GetErrorPriority(ui32 code)
 
 constexpr ui32 NODE_CACHE_SHARD_COUNT = 16;
 
+ui64 GenerateCacheVersion(std::atomic<ui64>& version)
+{
+    return version.fetch_add(1, std::memory_order_release) + 1;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,7 +59,8 @@ TFileSystem::TFileSystem(
     , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
           Log,
           std::move(directoryHandleStats),
-          std::move(directoryHandleStorage)))
+          std::move(directoryHandleStorage),
+          &DirectoryEntryVersionCache))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
@@ -183,13 +189,25 @@ bool TFileSystem::UpdateNodeAttrsInCache(
 
 void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
 {
-    const ui64 newVersion =
-        GlobalAttrVersion.fetch_add(1, std::memory_order_release) + 1;
+    const ui64 newVersion = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating node: " << nodeId
         << ", version: " << newVersion);
 
     NodeCache.InvalidateNode(nodeId, newVersion);
+}
+
+void TFileSystem::InvalidateDirectoryEntryInCache(
+    fuse_ino_t parent,
+    const TString& name)
+{
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating directory entry: " << parent
+        << " " << name.Quote()
+        << ", version: " << version);
+
+    DirectoryEntryVersionCache.ChangeVersion(parent, name, version);
 }
 
 void TFileSystem::UpdateXAttrCache(

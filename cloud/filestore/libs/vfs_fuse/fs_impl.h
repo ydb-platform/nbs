@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "config.h"
+#include "directory_entry_version_cache.h"
 #include "directory_handle_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
@@ -89,6 +90,8 @@ private:
 
     TNodeCache NodeCache;
 
+    TDirectoryEntryVersionCache DirectoryEntryVersionCache;
+
     std::unique_ptr<TDirectoryHandleCache> DirectoryHandleCache;
 
     TXAttrCache XAttrCache;
@@ -102,7 +105,7 @@ private:
 
     TWriteBackCache WriteBackCache;
 
-    std::atomic<ui64> GlobalAttrVersion = 1;
+    std::atomic<ui64> GlobalCacheVersion = 1;
 
     TProtoMessagePrinter ProtoMessagePrinter;
 
@@ -419,6 +422,9 @@ private:
         ui64 version);
 
     void InvalidateNodeInCache(ui64 nodeId);
+    void InvalidateDirectoryEntryInCache(
+        fuse_ino_t parent,
+        const TString& name);
 
     void UpdateXAttrCache(
         ui64 ino,

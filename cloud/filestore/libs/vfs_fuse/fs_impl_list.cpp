@@ -93,13 +93,22 @@ void TFileSystem::ReadDir(
     auto reply = [=] (TFileSystem& fs, const TDirectoryContent& content) {
         TBuffer c(content.GetData(), content.GetSize());
 
-        auto error = ResetAttrTimeout(c.Data(), c.Size(), [&] (ui64 ino) {
-            return NodeCache.GetNodeVersion(ino) > content.AttrVersion;
-        });
+        auto error = ResetCacheTimeouts(
+            c.Data(),
+            c.Size(),
+            [&] (ui64 nodeId) {
+                return fs.NodeCache.GetNodeVersion(nodeId) >
+                       content.CacheVersion;
+            },
+            [&] (ui64, TStringBuf name) {
+                return fs.DirectoryEntryVersionCache.GetVersion(ino, name) >
+                       content.CacheVersion;
+            });
 
         if (HasError(error)) {
             STORAGE_ERROR("request #" << fuse_req_unique(req)
-                << " ResetAttrTimeout error: " << FormatError(error).Quote());
+                << " ResetCacheTimeouts error: "
+                << FormatError(error).Quote());
         }
 
         //
@@ -138,7 +147,7 @@ void TFileSystem::ReadDir(
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     Session->ListNodes(callContext, std::move(request))
         .Subscribe(

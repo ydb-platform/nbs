@@ -25,7 +25,7 @@ struct TDirectoryContent
     TBufferPtr Content = nullptr;
     size_t Offset = 0;
     size_t Size = 0;
-    ui64 AttrVersion = 0;
+    ui64 CacheVersion = 0;
 
     const char* GetData() const
     {
@@ -71,7 +71,7 @@ private:
     struct TContent
     {
         TBufferPtr Buffer;
-        ui64 AttrVersion = 0;
+        ui64 CacheVersion = 0;
     };
 
     TString Cookie;
@@ -91,7 +91,7 @@ public:
         size_t size,
         size_t offset,
         const TBufferPtr& content,
-        ui64 attrVersion,
+        ui64 cacheVersion,
         TString cookie);
 
     TMaybe<TDirectoryContent>

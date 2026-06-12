@@ -1,7 +1,8 @@
 #pragma once
 
+#include "directory_entry_version_cache.h"
+#include "directory_handle_stats.h"
 #include "directory_handle_storage.h"
-#include "fs.h"
 
 #include <util/system/spinlock.h>
 
@@ -19,6 +20,7 @@ private:
     TAdaptiveLock Lock;
     TDirectoryHandleMap Handles;
     TDirectoryHandleStoragePtr Storage;
+    TDirectoryEntryVersionCache* DirectoryEntryVersionCache = nullptr;
 
     TDirectoryHandleModuleStatsPtr Stats;
 
@@ -30,7 +32,8 @@ public:
     TDirectoryHandleCache(
         TLog log,
         TDirectoryHandleModuleStatsPtr stats,
-        TDirectoryHandleStoragePtr storage);
+        TDirectoryHandleStoragePtr storage,
+        TDirectoryEntryVersionCache* directoryEntryVersionCache = nullptr);
 
     ui64 CreateHandle(fuse_ino_t ino);
 

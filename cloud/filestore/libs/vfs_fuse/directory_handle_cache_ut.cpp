@@ -367,6 +367,117 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         UNIT_ASSERT_GT(memoryLimiterRejectionCount->Val(), 0);
     }
+
+    Y_UNIT_TEST(ShouldRegisterEntryVersionCacheForCreatedHandle)
+    {
+        TDirectoryEntryVersionCache entryVersionCache;
+        auto cache = TDirectoryHandleCache(
+            Log,
+            CreateStats(),
+            nullptr,
+            &entryVersionCache);
+
+        const ui64 id = cache.CreateHandle(42);
+
+        entryVersionCache.ChangeVersion(42, "child", 10);
+        UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
+
+        UNIT_ASSERT(cache.RemoveHandle(id, 42));
+        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child"));
+    }
+
+    Y_UNIT_TEST(ShouldKeepEntryVersionCacheUntilLastHandleIsRemoved)
+    {
+        TDirectoryEntryVersionCache entryVersionCache;
+        auto cache = TDirectoryHandleCache(
+            Log,
+            CreateStats(),
+            nullptr,
+            &entryVersionCache);
+
+        const ui64 firstId = cache.CreateHandle(42);
+        const ui64 secondId = cache.CreateHandle(42);
+
+        entryVersionCache.ChangeVersion(42, "child", 10);
+        UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
+
+        UNIT_ASSERT(cache.RemoveHandle(firstId, 42));
+        UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
+
+        UNIT_ASSERT(cache.RemoveHandle(secondId, 42));
+        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child"));
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnClear)
+    {
+        TDirectoryEntryVersionCache entryVersionCache;
+        auto cache = TDirectoryHandleCache(
+            Log,
+            CreateStats(),
+            nullptr,
+            &entryVersionCache);
+
+        cache.CreateHandle(42);
+        cache.CreateHandle(43);
+
+        entryVersionCache.ChangeVersion(42, "child1", 10);
+        entryVersionCache.ChangeVersion(43, "child2", 20);
+
+        cache.Clear();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child1"));
+        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(43, "child2"));
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnReset)
+    {
+        TDirectoryEntryVersionCache entryVersionCache;
+        auto cache = TDirectoryHandleCache(
+            Log,
+            CreateStats(),
+            nullptr,
+            &entryVersionCache);
+
+        cache.CreateHandle(42);
+        cache.CreateHandle(43);
+
+        entryVersionCache.ChangeVersion(42, "child1", 10);
+        entryVersionCache.ChangeVersion(43, "child2", 20);
+
+        cache.Reset();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child1"));
+        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(43, "child2"));
+    }
+
+    Y_UNIT_TEST(ShouldRegisterEntryVersionCacheForLoadedHandles)
+    {
+        const ui64 handleId = 42;
+        {
+            auto storage = CreateStorage(CreateStats());
+            TDirectoryHandle handle(100);
+            storage->StoreHandle(
+                handleId,
+                handle,
+                TDirectoryHandleChunk{.Index = 100});
+        }
+
+        TDirectoryEntryVersionCache entryVersionCache;
+        auto stats = CreateStats();
+        auto cache = TDirectoryHandleCache(
+            Log,
+            stats,
+            CreateStorage(stats),
+            &entryVersionCache);
+
+        UNIT_ASSERT(cache.FindHandle(handleId));
+
+        entryVersionCache.ChangeVersion(100, "child", 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            entryVersionCache.GetVersion(100, "child"));
+    }
+
 }
 
 }   // namespace NCloud::NFileStore::NFuse

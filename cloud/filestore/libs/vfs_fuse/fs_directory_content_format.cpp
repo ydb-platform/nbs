@@ -64,10 +64,11 @@ TBufferPtr TDirectoryBuilder::Finish()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ResetAttrTimeout(
+NProto::TError ResetCacheTimeouts(
     char* data,
     ui64 remainingLen,
-    const TNodeIdVisitor& visitor)
+    const TNodeIdVisitor& shouldResetAttrTimeout,
+    const TDirectoryEntryVisitor& shouldResetEntryTimeout)
 {
 #if defined(FUSE_VIRTIO)
     while (remainingLen >= sizeof(fuse_direntplus)) {
@@ -91,7 +92,7 @@ NProto::TError ResetAttrTimeout(
                     << "no name in dirent " << de->dirent.ino);
             }
 
-            if (visitor(de->dirent.ino)) {
+            if (shouldResetAttrTimeout(de->dirent.ino)) {
                 de->entry_out.attr_valid = 0;
                 de->entry_out.attr_valid_nsec = 0;
             }
@@ -109,6 +110,15 @@ NProto::TError ResetAttrTimeout(
             break;
         }
 
+        if (de->dirent.ino != MissingNodeId &&
+            shouldResetEntryTimeout(
+                de->dirent.ino,
+                TStringBuf(de->dirent.name, de->dirent.namelen)))
+        {
+            de->entry_out.entry_valid = 0;
+            de->entry_out.entry_valid_nsec = 0;
+        }
+
         remainingLen -= fullSize;
         data += fullSize;
     }
@@ -117,7 +127,8 @@ NProto::TError ResetAttrTimeout(
 
     Y_UNUSED(data);
     Y_UNUSED(remainingLen);
-    Y_UNUSED(visitor);
+    Y_UNUSED(shouldResetAttrTimeout);
+    Y_UNUSED(shouldResetEntryTimeout);
 #endif
 
     return MakeError(S_OK);
