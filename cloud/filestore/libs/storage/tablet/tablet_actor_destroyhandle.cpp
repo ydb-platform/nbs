@@ -121,12 +121,20 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
     }
 
     EnqueueTruncateIfNeeded(ctx);
+
+    if (Config->GetTabletUnsafeAsyncDestroyHandleEnabled()) {
+        CompleteDestroyHandle(ctx, args);
+    }
 }
 
-void TIndexTabletActor::CompleteTx_DestroyHandle(
+void TIndexTabletActor::CompleteDestroyHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroyHandle& args)
 {
+    Y_DEFER {
+        args.Completed = true;
+    };
+
     RemoveInFlightRequest(*args.RequestInfo);
 
     if (!HasError(args.Error)) {
@@ -144,6 +152,17 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+void TIndexTabletActor::CompleteTx_DestroyHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TDestroyHandle& args)
+{
+    if (args.Completed) {
+        return;
+    }
+
+    CompleteDestroyHandle(ctx, args);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

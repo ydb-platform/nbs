@@ -505,12 +505,28 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         Config->GetDupCacheEntryCount());
 
     EnqueueTruncateIfNeeded(ctx);
+
+    constexpr ui32 wflags = (ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_APPEND)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE));
+
+    const bool isReadOnly = (args.Flags & wflags) == 0;
+
+    if (Config->GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() && isReadOnly)
+    {
+        CompleteCreateHandle(ctx, args);
+    }
 }
 
-void TIndexTabletActor::CompleteTx_CreateHandle(
+void TIndexTabletActor::CompleteCreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    Y_DEFER {
+        args.Completed = true;
+    };
+
     for (auto nodeId: args.UpdatedNodes) {
         InvalidateReadAheadCache(nodeId);
     }
@@ -577,6 +593,17 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         GetFileSystemId(),
         args.Error,
         ProfileLog);
+}
+
+void TIndexTabletActor::CompleteTx_CreateHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TCreateHandle& args)
+{
+    if (args.Completed) {
+        return;
+    }
+
+    CompleteCreateHandle(ctx, args);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
