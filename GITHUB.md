@@ -13,6 +13,15 @@ There is also a list of labels that slightly alters how and which tests are run:
 7. `disable_truncate`, by default, `.err`/`.log`/`.out` files are truncated to 1GiB, this disables that for this PR
 8. `rebase`, tries to rebase current branch to fresh main
 
+For PRs that change `.github/**`, there are additional labels specific to the
+`.github` checks. They dispatch the corresponding nightly workflow from the PR
+branch and report the result back to the PR comment:
+
+1. `nightly-tests` launches the regular `nightly.yaml` workflow.
+2. `nightly-asan`, `nightly-tsan`, `nightly-msan`, `nightly-ubsan` launch the corresponding sanitizer nightly workflow.
+3. `nightly-sanitizers` launches all sanitizer nightly workflows.
+4. `nightly-all` launches the regular nightly workflow and all sanitizer nightly workflows.
+
 Also, you can launch [ya make](https://github.com/ydb-platform/nbs/actions/workflows/on_demand_build_and_test.yaml) builds on your branch with any timeout you want (but please do not do more than 12 hours, VMs are expensive). You can find the internal IP of the VM in the header of the job in the workflow (e.g. 10.24.0.58). To log into it you must be member of NBS team and use SSH key that you use to commit to Github.
 
 You can use command `ssh -J github@185.82.69.80:2222 github@10.24.0.58` or add following to `.ssh/config`:
@@ -49,4 +58,3 @@ On the top level, you can expect a directory structure like this:
 Files in `test_data` are synced only for failed tests and the list of folders to sync is determined by [script fail_checker.py](https://github.com/ydb-platform/nbs/blob/main/.github/scripts/tests/fail_checker.py)
 
 Availability of other logs in the summary report is dependent on what ya make decide to add in junit report.
-
