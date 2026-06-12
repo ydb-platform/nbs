@@ -143,6 +143,14 @@ private:
             return error;
         }
 
+        if (result.MsgId != TDerived::ExpectedMsgId) {
+            return MakeError(
+                E_FAIL,
+                TStringBuilder() << "RDMA response message type mismatch:"
+                                 << " expected " << TDerived::ExpectedMsgId
+                                 << ", got " << result.MsgId);
+        }
+
         auto& proto =
             static_cast<typename TDerived::TResponseProto&>(*result.Proto);
         if (HasError(proto.GetError())) {

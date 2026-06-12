@@ -64,6 +64,7 @@ private:
 public:
     using TRequestContext = TDeviceChecksumRequestContext;
     using TResponseProto = NProto::TChecksumDeviceBlocksResponse;
+    static constexpr ui32 ExpectedMsgId = TBlockStoreProtocol::ChecksumDeviceBlocksResponse;
 
     using TBase::TBase;
 
