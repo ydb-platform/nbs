@@ -118,6 +118,7 @@ struct TReferenceImplementation
         if (Version >= EVersion::V6) {
             sz = AlignUp(sz, static_cast<ui32>(sizeof(ui64)));
         }
+
         if (sz > MaxWeight) {
             return false;
         }
@@ -167,6 +168,7 @@ struct TReferenceImplementation
         if (Version >= EVersion::V6) {
             sz = AlignUp(sz, static_cast<ui32>(sizeof(ui64)));
         }
+
         ReadPos += sz;
         if (MaxWeight - ReadPos <= SlackSpace) {
             UNIT_ASSERT_VALUES_EQUAL(SlackSpace, MaxWeight - ReadPos);

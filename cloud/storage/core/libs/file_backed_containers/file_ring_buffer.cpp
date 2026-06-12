@@ -148,12 +148,20 @@ private:
                 return TEntryInfo::CreateInvalid();
             }
 
-            auto eh = Data->ReadEntryHeader(pos);
+            const auto eh = Data->ReadEntryHeader(pos);
             if (eh.DataSize != 0) {
                 const auto* data = Data->GetEntryDataPtr(pos, eh.DataSize);
-                return data != nullptr
-                    ? TEntryInfo::Create(pos, eh, data)
-                    : TEntryInfo::CreateInvalid();
+                if (data == nullptr) {
+                    return TEntryInfo::CreateInvalid();
+                }
+
+                if (eh.FreeFlag && eh.DataChecksum != 0 &&
+                    Header()->Version >= EVersion::V6)
+                {
+                    return TEntryInfo::CreateInvalid();
+                }
+
+                return TEntryInfo::Create(pos, eh, data);
             }
             pos = 0;
         }
@@ -164,13 +172,12 @@ private:
 
         Y_ABORT_UNLESS(pos < Header()->WritePos);
 
-        if (pos < Header()->ReadPos &&
-            Header()->ReadPos <= Header()->WritePos)
+        if (pos < Header()->ReadPos && Header()->ReadPos <= Header()->WritePos)
         {
             return TEntryInfo::CreateInvalid();
         }
 
-        auto eh = Data->ReadEntryHeader(pos);
+        const auto eh = Data->ReadEntryHeader(pos);
         if (eh.DataSize == 0) {
             return TEntryInfo::CreateInvalid();
         }
