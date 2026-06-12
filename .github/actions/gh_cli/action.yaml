@@ -8,13 +8,16 @@ runs:
       shell: bash
       run: |
         set -x
-        if [ ! -f "/usr/bin/gh" ]; then
-            sudo mkdir -p -m 755 /etc/apt/keyrings
-            sudo wget -nv -O/etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg
-            sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt-get -o Dpkg::Lock::Timeout=600 update
-            sudo apt-get -o Dpkg::Lock::Timeout=600 install gh -y
-        else
-            echo "GH CLI already installed"
+        if ! command -v gh > /dev/null; then
+            if [ "$(id -u)" -ne 0 ]; then
+                echo "GH CLI is not installed. Non-root runners must have it preinstalled in the image."
+                exit 1
+            fi
+            install -d -m 755 /etc/apt/keyrings
+            wget -nv -O/etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg
+            chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            apt-get -o Dpkg::Lock::Timeout=600 update
+            apt-get -o Dpkg::Lock::Timeout=600 install gh -y
         fi
+        gh --version
