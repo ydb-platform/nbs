@@ -4,7 +4,7 @@ updates:
   - package-ecosystem: "github-actions"
     assignees:
       - librarian
-      - wilytiger
+      - WilyTiger
     directory: "/"
     schedule:
       interval: "weekly"
