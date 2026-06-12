@@ -123,6 +123,13 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
     EnqueueTruncateIfNeeded(ctx);
 
     if (Config->GetTabletUnsafeAsyncDestroyHandleEnabled()) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Async destroy handle: @%lu -> %lu",
+            LogTag.c_str(),
+            args.Node->NodeId,
+            args.Request.GetHandle());
         CompleteDestroyHandle(ctx, args);
     }
 }

@@ -515,6 +515,13 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
     if (Config->GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() && isReadOnly)
     {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Async create handle: @%lu -> %lu",
+            LogTag.c_str(),
+            args.NodeId,
+            args.Response.GetHandle());
         CompleteCreateHandle(ctx, args);
     }
 }
