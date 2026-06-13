@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     busy_idle_calculator.cpp
+    counters_printer.cpp
     counters_helper.cpp
     cgroup_stats_fetcher.cpp
     critical_events.cpp
