@@ -154,7 +154,8 @@ void TFileSystem::ReadDir(
                     }
                 };
 
-                NProto::TListNodesResponse response = future.ExtractValue();
+                NProto::TListNodesResponse response =
+                    UnsafeExtractValue(future);
                 if (!CheckResponse(self, *callContext, req, response)) {
                     return;
                 }

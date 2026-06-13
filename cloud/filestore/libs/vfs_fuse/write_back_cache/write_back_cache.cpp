@@ -237,7 +237,7 @@ public:
                          responseBuilder = std::move(responseBuilder),
                          pinId](TFuture<NProto::TReadDataResponse> future)
         {
-            auto response = future.ExtractValue();
+            auto response = UnsafeExtractValue(future);
 
             if (auto self = ptr.lock()) {
                 if (!HasError(response)) {
