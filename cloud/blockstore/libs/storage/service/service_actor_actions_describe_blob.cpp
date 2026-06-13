@@ -4,13 +4,14 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/blockstore/private/api/protos/volume.pb.h>
+
 #include <contrib/ydb/core/base/logoblob.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
-#include <library/cpp/json/json_reader.h>
 
 #include <google/protobuf/util/json_util.h>
 
@@ -64,40 +65,34 @@ TDescribeBlobActionActor::TDescribeBlobActionActor(
 
 void TDescribeBlobActionActor::Bootstrap(const TActorContext& ctx)
 {
-    NJson::TJsonValue input;
-    if (!NJson::ReadJsonTree(Input, &input, false)) {
+    NPrivateProto::TDescribeBlobRequest request;
+    const auto status =
+        google::protobuf::util::JsonStringToMessage(Input, &request);
+    if (!status.ok()) {
         HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
-    if (input.Has("DiskId")) {
-        DiskId = input["DiskId"].GetStringRobust();
-    }
-
+    DiskId = request.GetDiskId();
     if (!DiskId) {
         HandleError(ctx, MakeError(E_ARGUMENT, "DiskId should be defined"));
         return;
     }
 
-    TString blobIdString;
-    if (input.Has("BlobId")) {
-        blobIdString = input["BlobId"].GetStringRobust();
-    }
-
-    if (!blobIdString) {
+    const auto& protoBlobId = request.GetBlobId();
+    if (!protoBlobId.GetRawX1() && !protoBlobId.GetRawX2() &&
+        !protoBlobId.GetRawX3())
+    {
         HandleError(ctx, MakeError(E_ARGUMENT, "BlobId should be defined"));
         return;
     }
 
-    TString errorExplanation;
-    if (!NKikimr::TLogoBlobID::Parse(BlobId, blobIdString, errorExplanation)) {
-        HandleError(ctx, MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "invalid BlobId: " << blobIdString.Quote()
-                << " (" << errorExplanation << ")"));
-        return;
-    }
+    const ui64 raw[3] = {
+        protoBlobId.GetRawX1(),
+        protoBlobId.GetRawX2(),
+        protoBlobId.GetRawX3()
+    };
+    BlobId = NKikimr::TLogoBlobID(raw);
 
     DescribeBlob(ctx);
     Become(&TThis::StateWork);

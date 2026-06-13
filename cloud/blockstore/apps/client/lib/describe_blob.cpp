@@ -97,9 +97,12 @@ protected:
 
         if (Proto) {
             NPrivateProto::TDescribeBlobResponse responseProto;
+            google::protobuf::util::JsonParseOptions parseOpts;
+            parseOpts.ignore_unknown_fields = true;
             const auto parsed = google::protobuf::util::JsonStringToMessage(
                 result.GetOutput(),
-                &responseProto).ok();
+                &responseProto,
+                parseOpts).ok();
 
             if (!parsed) {
                 auto error = MakeError(
