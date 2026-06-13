@@ -1,5 +1,7 @@
 #pragma once
 
+#include "file_ring_buffer_format.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/string.h>
@@ -45,7 +47,8 @@ public:
     TFileRingBuffer(
         const TString& filePath,
         ui64 dataCapacity,
-        ui64 metadataCapacity = 0);
+        ui64 metadataCapacity = 0,
+        EFileRingBufferVersion version = EFileRingBufferVersion::V5);
 
     ~TFileRingBuffer();
 
