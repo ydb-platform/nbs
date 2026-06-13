@@ -1,4 +1,5 @@
 #include "file_ring_buffer.h"
+#include "file_ring_buffer_format.h"
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -21,6 +22,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using THeader = TFileRingBufferHeader;
+using TEntryHeader = TFileRingBufferEntryHeader;
+
+////////////////////////////////////////////////////////////////////////////////
+
 constexpr ui32 VERSION_PREV = 4;
 constexpr ui32 VERSION = 5;
 constexpr ui64 INVALID_POS = Max<ui64>();
@@ -29,211 +35,19 @@ constexpr ui64 INVALID_POS = Max<ui64>();
 // migration
 constexpr ui64 HeaderReserveSize = 256;
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct THeader
-{
-    ui32 Version = 0;
-    ui32 HeaderSize = 0;
-    ui64 DataCapacity = 0;
-    ui64 ReadPos = 0;
-    ui64 WritePos = 0;
-    // Previously was: LastEntrySize
-    ui64 Unused = 0;
-    ui64 DataOffset = 0;
-    ui64 MetadataCapacity = 0;
-    ui64 MetadataOffset = 0;
-    ui32 MetadataSize = 0;
-    ui32 MetadataChecksum = 0;
-};
-
 static_assert(sizeof(THeader) <= HeaderReserveSize);
-
-// Entry header layout (lower bits come first):
-// [ DataSize (28 bits) | Tag (3 bits) | FreeFlag (1 bit) ]
-// [ Checksum (32 bits) ]
-struct Y_PACKED TEntryHeader
-{
-private:
-    static constexpr ui32 TagBits = 3;
-    static constexpr ui32 SizeBits = 31U - TagBits;
-    static constexpr ui32 MaxTag = (1U << TagBits) - 1;
-    static constexpr ui32 FreeFlagMask = 1U << 31U;
-    static constexpr ui32 TagMask = MaxTag << SizeBits;
-    static constexpr ui32 SizeMask = (1 << SizeBits) - 1;
-
-    ui32 DataSize = 0;
-    ui32 Checksum = 0;
-
-public:
-    static constexpr ui32 MaxDataSize = SizeMask;
-
-    ui32 GetDataSize() const
-    {
-        return DataSize & SizeMask;
-    }
-
-    void SetDataSize(size_t value)
-    {
-        Y_ABORT_UNLESS(value <= MaxDataSize);
-        DataSize = (DataSize & ~SizeMask) | static_cast<ui32>(value);
-    }
-
-    bool GetFreeFlag() const
-    {
-        return (DataSize & FreeFlagMask) != 0;
-    }
-
-    void SetFreeFlag(bool value)
-    {
-        if (value) {
-            DataSize |= FreeFlagMask;
-        } else {
-            DataSize &= ~FreeFlagMask;
-        }
-    }
-
-    static ui32 GetMaxTag()
-    {
-        return MaxTag;
-    }
-
-    ui32 GetTag() const
-    {
-        return (DataSize & TagMask) >> SizeBits;
-    }
-
-    void SetTag(ui32 tag)
-    {
-        Y_ABORT_UNLESS(tag <= MaxTag);
-        DataSize = (DataSize & ~TagMask) | (tag << SizeBits);
-    }
-
-    ui32 GetChecksum() const
-    {
-        return Checksum;
-    }
-
-    void SetChecksum(ui32 value)
-    {
-        Checksum = value;
-    }
-};
-
-//  Structure contract:
-//
-//  1. Empty buffer:
-//    - ReadPos == WritePos
-//  or
-//    - ReadPos points to a slack space
-//    - WritePos == 0
-//    This may happen when Alloc was terminated in the middle of the operation.
-//    ReadPos is corrected to 0 during validation.
-//
-//  2. Non-empty buffer:
-//    - ReadPos != WritePos
-//    - ReadPos points to the first byte of the first valid entry
-//    - WritePos points to the first byte right after the last valid entry
-//
-//  3. Valid entry:
-//    - Size > 0
-//    - The entry takes sizeof(TEntryHeader) + Size contiguous bytes in
-//      the occupied part of the buffer
-//
-//  4. Occupied part of the buffer:
-//     - ReadPos < WritePos: [ReadPos, WritePos)
-//     - ReadPos > WritePos: [ReadPos, Capacity) + [0, WritePos)
-//
-//  5. Slack space entry marker:
-//     - Size = 0
-//     - Instructs to read the next entry at pos = 0
-//     - Can appear only when ReadPos > WritePos in [ReadPos, Capacity) part
-//
-//  6. Implicit slack space marker:
-//     - pos + sizeof(TEntryHeader) > Capacity
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TEntriesData
-{
-private:
-    std::span<char> Data;
-
-    template <class T = char>
-    T* GetPtr(ui64 pos, ui64 size = sizeof(T)) const
-    {
-        return pos < Data.size() && size <= Data.size() - pos
-                   ? reinterpret_cast<T*>(Data.data() + pos)
-                   : nullptr;
-    }
-
-    char* DoGetEntryData(const TEntryHeader* eh) const
-    {
-        Y_ABORT_UNLESS(eh != nullptr);
-        Y_ABORT_UNLESS(eh->GetDataSize() != 0);
-
-        ui64 pos = GetEntryPos(eh);
-        return GetPtr(pos + sizeof(TEntryHeader), eh->GetDataSize());
-    }
-
-public:
-    TEntriesData() = default;
-
-    explicit TEntriesData(std::span<char> data)
-        : Data(data)
-    {}
-
-    TEntryHeader* GetEntryHeader(ui64 pos)
-    {
-        return GetPtr<TEntryHeader>(pos);
-    }
-
-    const TEntryHeader* GetEntryHeader(ui64 pos) const
-    {
-        return GetPtr<TEntryHeader>(pos);
-    }
-
-    ui64 GetEntryPos(const TEntryHeader* eh) const
-    {
-        Y_ABORT_UNLESS(eh != nullptr);
-        return reinterpret_cast<const char*>(eh) - Data.data();
-    }
-
-    char* GetEntryData(TEntryHeader* eh)
-    {
-        return DoGetEntryData(eh);
-    }
-
-    const char* GetEntryData(const TEntryHeader* eh) const
-    {
-        return DoGetEntryData(eh);
-    }
-
-    void WriteEntry(ui64 pos, TStringBuf data)
-    {
-        auto* eh = GetEntryHeader(pos);
-        Y_ABORT_UNLESS(eh != nullptr);
-
-        eh->SetDataSize(data.size());
-        eh->SetChecksum(Crc32c(data.data(), data.size()));
-
-        auto* dst = GetEntryData(eh);
-        Y_ABORT_UNLESS(dst != nullptr);
-        memcpy(dst, data.data(), data.size());
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEntryInfo
 {
     ui64 ActualPos = 0;
-    const TEntryHeader* Header = nullptr;
+    TEntryHeader Header = {};
     const char* Data = nullptr;
 
     bool HasValue() const
     {
-        return Header != nullptr;
+        return Header.DataSize != 0;
     }
 
     bool IsInvalid() const
@@ -243,35 +57,28 @@ struct TEntryInfo
 
     bool GetFreeFlag() const
     {
-        return Header->GetFreeFlag();
+        return Header.FreeFlag;
     }
 
     TStringBuf GetData() const
     {
-        return HasValue() ? TStringBuf(Data, Header->GetDataSize())
+        return HasValue() ? TStringBuf(Data, Header.DataSize)
                           : TStringBuf();
     }
 
     ui32 GetTag() const
     {
-        return HasValue() ? Header->GetTag() : 0;
+        return HasValue() ? Header.Tag : 0;
     }
 
-    ui64 GetNextEntryPos() const
-    {
-        return Header != nullptr && Header->GetDataSize() > 0
-            ? ActualPos + sizeof(TEntryHeader) + Header->GetDataSize()
-            : INVALID_POS;
-    }
 
     static TEntryInfo Create(
         ui64 pos,
-        const TEntryHeader* header,
+        const TEntryHeader& header,
         const char* data)
     {
         Y_ABORT_UNLESS(pos != INVALID_POS);
-        Y_ABORT_UNLESS(header != nullptr);
-        Y_ABORT_UNLESS(header->GetDataSize() > 0);
+        Y_ABORT_UNLESS(header.DataSize > 0);
         Y_ABORT_UNLESS(data != nullptr);
 
         return TEntryInfo{.ActualPos = pos, .Header = header, .Data = data};
@@ -314,10 +121,11 @@ class TFileRingBuffer::TImpl
 private:
     TFileMap Map;
 
-    TEntriesData Data;
+    std::unique_ptr<IFileRingBufferDataProcessor> Data;
+    TFileRingBufferCapabilities Capabilities;
     bool Corrupted = false;
 
-    TEntryHeader* CurrentAllocation = nullptr;
+    TEntryInfo CurrentAllocation = TEntryInfo::CreateInvalid();
     ui64 MaxObservedEntryByteCount = 0;
 
     // Map of non-free entries: data ptr -> pos
@@ -346,9 +154,9 @@ private:
                 return TEntryInfo::CreateInvalid();
             }
 
-            const auto* eh = Data.GetEntryHeader(pos);
-            if (eh != nullptr && eh->GetDataSize() != 0) {
-                const auto* data = Data.GetEntryData(eh);
+            const auto eh = Data->ReadEntryHeader(pos);
+            if (eh.DataSize != 0) {
+                const auto* data = Data->GetEntryDataPtr(pos, eh.DataSize);
                 return data != nullptr
                     ? TEntryInfo::Create(pos, eh, data)
                     : TEntryInfo::CreateInvalid();
@@ -368,22 +176,21 @@ private:
             return TEntryInfo::CreateInvalid();
         }
 
-        const auto* eh = Data.GetEntryHeader(pos);
-        if (eh == nullptr || eh->GetDataSize() == 0) {
+        const auto eh = Data->ReadEntryHeader(pos);
+        if (eh.DataSize == 0) {
             return TEntryInfo::CreateInvalid();
         }
 
-        const auto* data = Data.GetEntryData(eh);
+        const auto* data = Data->GetEntryDataPtr(pos, eh.DataSize);
         if (data == nullptr) {
             return TEntryInfo::CreateInvalid();
         }
 
-        auto res = TEntryInfo::Create(pos, eh, data);
-        if (res.GetNextEntryPos() > Header()->WritePos) {
+        if (pos + Data->GetEntrySize(eh.DataSize) > Header()->WritePos) {
             return TEntryInfo::CreateInvalid();
         }
 
-        return res;
+        return TEntryInfo::Create(pos, eh, data);
     }
 
     TEntryInfo GetFrontEntry() const
@@ -394,8 +201,16 @@ private:
     TEntryInfo GetNextEntry(const TEntryInfo& e) const
     {
         return e.HasValue()
-            ? GetEntry(e.GetNextEntryPos())
+            ? GetEntry(e.ActualPos + Data->GetEntrySize(e.Header.DataSize))
             : TEntryInfo::CreateInvalid();
+    }
+
+    void CreateDataProcessor()
+    {
+        Data = CreateFileRingBufferDataProcessor(
+            GetMappedData(Header()->DataOffset, Header()->DataCapacity));
+
+        Capabilities = Data->GetCapabilities();
     }
 
     void ValidateStructure()
@@ -443,6 +258,9 @@ private:
     void ResizeAndRemap(ui64 fileSize)
     {
         Map.ResizeAndRemap(0, fileSize);
+        // File can be mapped to a different address - we should invalidate
+        // the data processor working with the old address range
+        Data.reset();
     }
 
     std::span<char> GetMappedData(ui64 offset, ui64 size) const
@@ -552,10 +370,7 @@ private:
 
     void WriteSlackSpaceMarker(ui64 pos)
     {
-        auto* eh = Data.GetEntryHeader(pos);
-        if (eh != nullptr) {
-            eh->SetDataSize(0);
-        }
+        Data->WriteEntryHeader(pos, {});
     }
 
     bool ValidateAccess(const char* name) const
@@ -574,8 +389,6 @@ public:
     TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
     {
-        Y_ABORT_UNLESS(sizeof(TEntryHeader) <= dataCapacity);
-
         if (static_cast<ui64>(Map.Length()) < sizeof(THeader)) {
             auto header = InitHeader(dataCapacity, metadataCapacity);
             Map.ResizeAndRemap(0, header.DataOffset + header.DataCapacity);
@@ -586,8 +399,7 @@ public:
 
         if (Header()->Version == VERSION_PREV) {
             // Migration needs access to entries
-            Data = TEntriesData(
-                GetMappedData(Header()->DataOffset, Header()->DataCapacity));
+            CreateDataProcessor();
             Migrate();
         }
 
@@ -597,8 +409,7 @@ public:
             ResizeMetadata(metadataCapacity);
         }
 
-        Data = TEntriesData(
-            GetMappedData(Header()->DataOffset, Header()->DataCapacity));
+        CreateDataProcessor();
 
         ValidateDataStructure();
 
@@ -609,7 +420,7 @@ public:
                     EntryMap[e.Data] = e.ActualPos;
                     MaxObservedEntryByteCount = Max<ui64>(
                         MaxObservedEntryByteCount,
-                        e.Header->GetDataSize());
+                        e.Header.DataSize);
                 }
             });
 
@@ -638,7 +449,7 @@ public:
 
     TResultOrError<char*> Alloc(size_t size)
     {
-        if (CurrentAllocation != nullptr) {
+        if (CurrentAllocation.HasValue()) {
             return MakeError(
                 E_INVALID_STATE,
                 "Previous allocation is not committed");
@@ -654,15 +465,15 @@ public:
                 "Zero size allocations are not allowed");
         }
 
-        if (size > TEntryHeader::MaxDataSize) {
+        if (size > Capabilities.MaxAllocationByteCount) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "Allocation data size (" << size
                                  << ") exceeds maximum allowed size ("
-                                 << TEntryHeader::MaxDataSize << ")");
+                                 << Capabilities.MaxAllocationByteCount << ")");
         }
 
-        const auto sz = size + sizeof(TEntryHeader);
+        const auto sz = Data->GetEntrySize(size);
         if (sz > Header()->DataCapacity) {
             return MakeError(
                 E_ARGUMENT,
@@ -717,40 +528,44 @@ public:
         MaxObservedEntryByteCount =
             Max(MaxObservedEntryByteCount, size);
 
-        CurrentAllocation = Data.GetEntryHeader(writePos);
-        CurrentAllocation->SetDataSize(size);
-        CurrentAllocation->SetTag(0);
-        CurrentAllocation->SetFreeFlag(false);
-
-        char* ptr = Data.GetEntryData(CurrentAllocation);
+        char* ptr = Data->GetEntryDataPtr(writePos, size);
         Y_ABORT_UNLESS(ptr != nullptr);
+
+        CurrentAllocation = TEntryInfo::Create(
+            writePos,
+            {.DataSize = static_cast<ui32>(size)},
+            ptr);
+
         return ptr;
     }
 
     bool Commit()
     {
-        if (CurrentAllocation == nullptr) {
+        if (!CurrentAllocation.HasValue()) {
             return false;
         }
 
-        char* ptr = Data.GetEntryData(CurrentAllocation);
-        Y_ABORT_UNLESS(ptr != nullptr);
+        CurrentAllocation.Header.DataChecksum =
+            Crc32c(CurrentAllocation.Data, CurrentAllocation.Header.DataSize);
 
-        CurrentAllocation->SetChecksum(
-            Crc32c(ptr, CurrentAllocation->GetDataSize()));
+        bool written = Data->WriteEntryHeader(
+            CurrentAllocation.ActualPos,
+            CurrentAllocation.Header);
+
+        Y_ABORT_UNLESS(written);
 
         // A compiler-only fence is sufficient here because there is no
         // concurrent access to the memory and we just need to ensure
         // that a compiler does not reorder writes.
         std::atomic_signal_fence(std::memory_order_seq_cst);
 
-        auto writePos = Data.GetEntryPos(CurrentAllocation);
-        auto sz = sizeof(TEntryHeader) + CurrentAllocation->GetDataSize();
+        Header()->WritePos =
+            CurrentAllocation.ActualPos +
+            Data->GetEntrySize(CurrentAllocation.Header.DataSize);
 
-        Header()->WritePos = writePos + sz;
-        EntryMap[ptr] = writePos;
+        EntryMap[CurrentAllocation.Data] = CurrentAllocation.ActualPos;
 
-        CurrentAllocation = nullptr;
+        CurrentAllocation = TEntryInfo::CreateInvalid();
         return true;
     }
 
@@ -765,8 +580,11 @@ public:
             return false;
         }
 
-        auto* eh = Data.GetEntryHeader(it->second);
-        eh->SetFreeFlag(true);
+        auto eh = Data->ReadEntryHeader(it->second);
+        eh.DataChecksum = 0;
+        eh.FreeFlag = true;
+        Data->WriteEntryHeader(it->second, eh);
+
         EntryMap.erase(it);
 
         EraseFreeEntriesFromFront();
@@ -776,7 +594,7 @@ public:
 
     ui32 GetMaxTag() const
     {
-        return TEntryHeader::GetMaxTag();
+        return Capabilities.MaxTag;
     }
 
     ui32 GetTag(const void* ptr) const
@@ -790,8 +608,8 @@ public:
             return 0;
         }
 
-        const auto* eh = Data.GetEntryHeader(it->second);
-        return eh->GetTag();
+        auto eh = Data->ReadEntryHeader(it->second);
+        return eh.Tag;
     }
 
     void SetTag(const void* ptr, ui32 tag)
@@ -805,8 +623,9 @@ public:
             return;
         }
 
-        auto* eh = Data.GetEntryHeader(it->second);
-        eh->SetTag(tag);
+        auto eh = Data->ReadEntryHeader(it->second);
+        eh.Tag = tag;
+        Data->WriteEntryHeader(it->second, eh);
     }
 
     TStringBuf Front()
@@ -836,7 +655,7 @@ public:
             return;
         }
 
-        Free(cur.GetData().data());
+        Free(cur.Data);
     }
 
     ui64 Size() const
@@ -879,7 +698,7 @@ public:
             [&](const TEntryInfo& e)
             {
                 if (!e.GetFreeFlag()) {
-                    visitor(e.Header->GetChecksum(), e.GetTag(), e.GetData());
+                    visitor(e.Header.DataChecksum, e.GetTag(), e.GetData());
                 }
             });
     }
@@ -939,9 +758,8 @@ public:
         } else {
             maxRawSize = Header()->ReadPos - Header()->WritePos - 1;
         }
-        return maxRawSize > sizeof(TEntryHeader)
-                   ? maxRawSize - sizeof(TEntryHeader)
-                   : 0;
+
+        return Data->GetMaxAllocationByteCount(maxRawSize);
     }
 
     ui64 GetMaxSupportedAllocationByteCount() const
@@ -950,10 +768,7 @@ public:
             return 0;
         }
 
-        return Header()->DataCapacity > sizeof(TEntryHeader)
-                   ? Min(Header()->DataCapacity - sizeof(TEntryHeader),
-                         static_cast<ui64>(TEntryHeader::MaxDataSize))
-                   : 0;
+        return Capabilities.MaxAllocationByteCount;
     }
 
     bool ValidateMetadata() const
