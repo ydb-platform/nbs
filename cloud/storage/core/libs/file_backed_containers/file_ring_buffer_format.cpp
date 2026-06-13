@@ -136,6 +136,7 @@ public:
         if (eh == nullptr) {
             return {};
         }
+
         return {
             .DataSize = eh->DataSize & MaxDataSize,
             .DataChecksum = eh->Checksum,
@@ -235,6 +236,7 @@ public:
         if (eh == nullptr) {
             return {};
         }
+
         return {
             .DataSize = eh->DataSize & MaxDataSize,
             .DataChecksum = eh->Checksum,
@@ -313,6 +315,7 @@ public:
         if (eh == nullptr) {
             return {};
         }
+
         ui64 value = __atomic_load_n(eh, __ATOMIC_RELAXED);
         ui32 lower = static_cast<ui32>(value);
         ui32 upper = static_cast<ui32>(value >> 32U);
