@@ -853,7 +853,7 @@ void TStorageServiceActor::HandleSessionCreated(
     if (session) {
         subSession = session->FindSubSession(msg->SessionSeqNo);
     }
-    const auto storedOwnerGeneration =
+    const ui64 storedOwnerGeneration =
         subSession ? subSession->OwnerGeneration : 0;
     if (SUCCEEDED(msg->GetStatus())) {
         // in case of vhost restart we don't know session id

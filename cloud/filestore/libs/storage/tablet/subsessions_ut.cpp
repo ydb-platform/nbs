@@ -6,8 +6,6 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
 constexpr ui32 TabletGeneration = 42;

@@ -296,7 +296,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 ctx);
             args.SessionInterrupted = true;
             if (toKill != owner) {
-                const auto subSession =
+                const auto* subSession =
                     session->SubSessions.GetSubSessionBySeqNo(seqNo);
                 if (subSession) {
                     args.OwnerGeneration = subSession->OwnerGeneration;
@@ -354,7 +354,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 readOnly,
                 owner,
                 ctx);
-            const auto subSession =
+            const auto* subSession =
                 session->SubSessions.GetSubSessionBySeqNo(seqNo);
             if (subSession) {
                 args.OwnerGeneration = subSession->OwnerGeneration;
@@ -403,7 +403,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         readOnly,
         owner,
         sessionOptions);
-    const auto subSession =
+    const auto* subSession =
         newSession->SubSessions.GetSubSessionBySeqNo(seqNo);
     if (subSession) {
         args.OwnerGeneration = subSession->OwnerGeneration;

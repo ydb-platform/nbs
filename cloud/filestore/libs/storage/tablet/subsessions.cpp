@@ -13,7 +13,7 @@ namespace {
 constexpr size_t MaxSubSessions = 2;
 constexpr ui64 SubSessionOwnerGenerationBits = 32;
 constexpr ui64 SubSessionOwnerGenerationMask =
-    (ui64(1) << SubSessionOwnerGenerationBits) - 1;
+    (1ULL << SubSessionOwnerGenerationBits) - 1;
 
 }   // namespace
 
@@ -21,7 +21,7 @@ constexpr ui64 SubSessionOwnerGenerationMask =
 
 ui64 MakeSubSessionOwnerGeneration(ui32 tabletGeneration, ui32 ownerGeneration)
 {
-    return (ui64(tabletGeneration) << SubSessionOwnerGenerationBits) |
+    return ((1ULL * tabletGeneration) << SubSessionOwnerGenerationBits) |
            ownerGeneration;
 }
 
@@ -47,11 +47,13 @@ NActors::TActorId TSubSessions::AddSubSession(
     if (!readOnly) {
         MaxSeenRwSeqNo = std::max(MaxSeenRwSeqNo, seqNo);
     }
-    SubSessions.push_back({
-        seqNo,
-        readOnly,
-        owner,
-        MakeSubSessionOwnerGeneration(tabletGeneration, 1)});
+    SubSessions.push_back(
+        {seqNo,
+         readOnly,
+         owner,
+         MakeSubSessionOwnerGeneration(
+             tabletGeneration,
+             1 /* ownerGeneration */)});
     if (SubSessions.size() > MaxSubSessions) {
         auto loSeqNo = std::min_element(
             SubSessions.begin(),
