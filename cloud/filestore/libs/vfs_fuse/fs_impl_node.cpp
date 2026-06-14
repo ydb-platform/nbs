@@ -42,7 +42,8 @@ void TFileSystem::Lookup(
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (auto future) {
             if (auto self = ptr.lock()) {
-                NProto::TGetNodeAttrResponse response = future.ExtractValue();
+                NProto::TGetNodeAttrResponse response =
+                    UnsafeExtractValue(future);
                 const auto& error = response.GetError();
                 if (!HasError(response)) {
                     self->AdjustNodeSize(*response.MutableNode());
