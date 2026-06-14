@@ -9,12 +9,12 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 void CheckBudgetInvariant(
-    TDuration execTimeForLastSecond,
+    TDuration lastOperationExecTime,
     TDuration delay,
     TDuration maxExecTimePerSecond)
 {
-    const double execRatio = static_cast<double>(execTimeForLastSecond.GetValue())
-        / (execTimeForLastSecond.GetValue() + delay.GetValue());
+    const double execRatio = static_cast<double>(lastOperationExecTime.GetValue())
+        / (lastOperationExecTime.GetValue() + delay.GetValue());
     const double budgetRatio = static_cast<double>(maxExecTimePerSecond.GetValue())
         / TDuration::Seconds(1).GetValue();
 
@@ -145,6 +145,46 @@ Y_UNIT_TEST_SUITE(TBackgroundOpsThrottlingTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldScaleDelayCorrectlyWhenExecTimeIsSecondOrGreater)
+    {
+        {
+            const auto execTime = TDuration::MilliSeconds(1000);
+            const auto maxExec = TDuration::MilliSeconds(400);
+            const auto delay = CalculateBackgroundOpThrottleDelay(
+                execTime,
+                maxExec,
+                TDuration::Zero(),
+                TDuration::Hours(1));
+
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(1500), delay);
+            CheckBudgetInvariant(execTime, delay, maxExec);
+        }
+
+        {
+            const auto execTime = TDuration::MilliSeconds(1500);
+            const auto maxExec = TDuration::MilliSeconds(400);
+            const auto delay = CalculateBackgroundOpThrottleDelay(
+                execTime,
+                maxExec,
+                TDuration::Zero(),
+                TDuration::Hours(1));
+
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2250), delay);
+            CheckBudgetInvariant(execTime, delay, maxExec);
+        }
+
+        {
+            const auto execTime = TDuration::MilliSeconds(1500);
+            const auto maxExec = TDuration::MilliSeconds(1500);
+            const auto delay = CalculateBackgroundOpThrottleDelay(
+                execTime,
+                maxExec,
+                TDuration::Zero(),
+                TDuration::Hours(1));
+
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(0), delay);
+        }
+    }
 
     Y_UNIT_TEST(ShouldBoundDelayByMinDelay)
     {

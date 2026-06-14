@@ -7,7 +7,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 TDuration CalculateBackgroundOpThrottleDelay(
-    TDuration execTimeForLastSecond,
+    TDuration lastOperationExecTime,
     TDuration maxExecTimePerSecond,
     TDuration minDelay,
     TDuration maxDelay)
@@ -19,10 +19,10 @@ TDuration CalculateBackgroundOpThrottleDelay(
     auto delay = minDelay;
     if (maxExecTimePerSecond) {
         const auto throttlingFactor =
-            static_cast<double>(execTimeForLastSecond.GetValue()) /
+            static_cast<double>(lastOperationExecTime.GetValue()) /
             maxExecTimePerSecond.GetValue();
         const auto throttleDelay =
-            TDuration::Seconds(1) * throttlingFactor - execTimeForLastSecond;
+            TDuration::Seconds(1) * throttlingFactor - lastOperationExecTime;
 
         delay = Max(delay, throttleDelay);
     }
