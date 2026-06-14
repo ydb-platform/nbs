@@ -23,6 +23,14 @@ type Storage interface {
 		limit int,
 	) (nodes []nfs.Node, nextCookie string, err error)
 
+	ListNodesByShard(
+		ctx context.Context,
+		snapshotID string,
+		shardFilesystemID string,
+		limit uint64,
+		offset uint64,
+	) ([]nfs.Node, error)
+
 	DeleteSnapshotData(
 		ctx context.Context,
 		snapshotID string,
