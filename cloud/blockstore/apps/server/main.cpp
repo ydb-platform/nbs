@@ -32,6 +32,8 @@ int main(int argc, char** argv)
 
     auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
     moduleFactories->CreateTicketParser = NKikimr::CreateTicketParser;
+    moduleFactories->SchemeOperationFactory.reset(
+        NKikimr::NSchemeShard::DefaultOperationFactory());
 
     auto serverModuleFactories =
         std::make_shared<NServer::TServerModuleFactories>();
