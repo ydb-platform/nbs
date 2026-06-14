@@ -290,30 +290,42 @@ void TMixedBlocks::FindBlocks(
 
             Y_ABORT_UNLESS(block.NodeId == nodeId);
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
+            Y_ABORT_UNLESS(iter.BlocksInCurrentIteration);
 
-            Y_ABORT_UNLESS(iter.BlocksInCurrentIteration > 0);
+            const auto deletionMarkersEmpty = range->DeletionMarkers.Empty();
+            if (iter.BlocksInCurrentIteration > 1 && !deletionMarkersEmpty) {
+                auto deletionMarkerIter = range->DeletionMarkers.FindBlocks(
+                    block,
+                    iter.BlocksInCurrentIteration);
 
-            if (range->DeletionMarkers.Empty()) {
+                auto b = block;
+
+                ui32 blobOffset = iter.BlobOffset;
+                while (deletionMarkerIter.Next()) {
+                    b.MaxCommitId = deletionMarkerIter.MaxCommitId;
+
+                    if (commitId < b.MaxCommitId) {
+                        visitor.Accept(
+                            b,
+                            blob.BlobId,
+                            blobOffset,
+                            deletionMarkerIter.BlocksCount);
+                    }
+
+                    b.BlockIndex += deletionMarkerIter.BlocksCount;
+                    blobOffset += deletionMarkerIter.BlocksCount;
+                }
+            } else {
+                if (!deletionMarkersEmpty) {
+                    range->DeletionMarkers.Apply(block);
+                }
+
                 if (commitId < block.MaxCommitId) {
                     visitor.Accept(
                         block,
                         blob.BlobId,
                         iter.BlobOffset,
                         iter.BlocksInCurrentIteration);
-                }
-            } else {
-                for (ui32 i = 0; i < iter.BlocksInCurrentIteration; ++i) {
-                    auto b = block;
-                    b.BlockIndex = block.BlockIndex + i;
-                    range->DeletionMarkers.Apply(b);
-
-                    if (commitId < b.MaxCommitId) {
-                        visitor.Accept(
-                            b,
-                            blob.BlobId,
-                            iter.BlobOffset + i,
-                            1);
-                    }
                 }
             }
         }
