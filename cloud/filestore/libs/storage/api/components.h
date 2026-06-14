@@ -70,7 +70,7 @@ struct TFileStoreEvents
 
 #define FILESTORE_DECLARE_COMPONENT(component)                                 \
         component##_START,                                                     \
-        component##_END = component##_START + 100,                             \
+        component##_END = component##_START + 200,                             \
 // FILESTORE_DECLARE_COMPONENT
 
         FILESTORE_ACTORS(FILESTORE_DECLARE_COMPONENT)
