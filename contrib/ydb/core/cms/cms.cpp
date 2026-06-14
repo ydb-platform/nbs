@@ -7,6 +7,7 @@
 
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/auth.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/statestorage.h>
 #include <contrib/ydb/core/base/statestorage_impl.h>
@@ -17,6 +18,7 @@
 #include <contrib/ydb/core/protos/cms.pb.h>
 #include <contrib/ydb/core/protos/config_units.pb.h>
 #include <contrib/ydb/core/protos/counters_cms.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -537,16 +539,8 @@ bool TCms::CheckAccess(const TString &token,
                        TString &error,
                        const TActorContext &ctx)
 {
-    auto *appData = AppData(ctx);
-
-    if (appData->AdministrationAllowedSIDs.empty())
+    if (IsAdministrator(AppData(ctx), token)) {
         return true;
-
-    if (token) {
-        NACLib::TUserToken userToken(token);
-        for (auto &sid : appData->AdministrationAllowedSIDs)
-            if (userToken.IsExist(sid))
-                return true;
     }
 
     code = TStatus::UNAUTHORIZED;
@@ -948,14 +942,6 @@ bool TCms::TryToLockVDisk(const TActionOptions& opts,
             }
             break;
         case MODE_FORCE_RESTART:
-            if (counters->GroupAlreadyHasLockedDisks() && !counters->GroupHasMoreThanOneDiskPerNode() && opts.PartialPermissionAllowed) {
-                TabletCounters->Cumulative()[COUNTER_PARTIAL_PERMISSIONS_OPTIMIZED].Increment(1);
-                error.Code = TStatus::DISALLOW_TEMP;
-                error.Reason = "You cannot get two or more disks from the same group at the same time"
-                               " in partial permissions allowed mode";
-                error.Deadline = defaultDeadline;
-                return false;
-            }
             // Any number of down disks is OK for this mode.
             break;
         default:
@@ -2465,8 +2451,13 @@ void TCms::Handle(TEvConsole::TEvConfigNotificationRequest::TPtr &ev,
 {
     const auto& appConfig = ev->Get()->Record.GetConfig();
     if (appConfig.HasFeatureFlags()) {
-        State->EnableCMSRequestPriorities = appConfig.GetFeatureFlags().GetEnableCMSRequestPriorities();
-        State->EnableSingleCompositeActionGroup = appConfig.GetFeatureFlags().GetEnableSingleCompositeActionGroup();
+        const auto& featureFlags = appConfig.GetFeatureFlags();
+        if (featureFlags.HasEnableCMSRequestPriorities()) {
+            State->EnableCMSRequestPriorities = featureFlags.GetEnableCMSRequestPriorities();
+        }
+        if (featureFlags.HasEnableSingleCompositeActionGroup()) {
+            State->EnableSingleCompositeActionGroup = featureFlags.GetEnableSingleCompositeActionGroup();
+        }
     }
 
     if (ev->Get()->Record.HasLocal() && ev->Get()->Record.GetLocal()) {

@@ -1,20 +1,26 @@
 #include "tenant_runtime.h"
 
-#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <contrib/ydb/core/base/feature_flags_service.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
-#include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
+#include <contrib/ydb/core/cms/console/console.h>
+#include <contrib/ydb/core/cms/console/feature_flags_configurator.h>
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
 #include <contrib/ydb/core/mind/labels_maintainer.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
 #include <contrib/ydb/core/mind/tenant_slot_broker.h>
+#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <contrib/ydb/core/persqueue/pq.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
+#include <contrib/ydb/core/sys_view/processor/processor.h>
 #include <contrib/ydb/core/tablet/bootstrapper.h>
 #include <contrib/ydb/core/tablet/tablet_monitoring_proxy.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/tx/coordinator/coordinator.h>
-#include <contrib/ydb/core/tx/long_tx_service/public/events.h>
 #include <contrib/ydb/core/tx/long_tx_service/long_tx_service.h>
+#include <contrib/ydb/core/tx/long_tx_service/public/events.h>
 #include <contrib/ydb/core/tx/mediator/mediator.h>
 #include <contrib/ydb/core/tx/replication/controller/controller.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
@@ -22,9 +28,6 @@
 #include <contrib/ydb/core/tx/sequenceshard/sequenceshard.h>
 #include <contrib/ydb/core/tx/tx_allocator/txallocator.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-#include <contrib/ydb/core/sys_view/processor/processor.h>
-#include <contrib/ydb/core/persqueue/pq.h>
-#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
 
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
@@ -392,7 +395,7 @@ class TFakeHive : public TActor<TFakeHive>, public TTabletExecutedFlat {
     {
         TIntrusivePtr<TBootstrapperInfo> bi(new TBootstrapperInfo(new TTabletSetupInfo(op, TMailboxType::Simple, 0,
                                                                                        TMailboxType::Simple, 0)));
-        return ctx.ExecutorThread.RegisterActor(CreateBootstrapper(CreateTestTabletInfo(State.NextTabletId, tabletType, erasure), bi.Get()));
+        return ctx.Register(CreateBootstrapper(CreateTestTabletInfo(State.NextTabletId, tabletType, erasure), bi.Get()));
     }
 
     void SendDeletionNotification(ui64 tabletId, TActorId waiter, const TActorContext& ctx)
@@ -1045,6 +1048,11 @@ void TTenantTestRuntime::Setup(bool createTenantPools)
                 ));
             EnableScheduleForActor(aid, true);
             RegisterService(MakeConfigsDispatcherID(GetNodeId(0)), aid, 0);
+            if (Config.RegisterFeatureFlagsConfigurator) {
+                RegisterService(
+                    MakeFeatureFlagsServiceID(),
+                    Register(CreateFeatureFlagsConfigurator()));
+            }
         }
 
         Register(NKikimr::CreateLabelsMaintainer(Extension.GetMonitoringConfig()),
@@ -1153,6 +1161,7 @@ TTenantTestRuntime::TTenantTestRuntime(const TTenantTestConfig &config,
     , Extension(extension)
 {
     Extension.MutableFeatureFlags()->SetEnableExternalHive(false);
+    Extension.MutableFeatureFlags()->SetEnableColumnStatistics(false);
     Extension.MutableFeatureFlags()->SetEnableScaleRecommender(true);
     Setup(createTenantPools);
 }

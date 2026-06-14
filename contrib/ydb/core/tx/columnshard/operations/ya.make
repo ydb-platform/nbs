@@ -4,6 +4,7 @@ SRCS(
     write.cpp
     write_data.cpp
     manager.cpp
+    events.cpp
 )
 
 PEERDIR(
@@ -15,6 +16,7 @@ PEERDIR(
     contrib/ydb/core/tx/columnshard/transactions/locks
     contrib/ydb/core/tx/columnshard/operations/batch_builder
     contrib/ydb/core/tx/columnshard/operations/slice_builder
+    contrib/ydb/core/tx/columnshard/operations/common
 )
 
 END()

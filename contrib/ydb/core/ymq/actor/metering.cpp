@@ -272,7 +272,7 @@ public:
             }
 
             if (const TString packedRecords = records) {
-                TLoggerOperator<TGlobalLog>::Log().Write(packedRecords.Data(), packedRecords.Size());
+                TLoggerOperator<TGlobalLog>::Log().Write(packedRecords.data(), packedRecords.size());
             }
         }
 

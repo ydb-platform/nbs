@@ -109,7 +109,7 @@ public:
     void Handle(TEvKqp::TEvQueryResponse::TPtr& ev) {
         SendNotification<TEvQueryRunner::TEvExecutionFinished>();
 
-        Result_.Response = ev->Get()->Record.GetRef();
+        Result_.Response = ev->Get()->Record;
         Promise_.SetValue(Result_);
         PassAway();
     }
@@ -222,6 +222,28 @@ private:
     std::unordered_set<TActorId> RunningRequests;
 };
 
+// The only purpose is to allow BUILTIN_SYSTEM_DOMAIN users
+struct TFakeTicketParserActor : public TActor<TFakeTicketParserActor> {
+    TFakeTicketParserActor()
+        : TActor<TFakeTicketParserActor>(&TFakeTicketParserActor::StateFunc)
+    {}
+
+    STRICT_STFUNC(StateFunc,
+        hFunc(TEvTicketParser::TEvAuthorizeTicket, Handle);
+    )
+
+    void Handle(TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
+        Y_ABORT_UNLESS(ev->Get()->Ticket.EndsWith(BUILTIN_SYSTEM_DOMAIN));
+        NACLib::TUserToken::TUserTokenInitFields args;
+        args.UserSID = ev->Get()->Ticket;
+        TIntrusivePtr<NACLib::TUserToken> userToken = MakeIntrusive<NACLib::TUserToken>(args);
+        Send(ev->Sender, new TEvTicketParser::TEvAuthorizeTicketResult(ev->Get()->Ticket, userToken));
+    }
+};
+
+IActor* CreateFakeTicketParser(const TTicketParserSettings&) {
+    return new TFakeTicketParserActor();
+}
 // Ydb setup
 
 class TWorkloadServiceYdbSetup : public IYdbSetup {
@@ -234,7 +256,9 @@ private:
         appConfig.MutableFeatureFlags()->SetEnableExternalDataSourcesOnServerless(Settings_.EnableExternalDataSourcesOnServerless_);
         appConfig.MutableFeatureFlags()->SetEnableExternalDataSources(true);
         appConfig.MutableFeatureFlags()->SetEnableResourcePoolsCounters(true);
+        *appConfig.MutableWorkloadManagerConfig() = Settings_.WorkloadManagerConfig_;
 
+        appConfig.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
         return appConfig;
     }
 
@@ -266,6 +290,8 @@ private:
         }
 
         SetLoggerSettings(serverSettings);
+
+        serverSettings.CreateTicketParser = CreateFakeTicketParser;
 
         return serverSettings;
     }
@@ -358,7 +384,7 @@ public:
                 new NNodeWhiteboard::TEvWhiteboard::TEvSystemStateRequest(), nodeIndex
             );
             auto response = GetRuntime()->GrabEdgeEvent<NNodeWhiteboard::TEvWhiteboard::TEvSystemStateResponse>(edgeActor, FUTURE_WAIT_TIMEOUT);
-            
+
             if (!response->Get()->Record.SystemStateInfoSize()) {
                 errorString = "empty system state info";
                 return false;
@@ -431,6 +457,14 @@ public:
         return {.AsyncResult = promise.GetFuture(), .QueryRunnerActor = runerActor, .EdgeActor = edgeActor};
     }
 
+    void ExecuteQueryRetry(const TString& retryMessage, const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings(), TDuration timeout = FUTURE_WAIT_TIMEOUT) const override {
+        WaitFor(timeout, retryMessage, [this, query, settings](TString& errorString) {
+            auto result = ExecuteQuery(query, settings);
+            errorString = result.GetIssues().ToOneLineString();
+            return result.GetStatus() == EStatus::SUCCESS;
+        });
+    }
+
     // Async query execution actions
     void WaitQueryExecution(const TQueryRunnerResultAsync& query, TDuration timeout = FUTURE_WAIT_TIMEOUT) const override {
         auto event = GetRuntime()->GrabEdgeEvent<TEvQueryRunner::TEvExecutionStarted>(query.EdgeActor, timeout);
@@ -451,11 +485,17 @@ public:
     TPoolStateDescription GetPoolDescription(TDuration leaseDuration = FUTURE_WAIT_TIMEOUT, const TString& poolId = "") const override {
         const auto& edgeActor = GetRuntime()->AllocateEdgeActor();
 
-        GetRuntime()->Register(CreateRefreshPoolStateActor(edgeActor, CanonizePath(Settings_.DomainName_), poolId ? poolId : Settings_.PoolId_, leaseDuration, GetRuntime()->GetAppData().Counters));
-        auto response = GetRuntime()->GrabEdgeEvent<TEvPrivate::TEvRefreshPoolStateResponse>(edgeActor, FUTURE_WAIT_TIMEOUT);
-        UNIT_ASSERT_VALUES_EQUAL_C(response->Get()->Status, Ydb::StatusIds::SUCCESS, response->Get()->Issues.ToOneLineString());
+        TInstant startAt = TInstant::Now();
+        while (true) {
+            GetRuntime()->Register(CreateRefreshPoolStateActor(edgeActor, CanonizePath(Settings_.DomainName_), poolId ? poolId : Settings_.PoolId_, leaseDuration, GetRuntime()->GetAppData().Counters));
+            auto response = GetRuntime()->GrabEdgeEvent<TEvPrivate::TEvRefreshPoolStateResponse>(edgeActor, FUTURE_WAIT_TIMEOUT - (TInstant::Now() - startAt));
+            if (TInstant::Now() < startAt + FUTURE_WAIT_TIMEOUT && response->Get()->Status != Ydb::StatusIds::SUCCESS) {
+                continue;
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(response->Get()->Status, Ydb::StatusIds::SUCCESS, response->Get()->Issues.ToOneLineString());
 
-        return response->Get()->PoolState;
+            return response->Get()->PoolState;
+        }
     }
 
     void WaitPoolState(const TPoolStateDescription& state, const TString& poolId = "") const override {

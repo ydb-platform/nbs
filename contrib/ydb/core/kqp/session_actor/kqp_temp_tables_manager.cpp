@@ -2,8 +2,9 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/kqp/gateway/actors/scheme.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/kqp/session_actor/kqp_worker_common.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
@@ -58,7 +59,7 @@ public:
     {}
 
     void Bootstrap() {
-        if (TempTablesState.TempTables.empty()) {
+        if (TempTablesState.TempTables.empty() && !TempTablesState.HasCreateTableAs) {
             Finish();
             return;
         }
@@ -166,7 +167,7 @@ private:
             IActor* requestHandler = new TSchemeOpRequestHandler(ev.Release(), promise, true);
             RegisterWithSameMailbox(requestHandler);
 
-            auto actorSystem = TlsActivationContext->AsActorContext().ExecutorThread.ActorSystem;
+            auto actorSystem = TActivationContext::ActorSystem();
             auto selfId = SelfId();
             promise.GetFuture().Subscribe([actorSystem, selfId](const TFuture<IKqpGateway::TGenericResult>& future) {
                 auto ev = MakeHolder<TEvPrivate::TEvDropTableResult>();
@@ -216,7 +217,7 @@ private:
         IActor* requestHandler = new TSchemeOpRequestHandler(ev.Release(), promise, true);
         RegisterWithSameMailbox(requestHandler);
 
-        auto actorSystem = TlsActivationContext->AsActorContext().ExecutorThread.ActorSystem;
+        auto actorSystem = TActivationContext::ActorSystem();
         auto selfId = SelfId();
         promise.GetFuture().Subscribe([actorSystem, selfId](const TFuture<IKqpGateway::TGenericResult>& future) {
             auto ev = MakeHolder<TEvPrivate::TEvRemoveDirResult>();

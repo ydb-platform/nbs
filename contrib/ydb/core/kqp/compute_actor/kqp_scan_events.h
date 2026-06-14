@@ -3,10 +3,10 @@
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 #include <contrib/ydb/library/accessor/accessor.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 #include <contrib/ydb/library/yql/dq/actors/protos/dq_status_codes.pb.h>
-#include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
-#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
+#include <yql/essentials/core/issue/protos/issue_id.pb.h>
+#include <yql/essentials/core/issue/yql_issue.h>
 
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/events.h>

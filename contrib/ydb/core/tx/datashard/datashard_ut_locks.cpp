@@ -2,6 +2,7 @@
 #include <contrib/ydb/core/tx/locks/locks.h>
 #include <contrib/ydb/core/tx/datashard/ut_common/datashard_ut_common.h>
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tablet_flat/flat_dbase_apply.h>
 #include <contrib/ydb/core/tablet_flat/flat_exec_commit.h>
 #include <contrib/ydb/core/testlib/test_client.h>
@@ -705,7 +706,7 @@ void CheckLocksCacheUsage(bool waitForLocksStore) {
         auto request = MakeSQLRequest("SELECT * FROM `/Root/table-1`");
         runtime.Send(new IEventHandle(NKqp::MakeKqpProxyID(runtime.GetNodeId()), sender, request.Release()));
         auto reply = runtime.GrabEdgeEventRethrow<NKqp::TEvKqp::TEvQueryResponse>(handle);
-        auto &resp = reply->Record.GetRef().GetResponse();
+        auto &resp = reply->Record.GetResponse();
         UNIT_ASSERT_VALUES_EQUAL(resp.YdbResultsSize(), 1);
 
         if (waitForLocksStore)

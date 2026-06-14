@@ -1,8 +1,7 @@
 #include "interconnect.h"
-#include "interconnect_address.h"
 #include "events_local.h"
-#include "logging.h"
 
+#include <contrib/ydb/library/actors/interconnect/logging/logging.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/dnsresolver/dnsresolver.h>
@@ -18,7 +17,7 @@ namespace NActors {
     public:
         TInterconnectResolveActor(
                 const TString& host, ui16 port, ui32 nodeId, const TString& defaultAddress,
-                const TActorId& replyTo, const TActorId& replyFrom, TInstant deadline)
+                const TActorId& replyTo, const TActorId& replyFrom, TMonotonic deadline)
             : Host(host)
             , NodeId(nodeId)
             , Port(port)
@@ -30,7 +29,7 @@ namespace NActors {
 
         TInterconnectResolveActor(
                 const TString& host, ui16 port,
-                const TActorId& replyTo, const TActorId& replyFrom, TInstant deadline)
+                const TActorId& replyTo, const TActorId& replyFrom, TMonotonic deadline)
             : Host(host)
             , Port(port)
             , ReplyTo(replyTo)
@@ -57,7 +56,7 @@ namespace NActors {
                 SendErrorAndDie(*errorText);
             }
 
-            auto now = TActivationContext::Now();
+            auto now = TActivationContext::Monotonic();
             if (Deadline < now) {
                 SendErrorAndDie("Deadline");
                 return;
@@ -70,7 +69,7 @@ namespace NActors {
                     : static_cast<IEventBase*>(new TEvDns::TEvGetAddr(Host, AF_UNSPEC)),
                 IEventHandle::FlagTrackDelivery);
 
-            if (Deadline != TInstant::Max()) {
+            if (Deadline != TMonotonic::Max()) {
                 Schedule(Deadline, new TEvents::TEvWakeup);
             }
 
@@ -188,19 +187,19 @@ namespace NActors {
         const TString DefaultAddress;
         const TActorId ReplyTo;
         const TActorId ReplyFrom;
-        const TInstant Deadline;
+        const TMonotonic Deadline;
     };
 
     IActor* CreateResolveActor(
         const TString& host, ui16 port, ui32 nodeId, const TString& defaultAddress,
-        const TActorId& replyTo, const TActorId& replyFrom, TInstant deadline)
+        const TActorId& replyTo, const TActorId& replyFrom, TMonotonic deadline)
     {
         return new TInterconnectResolveActor(host, port, nodeId, defaultAddress, replyTo, replyFrom, deadline);
     }
 
     IActor* CreateResolveActor(
         const TString& host, ui16 port,
-        const TActorId& replyTo, const TActorId& replyFrom, TInstant deadline)
+        const TActorId& replyTo, const TActorId& replyFrom, TMonotonic deadline)
     {
         return new TInterconnectResolveActor(host, port, replyTo, replyFrom, deadline);
     }

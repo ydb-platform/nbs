@@ -16,6 +16,7 @@ SRCS(
     mirrorer.h
     ownerinfo.cpp
     offload_actor.cpp
+    partition_compactification.cpp
     partition_init.cpp
     partition_monitoring.cpp
     partition_read.cpp
@@ -28,6 +29,7 @@ SRCS(
     pq.cpp
     pq_database.cpp
     pq_impl_app.cpp
+    pq_impl_app_sendreadset.cpp
     pq_impl.cpp
     pq_l2_cache.cpp
     pq_rl_helpers.cpp
@@ -49,6 +51,7 @@ SRCS(
     microseconds_sliding_window.cpp
     dread_cache_service/caching_service.cpp
     write_id.cpp
+    tracing_support.cpp
 )
 
 GENERATE_ENUM_SERIALIZATION(read_balancer__balancing.h)
@@ -75,10 +78,18 @@ PEERDIR(
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/library/protobuf_printer
     contrib/ydb/public/lib/base
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
 )
 
 END()
+
+RECURSE(
+    codecs
+    config
+    events
+    partition_key_range
+    writer
+)
 
 RECURSE_FOR_TESTS(
     ut

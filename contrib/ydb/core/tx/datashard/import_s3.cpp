@@ -6,12 +6,16 @@
 #include "import_common.h"
 #include "import_s3.h"
 
+#include <contrib/ydb/core/backup/common/checksum.h>
+#include <contrib/ydb/core/backup/common/encryption.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/protos/datashard_config.pb.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/tablet/resource_broker.h>
+#include <contrib/ydb/core/wrappers/retry_policy.h>
 #include <contrib/ydb/core/wrappers/s3_wrapper.h>
 #include <contrib/ydb/core/wrappers/s3_storage.h>
 #include <contrib/ydb/core/wrappers/s3_storage_config.h>
@@ -47,6 +51,9 @@ namespace {
 namespace NKikimr {
 namespace NDataShard {
 
+using namespace NBackup;
+using namespace NBackupRestoreTraits;
+
 using namespace NResourceBroker;
 using namespace NWrappers;
 
@@ -54,6 +61,17 @@ using namespace Aws::S3;
 using namespace Aws;
 
 class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
+    // IReadController
+    //
+    // Work cycle:
+    // 1. RestoreFromState() - optional. State was made from Confirm() call
+    // 2. NextRange()
+    // 3. Feed()
+    // 4. while (TryGetData() == READY_DATA) {
+    //       4.a. Add ReadyBytes() to current processed bytes state
+    //       4.b. Confirm() - update state
+    //    }
+    // 5. Repeat from 1. until the whole file is processed
     class IReadController {
     public:
         enum EDataStatus {
@@ -64,13 +82,17 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
 
     public:
         virtual ~IReadController() = default;
-        virtual void Feed(TString&& portion) = 0;
-        // Returns data (view to internal buffer) or error
+        virtual void Feed(TString&& portion, bool last) = 0;
+        // Returns data (points to internal buffer) or error
         virtual EDataStatus TryGetData(TStringBuf& data, TString& error) = 0;
-        // Clear internal buffer & makes it ready for another Feed() and TryGetData()
-        virtual void Confirm() = 0;
+        // Clears internal buffer & makes it ready for another Feed() and TryGetData()
+        virtual void Confirm(NKikimrBackup::TS3DownloadState& state) = 0;
+        // Bytes that were read from S3 and put into controller. In terms of input bytes
         virtual ui64 PendingBytes() const = 0;
+        // Bytes that controller has given to processing. In terms of input bytes
         virtual ui64 ReadyBytes() const = 0;
+        virtual std::pair<ui64, ui64> NextRange(ui64 contentLength, ui64 processedBytes) const = 0;
+        virtual bool RestoreFromState(const NKikimrBackup::TS3DownloadState& state, TString& error) = 0;
     };
 
     class TReadController: public IReadController {
@@ -83,13 +105,17 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             Buffer.Reserve(RangeSize);
         }
 
-        std::pair<ui64, ui64> NextRange(ui64 contentLength, ui64 processedBytes) const {
+        std::pair<ui64, ui64> NextRange(ui64 contentLength, ui64 processedBytes) const override {
             Y_ABORT_UNLESS(contentLength > 0);
             Y_ABORT_UNLESS(processedBytes < contentLength);
 
             const ui64 start = processedBytes + PendingBytes();
             const ui64 end = Min(SumWithSaturation(start, RangeSize), contentLength) - 1;
             return std::make_pair(start, end);
+        }
+
+        bool RestoreFromState(const NKikimrBackup::TS3DownloadState&, TString&) override {
+            return true;
         }
 
     protected:
@@ -123,7 +149,7 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
     public:
         using TReadController::TReadController;
 
-        void Feed(TString&& portion) override {
+        void Feed(TString&& portion, bool /* last */) override {
             Buffer.Append(portion.data(), portion.size());
         }
 
@@ -145,7 +171,7 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             return READY_DATA;
         }
 
-        void Confirm() override {
+        void Confirm(NKikimrBackup::TS3DownloadState&) override {
             Buffer.ChopHead(Pos);
             Pos = 0;
         }
@@ -179,7 +205,7 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             Buffer.Reserve(AppData()->ZstdBlockSizeForTest.GetOrElse(ZSTD_BLOCKSIZE_MAX));
         }
 
-        void Feed(TString&& portion) override {
+        void Feed(TString&& portion, bool /* last */) override {
             Y_ABORT_UNLESS(Portion.Empty());
             Portion.Assign(portion.data(), portion.size());
         }
@@ -249,7 +275,7 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             return READY_DATA;
         }
 
-        void Confirm() override {
+        void Confirm(NKikimrBackup::TS3DownloadState&) override {
             Buffer.ChopHead(ReadyOutputPos);
             ReadyOutputPos = 0;
 
@@ -273,6 +299,133 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
         ui64 ReadyOutputPos = 0;
     };
 
+    class TEncryptionDeserializerController: public IReadController {
+    public:
+        TEncryptionDeserializerController(
+                NBackup::TEncryptionKey key,
+                NBackup::TEncryptionIV expectedIV,
+                THolder<IReadController> deserializedDataController,
+                ui64 readBatchSize)
+            : Deserializer(std::move(key), std::move(expectedIV))
+            , DataController(std::move(deserializedDataController))
+            , ReadBatchSize(readBatchSize)
+        {
+        }
+
+        void Feed(TString&& portion, bool last) override {
+            if (!portion.empty() || last) {
+                NewData = true;
+            }
+            Last = last;
+            FeedUnprocessedBytes += portion.size();
+            Deserializer.AddData(TBuffer(portion.data(), portion.size()), last);
+        }
+
+        EDataStatus TryGetData(TStringBuf& data, TString& error) override {
+            if (BytesFedToChild) {
+                EDataStatus status = TryGetDataFromChildController(data, error);
+                if (status != NOT_ENOUGH_DATA || !NewData) {
+                    return status;
+                }
+            }
+            bool lastEmptyBlock = false; // The case of empty file
+            if (NewData) {
+                try {
+                    NewData = false;
+                    const ui64 processedBefore = Deserializer.GetProcessedInputBytes();
+                    TMaybe<TBuffer> block = Deserializer.GetNextBlock(); // Returns at least one encrypted block
+                    const ui64 processedAfter = Deserializer.GetProcessedInputBytes();
+                    Y_ABORT_UNLESS(processedAfter - processedBefore <= FeedUnprocessedBytes);
+                    ReadyInputBytes += processedAfter - processedBefore;
+                    if (block) {
+                        if (block->Size()) {
+                            // Data is read by blocks from encrypted file.
+                            // Each block contains at least one row of data with '\n',
+                            // so we will always get some data from DataController.
+                            DataController->Feed(TString(block->Data(), block->Size()), Last);
+                            BytesFedToChild += block->Size();
+                        } else {
+                            lastEmptyBlock = Last;
+                        }
+                    }
+                } catch (const std::exception& ex) {
+                    error = ex.what();
+                    return ERROR;
+                }
+            }
+
+            if (BytesFedToChild) {
+                return TryGetDataFromChildController(data, error);
+            }
+            if (lastEmptyBlock) {
+                data.Clear();
+                return READY_DATA;
+            }
+            return NOT_ENOUGH_DATA;
+        }
+
+        EDataStatus TryGetDataFromChildController(TStringBuf& data, TString& error) {
+            const EDataStatus status = DataController->TryGetData(data, error);
+            if (status == READY_DATA) {
+                if (ui64 ready = DataController->ReadyBytes()) {
+                    BytesFedToChild -= ready;
+                    Y_ENSURE(BytesFedToChild >= 0);
+                }
+            }
+            return status;
+        }
+
+        void Confirm(NKikimrBackup::TS3DownloadState& state) override {
+            state.SetEncryptedDeserializerState(Deserializer.GetState());
+            if (ui64 readyBytes = ReadyBytes()) {
+                FeedUnprocessedBytes -= readyBytes;
+                ReadyInputBytes = 0;
+            }
+            DataController->Confirm(state);
+        }
+
+        ui64 PendingBytes() const override {
+            return FeedUnprocessedBytes;
+        }
+
+        ui64 ReadyBytes() const override {
+            return BytesFedToChild == 0 ? ReadyInputBytes : 0;
+        }
+
+        std::pair<ui64, ui64> NextRange(ui64 contentLength, ui64 processedBytes) const override {
+            Y_ENSURE(contentLength > 0);
+            Y_ENSURE(processedBytes < contentLength);
+
+            const ui64 start = processedBytes + PendingBytes();
+            const ui64 end = Min(SumWithSaturation(start, ReadBatchSize), contentLength) - 1;
+            return std::make_pair(start, end);
+        }
+
+        bool RestoreFromState(const NKikimrBackup::TS3DownloadState& state, TString& error) override {
+            if (const TString& deserializerState = state.GetEncryptedDeserializerState()) {
+                try {
+                    Deserializer = NBackup::TEncryptedFileDeserializer::RestoreFromState(deserializerState);
+                    FeedUnprocessedBytes = 0;
+                    ReadyInputBytes = 0;
+                } catch (const std::exception& ex) {
+                    error = ex.what();
+                    return false;
+                }
+            }
+            return DataController->RestoreFromState(state, error);
+        }
+
+    private:
+        bool Last = false;
+        ui64 FeedUnprocessedBytes = 0;
+        ui64 ReadyInputBytes = 0;
+        bool NewData = false;
+        ui64 BytesFedToChild = 0;
+        NBackup::TEncryptedFileDeserializer Deserializer;
+        THolder<IReadController> DataController;
+        const ui64 ReadBatchSize;
+    };
+
     class TUploadRowsRequestBuilder {
     public:
         void New(const TTableInfo& tableInfo, const NKikimrSchemeOp::TTableDescription& scheme) {
@@ -291,6 +444,8 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             for (ui32 id : tableInfo.GetValueColumnIds(columnNames)) {
                 rowScheme.AddValueColumnIds(id);
             }
+
+            CellBytes = 0;
         }
 
         void AddRow(const TVector<TCell>& keys, const TVector<TCell>& values) {
@@ -298,6 +453,13 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             auto& row = *Record->AddRows();
             row.SetKeyColumns(TSerializedCellVec::Serialize(keys));
             row.SetValueColumns(TSerializedCellVec::Serialize(values));
+
+            for (const auto& x : keys) {
+                CellBytes += x.Size();
+            }
+            for (const auto& x : values) {
+                CellBytes += x.Size();
+            }
         }
 
         const std::shared_ptr<NKikimrTxDataShard::TEvUploadRowsRequest>& GetRecord() {
@@ -305,10 +467,56 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             return Record;
         }
 
+        ui64 GetCellBytes() const {
+            return CellBytes;
+        }
+
     private:
         std::shared_ptr<NKikimrTxDataShard::TEvUploadRowsRequest> Record;
+        ui64 CellBytes;
 
     }; // TUploadRowsRequestBuilder
+
+    struct TCounters {
+        struct TLatency {
+            TInstant Begin;
+            ::NMonitoring::THistogramPtr Counter;
+
+            explicit TLatency(::NMonitoring::THistogramPtr counter)
+                : Counter(counter)
+            {
+            }
+
+            void Start(TInstant begin) {
+                Begin = begin;
+            }
+
+            void Finish(TInstant end) {
+                Counter->Collect((end - Begin).MilliSeconds());
+                Begin = TInstant::Zero();
+            }
+        };
+
+        ::NMonitoring::TDynamicCounters::TCounterPtr BytesReceived;
+        ::NMonitoring::TDynamicCounters::TCounterPtr BytesWritten;
+        TLatency LatencyRead;
+        TLatency LatencyProcess;
+        TLatency LatencyWrite;
+
+        explicit TCounters(::NMonitoring::TDynamicCounterPtr counters)
+            : BytesReceived(counters->GetCounter("BytesReceived", true))
+            , BytesWritten(counters->GetCounter("BytesWritten", true))
+            , LatencyRead(counters->GetHistogram("LatencyReadMs", ::NMonitoring::ExponentialHistogram(10, 4, 1)))
+            , LatencyProcess(counters->GetHistogram("LatencyProcessMs", ::NMonitoring::ExponentialHistogram(10, 4, 1)))
+            , LatencyWrite(counters->GetHistogram("LatencyWriteMs", ::NMonitoring::ExponentialHistogram(10, 4, 1)))
+        {
+        }
+
+    }; // TCounters
+
+    static TInstant Now() {
+        return TlsActivationContext->Now();
+    }
 
     void AllocateResource() {
         IMPORT_LOG_D("AllocateResource");
@@ -342,11 +550,10 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             Send(client, new TEvents::TEvPoisonPill());
         }
 
-
         Client = RegisterWithSameMailbox(CreateS3Wrapper(ExternalStorageConfig->ConstructStorageOperator()));
 
         HeadObject(Settings.GetDataKey(DataFormat, CompressionCodec));
-        Become(&TThis::StateWork);
+        Become(&TThis::StateDownloadData);
     }
 
     void HeadObject(const TString& key) {
@@ -395,21 +602,59 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             return HeadObject(Settings.GetDataKey(DataFormat, CompressionCodec));
         }
 
+        THolder<IReadController> reader;
         switch (CompressionCodec) {
         case NBackupRestoreTraits::ECompressionCodec::None:
-            Reader.Reset(new TReadControllerRaw(ReadBatchSize, ReadBufferSizeLimit));
+            reader.Reset(new TReadControllerRaw(ReadBatchSize, ReadBufferSizeLimit));
             break;
         case NBackupRestoreTraits::ECompressionCodec::Zstd:
-            Reader.Reset(new TReadControllerZstd(ReadBatchSize, ReadBufferSizeLimit));
+            reader.Reset(new TReadControllerZstd(ReadBatchSize, ReadBufferSizeLimit));
             break;
         case NBackupRestoreTraits::ECompressionCodec::Invalid:
             Y_ABORT("unreachable");
         }
 
+        if (Settings.EncryptionSettings.EncryptedBackup) {
+            NBackup::TEncryptionIV expectedIV = NBackup::TEncryptionIV::Combine(
+                *Settings.EncryptionSettings.IV,
+                NBackup::EBackupFileType::TableData,
+                0 /* already combined */,
+                Settings.Shard
+            );
+            Reader = MakeHolder<TEncryptionDeserializerController>(
+                *Settings.EncryptionSettings.Key,
+                expectedIV,
+                std::move(reader),
+                ReadBatchSize
+            );
+        } else {
+            Reader = std::move(reader);
+        }
+
         ETag = result.GetResult().GetETag();
         ContentLength = result.GetResult().GetContentLength();
 
-        Send(DataShard, new TEvDataShard::TEvGetS3DownloadInfo(TxId));
+        if (!ContentLength && Settings.EncryptionSettings.EncryptedBackup) {
+            // Encrypted file can not have zero length
+            const TString error = "File is corrupted";
+            IMPORT_LOG_E(error);
+            return Finish(false, error);
+        }
+
+        if (Checksum) {
+            HeadObject(ChecksumKey(Settings.GetDataKey(DataFormat, ECompressionCodec::None)));
+            Become(&TThis::StateDownloadChecksum);
+        } else {
+            Send(DataShard, new TEvDataShard::TEvGetS3DownloadInfo(TxId));
+        }
+    }
+
+    TChecksumState GetChecksumState() const {
+        TChecksumState checksumState;
+        if (Checksum) {
+            checksumState = Checksum->GetState();
+        }
+        return checksumState;
     }
 
     void Handle(TEvDataShard::TEvS3DownloadInfo::TPtr& ev) {
@@ -418,15 +663,15 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
         const auto& info = ev->Get()->Info;
         if (!info.DataETag) {
             Send(DataShard, new TEvDataShard::TEvStoreS3DownloadInfo(TxId, {
-                ETag, ProcessedBytes, WrittenBytes, WrittenRows
+                ETag, ProcessedBytes, WrittenBytes, WrittenRows, GetChecksumState(), DownloadState
             }));
             return;
         }
 
-        ProcessDownloadInfo(info, TStringBuf("DownloadInfo"));
+        ProcessDownloadInfo(info, TStringBuf("DownloadInfo"), true);
     }
 
-    void ProcessDownloadInfo(const TS3Download& info, const TStringBuf marker) {
+    void ProcessDownloadInfo(const TS3Download& info, const TStringBuf marker, bool loadState = false) {
         IMPORT_LOG_N("Process download info at '" << marker << "'"
             << ": info# " << info);
 
@@ -435,11 +680,27 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             return;
         }
 
+        DownloadState = info.DownloadState;
+        if (loadState) {
+            if (Checksum) {
+                Checksum->Continue(info.ChecksumState);
+            }
+            if (TString restoreErr; !Reader->RestoreFromState(DownloadState, restoreErr)) {
+                const TString error = TStringBuilder() << "Failed to restore reader state: " << restoreErr;
+                IMPORT_LOG_E(error);
+                return Finish(false, error);
+            }
+        }
+
         ProcessedBytes = info.ProcessedBytes;
+        ReadBytes = ProcessedBytes + Reader->PendingBytes();
         WrittenBytes = info.WrittenBytes;
         WrittenRows = info.WrittenRows;
 
         if (!ContentLength || ProcessedBytes >= ContentLength) {
+            if (!CheckChecksum()) {
+                return;
+            }
             return Finish();
         }
 
@@ -466,8 +727,42 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             << ", content-length# " << ContentLength
             << ", body-size# " << msg.Body.size());
 
-        Reader->Feed(std::move(msg.Body));
+        *Counters.BytesReceived += msg.Body.size();
+        Counters.LatencyRead.Finish(Now());
+
+        ReadBytes += msg.Body.size();
+        Reader->Feed(std::move(msg.Body), ReadBytes >= ContentLength);
         Process();
+    }
+
+    void HandleChecksum(TEvExternalStorage::TEvHeadObjectResponse::TPtr& ev) {
+        IMPORT_LOG_D("HandleChecksum " << ev->Get()->ToString());
+
+        const auto& result = ev->Get()->Result;
+
+        if (!CheckResult(result, "HeadObject")) {
+            return;
+        }
+
+        const auto contentLength = result.GetResult().GetContentLength();
+        const auto checksumKey = ChecksumKey(Settings.GetDataKey(DataFormat, ECompressionCodec::None));
+        GetObject(checksumKey, std::make_pair(0, contentLength - 1));
+    }
+
+    void HandleChecksum(TEvExternalStorage::TEvGetObjectResponse::TPtr& ev) {
+        IMPORT_LOG_D("HandleChecksum " << ev->Get()->ToString());
+
+        auto& msg = *ev->Get();
+        const auto& result = msg.Result;
+
+        if (!CheckResult(result, "GetObject")) {
+            return;
+        }
+
+        ExpectedChecksum = msg.Body.substr(0, msg.Body.find(' '));
+
+        Send(DataShard, new TEvDataShard::TEvGetS3DownloadInfo(TxId));
+        Become(&TThis::StateDownloadData);
     }
 
     void Process() {
@@ -475,11 +770,12 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
         TString error;
 
         switch (Reader->TryGetData(data, error)) {
-        case TReadController::READY_DATA:
+        case IReadController::READY_DATA:
             break;
 
-        case TReadController::NOT_ENOUGH_DATA:
+        case IReadController::NOT_ENOUGH_DATA:
             if (SumWithSaturation(ProcessedBytes, Reader->PendingBytes()) < ContentLength) {
+                Counters.LatencyRead.Start(Now());
                 return GetObject(Settings.GetDataKey(DataFormat, CompressionCodec),
                     Reader->NextRange(ContentLength, ProcessedBytes));
             } else {
@@ -492,9 +788,21 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
                 << ": " << error);
         }
 
+        Counters.LatencyProcess.Start(Now());
+
+        if (Checksum) {
+            Checksum->AddData(data);
+        }
+
         RequestBuilder.New(TableInfo, Scheme);
-        TMemoryPool pool(256);
-        while (ProcessData(data, pool));
+
+        // Special case:
+        // in encrypted file we have nonzero bytes on input, but can still have zero bytes on output
+        // In this case TryGetData() returns READY_DATA
+        if (data) {
+            TMemoryPool pool(256);
+            while (ProcessData(data, pool));
+        }
 
         if (const auto processed = Reader->ReadyBytes()) { // has progress
             ProcessedBytes += processed;
@@ -502,7 +810,8 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             WrittenRows += std::exchange(PendingRows, 0);
         }
 
-        Reader->Confirm();
+        DownloadState.Clear();
+        Reader->Confirm(DownloadState);
         UploadRows();
     }
 
@@ -557,13 +866,19 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
             << ": count# " << record->RowsSize()
             << ", size# " << record->ByteSizeLong());
 
+        Counters.LatencyProcess.Finish(Now());
+        Counters.LatencyWrite.Start(Now());
+
         Send(DataShard, new TEvDataShard::TEvS3UploadRowsRequest(TxId, record, {
-            ETag, ProcessedBytes, WrittenBytes, WrittenRows
+            ETag, ProcessedBytes, WrittenBytes, WrittenRows, GetChecksumState(), DownloadState
         }));
     }
 
     void Handle(TEvDataShard::TEvS3UploadRowsResponse::TPtr& ev) {
         IMPORT_LOG_D("Handle " << ev->Get()->ToString());
+
+        *Counters.BytesWritten += RequestBuilder.GetCellBytes();
+        Counters.LatencyWrite.Finish(Now());
 
         const auto& record = ev->Get()->Record;
         switch (record.GetStatus()) {
@@ -653,8 +968,29 @@ class TS3Downloader: public TActorBootstrapped<TS3Downloader> {
         return true;
     }
 
+    bool CheckChecksum() {
+        if (!Checksum) {
+            return true;
+        }
+
+        TString gotChecksum = Checksum->Finalize();
+        if (gotChecksum == ExpectedChecksum) {
+            return true;
+        }
+
+        const TString error = TStringBuilder() << "Checksum mismatch for "
+            << Settings.GetDataKey(DataFormat, ECompressionCodec::None)
+            << " expected# " << ExpectedChecksum
+            << ", got# " << gotChecksum;
+
+        IMPORT_LOG_E(error);
+        Finish(false, error);
+
+        return false;
+    }
+
     static bool ShouldRetry(const Aws::S3::S3Error& error) {
-        return error.ShouldRetry();
+        return NWrappers::ShouldRetry(error);
     }
 
     static bool ShouldRetry(const TString&) {
@@ -724,7 +1060,7 @@ public:
     }
 
     explicit TS3Downloader(const TActorId& dataShard, ui64 txId, const NKikimrSchemeOp::TRestoreTask& task, const TTableInfo& tableInfo)
-        : ExternalStorageConfig(new NExternalStorage::TS3ExternalStorageConfig(task.GetS3Settings()))
+        : ExternalStorageConfig(new NExternalStorage::TS3ExternalStorageConfig(AppData()->AwsClientConfig, task.GetS3Settings()))
         , DataShard(dataShard)
         , TxId(txId)
         , Settings(TS3Settings::FromRestoreTask(task))
@@ -736,6 +1072,8 @@ public:
         , Retries(task.GetNumberOfRetries())
         , ReadBatchSize(task.GetS3Settings().GetLimits().GetReadBatchSize())
         , ReadBufferSizeLimit(AppData()->DataShardConfig.GetRestoreReadBufferSizeLimit())
+        , Checksum(task.GetValidateChecksums() ? CreateChecksum() : nullptr)
+        , Counters(GetServiceCounters(AppData()->Counters, "tablets")->GetSubgroup("subsystem", "import"))
     {
     }
 
@@ -757,13 +1095,23 @@ public:
         }
     }
 
-    STATEFN(StateWork) {
+    STATEFN(StateDownloadData) {
         switch (ev->GetTypeRewrite()) {
             hFunc(TEvExternalStorage::TEvHeadObjectResponse, Handle);
             hFunc(TEvExternalStorage::TEvGetObjectResponse, Handle);
 
             hFunc(TEvDataShard::TEvS3DownloadInfo, Handle);
             hFunc(TEvDataShard::TEvS3UploadRowsResponse, Handle);
+
+            sFunc(TEvents::TEvWakeup, Restart);
+            sFunc(TEvents::TEvPoisonPill, NotifyDied);
+        }
+    }
+
+    STATEFN(StateDownloadChecksum) {
+        switch (ev->GetTypeRewrite()) {
+            hFunc(TEvExternalStorage::TEvHeadObjectResponse, HandleChecksum);
+            hFunc(TEvExternalStorage::TEvGetObjectResponse, HandleChecksum);
 
             sFunc(TEvents::TEvWakeup, Restart);
             sFunc(TEvents::TEvPoisonPill, NotifyDied);
@@ -793,15 +1141,22 @@ private:
     TString ETag;
     ui64 ContentLength = 0;
     ui64 ProcessedBytes = 0;
+    ui64 ReadBytes = 0;
     ui64 WrittenBytes = 0;
     ui64 WrittenRows = 0;
     ui64 PendingBytes = 0;
     ui64 PendingRows = 0;
+    NKikimrBackup::TS3DownloadState DownloadState;
 
     const ui32 ReadBatchSize;
     const ui64 ReadBufferSizeLimit;
-    THolder<TReadController> Reader;
+    THolder<IReadController> Reader;
     TUploadRowsRequestBuilder RequestBuilder;
+
+    NBackup::IChecksum::TPtr Checksum;
+    TString ExpectedChecksum;
+
+    TCounters Counters;
 
 }; // TS3Downloader
 

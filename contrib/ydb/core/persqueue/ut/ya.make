@@ -1,5 +1,9 @@
 UNITTEST_FOR(contrib/ydb/core/persqueue)
 
+ADDINCL(
+    contrib/ydb/public/sdk/cpp
+)
+
 FORK_SUBTESTS()
 
 SPLIT_FACTOR(40)
@@ -7,10 +11,8 @@ SPLIT_FACTOR(40)
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
     SIZE(LARGE)
     TAG(ya:fat)
-    TIMEOUT(3000)
 ELSE()
     SIZE(MEDIUM)
-    TIMEOUT(600)
 ENDIF()
 
 PEERDIR(
@@ -19,8 +21,8 @@ PEERDIR(
     library/cpp/svnversion
     contrib/ydb/core/persqueue/ut/common
     contrib/ydb/core/testlib/default
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
 
     contrib/ydb/core/tx/schemeshard/ut_helpers
 )
@@ -47,6 +49,7 @@ SRCS(
     fetch_request_ut.cpp
     utils_ut.cpp
     list_all_topics_ut.cpp
+    cache_eviction_ut.cpp
 )
 
 RESOURCE(

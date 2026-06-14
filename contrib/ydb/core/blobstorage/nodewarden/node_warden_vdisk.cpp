@@ -1,6 +1,8 @@
+#include "node_warden.h"
 #include "node_warden_impl.h"
 
 #include <contrib/ydb/core/blobstorage/crypto/default.h>
+#include <contrib/ydb/core/blobstorage/vdisk/vdisk_actor.h>
 
 #include <util/string/split.h>
 
@@ -62,13 +64,19 @@ namespace NKikimr::NStorage {
         Y_VERIFY_S(!donorMode || !readOnly, "Only one of modes should be enabled: donorMode " << donorMode << ", readOnly " << readOnly);
 
         STLOG(PRI_DEBUG, BS_NODE, NW23, "StartLocalVDiskActor", (SlayInFlight, SlayInFlight.contains(vslotId)),
-            (VDiskId, vdisk.GetVDiskId()), (VSlotId, vslotId), (PDiskGuid, pdiskGuid), (DonorMode, donorMode));
+            (VDiskId, vdisk.GetVDiskId()), (VSlotId, vslotId), (PDiskGuid, pdiskGuid), (DonorMode, donorMode),
+            (PDiskRestartInFlight, PDiskRestartInFlight.contains(vslotId.PDiskId)),
+            (PDisksWaitingToStart, PDisksWaitingToStart.contains(vslotId.PDiskId)));
 
         if (SlayInFlight.contains(vslotId)) {
             return;
         }
 
         if (PDiskRestartInFlight.contains(vslotId.PDiskId)) {
+            return;
+        }
+
+        if (PDisksWaitingToStart.contains(vslotId.PDiskId)) {
             return;
         }
 
@@ -184,14 +192,15 @@ namespace NKikimr::NStorage {
         vdiskConfig->DefaultHugeGarbagePerMille = DefaultHugeGarbagePerMille;
         vdiskConfig->HugeDefragFreeSpaceBorderPerMille = HugeDefragFreeSpaceBorderPerMille;
         vdiskConfig->MaxChunksToDefragInflight = MaxChunksToDefragInflight;
-        vdiskConfig->EnableExplicitCompactionAfterDefrag = EnableExplicitCompactionAfterDefrag;
         vdiskConfig->FreshCompMaxInFlightWrites = FreshCompMaxInFlightWrites;
+        vdiskConfig->FreshCompMaxInFlightReads = FreshCompMaxInFlightReads;
         vdiskConfig->HullCompMaxInFlightWrites = HullCompMaxInFlightWrites;
         vdiskConfig->HullCompMaxInFlightReads = HullCompMaxInFlightReads;
         vdiskConfig->HullCompFullCompPeriodSec = HullCompFullCompPeriodSec;
         vdiskConfig->HullCompThrottlerBytesRate = HullCompThrottlerBytesRate;
         vdiskConfig->GarbageThresholdToRunFullCompactionPerMille = GarbageThresholdToRunFullCompactionPerMille;
         vdiskConfig->DefragThrottlerBytesRate = DefragThrottlerBytesRate;
+        vdiskConfig->MaxActiveCompactionsPerPDisk = MaxActiveCompactionsPerPDisk;
 
         vdiskConfig->EnableLocalSyncLogDataCutting = EnableLocalSyncLogDataCutting;
         if (deviceType == NPDisk::EDeviceType::DEVICE_TYPE_ROT) {
@@ -201,6 +210,20 @@ namespace NKikimr::NStorage {
             vdiskConfig->EnableSyncLogChunkCompression = EnableSyncLogChunkCompressionSSD;
             vdiskConfig->MaxSyncLogChunksInFlight = MaxSyncLogChunksInFlightSSD;
         }
+
+        vdiskConfig->ThrottlingDryRun = ThrottlingDryRun;
+        vdiskConfig->ThrottlingMinLevel0SstCount = ThrottlingMinLevel0SstCount;
+        vdiskConfig->ThrottlingMaxLevel0SstCount = ThrottlingMaxLevel0SstCount;
+        vdiskConfig->ThrottlingMinInplacedSizeHDD = ThrottlingMinInplacedSizeHDD;
+        vdiskConfig->ThrottlingMaxInplacedSizeHDD = ThrottlingMaxInplacedSizeHDD;
+        vdiskConfig->ThrottlingMinInplacedSizeSSD = ThrottlingMinInplacedSizeSSD;
+        vdiskConfig->ThrottlingMaxInplacedSizeSSD = ThrottlingMaxInplacedSizeSSD;
+        vdiskConfig->ThrottlingMinOccupancyPerMille = ThrottlingMinOccupancyPerMille;
+        vdiskConfig->ThrottlingMaxOccupancyPerMille = ThrottlingMaxOccupancyPerMille;
+        vdiskConfig->ThrottlingMinLogChunkCount = ThrottlingMinLogChunkCount;
+        vdiskConfig->ThrottlingMaxLogChunkCount = ThrottlingMaxLogChunkCount;
+
+        vdiskConfig->MaxInProgressSyncCount = MaxInProgressSyncCount;
 
         vdiskConfig->CostMetricsParametersByMedia = CostMetricsParametersByMedia;
 
@@ -229,6 +252,8 @@ namespace NKikimr::NStorage {
         vdiskConfig->BalancingDeleteBatchTimeout = TDuration::MilliSeconds(Cfg->BlobStorageConfig.GetVDiskBalancingConfig().GetDeleteBatchTimeoutMs());
         vdiskConfig->BalancingEpochTimeout = TDuration::MilliSeconds(Cfg->BlobStorageConfig.GetVDiskBalancingConfig().GetEpochTimeoutMs());
         vdiskConfig->BalancingTimeToSleepIfNothingToDo = TDuration::Seconds(Cfg->BlobStorageConfig.GetVDiskBalancingConfig().GetSecondsToSleepIfNothingToDo());
+
+        vdiskConfig->EnableDeepScrubbing = EnableDeepScrubbing;
 
         // issue initial report to whiteboard before creating actor to avoid races
         Send(WhiteboardId, new NNodeWhiteboard::TEvWhiteboard::TEvVDiskStateUpdate(vdiskId, groupInfo->GetStoragePoolName(),
@@ -323,6 +348,16 @@ namespace NKikimr::NStorage {
             // -- check that configuration did not change
         }
         record.Config.CopyFrom(vdisk);
+
+        // Sticky runtime marker: if this node ever had a local dynamic VDisk for the group, keep subscribing
+        // for its updates in RegisterNode even when proxy is not currently running. We don't need it after restart
+        // so this flag is purely local.
+        if (!vdisk.GetDoDestroy() && vdisk.GetEntityStatus() != NKikimrBlobStorage::EEntityStatus::DESTROY) {
+            const ui32 groupId = vdisk.GetVDiskID().GetGroupID();
+            if (TGroupID(groupId).ConfigurationType() == EGroupConfigurationType::Dynamic) {
+                Groups[groupId].MustSubscribe = true;
+            }
+        }
 
         if (vdisk.GetDoDestroy() || vdisk.GetEntityStatus() == NKikimrBlobStorage::EEntityStatus::DESTROY) {
             if (record.UnderlyingPDiskDestroyed) {

@@ -2,15 +2,15 @@
 
 #include "kqp_opt.h"
 
-#include <contrib/ydb/library/yql/core/yql_statistics.h>
+#include <yql/essentials/core/yql_statistics.h>
 
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
 #include <contrib/ydb/core/kqp/opt/logical/kqp_opt_cbo.h>
-#include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
-#include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
+#include <yql/essentials/core/yql_graph_transformer.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
+#include <yql/essentials/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider_impl.h>
-#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
+#include <yql/essentials/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_stat_transformer_base.h>
 
 namespace NKikimr {

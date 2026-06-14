@@ -12,6 +12,9 @@
 #include <contrib/ydb/core/security/ldap_auth_provider/ldap_auth_provider.h>
 #include <contrib/ydb/core/security/login_shared_func.h>
 
+#include <contrib/ydb/library/aclib/aclib.h>
+#include <contrib/ydb/library/login/login.h>
+
 #include <contrib/ydb/public/api/protos/ydb_auth.pb.h>
 
 namespace NKikimr {
@@ -42,7 +45,7 @@ public:
         const Ydb::Auth::LoginRequest* protoRequest = GetProtoRequest();
         Credentials = PrepareCredentials(protoRequest->user(), protoRequest->password(), AppData()->AuthConfig);
         TString domainName = "/" + AppData()->DomainsInfo->GetDomain()->Name;
-        PathToDatabase = AppData()->AuthConfig.GetDomainLoginOnly() ? domainName : DatabaseName;
+        PathToDatabase = AppData()->AuthConfig.GetDomainLoginOnly() ? domainName : GetDatabaseName();
         auto sendParameters = GetSendParameters(Credentials, PathToDatabase);
         Send(sendParameters.Recipient, sendParameters.Event.Release());
         Become(&TThis::StateWork, Timeout, new TEvents::TEvWakeup());
@@ -88,7 +91,7 @@ public:
             ReplyErrorAndPassAway(Ydb::StatusIds::INTERNAL_ERROR, "Failed to produce a token");
         } else {
             // success = token + no errors
-            ReplyAndPassAway(loginResult.token());
+            ReplyAndPassAway(loginResult);
         }
     }
 
@@ -102,10 +105,15 @@ public:
         }
     }
 
+    void HandleDestroyed(TEvTabletPipe::TEvClientDestroyed::TPtr&) {
+        ReplyErrorAndPassAway(Ydb::StatusIds::UNAVAILABLE, "SchemeShard is unavailable");
+    }
+
     STATEFN(StateWork) {
         switch (ev->GetTypeRewrite()) {
             hFunc(TEvents::TEvUndelivered, HandleUndelivered);
             hFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
+            hFunc(TEvTabletPipe::TEvClientDestroyed, HandleDestroyed);
             hFunc(TEvTxProxySchemeCache::TEvNavigateKeySetResult, HandleNavigate);
             hFunc(TEvSchemeShard::TEvLoginResult, HandleResult);
             hFunc(TEvLdapAuthProvider::TEvAuthenticateResponse, Handle);
@@ -113,9 +121,12 @@ public:
         }
     }
 
-    void ReplyAndPassAway(const TString& resultToken) {
-        TResponse response;
+    void ReplyAndPassAway(const NKikimrScheme::TEvLoginResult& loginResult) {
+        const auto& resultToken = loginResult.GetToken();
+        const auto& sanitizedToken = loginResult.GetSanitizedToken();
+        const auto& isAdmin = loginResult.GetIsAdmin();
 
+        TResponse response;
         Ydb::Operations::Operation& operation = *response.mutable_operation();
         operation.set_ready(true);
         operation.set_status(Ydb::StatusIds::SUCCESS);
@@ -126,7 +137,7 @@ public:
             operation.mutable_result()->PackFrom(result);
         }
 
-        AuditLogLogin(Request.Get(), PathToDatabase, *GetProtoRequest(), response, /* errorDetails */ TString());
+        AuditLogLogin(Request.Get(), PathToDatabase, *GetProtoRequest(), response, /* errorDetails */ TString(), sanitizedToken, isAdmin);
 
         return CleanupAndReply(response);
     }
@@ -143,7 +154,7 @@ public:
             issue->set_message(error);
         }
 
-        AuditLogLogin(Request.Get(), PathToDatabase, *GetProtoRequest(), response, reason);
+        AuditLogLogin(Request.Get(), PathToDatabase, *GetProtoRequest(), response, reason, {});
 
         return CleanupAndReply(response);
     }

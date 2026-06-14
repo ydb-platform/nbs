@@ -1,24 +1,34 @@
 #pragma once
-#include "common/owner.h"
 #include "initialization.h"
 #include "tx_progress.h"
 
-#include <contrib/ydb/core/tx/columnshard/counters/tablet_counters.h>
+#include <contrib/ydb/core/tx/data_events/common/signals_flow.h>
+
+#include <contrib/ydb/library/signals/owner.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <util/generic/hash_set.h>
 
 namespace NKikimr::NColumnShard {
 
+enum class EOverloadStatus {
+    ShardTxInFly /* "shard_tx" */ = 0,
+    ShardWritesInFly /* "shard_writes" */,
+    ShardWritesSizeInFly /* "shard_writes_size" */,
+    OverloadMetadata /* "overload_metadata" */,
+    Disk /* "disk" */,
+    None /* "none" */,
+    OverloadCompaction /* "overload_compaction" */
+};
+
 enum class EWriteFailReason {
-    Disabled /* "disabled" */,
+    Disabled /* "disabled" */ = 0,
     PutBlob /* "put_blob" */,
     LongTxDuplication /* "long_tx_duplication" */,
     NoTable /* "no_table" */,
     IncorrectSchema /* "incorrect_schema" */,
     Overload /* "overload" */,
-    OverlimitReadRawMemory /* "overlimit_read_raw_memory" */,
-    OverlimitReadBlobMemory /* "overlimit_read_blob_memory" */
+    CompactionCriteria /* "compaction_criteria" */
 };
 
 class TWriteCounters: public TCommonCountersOwner {
@@ -27,20 +37,42 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr VolumeWriteData;
     NMonitoring::THistogramPtr HistogramBytesWriteDataCount;
     NMonitoring::THistogramPtr HistogramBytesWriteDataBytes;
+    NMonitoring::THistogramPtr HistogramDurationQueueWait;
+    NMonitoring::THistogramPtr HistogramBatchDataCount;
+    NMonitoring::THistogramPtr HistogramBatchDataSize;
+    YDB_READONLY_DEF(std::shared_ptr<NEvWrite::TWriteFlowCounters>, WriteFlowCounters);
 
 public:
+    const NMonitoring::TDynamicCounters::TCounterPtr QueueWaitSize;
+    const NMonitoring::TDynamicCounters::TCounterPtr TimeoutRate;
+
+    void OnWritingTaskDequeue(const TDuration d) {
+        HistogramDurationQueueWait->Collect(d.MilliSeconds());
+    }
+
     TWriteCounters(TCommonCountersOwner& owner)
         : TBase(owner, "activity", "writing")
+        , WriteFlowCounters(std::make_shared<NEvWrite::TWriteFlowCounters>())
+        , QueueWaitSize(TBase::GetValue("Write/Queue/Size"))
+        , TimeoutRate(TBase::GetDeriviative("Write/Timeout/Count"))
     {
         VolumeWriteData = TBase::GetDeriviative("Write/Incoming/Bytes");
         HistogramBytesWriteDataCount = TBase::GetHistogram("Write/Incoming/ByBytes/Count", NMonitoring::ExponentialHistogram(18, 2, 100));
         HistogramBytesWriteDataBytes = TBase::GetHistogram("Write/Incoming/ByBytes/Bytes", NMonitoring::ExponentialHistogram(18, 2, 100));
+        HistogramDurationQueueWait = TBase::GetHistogram("Write/Queue/Waiting/DurationMs", NMonitoring::ExponentialHistogram(18, 2, 100));
+        HistogramBatchDataCount = TBase::GetHistogram("Write/Batch/Size/Count", NMonitoring::ExponentialHistogram(18, 2, 1));
+        HistogramBatchDataSize = TBase::GetHistogram("Write/Batch/Size/Bytes", NMonitoring::ExponentialHistogram(18, 2, 128));
     }
 
     void OnIncomingData(const ui64 dataSize) const {
         VolumeWriteData->Add(dataSize);
         HistogramBytesWriteDataCount->Collect((i64)dataSize, 1);
         HistogramBytesWriteDataBytes->Collect((i64)dataSize, dataSize);
+    }
+
+    void OnAggregationWrite(const ui64 count, const ui64 dataSize) const {
+        HistogramBatchDataCount->Collect((i64)count, 1);
+        HistogramBatchDataSize->Collect((i64)dataSize, 1);
     }
 };
 
@@ -64,10 +96,10 @@ private:
 
     NMonitoring::TDynamicCounters::TCounterPtr IndexMetadataLimitBytes;
 
-    NMonitoring::TDynamicCounters::TCounterPtr OverloadInsertTableBytes;
-    NMonitoring::TDynamicCounters::TCounterPtr OverloadInsertTableCount;
     NMonitoring::TDynamicCounters::TCounterPtr OverloadMetadataBytes;
     NMonitoring::TDynamicCounters::TCounterPtr OverloadMetadataCount;
+    NMonitoring::TDynamicCounters::TCounterPtr OverloadCompactionBytes;
+    NMonitoring::TDynamicCounters::TCounterPtr OverloadCompactionCount;
     NMonitoring::TDynamicCounters::TCounterPtr OverloadShardTxBytes;
     NMonitoring::TDynamicCounters::TCounterPtr OverloadShardTxCount;
     NMonitoring::TDynamicCounters::TCounterPtr OverloadShardWritesBytes;
@@ -95,11 +127,18 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr WriteRequests;
     THashMap<EWriteFailReason, NMonitoring::TDynamicCounters::TCounterPtr> FailedWriteRequests;
     NMonitoring::TDynamicCounters::TCounterPtr SuccessWriteRequests;
+    std::vector<NMonitoring::TDynamicCounters::TCounterPtr> WaitingOverloads;
+    std::vector<NMonitoring::TDynamicCounters::TCounterPtr> WriteOverloadCount;
+    std::vector<NMonitoring::TDynamicCounters::TCounterPtr> WriteOverloadBytes;
 
 public:
     const std::shared_ptr<TWriteCounters> WritingCounters;
     const TCSInitialization Initialization;
     TTxProgressCounters TxProgress;
+
+    void OnWaitingOverload(const EOverloadStatus status) const;
+
+    void OnWriteOverload(const EOverloadStatus status, const ui32 size) const;
 
     void OnStartWriteRequest() const {
         WriteRequests->Add(1);
@@ -158,14 +197,14 @@ public:
         SplitCompactionGranulePortionsCount->SetValue(portionsCount);
     }
 
-    void OnWriteOverloadInsertTable(const ui64 size) const {
-        OverloadInsertTableBytes->Add(size);
-        OverloadInsertTableCount->Add(1);
-    }
-
     void OnWriteOverloadMetadata(const ui64 size) const {
         OverloadMetadataBytes->Add(size);
         OverloadMetadataCount->Add(1);
+    }
+
+    void OnWriteOverloadCompaction(const ui64 size) const {
+        OverloadCompactionBytes->Add(size);
+        OverloadCompactionCount->Add(1);
     }
 
     void OnWriteOverloadShardTx(const ui64 size) const {
@@ -232,4 +271,4 @@ public:
     TCSCounters();
 };
 
-}
+}   // namespace NKikimr::NColumnShard

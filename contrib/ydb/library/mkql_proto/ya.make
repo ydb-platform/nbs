@@ -2,9 +2,9 @@ LIBRARY()
 
 PEERDIR(
     contrib/ydb/library/mkql_proto/protos
-    contrib/ydb/library/yql/minikql/computation
-    contrib/ydb/library/yql/parser/pg_catalog
-    contrib/ydb/library/yql/providers/common/codec
+    yql/essentials/minikql/computation
+    yql/essentials/parser/pg_catalog
+    yql/essentials/providers/common/codec
     contrib/ydb/public/api/protos
 )
 
@@ -16,6 +16,8 @@ YQL_LAST_ABI_VERSION()
 
 END()
 
-RECURSE_FOR_TESTS(
-    ut
-)
+IF (NOT OPENSOURCE OR OPENSOURCE_PROJECT == "ydb")
+    RECURSE_FOR_TESTS(
+        ut
+    )
+ENDIF()

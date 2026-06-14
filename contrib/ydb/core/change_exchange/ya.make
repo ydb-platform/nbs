@@ -3,7 +3,9 @@ LIBRARY()
 SRCS(
     change_exchange.cpp
     change_record.cpp
+    change_sender.cpp
     change_sender_monitoring.cpp
+    resolve_partition.cpp
     util.cpp
 )
 
@@ -13,7 +15,6 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/scheme
     contrib/ydb/library/actors/core
-    contrib/ydb/library/yverify_stream
     library/cpp/monlib/service/pages
 )
 

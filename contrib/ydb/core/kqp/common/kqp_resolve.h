@@ -4,12 +4,14 @@
 #include <contrib/ydb/core/tx/sharding/sharding.h>
 #include <contrib/ydb/core/tx/sharding/unboxed_reader.h>
 #include <contrib/ydb/core/kqp/expr_nodes/kqp_expr_nodes.h>
+#include <contrib/ydb/core/kqp/provider/yql_kikimr_gateway.h>
 #include <contrib/ydb/public/api/protos/ydb_value.pb.h>
 #include <contrib/ydb/core/protos/kqp_physical.pb.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/minikql/mkql_node.h>
+#include <yql/essentials/minikql/mkql_string_util.h>
 
 #include <util/generic/map.h>
 
@@ -31,7 +33,7 @@ struct TTableConstInfo : public TAtomicRefCount<TTableConstInfo> {
     TVector<TString> KeyColumns;
     TVector<NScheme::TTypeInfo> KeyColumnTypes;
     ETableKind TableKind = ETableKind::Unknown;
-    THashMap<TString, TString> Sequences;
+    THashMap<TString, std::pair<TString, NYql::TKikimrPathId>> Sequences;
     THashMap<TString, Ydb::TypedValue> DefaultFromLiteral;
     bool IsBuildInProgress = false;
 
@@ -71,8 +73,8 @@ struct TTableConstInfo : public TAtomicRefCount<TTableConstInfo> {
             if (!seq.StartsWith("/")) {
                 seq = Path + "/" + seq;
             }
-
-            Sequences.emplace(phyColumn.GetId().GetName(), seq);
+            NYql::TKikimrPathId pathId(phyColumn.GetDefaultFromSequencePathId().GetOwnerId(), phyColumn.GetDefaultFromSequencePathId().GetLocalPathId());
+            Sequences.emplace(phyColumn.GetId().GetName(), std::make_pair(seq, pathId));
         }
 
         if (phyColumn.HasDefaultFromLiteral()) {
@@ -169,10 +171,6 @@ public:
             return TableConstInfo->TableKind;
         }
 
-        const THashMap<TString, TString>& GetSequences() const {
-            return TableConstInfo->Sequences;
-        }
-
         TIntrusiveConstPtr<NSchemeCache::TSchemeCacheNavigate::TColumnTableInfo> GetColumnTableInfo() const {
             return ColumnTableInfo;
         }
@@ -234,6 +232,8 @@ public:
 private:
     THashMap<TTableId, TTable> TablesById;
 };
+
+NUdf::TUnboxedValue MakeDefaultValueByType(NKikimr::NMiniKQL::TType* type);
 
 TVector<TCell> MakeKeyCells(const NKikimr::NUdf::TUnboxedValue& value, const TVector<NScheme::TTypeInfo>& keyColumnTypes,
     const TVector<ui32>& keyColumnIndices, const NMiniKQL::TTypeEnvironment& typeEnv, bool copyValues);

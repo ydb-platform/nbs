@@ -10,8 +10,11 @@
 #include "viewer_counters.h"
 #include "viewer_describe_consumer.h"
 #include "viewer_describe.h"
+#include "viewer_describe_replication.h"
 #include "viewer_describe_topic.h"
+#include "viewer_describe_transfer.h"
 #include "viewer_feature_flags.h"
+#include "viewer_topic_data.h"
 #include "viewer_graph.h"
 #include "viewer_healthcheck.h"
 #include "viewer_hiveinfo.h"
@@ -21,6 +24,7 @@
 #include "viewer_netinfo.h"
 #include "viewer_nodelist.h"
 #include "viewer_nodes.h"
+#include "viewer_plan2svg.h"
 #include "viewer_pqconsumerinfo.h"
 #include "viewer_query.h"
 #include "viewer_render.h"
@@ -31,6 +35,8 @@
 #include "viewer_tenants.h"
 #include "viewer_topicinfo.h"
 #include "viewer_whoami.h"
+#include "viewer_simple_counter.h"
+#include "viewer_multipart_counter.h"
 
 namespace NKikimr::NViewer {
 
@@ -128,6 +134,11 @@ NKikimrViewer::EFlag GetBSGroupOverallFlag(
     return GetBSGroupOverallState(info, vDisksIndex, pDisksIndex).Overall;
 }
 
+TJsonACL::TKikimrDialect TJsonACL::KikimrDialect;
+TJsonACL::TYdbShortDialect TJsonACL::YdbShortDialect;
+TJsonACL::TYdbDialect TJsonACL::YdbDialect;
+TJsonACL::TYqlDialect TJsonACL::YqlDialect;
+
 void InitViewerCapabilitiesJsonHandler(TJsonHandlers& jsonHandlers) {
     TSimpleYamlBuilder yaml({
         .Method = "get",
@@ -150,6 +161,14 @@ void InitViewerTabletInfoJsonHandler(TJsonHandlers& jsonHandlers);
 
 void InitViewerDescribeJsonHandler(TJsonHandlers& jsonHandlers) {
     jsonHandlers.AddHandler("/viewer/describe", new TJsonHandler<TJsonDescribe>(TJsonDescribe::GetSwagger()));
+}
+
+void InitViewerDescribeReplicationJsonHandler(TJsonHandlers& jsonHandlers) {
+    jsonHandlers.AddHandler("/viewer/describe_replication", new TJsonHandler<TJsonDescribeReplication>(TJsonDescribeReplication::GetSwagger()));
+}
+
+void InitViewerDescribeTransferJsonHandler(TJsonHandlers& jsonHandlers) {
+    jsonHandlers.AddHandler("/viewer/describe_transfer", new TJsonHandler<TJsonDescribeTransfer>(TJsonDescribeTransfer::GetSwagger()));
 }
 
 void InitViewerDescribeTopicJsonHandler(TJsonHandlers& jsonHandlers) {
@@ -184,6 +203,10 @@ void InitViewerCountersJsonHandler(TJsonHandlers& handlers) {
 
 void InitViewerTopicInfoJsonHandler(TJsonHandlers& handlers) {
     handlers.AddHandler("/viewer/topicinfo", new TJsonHandler<TJsonTopicInfo>(TJsonTopicInfo::GetSwagger()));
+}
+
+void InitViewerTopicDataJsonHandler(TJsonHandlers& handlers) {
+    handlers.AddHandler("/viewer/topic_data", new TJsonHandler<TTopicData>(TTopicData::GetSwagger()), 2);
 }
 
 void InitViewerPQConsumerInfoJsonHandler(TJsonHandlers& handlers) {
@@ -227,7 +250,7 @@ void InitViewerWhoAmIJsonHandler(TJsonHandlers& handlers) {
 }
 
 void InitViewerQueryJsonHandler(TJsonHandlers& handlers) {
-    handlers.AddHandler("/viewer/query", new TJsonHandler<TJsonQuery>(TJsonQuery::GetSwagger()), 5);
+    handlers.AddHandler("/viewer/query", new THttpHandler<TJsonQuery>(TJsonQuery::GetSwagger()), 9);
 }
 
 void InitViewerNetInfoJsonHandler(TJsonHandlers& handlers) {
@@ -243,11 +266,11 @@ void InitViewerHealthCheckJsonHandler(TJsonHandlers& handlers) {
 }
 
 void InitViewerNodesJsonHandler(TJsonHandlers& handlers) {
-    handlers.AddHandler("/viewer/nodes", new TJsonHandler<TJsonNodes>(TJsonNodes::GetSwagger()), 13);
+    handlers.AddHandler("/viewer/nodes", new TJsonHandler<TJsonNodes>(TJsonNodes::GetSwagger()), 17);
 }
 
 void InitViewerACLJsonHandler(TJsonHandlers &jsonHandlers) {
-    jsonHandlers.AddHandler("/viewer/acl", new TJsonHandler<TJsonACL>(TJsonACL::GetSwagger()));
+    jsonHandlers.AddHandler("/viewer/acl", new TJsonHandler<TJsonACL>(TJsonACL::GetSwagger()), 2);
 }
 
 void InitViewerGraphJsonHandler(TJsonHandlers &handlers) {
@@ -270,6 +293,18 @@ void InitViewerFeatureFlagsJsonHandler(TJsonHandlers& handlers) {
     handlers.AddHandler("/viewer/feature_flags", new TJsonHandler<TJsonFeatureFlags>(TJsonFeatureFlags::GetSwagger()), 2);
 }
 
+void InitViewerPlan2SvgJsonHandler(TJsonHandlers& handlers) {
+    handlers.AddHandler("/viewer/plan2svg", new TJsonHandler<TJsonPlanToSvg>(TJsonPlanToSvg::GetSwagger()));
+}
+
+void InitViewerSimpleCounterHandler(TJsonHandlers& handlers) {
+    handlers.AddHandler("/viewer/simple_counter", new THttpHandler<TViewerSimpleCounter>());
+}
+
+void InitViewerMultipartCounterHandler(TJsonHandlers& handlers) {
+    handlers.AddHandler("/viewer/multipart_counter", new THttpHandler<TViewerMultipartCounter>());
+}
+
 void InitViewerJsonHandlers(TJsonHandlers& jsonHandlers) {
     InitViewerCapabilitiesJsonHandler(jsonHandlers);
     InitViewerNodelistJsonHandler(jsonHandlers);
@@ -279,7 +314,9 @@ void InitViewerJsonHandlers(TJsonHandlers& jsonHandlers) {
     InitViewerPDiskInfoJsonHandler(jsonHandlers);
     InitViewerTabletInfoJsonHandler(jsonHandlers);
     InitViewerDescribeJsonHandler(jsonHandlers);
+    InitViewerDescribeReplicationJsonHandler(jsonHandlers);
     InitViewerDescribeTopicJsonHandler(jsonHandlers);
+    InitViewerDescribeTransferJsonHandler(jsonHandlers);
     InitViewerDescribeConsumerJsonHandler(jsonHandlers);
     InitViewerHotkeysJsonHandler(jsonHandlers);
     InitViewerHiveInfoJsonHandler(jsonHandlers);
@@ -288,6 +325,7 @@ void InitViewerJsonHandlers(TJsonHandlers& jsonHandlers) {
     InitViewerConfigJsonHandler(jsonHandlers);
     InitViewerCountersJsonHandler(jsonHandlers);
     InitViewerTopicInfoJsonHandler(jsonHandlers);
+    InitViewerTopicDataJsonHandler(jsonHandlers);
     InitViewerPQConsumerInfoJsonHandler(jsonHandlers);
     InitViewerTabletCountersJsonHandler(jsonHandlers);
     InitViewerStorageJsonHandler(jsonHandlers);
@@ -309,6 +347,9 @@ void InitViewerJsonHandlers(TJsonHandlers& jsonHandlers) {
     InitViewerAutocompleteJsonHandler(jsonHandlers);
     InitViewerCheckAccessJsonHandler(jsonHandlers);
     InitViewerFeatureFlagsJsonHandler(jsonHandlers);
+    InitViewerPlan2SvgJsonHandler(jsonHandlers);
+    InitViewerSimpleCounterHandler(jsonHandlers);
+    InitViewerMultipartCounterHandler(jsonHandlers);
 }
 
 }

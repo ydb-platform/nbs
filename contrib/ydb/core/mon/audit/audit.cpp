@@ -72,22 +72,6 @@ TString ExtractRemoteAddress(const NHttp::THttpIncomingRequest* request) {
     return remoteAddress;
 }
 
-TString ExtractRemoteAddress(const IMonHttpRequest* request) {
-    if (!request) {
-        return {};
-    }
-    const auto& headers = request->GetHeaders();
-    const auto* forwardedHeader = headers.FindHeader(X_FORWARDED_FOR_HEADER);
-    TString remoteAddress;
-    if (forwardedHeader) {
-        remoteAddress = ToString(TStringBuf(forwardedHeader->Value()).Before(',')); // Get the first address in the list
-    }
-    if (remoteAddress.empty()) {
-        remoteAddress = NKikimr::NAddressClassifier::ExtractAddress(request->GetRemoteAddr());
-    }
-    return remoteAddress;
-}
-
 bool TAuditCtx::AuditEnabled(NKikimrConfig::TAuditConfig::TLogClassConfig::ELogPhase logPhase, NACLibProto::ESubjectType subjectType)
 {
     if (NKikimr::HasAppData()) {
@@ -124,7 +108,11 @@ bool TAuditCtx::AuditableRequest(const NHttp::THttpIncomingRequestPtr& request) 
     return true;
 }
 
-void TAuditCtx::InitAudit(const NHttp::TEvHttpProxy::TEvHttpIncomingRequest::TPtr& ev) {
+void TAuditCtx::InitAudit(const NHttp::TEvHttpProxy::TEvHttpIncomingRequest::TPtr& ev, bool needAudit) {
+    if (!(Auditable = needAudit)) {
+        return;
+    }
+
     const auto& request = ev->Get()->Request;
     const TString method(request->Method);
     const TString url(request->URL.Before('?'));

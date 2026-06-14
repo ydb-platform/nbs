@@ -34,6 +34,10 @@ enum ESimpleCounters {
     COUNTER_NODES_RECOMMENDED = 24 [(CounterOpts) = {Name: "NodesRecommended"}];
     COUNTER_NODES_RECOMMENDED_DRY_RUN = 25 [(CounterOpts) = {Name: "NodesRecommendedDryRun"}];
     COUNTER_AVG_CPU_UTILIZATION = 26 [(CounterOpts) = {Name: "AvgCPUUtilization"}];
+    COUNTER_NODES_DOWN = 27 [(CounterOpts) = {Name: "NodesDown"}];
+    COUNTER_NODES_FROZEN = 28 [(CounterOpts) = {Name: "NodesFrozen"}];
+    COUNTER_DELETE_TABLET_QUEUE_SIZE = 29 [(CounterOpts) = {Name: "DeleteTabletQueueSize"}];
+    COUNTER_TABLETS_DELETING = 30 [(CounterOpts) = {Name: "TabletsDeleting"}];
 }
 
 enum ECumulativeCounters {
@@ -51,6 +55,8 @@ enum ECumulativeCounters {
     COUNTER_SUGGESTED_SCALE_DOWN = 11 [(CounterOpts) = {Name: "SuggestedScaleDown"}];
     COUNTER_STORAGE_BALANCER_EXECUTED = 12 [(CounterOpts) = {Name: "StorageBalancerExecuted"}];
     COUNTER_TABLETS_STORAGE_REASSIGNED = 13 [(CounterOpts) = {Name: "TabletsStorageReassigned"}];
+    COUNTER_HISTORY_CUT = 14 [(CounterOpts) = {Name: "TabletHistoryCut"}];
+    COUNTER_HISTORY_RESTORED = 15 [(CounterOpts) = {Name: "TabletHistoryRestored"}];
 }
 
 enum EPercentileCounters {
@@ -94,6 +100,19 @@ enum EPercentileCounters {
         Ranges: { Value: 10000                   }
         Ranges: { Value: 30000                   }
         Ranges: { Value: 60000                   }
+    }];
+
+    COUNTER_TABLET_CHANNEL_HISTORY_SIZE = 3 [(CounterOpts) = {
+        Name: "TabletChannelHistorySize",
+        Integral: true,
+        Ranges: { Value: 1                       }
+        Ranges: { Value: 5                       }
+        Ranges: { Value: 10                      }
+        Ranges: { Value: 25                      }
+        Ranges: { Value: 50                      }
+        Ranges: { Value: 100                     }
+        Ranges: { Value: 150                     }
+        Ranges: { Value: 200                     }
     }];
 }
 
@@ -166,4 +185,7 @@ enum ETxTypes {
     TXTYPE_MON_TABLET_AVAILABILITY = 65                   [(TxTypeOpts) = {Name: "TxMonTabletAvailability"}];
     TXTYPE_UPDATE_DC_FOLLOWERS = 66                       [(TxTypeOpts) = {Name: "TxUpdateDcFollowers"}];
     TXTYPE_CONFIGURE_SCALE_RECOMMENDER = 67               [(TxTypeOpts) = {Name: "TxConfigureScaleRecommender"}];
+    TXTYPE_UPDATE_PILES = 68                              [(TxTypeOpts) = {Name: "TxUpdatePiles"}];
+    TXTYPE_MON_SET_DOMAIN = 69                            [(TxTypeOpts) = {Name: "TxMonSetDomain"}];
+    TXTYPE_PROCESS_TABLET_METRICS = 70                    [(TxTypeOpts) = {Name: "TxProcessTabletMetrics"}];
 }

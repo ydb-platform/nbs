@@ -1,5 +1,7 @@
 PROGRAM()
 
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/sdk/cpp/sdk_common.inc)
+
 SRCS(
     main.cpp
     ttl.h
@@ -9,7 +11,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/getopt
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 END()

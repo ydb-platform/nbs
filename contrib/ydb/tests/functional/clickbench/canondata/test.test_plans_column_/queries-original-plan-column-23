@@ -54,11 +54,13 @@
                                                             }
                                                         ],
                                                         "Name": "Filter",
-                                                        "Predicate": "string_contains"
+                                                        "Predicate": "URL LIKE \"%google%\"",
+                                                        "Pushdown": "True"
                                                     },
                                                     {
                                                         "Inputs": [],
                                                         "Name": "TableFullScan",
+                                                        "Path": "/local/clickbench/plans/column/hits",
                                                         "ReadColumns": [
                                                             "AdvEngineID",
                                                             "Age",
@@ -534,8 +536,7 @@
                                                                         ]
                                                                     }
                                                                 }
-                                                            ],
-                                                            "Version": 4
+                                                            ]
                                                         },
                                                         "Table": "clickbench/plans/column/hits"
                                                     }
@@ -554,7 +555,10 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
             },
             "tables": [
                 {

@@ -75,6 +75,7 @@ namespace NYT::NHttp {
   XX(428, PreconditionRequired,            Precondition Required)           \
   XX(429, TooManyRequests,                 Too Many Requests)               \
   XX(431, RequestHeaderFieldsTooLarge,     Request Header Fields Too Large) \
+  XX(434, RequestedHostUnavailable,        Requested Host Unavailable)      \
   XX(451, UnavailableForLegalReasons,      Unavailable For Legal Reasons)   \
   XX(499, ClientClosedRequest,             Client Closed Request)           \
   XX(500, InternalServerError,             Internal Server Error)           \
@@ -233,8 +234,9 @@ struct IRequest
 
     virtual const NNet::TNetworkAddress& GetRemoteAddress() const = 0;
 
-    virtual TGuid GetConnectionId() const = 0;
-    virtual TGuid GetRequestId() const = 0;
+    virtual TConnectionId GetConnectionId() const = 0;
+    virtual TRequestId GetRequestId() const = 0;
+
     virtual i64 GetReadByteCount() const = 0;
     virtual TInstant GetStartTime() const = 0;
 

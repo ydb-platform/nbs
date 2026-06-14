@@ -39,7 +39,7 @@ def kikimr_start():
 
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=kikimr_binary_path,
+        binary_paths=[kikimr_binary_path],
         use_in_memory_pdisks=True,
         dynamic_pdisks=[],
         dynamic_storage_pools=STORAGE_POOL)

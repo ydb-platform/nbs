@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
 #include <contrib/ydb/core/util/wildcard.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/persqueue/topic_parser_public/topic_parser.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/persqueue/topic_parser_public/topic_parser.h>
 
 namespace NKikimr::NViewer {
 

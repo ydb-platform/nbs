@@ -1,7 +1,7 @@
 #include "vdisk_outofspace.h"
 
 #include <contrib/ydb/core/blobstorage/base/html.h>
-#include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_disk_color.pb.h>
 
 namespace NKikimr {
 

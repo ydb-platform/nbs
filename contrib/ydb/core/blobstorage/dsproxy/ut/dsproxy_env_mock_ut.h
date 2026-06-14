@@ -81,7 +81,7 @@ struct TDSProxyEnv {
         TIntrusivePtr<TStoragePoolCounters> storagePoolCounters = perPoolCounters.GetPoolCounters("pool_name");
         TControlWrapper enablePutBatching(DefaultEnablePutBatching, false, true);
         TControlWrapper enableVPatch(DefaultEnableVPatch, false, true);
-        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(Info), true, nodeMon,
+        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(Info), nullptr, true, nodeMon,
             std::move(storagePoolCounters), TBlobStorageProxyParameters{
                     .Controls = TBlobStorageProxyControlWrappers{
                         .EnablePutBatching = enablePutBatching,
@@ -120,6 +120,7 @@ struct TDSProxyEnv {
                         .Now = TMonotonic::Now(),
                         .StoragePoolCounters = StoragePoolCounters,
                         .RestartCounter = ev->Get()->RestartCounter,
+                        .TraceId = std::move(ev->TraceId),
                         .Event = ev->Get(),
                         .ExecutionRelay = ev->Get()->ExecutionRelay,
                         .LatencyQueueKind = kind,
@@ -127,7 +128,8 @@ struct TDSProxyEnv {
                     .TimeStatsEnabled = Mon->TimeStats.IsEnabled(),
                     .Stats = PerDiskStatsPtr,
                     .EnableRequestMod3x3ForMinLatency = false,
-                }, std::move(ev->TraceId)));
+                    .LongRequestThreshold = TDuration::Seconds(1),
+                }));
     }
 
     std::unique_ptr<IActor> CreatePutRequestActor(TBatchedVec<TEvBlobStorage::TEvPut::TPtr> &batched,
@@ -169,12 +171,13 @@ struct TDSProxyEnv {
                         .Now = TMonotonic::Now(),
                         .StoragePoolCounters = StoragePoolCounters,
                         .RestartCounter = ev->Get()->RestartCounter,
+                        .TraceId = std::move(ev->TraceId),
                         .Event = ev->Get(),
                         .ExecutionRelay = ev->Get()->ExecutionRelay,
                         .LatencyQueueKind = kind,
                     },
                     .NodeLayout = TNodeLayoutInfoPtr(NodeLayoutInfo)
-                }, std::move(ev->TraceId)));
+                }));
     }
 
     std::unique_ptr<IActor> CreatePatchRequestActor(TEvBlobStorage::TEvPatch::TPtr &ev, bool useVPatch = false) {
@@ -189,11 +192,12 @@ struct TDSProxyEnv {
                     .Now = TMonotonic::Now(),
                     .StoragePoolCounters = StoragePoolCounters,
                     .RestartCounter = ev->Get()->RestartCounter,
+                    .TraceId = std::move(ev->TraceId),
                     .Event = ev->Get(),
                     .ExecutionRelay = ev->Get()->ExecutionRelay
                 },
                 .UseVPatch = useVPatch
-            }, std::move(ev->TraceId)));
+            }));
     }
 };
 

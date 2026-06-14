@@ -2,10 +2,10 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 #include <contrib/ydb/core/kqp/host/kqp_host.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <ydb-cpp-sdk/client/proto/accessor.h>
 
 #include <contrib/ydb/library/yql/dq/common/dq_value.h>
-#include <contrib/ydb/library/yql/core/services/mounts/yql_mounts.h>
+#include <yql/essentials/core/services/mounts/yql_mounts.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <contrib/ydb/core/protos/config.pb.h>

@@ -132,19 +132,6 @@ void TGRpcYdbDummyService::InitService(grpc::ServerCompletionQueue* cq, NYdbGrpc
     SetupIncomingRequests(std::move(logger));
 }
 
-void TGRpcYdbDummyService::SetGlobalLimiterHandle(NYdbGrpc::TGlobalLimiter* limiter) {
-    Limiter_ = limiter;
-}
-
-bool TGRpcYdbDummyService::IncRequest() {
-    return Limiter_->Inc();
-}
-
-void TGRpcYdbDummyService::DecRequest() {
-    Limiter_->Dec();
-    Y_ASSERT(Limiter_->GetCurrentInFlight() >= 0);
-}
-
 void TGRpcYdbDummyService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
     auto getCounterBlock = CreateCounterCb(Counters_, ActorSystem_);
 
@@ -187,7 +174,7 @@ void TGRpcYdbDummyService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
                 ActorSystem_->Send(GRpcRequestProxyId_, new TEvBiStreamPingRequest(context));
             },
             *ActorSystem_,
-            "DummyService/BiStreamPing",
+            "BiStreamPing",
             getCounterBlock("dummy", "biStreamPing", true),
             nullptr);
     }

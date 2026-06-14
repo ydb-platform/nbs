@@ -2,15 +2,16 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/kqp/common/kqp_resolve.h>
-#include <contrib/ydb/library/mkql_proto/mkql_proto.h>
-#include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
-#include <contrib/ydb/library/yql/core/yql_data_provider.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
-#include <contrib/ydb/library/mkql_proto/mkql_proto.h>
 #include <contrib/ydb/core/kqp/common/simple/helpers.h>
+#include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
 #include <contrib/ydb/core/protos/kqp_physical.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+#include <contrib/ydb/library/mkql_proto/mkql_proto.h>
+#include <contrib/ydb/library/mkql_proto/mkql_proto.h>
 #include <contrib/ydb/library/services/services.pb.h>
+#include <yql/essentials/core/yql_data_provider.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_node.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -89,11 +90,15 @@ TKqpPhyTxHolder::TKqpPhyTxHolder(const std::shared_ptr<const NKikimrKqp::TPrepar
             for(ui32 i = 0; i < structType->GetMembersCount(); ++i) {
                 memberIndices[TString(structType->GetMemberName(i))] = i;
             }
-
-            for(auto& name: txResult.GetColumnHints()) {
-                auto it = memberIndices.find(name);
+            NYql::TColumnOrder order;
+            for (auto& name: txResult.GetColumnHints()) {
+                order.AddColumn(name);
+            }
+            for (auto& [name, phy_name]: order) {
+                auto it = memberIndices.find(phy_name);
                 YQL_ENSURE(it != memberIndices.end(), "undetermined column name: " << name);
                 result.ColumnOrder.push_back(it->second);
+                result.ColumnHints.push_back(name);
             }
         }
     }
@@ -126,10 +131,16 @@ TKqpPhyTxHolder::GetSchemeOpTempTablePath() const {
                     tableDesc = &modifyScheme.GetCreateIndexedTable().GetTableDescription();
                     break;
                 }
+                case NKikimrSchemeOp::ESchemeOpCreateColumnTable: {
+                    if (modifyScheme.GetCreateColumnTable().HasTemporary() && modifyScheme.GetCreateColumnTable().GetTemporary()) {
+                        return {{true, {modifyScheme.GetWorkingDir(), modifyScheme.GetCreateColumnTable().GetName()}}};
+                    }
+                    break;
+                }
                 default:
                     return std::nullopt;
             }
-            if (tableDesc->HasTemporary()) {
+            if (tableDesc && tableDesc->HasTemporary()) {
                 if (tableDesc->GetTemporary()) {
                     return {{true, {modifyScheme.GetWorkingDir(), tableDesc->GetName()}}};
                 }
@@ -267,9 +278,11 @@ void TPreparedQueryHolder::FillTables(const google::protobuf::RepeatedPtrField< 
                 NKikimrKqp::TKqpTableSinkSettings settings;
                 YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
 
-                auto& info = GetInfo(MakeTableId(settings.GetTable()));
-                for (auto& column : settings.GetColumns()) {
-                    info->AddColumn(column.GetName());
+                if (settings.GetType() != NKikimrKqp::TKqpTableSinkSettings::MODE_FILL) {
+                    auto& info = GetInfo(MakeTableId(settings.GetTable()));
+                    for (auto& column : settings.GetColumns()) {
+                        info->AddColumn(column.GetName());
+                    }
                 }
             }
         }

@@ -20,7 +20,7 @@ PEERDIR(
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
 
-    contrib/ydb/library/yql/public/issue/protos
+    yql/essentials/public/issue/protos
 )
 
 END()

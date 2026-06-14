@@ -7,5 +7,5 @@
 #include <contrib/ydb/core/blobstorage/vdisk/vdisk_actor.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
-#include <contrib/ydb/core/util/testactorsys.h>
+#include <contrib/ydb/core/util/actorsys_test/testactorsys.h>
 #include <library/cpp/testing/unittest/registar.h>

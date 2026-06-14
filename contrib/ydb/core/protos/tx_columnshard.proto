@@ -1,7 +1,6 @@
 import "contrib/ydb/library/actors/protos/actors.proto";
 import "contrib/ydb/core/protos/flat_scheme_op.proto";
 import "contrib/ydb/core/protos/long_tx_service.proto";
-import "contrib/ydb/core/protos/statistics.proto";
 import "contrib/ydb/core/protos/subdomains.proto";
 import "contrib/ydb/core/protos/tx.proto";
 import "contrib/ydb/library/formats/arrow/protos/fields.proto";
@@ -100,6 +99,7 @@ message TEvWriteResult {
     optional uint64 WriteId = 4;
     optional uint64 TableId = 5;
     optional string DedupId = 6;
+    optional uint64 OverloadSubscribed = 7;
 }
 
 message TEvRead {
@@ -140,7 +140,7 @@ enum ETransactionKind {
     TX_KIND_NONE = 0;
     TX_KIND_SCHEMA = 1;
     TX_KIND_COMMIT = 2;
-    TX_KIND_TTL = 3; // Immediate (not planned)
+    reserved 3; // TX_KIND_TTL
     TX_KIND_DATA = 4;
     TX_KIND_COMMIT_WRITE = 5;
     TX_KIND_BACKUP = 6;
@@ -163,6 +163,7 @@ message TEvProposeTransaction {
     optional NKikimrSubDomains.TProcessingParams ProcessingParams = 6;
     optional uint64 Flags = 7;
     optional NKikimrTx.TMessageSeqNo SeqNo = 8;
+    optional uint64 SubDomainPathId = 9;
 }
 
 message TEvCheckPlannedTransaction {
@@ -181,10 +182,6 @@ message TEvProposeTransactionResult {
     optional string StatusMessage = 7;
     repeated fixed64 DomainCoordinators = 8;
     optional uint64 Step = 9;
-}
-
-message TEvCancelTransactionProposal {
-    optional uint64 TxId = 1;
 }
 
 message TEvNotifyTxCompletion {
@@ -237,6 +234,7 @@ message TSchemaPresetVersionInfo {
     optional uint64 SinceStep = 2;
     optional uint64 SinceTxId = 3;
     optional NKikimrSchemeOp.TColumnTableSchema Schema = 4;
+    optional NKikimrSchemeOp.TColumnTableSchemaDiff Diff = 5;
 }
 
 message TTtlSettingsPresetVersionInfo {
@@ -250,7 +248,6 @@ message TTableVersionInfo {
     optional uint64 PathId = 1;
     optional uint64 SinceStep = 2;
     optional uint64 SinceTxId = 3;
-    optional NKikimrSchemeOp.TColumnTableSchema Schema = 4;
     optional uint32 SchemaPresetId = 5;
     optional NKikimrSchemeOp.TColumnDataLifeCycle TtlSettings = 6;
     optional uint32 TtlSettingsPresetId = 7;
@@ -264,6 +261,12 @@ message TCreateTable {
     optional NKikimrSchemeOp.TColumnTableSchemaPreset SchemaPreset = 3;
     optional NKikimrSchemeOp.TColumnDataLifeCycle TtlSettings = 4;
     optional uint64 SchemaPresetVersionAdj = 6;
+}
+
+message TMoveTable {
+    optional uint64 SrcPathId = 1;
+    optional uint64 DstPathId = 2;
+    optional string DstPath = 3;
 }
 
 message TInitShard {
@@ -315,18 +318,12 @@ message TSchemaTxBody {
         TDropTable DropTable = 4;
         TAlterTable AlterTable = 5;
         TAlterStore AlterStore = 6;
+        TMoveTable MoveTable = 7;
     }
 
     optional NKikimrSchemeOp.TGranuleShardingInfo GranuleShardingInfo = 20;
 }
 
-message TTtlTxBody {
-    optional string TtlColumnName = 1;
-    optional uint64 UnixTimeSeconds = 2;
-    optional uint32 TtlPresetId = 3;
-    optional string TtlPresetName = 4;
-    repeated uint64 PathIds = 5;
-}
 
 message TBlobRange {
     optional bytes BlobId = 1;
@@ -353,4 +350,19 @@ message TEvReadBlobRangesResult {
 message TInternalOperationData {
     repeated uint64 InternalWriteIds = 1;
     optional uint32 ModificationType = 2;
+    optional uint64 PathId = 3; // InternalPathId
+    optional bool WritePortions = 4;
+    optional bool IsBulk = 5;
+    optional uint64 SchemeShardLocalPathId = 6;
+}
+
+// Sent by columnshard when some overload reason stopped being relevant
+message TEvOverloadReady {
+    optional uint64 TabletID = 1;
+    optional uint64 SeqNo = 2;
+}
+
+// Sent by overload subscribers to unsubscribe and free memory
+message TEvOverloadUnsubscribe {
+    optional uint64 SeqNo = 1;
 }

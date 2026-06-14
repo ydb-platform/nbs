@@ -13,6 +13,8 @@ SRCS(
     api/client_cache.cpp
     api/delegating_client.cpp
     api/delegating_transaction.cpp
+    api/distributed_table_session.cpp
+    api/distributed_table_client.cpp
     api/etc_client.cpp
     api/journal_client.cpp
     api/operation_client.cpp
@@ -21,7 +23,6 @@ SRCS(
     api/query_tracker_client.cpp
     api/helpers.cpp
     api/internal_client.cpp
-    api/operations_archive_schema.cpp
     api/public.cpp
     api/rowset.cpp
     api/skynet.cpp
@@ -31,6 +32,7 @@ SRCS(
     api/persistent_queue.cpp
     api/sticky_transaction_pool.cpp
     api/options.cpp
+    api/shuffle_client.cpp
 
     api/rpc_proxy/address_helpers.cpp
     api/rpc_proxy/public.cpp
@@ -50,7 +52,9 @@ SRCS(
     api/rpc_proxy/timestamp_provider.cpp
     api/rpc_proxy/transaction.cpp
     api/rpc_proxy/transaction_impl.cpp
+    api/rpc_proxy/row_batch_reader.cpp
     api/rpc_proxy/row_stream.cpp
+    api/rpc_proxy/row_batch_writer.cpp
     api/rpc_proxy/wire_row_stream.cpp
 
     bundle_controller_client/bundle_controller_client.cpp
@@ -62,6 +66,7 @@ SRCS(
 
     hydra/version.cpp
 
+    chaos_client/config.cpp
     chaos_client/helpers.cpp
     chaos_client/replication_card.cpp
     chaos_client/replication_card_cache.cpp
@@ -91,15 +96,21 @@ SRCS(
 
     scheduler/operation_id_or_alias.cpp
     scheduler/operation_cache.cpp
+    scheduler/spec_patch.cpp
 
     security_client/acl.cpp
     security_client/access_control.cpp
     security_client/public.cpp
     security_client/helpers.cpp
 
+    signature/signature.cpp
+    signature/validator.cpp
+    signature/generator.cpp
+
     table_client/public.cpp
     table_client/adapters.cpp
     table_client/table_output.cpp
+    table_client/timestamped_schema_helpers.cpp
     table_client/blob_reader.cpp
     table_client/check_schema_compatibility.cpp
     table_client/chunk_stripe_statistics.cpp
@@ -123,7 +134,9 @@ SRCS(
     table_client/schemaless_buffered_dynamic_table_writer.cpp
     table_client/schemaless_dynamic_table_writer.cpp
     table_client/serialize.cpp
+    table_client/table_upload_options.cpp
     table_client/logical_type.cpp
+    table_client/merge_table_schemas.cpp
     table_client/name_table.cpp
     table_client/wire_protocol.cpp
     table_client/columnar_statistics.cpp
@@ -151,6 +164,7 @@ SRCS(
     queue_client/consumer_client.cpp
     queue_client/helpers.cpp
     queue_client/partition_reader.cpp
+    queue_client/producer_client.cpp
     queue_client/queue_rowset.cpp
 
     ypath/rich.cpp
@@ -177,22 +191,23 @@ SRCS(
     complex_types/check_yson_token.cpp
     complex_types/check_type_compatibility.cpp
     complex_types/infinite_entity.cpp
-    complex_types/yson_format_conversion.cpp
-    complex_types/uuid_text.cpp
+    complex_types/merge_complex_types.cpp
     complex_types/time_text.cpp
-
-    zookeeper/packet.cpp
-    zookeeper/protocol.cpp
-    zookeeper/requests.cpp
+    complex_types/uuid_text.cpp
+    complex_types/yson_format_conversion.cpp
 
     kafka/packet.cpp
     kafka/protocol.cpp
     kafka/requests.cpp
 )
 
+CONFIGURE_FILE(
+    api/rpc_proxy/protocol_version_variables.h.in
+    api/rpc_proxy/protocol_version_variables.h
+)
+
 SRCS(
     ${YT_SRCS}
-    yt/yt/client/api/rpc_proxy/protocol_version_variables.h.in
 )
 
 PEERDIR(
@@ -208,6 +223,7 @@ PEERDIR(
     yt/yt/library/quantile_digest
     yt/yt_proto/yt/client
     library/cpp/json
+    library/cpp/string_utils/base64
     contrib/libs/pfr
 )
 
@@ -219,9 +235,12 @@ RECURSE(
     driver
     federated
     hedging
+    logging
 )
 
 RECURSE_FOR_TESTS(
+    api/unittests
+    signature/unittests
     table_client/unittests
     unittests
 )

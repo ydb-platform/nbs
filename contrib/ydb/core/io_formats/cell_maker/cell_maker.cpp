@@ -1,14 +1,15 @@
 #include "cell_maker.h"
 
-#include <contrib/ydb/library/binary_json/write.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
-#include <contrib/ydb/library/uuid/uuid.h>
+#include <contrib/ydb/library/yverify_stream/yverify_stream.h>
+#include <yql/essentials/types/binary_json/write.h>
+#include <yql/essentials/types/dynumber/dynumber.h>
+#include <yql/essentials/types/uuid/uuid.h>
 
-#include <contrib/ydb/library/yql/minikql/dom/yson.h>
-#include <contrib/ydb/library/yql/minikql/dom/json.h>
-#include <contrib/ydb/library/yql/public/decimal/yql_decimal.h>
-#include <contrib/ydb/library/yql/public/udf/udf_types.h>
-#include <contrib/ydb/library/yql/utils/utf8.h>
+#include <yql/essentials/minikql/dom/yson.h>
+#include <yql/essentials/minikql/dom/json.h>
+#include <yql/essentials/public/decimal/yql_decimal.h>
+#include <yql/essentials/public/udf/udf_types.h>
+#include <yql/essentials/utils/utf8.h>
 
 #include <contrib/libs/double-conversion/double-conversion/double-conversion.h>
 #include <library/cpp/json/json_writer.h>
@@ -54,9 +55,9 @@ namespace {
         };
 
         int processed = 0;
-        result = Singleton<TCvt>()->StringToDouble(value.Data(), value.Size(), &processed);
+        result = Singleton<TCvt>()->StringToDouble(value.data(), value.size(), &processed);
 
-        return static_cast<size_t>(processed) == value.Size();
+        return static_cast<size_t>(processed) == value.size();
     }
 
     template <>
@@ -87,8 +88,13 @@ namespace {
             return false;
         }
 
-        result = NBinaryJson::SerializeToBinaryJson(unescaped);
-        return result.Defined();
+        auto serializedJson = NBinaryJson::SerializeToBinaryJson(unescaped);
+        if (std::holds_alternative<TString>(serializedJson)) {
+            return false;
+        }
+
+        result = std::get<NBinaryJson::TBinaryJson>(std::move(serializedJson));
+        return true;
     }
 
     template <>
@@ -277,6 +283,63 @@ namespace {
 
 } // anonymous
 
+void AddTwoCells(TCell& result, const TCell& cell1, const TCell& cell2, const NScheme::TTypeId& typeId) {
+
+    Y_ENSURE(cell1.Size() == NScheme::GetFixedSize(typeId));
+    Y_ENSURE(cell2.Size() == NScheme::GetFixedSize(typeId));
+
+    switch (typeId) {
+    case NScheme::NTypeIds::Int8:
+        result = TCell::Make(i8(cell1.AsValue<i8>() + cell2.AsValue<i8>()));
+        break;
+    case NScheme::NTypeIds::Uint8:
+        result = TCell::Make(ui8(cell1.AsValue<ui8>() + cell2.AsValue<ui8>()));
+        break;
+    case NScheme::NTypeIds::Int16:
+        result = TCell::Make(i16(cell1.AsValue<i16>() + cell2.AsValue<i16>()));
+        break;
+    case NScheme::NTypeIds::Uint16:
+        result = TCell::Make(ui16(cell1.AsValue<ui16>() + cell2.AsValue<ui16>()));
+        break;
+    case NScheme::NTypeIds::Int32:
+        result = TCell::Make(i32(cell1.AsValue<i32>() + cell2.AsValue<i32>()));
+        break;
+    case NScheme::NTypeIds::Uint32:
+        result = TCell::Make(ui32(cell1.AsValue<ui32>() + cell2.AsValue<ui32>()));
+        break;
+    case NScheme::NTypeIds::Int64:
+        result = TCell::Make(i64(cell1.AsValue<i64>() + cell2.AsValue<i64>()));
+        break;
+    case NScheme::NTypeIds::Uint64:
+        result = TCell::Make(ui64(cell1.AsValue<ui64>() + cell2.AsValue<ui64>()));
+        break;
+    case NScheme::NTypeIds::Float:
+    case NScheme::NTypeIds::Double:
+    case NScheme::NTypeIds::Date:
+    case NScheme::NTypeIds::Datetime:
+    case NScheme::NTypeIds::Timestamp:
+    case NScheme::NTypeIds::Interval:
+    case NScheme::NTypeIds::Date32:
+    case NScheme::NTypeIds::Datetime64:
+    case NScheme::NTypeIds::Timestamp64:
+    case NScheme::NTypeIds::Interval64:
+    case NScheme::NTypeIds::String:
+    case NScheme::NTypeIds::String4k:
+    case NScheme::NTypeIds::String2m:
+    case NScheme::NTypeIds::Utf8:
+    case NScheme::NTypeIds::Yson:
+    case NScheme::NTypeIds::Json:
+    case NScheme::NTypeIds::JsonDocument:
+    case NScheme::NTypeIds::DyNumber:
+    case NScheme::NTypeIds::Decimal:
+    case NScheme::NTypeIds::Pg:
+    case NScheme::NTypeIds::Uuid:
+        Y_ENSURE(false);
+    default:
+        Y_ENSURE(false);
+    }
+}
+
 bool MakeCell(TCell& cell, TStringBuf value, const NScheme::TTypeInfo& typeInfo, TMemoryPool& pool, TString& err) {
     if (value == "null") {
         return true;
@@ -395,8 +458,8 @@ bool MakeCell(TCell& cell, const NJson::TJsonValue& value, const NScheme::TTypeI
         case NScheme::NTypeIds::Json:
             return TCellMaker<TString, TStringBuf>::MakeDirect(cell, NFormats::WriteJson(value), pool, err);
         case NScheme::NTypeIds::JsonDocument:
-            if (const auto& result = NBinaryJson::SerializeToBinaryJson(NFormats::WriteJson(value))) {
-                return TCellMaker<TMaybe<NBinaryJson::TBinaryJson>, TStringBuf>::MakeDirect(cell, result, pool, err, &BinaryJsonToStringBuf);
+            if (auto result = NBinaryJson::SerializeToBinaryJson(NFormats::WriteJson(value)); std::holds_alternative<NBinaryJson::TBinaryJson>(result)) {
+                return TCellMaker<TMaybe<NBinaryJson::TBinaryJson>, TStringBuf>::MakeDirect(cell, std::get<NBinaryJson::TBinaryJson>(std::move(result)), pool, err, &BinaryJsonToStringBuf);
             } else {
                 return false;
             }
@@ -404,6 +467,13 @@ bool MakeCell(TCell& cell, const NJson::TJsonValue& value, const NScheme::TTypeI
             return TCellMaker<TMaybe<TString>, TStringBuf>::Make(cell, value.GetStringSafe(), pool, err, &DyNumberToStringBuf);
         case NScheme::NTypeIds::Decimal:
             return TCellMaker<NYql::NDecimal::TInt128, std::pair<ui64, ui64>>::Make(cell, value.GetStringSafe(), pool, err, &Int128ToPair, typeInfo);
+        case NScheme::NTypeIds::Pg:
+            if (auto result = NPg::PgNativeBinaryFromNativeText(value.GetStringSafe(), typeInfo.GetPgTypeDesc()); result.Error) {
+                err = *result.Error;
+                return false;
+            } else {
+                return TCellMaker<NPg::TConvertResult, TStringBuf>::MakeDirect(cell, result, pool, err, &PgToStringBuf);
+            }
         case NScheme::NTypeIds::Uuid:
             return TCellMaker<TUuidHolder, TStringBuf>::Make(cell, value.GetStringSafe(), pool, err, &UuidToStringBuf);
         default:

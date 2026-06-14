@@ -1,7 +1,6 @@
 #include "selector.h"
 #include <contrib/ydb/core/tx/columnshard/export/session/selector/backup/selector.h>
 #include <contrib/ydb/core/protos/tx_columnshard.pb.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 
 namespace NKikimr::NOlap::NExport {
 

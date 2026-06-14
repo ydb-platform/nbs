@@ -130,6 +130,8 @@ struct TPartitionFamily {
     void InactivatePartition(ui32 partitionId);
 
     bool PossibleForBalance(TSession* session);
+    template<typename TCollection>
+    bool CanAttach(const TCollection& partitionsIds);
 
     TString DebugStr() const;
 
@@ -157,7 +159,7 @@ private:
     void LockPartition(ui32 partitionId, const TActorContext& ctx);
     std::unique_ptr<TEvPersQueue::TEvReleasePartition> MakeEvReleasePartition(ui32 partitionId) const;
     std::unique_ptr<TEvPersQueue::TEvLockPartition> MakeEvLockPartition(ui32 partitionId, ui32 step) const;
-    TString GetPrefix() const;
+    TString LogPrefix() const;
 };
 
 struct TPartitionFamilyComparator {
@@ -188,6 +190,8 @@ struct TConsumer {
     std::unordered_map<ui32, TPartitionFamily*> PartitionMapping;
     // All reading sessions in which the family is currently being read.
     std::unordered_map<TActorId, TSession*> Sessions;
+    std::optional<TOrderedSessions> OrderedSessions;
+    bool WithCommonSessions;
 
     // Families is not reading now.
     std::unordered_map<size_t, TPartitionFamily*> UnreadableFamilies;
@@ -242,7 +246,7 @@ struct TConsumer {
     bool ScalingSupport() const;
 
 private:
-    TString GetPrefix() const;
+    TString LogPrefix() const;
 };
 
 struct TSession {
@@ -336,7 +340,7 @@ public:
     void RenderApp(NApp::TNavigationBar&) const;
 
 private:
-    TString GetPrefix() const;
+    TString LogPrefix() const;
     ui32 NextStep();
 
 private:

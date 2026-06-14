@@ -1,7 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/minikql/mkql_node.h>
 
 namespace NYql::NDq {
 

@@ -1,31 +1,19 @@
 PY3TEST()
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
-ENV(SQS_CLIENT_BINARY="contrib/ydb/core/ymq/client/bin/sqs")
-
-TAG(ya:manual)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
 
 TEST_SRCS(
     test_multinode_cluster.py
     test_recompiles_requests.py
 )
 
-IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(2400)
+IF (SANITIZER_TYPE)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
-REQUIREMENTS(
-    cpu:4
-    ram:32
-)
-
 DEPENDS(
-    contrib/ydb/apps/ydbd
-    contrib/ydb/core/ymq/client/bin
 )
 
 PEERDIR(

@@ -10,7 +10,7 @@
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 #include <contrib/ydb/core/engine/minikql/minikql_engine_host_counters.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 namespace NKikimr {
 namespace NDataShard {
@@ -131,6 +131,7 @@ private:
     YDB_READONLY_DEF(TInstant, ReceivedAt);
     YDB_READONLY_DEF(std::optional<ui64>, OverloadSubscribe);
     YDB_READONLY_DEF(bool, MvccSnapshotRead);
+    YDB_READONLY_DEF(std::optional<TRowVersion>, MvccSnapshot);
 
     YDB_READONLY_DEF(ui64, TxSize);
 

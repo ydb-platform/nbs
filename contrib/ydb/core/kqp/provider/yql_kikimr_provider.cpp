@@ -1,12 +1,12 @@
 #include "yql_kikimr_provider_impl.h"
 
-#include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
+#include <yql/essentials/providers/common/proto/gateways_config.pb.h>
 #include <contrib/ydb/core/base/path.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard_utils.h>
+#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
-#include <contrib/ydb/library/yql/providers/result/provider/yql_result_provider.h>
-#include <contrib/ydb/library/yql/providers/common/schema/expr/yql_expr_schema.h>
+#include <yql/essentials/parser/pg_wrapper/interface/type_desc.h>
+#include <yql/essentials/providers/result/provider/yql_result_provider.h>
+#include <yql/essentials/providers/common/schema/expr/yql_expr_schema.h>
 #include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
 
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
@@ -52,6 +52,9 @@ struct TKikimrData {
         DataSinkNames.insert(TKiCreateReplication::CallableName());
         DataSinkNames.insert(TKiAlterReplication::CallableName());
         DataSinkNames.insert(TKiDropReplication::CallableName());
+        DataSinkNames.insert(TKiCreateTransfer::CallableName());
+        DataSinkNames.insert(TKiAlterTransfer::CallableName());
+        DataSinkNames.insert(TKiDropTransfer::CallableName());
         DataSinkNames.insert(TKiCreateUser::CallableName());
         DataSinkNames.insert(TKiModifyPermissions::CallableName());
         DataSinkNames.insert(TKiAlterUser::CallableName());
@@ -74,6 +77,12 @@ struct TKikimrData {
         DataSinkNames.insert(TKiDropSequence::CallableName());
         DataSinkNames.insert(TKiAlterSequence::CallableName());
         DataSinkNames.insert(TKiAnalyzeTable::CallableName());
+        DataSinkNames.insert(TKiCreateBackupCollection::CallableName());
+        DataSinkNames.insert(TKiAlterBackupCollection::CallableName());
+        DataSinkNames.insert(TKiDropBackupCollection::CallableName());
+        DataSinkNames.insert(TKiBackup::CallableName());
+        DataSinkNames.insert(TKiBackupIncremental::CallableName());
+        DataSinkNames.insert(TKiRestore::CallableName());
 
         CommitModes.insert(CommitModeFlush);
         CommitModes.insert(CommitModeRollback);
@@ -113,6 +122,9 @@ struct TKikimrData {
             TYdbOperation::CreateReplication |
             TYdbOperation::AlterReplication |
             TYdbOperation::DropReplication |
+            TYdbOperation::CreateTransfer |
+            TYdbOperation::AlterTransfer |
+            TYdbOperation::DropTransfer |
             TYdbOperation::CreateUser |
             TYdbOperation::AlterUser |
             TYdbOperation::DropUser |
@@ -120,7 +132,13 @@ struct TKikimrData {
             TYdbOperation::AlterGroup |
             TYdbOperation::DropGroup |
             TYdbOperation::RenameGroup |
-            TYdbOperation::ModifyPermission;
+            TYdbOperation::ModifyPermission |
+            TYdbOperation::CreateBackupCollection |
+            TYdbOperation::AlterBackupCollection |
+            TYdbOperation::DropBackupCollection |
+            TYdbOperation::Backup |
+            TYdbOperation::BackupIncremental |
+            TYdbOperation::Restore;
 
         SystemColumns = {
             {"_yql_partition_id", NKikimr::NUdf::EDataSlot::Uint64}
@@ -425,13 +443,28 @@ bool TKikimrKey::Extract(const TExprNode& key) {
             return false;
         }
         Target = nameNode->Child(0)->Content();
+    } else if (tagName == "transfer") {
+        KeyType = Type::Transfer;
+        const TExprNode* nameNode = key.Child(0)->Child(1);
+        if (!nameNode->IsCallable("String")) {
+            Ctx.AddError(TIssue(Ctx.GetPosition(key.Pos()), "Expected String as transfer key."));
+            return false;
+        }
+        Target = nameNode->Child(0)->Content();
     } else if(tagName == "permission") {
         KeyType = Type::Permission;
+        Target = key.Child(0)->Child(1)->Child(0)->Content();
+    } else if (tagName == "sequence") {
+        KeyType = Type::Sequence;
         Target = key.Child(0)->Child(1)->Child(0)->Content();
     } else if (tagName == "pgObject") {
         KeyType = Type::PGObject;
         Target = key.Child(0)->Child(1)->Child(0)->Content();
         ObjectType = key.Child(0)->Child(2)->Child(0)->Content();
+    } else if (tagName == "backupCollection" || tagName == "backup" || tagName == "restore") {
+        KeyType = Type::BackupCollection;
+        Target = key.Child(0)->Child(1)->Child(0)->Content();
+        ExplicitPrefix = key.Child(0)->Child(2)->Child(0)->Content();
     } else {
         Ctx.AddError(TIssue(Ctx.GetPosition(key.Child(0)->Pos()), TString("Unexpected tag for kikimr key: ") + tagName));
         return false;
@@ -556,14 +589,13 @@ template<typename TProto>
 void FillLiteralProtoImpl(const NNodes::TCoDataCtor& literal, TProto& proto) {
     auto type = literal.Ref().GetTypeAnn();
 
-    // TODO: support pg types
-    YQL_ENSURE(type->GetKind() != ETypeAnnotationKind::Pg, "pg types are not supported");
+    YQL_ENSURE(type->GetKind() == ETypeAnnotationKind::Data, "unexpected type: " << type->GetKind());
 
     auto slot = type->Cast<TDataExprType>()->GetSlot();
     auto typeId = NKikimr::NUdf::GetDataTypeInfo(slot).TypeId;
 
     YQL_ENSURE(NKikimr::NScheme::NTypeIds::IsYqlType(typeId));
-    YQL_ENSURE(typeId == NKikimr::NScheme::NTypeIds::Decimal || NKikimr::NSchemeShard::IsAllowedKeyType(NKikimr::NScheme::TTypeInfo(typeId)));
+    YQL_ENSURE(typeId == NKikimr::NScheme::NTypeIds::Decimal || NKikimr::IsAllowedKeyType(NKikimr::NScheme::TTypeInfo(typeId)));
 
     auto& protoType = *proto.MutableType();
     auto& protoValue = *proto.MutableValue();
@@ -601,7 +633,7 @@ void FillLiteralProtoImpl(const NNodes::TCoDataCtor& literal, TProto& proto) {
             break;
         case EDataSlot::String:
         case EDataSlot::DyNumber:
-            protoValue.SetBytes(value.Data(), value.Size());
+            protoValue.SetBytes(value.data(), value.size());
             break;
         case EDataSlot::Utf8:
         case EDataSlot::Json:
@@ -630,7 +662,7 @@ void FillLiteralProtoImpl(const NNodes::TCoDataCtor& literal, TProto& proto) {
             break;
         }
         case EDataSlot::Uuid: {
-            const ui64* uuidData = reinterpret_cast<const ui64*>(value.Data());
+            const ui64* uuidData = reinterpret_cast<const ui64*>(value.data());
             protoValue.SetLow128(uuidData[0]);
             protoValue.SetHi128(uuidData[1]);
             break;
@@ -643,6 +675,23 @@ void FillLiteralProtoImpl(const NNodes::TCoDataCtor& literal, TProto& proto) {
 
 void FillLiteralProto(const NNodes::TCoDataCtor& literal, NKqpProto::TKqpPhyLiteralValue& proto) {
     FillLiteralProtoImpl(literal, proto);
+}
+
+void FillLiteralProto(const NNodes::TCoPgConst& pgLiteral, NKqpProto::TKqpPhyLiteralValue& proto) {
+    auto type = pgLiteral.Ref().GetTypeAnn();
+    auto actualPgType = type->Cast<TPgExprType>();
+    auto typeDesc = NKikimr::NPg::TypeDescFromPgTypeId(actualPgType->GetId());
+
+    auto& protoType = *proto.MutableType();
+    auto& protoValue = *proto.MutableValue();
+
+    protoType.SetKind(NKikimrMiniKQL::ETypeKind::Pg);
+    protoType.MutablePg()->Setoid(actualPgType->GetId());
+
+    TString content = TString(pgLiteral.Value().Value());
+    auto parseResult = NKikimr::NPg::PgNativeBinaryFromNativeText(content, typeDesc);
+
+    protoValue.SetBytes(parseResult.Str.data(), parseResult.Str.size());
 }
 
 bool IsPgNullExprNode(const NNodes::TExprBase& maybeLiteral) {
@@ -701,8 +750,7 @@ void FillLiteralProto(const NNodes::TCoDataCtor& literal, Ydb::TypedValue& proto
 {
     auto type = literal.Ref().GetTypeAnn();
 
-    // TODO: support pg types
-    YQL_ENSURE(type->GetKind() != ETypeAnnotationKind::Pg, "pg types are not supported");
+    YQL_ENSURE(type->GetKind() == ETypeAnnotationKind::Data, "unexpected type: " << type->GetKind());
 
     auto slot = type->Cast<TDataExprType>()->GetSlot();
     auto typeId = NKikimr::NUdf::GetDataTypeInfo(slot).TypeId;
@@ -744,7 +792,7 @@ void FillLiteralProto(const NNodes::TCoDataCtor& literal, Ydb::TypedValue& proto
             break;
         case EDataSlot::String:
         case EDataSlot::DyNumber:
-            protoValue.set_bytes_value(value.Data(), value.Size());
+            protoValue.set_bytes_value(value.data(), value.size());
             break;
         case EDataSlot::Utf8:
         case EDataSlot::Json:
@@ -773,7 +821,7 @@ void FillLiteralProto(const NNodes::TCoDataCtor& literal, Ydb::TypedValue& proto
             break;
         }
         case EDataSlot::Uuid: {
-            const ui64* uuidData = reinterpret_cast<const ui64*>(value.Data());
+            const ui64* uuidData = reinterpret_cast<const ui64*>(value.data());
             protoValue.set_low_128(uuidData[0]);
             protoValue.set_high_128(uuidData[1]);
             break;
@@ -809,13 +857,14 @@ void TableDescriptionToTableInfoImpl(const TKikimrTableDescription& desc, TYdbOp
                 continue;
             }
 
-            const auto& idxTableDesc = desc.Metadata->SecondaryGlobalIndexMetadata[idxNo];
+            const auto& implTable = *desc.Metadata->ImplTables[idxNo];
+            YQL_ENSURE(!implTable.Next);
 
             auto info = NKqpProto::TKqpTableInfo();
-            info.SetTableName(idxTableDesc->Name);
-            info.MutableTableId()->SetOwnerId(idxTableDesc->PathId.OwnerId());
-            info.MutableTableId()->SetTableId(idxTableDesc->PathId.TableId());
-            info.SetSchemaVersion(idxTableDesc->SchemaVersion);
+            info.SetTableName(implTable.Name);
+            info.MutableTableId()->SetOwnerId(implTable.PathId.OwnerId());
+            info.MutableTableId()->SetTableId(implTable.PathId.TableId());
+            info.SetSchemaVersion(implTable.SchemaVersion);
 
             back_inserter = std::move(info);
             ++back_inserter;
@@ -830,6 +879,39 @@ void TableDescriptionToTableInfo(const TKikimrTableDescription& desc, TYdbOperat
 void TableDescriptionToTableInfo(const TKikimrTableDescription& desc, TYdbOperation op, TVector<NKqpProto::TKqpTableInfo>& infos) {
     TableDescriptionToTableInfoImpl(desc, op, std::back_inserter(infos));
 }
+
+Ydb::Table::VectorIndexSettings_Metric VectorIndexSettingsParseDistance(std::string_view distance) {
+    if (distance == "cosine")
+        return Ydb::Table::VectorIndexSettings::DISTANCE_COSINE;
+    else if (distance == "manhattan")
+        return Ydb::Table::VectorIndexSettings::DISTANCE_MANHATTAN;
+    else if (distance == "euclidean")
+        return Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN;
+    else
+        YQL_ENSURE(false, "Wrong index setting distance: " << distance);
+};
+
+Ydb::Table::VectorIndexSettings_Metric VectorIndexSettingsParseSimilarity(std::string_view similarity) {
+    if (similarity == "cosine")
+        return Ydb::Table::VectorIndexSettings::SIMILARITY_COSINE;
+    else if (similarity == "inner_product")
+        return Ydb::Table::VectorIndexSettings::SIMILARITY_INNER_PRODUCT;
+    else
+        YQL_ENSURE(false, "Wrong index setting similarity: " << similarity);
+};
+
+Ydb::Table::VectorIndexSettings_VectorType VectorIndexSettingsParseVectorType(std::string_view vectorType) {
+    if (vectorType == "float")
+        return Ydb::Table::VectorIndexSettings::VECTOR_TYPE_FLOAT;
+    else if (vectorType == "uint8")
+        return Ydb::Table::VectorIndexSettings::VECTOR_TYPE_UINT8;
+    else if (vectorType == "int8")
+        return Ydb::Table::VectorIndexSettings::VECTOR_TYPE_INT8;
+    else if (vectorType == "bit")
+        return Ydb::Table::VectorIndexSettings::VECTOR_TYPE_BIT;
+    else
+        YQL_ENSURE(false, "Wrong index setting vector_type: " << vectorType);
+};
 
 const THashSet<TStringBuf>& KikimrDataSourceFunctions() {
     return Singleton<TKikimrData>()->DataSourceNames;

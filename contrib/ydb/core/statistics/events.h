@@ -4,9 +4,9 @@
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/core/protos/statistics.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
-#include <contrib/ydb/library/minsketch/count_min_sketch.h>
+#include <yql/essentials/core/minsketch/count_min_sketch.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 
 namespace NKikimr {

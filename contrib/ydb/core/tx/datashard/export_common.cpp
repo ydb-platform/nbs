@@ -71,7 +71,24 @@ TMaybe<Ydb::Table::CreateTableRequest> GenYdbScheme(
     return scheme;
 }
 
+TMaybe<Ydb::Scheme::ModifyPermissionsRequest> GenYdbPermissions(const NKikimrSchemeOp::TPathDescription& pathDesc) {
+    if (!pathDesc.HasSelf()) {
+        return Nothing();
+    }
 
+    Ydb::Scheme::ModifyPermissionsRequest permissions;
+
+    const auto& selfDesc = pathDesc.GetSelf();
+    permissions.mutable_actions()->Add()->set_change_owner(selfDesc.GetOwner());
+
+    NProtoBuf::RepeatedPtrField<Ydb::Scheme::Permissions> toGrant;
+    ConvertAclToYdb(selfDesc.GetOwner(), selfDesc.GetACL(), false, &toGrant);
+    for (const auto& permission : toGrant) {
+        *permissions.mutable_actions()->Add()->mutable_grant() = permission;
+    }
+
+    return permissions;
+}
 
 } // NDataShard
 } // NKikimr

@@ -2,7 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/testlib/actors)
 
 FORK_SUBTESTS()
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    TIMEOUT(300)
     SIZE(MEDIUM)
 ENDIF()
 
