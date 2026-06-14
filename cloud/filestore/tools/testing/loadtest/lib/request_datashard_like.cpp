@@ -139,6 +139,18 @@ public:
         }
     }
 
+    bool ShouldFailOnError(const NProto::TError& error) override
+    {
+        if (error.GetCode() == E_TRANSPORT_ERROR) {
+            if (error.GetMessage().Contains(
+                    "E_TRANSPORT_ERROR Address range is in use"))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
 private:
     NProto::EAction PeekNextAction()
     {
@@ -315,7 +327,9 @@ private:
             auto response = future.GetValue();
             CheckResponse(response);
 
-            if (shmLocalPtr && response.GetBuffer().empty() && response.GetLength() > 0) {
+            if (shmLocalPtr && response.GetBuffer().empty() &&
+                response.GetLength() > 0)
+            {
                 response.SetBuffer(TString(shmLocalPtr, response.GetLength()));
             }
 

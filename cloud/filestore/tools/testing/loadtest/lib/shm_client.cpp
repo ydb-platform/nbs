@@ -39,12 +39,15 @@ private:
     const TString FilePath;
     const ui64 ShmSize;
     const ui64 SlotSize;
+    const ui32 PageSize;
 
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
 
     // Control transport for SHM RPCs (Mmap / Munmap / PingMmapRegion).
     const IShmControlPtr ShmControl;
+
+    const bool AllowOverlappingSharedMemoryPages;
 
     TLog Log;
 
@@ -59,17 +62,21 @@ public:
             TString filePath,
             ui64 shmSize,
             ui64 slotSize,
+            ui32 pageSize,
             IShmControlPtr shmControl,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            ILoggingServicePtr logging)
+            ILoggingServicePtr logging,
+            bool allowOverlappingSharedMemoryPages)
         : BaseDir(std::move(baseDir))
         , FilePath(std::move(filePath))
         , ShmSize(shmSize)
         , SlotSize(slotSize)
+        , PageSize(pageSize)
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , ShmControl(std::move(shmControl))
+        , AllowOverlappingSharedMemoryPages(allowOverlappingSharedMemoryPages)
     {
         Log = logging->CreateLog("NFS_SHM_CLIENT");
     }
@@ -78,6 +85,9 @@ public:
     {
         for (ui64 offset = 0; offset < ShmSize; offset += SlotSize) {
             FreeOffsets.Enqueue(offset);
+            if (AllowOverlappingSharedMemoryPages) {
+                FreeOffsets.Enqueue(offset);
+            }
         }
 
         ShmControl->Start();
@@ -160,6 +170,7 @@ private:
         auto req = std::make_shared<NProto::TMmapRequest>();
         req->SetFilePath(FilePath);
         req->SetSize(ShmSize);
+        req->SetPageSize(PageSize);
 
         auto response = ShmControl->Mmap(std::move(ctx), std::move(req)).GetValueSync();
         if (HasError(response)) {
@@ -240,20 +251,24 @@ IShmDataClientPtr CreateSharedMemoryClient(
     TString filePath,
     ui64 shmSize,
     ui64 slotSize,
+    ui32 pageSize,
     IShmControlPtr shmControl,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
-    ILoggingServicePtr logging)
+    ILoggingServicePtr logging,
+    bool allowOverlappingSharedMemoryPages)
 {
     return std::make_shared<TSharedMemoryClient>(
         std::move(baseDir),
         std::move(filePath),
         shmSize,
         slotSize,
+        pageSize,
         std::move(shmControl),
         std::move(scheduler),
         std::move(timer),
-        std::move(logging));
+        std::move(logging),
+        allowOverlappingSharedMemoryPages);
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

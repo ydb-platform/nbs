@@ -1,0 +1,3 @@
+ParentlessFilesOnly: true
+AllowHandlelessIO: true
+AutomaticShardCreationEnabled: true
