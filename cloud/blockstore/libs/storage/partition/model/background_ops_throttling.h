@@ -10,7 +10,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 // Background ops (compaction, cleanup) are throttled by limiting how much
 // tablet-thread time they are allowed to consume per second
-// (maxExecTimePerSecond). The delay is derived from execution time of the
+// (maxExecTimePerSecond). The delay is derived from the execution time of the
 // previous run (lastOperationExecTime).
 //
 // The logic is as follows: maxExecTimePerSecond determines the share of time
@@ -19,8 +19,9 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 // (operation + delay) interval is maxExecTimePerSecond / 1s.
 //
 // For example, assume that maxExecTimePerSecond is 50ms. Then the tablet is
-// allowed to spend 5% of time on the operation. If lastOperationExecTime is
-// 25ms, the next operation is postponed by 475ms, because 25ms is 5% of 500ms.
+// allowed to spend 5% of the time on the operation. If lastOperationExecTime is
+// 25ms, the next operation is postponed by 500 - 25 = 475 ms, because 25ms is
+// 5% of 500ms.
 //
 // The delay is clamped by minDelay and maxDelay.
 TDuration CalculateBackgroundOpThrottleDelay(
