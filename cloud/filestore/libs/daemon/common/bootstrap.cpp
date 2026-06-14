@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/service.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/diagnostics/restart_count.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
@@ -227,6 +228,12 @@ void TBootstrapCommon::InitDiagnostics()
         }
 
         Metrics->SetupCounters(Monitoring->GetCounters());
+    }
+
+    if (Configs->Options->RestartsCountFile) {
+        PublishRestartsCount(
+            Configs->Options->RestartsCountFile,
+            Monitoring->GetCounters());
     }
 
     ProfileLog->RegisterCounters(*Monitoring->GetCounters());
