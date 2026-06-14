@@ -17,7 +17,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
-#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/proxy.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -67,7 +67,7 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
-    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
 
@@ -103,7 +103,6 @@ private:
         bool VolumeWasNotified = false;
     };
     THashMap<TString, TTimedOutDeviceCtx> TimedOutDeviceCtxByDeviceUUID;
-    bool SentRdmaUnavailableNotification = false;
 
     const bool AssignIdToWriteAndZeroRequestsEnabled{
         Config->GetAssignIdToWriteAndZeroRequestsEnabled()};
@@ -113,7 +112,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId);
 
@@ -133,7 +132,6 @@ private:
     void ProcessOperationCompleted(
         const NActors::TActorContext& ctx,
         const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
-    void SendRdmaUnavailableIfNeeded(const NActors::TActorContext& ctx);
     void UpdateStats(const NProto::TPartitionStats& update);
 
     void ReplyAndDie(const NActors::TActorContext& ctx);

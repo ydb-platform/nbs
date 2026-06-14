@@ -89,6 +89,7 @@ struct TTestEnv
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
 
     static void InitDevice(
         ui32 nodeId,
@@ -141,6 +142,14 @@ struct TTestEnv
     {
         if (useRdma) {
             RdmaClient = std::make_shared<TRdmaClientTest>();
+            RdmaProxy = CreateTestRdmaProxy(
+                Runtime,
+                VolumeActorId,
+                ActorId,
+                RdmaClient,
+                devices,
+                {},
+                migrations);
         }
 
         SetupLogging();
@@ -228,7 +237,7 @@ struct TTestEnv
             "", // rwClientId
             std::move(partConfig),
             std::move(migrations),
-            RdmaClient,
+            RdmaProxy,
             VolumeActorId,
             VolumeActorId // statActorId
         );

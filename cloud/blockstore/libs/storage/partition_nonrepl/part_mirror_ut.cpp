@@ -68,6 +68,7 @@ struct TTestEnv
     TVector<TActorId> ReplicaActors;
     TDuration ScrubbingInterval;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
 
     static void AddDevice(
         ui32 nodeId,
@@ -157,10 +158,19 @@ struct TTestEnv
         , VolumeActorId(0, "VVV")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentState(std::make_shared<TDiskAgentState>())
-        , RdmaClient(
-              useRdma ? std::make_shared<TRdmaClientTest>()
-                      : NCloud::NStorage::NRdma::IClientPtr())
     {
+        if (useRdma) {
+            RdmaClient = std::make_shared<TRdmaClientTest>();
+            RdmaProxy = CreateTestRdmaProxy(
+                Runtime,
+                VolumeActorId,
+                ActorId,
+                RdmaClient,
+                devices,
+                replicas,
+                migrations);
+        }
+
         SetupLogging();
 
         NProto::TStorageServiceConfig storageConfig = std::move(configBase);
@@ -238,7 +248,7 @@ struct TTestEnv
             partConfig,
             std::move(migrations),
             replicas,
-            RdmaClient,
+            RdmaProxy,
             std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             VolumeActorId,
@@ -295,7 +305,7 @@ struct TTestEnv
             partConfig,
             VolumeActorId,
             TActorId(),   // do not send stats
-            RdmaClient);
+            RdmaProxy);
 
         TActorId actorId(0, name);
         Runtime.AddLocalService(

@@ -20,6 +20,6 @@ NActors::IActorPtr CreateNonreplicatedPartition(
     TNonreplicatedPartitionConfigPtr partConfig,
     NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,
-    NCloud::NStorage::NRdma::IClientPtr rdmaClient = nullptr);
+    NCloud::NStorage::NRdma::IProxyPtr rdmaProxy = nullptr);
 
 }   // namespace NCloud::NBlockStore::NStorage

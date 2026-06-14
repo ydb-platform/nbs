@@ -60,8 +60,8 @@ struct TRequestContext: public NRdma::TNullContext
         size_t responseBytes)> Handler;
 };
 
-struct TClientHandler
-    : IClientHandler
+struct TClientRequestHandler
+    : IClientRequestHandler
 {
     void HandleResponse(
         TClientRequestPtr req,
@@ -451,7 +451,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
             TResponse response;
 
             auto request = ep->AllocateRequest(
-                std::make_shared<TClientHandler>(),
+                std::make_shared<TClientRequestHandler>(),
                 makeContext(&ev, &response),
                 RequestBytes,
                 ResponseBytes);
@@ -531,7 +531,7 @@ TEST(TRdmaClientTest, ShouldReuseChunks)
 
         for (int i = 0; i < maxRequestsInOneChunk; i++) {
             auto [req, err] = endpoint->AllocateRequest(
-                std::make_shared<TClientHandler>(),
+                std::make_shared<TClientRequestHandler>(),
                 std::make_unique<TNullContext>(),
                 4_MB,
                 4_MB);
@@ -580,7 +580,7 @@ TEST(TRdmaClientTest, ShouldAdjustMaxChunkAlloc)
 
         for (int i = 0; i < maxRequestsInOneChunk * chunks; i++) {
             auto [req, err] = endpoint->AllocateRequest(
-                std::make_shared<TClientHandler>(),
+                std::make_shared<TClientRequestHandler>(),
                 std::make_unique<TNullContext>(),
                 4_MB,
                 4_MB);
@@ -625,7 +625,7 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
 
         auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
 
-        struct TClientHandler: IClientHandler
+        struct TClientRequestHandler: IClientRequestHandler
         {
             TManualEvent Done;
 
@@ -643,7 +643,7 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
             }
         };
 
-        auto handler = std::make_shared<TClientHandler>();
+        auto handler = std::make_shared<TClientRequestHandler>();
         auto request = endpoint->AllocateRequest(
             handler,
             std::make_unique<TNullContext>(),
@@ -716,7 +716,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         const size_t responseBytes = 1024;
 
         auto request1 = ep->AllocateRequest(
-            std::make_shared<TClientHandler>(),
+            std::make_shared<TClientRequestHandler>(),
             makeContext(response1, ev1),
             requestBytes,
             responseBytes);
@@ -730,7 +730,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         TResponse response2;
 
         auto request2 = ep->AllocateRequest(
-            std::make_shared<TClientHandler>(),
+            std::make_shared<TClientRequestHandler>(),
             makeContext(response2, ev2),
             requestBytes,
             responseBytes);
@@ -857,7 +857,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
         size_t responseBytes = 1024;
 
         auto request = ep->AllocateRequest(
-            std::make_shared<TClientHandler>(),
+            std::make_shared<TClientRequestHandler>(),
             makeContext(),
             requestBytes,
             responseBytes);
@@ -1083,7 +1083,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
     };
 
     auto request = endpoint->AllocateRequest(
-        std::make_shared<TClientHandler>(),
+        std::make_shared<TClientRequestHandler>(),
         std::make_unique<TNullContext>(),
         1024,
         1024);

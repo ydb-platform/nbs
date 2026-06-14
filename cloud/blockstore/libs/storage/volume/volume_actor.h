@@ -214,6 +214,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
@@ -624,7 +625,8 @@ private:
     TString GetVolumeStatusString(EStatus status) const;
     EStatus GetVolumeStatus() const;
 
-    NCloud::NStorage::NRdma::IClientPtr GetRdmaClient() const;
+    void SetupRdmaProxy(const TActorContext& ctx);
+    NCloud::NStorage::NRdma::IProxyPtr GetRdmaProxy() const;
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
@@ -997,6 +999,10 @@ private:
 
     void HandleRetryAcquireReleaseDisk(
         const TEvVolume::TEvRetryAcquireReleaseDisk::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRdmaConnected(
+        const TEvVolume::TEvRdmaConnected::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRdmaUnavailable(

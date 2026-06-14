@@ -720,6 +720,7 @@ void TVolumeActor::CompleteUpdateDevices(
 
     StopPartitions(ctx, onPartitionDestroy);
     SendVolumeConfigUpdated(ctx);
+    SetupRdmaProxy(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
     if (!args.LiteReallocation) {

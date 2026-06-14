@@ -24,7 +24,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         NActors::TActorId migrationSrcActorId)
@@ -46,7 +46,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , VolumeActorId(volumeActorId)
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
-    , RdmaClient(std::move(rdmaClient))
+    , RdmaProxy(std::move(rdmaProxy))
     , MigrationSrcActorId(migrationSrcActorId)
 {}
 
@@ -200,7 +200,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
             SrcConfig->Fork(std::move(devices)),
             VolumeActorId,
             SelfId(),
-            RdmaClient));
+            RdmaProxy));
 }
 
 NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
@@ -261,7 +261,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             SrcConfig->Fork(std::move(devices)),
             VolumeActorId,
             SelfId(),
-            RdmaClient));
+            RdmaProxy));
 }
 
 void TNonreplicatedPartitionMigrationActor::HandleMigrationStateUpdated(

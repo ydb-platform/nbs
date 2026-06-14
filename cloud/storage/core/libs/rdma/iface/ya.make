@@ -8,6 +8,7 @@ SRCS(
     probes.cpp
     protobuf.cpp
     protocol.cpp
+    proxy.cpp
     server.cpp
 )
 

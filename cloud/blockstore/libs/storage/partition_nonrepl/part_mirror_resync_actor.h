@@ -39,7 +39,7 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
-    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
@@ -102,7 +102,7 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,

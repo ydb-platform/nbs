@@ -22,7 +22,7 @@ namespace {
 class TDummyClientEndpoint: public NCloud::NStorage::NRdma::IClientEndpoint
 {
     TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> AllocateRequest(
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
+        NCloud::NStorage::NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) override

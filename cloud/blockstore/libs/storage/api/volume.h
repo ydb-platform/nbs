@@ -160,6 +160,14 @@ struct TEvVolume
     };
 
     //
+    // RdmaConnected
+    //
+
+    struct TRdmaConnected
+    {
+    };
+
+    //
     // RdmaUnavailable
     //
 
@@ -395,6 +403,8 @@ struct TEvVolume
         EvGetLinkStatusRequest = EvBegin + 72,
         EvGetLinkStatusResponse = EvBegin + 73,
 
+        EvRdmaConnected = EvBegin + 74,
+
         EvEnd
     };
 
@@ -426,6 +436,11 @@ struct TEvVolume
     using TEvDiskRegistryBasedPartitionCounters = TRequestEvent<
         TDiskRegistryBasedPartitionCounters,
         EvDiskRegistryBasedPartitionCounters
+    >;
+
+    using TEvRdmaConnected = TRequestEvent<
+        TRdmaConnected,
+        EvRdmaConnected
     >;
 
     using TEvRdmaUnavailable = TRequestEvent<

@@ -547,7 +547,7 @@ TShadowDiskActor::TShadowDiskActor(
         TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticConfig,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString sourceDiskClientId,
@@ -575,7 +575,7 @@ TShadowDiskActor::TShadowDiskActor(
           volumeActorId,
           EDirectCopyPolicy::CanUse)
     , LogTitle(std::move(logTitle))
-    , RdmaClient(std::move(rdmaClient))
+    , RdmaProxy(std::move(rdmaProxy))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
     , ShadowDiskId(checkpointInfo.ShadowDiskId)
@@ -629,6 +629,7 @@ bool TShadowDiskActor::OnMessage(
             HandleShadowDiskAcquired);
 
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
+        HFunc(TEvVolume::TEvRdmaConnected, HandleRdmaConnected);
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
             TEvVolumePrivate::TEvUpdateShadowDiskStateResponse,
@@ -830,7 +831,7 @@ void TShadowDiskActor::CreateShadowDiskConfig()
             volumeInfo,
             ShadowDiskId,
             SrcConfig->GetBlockSize(),
-            SelfId(),   // need to handle TEvRdmaUnavailable, TEvReacquireDisk
+            SelfId(),   // need to handle TEvReacquireDisk
         };
     params.MuteIOErrors = true;
     params.IOMode = ReadOnlyMount() ? NProto::VOLUME_IO_ERROR_READ_ONLY
@@ -861,7 +862,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             DstConfig,
             VolumeActorId,
             VolumeActorId,   // send stat to volume directly.
-            RdmaClient));
+            RdmaProxy));
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
     if (State == EActorState::WaitAcquireForRead) {
@@ -1136,6 +1137,13 @@ bool TShadowDiskActor::HandleWakeup(
     }
 
     return false;
+}
+
+void TShadowDiskActor::HandleRdmaConnected(
+    const TEvVolume::TEvRdmaConnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, VolumeActorId);
 }
 
 void TShadowDiskActor::HandleRdmaUnavailable(
