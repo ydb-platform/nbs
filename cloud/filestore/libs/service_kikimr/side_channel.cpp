@@ -1,6 +1,7 @@
 #include "side_channel.h"
 
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/headers.pb.h>
@@ -84,7 +85,7 @@ using TEndpointPoolPtr = TIntrusivePtr<TEndpointPool>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTCPSideChannel: public ISideChannel
+class TFileSystemTCPSideChannel: public TThrRefBase
 {
 private:
     TAdaptiveLock Lock;
@@ -92,59 +93,24 @@ private:
     TString Host;
     ui16 Port = 0;
 
+    const TString ActualFileSystemId;
     TLog Log;
     std::shared_ptr<IAsyncClient> Client;
     TEndpointPoolPtr EndpointPool;
 
 public:
-    TTCPSideChannel(
-            ILoggingService& logging,
+    TFileSystemTCPSideChannel(
+            TString actualFileSystemId,
+            TLog log,
             std::shared_ptr<IAsyncClient> client)
-        : Log(logging.CreateLog("TCP_SIDE_CHANNEL"))
+        : ActualFileSystemId(std::move(actualFileSystemId))
+        , Log(std::move(log))
         , Client(std::move(client))
         , EndpointPool(MakeIntrusive<TEndpointPool>(Log))
     {}
 
 public:
-    // TODO(#5894) zero-copy io support
-
-    bool ExecuteRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request,
-        TPromise<NProto::TReadDataResponse> response) override
-    {
-        Y_UNUSED(callContext);
-
-        return Dispatch(
-            *request,
-            std::move(response),
-            [](TRequest& req, const NProto::TReadDataRequest& body) {
-                *req.MutableReadData() = body;
-            },
-            [](NProto::TReadDataResponse& resp, TResponse& r) {
-                resp = std::move(*r.MutableReadData());
-            });
-    }
-
-    bool ExecuteRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request,
-        TPromise<NProto::TWriteDataResponse> response) override
-    {
-        Y_UNUSED(callContext);
-
-        return Dispatch(
-            *request,
-            std::move(response),
-            [](TRequest& req, const NProto::TWriteDataRequest& body) {
-                *req.MutableWriteData() = body;
-            },
-            [](NProto::TWriteDataResponse& resp, TResponse& r) {
-                resp = std::move(*r.MutableWriteData());
-            });
-    }
-
-    void Update(const NProto::TBackendInfo& backendInfo) override
+    void Update(const NProto::TBackendInfo& backendInfo)
     {
         const ui32 port = backendInfo.GetFastShardPort();
         const TString& host = backendInfo.GetFastShardHost();
@@ -156,6 +122,7 @@ public:
                 STORAGE_INFO("updated side channel connection params"
                     << ": host=" << host
                     << ", port=" << port
+                    << ", fileSystemId=" << backendInfo.GetActualFileSystemId()
                     << ", generation=" << generation);
             }
 
@@ -177,7 +144,6 @@ public:
             });
     }
 
-private:
     template <typename TReq,
               typename TResp,
               typename TFillBody,
@@ -188,6 +154,10 @@ private:
         TFillBody fillBody,
         TExtractBody extractBody)
     {
+        STORAGE_TRACE("dispatching request for"
+            << ": address=" << GetAddressDebugString()
+            << ", fileSystemId=" << ActualFileSystemId);
+
         ui32 generation = 0;
         IAsyncEndpointPtr e = EndpointPool->Pop(&generation);
 
@@ -220,7 +190,7 @@ private:
         };
 
         TRequest req;
-        req.SetFileSystemId(request.GetFileSystemId());
+        req.SetFileSystemId(ActualFileSystemId);
         fillBody(req, request);
 
         if (e) {
@@ -234,11 +204,18 @@ private:
                 complete(std::move(e), generation, UnsafeExtractValue(f));
             });
 
+            STORAGE_TRACE("sent request for"
+                << ": address=" << GetAddressDebugString()
+                << ", fileSystemId=" << ActualFileSystemId);
+
             return true;
         }
 
         auto connection = TryConnect();
         if (!connection.Initialized()) {
+            STORAGE_TRACE("conn not initialized for"
+                << ": address=" << GetAddressDebugString()
+                << ", fileSystemId=" << ActualFileSystemId);
             return false;
         }
 
@@ -268,9 +245,13 @@ private:
             });
         });
 
+        STORAGE_TRACE("connecting:"
+            << ": address=" << GetAddressDebugString()
+            << ", fileSystemId=" << ActualFileSystemId);
         return true;
     }
 
+private:
     TFuture<IAsyncEndpointPtr> TryConnect()
     {
         TString host;
@@ -299,6 +280,135 @@ private:
         });
 
         return connection;
+    }
+
+    TString GetAddressDebugString() const
+    {
+        TString host;
+        ui16 port = 0;
+        with_lock(Lock) {
+            host = Host;
+            port = Port;
+        }
+
+        return TStringBuilder() << "[" << host << "]:" << port;
+    }
+};
+
+using TFileSystemTCPSideChannelPtr = TIntrusivePtr<TFileSystemTCPSideChannel>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTCPSideChannel: public ISideChannel
+{
+private:
+    TAdaptiveLock Lock;
+
+    THashMap<TString, TFileSystemTCPSideChannelPtr> Id2Channel;
+
+    TLog Log;
+    std::shared_ptr<IAsyncClient> Client;
+
+public:
+    TTCPSideChannel(
+            ILoggingService& logging,
+            std::shared_ptr<IAsyncClient> client)
+        : Log(logging.CreateLog("TCP_SIDE_CHANNEL"))
+        , Client(std::move(client))
+    {}
+
+public:
+    // TODO(#5894) zero-copy io support
+
+    bool ExecuteRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request,
+        TPromise<NProto::TReadDataResponse> response) override
+    {
+        Y_UNUSED(callContext);
+
+        auto channel = AccessFileSystemChannel(*request);
+
+        return channel->Dispatch(
+            *request,
+            std::move(response),
+            [](TRequest& req, const NProto::TReadDataRequest& body) {
+                *req.MutableReadData() = body;
+            },
+            [](NProto::TReadDataResponse& resp, TResponse& r) {
+                resp = std::move(*r.MutableReadData());
+            });
+    }
+
+    bool ExecuteRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        TPromise<NProto::TWriteDataResponse> response) override
+    {
+        Y_UNUSED(callContext);
+
+        auto channel = AccessFileSystemChannel(*request);
+
+        return channel->Dispatch(
+            *request,
+            std::move(response),
+            [](TRequest& req, const NProto::TWriteDataRequest& body) {
+                *req.MutableWriteData() = body;
+            },
+            [](NProto::TWriteDataResponse& resp, TResponse& r) {
+                resp = std::move(*r.MutableWriteData());
+            });
+    }
+
+    void Update(const NProto::TBackendInfo& backendInfo) override
+    {
+        auto channel = AccessFileSystemChannel(
+            backendInfo.GetActualFileSystemId());
+
+        channel->Update(backendInfo);
+    }
+
+private:
+    TString MakeFileSystemId(const TString& mainFileSystemId, ui32 shardNo)
+        const
+    {
+        // TODO(#5894): Properly obtain shardNo -> shardFileSystemId mapping.
+        //  This code is a temporary hack intended to be used in the prototype.
+        if (!shardNo) {
+            return mainFileSystemId;
+        }
+
+        constexpr TStringBuf ShardNumPrefix = "_s";
+        return TStringBuilder() << mainFileSystemId
+            << ShardNumPrefix << shardNo;
+    }
+
+    TFileSystemTCPSideChannelPtr AccessFileSystemChannel(
+        const TString& actualFileSystemId)
+    {
+        with_lock (Lock) {
+            auto& channel = Id2Channel[actualFileSystemId];
+            if (!channel) {
+                STORAGE_INFO("initializing channel for fileSystemId="
+                    << actualFileSystemId);
+                channel = MakeIntrusive<TFileSystemTCPSideChannel>(
+                    actualFileSystemId,
+                    Log,
+                    Client);
+            }
+
+            return channel;
+        }
+    }
+
+    template <typename T>
+    TFileSystemTCPSideChannelPtr AccessFileSystemChannel(const T& request)
+    {
+        auto fileSystemId = MakeFileSystemId(
+            request.GetFileSystemId(),
+            NStorage::ExtractShardNo(request.GetHandle()));
+
+        return AccessFileSystemChannel(fileSystemId);
     }
 };
 
