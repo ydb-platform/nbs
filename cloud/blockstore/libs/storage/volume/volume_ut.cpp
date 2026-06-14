@@ -9239,7 +9239,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TVolumeClient volume(*runtime);
 
         bool gotVolumeActorId = false;
-        TActorId volumeActor;
+        TActorId volumeActorId;
         TAutoPtr<IEventHandle> delayedRequest;
 
         runtime->SetEventFilter(
@@ -9248,13 +9248,102 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 switch (ev->GetTypeRewrite()) {
                     case TEvBlockStore::EvUpdateVolumeConfigResponse: {
                         if (!gotVolumeActorId) {
-                            volumeActor = ev->Sender;
+                            volumeActorId = ev->Sender;
                             gotVolumeActorId = true;
                         }
                         break;
                     }
                     case TEvService::EvWriteBlocksRequest: {
-                        if (!gotVolumeActorId || ev->Sender != volumeActor) {
+                        if (!gotVolumeActorId || ev->Sender != volumeActorId) {
+                            break;
+                        }
+                        if (!delayedRequest) {
+                            delayedRequest = ev.Release();
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            });
+
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto overlappingRequestsCounter = counters->GetCounter(
+            "AppCriticalEvents/OverlappingRequestsDetected",
+            true);
+
+        // Send first request
+        const TActorId sender = volume.GetSender();
+        runtime->Send(
+            new IEventHandle(
+                volumeActorId,
+                sender,
+                volume.CreateWriteBlocksRequest(
+                    TBlockRange64::WithLength(0, 1024),
+                    clientInfo.GetClientId(),
+                    1)
+                    .release()),
+            0);
+
+        // Send overlapping request
+        runtime->Send(
+            new IEventHandle(
+                volumeActorId,
+                sender,
+                volume.CreateWriteBlocksRequest(
+                    TBlockRange64::WithLength(0, 1024),
+                    clientInfo.GetClientId(),
+                    1)
+                    .release()),
+            0);
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->Send(delayedRequest.Release());
+
+        auto duplicateResponse = volume.RecvWriteBlocksResponse();
+        auto response = volume.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, overlappingRequestsCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCritEventForForwardedOverlappingRequests)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetOverlappingRequestsPolicy(
+            NProto::EOverlappingRequestsPolicy::ORP_ENABLE_WITH_CRIT_EVENT);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+
+        bool gotVolumeActor = false;
+        TActorId volumeActor;
+        TAutoPtr<IEventHandle> delayedRequest;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvBlockStore::EvUpdateVolumeConfigResponse: {
+                        if (!gotVolumeActor) {
+                            volumeActor = ev->Sender;
+                            gotVolumeActor = true;
+                        }
+                        break;
+                    }
+                    case TEvService::EvWriteBlocksRequest: {
+                        if (!gotVolumeActor || ev->Sender != volumeActor) {
                             break;
                         }
                         if (!delayedRequest) {
@@ -9298,10 +9387,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         runtime->Send(delayedRequest.Release());
 
-        auto duplicateResponse = volume.RecvWriteBlocksResponse();
-        auto response = volume.RecvWriteBlocksResponse();
+        volume.RecvWriteBlocksResponse();
+        volume.RecvWriteBlocksResponse();
 
-        UNIT_ASSERT_VALUES_EQUAL(1, overlappingRequestsCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, overlappingRequestsCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldReportCrossPartitionRequestDetected)

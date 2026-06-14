@@ -977,7 +977,12 @@ void TVolumeActor::ForwardRequest(
      *  to the underlying (storage) layer.
      */
     if constexpr (IsWriteMethod<TMethod>) {
-        const auto policy = Config->GetOverlappingRequestsPolicy();
+        auto policy = Config->GetOverlappingRequestsPolicy();
+        if (IsForwardedEvent(*ev)) {
+            // the message arrived from disk remotely, so there's no guarantee
+            // of message order and we're forced to process it locally
+            policy = NProto::EOverlappingRequestsPolicy::ORP_ENABLE;
+        }
 
         if (policy != NProto::EOverlappingRequestsPolicy::ORP_DISABLE) {
             auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
