@@ -1,5 +1,7 @@
 #pragma once
 
+#include "file_ring_buffer_format.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/string.h>
@@ -8,6 +10,16 @@
 #include <functional>
 
 namespace NCloud {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFileRingBufferArgs
+{
+    TString FilePath;
+    ui64 DataCapacity = 0;
+    ui64 MetadataCapacity = 0;
+    EFileRingBufferVersion Version = EFileRingBufferVersion::V4;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,6 +54,8 @@ public:
     * specified capacity, the metadata area is shrunk to fit the existing
     * metadata.
     */
+    explicit TFileRingBuffer(const TFileRingBufferArgs& args);
+
     TFileRingBuffer(
         const TString& filePath,
         ui64 dataCapacity,
