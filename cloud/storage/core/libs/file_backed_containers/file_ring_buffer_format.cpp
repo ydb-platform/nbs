@@ -334,9 +334,8 @@ public:
             return {};
         }
 
-        ui64 value = __atomic_load_n(eh, __ATOMIC_RELAXED);
-        ui32 lower = static_cast<ui32>(value);
-        ui32 upper = static_cast<ui32>(value >> 32U);
+        ui32 lower = static_cast<ui32>(*eh);
+        ui32 upper = static_cast<ui32>(*eh >> 32U);
 
         return {
             .DataSize = lower & MaxDataSize,
@@ -364,6 +363,8 @@ public:
         ui32 upper = header.DataChecksum ^ IntHash(lower);
         ui64 value = (static_cast<ui64>(upper) << 32U) | lower;
 
+        // We need to atomically store header and checksum in order to
+        // maintain data consistency
         __atomic_store_n(eh, value, __ATOMIC_RELAXED);
 
         return true;

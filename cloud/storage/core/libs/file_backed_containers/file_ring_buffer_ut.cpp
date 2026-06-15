@@ -298,7 +298,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldPushPopReferenceImplementation)
     {
         const ui32 len = 64;
-        TReferenceImplementation rb(len, EVersion::V4);
+        TReferenceImplementation rb(len, EVersion::V5);
 
         DoTestShouldPushPop(rb);
     }
@@ -472,7 +472,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldNotWriteBeyondBufferWhenEmpty)
     {
         const auto f = TTempFileHandle();
-        auto ri = TReferenceImplementation(64, EVersion::V4);
+        auto ri = TReferenceImplementation(64, EVersion::V5);
         auto rb = TFileRingBuffer(f.GetName(), 64);
 
         TString data(36, 'a');

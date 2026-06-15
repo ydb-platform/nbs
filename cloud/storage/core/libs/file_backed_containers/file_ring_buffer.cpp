@@ -322,7 +322,10 @@ private:
             return;
         }
 
-        // Transition V4 -> V5 can be made without emptying the buffer
+        // WriteBackCache needs functionality of V5+ (tags) for entries created
+        // in older version (V4) - we need to make migration immediately to
+        // at least V5 in order to provide this functionality.
+        // Transition V4 -> V5 can be made without emptying the buffer.
         if (Header()->Version == EVersion::V4 && Args.Version > EVersion::V4) {
             // Parse entry headers using newer version
             CreateDataProcessor(EVersion::V5);
@@ -454,7 +457,7 @@ public:
             IsSupportedFileRingBufferVersion(
                 static_cast<EVersion>(Header()->Version)),
             "Unsupported current FileRingBuffer version - %u, file: %s",
-            Header()->Version,
+            static_cast<ui32>(Header()->Version),
             args.FilePath.c_str());
 
         ValidateStructure();
