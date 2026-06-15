@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition/model/background_ops_throttling.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/block_buffer.h>
@@ -1432,22 +1433,12 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         }
     }
 
-    if (info->ThrottlingAllowed && Config->GetMaxCompactionDelay()) {
-        const auto execTime =
-            State->GetCompactionExecTimeForLastSecond(ctx.Now());
-        auto delay = Config->GetMinCompactionDelay();
-        if (maxCompactionExecTimePerSecond) {
-            const auto throttlingFactor =
-                static_cast<double>(execTime.GetValue()) /
-                maxCompactionExecTimePerSecond.GetValue();
-            const auto throttleDelay =
-                (TDuration::Seconds(1) - execTime) * throttlingFactor;
-
-            delay = Max(delay, throttleDelay);
-        }
-
-        delay = Min(delay, Config->GetMaxCompactionDelay());
-        State->SetCompactionDelay(delay);
+    if (info->ThrottlingAllowed) {
+        State->SetCompactionDelay(CalculateBackgroundOpThrottleDelay(
+            State->GetCompactionExecTimeForLastSecond(ctx.Now()),
+            maxCompactionExecTimePerSecond,
+            Config->GetMinCompactionDelay(),
+            Config->GetMaxCompactionDelay()));
     } else {
         State->SetCompactionDelay({});
     }
