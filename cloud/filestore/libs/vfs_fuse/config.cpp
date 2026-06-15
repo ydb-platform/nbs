@@ -40,7 +40,8 @@ namespace {
     xxx(GuestPageCacheDisabled,     bool,       false                         )\
     xxx(ExtendedAttributesDisabled, bool,       false                         )\
                                                                                \
-    xxx(ServerWriteBackCacheEnabled,  bool,     false                         )\
+    xxx(ServerWriteBackCacheEnabled,               bool,     false            )\
+    xxx(ServerWriteBackCacheParallelWritesEnabled, bool,     false            )\
                                                                                \
     xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\
                                                                                \

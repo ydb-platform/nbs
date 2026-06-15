@@ -81,7 +81,9 @@ public:
         , RequestBuilder(CreateWriteDataRequestBuilder(
               {.FileSystemId = args.FileSystemId,
                .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
-               .MaxWriteRequestsCount = args.FlushMaxWriteRequestsCount,
+               .MaxWriteRequestsCount = args.ParallelWritesEnabled
+                                            ? args.FlushMaxWriteRequestsCount
+                                            : 1,
                .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,
                .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled}))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())

@@ -169,6 +169,7 @@ struct TBootstrapArgs
     bool UseTestTimerAndScheduler = true;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
+    bool ParallelWritesEnabled = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,6 +195,7 @@ struct TBootstrap
     ui32 MaxSumWriteRequestsSize = 0;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
+    bool ParallelWritesEnabled = false;
 
     TCallContextPtr CallContext;
 
@@ -219,7 +221,7 @@ struct TBootstrap
 
     std::atomic<int> SessionWriteDataHandlerCalled;
 
-    TBootstrap(const TBootstrapArgs& args = {})
+    explicit TBootstrap(const TBootstrapArgs& args = {})
         : CacheAutomaticFlushPeriod(args.AutomaticFlushPeriod)
         , MaxWriteRequestSize(args.MaxWriteRequestSize)
         , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
@@ -227,6 +229,7 @@ struct TBootstrap
         , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
+        , ParallelWritesEnabled(args.ParallelWritesEnabled)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -405,7 +408,8 @@ struct TBootstrap
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
-             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled});
+             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
+             .ParallelWritesEnabled = ParallelWritesEnabled});
 
         ModuleStats = Cache.CreateModuleStats();
     }
@@ -1558,21 +1562,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldTryToFlushWhenRequestSizeIsGreaterThanLimit)
     {
-        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 1});
+        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 2});
 
         TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "a");
-        // Flush will have two requests (1, 2) and (3, 2) despite the limit
-        b.WriteToCacheSync(1, 1, "bbbb");
-        b.WriteToCacheSync(1, 5, "c");
-        b.WriteToCacheSync(1, 6, "d");
+        // Flush will have three requests (1, 2), (3, 2) and (5, 1) despite the
+        // limit
+        b.WriteToCacheSync(1, 1, "bbbbb");
+        b.WriteToCacheSync(1, 6, "c");
+        b.WriteToCacheSync(1, 7, "d");
 
         b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "(0, 1), (1, 2), (3, 2), (5, 2)",
+            "(0, 1), (1, 2), (3, 2), (5, 1), (6, 2)",
             logger.RangesToString(1));
     }
 
@@ -2363,6 +2368,81 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
         UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
+    }
+
+    Y_UNIT_TEST(ShouldHandleParallelWritesEnabled)
+    {
+        auto test = [&](bool parallelWritesEnabled)
+        {
+            TBootstrap b({
+                .UseTestTimerAndScheduler = true,
+                // Easier calculation of the request size
+                .ZeroCopyWriteEnabled = false,
+                .ParallelWritesEnabled = parallelWritesEnabled,
+            });
+
+            TStringBuilder sb;
+
+            b.Session->WriteDataHandler = [&](auto, auto request)
+            {
+                sb << "[" << request->GetOffset() << ","
+                   << request->GetOffset() + request->GetBuffer().size() << ")";
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            b.WriteToCacheSync(1, 6, "def");
+            b.WriteToCacheSync(1, 9, "ghi");
+            b.WriteToCacheSync(1, 3, "abc");
+            b.WriteToCacheSync(1, 13, "123");
+            b.WriteToCacheSync(1, 12, "jkl");
+            b.WriteToCacheSync(1, 0, "000");
+
+            auto future = b.Cache.FlushNodeData(1);
+            while (!future.HasValue()) {
+                UNIT_ASSERT(!future.HasException());
+                b.RunAllScheduledTasks();
+            }
+
+            return TString(sb);
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("[3,12)[12,16)[0,3)", test(false));
+        UNIT_ASSERT_VALUES_EQUAL("[0,16)", test(true));
+    }
+
+    Y_UNIT_TEST(ShouldNeverSplitRequestsWhenParallelWritesDisabled)
+    {
+        auto test = [&](bool parallelWritesEnabled)
+        {
+            TBootstrap b({
+                .MaxWriteRequestSize = 2,
+                .UseTestTimerAndScheduler = true,
+                .ParallelWritesEnabled = parallelWritesEnabled,
+            });
+
+            int writeCount = 0;
+
+            TStringBuilder sb;
+
+            b.Session->WriteDataHandler = [&](auto, auto)
+            {
+                writeCount++;
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            b.WriteToCacheSync(1, 3, "abc");
+
+            auto future = b.Cache.FlushNodeData(1);
+            while (!future.HasValue()) {
+                UNIT_ASSERT(!future.HasException());
+                b.RunAllScheduledTasks();
+            }
+
+            return writeCount;
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, test(false));
+        UNIT_ASSERT_VALUES_EQUAL(2, test(true));
     }
 }
 

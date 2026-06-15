@@ -60,6 +60,8 @@ void FillFeatures(
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
+    features->SetServerWriteBackCacheParallelWritesEnabled(
+        config.GetServerWriteBackCacheParallelWritesEnabled());
 
     features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
     features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());

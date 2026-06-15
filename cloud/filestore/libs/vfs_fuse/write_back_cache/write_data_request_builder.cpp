@@ -281,6 +281,20 @@ private:
                 dataParts.begin() + partIndex,
                 dataParts.begin() + rangeEndIndex);
 
+            // TWriteDataRequestBatchBuilder accepts the first cached WriteData
+            // request for flushing even if it exceeds MaxWriteRequestsCount -
+            // this is a special case to allow processing requests without being
+            // blocked by the request limits. If this happens, it results in
+            // chopping the request and sending more requests in parallel.
+            //
+            // At the same time, the restriction MaxWriteRequestsCount == 1
+            // should be treated as a special case when the request must never
+            // be split and should be sent as it.
+
+            auto maxWriteRequestSize = Config.MaxWriteRequestsCount > 1
+                ? Config.MaxWriteRequestSize
+                : Max<ui32>();
+
             while (reader.GetRemainingSize() > 0) {
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(Config.FileSystemId);
@@ -288,7 +302,7 @@ private:
                 request->SetOffset(reader.GetOffset());
 
                 if (Config.ZeroCopyWriteEnabled) {
-                    auto remainingBytes = Config.MaxWriteRequestSize;
+                    auto remainingBytes = maxWriteRequestSize;
                     while (remainingBytes > 0) {
                         auto part = reader.ReadInPlace(remainingBytes);
                         if (part.empty()) {
@@ -301,7 +315,7 @@ private:
                         iovec->SetLength(part.size());
                     }
                 } else {
-                    request->SetBuffer(reader.Read(Config.MaxWriteRequestSize));
+                    request->SetBuffer(reader.Read(maxWriteRequestSize));
                 }
 
                 res.push_back(std::move(request));

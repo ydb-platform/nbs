@@ -280,7 +280,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GuestPageCacheDisabled,                    bool,     false            )\
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
-    xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
+    xxx(ServerWriteBackCacheEnabled,               bool,     false            )\
+    xxx(ServerWriteBackCacheParallelWritesEnabled, bool,     false            )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
     xxx(GuestCachingType,                                                      \

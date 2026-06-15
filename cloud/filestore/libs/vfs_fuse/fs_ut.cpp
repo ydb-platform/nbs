@@ -5398,6 +5398,89 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
+
+    Y_UNIT_TEST(ShouldHandleServerWriteBackCacheParallelWritesEnabledFeature)
+    {
+        // Sends 3 WriteData requests to WriteBackCache: [0, 3), [6, 9), [3, 6)
+        //
+        // WriteBackCache uses greedy algorithm to build WriteData requests
+        // for flush and takes requests from the unflushed queue while the
+        // condition is met.
+        //
+        // When parallel writes are disabled:
+        // - after taking [0, 3) and [6, 9) there will be 2 WriteData requests
+        //   so it will flush only [0, 3)
+        // - then it takes [6, 9) and [3, 6) then are consolidated to [3, 9)
+        //
+        // When parallel writes are enabled:
+        // - take [0, 3) and [6, 9) - 2 WriteData requests in parallel are ok
+        // - take [6, 9) - consolidate to [0, 9)
+
+        auto test = [&](bool parallelWritesEnabled)
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+            features.SetServerWriteBackCacheParallelWritesEnabled(
+                parallelWritesEnabled);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                 features,
+                 /* handleOpsQueueSize = */ 0,
+                 /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
+
+            const ui64 nodeId = 123;
+            const ui64 handleId = 456;
+
+            std::atomic<ui64> writeDataCalled = 0;
+
+            bootstrap.Service->WriteDataHandler = [&](auto, auto)
+            {
+                writeDataCalled++;
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            auto write1 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                nodeId,
+                handleId,
+                0,
+                "abc");
+
+            UNIT_ASSERT_NO_EXCEPTION(write1.GetValue(WaitTimeout));
+
+            auto write2 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                nodeId,
+                handleId,
+                6,
+                "ghi");
+
+            UNIT_ASSERT_NO_EXCEPTION(write2.GetValue(WaitTimeout));
+
+            auto write3 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                nodeId,
+                handleId,
+                3,
+                "def");
+
+            UNIT_ASSERT_NO_EXCEPTION(write3.GetValue(WaitTimeout));
+
+            auto flush =
+                bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+            UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+
+            return writeDataCalled.load();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, test(true));
+        UNIT_ASSERT_VALUES_EQUAL(2, test(false));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
