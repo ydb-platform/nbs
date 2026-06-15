@@ -18,11 +18,13 @@ TDuration CalculateBackgroundOpThrottleDelay(
 
     auto delay = minDelay;
     if (maxExecTimePerSecond) {
-        const auto throttlingFactor =
-            static_cast<double>(lastOperationExecTime.GetValue()) /
-            maxExecTimePerSecond.GetValue();
+        const auto permittedExecutionPart =
+            static_cast<double>(maxExecTimePerSecond.GetValue()) /
+            TDuration::Seconds(1).GetValue();
+        const auto permittedExecutionAndDelayInterval =
+            lastOperationExecTime / permittedExecutionPart;
         const auto throttleDelay =
-            TDuration::Seconds(1) * throttlingFactor - lastOperationExecTime;
+            permittedExecutionAndDelayInterval - lastOperationExecTime;
 
         delay = Max(delay, throttleDelay);
     }

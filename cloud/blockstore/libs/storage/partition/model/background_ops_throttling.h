@@ -15,8 +15,10 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 //
 // The logic is as follows: maxExecTimePerSecond determines the share of time
 // the tablet is allowed to spend on the operation. When throttling, we
-// calculate a delay so that the share of operation execution time in the
-// (operation + delay) interval is maxExecTimePerSecond / 1s.
+// calculate a delay so that the share of operation execution time matches the
+// target:
+//
+// lastOperationExecTime / (lastOperationExecTime + delay) = maxExecTimePerSecond / 1s
 //
 // For example, assume that maxExecTimePerSecond is 50ms. Then the tablet is
 // allowed to spend 5% of the time on the operation. If lastOperationExecTime is

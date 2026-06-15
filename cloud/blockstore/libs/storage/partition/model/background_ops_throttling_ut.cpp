@@ -13,15 +13,18 @@ void CheckBudgetInvariant(
     TDuration delay,
     TDuration maxExecTimePerSecond)
 {
-    const double execRatio =
+    const double realExecutionPart =
         static_cast<double>(lastOperationExecTime.GetValue()) /
         (lastOperationExecTime.GetValue() + delay.GetValue());
-    const double budgetRatio =
+    const double permittedExecutionPart =
         static_cast<double>(maxExecTimePerSecond.GetValue()) /
         TDuration::Seconds(1).GetValue();
 
     static constexpr double Epsilon = 1e-6;
-    UNIT_ASSERT_DOUBLES_EQUAL(budgetRatio, execRatio, Epsilon);
+    UNIT_ASSERT_DOUBLES_EQUAL(
+        permittedExecutionPart,
+        realExecutionPart,
+        Epsilon);
 }
 
 }   // namespace
