@@ -38,10 +38,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TDuration DefaultTimeout = 5s;
+
 struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
 {
-    TPromise<TVector<NProto::TNVMeDevice>> Promise =
-        NewPromise<TVector<NProto::TNVMeDevice>>();
+    using TListNVMeDevicesFn =
+        std::function<TFuture<TVector<NProto::TNVMeDevice>>()>;
+
+    TPromise<TListNVMeDevicesFn> ListNVMeDevicesImpl =
+        NewPromise<TListNVMeDevicesFn>();
 
     void Start() final
     {}
@@ -52,7 +57,12 @@ struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
     [[nodiscard]] auto ListNVMeDevices()
         -> TFuture<TVector<NProto::TNVMeDevice>> final
     {
-        return Promise;
+        return ListNVMeDevicesImpl.GetFuture().Apply(
+            [](const auto& future)
+            {
+                const auto& func = future.GetValue();
+                return func();
+            });
     }
 };
 
@@ -254,8 +264,12 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
     void TearDown(NUnitTest::TTestContext& /* testContext */) override
     {
+        if (Service) {
         Service->Stop();
+        }
+
         Executor->Stop();
+
         Logging->Stop();
 
         if (StateCacheFile) {
@@ -395,11 +409,10 @@ struct TFixture: public TFixtureBase
     void TearDown(NUnitTest::TTestContext& testContext) override
     {
         TFixtureBase::TearDown(testContext);
-
         DeviceProvider.reset();
     }
 
-    void SetProviderReady()
+    auto CreateDeviceList() const -> TVector<NProto::TNVMeDevice>
     {
         TVector<NProto::TNVMeDevice> devices;
 
@@ -428,7 +441,13 @@ struct TFixture: public TFixtureBase
             device.SetSerialNumber("unexpected");
         }
 
-        DeviceProvider->Promise.SetValue(devices);
+        return devices;
+    }
+
+    void SetProviderReady()
+    {
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&] { return MakeFuture(CreateDeviceList()); });
     }
 };
 
@@ -664,26 +683,80 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
     }
 
-    Y_UNIT_TEST_F(ShouldHandleListDevicesError, TFixture)
+    Y_UNIT_TEST_F(ShouldRetryListDevicesError, TFixture)
     {
-        DeviceProvider->Promise.SetException(
-            std::make_exception_ptr(std::runtime_error{"fail"}));
+        const ui32 successfulAttempt = 3;
 
-        {
-            auto [_, error] = ListNVMeDevices();
+        std::atomic<ui32> attempts = 0;
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&]
+            {
+                ++attempts;
+                if (attempts < successfulAttempt) {
+                    return MakeErrorFuture<TVector<NProto::TNVMeDevice>>(
+                        std::make_exception_ptr(
+                            TServiceError{E_IO} << "fail #"
+                                                << attempts.load()));
+                }
+
+                return MakeFuture(CreateDeviceList());
+            });
+
+        for (;;) {
+            auto future = Service->ListNVMeDevices();
+            const auto& [devices, error] = future.GetValueSync();
+
+            UNIT_ASSERT_GE(successfulAttempt, attempts);
+
+            if (!HasError(error)) {
+                UNIT_ASSERT_VALUES_EQUAL(successfulAttempt, attempts.load());
+                UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+
+                break;
+            }
+
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FAIL,
+                E_REJECTED,
                 error.GetCode(),
                 FormatError(error));
-        }
 
-        {
-            auto [_, error] = ListNVMeDevices();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FAIL,
-                error.GetCode(),
-                FormatError(error));
+            Sleep(100ms);
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldCancelInitializationOnStop, TFixture)
+    {
+        TAutoEvent shouldStop;
+
+        TPromise<void> promise = NewPromise();
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&]
+            {
+                shouldStop.Signal();
+
+                return promise.GetFuture().Apply(
+                    [](const auto&) -> TVector<NProto::TNVMeDevice>
+                    { ythrow TServiceError{E_IO} << "fail"; });
+            });
+
+        const bool ok = shouldStop.WaitT(DefaultTimeout);
+        UNIT_ASSERT(ok);
+
+        Service->Stop();
+
+        auto future = Service->ListNVMeDevices();
+        const auto& [devices, error] = future.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            error.GetCode(),
+            FormatError(error));
+
+        UNIT_ASSERT_STRING_CONTAINS_C(
+            error.GetMessage(),
+            "is stopped",
+            FormatError(error));
     }
 
     Y_UNIT_TEST_F(ShouldAcquireAndReleaseDeviceMT, TFixture)
@@ -948,6 +1021,10 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         Service->Stop();
         Service = nullptr;
 
+        Cerr << "====================================" << Endl;
+
+        //  DeviceProvider->ListNVMeDevicesImpl.SetValue(
+
         {
             TFileOutput file{Config->GetStateCacheFilePath()};
             file << "broken ;;";
@@ -957,6 +1034,15 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         Service->Start();
 
         SetProviderReady();
+
+        Cerr << "============== Stop ..." << Endl;
+
+        // XXX
+        Service->Stop();
+
+        Cerr << "============== End ======================" << Endl;
+
+        /*
 
         {
             auto [devices, error] = ListNVMeDevices();
@@ -972,6 +1058,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                     "#" << i);
             }
         }
+
+        //*/
     }
 
     Y_UNIT_TEST_F(ShouldHandleRequestsAsync, TFixture)

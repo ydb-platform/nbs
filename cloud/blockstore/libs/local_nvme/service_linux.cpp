@@ -16,6 +16,7 @@
 #include <util/folder/path.h>
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/scope.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 #include <util/system/fs.h>
@@ -32,9 +33,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const NProto::TError ServiceNotReadyError =
+    MakeError(E_REJECTED, "Local NVMe service is not ready");
+
+const NProto::TError ServiceStoppedError =
+    MakeError(E_REJECTED, "Local NVMe service is stopped");
+
 const NProto::TError ServiceDestroyedError =
     MakeError(E_REJECTED, "Local NVMe service is destroyed");
 
+const TDuration FetchDevicesRetryTimeout = TDuration::Seconds(1);
 const TDuration SanitizeStatusProbeTimeout = TDuration::MilliSeconds(100);
 const TDuration VfioDeviceRetryDelay = TDuration::MilliSeconds(100);
 const ui32 VfioDeviceMaxRetries = 100;
@@ -62,6 +70,21 @@ TString NormalizePCIAddr(const TString& pciAddr)
         return "0000:" + pciAddr;
     }
     return pciAddr;
+}
+
+bool SleepCont(TDuration dt)
+{
+    TCont* c = RunningCont();
+    Y_DEBUG_ABORT_UNLESS(c);
+
+    const int ec = c->SleepT(dt);
+    if (ec == ECANCELED) {
+        return false;
+    }
+
+    Y_DEBUG_ABORT_UNLESS(ec == ETIMEDOUT, "SleepT: %d", ec);
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -100,6 +123,14 @@ class TLocalNVMeService final
     : public std::enable_shared_from_this<TLocalNVMeService>
     , public ILocalNVMeService
 {
+    enum class EServiceState
+    {
+        NotReady,
+        Initializing,
+        Running,
+        Stopped
+    };
+
 private:
     const TLocalNVMeConfigPtr Config;
     const ILoggingServicePtr Logging;
@@ -108,8 +139,11 @@ private:
     const TExecutorPtr Executor;
     const ISysFsPtr SysFs;
 
+    std::atomic<EServiceState> ServiceState = EServiceState::NotReady;
+    TCont* InitializeCont = nullptr;
+    TFuture<void> Ready;
+
     TLog Log;
-    TFuture<NProto::TError> Ready;
     bool IsVfioDevSupported = false;
 
     THashMap<TSerialNumber, NProto::TNVMeDevice> Devices;
@@ -148,25 +182,26 @@ private:
         const TSerialNumber& serialNumber,
         const TString& idempotenceId) -> TFuture<TAcquireResult>;
 
-    auto AcquireDeviceImpl(TCont* c, NProto::TNVMeDevice device)
-        -> TAcquireResult;
+    auto AcquireDeviceImpl(NProto::TNVMeDevice device) -> TAcquireResult;
 
     auto ReleaseDevice(
         const TSerialNumber& serialNumber,
         const TString& idempotenceId) -> TFuture<NProto::TError>;
 
-    auto ReleaseDeviceImpl(TCont* c, const NProto::TNVMeDevice& device)
-        -> NProto::TError;
+    auto ReleaseDeviceImpl(const NProto::TNVMeDevice& device) -> NProto::TError;
 
     auto ListDevices() const -> TVector<NProto::TNVMeDevice>;
 
-    auto EnsureIsReady() const -> NProto::TError;
-    auto Initialize() -> NProto::TError;
+    static auto EnsureIsReady(
+        const std::weak_ptr<TLocalNVMeService>& weakService)
+        -> TResultOrError<std::shared_ptr<TLocalNVMeService>>;
+
+    void Initialize();
     auto FetchDevices() -> NProto::TError;
     bool TryRestoreStateFromCache();
     void UpdateStateCache();
     auto CreateStateSnapshot() -> NProto::TLocalNVMeServiceState;
-    auto SanitizeNVMeDevice(TCont* c, const NProto::TNVMeDevice& device)
+    auto SanitizeNVMeDevice(const NProto::TNVMeDevice& device)
         -> NProto::TError;
     auto ResetToSingleNamespace(const NProto::TNVMeDevice& device)
         -> NProto::TError;
@@ -174,8 +209,7 @@ private:
     auto BindDeviceToDriver(
         const NProto::TNVMeDevice& device,
         const TString& driverName) -> NProto::TError;
-    auto GetVfioDevName(TCont* c, const TString& pciAddress)
-        -> TResultOrError<TString>;
+    auto GetVfioDevName(const TString& pciAddress) -> TResultOrError<TString>;
 
     auto StopImpl() -> TFuture<void>;
 
@@ -186,7 +220,6 @@ private:
 
     template <typename TOpResult, typename TFnResult, typename TFn>
     auto StartDeviceOperation(
-        const char* name,
         TFn fn,
         const TSerialNumber& serialNumber,
         const TString& idempotenceId) -> TFuture<TFnResult>;
@@ -211,6 +244,9 @@ TLocalNVMeService::TLocalNVMeService(
 
 void TLocalNVMeService::Start()
 {
+    Y_DEBUG_ABORT_UNLESS(ServiceState == EServiceState::NotReady);
+    ServiceState = EServiceState::Initializing;
+
     Log = Logging->CreateLog("BLOCKSTORE_LOCAL_NVME");
 
     auto [supported, error] = SafeExecute<TResultOrError<bool>>(
@@ -226,17 +262,23 @@ void TLocalNVMeService::Start()
         [weakSelf = weak_from_this()]
         {
             if (auto self = weakSelf.lock()) {
-                return self->Initialize();
+                self->Initialize();
             }
-
-            return ServiceDestroyedError;
         });
 }
 
 auto TLocalNVMeService::StopImpl() -> TFuture<void>
 {
+    Y_DEBUG_ABORT_UNLESS(ServiceState == EServiceState::Stopped);
+
     TVector<TFuture<void>> futures;
-    futures.reserve(Operations.size());
+    futures.reserve(Operations.size() + 1);
+
+    if (InitializeCont) {
+        futures.push_back(Ready.IgnoreResult());
+
+        InitializeCont->Cancel();
+    }
 
     for (const auto& [_, op]: Operations) {
         futures.emplace_back(
@@ -254,12 +296,22 @@ auto TLocalNVMeService::StopImpl() -> TFuture<void>
 
 void TLocalNVMeService::Stop()
 {
+    EServiceState state = ServiceState;
+    if (state == EServiceState::Stopped || state == EServiceState::NotReady) {
+        // Service is not running
+        return;
+    }
+
+    ServiceState = EServiceState::Stopped;
+
     auto future = Executor->Execute(
         [weakSelf = weak_from_this()]
         {
-            if (auto self = weakSelf.lock()) {
+            auto self = weakSelf.lock();
+            if (self) {
                 return self->StopImpl();
             }
+
             return MakeFuture();
         });
     future.Wait();
@@ -269,17 +321,16 @@ auto TLocalNVMeService::ListNVMeDevices() -> TFuture<TListDevicesResult>
 {
     STORAGE_INFO("List NVMe devices");
 
-    if (auto error = EnsureIsReady(); HasError(error)) {
-        return MakeFuture<TListDevicesResult>(error);
-    }
-
     return Executor->Execute(
         [weakSelf = weak_from_this()]() -> TListDevicesResult
         {
-            if (auto self = weakSelf.lock()) {
-                return self->ListDevices();
+            auto [self, error] = EnsureIsReady(weakSelf);
+
+            if (HasError(error)) {
+                return error;
             }
-            return ServiceDestroyedError;
+
+            return self->ListDevices();
         });
 }
 
@@ -291,19 +342,17 @@ auto TLocalNVMeService::AcquireNVMeDevice(
         "Acquire NVMe device " << serialNumber.Quote()
                                << " idempotenceId: " << idempotenceId);
 
-    if (auto error = EnsureIsReady(); HasError(error)) {
-        return MakeFuture<TAcquireResult>(error);
-    }
-
     auto weakSelf = weak_from_this();
 
     return Executor->Execute(
         [weakSelf, serialNumber, idempotenceId]() mutable
         {
-            auto self = weakSelf.lock();
-            if (!self) {
-                return MakeFuture<TAcquireResult>(ServiceDestroyedError);
+            auto [self, error] = EnsureIsReady(weakSelf);
+
+            if (HasError(error)) {
+                return MakeFuture<TAcquireResult>(error);
             }
+
             return self->AcquireDevice(serialNumber, idempotenceId);
         });
 }
@@ -316,46 +365,50 @@ auto TLocalNVMeService::ReleaseNVMeDevice(
         "Release NVMe device " << serialNumber.Quote()
                                << " idempotenceId: " << idempotenceId);
 
-    if (auto error = EnsureIsReady(); HasError(error)) {
-        return MakeFuture(error);
-    }
-
     auto weakSelf = weak_from_this();
 
     return Executor->Execute(
         [weakSelf, serialNumber, idempotenceId]() mutable
         {
-            auto self = weakSelf.lock();
-            if (!self) {
-                return MakeFuture(ServiceDestroyedError);
+            auto [self, error] = EnsureIsReady(weakSelf);
+
+            if (HasError(error)) {
+                return MakeFuture(error);
             }
+
             return self->ReleaseDevice(serialNumber, idempotenceId);
         });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto TLocalNVMeService::EnsureIsReady() const -> NProto::TError
+auto TLocalNVMeService::EnsureIsReady(
+    const std::weak_ptr<TLocalNVMeService>& weakService)
+    -> TResultOrError<std::shared_ptr<TLocalNVMeService>>
 {
-    if (Ready.HasValue()) {
-        return Ready.GetValue();
+    auto service = weakService.lock();
+
+    if (!service) {
+        return ServiceDestroyedError;
     }
 
-    Y_DEBUG_ABORT_UNLESS(!Ready.HasException());
+    if (service->ServiceState == EServiceState::Stopped) {
+        return ServiceStoppedError;
+    }
 
-    return MakeError(E_REJECTED, "not ready");
+    if (service->ServiceState != EServiceState::Running) {
+        return ServiceNotReadyError;
+    }
+
+    return service;
 }
 
 auto TLocalNVMeService::FetchDevices() -> NProto::TError
 {
     auto future = DeviceProvider->ListNVMeDevices();
-
     auto [devices, error] = Executor->ResultOrError(future);
 
     if (HasError(error)) {
-        STORAGE_ERROR(
-            "Failed to fetch NVMe devices from the provider: "
-            << FormatError(error));
         return error;
     }
 
@@ -443,6 +496,8 @@ bool TLocalNVMeService::TryRestoreStateFromCache()
     if (!Config->GetStateCacheFilePath() ||
         !NFs::Exists(Config->GetStateCacheFilePath()))
     {
+        STORAGE_DEBUG("Cache not configured");
+
         return false;
     }
 
@@ -456,13 +511,18 @@ bool TLocalNVMeService::TryRestoreStateFromCache()
         return false;
     }
 
+    if (!proto.DevicesSize()) {
+        STORAGE_INFO("No NVMe devices in the cache");
+        return false;
+    }
+
     STORAGE_INFO(
         "Found in cache NVMe devices ("
         << proto.DevicesSize() << "): " << Join(", ", proto.GetDevices())
         << "; acquired devices: " << Join(", ", proto.GetAcquiredDevices())
         << ";");
 
-    for (auto& device: proto.GetDevices()) {
+    for (const auto& device: proto.GetDevices()) {
         Devices.emplace(device.GetSerialNumber(), device);
     }
 
@@ -473,21 +533,46 @@ bool TLocalNVMeService::TryRestoreStateFromCache()
     return true;
 }
 
-auto TLocalNVMeService::Initialize() -> NProto::TError
+void TLocalNVMeService::Initialize()
 {
+    STORAGE_INFO("Initializing... " << int(ServiceState.load()));
+
+    // Store a pointer to the current continuation so Initialize can be stopped
+    // if Stop is called.
+    InitializeCont = RunningCont();
+    Y_DEBUG_ABORT_UNLESS(InitializeCont);
+
+    Y_DEFER
+    {
+        InitializeCont = nullptr;
+    };
+
     if (!TryRestoreStateFromCache()) {
-        STORAGE_DEBUG("Cache restore failed, fetching from provider");
+        for (;;) {
+            STORAGE_INFO("Fetching NVMe devices from the provider");
 
-        return FetchDevices();
+            auto error = FetchDevices();
+            if (!HasError(error)) {
+                break;
+            }
+
+            STORAGE_ERROR(
+                "Failed to fetch NVMe devices from the provider: "
+                << FormatError(error));
+
+            if (!SleepCont(FetchDevicesRetryTimeout)) {
+                STORAGE_INFO("Initialization has been cancelled");
+                return;
+            }
+        }
     }
 
-    if (Devices.empty()) {
-        STORAGE_INFO("No NVMe devices in the cache, fetching from provider");
-
-        return FetchDevices();
+    EServiceState state = ServiceState;
+    if (state == EServiceState::Initializing) {
+        ServiceState.compare_exchange_strong(state, EServiceState::Running);
     }
 
-    return {};
+    STORAGE_INFO("Service initialized:" << int(state));
 }
 
 auto TLocalNVMeService::BindDeviceToDriver(
@@ -553,7 +638,6 @@ auto TLocalNVMeService::TryEarlyResponse(
 
 template <typename TOpResult, typename TFnResult, typename TFn>
 auto TLocalNVMeService::StartDeviceOperation(
-    const char* name,
     TFn fn,
     const TSerialNumber& serialNumber,
     const TString& idempotenceId) -> TFuture<TFnResult>
@@ -573,37 +657,33 @@ auto TLocalNVMeService::StartDeviceOperation(
         return *earlyResponse;
     }
 
-    auto promise = NewPromise<TFnResult>();
-
     auto op = std::make_shared<TOperation>();
-    op->Name = name;
+    op->Name = TypeName<TOpResult>();
     op->IdempotenceId = idempotenceId;
     op->StartTime = Now();
-    op->Result = TOpResult{promise.GetFuture()};
 
     auto weakSelf = weak_from_this();
 
-    auto* e = Executor->GetContExecutor();
-    auto* cont = e->CreateOwned(
-        [op, promise, weakSelf, fn, device = *device](TCont* c) mutable
+    auto future = Executor->Execute(
+        [op, weakSelf, fn, device = *device]() mutable
         {
+            op->Cont = RunningCont();
+
             auto self = weakSelf.lock();
             TFnResult r =
-                self ? std::invoke(fn, self, c, device) : ServiceDestroyedError;
+                self ? std::invoke(fn, self, device) : ServiceDestroyedError;
 
             op->FinishTime = Now();
             op->Cont = nullptr;
-            promise.SetValue(r);
-        },
-        name);
+            return r;
+        });
 
-    op->Cont = cont;
-
+    op->Result = TOpResult{future};
     Operations[serialNumber] = op;
 
     // If idempotenceId isn't provided - wait operation synchronously
     if (!idempotenceId) {
-        return promise.GetFuture();
+        return future;
     }
 
     return MakeFuture<TFnResult>(MakeError(E_TRY_AGAIN, "started"));
@@ -614,13 +694,12 @@ auto TLocalNVMeService::AcquireDevice(
     const TString& idempotenceId) -> TFuture<TAcquireResult>
 {
     return StartDeviceOperation<TAcquireOperationResult, TAcquireResult>(
-        "Acquire",
         &TLocalNVMeService::AcquireDeviceImpl,
         serialNumber,
         idempotenceId);
 }
 
-auto TLocalNVMeService::AcquireDeviceImpl(TCont* c, NProto::TNVMeDevice device)
+auto TLocalNVMeService::AcquireDeviceImpl(NProto::TNVMeDevice device)
     -> TResultOrError<NProto::TNVMeDevice>
 {
     const auto& serialNumber = device.GetSerialNumber();
@@ -643,7 +722,7 @@ auto TLocalNVMeService::AcquireDeviceImpl(TCont* c, NProto::TNVMeDevice device)
         return device;
     }
 
-    auto [vfioDev, error] = GetVfioDevName(c, device.GetPCIAddress());
+    auto [vfioDev, error] = GetVfioDevName(device.GetPCIAddress());
     if (HasError(error)) {
         STORAGE_ERROR(
             "Failed to get vfio device for " << device << ": "
@@ -655,7 +734,7 @@ auto TLocalNVMeService::AcquireDeviceImpl(TCont* c, NProto::TNVMeDevice device)
     return device;
 }
 
-auto TLocalNVMeService::GetVfioDevName(TCont* c, const TString& pciAddress)
+auto TLocalNVMeService::GetVfioDevName(const TString& pciAddress)
     -> TResultOrError<TString>
 {
     // Binding to vfio-pci completes before the vfio-dev sysfs entry may
@@ -679,12 +758,9 @@ auto TLocalNVMeService::GetVfioDevName(TCont* c, const TString& pciAddress)
             << pciAddress << " was not found, retry (attempts: " << attempt + 1
             << "/" << VfioDeviceMaxRetries << ")");
 
-        const int ec = c->SleepT(VfioDeviceRetryDelay);
-        if (ec == ECANCELED) {
+        if (!SleepCont(VfioDeviceRetryDelay)) {
             return ServiceDestroyedError;
         }
-
-        Y_DEBUG_ABORT_UNLESS(ec == ETIMEDOUT, "SleepT: %d", ec);
     }
 
     return MakeError(
@@ -708,9 +784,8 @@ auto TLocalNVMeService::GetNVMeCtrlPath(const NProto::TNVMeDevice& device)
     return TFsPath{"/dev"} / ctrlName;
 }
 
-auto TLocalNVMeService::SanitizeNVMeDevice(
-    TCont* c,
-    const NProto::TNVMeDevice& device) -> NProto::TError
+auto TLocalNVMeService::SanitizeNVMeDevice(const NProto::TNVMeDevice& device)
+    -> NProto::TError
 try {
     STORAGE_INFO("Sanitize " << device.GetSerialNumber().Quote());
 
@@ -735,17 +810,13 @@ try {
             return r.Status;
         }
 
-        const int ec = c->SleepT(SanitizeStatusProbeTimeout);
-
-        if (ec == ECANCELED) {
+        if (!SleepCont(SanitizeStatusProbeTimeout)) {
             STORAGE_INFO(
                 "Status polling of sanitize operation for "
                 << device.GetSerialNumber().Quote() << " was cancelled");
 
             return ServiceDestroyedError;
         }
-
-        Y_DEBUG_ABORT_UNLESS(ec == ETIMEDOUT, "SleepT: %d", ec);
     }
 
     return {};
@@ -774,21 +845,19 @@ auto TLocalNVMeService::ReleaseDevice(
     const TString& idempotenceId) -> TFuture<NProto::TError>
 {
     return StartDeviceOperation<TReleaseOperationResult, NProto::TError>(
-        "Release",
         &TLocalNVMeService::ReleaseDeviceImpl,
         serialNumber,
         idempotenceId);
 }
 
-auto TLocalNVMeService::ReleaseDeviceImpl(
-    TCont* c,
-    const NProto::TNVMeDevice& device) -> NProto::TError
+auto TLocalNVMeService::ReleaseDeviceImpl(const NProto::TNVMeDevice& device)
+    -> NProto::TError
 {
     if (auto error = BindDeviceToDriver(device, "nvme"); HasError(error)) {
         return error;
     }
 
-    if (auto error = SanitizeNVMeDevice(c, device); HasError(error)) {
+    if (auto error = SanitizeNVMeDevice(device); HasError(error)) {
         return error;
     }
 
