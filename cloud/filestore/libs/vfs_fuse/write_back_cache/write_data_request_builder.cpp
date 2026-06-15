@@ -212,8 +212,6 @@ private:
     const TWriteDataRequestBuilderConfig Config;
 
     TWriteRequestCounter WriteDataRequestCounter;
-
-    ui64 Handle = 0;
     TVector<TWriteDataRequestPart> InputRequests;
 
 public:
@@ -225,13 +223,9 @@ public:
         , WriteDataRequestCounter(Config.MaxWriteRequestSize)
     {}
 
-    bool AddRequest(ui64 handle, ui64 offset, TStringBuf data) override
+    bool AddRequest(ui64 offset, TStringBuf data) override
     {
         Y_ABORT_UNLESS(!data.empty(), "Empty requests are not allowed");
-
-        if (InputRequests.empty()) {
-            Handle = handle;
-        }
 
         WriteDataRequestCounter.AddInterval(offset, offset + data.size());
 
@@ -291,7 +285,6 @@ private:
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(Config.FileSystemId);
                 request->SetNodeId(NodeId);
-                request->SetHandle(Handle);
                 request->SetOffset(reader.GetOffset());
 
                 if (Config.ZeroCopyWriteEnabled) {

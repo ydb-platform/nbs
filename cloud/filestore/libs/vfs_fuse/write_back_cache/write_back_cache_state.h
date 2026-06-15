@@ -137,6 +137,11 @@ public:
         ui64 nodeId,
         const TEntryVisitor& visitor) const;
 
+    // Returns a known live handle that should be used for flushing requests or
+    // NProto::E_INVALID_HANDLE if there are no unflushed requests with live
+    // handles
+    ui64 GetLiveHandle(ui64 nodeId) const;
+
     // Inform that the first |requestCount| unflushed changes requests have
     // been flushed
     void FlushSucceeded(ui64 nodeId, size_t requestCount);
@@ -177,6 +182,10 @@ private:
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TCachedWriteDataRequest> request);
 
+    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
+        std::unique_ptr<TCachedWriteDataRequest> request,
+        bool handleReleased);
+
     void TriggerFlushAll(bool includePendingRequests);
 
     ENodeFlushStatus GetFlushStatus(const TNodeState& nodeState) const;
@@ -187,15 +196,34 @@ private:
     void CheckAndAcquireBarriers(TNodeState& nodeState);
     void ProcessPendingRequests();
 
-    void AddActiveRequestToHandleState(TNodeState& nodeState, ui64 handle);
-    void RemoveActiveRequestFromHandleState(TNodeState& nodeState, ui64 handle);
+    void RemoveActiveRequestFromHandleState(
+        TNodeState& nodeState,
+        TPendingWriteDataRequest* request);
+
+    void RemoveActiveRequestFromHandleState(
+        TNodeState& nodeState,
+        TCachedWriteDataRequest* request);
+
+    void TriggerReleaseHandleCompletion(
+        TNodeState& nodeState,
+        ui64 handle,
+        THandleState& handleState);
 
     void DropCachedData(
         ui64 nodeId,
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
 
-    void FailPendingRequests(const NCloud::NProto::TError& error);
+    void FailPendingRequest(
+        TNodeState& nodeState,
+        TPendingWriteDataRequest* request,
+        const NCloud::NProto::TError& error);
+
+    void FailNodePendingRequests(
+        TNodeState& nodeState,
+        const NCloud::NProto::TError& error);
+
+    void FailAllPendingRequests(const NCloud::NProto::TError& error);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
