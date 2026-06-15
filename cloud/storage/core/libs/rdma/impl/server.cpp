@@ -342,6 +342,7 @@ public:
     bool HandleInputRequests() noexcept;
     bool HandleCompletionEvents() noexcept;
     bool IsFlushed() const;
+    bool CanReleaseAfterStop() const;
 
 private:
     // called from CQ thread
@@ -639,6 +640,10 @@ void TServerSession::Flush() noexcept
 {
     RDMA_DEBUG("flush queues");
 
+    if (FlushStarted) {
+        return;
+    }
+
     try {
         struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
         Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
@@ -659,6 +664,15 @@ bool TServerSession::IsFlushed() const
         && ExecutingRequests.load(std::memory_order_acquire) == 0
         && SendQueue.Size() == Config->SendQueueSize
         && RecvQueue.Size() == Config->RecvQueueSize;
+}
+
+bool TServerSession::CanReleaseAfterStop() const
+{
+    // During shutdown we don't need to wait for WR queues to fully drain —
+    // only for handler-owned requests to return, so session buffers are no
+    // longer referenced by TaskQueue tasks or async callbacks.
+    return FlushStarted
+        && ExecutingRequests.load(std::memory_order_acquire) == 0;
 }
 
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
@@ -1419,6 +1433,18 @@ public:
         return Sessions.Get();
     }
 
+    bool HasSessions()
+    {
+        return !Sessions.Get()->empty();
+    }
+
+    void FlushSessions()
+    {
+        for (const auto& session: *Sessions.Get()) {
+            session->Flush();
+        }
+    }
+
 private:
     bool ShouldStop() const
     {
@@ -1489,14 +1515,17 @@ private:
         return hasWork;
     }
 
-    void DisconnectFlushed()
+    void DisconnectFlushed(bool stopRequested)
     {
         auto sessions = Sessions.Get();
 
         for (const auto& session: *sessions) {
-            if (session->IsFlushed()) {
-                Release(session.get());
+            if (!session->IsFlushed() &&
+                !(stopRequested && session->CanReleaseAfterStop()))
+            {
+                continue;
             }
+            Release(session.get());
         }
     }
 
@@ -1506,8 +1535,23 @@ private:
         TAdaptiveWait aw(
             Config->AdaptiveWaitSleepDuration,
             Config->AdaptiveWaitSleepDelay);
+        bool flushStarted = false;
 
-        while (!ShouldStop()) {
+        while (true) {
+            if (ShouldStop()) {
+                if (!flushStarted) {
+                    if (WaitMode == EWaitMode::Poll) {
+                        StopEvent.Clear();
+                    }
+                    FlushSessions();
+                    flushStarted = true;
+                }
+
+                if (!HasSessions()) {
+                    break;
+                }
+            }
+
             switch (WaitMode) {
                 case EWaitMode::Poll:
                     HandlePollEvents();
@@ -1525,7 +1569,7 @@ private:
                     }
             }
 
-            DisconnectFlushed();
+            DisconnectFlushed(ShouldStop());
         }
     }
 };

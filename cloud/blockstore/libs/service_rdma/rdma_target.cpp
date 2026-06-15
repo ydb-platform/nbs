@@ -257,7 +257,7 @@ private:
             request->GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
-        TGuardedSgList guardedSgList(sglist);
+        auto guardedSgList = buffer.CreateGuardedSgList(std::move(sglist));
 
         auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
         req->CopyFrom(*request);
