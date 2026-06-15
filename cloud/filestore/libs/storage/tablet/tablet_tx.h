@@ -541,8 +541,8 @@ struct TTxIndexTablet
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
-                const NActors::TActorId& pipeServerId,
-                NProtoPrivate::TCreateSessionRequest request)
+                NActors::TActorId pipeServerId,
+                const NProtoPrivate::TCreateSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , PipeServerId(pipeServerId)
             , Request(std::move(request))

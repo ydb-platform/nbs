@@ -653,9 +653,6 @@ private:
     void HandleSessionDisconnected(
         const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
         const NActors::TActorContext& ctx);
-    void HandleSessionDisconnectedInWork(
-        const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
-        const NActors::TActorContext& ctx);
 
     void HandleTabletMetrics(
         const NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
