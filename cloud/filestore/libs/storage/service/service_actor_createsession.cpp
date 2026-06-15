@@ -56,6 +56,7 @@ private:
     bool ReadOnly;
     TString SessionId;
     TString SessionState;
+    ui64 OwnerGeneration = 0;
     NProto::TFileStore FileStore;
 
     ui64 TabletId = -1;
@@ -428,6 +429,7 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     }
 
     SessionState = msg->Record.GetSessionState();
+    OwnerGeneration = msg->Record.GetOwnerGeneration();
     FileStore = msg->Record.GetFileStore();
 
     // Some of the features of the filestore are set not by the tablet but also
@@ -588,6 +590,7 @@ void TCreateSessionActor::Notify(
     response->SessionSeqNo = SeqNo;
     response->ReadOnly = ReadOnly;
     response->TabletId = TabletId;
+    response->OwnerGeneration = OwnerGeneration;
     response->FileStore = FileStore;
     response->RequestInfo = std::move(RequestInfo);
     response->Shutdown = shutdown;
@@ -846,14 +849,71 @@ void TStorageServiceActor::HandleSessionCreated(
     const auto* msg = ev->Get();
 
     auto* session = State->FindSession(msg->SessionId);
+    const TSessionInfo::TSubSessionInfo* subSession = nullptr;
+    if (session) {
+        subSession = session->FindSubSession(msg->SessionSeqNo);
+    }
+    const ui64 storedOwnerGeneration =
+        subSession ? subSession->OwnerGeneration : 0;
     if (SUCCEEDED(msg->GetStatus())) {
         // in case of vhost restart we don't know session id
         // so inevitably will create new actor
         auto actorId = ev->Sender;
+        if (session && storedOwnerGeneration && msg->OwnerGeneration) {
+            if (msg->OwnerGeneration < storedOwnerGeneration) {
+                LOG_WARN(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "%s CreateSession returned stale session owner "
+                    "generation: stored %lu, notification %lu, sender %s",
+                    LogTag(
+                        msg->FileStore.GetFileSystemId(),
+                        msg->ClientId,
+                        msg->SessionId,
+                        msg->SessionSeqNo)
+                        .c_str(),
+                    storedOwnerGeneration,
+                    msg->OwnerGeneration,
+                    ToString(ev->Sender).c_str());
+            } else if (msg->OwnerGeneration > storedOwnerGeneration) {
+                LOG_INFO(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "%s CreateSession returned newer session owner "
+                    "generation: stored %lu, notification %lu, sender %s",
+                    LogTag(
+                        msg->FileStore.GetFileSystemId(),
+                        msg->ClientId,
+                        msg->SessionId,
+                        msg->SessionSeqNo)
+                        .c_str(),
+                    storedOwnerGeneration,
+                    msg->OwnerGeneration,
+                    ToString(ev->Sender).c_str());
+            }
+        }
+
         if (session &&
             session->SessionActor &&
             session->SessionActor != ev->Sender)
         {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s CreateSession returned session actor mismatch: current "
+                "actor %s generation %lu, notification sender %s generation "
+                "%lu; keeping current actor and poisoning notification sender",
+                LogTag(
+                    msg->FileStore.GetFileSystemId(),
+                    msg->ClientId,
+                    msg->SessionId,
+                    msg->SessionSeqNo)
+                    .c_str(),
+                ToString(session->SessionActor).c_str(),
+                storedOwnerGeneration,
+                ToString(ev->Sender).c_str(),
+                msg->OwnerGeneration);
+
             ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
             actorId = session->SessionActor;
         }
@@ -888,6 +948,7 @@ void TStorageServiceActor::HandleSessionCreated(
                 mediaKind,
                 std::move(stats),
                 actorId,
+                msg->OwnerGeneration,
                 msg->TabletId);
 
             Y_ABORT_UNLESS(session);
@@ -895,7 +956,12 @@ void TStorageServiceActor::HandleSessionCreated(
             session->UpdateSessionState(
                 msg->SessionState,
                 msg->FileStore);
-            session->AddSubSession(msg->SessionSeqNo, msg->ReadOnly);
+            session->AddSubSession(
+                msg->SessionSeqNo,
+                msg->ReadOnly,
+                actorId == ev->Sender
+                    ? msg->OwnerGeneration
+                    : storedOwnerGeneration);
             session->SessionActor = actorId;
         }
     } else if (session) {
