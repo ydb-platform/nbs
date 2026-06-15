@@ -176,6 +176,7 @@ private:
 
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
+    NProto::TStorageConfig BaseStorageConfig;
 
     ui32 BackpressureErrorCount = 0;
     TInstant BackpressurePeriodStart;

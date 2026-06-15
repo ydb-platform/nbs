@@ -207,6 +207,8 @@ void TIndexTabletActor::ApplyStorageConfigOverrides(
     const TString& folderId,
     const TString& fileSystemId)
 {
+    Config->Reset(BaseStorageConfig);
+
     // Features config is applied first, then the per-tablet StorageConfig
     // override is merged on top.
     LOG_INFO_S(

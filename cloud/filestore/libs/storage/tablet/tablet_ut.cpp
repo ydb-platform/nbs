@@ -395,6 +395,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
                 response->Record.GetStorageConfig().GetNewCleanupEnabled());
         }
     }
+
+    Y_UNIT_TEST(ShouldNotDuplicateRepeatedOverrideFieldsOnUpdateConfig)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        NProto::TStorageConfig patch;
+        patch.AddDestroyFilestoreDenyList("fs-to-deny");
+        tablet.ChangeStorageConfig(std::move(patch));
+
+        tablet.RebootTablet();
+
+        tablet.UpdateConfig({});
+        tablet.UpdateConfig({});
+
+        auto response = tablet.GetStorageConfig();
+        const auto& denyList =
+            response->Record.GetStorageConfig().GetDestroyFilestoreDenyList();
+        UNIT_ASSERT_VALUES_EQUAL(1, denyList.size());
+        UNIT_ASSERT_VALUES_EQUAL("fs-to-deny", denyList[0]);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
