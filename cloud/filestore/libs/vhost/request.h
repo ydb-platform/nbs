@@ -539,4 +539,18 @@ struct TSetAttrRequest
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TUnlinkRequest
+    : public TRequestBase<void, void, void>
+{
+    TUnlinkRequest(const TString& name, ui64 parentNodeId)
+    {
+        In = TIn::Create(name.size() + 1);
+        In->Header.opcode = FUSE_UNLINK;
+        In->Header.nodeid = parentNodeId;
+        strcpy((char*)In->Data(), name.c_str());
+    }
+};
+
 }   // namespace NCloud::NFileStore::NVhost

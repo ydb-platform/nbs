@@ -24,6 +24,11 @@ ELogPriority GetErrorPriority(ui32 code)
 
 constexpr ui32 NODE_CACHE_SHARD_COUNT = 16;
 
+ui64 GenerateCacheVersion(std::atomic<ui64>& version)
+{
+    return version.fetch_add(1, std::memory_order_release) + 1;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -183,13 +188,40 @@ bool TFileSystem::UpdateNodeAttrsInCache(
 
 void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
 {
-    const ui64 newVersion =
-        GlobalAttrVersion.fetch_add(1, std::memory_order_release) + 1;
+    const ui64 newVersion = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating node: " << nodeId
         << ", version: " << newVersion);
 
     NodeCache.InvalidateNode(nodeId, newVersion);
+}
+
+void TFileSystem::InvalidateDirectoryEntriesInCache(
+    fuse_ino_t nodeId)
+{
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating directory entries: " << nodeId
+        << ", version: " << version);
+
+    DirectoryHandleCache->InvalidateEntries(nodeId, version);
+}
+
+void TFileSystem::InvalidateDirectoryEntriesInCache(
+    fuse_ino_t nodeId,
+    fuse_ino_t anotherNodeId)
+{
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating directory entries: " << nodeId
+        << ", version: " << version);
+    DirectoryHandleCache->InvalidateEntries(nodeId, version);
+
+    if (nodeId != anotherNodeId) {
+        STORAGE_TRACE("invalidating directory entries: " << anotherNodeId
+            << ", version: " << version);
+        DirectoryHandleCache->InvalidateEntries(anotherNodeId, version);
+    }
 }
 
 void TFileSystem::UpdateXAttrCache(

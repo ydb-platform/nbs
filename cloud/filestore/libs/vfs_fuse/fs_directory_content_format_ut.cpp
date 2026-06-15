@@ -151,12 +151,13 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
         };
 
         validate(attrTimeout);
-        auto error = ResetAttrTimeout(
+        auto error = ResetCacheTimeouts(
             buffer->Data(),
             buffer->Size(),
             [] (ui64 ino) {
                 return ino != 10003 && ino != MissingNodeId;
-            });
+            },
+            false /* resetEntryTimeout */);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
         validate(0);
     }
@@ -190,13 +191,14 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
 
         auto buffer = builder.Finish();
 
-        auto error = ResetAttrTimeout(
+        auto error = ResetCacheTimeouts(
             buffer->Data(),
             buffer->Size(),
             [] (ui64 ino) {
                 Y_UNUSED(ino);
                 return true;
-            });
+            },
+            false /* resetEntryTimeout */);
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
             error.GetCode(),
@@ -232,13 +234,14 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
 
         auto buffer = builder.Finish();
 
-        auto error = ResetAttrTimeout(
+        auto error = ResetCacheTimeouts(
             buffer->Data(),
             buffer->Size(),
             [] (ui64 ino) {
                 Y_UNUSED(ino);
                 return true;
-            });
+            },
+            false /* resetEntryTimeout */);
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
             error.GetCode(),
@@ -298,13 +301,14 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
 
         TVector<ui64> seenInos;
 
-        auto error = ResetAttrTimeout(
+        auto error = ResetCacheTimeouts(
             buffer->Data(),
             buffer->Size(),
             [&] (ui64 ino) {
                 seenInos.push_back(ino);
                 return true;
-            });
+            },
+            false /* resetEntryTimeout */);
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             error.GetCode(),
@@ -327,13 +331,14 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             garbage[i] = i;
         }
 
-        auto error = ResetAttrTimeout(
+        auto error = ResetCacheTimeouts(
             garbage.begin(),
             garbage.size(),
             [] (ui64 ino) {
                 Y_UNUSED(ino);
                 return true;
-            });
+            },
+            false /* resetEntryTimeout */);
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
             error.GetCode(),
@@ -376,15 +381,80 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
 
         auto buffer = builder.Finish();
 
-        auto error = ResetAttrTimeout(
+        auto error = ResetCacheTimeouts(
             buffer->Data(),
             buffer->Size(),
             [] (ui64 ino) {
                 Y_UNUSED(ino);
                 return true;
-            });
+            },
+            false /* resetEntryTimeout */);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
+
+    Y_UNIT_TEST(ShouldResetEntryTimeouts)
+    {
+        const ui64 size = 4_KB;
+        const ui64 attrTimeout = 15;
+        const ui64 entryTimeout = 10;
+        const ui32 preferredBlockSize = 4_KB;
+        const size_t offset = 0;
+        fuse_req_t req = nullptr;
+
+        TDirectoryBuilder builder(size);
+
+        fuse_entry_param entry = {
+            .ino = 10001,
+            .attr_timeout = attrTimeout,
+            .entry_timeout = entryTimeout,
+        };
+
+        NProto::TNodeAttr attr;
+        attr.SetId(10001);
+        attr.SetType(NProto::E_REGULAR_NODE);
+        attr.SetSize(10_KB);
+        ConvertAttr(preferredBlockSize, attr, entry.attr);
+
+        builder.Add(req, "file1", entry, offset);
+
+        auto buffer = builder.Finish();
+
+        UNIT_ASSERT_GT(buffer->Size(), sizeof(fuse_direntplus));
+
+        const auto* de =
+            reinterpret_cast<const fuse_direntplus*>(buffer->Data());
+
+        auto error = ResetCacheTimeouts(
+            buffer->Data(),
+            buffer->Size(),
+            [] (ui64 ino) {
+                Y_UNUSED(ino);
+                return false;
+            },
+            false /* resetEntryTimeout */);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(attrTimeout, de->entry_out.attr_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+        UNIT_ASSERT_VALUES_EQUAL(entryTimeout, de->entry_out.entry_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
+
+        error = ResetCacheTimeouts(
+            buffer->Data(),
+            buffer->Size(),
+            [] (ui64 ino) {
+                Y_UNUSED(ino);
+                return false;
+            },
+            true /* resetEntryTimeout */);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(attrTimeout, de->entry_out.attr_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
+    }
+
 }
 
 }   // namespace NCloud::NFileStore::NFuse

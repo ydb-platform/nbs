@@ -36,9 +36,10 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 using TNodeIdVisitor = std::function<bool(ui64)>;
-NProto::TError ResetAttrTimeout(
+NProto::TError ResetCacheTimeouts(
     char* data,
     ui64 len,
-    const TNodeIdVisitor& visitor);
+    const TNodeIdVisitor& shouldResetAttrTimeout,
+    bool resetEntryTimeout);
 
 }   // namespace NCloud::NFileStore::NFuse

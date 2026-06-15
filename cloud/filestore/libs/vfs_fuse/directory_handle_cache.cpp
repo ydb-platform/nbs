@@ -151,6 +151,17 @@ void TDirectoryHandleCache::AppendChunk(
     }
 }
 
+void TDirectoryHandleCache::InvalidateEntries(fuse_ino_t directoryIno, ui64 version)
+{
+    with_lock (Lock) {
+        for (const auto& [_, handle]: Handles) {
+            if (handle->Index == directoryIno) {
+                handle->InvalidateEntries(version);
+            }
+        }
+    }
+}
+
 void TDirectoryHandleCache::Clear()
 {
     with_lock (Lock) {

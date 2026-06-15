@@ -4556,6 +4556,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TPromise<void> WritePromise = NewPromise();
         TPromise<void> AllocatePromise = NewPromise();
         TPromise<void> SetNodeAttrPromise = NewPromise();
+        TPromise<void> UnlinkPromise = NewPromise();
 
         TAttrRaceBootstrap()
             : TBootstrap(
@@ -4608,6 +4609,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     SetNodeAttrPromise.SetValue();
                 });
             };
+
+            Service->UnlinkNodeHandler = [&](auto, auto)
+            {
+                NProto::TUnlinkNodeResponse result;
+                return MakeFuture(result).Subscribe([&] (auto) {
+                    UnlinkPromise.SetValue();
+                });
+            };
         }
 
         void Write(ui64 offset, ui64 size)
@@ -4643,6 +4652,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto resp = Fuse->SendRequest(rq);
             resp.GetValue(WaitTimeout);
             SetNodeAttrPromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        void Unlink(const TString& name)
+        {
+            auto rq = std::make_shared<TUnlinkRequest>(name, ParentNodeId);
+            auto resp = Fuse->SendRequest(rq);
+            resp.GetValue(WaitTimeout);
+            UnlinkPromise.GetFuture().GetValue(WaitTimeout);
         };
     };
 
@@ -5387,6 +5404,64 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestEntryCachingUponListNodesAndUnlinkRace)
+    {
+        TAttrRaceBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto getFirstListedDirent = [] (const TReadDirRequest& request)
+        {
+            auto buf = TStringBuf(
+                reinterpret_cast<const char*>(request.Out->Data()),
+                request.Out->Header.len - sizeof(request.Out->Header));
+
+            // Skip "." and ".." entries
+            UNIT_ASSERT_LE(
+                sizeof(fuse_direntplus) + dotSize + dotDotSize,
+                buf.size());
+            buf = buf.Skip(dotSize + dotDotSize);
+
+            return reinterpret_cast<const fuse_direntplus*>(buf.data());
+        };
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(
+            bootstrap.ParentNodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const ui64 handleId = handle.GetValue();
+
+        auto rq = std::make_shared<TReadDirRequest>(
+            bootstrap.ParentNodeId,
+            handleId);
+        auto rf = bootstrap.Fuse->SendRequest(rq);
+        UNIT_ASSERT(bootstrap.ListNodesRequestEvent.WaitT(WaitTimeout));
+
+        bootstrap.Unlink("file");
+
+        NProto::TListNodesResponse response;
+        response.AddNames("file");
+        auto* node = response.AddNodes();
+        node->SetId(bootstrap.NodeId);
+        node->SetType(NProto::E_REGULAR_NODE);
+        node->SetSize(bootstrap.NodeSize);
+        bootstrap.ListNodesResponse.SetValue(std::move(response));
+        rf.GetValue(WaitTimeout);
+
+        const auto* de = getFirstListedDirent(*rq);
+
+        UNIT_ASSERT_VALUES_EQUAL(bootstrap.NodeId, de->entry_out.nodeid);
+        UNIT_ASSERT_GT(de->entry_out.attr_valid, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
+
+        auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+            bootstrap.ParentNodeId,
+            handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
     }
 }
 

@@ -224,8 +224,9 @@ public:
 
                     f.Close();
                 } else {
-                    STORAGE_WARN("Unlinked file still exists: " << filePath
-                        << ", but can't be opened (stale dentry?)");
+                    STORAGE_ERROR("Unlinked file still exists: " << filePath
+                        << ", but can't be opened");
+                    ++errors;
                 }
             }
         }

@@ -69,3 +69,10 @@ def test_create_unlink_steal_list_nodes_internal():
         "create_unlink_steal_list_nodes_internal",
         "--duration 60s --stealer-threads 1",
         {"UseListNodesInternal": True})
+
+
+def test_create_unlink_steal_list_nodes_internal_more_producers():
+    return do_test(
+        "create_unlink_steal_list_nodes_internal_more_producers",
+        "--duration 20s --stealer-threads 1 --producer-threads 16",
+        {"UseListNodesInternal": True})

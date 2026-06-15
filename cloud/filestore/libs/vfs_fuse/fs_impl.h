@@ -102,7 +102,7 @@ private:
 
     TWriteBackCache WriteBackCache;
 
-    std::atomic<ui64> GlobalAttrVersion = 1;
+    std::atomic<ui64> GlobalCacheVersion = 1;
 
     TProtoMessagePrinter ProtoMessagePrinter;
 
@@ -419,6 +419,11 @@ private:
         ui64 version);
 
     void InvalidateNodeInCache(ui64 nodeId);
+    void InvalidateDirectoryEntriesInCache(fuse_ino_t nodeId);
+    // atomic for rename usecase
+    void InvalidateDirectoryEntriesInCache(
+        fuse_ino_t nodeId,
+        fuse_ino_t anotherNodeId);
 
     void UpdateXAttrCache(
         ui64 ino,
