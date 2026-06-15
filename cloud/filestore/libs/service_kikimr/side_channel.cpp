@@ -49,14 +49,14 @@ void MoveBufferToIovecs(
         return;
     }
 
-    auto currentOffset = response.GetBufferOffset();
-    const auto bufferSize = response.GetBuffer().size();
+    ui32 currentOffset = response.GetBufferOffset();
+    const ui64 bufferSize = response.GetBuffer().size();
     const char* src = response.GetBuffer().data();
     for (const auto& iovec: iovecs) {
         if (currentOffset >= bufferSize) {
             break;
         }
-        const auto bytesToCopy =
+        const ui64 bytesToCopy =
             Min<ui64>(iovec.GetLength(), bufferSize - currentOffset);
         memcpy(
             reinterpret_cast<char*>(iovec.GetBase()),
