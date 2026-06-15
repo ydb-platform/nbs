@@ -240,6 +240,8 @@ bool TPartitionActor::PrepareCleanup(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
+    THashSet<TPartialBlobId, TPartialBlobIdHash> blobIdsToRemoveFromQueue;
+
     bool ready = true;
 
     for (const auto& item: args.CleanupQueue) {
@@ -256,6 +258,7 @@ bool TPartitionActor::PrepareCleanup(
             if (hasValidMetaInCleanupQueue &&
                 !CleanupBlobMetaBlocksEqual(item.BlobMeta, blobMeta.GetRef()))
             {
+                blobIdsToRemoveFromQueue.insert(item.BlobId);
                 ReportCleanupBlobMetaBlocksMismatch(
                     {{"disk", PartitionConfig.GetDiskId()},
                      {"tablet_id", TabletID()},
@@ -270,6 +273,14 @@ bool TPartitionActor::PrepareCleanup(
         } else {
             ready = false;
         }
+    }
+
+    if (ready) {
+        auto itemsToRemove = std::ranges::remove_if(
+            args.CleanupQueue,
+            [&](const auto& item) -> bool
+            { return blobIdsToRemoveFromQueue.contains(item.BlobId); });
+        args.CleanupQueue.erase(itemsToRemove.begin(), itemsToRemove.end());
     }
 
     return ready;

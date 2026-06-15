@@ -626,7 +626,7 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
 
         const ui64 CommitId;
-        const TVector<TCleanupQueueItem> CleanupQueue;
+        TVector<TCleanupQueueItem> CleanupQueue;
 
         TVector<NProto::TBlobMeta> BlobsMeta;
 
