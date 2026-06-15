@@ -1742,7 +1742,13 @@ private:
 
     void HandlePollEvents()
     {
-        // wait for completion events
+        // Keep all endpoints alive for the duration of this epoll batch.
+        // StopEndpoint() (called from the connection poller thread) can call
+        // Poller->Release() between epoll_wait() returning and the events being
+        // processed, which would destroy the endpoint and leave dangling raw
+        // pointers in the already-returned event buffer.
+        auto live = Endpoints.Get();
+
         size_t signaled = PollHandle.Wait(POLL_TIMEOUT);
 
         for (size_t i = 0; i < signaled; ++i) {

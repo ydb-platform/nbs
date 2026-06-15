@@ -1,5 +1,7 @@
 #include "server.h"
 
+#include <atomic>
+
 #include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
@@ -97,6 +99,11 @@ struct TRequest
 
     TPooledBuffer InBuffer {};
     TPooledBuffer OutBuffer {};
+
+    // Set in ExecuteRequest() before ownership is transferred to the handler
+    // via HandleRequest()/req.release(). Used to track floating requests that
+    // hold session buffer references but are not tracked by WR queue sizes.
+    bool TransferredToHandler = false;
 
     TRequest(std::weak_ptr<TServerSession> session)
         : Session(std::move(session))
@@ -295,6 +302,11 @@ private:
     TSimpleList<TRequest> QueuedRequests;
     TEventHandle RequestEvent;
     bool FlushStarted = false;
+    // Count of requests currently transferred to the handler (via req.release()
+    // in ExecuteRequest) whose SendResponse/SendError has not yet been called.
+    // IsFlushed() waits for this to reach zero so session buffers are not freed
+    // while the handler or its async callbacks still hold in/out TStringBufs.
+    std::atomic<ui32> ExecutingRequests{0};
 
 public:
     static TServerSession* FromEvent(rdma_cm_event* event)
@@ -640,7 +652,11 @@ void TServerSession::Flush() noexcept
 
 bool TServerSession::IsFlushed() const
 {
+    // ExecutingRequests counts requests transferred to the handler whose
+    // SendResponse/SendError has not yet been processed all the way through
+    // FreeRequest. Session buffers must not be freed while this is non-zero.
     return FlushStarted
+        && ExecutingRequests.load(std::memory_order_acquire) == 0
         && SendQueue.Size() == Config->SendQueueSize
         && RecvQueue.Size() == Config->RecvQueueSize;
 }
@@ -799,6 +815,9 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 {
     if (req == nullptr) {
         return;
+    }
+    if (req->TransferredToHandler) {
+        ExecutingRequests.fetch_sub(1, std::memory_order_release);
     }
     RecvBuffers.ReleaseBuffer(req->InBuffer);
     SendBuffers.ReleaseBuffer(req->OutBuffer);
@@ -1009,6 +1028,9 @@ void TServerSession::ExecuteRequest(TRequestPtr req) noexcept
         ExecuteRequest,
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
+
+    req->TransferredToHandler = true;
+    ExecutingRequests.fetch_add(1, std::memory_order_relaxed);
 
     Handler->HandleRequest(req.get(), req->CallContext, in, out);
 

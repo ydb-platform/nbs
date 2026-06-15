@@ -60,6 +60,8 @@ struct TRequestDetails
 
     ui64 VolumeRequestId = 0;
     TBlockRange64 Range;
+
+    NCloud::NStorage::NRdma::IServerEndpointPtr Ep;
 };
 
 template <typename TRequest>
@@ -187,9 +189,16 @@ public:
         TStringBuf in,
         TStringBuf out) override
     {
+        auto ep = Endpoint.lock();
+        if (!ep) {
+            // Server is being torn down; context leaks but this path is only
+            // reachable after TServer destruction which should not happen while
+            // the TaskQueue is still active (Server->Stop() precedes TaskQueue->Stop()).
+            return;
+        }
         TaskQueue->ExecuteSimple(
             [self = shared_from_this(),
-             endpoint = Endpoint,
+             ep = std::move(ep),
              context = context,
              callContext = ToBlockStoreCallContext(std::move(callContext)),
              in = in,
@@ -197,12 +206,14 @@ public:
             {
                 auto error = SafeExecute<NProto::TError>(
                     [self,
+                     ep,
                      context,
                      callContext = std::move(callContext),
                      in,
                      out]() mutable
                     {
                         return self->DoHandleRequest(
+                            ep,
                             context,
                             std::move(callContext),
                             in,
@@ -210,12 +221,10 @@ public:
                     });
 
                 if (error.GetCode()) {
-                    if (auto ep = endpoint.lock()) {
-                        ep->SendError(
-                            context,
-                            error.GetCode(),
-                            error.GetMessage());
-                    }
+                    ep->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
                 }
             });
     }
@@ -257,6 +266,7 @@ public:
 
 private:
     NProto::TError DoHandleRequest(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         TStringBuf in,
@@ -277,6 +287,7 @@ private:
         switch (request.MsgId) {
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
                 return HandleReadBlocksRequest(
+                    ep,
                     context,
                     std::move(callContext),
                     static_cast<NProto::TReadDeviceBlocksRequest&>(
@@ -287,6 +298,7 @@ private:
 
             case TBlockStoreProtocol::WriteDeviceBlocksRequest:
                 return HandleWriteBlocksRequest(
+                    ep,
                     context,
                     std::move(callContext),
                     static_cast<NProto::TWriteDeviceBlocksRequest&>(*request.Proto),
@@ -296,6 +308,7 @@ private:
 
             case TBlockStoreProtocol::ZeroDeviceBlocksRequest:
                 return HandleZeroBlocksRequest(
+                    ep,
                     context,
                     std::move(callContext),
                     static_cast<NProto::TZeroDeviceBlocksRequest&>(*request.Proto),
@@ -304,6 +317,7 @@ private:
 
             case TBlockStoreProtocol::ChecksumDeviceBlocksRequest:
                 return HandleChecksumBlocksRequest(
+                    ep,
                     context,
                     std::move(callContext),
                     static_cast<NProto::TChecksumDeviceBlocksRequest&>(*request.Proto),
@@ -535,6 +549,7 @@ private:
     }
 
     NProto::TError HandleReadBlocksRequest(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TReadDeviceBlocksRequest& request,
@@ -591,7 +606,8 @@ private:
                 .Out = out,
                 .DataBuffer = dataBuffer,
                 .DeviceUUID = request.GetDeviceUUID(),
-                .ClientId = request.GetHeaders().GetClientId()},
+                .ClientId = request.GetHeaders().GetClientId(),
+                .Ep = ep},
             &TRequestHandler::HandleReadBlocksResponse);
 
         return {};
@@ -648,12 +664,11 @@ private:
                     flags, proto, parts);
         }
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
-        }
+        requestDetails.Ep->SendResponse(requestDetails.Context, bytes);
     }
 
     NProto::TError HandleWriteBlocksRequest(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TWriteDeviceBlocksRequest& request,
@@ -667,6 +682,7 @@ private:
 
         if (!request.GetReplicationTargets().empty()) {
             return HandleMultiAgentWriteBlocksRequest(
+                ep,
                 context,
                 std::move(callContext),
                 request,
@@ -706,7 +722,8 @@ private:
                  .VolumeRequestId = request.GetVolumeRequestId(),
                  .Range = TBlockRange64::WithLength(
                      request.GetStartIndex(),
-                     blockCount)},
+                     blockCount),
+                 .Ep = ep},
             .ExecutionData = {
                 .CallContext = std::move(callContext),
                 .BlockSize = request.GetBlockSize(),
@@ -793,12 +810,11 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
-        }
+        requestDetails.Ep->SendResponse(requestDetails.Context, bytes);
     }
 
     NProto::TError HandleMultiAgentWriteBlocksRequest(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TWriteDeviceBlocksRequest& request,
@@ -833,7 +849,8 @@ private:
                  .DeviceUUID = deviceUUID,
                  .ClientId = req->GetHeaders().GetClientId(),
                  .VolumeRequestId = req->GetVolumeRequestId(),
-                 .Range = range},
+                 .Range = range,
+                 .Ep = ep},
             .ExecutionData = {
                 .CallContext = std::move(callContext),
                 .BlockSize = req->GetBlockSize(),
@@ -919,12 +936,11 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
-        }
+        requestDetails.Ep->SendResponse(requestDetails.Context, bytes);
     }
 
     NProto::TError HandleZeroBlocksRequest(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TZeroDeviceBlocksRequest& request,
@@ -954,7 +970,8 @@ private:
                  .VolumeRequestId = request.GetVolumeRequestId(),
                  .Range = TBlockRange64::WithLength(
                      request.GetStartIndex(),
-                     GetBlocksCount(request))},
+                     GetBlocksCount(request)),
+                 .Ep = ep},
             .ExecutionData = {
                 .CallContext = std::move(callContext),
                 .BlockSize = request.GetBlockSize(),
@@ -1039,12 +1056,11 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
-        }
+        requestDetails.Ep->SendResponse(requestDetails.Context, bytes);
     }
 
     NProto::TError HandleChecksumBlocksRequest(
+        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TChecksumDeviceBlocksRequest& request,
@@ -1080,7 +1096,8 @@ private:
                 .Out = out,
                 .DataBuffer = {},   // no data buffer
                 .DeviceUUID = request.GetDeviceUUID(),
-                .ClientId = request.GetHeaders().GetClientId()},
+                .ClientId = request.GetHeaders().GetClientId(),
+                .Ep = ep},
             &TRequestHandler::HandleChecksumBlocksResponse);
 
         return {};
@@ -1119,9 +1136,7 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
-        }
+        requestDetails.Ep->SendResponse(requestDetails.Context, bytes);
     }
 };
 

@@ -127,6 +127,7 @@ void TRdmaEndpoint::HandleRequest(
 {
     TaskQueue->ExecuteSimple(
         [self = weak_from_this(),
+         ep = Endpoint,
          context,
          callContext = ToBlockStoreCallContext(std::move(callContext)),
          in,
@@ -150,12 +151,7 @@ void TRdmaEndpoint::HandleRequest(
                 });
 
             if (HasError(error)) {
-                if (auto p = self.lock()) {
-                    p->Endpoint->SendError(
-                        context,
-                        error.GetCode(),
-                        error.GetMessage());
-                }
+                ep->SendError(context, error.GetCode(), error.GetMessage());
             }
         });
 }
@@ -225,7 +221,7 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
         std::move(req));
 
     future.Subscribe(
-        [self = weak_from_this(),
+        [ep = Endpoint,
          taskQueue = TaskQueue,
          guardedSgList = std::move(guardedSgList),
          buffer = std::move(buffer),
@@ -233,27 +229,25 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
          context](TFuture<NProto::TReadBlocksLocalResponse> future) mutable
         {
             taskQueue->ExecuteSimple(
-                [self = std::move(self),
+                [ep = std::move(ep),
                  guardedSgList = std::move(guardedSgList),
                  buffer = std::move(buffer),
                  out,
                  response = ExtractResponse(future),
                  context]()
                 {
-                    if (auto p = self.lock()) {
-                        auto guard = guardedSgList.Acquire();
-                        Y_ENSURE(guard);
+                    auto guard = guardedSgList.Acquire();
+                    Y_ENSURE(guard);
 
-                        const auto& sglist = guard.Get();
-                        size_t responseBytes = NCloud::NStorage::NRdma::
-                            TProtoMessageSerializer::SerializeWithData(
-                                out,
-                                TBlockStoreProtocol::ReadBlocksResponse,
-                                0,   // flags
-                                response, sglist);
+                    const auto& sglist = guard.Get();
+                    size_t responseBytes = NCloud::NStorage::NRdma::
+                        TProtoMessageSerializer::SerializeWithData(
+                            out,
+                            TBlockStoreProtocol::ReadBlocksResponse,
+                            0,   // flags
+                            response, sglist);
 
-                        p->Endpoint->SendResponse(context, responseBytes);
-                    }
+                    ep->SendResponse(context, responseBytes);
                 });
         });
 
@@ -283,14 +277,14 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
         std::move(req));
 
     future.Subscribe(
-        [self = weak_from_this(),
+        [ep = Endpoint,
          taskQueue = TaskQueue,
          guardedSgList = std::move(guardedSgList),
          out,
          context](TFuture<NProto::TWriteBlocksLocalResponse> future) mutable
         {
             taskQueue->ExecuteSimple(
-                [self = std::move(self),
+                [ep = std::move(ep),
                  guardedSgList = std::move(guardedSgList),
                  out,
                  response = ExtractResponse(future),
@@ -299,15 +293,13 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
                     // enlarge lifetime of guardedSgList
                     Y_UNUSED(guardedSgList);
 
-                    if (auto p = self.lock()) {
-                        size_t responseBytes = NCloud::NStorage::NRdma::
-                            TProtoMessageSerializer::Serialize(
-                                out,
-                                TBlockStoreProtocol::WriteBlocksResponse,
-                                0,   // flags
-                                response);
-                        p->Endpoint->SendResponse(context, responseBytes);
-                    }
+                    size_t responseBytes = NCloud::NStorage::NRdma::
+                        TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreProtocol::WriteBlocksResponse,
+                            0,   // flags
+                            response);
+                    ep->SendResponse(context, responseBytes);
                 });
         });
 
@@ -330,20 +322,18 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
         std::move(req));
 
     future.Subscribe(
-        [self = weak_from_this(), out, context](
+        [ep = Endpoint, out, context](
             TFuture<NProto::TZeroBlocksResponse> future)
         {
-            if (auto p = self.lock()) {
-                auto response = ExtractResponse(future);
+            auto response = ExtractResponse(future);
 
-                size_t responseBytes =
-                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreProtocol::ZeroBlocksResponse,
-                        0,   // flags
-                        response);
-                p->Endpoint->SendResponse(context, responseBytes);
-            }
+            size_t responseBytes =
+                NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                    out,
+                    TBlockStoreProtocol::ZeroBlocksResponse,
+                    0,   // flags
+                    response);
+            ep->SendResponse(context, responseBytes);
         });
 
     return {};
