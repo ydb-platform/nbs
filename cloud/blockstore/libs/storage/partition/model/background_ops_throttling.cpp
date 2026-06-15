@@ -15,21 +15,19 @@ TDuration CalculateBackgroundOpThrottleDelay(
     if (!maxDelay) {
         return {};
     }
+    Y_DEBUG_ABORT_UNLESS(minDelay <= maxDelay);
 
-    auto delay = minDelay;
+    TDuration delay = TDuration::Zero();
     if (maxExecTimePerSecond) {
         const auto permittedExecutionPart =
             static_cast<double>(maxExecTimePerSecond.GetValue()) /
             TDuration::Seconds(1).GetValue();
         const auto permittedExecutionAndDelayInterval =
             lastOperationExecTime / permittedExecutionPart;
-        const auto throttleDelay =
-            permittedExecutionAndDelayInterval - lastOperationExecTime;
-
-        delay = Max(delay, throttleDelay);
+        delay = permittedExecutionAndDelayInterval - lastOperationExecTime;
     }
 
-    return Min(delay, maxDelay);
+    return std::clamp(delay, minDelay, maxDelay);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
