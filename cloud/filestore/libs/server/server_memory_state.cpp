@@ -9,9 +9,11 @@
 
 #include <sys/mman.h>
 
-#define MIN_PAGE_SIZE 4096
-
 namespace NCloud::NFileStore::NServer {
+
+namespace {
+static constexpr size_t MinPageSize = 4096;
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,7 +39,7 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
     size_t size,
     ui32 pageSize)
 {
-    if (size < MIN_PAGE_SIZE) {
+    if (size < MinPageSize) {
         return MakeError(E_ARGUMENT, "Size must be greater or equal to 4 KB");
     }
 
