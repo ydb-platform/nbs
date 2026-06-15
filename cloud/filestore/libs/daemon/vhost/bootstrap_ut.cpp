@@ -196,11 +196,13 @@ class TFakeYdbDiscoveryService final
     : public Ydb::Discovery::V1::DiscoveryService::Service
 {
 private:
+    ui64 StaticNodeIcPort;
     ui64 DynamicNodeIcPort;
 
 public:
-    explicit TFakeYdbDiscoveryService(ui64 dynamicNodeIcPort)
-        : DynamicNodeIcPort(dynamicNodeIcPort)
+    TFakeYdbDiscoveryService(ui64 staticNodeIcPort, ui64 dynamicNodeIcPort)
+        : StaticNodeIcPort(staticNodeIcPort)
+        , DynamicNodeIcPort(dynamicNodeIcPort)
     {}
 
     grpc::Status NodeRegistration(
@@ -216,15 +218,26 @@ public:
         operation->set_status(Ydb::StatusIds::SUCCESS);
 
         Ydb::Discovery::NodeRegistrationResult result;
-        result.set_node_id(1);
+        result.set_node_id(1001);
+        result.set_expire(Max<ui64>());
         result.set_scope_tablet_id(72057594037968897);
         result.set_scope_path_id(1);
 
-        auto* node = result.add_nodes();
-        node->set_node_id(2);
-        node->set_address("localhost");
-        node->set_host("localhost");
-        node->set_port(DynamicNodeIcPort);
+        auto* staticNode = result.add_nodes();
+        staticNode->set_node_id(1);
+        staticNode->set_address("localhost");
+        staticNode->set_host("localhost");
+        staticNode->set_port(StaticNodeIcPort);
+        staticNode->set_resolve_host("localhost");
+        staticNode->set_address("localhost");
+
+        auto* selfNode = result.add_nodes();
+        selfNode->set_node_id(1001);
+        selfNode->set_address("localhost");
+        selfNode->set_host("localhost");
+        selfNode->set_port(DynamicNodeIcPort);
+        selfNode->set_resolve_host("localhost");
+        selfNode->set_address("localhost");
 
         operation->mutable_result()->PackFrom(result);
 
@@ -244,8 +257,8 @@ private:
     ui16 Port = 0;
 
 public:
-    TestYdbDiscoveryServer(ui64 dynamicNodeIcPort)
-        : Service(dynamicNodeIcPort)
+    TestYdbDiscoveryServer(ui64 staticNodeIcPort, ui64 dynamicNodeIcPort)
+        : Service(staticNodeIcPort, dynamicNodeIcPort)
     {}
 
     ~TestYdbDiscoveryServer()
@@ -292,7 +305,7 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
         const auto staticNodeIcPort = PortManager.GetPort();
         const auto dynamicNodeIcPort = PortManager.GetPort();
 
-        TestYdbDiscoveryServer ydbDiscoveryServer(dynamicNodeIcPort);
+        TestYdbDiscoveryServer ydbDiscoveryServer(staticNodeIcPort, dynamicNodeIcPort);
         ydbDiscoveryServer.Start();
 
         auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
