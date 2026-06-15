@@ -119,6 +119,7 @@ def storage_config_with_fresh_blocks_writer_enabled(enabled):
 
 def storage_config_with_read_block_mask_on_compaction_optimization_enabled(enabled):
     storage = default_storage_config()
+    storage.SplitCompactionTxEnabled = enabled
     storage.ReadBlockMaskOnCompactionOptimizationEnabled = enabled
 
     return storage
