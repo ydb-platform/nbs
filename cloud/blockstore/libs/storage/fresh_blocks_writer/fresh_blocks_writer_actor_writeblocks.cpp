@@ -222,7 +222,7 @@ void TFreshBlocksWriterActor::HandleWriteBlocksRequest(
 
     if constexpr (std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
     {
-        msg->Record.CopySglistIntoBuffers();
+        msg->Record.TakeOwnershipOfData();
     }
 
     auto writeHandler = CreateWriteHandler(

@@ -82,7 +82,7 @@ void CopySgListIntoRequestBuffers(
         record.GetDiskId(),
         TStringBuilder() << "Buffers: " << record.GetBlocks().BuffersSize());
 
-    record.CopySglistIntoBuffers();
+    record.TakeOwnershipOfData();
 }
 
 template <typename T>
