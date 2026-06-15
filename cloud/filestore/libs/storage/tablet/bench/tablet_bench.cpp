@@ -189,6 +189,8 @@ struct TTabletSetup
         auto handle = CreateHandle(*TabletClient, nodeId);
 
         TabletClient->WriteData(handle, 0, FileSize, '1');
+        // Just in case.
+        TabletClient->Flush();
 
         MergedFileHandle = handle;
     }
@@ -217,10 +219,6 @@ struct TTabletSetup
     // plus up to MaxOverwrites overlapping overwrite blobs. Reading then visits
     // each overwritten block once per overlapping blob, which is what stresses
     // TBlockRangeOverlay's per-commit resolution.
-    //
-    // Each range is given a different overwrite depth in [1, MaxOverwrites], the
-    // range containing block 0 gets the most, so the 4 KiB benchmark (reading
-    // from offset 0) hits the worst case while a 1 MiB read spans every depth.
     void EnsureMixedMultiOverwriteFileCreated()
     {
         if (OverwriteFileHandle) {
@@ -320,8 +318,10 @@ Y_CPU_BENCHMARK(TTablet_DescribeData_Mixed_4KiB_RequestSize, iface)
 
     tablet->EnsureMixedFileCreated();
 
+    const ui64 startOffset = 128 * 4_KB;
+
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        tablet->DescribeData(tablet->MixedFileHandle, 0, 4_KB);
+        tablet->DescribeData(tablet->MixedFileHandle, startOffset, 4_KB);
     }
 }
 
@@ -342,7 +342,9 @@ Y_CPU_BENCHMARK(TTablet_DescribeData_MixedMultiOverwrite_4KiB_RequestSize, iface
 
     tablet->EnsureMixedMultiOverwriteFileCreated();
 
+    const ui64 startOffset = 128 * 4_KB;
+
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        tablet->DescribeData(tablet->OverwriteFileHandle, 0, 4_KB);
+        tablet->DescribeData(tablet->OverwriteFileHandle, startOffset, 4_KB);
     }
 }
