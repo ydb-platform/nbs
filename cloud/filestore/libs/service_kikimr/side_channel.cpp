@@ -18,6 +18,60 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
+{
+    ui64 totalLength = 0;
+    for (const auto& iovec: request.GetIovecs()) {
+        totalLength += iovec.GetLength();
+    }
+
+    TString buffer;
+    buffer.ReserveAndResize(totalLength);
+    char* dst = buffer.begin();
+    for (const auto& iovec: request.GetIovecs()) {
+        memcpy(
+            dst,
+            reinterpret_cast<const char*>(iovec.GetBase()),
+            iovec.GetLength());
+        dst += iovec.GetLength();
+    }
+
+    request.SetBuffer(std::move(buffer));
+    request.SetBufferOffset(0);
+    request.MutableIovecs()->Clear();
+}
+
+void MoveBufferToIovecs(
+    NProto::TReadDataResponse& response,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
+{
+    if (iovecs.empty() || response.GetBuffer().empty()) {
+        return;
+    }
+
+    auto currentOffset = response.GetBufferOffset();
+    const auto bufferSize = response.GetBuffer().size();
+    const char* src = response.GetBuffer().data();
+    for (const auto& iovec: iovecs) {
+        if (currentOffset >= bufferSize) {
+            break;
+        }
+        const auto bytesToCopy =
+            Min<ui64>(iovec.GetLength(), bufferSize - currentOffset);
+        memcpy(
+            reinterpret_cast<char*>(iovec.GetBase()),
+            src + currentOffset,
+            bytesToCopy);
+        currentOffset += bytesToCopy;
+    }
+
+    response.SetLength(bufferSize - response.GetBufferOffset());
+    response.ClearBuffer();
+    response.SetBufferOffset(0);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TEndpointPool: public TThrRefBase
 {
 private:
@@ -318,14 +372,20 @@ public:
     {}
 
 public:
-    // TODO(#5894) zero-copy io support
-
     bool ExecuteRequest(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request,
         TPromise<NProto::TReadDataResponse> response) override
     {
         Y_UNUSED(callContext);
+
+        // Iovec base addresses are pointers in this process and cannot be
+        // sent over the wire. Strip them from the request and copy data
+        // from the response Buffer back into the original iovecs.
+        google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+        if (request->IovecsSize() > 0) {
+            iovecs.Swap(request->MutableIovecs());
+        }
 
         auto channel = AccessFileSystemChannel(*request);
 
@@ -335,8 +395,12 @@ public:
             [](TRequest& req, const NProto::TReadDataRequest& body) {
                 *req.MutableReadData() = body;
             },
-            [](NProto::TReadDataResponse& resp, TResponse& r) {
+            [iovecs = std::move(iovecs)](
+                NProto::TReadDataResponse& resp,
+                TResponse& r) mutable
+            {
                 resp = std::move(*r.MutableReadData());
+                MoveBufferToIovecs(resp, iovecs);
             });
     }
 
@@ -346,6 +410,12 @@ public:
         TPromise<NProto::TWriteDataResponse> response) override
     {
         Y_UNUSED(callContext);
+
+        // Iovec base addresses are pointers in this process and cannot be
+        // sent over the wire. Materialize them into Buffer before dispatching.
+        if (request->IovecsSize() > 0) {
+            MoveIovecsToBuffer(*request);
+        }
 
         auto channel = AccessFileSystemChannel(*request);
 
