@@ -122,24 +122,6 @@ struct TWriteFreshBlocksRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAffectedBlob
-{
-    ui8 CompactionRangeCount = 0;
-    ui64 MaxCommitIdInCompactionRange = 0;
-    ui64 MinCommitIdInCompactionRange = Max<ui64>();
-    TVector<ui16> Offsets;
-    TMaybe<TBlockMask> BlockMask;
-    TVector<ui32> AffectedBlockIndices;
-
-    // Filled only if a flag is set. BlobMeta is needed only to do some extra
-    // consistency checks.
-    TMaybe<NProto::TBlobMeta> BlobMeta;
-};
-
-using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TAffectedBlock
 {
     ui32 BlockIndex = 0;
@@ -147,6 +129,28 @@ struct TAffectedBlock
 };
 
 using TAffectedBlocks = TVector<TAffectedBlock>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAffectedBlob
+{
+    ui8 CompactionRangeCount = 0;
+    ui64 MaxCommitIdInCompactionRange = 0;
+    ui64 MinCommitIdInCompactionRange = Max<ui64>();
+    std::optional<TBlockRange32> MergedBlockRange;
+
+    TVector<ui16> Offsets;
+    TMaybe<TBlockMask> BlockMask;
+    TAffectedBlocks AffectedBlocks;
+
+    // Filled only if a flag is set. BlobMeta is needed only to do some extra
+    // consistency checks.
+    TMaybe<NProto::TBlobMeta> BlobMeta;
+
+    std::optional<NProto::TBlobMeta> RecreatedBlobMeta;
+};
+
+using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

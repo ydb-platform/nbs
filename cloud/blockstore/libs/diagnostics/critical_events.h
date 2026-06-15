@@ -131,6 +131,7 @@ using TCritEventParams =
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
     xxx(DiskDevicesSizeViolation)                                              \
     xxx(RdmaMessageTypeMismatch)                                               \
+    xxx(CleanupBlobMetaBlocksMismatch)                                         \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
