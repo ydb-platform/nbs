@@ -309,6 +309,92 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
                     .GetNewCleanupEnabled());
         }
     }
+
+    Y_UNIT_TEST(ShouldPreferStorageConfigOverrideOverFeaturesConfig)
+    {
+        TTestEnv env;
+
+        // A bool feature enabled for the tablet's cloud via the features
+        // config.
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        auto* feature = featuresConfigProto.AddFeatures();
+        feature->SetName("NewCleanupEnabled");
+        feature->MutableWhitelist()->AddCloudIds("test_cloud");
+
+        env.GetStorageConfig()->SetFeaturesConfig(
+            NFeatures::TFeaturesConfig(featuresConfigProto));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        // Sanity: the features config enables the feature.
+        {
+            auto response = tablet.GetStorageConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response->Record.GetStorageConfig().GetNewCleanupEnabled());
+        }
+
+        // A per-tablet override disables the feature. It must win over the
+        // features config, which can only force the bool to true.
+        NProto::TStorageConfig patch;
+        patch.SetNewCleanupEnabled(false);
+        tablet.ChangeStorageConfig(std::move(patch));
+
+        tablet.RebootTablet();
+
+        {
+            auto response = tablet.GetStorageConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                response->Record.GetStorageConfig().GetNewCleanupEnabled());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepStorageConfigOverrideAfterUpdateConfig)
+    {
+        TTestEnv env;
+
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        auto* feature = featuresConfigProto.AddFeatures();
+        feature->SetName("NewCleanupEnabled");
+        feature->MutableWhitelist()->AddCloudIds("test_cloud");
+
+        env.GetStorageConfig()->SetFeaturesConfig(
+            NFeatures::TFeaturesConfig(featuresConfigProto));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        NProto::TStorageConfig patch;
+        patch.SetNewCleanupEnabled(false);
+        tablet.ChangeStorageConfig(std::move(patch));
+
+        tablet.RebootTablet();
+
+        // The override wins right after load.
+        {
+            auto response = tablet.GetStorageConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                response->Record.GetStorageConfig().GetNewCleanupEnabled());
+        }
+
+        // A subsequent UpdateConfig re-applies the features config; the
+        // override must still win afterwards (not only on tablet load).
+        tablet.UpdateConfig({});
+
+        {
+            auto response = tablet.GetStorageConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                response->Record.GetStorageConfig().GetNewCleanupEnabled());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

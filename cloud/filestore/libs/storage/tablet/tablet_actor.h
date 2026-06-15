@@ -526,6 +526,12 @@ private:
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TLoadState& args);
 
+    void ApplyStorageConfigOverrides(
+        const NActors::TActorContext& ctx,
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fileSystemId);
+
     bool IsMainTablet() const;
     bool BehaveAsShard(const NProto::THeaders& headers) const;
 
