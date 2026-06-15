@@ -59,6 +59,7 @@ namespace NCloud::NFileStore::NStorage {
 inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    TString fileSystemId,
     ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
@@ -73,12 +74,15 @@ inline void BuildBackendInfo(
         backendInfo->SetFastShardHost(FQDNHostName());
         backendInfo->SetFastShardPort(fastShardPort);
     }
+
+    backendInfo->SetActualFileSystemId(std::move(fileSystemId));
 }
 
 template <typename T>
 void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    TString fileSystemId,
     ui32 tabletActorCpuUsageRate,
     T& response)
 {
@@ -88,6 +92,7 @@ void BuildBackendInfo(
         BuildBackendInfo(
             config,
             systemCounters,
+            std::move(fileSystemId),
             tabletActorCpuUsageRate,
             backendInfo);
     }

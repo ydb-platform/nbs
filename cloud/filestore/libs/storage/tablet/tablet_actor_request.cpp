@@ -117,6 +117,7 @@ void TIndexTabletActor::CompleteResponse(
     BuildBackendInfo(
         *Config,
         *SystemCounters,
+        GetFileSystemId(),
         Metrics.CPUUsageRate,
         response);
     if constexpr (HasResponseHeaders<decltype(response)>()) {
