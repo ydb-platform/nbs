@@ -1,7 +1,5 @@
 #include "server.h"
 
-#include <atomic>
-
 #include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
@@ -301,7 +299,7 @@ private:
     TLockFreeList<TRequest> InputRequests;
     TSimpleList<TRequest> QueuedRequests;
     TEventHandle RequestEvent;
-    TAtomic FlushStarted = false;
+    bool FlushStarted = false;
 
     // Count of requests currently transferred to the handler (via req.release()
     // in ExecuteRequest) whose SendResponse/SendError has not yet been called.
