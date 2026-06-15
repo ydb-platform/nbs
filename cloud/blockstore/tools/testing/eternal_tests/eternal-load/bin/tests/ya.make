@@ -9,10 +9,15 @@ TEST_SRCS(
 
 DEPENDS(
     cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin
-    cloud/storage/core/tools/testing/qemu/image-noble
+    cloud/storage/core/tools/testing/qemu/image
 )
 
-SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
+IF (SANITIZER_TYPE)
+    ENV(ETERNAL_LOAD_MULTIPLE_FILES_TIMEOUT=60)
+    ENV(ETERNAL_LOAD_MULTIPLE_FILES_TEST_COUNT=2)
+ENDIF()
+
+SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image/rootfs.img)
 SET_APPEND(QEMU_INVOKE_TEST YES)
 SET_APPEND(QEMU_VIRTIO none)
 SET_APPEND(QEMU_ENABLE_KVM True)
