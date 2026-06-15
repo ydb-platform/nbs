@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <optional>
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
@@ -310,6 +312,13 @@ using TShardStatePtr = TIntrusivePtr<TShardState>;
 struct TSessionInfo
     : public TIntrusiveListItem<TSessionInfo>
 {
+    struct TSubSessionInfo
+    {
+        bool ReadOnly = false;
+        TInstant LastPing;
+        NActors::TActorId SessionActor;
+    };
+
     TString ClientId;
     NProto::TFileStore FileStore;
     TString SessionId;
@@ -317,10 +326,9 @@ struct TSessionInfo
     NCloud::NProto::EStorageMediaKind MediaKind;
     IRequestStatsPtr RequestStats;
 
-    NActors::TActorId SessionActor;
     ui64 TabletId = 0;
 
-    THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
+    THashMap<ui64, TSubSessionInfo> SubSessions;
     ESessionCreateDestroyState CreateDestroyState =
         ESessionCreateDestroyState::STATE_NONE;
 
@@ -338,7 +346,7 @@ struct TSessionInfo
         info.SetSessionSeqNo(seqNo);
         auto it = SubSessions.find(seqNo);
         if (it != SubSessions.end()) {
-            info.SetReadOnly(it->second.first);
+            info.SetReadOnly(it->second.ReadOnly);
         }
     }
 
@@ -348,9 +356,43 @@ struct TSessionInfo
         FileStore = std::move(fileStore);
     }
 
-    void AddSubSession(ui64 seqNo, bool readOnly)
+    const TSubSessionInfo* FindSubSession(ui64 seqNo) const
     {
-        SubSessions[seqNo] = std::make_pair(readOnly, TInstant::Now());
+        auto it = SubSessions.find(seqNo);
+        if (it != SubSessions.end()) {
+            return &it->second;
+        }
+        return nullptr;
+    }
+
+    std::optional<NActors::TActorId> GetSessionActor(ui64 seqNo) const
+    {
+        if (const auto* subSession = FindSubSession(seqNo)) {
+            if (subSession->SessionActor) {
+                return subSession->SessionActor;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    void SetSessionActor(ui64 seqNo, const NActors::TActorId& sessionActor)
+    {
+        auto it = SubSessions.find(seqNo);
+        if (it != SubSessions.end()) {
+            it->second.SessionActor = sessionActor;
+        }
+    }
+
+    void AddSubSession(
+        ui64 seqNo,
+        bool readOnly,
+        const NActors::TActorId& sessionActor)
+    {
+        auto& subSession = SubSessions[seqNo];
+        subSession.ReadOnly = readOnly;
+        subSession.LastPing = TInstant::Now();
+        subSession.SessionActor = sessionActor;
     }
 
     bool RemoveSubSession(ui64 seqNo)
@@ -364,10 +406,15 @@ struct TSessionInfo
         return SubSessions.count(seqNo) > 0;
     }
 
+    ui32 GetSubSessionCount() const
+    {
+        return SubSessions.size();
+    }
+
     void UpdateSubSession(ui64 seqNo, TInstant now)
     {
         if (auto it = SubSessions.find(seqNo); it != SubSessions.end()) {
-            it->second.second = now;
+            it->second.LastPing = now;
         }
     }
 

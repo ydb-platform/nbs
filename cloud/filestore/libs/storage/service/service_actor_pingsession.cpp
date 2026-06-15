@@ -26,10 +26,14 @@ void TStorageServiceActor::HandlePingSession(
         sessionId.Quote().c_str());
 
     auto* session = State->FindSession(sessionId, seqNo);
+    const auto sessionActor = session
+        ? session->GetSessionActor(seqNo)
+        : std::optional<TActorId>();
+
     if (!session ||
         session->ClientId != clientId ||
         sessionId != session->SessionId ||
-        !session->SessionActor)
+        !sessionActor)
     {
         auto response = std::make_unique<TEvService::TEvPingSessionResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
@@ -42,7 +46,7 @@ void TStorageServiceActor::HandlePingSession(
 
     NCloud::Send(
         ctx,
-        session->SessionActor,
+        *sessionActor,
         std::make_unique<TEvServicePrivate::TEvPingSession>());
 
     auto response = std::make_unique<TEvService::TEvPingSessionResponse>();

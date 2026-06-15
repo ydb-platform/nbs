@@ -944,7 +944,9 @@ void TStorageServiceActor::HandleWriteData(
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
 
     auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId || !session->SessionActor) {
+    if (!session || session->ClientId != clientId ||
+        !session->GetSessionActor(seqNo))
+    {
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
