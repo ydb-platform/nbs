@@ -48,6 +48,7 @@ private:
 public:
     using TRequestContext = TDeviceRequestRdmaContext;
     using TResponseProto = NProto::TWriteDeviceBlocksResponse;
+    static constexpr ui32 ExpectedMsgId = TBlockStoreProtocol::WriteDeviceBlocksResponse;
 
     TRdmaMultiWriteBlocksResponseHandler(
             TActorSystem* actorSystem,
