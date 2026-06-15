@@ -193,9 +193,6 @@ message TDescribeBlobResponse
 
     repeated TBlockInBlob Blocks = 2;
 
-    // Request traces. Deprecated. Use Headers.Trace instead.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
