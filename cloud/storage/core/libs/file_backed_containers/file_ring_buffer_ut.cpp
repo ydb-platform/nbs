@@ -662,7 +662,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 36;
         TFileRingBuffer rb(f.GetName(), len);
 
-        UNIT_ASSERT_EQUAL(4, rb.GetVersion());
+        UNIT_ASSERT_EQUAL(5, rb.GetVersion());
     }
 
     Y_UNIT_TEST(ShouldGetMaxObservedEntryByteCount)
