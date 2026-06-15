@@ -1116,7 +1116,8 @@ void TVolumeActor::HandleDescribeBlob(
     const auto blobId =
         NKikimr::LogoBlobIDFromLogoBlobID(msg->Record.GetBlobId());
     if (!blobId) {
-        replyError(MakeError(E_ARGUMENT, "invalid blob id in DescribeBlob request"));
+        replyError(
+            MakeError(E_ARGUMENT, "invalid blob id in DescribeBlob request"));
         return;
     }
 
