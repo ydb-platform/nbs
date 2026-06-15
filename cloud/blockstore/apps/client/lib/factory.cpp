@@ -11,6 +11,7 @@
 #include "create_volume_from_device.h"
 #include "create_volume_link.h"
 #include "delete_checkpoint.h"
+#include "describe_blob.h"
 #include "describe_blocks.h"
 #include "describe_disk_registry_config.h"
 #include "describe_endpoint.h"
@@ -70,6 +71,7 @@ struct THandlerFactory
         { "createvolumelink", NewCreateVolumeLinkCommand },
         { "deletecheckpoint", NewDeleteCheckpointCommand },
         { "getcheckpointstatus", NewGetCheckpointStatusCommand },
+        { "describeblob", NewDescribeBlobCommand },
         { "describeblocks", NewDescribeBlocksCommand },
         { "describediskregistryconfig", NewDescribeDiskRegistryConfigCommand },
         { "describeendpoint", NewDescribeEndpointCommand },

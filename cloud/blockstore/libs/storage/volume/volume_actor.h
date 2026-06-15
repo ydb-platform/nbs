@@ -1187,6 +1187,10 @@ private:
         const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDescribeBlobResponse(
+        const TEvVolume::TEvDescribeBlobResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleGetUsedBlocksResponse(
         const TEvVolume::TEvGetUsedBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
