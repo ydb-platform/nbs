@@ -15,7 +15,6 @@ DestroyHandle
 Flush
 GetNodeAttr
 GetNodeXAttr
-ListNodeXAttr
 ListNodes
 ReadData
 ReadLink

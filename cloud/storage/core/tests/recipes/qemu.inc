@@ -7,8 +7,8 @@ IF (NOT QEMU_FIRMWARE)
 ENDIF()
 
 IF (NOT QEMU_ROOTFS)
-    SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
-    DEPENDS(cloud/storage/core/tools/testing/qemu/image-noble)
+    SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image/rootfs.img)
+    DEPENDS(cloud/storage/core/tools/testing/qemu/image)
 ENDIF()
 
 IF (NOT QEMU_SSH_USER)
