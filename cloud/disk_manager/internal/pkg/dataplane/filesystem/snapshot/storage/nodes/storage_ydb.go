@@ -63,6 +63,7 @@ func nodeRefStructValue(
 }
 
 type nodeRefByShard struct {
+	snapshotID        string
 	shardFilesystemID string
 	parentNodeID      uint64
 	name              string
@@ -81,12 +82,11 @@ func nodeRefByShardStructTypeString() string {
 }
 
 func nodeRefByShardStructValue(
-	snapshotID string,
 	nodeRef nodeRefByShard,
 ) persistence.Value {
 
 	return persistence.StructValue(
-		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(nodeRef.snapshotID)),
 		persistence.StructFieldValue("shard_filesystem_id", persistence.UTF8Value(nodeRef.shardFilesystemID)),
 		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(nodeRef.parentNodeID)),
 		persistence.StructFieldValue("name", persistence.UTF8Value(nodeRef.name)),
@@ -98,6 +98,7 @@ func nodeRefByShardStructValue(
 func scanNodeRefByShard(result persistence.Result) (nodeRefByShard, error) {
 	var nodeRef nodeRefByShard
 	err := result.ScanNamed(
+		persistence.OptionalWithDefault("filesystem_snapshot_id", &nodeRef.snapshotID),
 		persistence.OptionalWithDefault("shard_filesystem_id", &nodeRef.shardFilesystemID),
 		persistence.OptionalWithDefault("parent_node_id", &nodeRef.parentNodeID),
 		persistence.OptionalWithDefault("name", &nodeRef.name),
@@ -396,7 +397,7 @@ func (s *storageYDB) saveNodesByShard(
 		return err
 	}
 
-	nodeRefs := make([]nodeRefByShard, 0, len(nodes)*2)
+	values := make([]persistence.Value, 0, len(nodes)*2)
 	for _, node := range nodes {
 		if len(node.ShardFileSystemID) == 0 {
 			continue
@@ -405,13 +406,15 @@ func (s *storageYDB) saveNodesByShard(
 			continue
 		}
 
-		nodeRefs = append(nodeRefs, nodeRefByShard{
+		nodeRef := nodeRefByShard{
+			snapshotID:        snapshotID,
 			shardFilesystemID: node.ShardFileSystemID,
 			parentNodeID:      node.ParentID,
 			name:              node.Name,
 			nodeID:            node.NodeID,
 			storeAsChild:      false,
-		})
+		}
+		values = append(values, nodeRefByShardStructValue(nodeRef))
 	}
 
 	for _, node := range nodes {
@@ -420,18 +423,15 @@ func (s *storageYDB) saveNodesByShard(
 			continue
 		}
 
-		nodeRefs = append(nodeRefs, nodeRefByShard{
+		nodeRef := nodeRefByShard{
+			snapshotID:        snapshotID,
 			shardFilesystemID: parent.ShardFileSystemID,
 			parentNodeID:      node.ParentID,
 			name:              node.Name,
 			nodeID:            node.NodeID,
 			storeAsChild:      true,
-		})
-	}
-
-	values := make([]persistence.Value, 0, len(nodeRefs))
-	for _, nodeRef := range nodeRefs {
-		values = append(values, nodeRefByShardStructValue(snapshotID, nodeRef))
+		}
+		values = append(values, nodeRefByShardStructValue(nodeRef))
 	}
 
 	return s.upsertInBatches(values, func(batch []persistence.Value) error {
