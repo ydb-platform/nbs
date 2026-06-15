@@ -1,11 +1,13 @@
 #pragma once
 
 #include <silk/fibers/future.h>
+#include <silk/util/sanitizers.h>
 #include <silk/util/stack.h>
 #include <silk/util/tree.h>
 
 #include <atomic>
 #include <cerrno>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -22,6 +24,7 @@ class Fiber;
  * Types exceeding this limit cause a compile-time error.
  */
 static constexpr uint64_t FIBER_PARAMETERS_SIZE = 64;
+static constexpr uint64_t FIBER_PARAMETERS_OFFSET = 224;
 
 /**
  * Hard cap on CPU index (largest known socket: 384 cores).
@@ -37,7 +40,12 @@ using FiberMain = int(void * parameters) noexcept;
  * Destructor for the fiber's parameter buffer. Called after the entry point returns.
  * Null for trivially destructible parameter types.
  */
-using ParametersDtor = void(void * parameters) noexcept;
+using FiberParametersDtor = void(void * parameters) noexcept;
+
+/**
+ * Fiber switch callback.  Called when fiber suspended/resumed.
+ */
+using FiberSwitchCallback = void(Fiber * fiber) noexcept;
 
 /**
  * Packed fiber identity: [category:8 | cpu:10 | counter:46] stored as uint64_t.
@@ -137,6 +145,15 @@ public:
         // isolation (e.g. head-of-line blocking benchmarks).
         // Production should leave this off.
         bool disableWorkStealing = false;
+
+        // Optional per-fiber context-switch hooks. fiberResume fires on the
+        // thread about to run the fiber, immediately before control enters it
+        // (first run and every resume); fiberSuspend fires on the same thread
+        // immediately after control leaves it (on suspend and on termination).
+        // Calls always balance, so they suit save/restore of per-fiber state
+        // across the OS thread the fiber borrows. Not invoked for proxy fibers.
+        FiberSwitchCallback * fiberSuspend = nullptr;
+        FiberSwitchCallback * fiberResume = nullptr;
     };
 
     /**
@@ -229,6 +246,11 @@ public:
      * Return true if fiber is currently running.
      */
     static bool isFiberRunning(Fiber * fiber) noexcept;
+
+    /**
+     * Return a pointer to fiber parameters block.
+     */
+    static void * getFiberParameters(Fiber * fiber) noexcept { return reinterpret_cast<uint8_t *>(fiber) + FIBER_PARAMETERS_OFFSET; }
 
     /**
      * Resume a suspended fiber.
@@ -328,6 +350,11 @@ public:
         // Processor whose io_uring ring holds this SQE; cancelIo must submit
         // the cancel to the same ring to avoid a cross-ring -ENOENT failure.
         uint32_t processorNumber = INVALID_PROCESSOR_NUMBER;
+#if defined(__SANITIZE_MEMORY__)
+        // Used to mark the kernel-written bytes as initialized for MSan.
+        iovec * readIov = nullptr;
+        uint32_t readIovLen = 0;
+#endif
     };
 
     /**
@@ -360,7 +387,7 @@ public:
      * @param bytesRead If not null, receives the number of bytes read on success.
      * @param future    Completion handle; wait() returns 0 on success or a errno on failure.
      */
-    static void read(int fd, iovec * iov, uint64_t iov_len, uint64_t offset, uint64_t * bytesRead, IoFuture * future) noexcept;
+    static void read(int fd, iovec * iov, uint32_t iov_len, uint64_t offset, uint64_t * bytesRead, IoFuture * future) noexcept;
 
     /**
      * Blocking write: submit a write from @p buf and suspend the calling fiber
@@ -392,7 +419,7 @@ public:
      * @param bytesWritten If not null, receives the number of bytes written on success.
      * @param future       Completion handle; wait() returns 0 on success or a errno on failure.
      */
-    static void write(int fd, iovec * iov, uint64_t iov_len, uint64_t offset, uint64_t * bytesWritten, IoFuture * future) noexcept;
+    static void write(int fd, iovec * iov, uint32_t iov_len, uint64_t offset, uint64_t * bytesWritten, IoFuture * future) noexcept;
 
     /**
      * Blocking poll: suspend the calling fiber until one of the requested
@@ -573,9 +600,8 @@ private:
     }
 
     static void buildStealCandidates() noexcept;
-    static void initCurrentFiber() noexcept;
-    static void * getFiberParameters(Fiber * fiber) noexcept;
-    static Fiber * allocateFiber(FiberMain * fiberMain, ParametersDtor * parametersDtor, uint8_t category, FiberFuture * future) noexcept;
+    static Fiber *
+    allocateFiber(FiberMain * fiberMain, FiberParametersDtor * parametersDtor, uint8_t category, FiberFuture * future) noexcept;
     static void freeFiber(Fiber * fiber) noexcept;
     static void enqueueReady(Fiber * fiber) noexcept;
     static void yieldSuspendCallback(Fiber * fiber, void * context) noexcept;
