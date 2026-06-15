@@ -8,17 +8,42 @@ namespace NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TWriteBlocksLocalRequest::~TWriteBlocksLocalRequest()
+{
+    if (OwnsSglist && !Sglist.Empty()) {
+        Sglist.Close();
+    }
+}
+
+TWriteBlocksLocalRequest& TWriteBlocksLocalRequest::operator=(
+    TWriteBlocksLocalRequest&& request) noexcept
+{
+    if (this == &request) {
+        return *this;
+    }
+    if (OwnsSglist && !Sglist.Empty()) {
+        Sglist.Close();
+    }
+    TWriteBlocksRequest::operator=(std::move(request));
+    Sglist = std::move(request.Sglist);
+    BlocksCount = request.BlocksCount;
+    OwnsSglist = request.OwnsSglist;
+
+    return *this;
+}
+
 TWriteBlocksLocalRequest TWriteBlocksLocalRequest::Clone() const
 {
     auto request = CreateDependentRequest();
-    if (SglistOwner) {
-        request.CopySglistIntoBuffers();
+    if (OwnsSglist) {
+        request.TakeOwnershipOfData();
     }
 
     return request;
 }
 
-TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() const
+TWriteBlocksLocalRequest
+TWriteBlocksLocalRequest::CreateDependentRequest() const
 {
     Y_ABORT_UNLESS(GetDescriptor()->field_count() == 8);
 
@@ -40,8 +65,13 @@ TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() cons
     return copiedRecord;
 }
 
-void TWriteBlocksLocalRequest::CopySglistIntoBuffers()
+void TWriteBlocksLocalRequest::TakeOwnershipOfData()
 {
+    // After std::move, GuardedObject is null and Acquire() would abort.
+    if (Sglist.Empty()) {
+        return;
+    }
+
     auto g = Sglist.Acquire();
     if (!g) {
         return;
@@ -57,9 +87,8 @@ void TWriteBlocksLocalRequest::CopySglistIntoBuffers()
         newSgList.emplace_back(buffer.data(), buffer.size());
     }
 
-    TGuardedSgList newGuardedSgList(std::move(newSgList));
-    Sglist = newGuardedSgList;
-    SglistOwner.emplace(std::move(newGuardedSgList));
+    Sglist = TGuardedSgList(std::move(newSgList));
+    OwnsSglist = true;
 }
 
 TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)

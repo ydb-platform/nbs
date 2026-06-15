@@ -56,23 +56,20 @@ struct TReadBlocksLocalResponse: public TReadBlocksResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TWriteBlocksLocalRequest can be 2 types:
+// TWriteBlocksLocalRequest has two modes:
 //
-//     1. Dependent WriteBlocksLocalRequest doesn't own any data. It can access
-//     data with TWriteBlocksLocalRequest::Sglist.
+//   Dependent (OwnsSglist=false) — Sglist points to external memory.
+//   Owner     (OwnsSglist=true)  — data is copied into Blocks, Sglist
+//                                  points to it. Destructor closes Sglist
+//                                  before Blocks are freed.
 //
-//     2. Owner WriteBlocksLocalRequest stores request data in
-//     TWriteBlocksRequest field. Sglist will be closed after object
-//     destruction. We can promote dependent request to owner by calling
-//     void TWriteBlocksLocalRequest::CopySglistIntoBuffers() method.
+// Use TakeOwnershipOfData() to promote dependent → owner.
 
-struct TWriteBlocksLocalRequest
-    : public TWriteBlocksRequest
+struct TWriteBlocksLocalRequest: public TWriteBlocksRequest
 {
     TGuardedSgList Sglist;
     ui32 BlocksCount = 0;
-
-    std::optional<TGuardedSglistOwner> SglistOwner;
+    bool OwnsSglist = false;
 
     TWriteBlocksLocalRequest() = default;
 
@@ -83,22 +80,22 @@ struct TWriteBlocksLocalRequest
     TWriteBlocksLocalRequest& operator=(
         const TWriteBlocksLocalRequest& request) = delete;
 
+    // Closes the old Sglist before overwriting, to avoid dangling pointers.
     TWriteBlocksLocalRequest& operator=(
-        TWriteBlocksLocalRequest&& request) = default;
+        TWriteBlocksLocalRequest&& request) noexcept;
 
-    // Full request copy. If this is dependent request, after clone we will get
-    // dependent request. If this is owner request, after clone we will get
-    // owner request.
+    // If owner, closes Sglist before Blocks are freed.
+    ~TWriteBlocksLocalRequest();
+
+    // Dependent, both clone and original point to the same external memory.
+    // Owner, clone is also owner (data is copied into new buffers).
     TWriteBlocksLocalRequest Clone() const;
 
-    // If the WriteBlocksLocal owns request data (the CopySglistIntoBuffers
-    // method was called), dependent request will be invalidated (Sglist.Close()
-    // will be called) after this object destruction. Doesn't copy Blocks field
-    // from TWriteBlocksLocalRequest, because all blocks can be accessed via
-    // Sglist.
+    // Creates a dependent request with a shared Sglist. Blocks are not copied.
     TWriteBlocksLocalRequest CreateDependentRequest() const;
 
-    void CopySglistIntoBuffers();
+    // Copies data from Sglist into Blocks and becomes owner.
+    void TakeOwnershipOfData();
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;
