@@ -317,6 +317,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     TABLEH() { out << "UUID"; }
                     TABLEH() { out << "Name"; }
                     TABLEH() { out << "S/N"; }
+                    TABLEH() { out << "Model"; }
                     TABLEH() { out << "State"; }
                     TABLEH() { out << "State Ts"; }
                     TABLEH() { out << "State Message"; }
@@ -344,6 +345,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     }
                     TABLED() { out << device.GetDeviceName(); }
                     TABLED() { out << device.GetSerialNumber(); }
+                    TABLED() { out << device.GetDeviceModel(); }
                     TABLED() {
                         DumpDeviceState(
                             out,
@@ -468,6 +470,7 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
 
         DIV() { out << "Name: " << device.GetDeviceName(); }
         DIV() { out << "S/N: " << device.GetSerialNumber(); }
+        DIV() { out << "Model: " << device.GetDeviceModel(); }
         DIV() { out << "Block size: " << device.GetBlockSize(); }
         DIV() {
             const auto bytes = device.GetBlocksCount() * device.GetBlockSize();
