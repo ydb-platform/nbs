@@ -61,8 +61,6 @@ class GuestClient:
 
 def setup_rdma():
     ssh_key = os.getenv("QEMU_SSH_KEY")
-    interface = "ens5"  # Ubuntu 24.04
-    # interface = "enp0s4"  # Ubuntu 26.04
 
     clients = []
     for index, local_ip in enumerate(["192.168.1.1", "192.168.1.2"]):
@@ -74,11 +72,11 @@ def setup_rdma():
         )
 
         setup_cmds = [
-            "ip address",
-            f"netplan set ethernets.{interface}.addresses=[{local_ip}/24]",
+            f"netplan set ethernets.ens5.addresses=[{local_ip}/24]",
             "netplan apply",
-            f"rdma link add rxe0 type rxe netdev {interface}",
-            "ip address",
+            "rdma link add rxe0 type rxe netdev ens5",
+            "ln -s /usr/lib/x86_64-linux-gnu/libibverbs.so.1 /usr/lib/libibverbs.so",
+            "ln -s /usr/lib/x86_64-linux-gnu/librdmacm.so.1 /usr/lib/librdmacm.so",
         ]
 
         for cmd in setup_cmds:
