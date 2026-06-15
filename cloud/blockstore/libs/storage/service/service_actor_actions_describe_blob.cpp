@@ -173,7 +173,6 @@ void TDescribeBlobActionActor::HandleDescribeBlobResponse(
         return;
     }
 
-    msg->Record.ClearDeprecatedTrace();
     msg->Record.MutableHeaders()->ClearTrace();
 
     TString response;
