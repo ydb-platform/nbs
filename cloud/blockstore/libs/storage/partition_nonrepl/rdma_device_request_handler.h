@@ -152,7 +152,7 @@ private:
                 msg,
                 {{"MsgId", result.MsgId},
                  {"ExpectedMsgId", TDerived::ExpectedMsgId}});
-            return MakeError(E_FAIL, std::move(msg));
+            return MakeError(E_REJECTED, std::move(msg));
         }
 
         auto& proto =
