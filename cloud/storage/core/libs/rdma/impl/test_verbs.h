@@ -75,7 +75,6 @@ void CreateConnection(
     ui16 sendQueueSize,
     ui16 recvQueueSize,
     ui32 maxBufferSize);
-void FlushCompletions(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
 
 // Enqueues an RDMA_CM_EVENT_ESTABLISHED for the given connection with the

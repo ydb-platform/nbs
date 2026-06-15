@@ -1600,14 +1600,6 @@ private:
     TRCUList<TClientEndpointPtr> Endpoints;
     TPollHandle PollHandle;
 
-    // Maps fd → (endpoint, event-type). Guarded by FdMapLock.
-    // PollHandle stores the fd itself as event.data.ptr so we never hold a
-    // raw endpoint pointer in the returned epoll events. HandlePollEvent()
-    // looks up the fd here under the lock and gets a strong ref — if the entry
-    // is gone (Detach already ran) the event is stale and we skip it safely.
-    TAdaptiveLock FdMapLock;
-    THashMap<int, std::pair<TClientEndpointPtr, EPollEvent>> FdToEndpoint;
-
     TAtomic StopFlag = 0;
     TEventHandle StopEvent;
 
@@ -1658,34 +1650,25 @@ public:
     void Attach(TClientEndpoint* endpoint)
     {
         if (Config->WaitMode == EWaitMode::Poll) {
-            const int completionFd = endpoint->CompletionChannel->fd;
-            const int requestFd    = endpoint->RequestEvent.Handle();
-            const int cancelFd     = endpoint->CancelRequestEvent.Handle();
-            const int abortFd      = endpoint->AbortRequestsEvent.Handle();
+            PollHandle.Attach(
+                endpoint->CompletionChannel->fd,
+                EPOLLIN,
+                PtrEventTag(endpoint, EPollEvent::Completion));
 
-            // Register all fds with epoll first, then insert all into the map
-            // under a single lock so HandlePollEvent never sees a partial set.
-            // Store the fd itself as event.data.ptr — no raw endpoint pointer
-            // in the epoll event buffer.
-            for (auto [fd, ev] : {
-                    std::pair{completionFd, EPollEvent::Completion},
-                    std::pair{requestFd,    EPollEvent::Request},
-                    std::pair{cancelFd,     EPollEvent::CancelRequest},
-                    std::pair{abortFd,      EPollEvent::AbortRequests}})
-            {
-                PollHandle.Attach(
-                    fd,
-                    EPOLLIN,
-                    reinterpret_cast<void*>(static_cast<uintptr_t>(fd)));
-            }
+            PollHandle.Attach(
+                endpoint->RequestEvent.Handle(),
+                EPOLLIN,
+                PtrEventTag(endpoint, EPollEvent::Request));
 
-            with_lock (FdMapLock) {
-                auto ep = endpoint->shared_from_this();
-                FdToEndpoint.emplace(completionFd, std::make_pair(ep, EPollEvent::Completion));
-                FdToEndpoint.emplace(requestFd,    std::make_pair(ep, EPollEvent::Request));
-                FdToEndpoint.emplace(cancelFd,     std::make_pair(ep, EPollEvent::CancelRequest));
-                FdToEndpoint.emplace(abortFd,      std::make_pair(ep, EPollEvent::AbortRequests));
-            }
+            PollHandle.Attach(
+                endpoint->CancelRequestEvent.Handle(),
+                EPOLLIN,
+                PtrEventTag(endpoint, EPollEvent::CancelRequest));
+
+            PollHandle.Attach(
+                endpoint->AbortRequestsEvent.Handle(),
+                EPOLLIN,
+                PtrEventTag(endpoint, EPollEvent::AbortRequests));
 
             Verbs->RequestCompletionEvent(endpoint->CompletionQueue.get(), 0);
         }
@@ -1694,24 +1677,10 @@ public:
     void Detach(TClientEndpoint* endpoint)
     {
         if (Config->WaitMode == EWaitMode::Poll) {
-            const int completionFd = endpoint->CompletionChannel->fd;
-            const int requestFd    = endpoint->RequestEvent.Handle();
-            const int cancelFd     = endpoint->CancelRequestEvent.Handle();
-            const int abortFd      = endpoint->AbortRequestsEvent.Handle();
-
-            // Remove all fds atomically under one lock so HandlePollEvent
-            // never observes a half-removed endpoint.
-            with_lock (FdMapLock) {
-                FdToEndpoint.erase(completionFd);
-                FdToEndpoint.erase(requestFd);
-                FdToEndpoint.erase(cancelFd);
-                FdToEndpoint.erase(abortFd);
-            }
-
-            PollHandle.Detach(completionFd);
-            PollHandle.Detach(requestFd);
-            PollHandle.Detach(cancelFd);
-            PollHandle.Detach(abortFd);
+            PollHandle.Detach(endpoint->CompletionChannel->fd);
+            PollHandle.Detach(endpoint->RequestEvent.Handle());
+            PollHandle.Detach(endpoint->CancelRequestEvent.Handle());
+            PollHandle.Detach(endpoint->AbortRequestsEvent.Handle());
         }
     }
 
@@ -1750,23 +1719,9 @@ private:
 
     void HandlePollEvent(const epoll_event& event)
     {
-        // Recover endpoint from the fd-keyed map. If Detach() already removed
-        // this fd, the event is stale — skip it without touching freed memory.
-        int fd = static_cast<int>(
-            reinterpret_cast<uintptr_t>(event.data.ptr));
+        auto* endpoint = PtrFromTag<TClientEndpoint>(event.data.ptr);
 
-        TClientEndpointPtr endpoint;
-        EPollEvent ev{};
-        with_lock (FdMapLock) {
-            auto it = FdToEndpoint.find(fd);
-            if (it == FdToEndpoint.end()) {
-                return;
-            }
-            endpoint = it->second.first;
-            ev = it->second.second;
-        }
-
-        switch (ev) {
+        switch (EventFromTag(event.data.ptr)) {
             case EPollEvent::Completion:
                 endpoint->HandleCompletionEvents();
                 break;
@@ -1787,6 +1742,7 @@ private:
 
     void HandlePollEvents()
     {
+        // wait for completion events
         size_t signaled = PollHandle.Wait(POLL_TIMEOUT);
 
         for (size_t i = 0; i < signaled; ++i) {

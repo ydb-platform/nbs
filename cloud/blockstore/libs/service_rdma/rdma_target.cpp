@@ -120,8 +120,18 @@ public:
     }
 
 private:
+#define BLOCKSTORE_HANDLE_REQUEST(name, ...)                             \
+    case TBlockStoreServerProtocol::Ev##name##Request:                   \
+        return Handle##name##Request(                                    \
+            context,                                                     \
+            std::move(callContext),                                      \
+            static_cast<NProto::T##name##Request*>(&*parseResult.Proto), \
+            parseResult.Data,                                            \
+            out);
+
+    // BLOCKSTORE_HANDLE_REQUEST
+
     NProto::TError DoHandleRequest(
-        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         TStringBuf in,
@@ -136,16 +146,6 @@ private:
 
         STORAGE_TRACE("Processing req with msgId %u", parseResult.MsgId);
 
-#define BLOCKSTORE_HANDLE_REQUEST(name, ...)                                   \
-    case TBlockStoreServerProtocol::Ev##name##Request:                         \
-        return Handle##name##Request(                                          \
-            ep,                                                                \
-            context,                                                           \
-            std::move(callContext),                                            \
-            static_cast<NProto::T##name##Request*>(&*parseResult.Proto),      \
-            parseResult.Data,                                                  \
-            out);
-
         switch (parseResult.MsgId) {
             BLOCKSTORE_HANDLE_REQUEST(ReadBlocks)
             BLOCKSTORE_HANDLE_REQUEST(WriteBlocks)
@@ -153,6 +153,7 @@ private:
             BLOCKSTORE_HANDLE_REQUEST(Ping)
             BLOCKSTORE_HANDLE_REQUEST(MountVolume)
             BLOCKSTORE_HANDLE_REQUEST(UnmountVolume)
+
             default:
                 return MakeError(
                     E_NOT_IMPLEMENTED,
@@ -173,23 +174,21 @@ private:
     {
         TaskQueue->ExecuteSimple(
             [=,
-             ep = Endpoint.lock(),
+             endpoint = Endpoint,
              callContext =
                  ToBlockStoreCallContext(std::move(callContext))]() mutable
             {
-                if (!ep) {
-                    // Server destroyed before this task ran.
-                    // With correct Stop() order (TaskQueue before Server)
-                    // this path is impossible in normal shutdown.
-                    return;
-                }
-
                 auto error = SafeExecute<NProto::TError>(
                     [=]()
-                    { return DoHandleRequest(ep, context, callContext, in, out); });
+                    { return DoHandleRequest(context, callContext, in, out); });
 
                 if (HasError(error)) {
-                    ep->SendError(context, error.GetCode(), error.GetMessage());
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            error.GetCode(),
+                            error.GetMessage());
+                    }
                 }
             });
     }
@@ -227,7 +226,6 @@ private:
     }
 
     NProto::TError HandleReadBlocksRequest(
-        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TReadBlocksRequest* request,
@@ -257,7 +255,7 @@ private:
             request->GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
-        auto guardedSgList = buffer.CreateGuardedSgList(std::move(sglist));
+        TGuardedSgList guardedSgList(sglist);
 
         auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
         req->CopyFrom(*request);
@@ -272,7 +270,7 @@ private:
              guardedSgList = std::move(guardedSgList),
              blockSize = request->GetBlockSize(),
              taskQueue = TaskQueue,
-             ep = ep,
+             endpoint = Endpoint,
              weakSelf = weak_from_this()](auto future) mutable
             {
                 auto response = ExtractResponse(future);
@@ -323,14 +321,18 @@ private:
                             *response.MutableError() = MakeError(
                                 E_REJECTED,
                                 "Unable to serialize ReadBlocks response");
-                            ep->SendError(
-                                context,
-                                E_REJECTED,
-                                "unable to serialize ReadBlocks response");
+                            if (auto ep = endpoint.lock()) {
+                                ep->SendError(
+                                    context,
+                                    E_REJECTED,
+                                    "unable to serialize ReadBlocks response");
+                            }
                             return;
                         }
 
-                        ep->SendResponse(context, responseBytes);
+                        if (auto ep = endpoint.lock()) {
+                            ep->SendResponse(context, responseBytes);
+                        }
                     });
             });
 
@@ -338,7 +340,6 @@ private:
     }
 
     NProto::TError HandleWriteBlocksRequest(
-        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TWriteBlocksRequest* request,
@@ -375,7 +376,7 @@ private:
         future.Subscribe(
             [=,
              taskQueue = TaskQueue,
-             ep = ep,
+             endpoint = Endpoint,
              weakSelf = weak_from_this()](auto future)
             {
                 auto response = ExtractResponse(future);
@@ -416,13 +417,17 @@ private:
                             *response.MutableError() = MakeError(
                                 E_REJECTED,
                                 "Unable to serialize WriteBlocks response");
-                            ep->SendError(
-                                context,
-                                E_REJECTED,
-                                "unable to serialize WriteBlocks response");
+                            if (auto ep = endpoint.lock()) {
+                                ep->SendError(
+                                    context,
+                                    E_REJECTED,
+                                    "unable to serialize WriteBlocks response");
+                            }
                             return;
                         }
-                        ep->SendResponse(context, responseBytes);
+                        if (auto ep = endpoint.lock()) {
+                            ep->SendResponse(context, responseBytes);
+                        }
                     });
             });
 
@@ -430,7 +435,6 @@ private:
     }
 
     NProto::TError HandleZeroBlocksRequest(
-        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TZeroBlocksRequest* request,
@@ -457,7 +461,7 @@ private:
         future.Subscribe(
             [out = out,
              context = context,
-             ep = ep,
+             endpoint = Endpoint,
              callContext = std::move(callContext),
              weakSelf = weak_from_this()](auto future)
             {
@@ -495,20 +499,23 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize ZeroBlocks response");
-                    ep->SendError(
-                        context,
-                        E_REJECTED,
-                        "unable to serialize ZeroBlocks response");
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            E_REJECTED,
+                            "unable to serialize ZeroBlocks response");
+                    }
                     return;
                 }
-                ep->SendResponse(context, responseBytes);
+                if (auto ep = endpoint.lock()) {
+                    ep->SendResponse(context, responseBytes);
+                }
             });
 
         return {};
     }
 
     NProto::TError HandlePingRequest(
-        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TPingRequest* request,
@@ -533,13 +540,14 @@ private:
             flags,   // flags
             response);
 
-        ep->SendResponse(context, responseBytes);
+        if (auto ep = Endpoint.lock()) {
+            ep->SendResponse(context, responseBytes);
+        }
 
         return {};
     }
 
     NProto::TError HandleMountVolumeRequest(
-        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TMountVolumeRequest* request,
@@ -566,7 +574,7 @@ private:
         future.Subscribe(
             [out = out,
              context = context,
-             ep = ep,
+             endpoint = Endpoint,
              callContext = std::move(callContext),
              weakSelf = weak_from_this()](auto future)
             {
@@ -591,21 +599,24 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize MountVolume response");
-                    ep->SendError(
-                        context,
-                        E_REJECTED,
-                        "unable to serialize MountVolume response");
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            E_REJECTED,
+                            "unable to serialize MountVolume response");
+                    }
                     return;
                 }
 
-                ep->SendResponse(context, responseBytes);
+                if (auto ep = endpoint.lock()) {
+                    ep->SendResponse(context, responseBytes);
+                }
             });
 
         return {};
     }
 
     NProto::TError HandleUnmountVolumeRequest(
-        const NCloud::NStorage::NRdma::IServerEndpointPtr& ep,
         void* context,
         TCallContextPtr callContext,
         NProto::TUnmountVolumeRequest* request,
@@ -632,7 +643,7 @@ private:
         future.Subscribe(
             [out = out,
              context = context,
-             ep = ep,
+             endpoint = Endpoint,
              callContext = std::move(callContext),
              weakSelf = weak_from_this()](auto future)
             {
@@ -657,14 +668,18 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize UnmountVolume response");
-                    ep->SendError(
-                        context,
-                        E_REJECTED,
-                        "unable to serialize UnmountVolume response");
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            E_REJECTED,
+                            "unable to serialize UnmountVolume response");
+                    }
                     return;
                 }
 
-                ep->SendResponse(context, responseBytes);
+                if (auto ep = endpoint.lock()) {
+                    ep->SendResponse(context, responseBytes);
+                }
             });
 
         return {};
@@ -722,14 +737,6 @@ public:
 
     void Stop() override
     {
-        // Server must stop first: it flushes all RDMA sessions, and — via the
-        // ExecutingRequests counter in IsFlushed() — waits until every floating
-        // TRequest (transferred to the handler) has called SendResponse/SendError
-        // and gone through FreeRequest. Only then does it free session buffer
-        // pools. TaskQueue is still running at that point, processing in-flight
-        // tasks and async callbacks that hold TStringBuf references into those
-        // buffers. After Server->Stop() returns, no TRequest can reference
-        // session memory, so TaskQueue->Stop() is safe.
         Server->Stop();
         TaskQueue->Stop();
     }

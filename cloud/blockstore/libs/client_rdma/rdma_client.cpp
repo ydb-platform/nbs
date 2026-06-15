@@ -249,7 +249,7 @@ private:
             dst);
 
         STORAGE_VERIFY(
-            bytesRead == srcSize,
+            bytesRead == dstSize,
             TWellKnownEntityTypes::DISK,
             GetDiskId(Request->GetDiskId()));
 

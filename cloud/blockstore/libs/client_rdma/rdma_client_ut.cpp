@@ -346,40 +346,6 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReadIntoLargerSglist)
-    {
-        TTestEnv env;
-        auto endpoint = env.CreateDataEndpoint();
-
-        TString firstBlock(DefaultBlockSize, 'x');
-        TString secondBlock(DefaultBlockSize, 'q');
-
-        auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
-        request->SetStartIndex(0);
-        request->SetBlocksCount(1);
-        request->SetBlockSize(DefaultBlockSize);
-
-        TSgList sglist{
-            {const_cast<char*>(firstBlock.data()), firstBlock.size()},
-            {const_cast<char*>(secondBlock.data()), secondBlock.size()},
-        };
-        request->Sglist = TGuardedSgList(std::move(sglist));
-
-        auto future = endpoint->ReadBlocksLocal(
-            MakeIntrusive<TCallContext>(),
-            std::move(request));
-
-        UNIT_ASSERT_C(future.HasValue(), "Value not set");
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            future.GetValue().GetError().GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 0), firstBlock);
-        UNIT_ASSERT_VALUES_EQUAL(
-            TString(DefaultBlockSize, 'q'),
-            secondBlock);
-    }
-
     Y_UNIT_TEST(ShouldFailReadWhenSglistClosed)
     {
         TTestEnv env;

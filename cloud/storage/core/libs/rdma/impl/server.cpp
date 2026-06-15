@@ -301,12 +301,15 @@ private:
     TLockFreeList<TRequest> InputRequests;
     TSimpleList<TRequest> QueuedRequests;
     TEventHandle RequestEvent;
-    bool FlushStarted = false;
+    TAtomic FlushStarted = false;
+
     // Count of requests currently transferred to the handler (via req.release()
     // in ExecuteRequest) whose SendResponse/SendError has not yet been called.
     // IsFlushed() waits for this to reach zero so session buffers are not freed
     // while the handler or its async callbacks still hold in/out TStringBufs.
-    std::atomic<ui32> ExecutingRequests{0};
+    // This variable only gets accessed from the CQ thread,
+    // it doesn't really need to be atomic
+    ui64 ExecutingRequests{0};
 
 public:
     static TServerSession* FromEvent(rdma_cm_event* event)
@@ -342,7 +345,6 @@ public:
     bool HandleInputRequests() noexcept;
     bool HandleCompletionEvents() noexcept;
     bool IsFlushed() const;
-    bool CanReleaseAfterStop() const;
 
 private:
     // called from CQ thread
@@ -638,11 +640,11 @@ bool TServerSession::HandleCompletionEvents() noexcept
 
 void TServerSession::Flush() noexcept
 {
-    RDMA_DEBUG("flush queues");
-
     if (FlushStarted) {
         return;
     }
+
+    RDMA_DEBUG("flush queues");
 
     try {
         struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
@@ -661,18 +663,9 @@ bool TServerSession::IsFlushed() const
     // SendResponse/SendError has not yet been processed all the way through
     // FreeRequest. Session buffers must not be freed while this is non-zero.
     return FlushStarted
-        && ExecutingRequests.load(std::memory_order_acquire) == 0
+        && ExecutingRequests == 0
         && SendQueue.Size() == Config->SendQueueSize
         && RecvQueue.Size() == Config->RecvQueueSize;
-}
-
-bool TServerSession::CanReleaseAfterStop() const
-{
-    // During shutdown we don't need to wait for WR queues to fully drain —
-    // only for handler-owned requests to return, so session buffers are no
-    // longer referenced by TaskQueue tasks or async callbacks.
-    return FlushStarted
-        && ExecutingRequests.load(std::memory_order_acquire) == 0;
 }
 
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
@@ -831,7 +824,7 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
         return;
     }
     if (req->TransferredToHandler) {
-        ExecutingRequests.fetch_sub(1, std::memory_order_release);
+        ++ExecutingRequests;
     }
     RecvBuffers.ReleaseBuffer(req->InBuffer);
     SendBuffers.ReleaseBuffer(req->OutBuffer);
@@ -1044,7 +1037,7 @@ void TServerSession::ExecuteRequest(TRequestPtr req) noexcept
         req->CallContext->RequestId);
 
     req->TransferredToHandler = true;
-    ExecutingRequests.fetch_add(1, std::memory_order_relaxed);
+    ++ExecutingRequests;
 
     Handler->HandleRequest(req.get(), req->CallContext, in, out);
 
@@ -1515,14 +1508,12 @@ private:
         return hasWork;
     }
 
-    void DisconnectFlushed(bool stopRequested)
+    void DisconnectFlushed()
     {
         auto sessions = Sessions.Get();
 
         for (const auto& session: *sessions) {
-            if (!session->IsFlushed() &&
-                !(stopRequested && session->CanReleaseAfterStop()))
-            {
+            if (!session->IsFlushed()) {
                 continue;
             }
             Release(session.get());
@@ -1569,7 +1560,7 @@ private:
                     }
             }
 
-            DisconnectFlushed(ShouldStop());
+            DisconnectFlushed();
         }
     }
 };

@@ -657,8 +657,13 @@ void EnqueueRejectEvent(
         &param);
 }
 
-void FlushCompletions(TTestContextPtr context)
+void Disconnect(TTestContextPtr context)
 {
+    EnqueueConnectionEvent(
+        context,
+        RDMA_CM_EVENT_DISCONNECTED,
+        static_cast<rdma_cm_id*>(context->Connection));
+
     with_lock (context->CompletionLock) {
         context->HandleCompletionEvent = [] (ibv_wc* wc) {
             wc->status = IBV_WC_WR_FLUSH_ERR;
@@ -675,16 +680,6 @@ void FlushCompletions(TTestContextPtr context)
     }
 
     context->CompletionHandle.Set();
-}
-
-void Disconnect(TTestContextPtr context)
-{
-    EnqueueConnectionEvent(
-        context,
-        RDMA_CM_EVENT_DISCONNECTED,
-        static_cast<rdma_cm_id*>(context->Connection));
-
-    FlushCompletions(std::move(context));
 }
 
 }   // namespace NCloud::NStorage::NRdma::NVerbs
