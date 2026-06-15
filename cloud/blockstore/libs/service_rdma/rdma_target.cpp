@@ -172,9 +172,14 @@ private:
         TStringBuf in,
         TStringBuf out) override
     {
+        auto endpoint = Endpoint.lock();
+        if (!endpoint) {
+            return;
+        }
+
         TaskQueue->ExecuteSimple(
             [=,
-             endpoint = Endpoint,
+             endpoint = std::move(endpoint),
              callContext =
                  ToBlockStoreCallContext(std::move(callContext))]() mutable
             {
@@ -183,12 +188,10 @@ private:
                     { return DoHandleRequest(context, callContext, in, out); });
 
                 if (HasError(error)) {
-                    if (auto ep = endpoint.lock()) {
-                        ep->SendError(
-                            context,
-                            error.GetCode(),
-                            error.GetMessage());
-                    }
+                    endpoint->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
                 }
             });
     }
@@ -255,7 +258,7 @@ private:
             request->GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
-        TGuardedSgList guardedSgList(sglist);
+        auto guardedSgList = buffer.CreateGuardedSgList(std::move(sglist));
 
         auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
         req->CopyFrom(*request);
@@ -270,7 +273,7 @@ private:
              guardedSgList = std::move(guardedSgList),
              blockSize = request->GetBlockSize(),
              taskQueue = TaskQueue,
-             endpoint = Endpoint,
+             endpoint = Endpoint.lock(),
              weakSelf = weak_from_this()](auto future) mutable
             {
                 auto response = ExtractResponse(future);
@@ -321,8 +324,8 @@ private:
                             *response.MutableError() = MakeError(
                                 E_REJECTED,
                                 "Unable to serialize ReadBlocks response");
-                            if (auto ep = endpoint.lock()) {
-                                ep->SendError(
+                            if (endpoint) {
+                                endpoint->SendError(
                                     context,
                                     E_REJECTED,
                                     "unable to serialize ReadBlocks response");
@@ -330,8 +333,8 @@ private:
                             return;
                         }
 
-                        if (auto ep = endpoint.lock()) {
-                            ep->SendResponse(context, responseBytes);
+                        if (endpoint) {
+                            endpoint->SendResponse(context, responseBytes);
                         }
                     });
             });
@@ -376,7 +379,7 @@ private:
         future.Subscribe(
             [=,
              taskQueue = TaskQueue,
-             endpoint = Endpoint,
+             endpoint = Endpoint.lock(),
              weakSelf = weak_from_this()](auto future)
             {
                 auto response = ExtractResponse(future);
@@ -417,16 +420,16 @@ private:
                             *response.MutableError() = MakeError(
                                 E_REJECTED,
                                 "Unable to serialize WriteBlocks response");
-                            if (auto ep = endpoint.lock()) {
-                                ep->SendError(
+                            if (endpoint) {
+                                endpoint->SendError(
                                     context,
                                     E_REJECTED,
                                     "unable to serialize WriteBlocks response");
                             }
                             return;
                         }
-                        if (auto ep = endpoint.lock()) {
-                            ep->SendResponse(context, responseBytes);
+                        if (endpoint) {
+                            endpoint->SendResponse(context, responseBytes);
                         }
                     });
             });
@@ -461,7 +464,7 @@ private:
         future.Subscribe(
             [out = out,
              context = context,
-             endpoint = Endpoint,
+             endpoint = Endpoint.lock(),
              callContext = std::move(callContext),
              weakSelf = weak_from_this()](auto future)
             {
@@ -499,16 +502,16 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize ZeroBlocks response");
-                    if (auto ep = endpoint.lock()) {
-                        ep->SendError(
+                    if (endpoint) {
+                        endpoint->SendError(
                             context,
                             E_REJECTED,
                             "unable to serialize ZeroBlocks response");
                     }
                     return;
                 }
-                if (auto ep = endpoint.lock()) {
-                    ep->SendResponse(context, responseBytes);
+                if (endpoint) {
+                    endpoint->SendResponse(context, responseBytes);
                 }
             });
 
@@ -574,7 +577,7 @@ private:
         future.Subscribe(
             [out = out,
              context = context,
-             endpoint = Endpoint,
+             endpoint = Endpoint.lock(),
              callContext = std::move(callContext),
              weakSelf = weak_from_this()](auto future)
             {
@@ -599,8 +602,8 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize MountVolume response");
-                    if (auto ep = endpoint.lock()) {
-                        ep->SendError(
+                    if (endpoint) {
+                        endpoint->SendError(
                             context,
                             E_REJECTED,
                             "unable to serialize MountVolume response");
@@ -608,8 +611,8 @@ private:
                     return;
                 }
 
-                if (auto ep = endpoint.lock()) {
-                    ep->SendResponse(context, responseBytes);
+                if (endpoint) {
+                    endpoint->SendResponse(context, responseBytes);
                 }
             });
 
@@ -643,7 +646,7 @@ private:
         future.Subscribe(
             [out = out,
              context = context,
-             endpoint = Endpoint,
+             endpoint = Endpoint.lock(),
              callContext = std::move(callContext),
              weakSelf = weak_from_this()](auto future)
             {
@@ -668,8 +671,8 @@ private:
                         MakeError(
                             E_REJECTED,
                             "Unable to serialize UnmountVolume response");
-                    if (auto ep = endpoint.lock()) {
-                        ep->SendError(
+                    if (endpoint) {
+                        endpoint->SendError(
                             context,
                             E_REJECTED,
                             "unable to serialize UnmountVolume response");
@@ -677,8 +680,8 @@ private:
                     return;
                 }
 
-                if (auto ep = endpoint.lock()) {
-                    ep->SendResponse(context, responseBytes);
+                if (endpoint) {
+                    endpoint->SendResponse(context, responseBytes);
                 }
             });
 

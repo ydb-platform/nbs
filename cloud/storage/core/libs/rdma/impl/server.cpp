@@ -97,6 +97,7 @@ struct TRequest
 
     TPooledBuffer InBuffer {};
     TPooledBuffer OutBuffer {};
+    bool HandlerOwned = false;
 
     TRequest(std::weak_ptr<TServerSession> session)
         : Session(std::move(session))
@@ -294,6 +295,7 @@ private:
     TLockFreeList<TRequest> InputRequests;
     TSimpleList<TRequest> QueuedRequests;
     TEventHandle RequestEvent;
+    TAtomic ActiveRequestsInHandlers = 0;
     bool FlushStarted = false;
 
 public:
@@ -330,6 +332,7 @@ public:
     bool HandleInputRequests() noexcept;
     bool HandleCompletionEvents() noexcept;
     bool IsFlushed() const;
+    bool CanReleaseAfterStop() const;
 
 private:
     // called from CQ thread
@@ -627,6 +630,10 @@ void TServerSession::Flush() noexcept
 {
     RDMA_DEBUG("flush queues");
 
+    if (FlushStarted) {
+        return;
+    }
+
     try {
         struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
         Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
@@ -641,8 +648,15 @@ void TServerSession::Flush() noexcept
 bool TServerSession::IsFlushed() const
 {
     return FlushStarted
+        && AtomicGet(ActiveRequestsInHandlers) == 0
         && SendQueue.Size() == Config->SendQueueSize
         && RecvQueue.Size() == Config->RecvQueueSize;
+}
+
+bool TServerSession::CanReleaseAfterStop() const
+{
+    return FlushStarted
+        && AtomicGet(ActiveRequestsInHandlers) == 0;
 }
 
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
@@ -799,6 +813,10 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 {
     if (req == nullptr) {
         return;
+    }
+    if (req->HandlerOwned) {
+        req->HandlerOwned = false;
+        AtomicDecrement(ActiveRequestsInHandlers);
     }
     RecvBuffers.ReleaseBuffer(req->InBuffer);
     SendBuffers.ReleaseBuffer(req->OutBuffer);
@@ -1009,6 +1027,9 @@ void TServerSession::ExecuteRequest(TRequestPtr req) noexcept
         ExecuteRequest,
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
+
+    req->HandlerOwned = true;
+    AtomicIncrement(ActiveRequestsInHandlers);
 
     Handler->HandleRequest(req.get(), req->CallContext, in, out);
 
@@ -1397,6 +1418,18 @@ public:
         return Sessions.Get();
     }
 
+    bool HasSessions()
+    {
+        return !Sessions.Get()->empty();
+    }
+
+    void FlushSessions()
+    {
+        for (const auto& session: *Sessions.Get()) {
+            session->Flush();
+        }
+    }
+
 private:
     bool ShouldStop() const
     {
@@ -1467,14 +1500,17 @@ private:
         return hasWork;
     }
 
-    void DisconnectFlushed()
+    void DisconnectFlushed(bool stopRequested)
     {
         auto sessions = Sessions.Get();
 
         for (const auto& session: *sessions) {
-            if (session->IsFlushed()) {
-                Release(session.get());
+            if (!session->IsFlushed() &&
+                !(stopRequested && session->CanReleaseAfterStop()))
+            {
+                continue;
             }
+            Release(session.get());
         }
     }
 
@@ -1484,8 +1520,23 @@ private:
         TAdaptiveWait aw(
             Config->AdaptiveWaitSleepDuration,
             Config->AdaptiveWaitSleepDelay);
+        bool flushStarted = false;
 
-        while (!ShouldStop()) {
+        while (true) {
+            if (ShouldStop()) {
+                if (!flushStarted) {
+                    if (WaitMode == EWaitMode::Poll) {
+                        StopEvent.Clear();
+                    }
+                    FlushSessions();
+                    flushStarted = true;
+                }
+
+                if (!HasSessions()) {
+                    break;
+                }
+            }
+
             switch (WaitMode) {
                 case EWaitMode::Poll:
                     HandlePollEvents();
@@ -1503,7 +1554,7 @@ private:
                     }
             }
 
-            DisconnectFlushed();
+            DisconnectFlushed(ShouldStop());
         }
     }
 };

@@ -55,6 +55,7 @@ struct TRequestDetails
     void* Context = nullptr;
     TStringBuf Out;
     TStringBuf DataBuffer; // if non empty, zero copy is possible
+    NCloud::NStorage::NRdma::IServerEndpointPtr Endpoint;
     TString DeviceUUID;
     TString ClientId;
 
@@ -187,9 +188,14 @@ public:
         TStringBuf in,
         TStringBuf out) override
     {
+        auto endpoint = Endpoint.lock();
+        if (!endpoint) {
+            return;
+        }
+
         TaskQueue->ExecuteSimple(
             [self = shared_from_this(),
-             endpoint = Endpoint,
+             endpoint = std::move(endpoint),
              context = context,
              callContext = ToBlockStoreCallContext(std::move(callContext)),
              in = in,
@@ -210,12 +216,10 @@ public:
                     });
 
                 if (error.GetCode()) {
-                    if (auto ep = endpoint.lock()) {
-                        ep->SendError(
-                            context,
-                            error.GetCode(),
-                            error.GetMessage());
-                    }
+                    endpoint->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
                 }
             });
     }
@@ -590,6 +594,7 @@ private:
                 .Context = context,
                 .Out = out,
                 .DataBuffer = dataBuffer,
+                .Endpoint = Endpoint.lock(),
                 .DeviceUUID = request.GetDeviceUUID(),
                 .ClientId = request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleReadBlocksResponse);
@@ -648,8 +653,8 @@ private:
                     flags, proto, parts);
         }
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
+        if (requestDetails.Endpoint) {
+            requestDetails.Endpoint->SendResponse(requestDetails.Context, bytes);
         }
     }
 
@@ -701,6 +706,7 @@ private:
                 {.Context = context,
                  .Out = out,
                  .DataBuffer = dataBuffer,
+                 .Endpoint = Endpoint.lock(),
                  .DeviceUUID = request.GetDeviceUUID(),
                  .ClientId = request.GetHeaders().GetClientId(),
                  .VolumeRequestId = request.GetVolumeRequestId(),
@@ -793,8 +799,8 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
+        if (requestDetails.Endpoint) {
+            requestDetails.Endpoint->SendResponse(requestDetails.Context, bytes);
         }
     }
 
@@ -830,6 +836,7 @@ private:
                 {.Context = context,
                  .Out = out,
                  .DataBuffer = {},
+                 .Endpoint = Endpoint.lock(),
                  .DeviceUUID = deviceUUID,
                  .ClientId = req->GetHeaders().GetClientId(),
                  .VolumeRequestId = req->GetVolumeRequestId(),
@@ -919,8 +926,8 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
+        if (requestDetails.Endpoint) {
+            requestDetails.Endpoint->SendResponse(requestDetails.Context, bytes);
         }
     }
 
@@ -949,6 +956,7 @@ private:
                 {.Context = context,
                  .Out = out,
                  .DataBuffer = {},   // no data buffer
+                 .Endpoint = Endpoint.lock(),
                  .DeviceUUID = request.GetDeviceUUID(),
                  .ClientId = request.GetHeaders().GetClientId(),
                  .VolumeRequestId = request.GetVolumeRequestId(),
@@ -1039,8 +1047,8 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
+        if (requestDetails.Endpoint) {
+            requestDetails.Endpoint->SendResponse(requestDetails.Context, bytes);
         }
     }
 
@@ -1079,6 +1087,7 @@ private:
                 .Context = context,
                 .Out = out,
                 .DataBuffer = {},   // no data buffer
+                .Endpoint = Endpoint.lock(),
                 .DeviceUUID = request.GetDeviceUUID(),
                 .ClientId = request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleChecksumBlocksResponse);
@@ -1119,8 +1128,8 @@ private:
                 0,   // flags
                 proto);
 
-        if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(requestDetails.Context, bytes);
+        if (requestDetails.Endpoint) {
+            requestDetails.Endpoint->SendResponse(requestDetails.Context, bytes);
         }
     }
 };
