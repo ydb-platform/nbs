@@ -87,6 +87,67 @@ struct TConfigs
     {}
 };
 
+void CheckPerformanceProfile(
+    const NProto::TFileStorePerformanceProfile& profile,
+    const NKikimrFileStore::TConfig& config)
+{
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetThrottlingEnabled(),
+        config.GetPerformanceProfileThrottlingEnabled());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxReadIops(),
+        config.GetPerformanceProfileMaxReadIops());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxReadBandwidth(),
+        config.GetPerformanceProfileMaxReadBandwidth());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxWriteIops(),
+        config.GetPerformanceProfileMaxWriteIops());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxWriteBandwidth(),
+        config.GetPerformanceProfileMaxWriteBandwidth());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetBoostTime(),
+        config.GetPerformanceProfileBoostTime());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetBoostRefillTime(),
+        config.GetPerformanceProfileBoostRefillTime());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetBoostPercentage(),
+        config.GetPerformanceProfileBoostPercentage());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetBurstPercentage(),
+        config.GetPerformanceProfileBurstPercentage());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetDefaultPostponedRequestWeight(),
+        config.GetPerformanceProfileDefaultPostponedRequestWeight());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxPostponedWeight(),
+        config.GetPerformanceProfileMaxPostponedWeight());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxWriteCostMultiplier(),
+        config.GetPerformanceProfileMaxWriteCostMultiplier());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxPostponedTime(),
+        config.GetPerformanceProfileMaxPostponedTime());
+    UNIT_ASSERT_VALUES_EQUAL(
+        profile.GetMaxPostponedCount(),
+        config.GetPerformanceProfileMaxPostponedCount());
+}
+
+void ClearOptional(NProto::TFileStorePerformanceProfile& profile)
+{
+    profile.ClearThrottlingEnabled();
+    profile.ClearBoostTime();
+    profile.ClearBoostRefillTime();
+    profile.ClearBurstPercentage();
+    profile.ClearDefaultPostponedRequestWeight();
+    profile.ClearMaxPostponedWeight();
+    profile.ClearMaxWriteCostMultiplier();
+    profile.ClearMaxPostponedTime();
+    profile.ClearMaxPostponedCount();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1584,37 +1645,13 @@ Y_UNIT_TEST_SUITE(TModel)
 
 #undef CHECK_CHANNEL
 
-    void SetupPerformanceProfile(
-        ui32 storageType,
-        ui32 allocationUnits,
-        ui32 unitReadIops,
-        ui32 unitReadBandwidth,
-        ui32 unitWriteIops,
-        ui32 unitWriteBandwidth,
-        ui32 maxReadIops,
-        ui32 maxReadBandwidth,
-        ui32 maxWriteIops,
-        ui32 maxWriteBandwidth,
-        ui32 boostTimeMs,
-        ui32 boostRefillTimeMs,
-        ui32 unitBoost,
-        ui32 burstPercentage,
-        ui32 defaultPostponedRequestWeight,
-        ui32 maxPostponedWeight,
-        ui32 maxWriteCostMultiplier,
-        ui32 maxPostponedTimeMs,
-        ui32 maxPostponedCount,
-        NKikimrFileStore::TConfig& kikimrConfig,
-        NProto::TStorageConfig& storageConfig,
-        const TMaybe<NProto::TFileStorePerformanceProfile>& performanceProfile)
+    void SetupStorageConfigRandomly(NProto::TStorageConfig& storageConfig)
     {
         std::random_device rd;
         std::array<int, std::mt19937::state_size> state;
         std::generate(std::begin(state), std::end(state), std::ref(rd));
         std::seed_seq sq(std::begin(state), std::end(state));
         std::mt19937 engine(sq);
-
-        kikimrConfig.SetStorageMediaKind(storageType);
 
         std::uniform_int_distribution<ui32> dist(1, 100'000'000);
 
@@ -1657,6 +1694,35 @@ Y_UNIT_TEST_SUITE(TModel)
         storageConfig.SetHDDMaxWriteCostMultiplier(dist(engine));
         storageConfig.SetHDDMaxPostponedTime(dist(engine));
         storageConfig.SetHDDMaxPostponedCount(dist(engine));
+    }
+
+    void SetupPerformanceProfile(
+        ui32 storageType,
+        ui32 allocationUnits,
+        ui32 unitReadIops,
+        ui32 unitReadBandwidth,
+        ui32 unitWriteIops,
+        ui32 unitWriteBandwidth,
+        ui32 maxReadIops,
+        ui32 maxReadBandwidth,
+        ui32 maxWriteIops,
+        ui32 maxWriteBandwidth,
+        ui32 boostTimeMs,
+        ui32 boostRefillTimeMs,
+        ui32 unitBoost,
+        ui32 burstPercentage,
+        ui32 defaultPostponedRequestWeight,
+        ui32 maxPostponedWeight,
+        ui32 maxWriteCostMultiplier,
+        ui32 maxPostponedTimeMs,
+        ui32 maxPostponedCount,
+        NKikimrFileStore::TConfig& kikimrConfig,
+        NProto::TStorageConfig& storageConfig,
+        const TMaybe<NProto::TFileStorePerformanceProfile>& performanceProfile)
+    {
+        SetupStorageConfigRandomly(storageConfig);
+
+        kikimrConfig.SetStorageMediaKind(storageType);
 
         if (performanceProfile.Defined()) {
             SetupFileStorePerformanceAndChannels(
@@ -2233,6 +2299,36 @@ Y_UNIT_TEST_SUITE(TModel)
     }
 
 #undef DO_TEST
+
+    Y_UNIT_TEST_F(ShouldNotDropOptionalPerformanceProfileFields, TConfigs)
+    {
+        SetupStorageConfigRandomly(StorageConfig);
+
+        KikimrConfig.SetStorageMediaKind(::NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        // Set up performance profile in KikimrConfig using
+        // ClientPerformanceProfile.
+        SetupFileStorePerformanceAndChannels(
+            false,
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile);
+        CheckPerformanceProfile(ClientPerformanceProfile, KikimrConfig);
+
+        // Drop optional fields in profileWithClearedOptional.
+        auto profileWithClearedOptional = ClientPerformanceProfile;
+        ClearOptional(profileWithClearedOptional);
+
+        // Set up performance profile in KikimrConfig using
+        // profileWithClearedOptional and check that cleared optional fields are
+        // not changed.
+        SetupFileStorePerformanceAndChannels(
+            false,
+            StorageConfig,
+            KikimrConfig,
+            profileWithClearedOptional);
+        CheckPerformanceProfile(ClientPerformanceProfile, KikimrConfig);
+    }
 
     Y_UNIT_TEST_F(ShouldCreateProperNumberOfShards, TConfigs)
     {

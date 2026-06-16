@@ -75,7 +75,7 @@ QEMU_BIN_DIR=$BIN_DIR/$(qemu_bin_dir)
 QEMU_BIN_TAR=$QEMU_BIN_DIR/qemu-bin.tar.gz
 QEMU=$QEMU_BIN_DIR/usr/bin/qemu-system-x86_64
 QEMU_FIRMWARE=$QEMU_BIN_DIR/usr/share/qemu
-DISK_IMAGE=$QEMU_BIN_DIR/../image-noble/rootfs.img
+DISK_IMAGE=$QEMU_BIN_DIR/../image/rootfs.img
 
 [[ ( ! -x $QEMU ) ]] &&
       echo expand qemu tar from [$QEMU_BIN_TAR]

@@ -35,6 +35,7 @@ class TRdmaRequestZeroBlocksHandler final
 public:
     using TRequestContext = TDeviceRequestRdmaContext;
     using TResponseProto = NProto::TZeroDeviceBlocksResponse;
+    static constexpr ui32 ExpectedMsgId = TBlockStoreProtocol::ZeroDeviceBlocksResponse;
 
     using TBase::TBase;
 

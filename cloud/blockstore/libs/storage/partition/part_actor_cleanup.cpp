@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition/model/background_ops_throttling.h>
 
 #include <util/generic/size_literals.h>
 
@@ -63,20 +64,12 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
     const auto throttlingAllowed = State->GetCleanupQueue().GetQueueBytes()
         < Config->GetCleanupQueueBytesLimitForThrottling();
 
-    if (throttlingAllowed && Config->GetMaxCleanupDelay()) {
-        // TODO: unify this code and compaction delay-related code
-        auto execTime = State->GetCleanupExecTimeForLastSecond(ctx.Now());
-        auto delay = Config->GetMinCleanupDelay();
-        if (Config->GetMaxCleanupExecTimePerSecond()) {
-            auto throttlingFactor = double(execTime.GetValue())
-                / Config->GetMaxCleanupExecTimePerSecond().GetValue();
-            const auto throttleDelay = (TDuration::Seconds(1) - execTime) * throttlingFactor;
-
-            delay = Max(delay, throttleDelay);
-        }
-
-        delay = Min(delay, Config->GetMaxCleanupDelay());
-        State->SetCleanupDelay(delay);
+    if (throttlingAllowed) {
+        State->SetCleanupDelay(CalculateBackgroundOpThrottleDelay(
+            State->GetCleanupExecTimeForLastSecond(ctx.Now()),
+            Config->GetMaxCleanupExecTimePerSecond(),
+            Config->GetMinCleanupDelay(),
+            Config->GetMaxCleanupDelay()));
     } else {
         State->SetCleanupDelay({});
     }

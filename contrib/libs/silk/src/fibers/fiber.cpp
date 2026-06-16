@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -112,7 +113,7 @@ public:
     Fiber(bool isProxyFiber = false) noexcept;
     ~Fiber() noexcept;
 
-    bool initialize(FiberId fiberId, FiberMain * fiberMain, ParametersDtor * parametersDtor, FiberFuture * waitingFuture) noexcept;
+    bool initialize(FiberId fiberId, FiberMain * fiberMain, FiberParametersDtor * parametersDtor, FiberFuture * waitingFuture) noexcept;
     void deinitialize() noexcept;
 
     void switchToFiberContext() noexcept;
@@ -183,7 +184,7 @@ public:
         // by run for non-trivially-destructible T and called by
         // fiberContextMain immediately after fiberMain returns.
         FiberMain * fiberMain = nullptr;
-        ParametersDtor * parametersDtor = nullptr;
+        FiberParametersDtor * parametersDtor = nullptr;
 
         // Set by run to the FiberFuture to notify on completion.
         FiberFuture * waitingFuture = nullptr;
@@ -232,6 +233,8 @@ public:
 // are always zero, so the full 64-bit address fits in either field without masking.
 static_assert(alignof(Fiber) >= 8);
 
+static_assert(offsetof(Fiber, parameters) == FIBER_PARAMETERS_OFFSET);
+
 using WaitStack = LockFreeStack<Fiber, &Fiber::stackEntry>;
 using SuspendedList = List<Fiber, &Fiber::suspendedEntry>;
 
@@ -268,7 +271,8 @@ Fiber::~Fiber() noexcept
     }
 }
 
-bool Fiber::initialize(FiberId fiberId_, FiberMain * fiberMain_, ParametersDtor * parametersDtor_, FiberFuture * waitingFuture_) noexcept
+bool Fiber::initialize(
+    FiberId fiberId_, FiberMain * fiberMain_, FiberParametersDtor * parametersDtor_, FiberFuture * waitingFuture_) noexcept
 {
     state.store(FiberState::SUSPENDED, std::memory_order_relaxed);
 
@@ -843,7 +847,7 @@ bool FiberScheduler::ProcessorState::enqueueIo(IoFuture * future, Setup && setup
             if (profiler)
             {
                 future->submitTimestamp = Tsc::getCycles();
-                future->category = threadFiber ? threadFiber->fiberId.category : 0;
+                future->category = getCurrentFiberId().category;
             }
 
             // TSan needs an explicit barrier between submission/completion.
@@ -1173,32 +1177,35 @@ void FiberScheduler::destroy() noexcept
     delete scheduler;
 }
 
-FiberId FiberScheduler::getCurrentFiberId() noexcept
+// noinline is load-bearing, not a hint. These accessors read the threadFiber/proxyFiber
+// thread-locals. A fiber may suspend on one OS thread and resume on another, so a caller
+// that brackets a suspension point must observe the resuming thread's value.
+// If the accessor were inlined, the compiler could materialize the thread pointer once
+// into a callee-saved register and reuse it after the suspension; jump_fcontext preserves
+// callee-saved registers across the switch, so the cached pointer would still address the
+// previous (now idle) thread's thread-local, reading a stale value or null.
+// Keeping the access behind a real call boundary forces a fresh thread-pointer read on
+// every invocation.
+__attribute__((noinline)) FiberId FiberScheduler::getCurrentFiberId() noexcept
 {
     return threadFiber ? threadFiber->fiberId : FiberId{};
 }
 
-Fiber * FiberScheduler::getCurrentFiber() noexcept
+__attribute__((noinline)) Fiber * FiberScheduler::getCurrentFiber() noexcept
 {
     // Fast path: thread is running a regular fiber, or has already lazily
-    // allocated a proxy fiber. Both branches stay inline; only the very first
-    // call from a non-fiber thread reaches initCurrentFiber.
+    // allocated a proxy fiber.
     if (threadFiber)
     {
         return threadFiber;
     }
     if (!proxyFiber) [[unlikely]]
     {
-        initCurrentFiber();
+        // Lazily create a proxy fiber so a non-fiber thread can still participate
+        // in fiber-aware APIs (e.g. FiberMutex::lock, FiberScheduler::run-and-wait).
+        proxyFiber = std::make_unique<Fiber>(true);
     }
     return proxyFiber.get();
-}
-
-__attribute__((noinline)) void FiberScheduler::initCurrentFiber() noexcept
-{
-    // Lazily create a proxy fiber so a non-fiber thread can still participate
-    // in fiber-aware APIs (e.g. FiberMutex::lock, FiberScheduler::run-and-wait).
-    proxyFiber = std::make_unique<Fiber>(true);
 }
 
 bool FiberScheduler::isFiberRunning(Fiber * fiber) noexcept
@@ -1206,13 +1213,8 @@ bool FiberScheduler::isFiberRunning(Fiber * fiber) noexcept
     return fiber->state.load(std::memory_order_acquire) == FiberState::RUNNING;
 }
 
-void * FiberScheduler::getFiberParameters(Fiber * fiber) noexcept
-{
-    return fiber->parameters;
-}
-
 Fiber *
-FiberScheduler::allocateFiber(FiberMain * fiberMain, ParametersDtor * parametersDtor, uint8_t category, FiberFuture * future) noexcept
+FiberScheduler::allocateFiber(FiberMain * fiberMain, FiberParametersDtor * parametersDtor, uint8_t category, FiberFuture * future) noexcept
 {
     Fiber * fiber = scheduler->fiberPool.allocate();
     if (fiber)
@@ -1419,13 +1421,17 @@ void FiberScheduler::enqueueIo(IoFuture * future, Setup && setup) noexcept
     }
 }
 
-void FiberScheduler::read(int fd, iovec * iov, uint64_t iov_len, uint64_t offset, uint64_t * bytesRead, IoFuture * future) noexcept
+void FiberScheduler::read(int fd, iovec * iov, uint32_t iov_len, uint64_t offset, uint64_t * bytesRead, IoFuture * future) noexcept
 {
     future->result = bytesRead;
+#if defined(__SANITIZE_MEMORY__)
+    future->readIov = iov;
+    future->readIovLen = iov_len;
+#endif
     enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_readv(sqe, fd, iov, iov_len, offset); });
 }
 
-void FiberScheduler::write(int fd, iovec * iov, uint64_t iov_len, uint64_t offset, uint64_t * bytesWritten, IoFuture * future) noexcept
+void FiberScheduler::write(int fd, iovec * iov, uint32_t iov_len, uint64_t offset, uint64_t * bytesWritten, IoFuture * future) noexcept
 {
     future->result = bytesWritten;
     enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_writev(sqe, fd, iov, iov_len, offset); });
@@ -1799,6 +1805,16 @@ __attribute__((noinline)) bool FiberScheduler::handleCompletionQueueSlow(Process
                 {
                     *future->result = static_cast<uint64_t>(result);
                 }
+#if defined(__SANITIZE_MEMORY__)
+                // MSan cannot see the kernel filling read buffers via io_uring.
+                uint64_t remaining = static_cast<uint64_t>(result);
+                for (uint32_t i = 0; i < future->readIovLen && remaining > 0; ++i)
+                {
+                    const uint64_t n = std::min<uint64_t>(remaining, future->readIov[i].iov_len);
+                    MSAN_UNPOISON(future->readIov[i].iov_base, n);
+                    remaining -= n;
+                }
+#endif
                 future->set(0);
             }
             else
@@ -1999,7 +2015,25 @@ void FiberScheduler::runFiber(Fiber * fiber, CpuTimer * timer) noexcept
     }
 
     threadFiber = fiber;
+
+    // Fiber gains the CPU: fires on the first run and on every resume. Runs on
+    // the scheduler thread immediately before control transfers into the fiber;
+    // since jump_fcontext is a same-thread stack switch, anything the callback
+    // installs (e.g. thread-local execution context) is visible to fiber code.
+    if (options.fiberResume)
+    {
+        options.fiberResume(fiber);
+    }
+
     fiber->switchToFiberContext();
+
+    // Fiber relinquishes the CPU: fires whether it suspended (will resume later)
+    // or stopped (terminated), so fiberResume/fiberSuspend calls always balance.
+    if (options.fiberSuspend)
+    {
+        options.fiberSuspend(fiber);
+    }
+
     threadFiber = nullptr;
 
     if (timer)

@@ -9,6 +9,7 @@ SRCS(
     profile_log.cpp
     profile_log_events.cpp
     request_stats.cpp
+    restart_count.cpp
     tcmalloc_stats.cpp
     throttler_info_serializer.cpp
     trace_serializer.cpp

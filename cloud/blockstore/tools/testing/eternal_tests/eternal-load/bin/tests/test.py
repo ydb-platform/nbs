@@ -16,6 +16,8 @@ _REQUEST_BLOCK_COUNT = 3
 _REQUEST_SIZE = _REQUEST_BLOCK_COUNT * _BLOCKSIZE
 _REQUEST_COUNT = (_FILE_SIZE * 1024 ** 3) / _REQUEST_SIZE
 _BINARY_PATH = 'cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/eternal-load'
+_MULTIPLE_FILES_TIMEOUT_ENV = 'ETERNAL_LOAD_MULTIPLE_FILES_TIMEOUT'
+_MULTIPLE_FILES_TEST_COUNT_ENV = 'ETERNAL_LOAD_MULTIPLE_FILES_TEST_COUNT'
 
 _SCENARIOS = [
     ("aligned", "asyncio", True),
@@ -143,9 +145,9 @@ def test_load_async_io_fails(fixture_mount_very_small_tmpfs):
 
 def test_multiple_files():
     with tempfile.TemporaryDirectory() as tmpdir:
-        timeout = 10
+        timeout = int(os.getenv(_MULTIPLE_FILES_TIMEOUT_ENV, 10))
         pattern = os.path.join(tmpdir, "testfile_{}.test")
-        test_count = 5
+        test_count = int(os.getenv(_MULTIPLE_FILES_TEST_COUNT_ENV, 5))
         tmp_files = [pattern.format(i) for i in range(test_count)]
 
         try:

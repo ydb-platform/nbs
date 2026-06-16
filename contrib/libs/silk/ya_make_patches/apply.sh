@@ -51,7 +51,11 @@ find "$SILK_DST" -mindepth 1 -maxdepth 1 \
 
 # 2. Copy fresh silk source.
 echo "--- Copying silk source"
-cp -r "$SILK_SRC"/. "$SILK_DST"/
+rsync -a \
+    --exclude="/.git/" \
+    --exclude="/.github/" \
+    --exclude="/contrib/" \
+    "$SILK_SRC"/. "$SILK_DST"/
 # Restore ya_make_patches in case the source happened to ship one.
 # (No-op if it didn't.)
 

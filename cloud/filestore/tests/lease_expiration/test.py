@@ -73,7 +73,7 @@ def touch_file_in_background(ssh: SshToGuest, dir: str, file_name: str):
 class QemuWithWorkload:
     def __init__(self, vhost_socket):
         rootfs = common.build_path(
-            "cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img"
+            "cloud/storage/core/tools/testing/qemu/image/rootfs.img"
         )
         self.qemu = Qemu(
             qemu_kvm=get_qemu_kvm(),

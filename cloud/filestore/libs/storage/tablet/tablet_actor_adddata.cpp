@@ -274,6 +274,7 @@ void TIndexTabletActor::CompleteTx_AddData(
     BuildBackendInfo(
         *Config,
         *SystemCounters,
+        GetFileSystemId(),
         Metrics.CPUUsageRate,
         &backendInfo);
 

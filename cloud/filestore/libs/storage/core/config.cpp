@@ -252,16 +252,18 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UseUnlimitedBTreeNodeRefsCacheInMainTablet,     bool,       false     )\
     xxx(UseUnlimitedBTreeNodeRefsCacheInShards,         bool,       false     )\
                                                                                \
-    xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
+    xxx(NonNetworkMetricsBalancingFactor,               ui32,       1_KB      )\
                                                                                \
-    xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
+    xxx(AsyncDestroyHandleEnabled,                      bool,       false     )\
+    xxx(TabletUnsafeAsyncReadOnlyCreateHandleEnabled,   bool,       false     )\
+    xxx(TabletUnsafeAsyncDestroyHandleEnabled,          bool,       false     )\
     xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
                                                                                \
     xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
                                                                                \
-    xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
+    xxx(MultipleStageRequestThrottlingEnabled,          bool,       false     )\
                                                                                \
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
@@ -355,6 +357,15 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FastShardServerPort,                    ui32,   0                     )\
                                                                                \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
+                                                                               \
+    xxx(SoftBackpressureEnabled,                bool,   false                 )\
+    xxx(FlushThresholdForBackpressureSoft,             ui32,    32_MB         )\
+    xxx(CleanupThresholdForBackpressureSoft,           ui32,    8192          )\
+    xxx(CompactionThresholdForBackpressureSoft,        ui32,    50            )\
+    xxx(FlushBytesThresholdForBackpressureSoft,        ui64,    32_MB         )\
+    xxx(FlushBytesItemCountThresholdForBackpressureSoft,                       \
+                                                       ui64,    125'000       )\
+    xxx(CollectGarbageThresholdForBackpressureSoft,    ui64,    256_GB        )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

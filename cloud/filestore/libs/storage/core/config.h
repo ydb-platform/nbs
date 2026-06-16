@@ -270,6 +270,8 @@ public:
     bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
+    bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     void Dump(IOutputStream& out) const;
@@ -412,6 +414,14 @@ public:
     [[nodiscard]] ui32 GetFastShardServerPort() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
+
+    bool GetSoftBackpressureEnabled() const;
+    ui32 GetFlushThresholdForBackpressureSoft() const;
+    ui32 GetCleanupThresholdForBackpressureSoft() const;
+    ui32 GetCompactionThresholdForBackpressureSoft() const;
+    ui64 GetFlushBytesThresholdForBackpressureSoft() const;
+    ui64 GetFlushBytesItemCountThresholdForBackpressureSoft() const;
+    ui64 GetCollectGarbageThresholdForBackpressureSoft() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

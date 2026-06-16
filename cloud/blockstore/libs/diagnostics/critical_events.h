@@ -130,6 +130,7 @@ using TCritEventParams =
     xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
     xxx(DiskDevicesSizeViolation)                                              \
+    xxx(RdmaMessageTypeMismatch)                                               \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

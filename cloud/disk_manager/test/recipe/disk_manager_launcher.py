@@ -82,6 +82,10 @@ FilesystemConfig: <
     DeletedFilesystemExpirationTimeout: "1s"
     ClearDeletedFilesystemsTaskScheduleInterval: "2s"
 >
+FilesystemSnapshotsConfig: <
+    DeletedExpirationTimeout: "1s"
+    ClearDeletedTaskScheduleInterval: "2s"
+>
 NbsConfig: <
     Zones: <
         key: "zone-a"

@@ -335,17 +335,21 @@ func registerControlplaneTasks(
 			return err
 		}
 
-		err = filesystem_snapshot.RegisterForExecution(
-			ctx,
-			config.GetFilesystemSnapshotsConfig(),
-			taskRegistry,
-			taskScheduler,
-			filestoreCellsSelector,
-			resourceStorage,
-		)
-		if err != nil {
-			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
-			return err
+		if config.GetFilesystemSnapshotsConfig() != nil {
+			logging.Info(ctx, "Registering filesystem snapshot tasks")
+
+			err = filesystem_snapshot.RegisterForExecution(
+				ctx,
+				config.GetFilesystemSnapshotsConfig(),
+				taskRegistry,
+				taskScheduler,
+				filestoreCellsSelector,
+				resourceStorage,
+			)
+			if err != nil {
+				logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
+				return err
+			}
 		}
 	}
 
@@ -418,7 +422,7 @@ func initControlplane(
 
 	var filesystemService filesystem.Service
 	var filesystemSnapshotService filesystem_snapshot.Service
-	if config.GetFilesystemConfig() != nil {
+	if config.GetFilesystemConfig() != nil && config.GetFilesystemSnapshotsConfig() != nil {
 		filesystemSnapshotService = filesystem_snapshot.NewService(
 			taskScheduler,
 		)

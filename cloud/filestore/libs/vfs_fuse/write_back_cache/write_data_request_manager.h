@@ -34,8 +34,9 @@ public:
         std::unique_ptr<TPendingWriteDataRequest>,
         std::unique_ptr<TCachedWriteDataRequest>>;
 
-    using TCachedRequestVisitor =
-        TFunctionRef<void(std::unique_ptr<TCachedWriteDataRequest> request)>;
+    using TCachedRequestVisitor = TFunctionRef<void(
+        std::unique_ptr<TCachedWriteDataRequest> request,
+        bool handleReleased)>;
 
     TWriteDataRequestManager() = default;
     TWriteDataRequestManager(TWriteDataRequestManager&&) = default;
@@ -98,6 +99,13 @@ public:
      * It continues residing in the persistent storage until Evict is called
      */
     void SetFlushed(TCachedWriteDataRequest* request);
+
+    /**
+     * Marks the request as related to a released handle and stores this in
+     * the persistent storage.
+     * This allows the request to be properly handled after restart.
+     */
+    void SetHandleReleased(TCachedWriteDataRequest* request);
 
     // Removes previously flushed request from the persistent storage
     void Evict(std::unique_ptr<TCachedWriteDataRequest> request);

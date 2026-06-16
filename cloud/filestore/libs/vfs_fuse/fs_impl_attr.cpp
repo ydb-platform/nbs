@@ -133,7 +133,8 @@ void TFileSystem::GetAttr(
         .Subscribe(
             [=, ptr = weak_from_this()](auto future)
             {
-                NProto::TGetNodeAttrResponse response = future.ExtractValue();
+                NProto::TGetNodeAttrResponse response =
+                    UnsafeExtractValue(future);
                 auto self = ptr.lock();
                 if (CheckResponse(self, *callContext, req, response)) {
                     auto* attr = response.MutableNode();

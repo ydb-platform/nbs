@@ -1855,6 +1855,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(1);
         request->SetOffset(0);
+        request->SetHandle(101);
 
         auto* iovec1 = request->AddIovecs();
         iovec1->SetBase(base + 3);
@@ -1955,6 +1956,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(1);
+        request->SetHandle(101);
         request->SetOffset(0);
         auto* iovec = request->AddIovecs();
         iovec->SetBase(base);
@@ -2258,6 +2260,109 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Ensure that WriteData request is evicted
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.FlushedQueue.Count->Get());
+    }
+
+    Y_UNIT_TEST(ShouldDropCachedDataWhenThereAreNoLiveHandles)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .UseTestTimerAndScheduler = true,
+        });
+
+        TVector<TPromise<NProto::TWriteDataResponse>> writeRequests;
+        TVector<ui64> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writeRequests.push_back(promise);
+            writeHandles.push_back(request->GetHandle());
+            return promise;
+        };
+
+        auto completeNext = [&](NProto::TWriteDataResponse response)
+        {
+            UNIT_ASSERT(!writeRequests.empty());
+            auto promise = writeRequests.front();
+            writeRequests.erase(writeRequests.begin());
+            promise.SetValue(std::move(response));
+        };
+
+        b.WriteToCacheSync(1, 101, 1, "abc");
+        b.WriteToCacheSync(1, 102, 10, "123");
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 102);
+
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        NProto::TWriteDataResponse errorResponse;
+        errorResponse.MutableError()->SetCode(E_FAIL);
+        completeNext(std::move(errorResponse));
+
+        UNIT_ASSERT(releaseFuture.HasValue());
+        UNIT_ASSERT(HasError(releaseFuture.GetValue()));
+
+        // Current state: WriteBackCache contains 2 WriteData requests for
+        // handle 101 and 102 but only handle 101 is live
+
+        auto flushFuture = b.Cache.FlushNodeData(1);
+        b.RunAllScheduledTasks();
+
+        // An attempt to retry flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        completeNext({});
+
+        // After a successful flush attempt, WriteBackCache contains 1 WriteData
+        // requests for handle 102 that is already released.
+        // The next flush attempt executes immediately and fails.
+
+        UNIT_ASSERT(flushFuture.HasValue());
+        UNIT_ASSERT(HasError(flushFuture.GetValue()));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldRetryFlushWithLiveHandle)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .UseTestTimerAndScheduler = true,
+        });
+
+        TVector<ui64> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            writeHandles.push_back(request->GetHandle());
+            NProto::TWriteDataResponse errorResponse;
+            errorResponse.MutableError()->SetCode(E_FAIL);
+            return MakeFuture(std::move(errorResponse));
+        };
+
+        b.WriteToCacheSync(1, 101, 1, "abc");
+        b.WriteToCacheSync(1, 102, 10, "123");
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
+
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        // Confirm that handle 101 is released
+        UNIT_ASSERT(releaseFuture.HasValue());
+        UNIT_ASSERT(HasError(releaseFuture.GetValue()));
+
+        // Flush should be retried using handle 102
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
     }
 }
 

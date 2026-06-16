@@ -43,6 +43,7 @@ private:
 public:
     using TRequestContext = TDeviceReadRequestContext;
     using TResponseProto = NProto::TReadDeviceBlocksResponse;
+    static constexpr ui32 ExpectedMsgId = TBlockStoreProtocol::ReadDeviceBlocksResponse;
 
     TRdmaRequestReadBlocksLocalHandler(
             TActorSystem* actorSystem,

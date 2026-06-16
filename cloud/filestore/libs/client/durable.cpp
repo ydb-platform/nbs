@@ -87,7 +87,7 @@ template <typename T>
 void ExtractResponse(TFuture<T>& future, T& response)
 {
     try {
-        response = future.ExtractValue();
+        response = UnsafeExtractValue(future);
     } catch (const TServiceError& e) {
         auto& error = *response.MutableError();
         error.SetCode(e.GetCode());

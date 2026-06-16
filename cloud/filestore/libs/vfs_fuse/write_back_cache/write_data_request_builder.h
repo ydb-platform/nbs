@@ -31,7 +31,7 @@ struct IWriteDataRequestBatchBuilder
     // Returns true if the request was added.
     // Returns false if the request was rejected to due conditions in the
     // configuration (e.g. max request count exceeded)
-    virtual bool AddRequest(ui64 handle, ui64 offset, TStringBuf data) = 0;
+    virtual bool AddRequest(ui64 offset, TStringBuf data) = 0;
 
     virtual TWriteDataRequestBatch Build() = 0;
 };

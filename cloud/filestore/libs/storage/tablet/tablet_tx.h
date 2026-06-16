@@ -538,6 +538,7 @@ struct TTxIndexTablet
 
         TString SessionId;
         bool SessionInterrupted = false;
+        ui64 OwnerGeneration = 0;
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
@@ -554,6 +555,7 @@ struct TTxIndexTablet
 
             SessionId.clear();
             SessionInterrupted = false;
+            OwnerGeneration = 0;
         }
     };
 
@@ -1886,6 +1888,7 @@ struct TTxIndexTablet
         NProto::TOpLogEntry OpLogEntry;
 
         NProto::TCreateHandleResponse Response;
+        bool Completed = false;
 
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
@@ -1923,6 +1926,7 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+            Completed = false;
 
             // deliberately not calling TProfileAware::Clear()
         }
@@ -1942,6 +1946,7 @@ struct TTxIndexTablet
         const NProto::TDestroyHandleRequest Request;
 
         TMaybe<IIndexTabletDatabase::TNode> Node;
+        bool Completed = false;
 
         TDestroyHandle(
                 TRequestInfoPtr requestInfo,
@@ -1957,6 +1962,7 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
 
             Node.Clear();
+            Completed = false;
         }
     };
 

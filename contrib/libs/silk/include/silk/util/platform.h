@@ -5,6 +5,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 #include <sched.h>
 #include <time.h>
@@ -98,10 +99,27 @@ static inline uint32_t getAvailableProcessorCount() noexcept
 /** Return the index of the CPU the calling thread is currently running on. */
 static inline uint32_t getCurrentProcessor() noexcept
 {
+    // The thread pointer is read through volatile asm rather than __builtin_thread_pointer(). A fiber
+    // may suspend on one OS thread and resume on another (work-stealing, or the SQ-ring-overflow yield
+    // in enqueueIo), which changes the thread pointer mid-function. The C++ abstract machine assumes the
+    // thread pointer is invariant for a thread's lifetime, so with __builtin_thread_pointer() the compiler
+    // is free to hoist the read out of a migration-spanning loop and keep the pre-migration value in a
+    // callee-saved register (which jump_fcontext preserves across the switch), reading the wrong CPU's
+    // rseq area after the migration. The volatile asm forces a fresh read at every use; it cannot be
+    // hoisted or CSE'd across the suspension.
+    char * threadPointer;
+#if defined(__x86_64__)
+    __asm__ volatile("movq %%fs:0, %0" : "=r"(threadPointer));
+#elif defined(__aarch64__)
+    __asm__ volatile("mrs %0, tpidr_el0" : "=r"(threadPointer));
+#else
+#    error Unsupported platform
+#endif
+
     // glibc's sched_getcpu fast path is THREAD_GETMEM_VOLATILE(THREAD_SELF, rseq_area.cpu_id),
     // which is the same rseq read we do here. We skip the function call and the cpu_id >= 0
     // fallback to vDSO/syscall -- safe on Linux 4.18+ / glibc 2.35+ where rseq is always registered.
-    struct rseq * rseq = reinterpret_cast<struct rseq *>(reinterpret_cast<char *>(__builtin_thread_pointer()) + __rseq_offset);
+    struct rseq * rseq = reinterpret_cast<struct rseq *>(threadPointer + __rseq_offset);
     return rseq->cpu_id;
 }
 
@@ -148,6 +166,16 @@ static constexpr uint64_t intHash(uint64_t key) noexcept
     key *= 0xc4ceb9fe1a85ec53ULL;
     key ^= key >> 33;
     return key;
+}
+
+/** Thread-safe strerror_r into a caller-provided buffer; may return nullptr for an unknown code. */
+static inline const char * strerror(int code, char * buf, size_t size) noexcept
+{
+#if defined(_GNU_SOURCE)
+    return ::strerror_r(code, buf, size);
+#else
+    return ::strerror_r(code, buf, size) == 0 ? buf : nullptr;
+#endif
 }
 
 } // namespace silk

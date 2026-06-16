@@ -119,7 +119,7 @@ protected:
                 return TErrorResponse(E_REJECTED, "request cancelled");
             }
         }
-        return extract ? future.ExtractValue() : future.GetValue();
+        return extract ? UnsafeExtractValue(future) : future.GetValue();
     }
 
 private:

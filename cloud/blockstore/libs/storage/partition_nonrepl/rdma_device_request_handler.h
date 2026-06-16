@@ -143,6 +143,18 @@ private:
             return error;
         }
 
+        if (result.MsgId != TDerived::ExpectedMsgId) {
+            auto msg = TStringBuilder()
+                       << "RDMA response message type mismatch:"
+                       << " expected " << TDerived::ExpectedMsgId << ", got "
+                       << result.MsgId;
+            ReportRdmaMessageTypeMismatch(
+                msg,
+                {{"MsgId", result.MsgId},
+                 {"ExpectedMsgId", TDerived::ExpectedMsgId}});
+            return MakeError(E_REJECTED, std::move(msg));
+        }
+
         auto& proto =
             static_cast<typename TDerived::TResponseProto&>(*result.Proto);
         if (HasError(proto.GetError())) {

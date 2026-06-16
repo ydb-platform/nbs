@@ -1,0 +1,46 @@
+PY3TEST()
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+SPLIT_FACTOR(1)
+
+TEST_SRCS(
+    test.py
+)
+
+DEPENDS(
+    cloud/filestore/apps/client
+    cloud/filestore/tools/testing/fmdtest/bin
+)
+
+PEERDIR(
+    cloud/filestore/public/sdk/python/client
+    cloud/filestore/tests/python/lib
+
+    cloud/storage/core/tools/testing/qemu/lib
+)
+
+SET(
+    NFS_STORAGE_CONFIG_PATCH
+    cloud/filestore/tests/fmdtest/configs/nfs-storage.txt
+)
+
+SET(
+    NFS_SERVICE_CONFIG_PATCH
+    cloud/filestore/tests/fmdtest/configs/vhost-sidechannel.txt
+)
+
+SET(USE_FAST_SHARD_PORT yes)
+
+SET(QEMU_VIRTIO fs)
+SET(QEMU_INSTANCE_COUNT 1)
+SET(FILESTORE_VHOST_ENDPOINT_COUNT 1)
+SET(FILESTORE_BLOCKS_COUNT 5242880)
+SET(VIRTIOFS_SERVER_COUNT 1)
+SET(QEMU_INVOKE_TEST NO)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
+
+END()

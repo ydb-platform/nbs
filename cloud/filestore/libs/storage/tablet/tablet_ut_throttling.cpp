@@ -290,8 +290,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         Tick(TDuration::Seconds(5));
         AssertWriteDataResponse(S_OK);
 
-        // TODO: 6. Test backpressure effect (NBS-2278).
-        // TODO: 7. Test max count (NBS-2278).
+        // TODO: Test max count (NBS-2278).
     }
 
     Y_UNIT_TEST_F(ShouldThrottleMultipleStage, TTablet)
