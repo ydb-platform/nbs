@@ -1,0 +1,134 @@
+#include "request.h"
+
+#include <library/cpp/testing/unittest/registar.h>
+
+namespace NCloud::NBlockStore {
+
+using namespace NProto;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void SetupRequest(TWriteBlocksLocalRequest& request, TString& data)
+{
+    TSgList sgList = {{data.data(), data.size()}};
+    request.Sglist = TGuardedSgList(std::move(sgList));
+    request.BlocksCount = 1;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
+{
+    Y_UNIT_TEST(DestructorDoesNotCloseSglistWhenDependent)
+    {
+        TString data = "hello";
+        TGuardedSgList sharedSglist;
+        {
+            TWriteBlocksLocalRequest request;
+            SetupRequest(request, data);
+            sharedSglist = request.Sglist;
+        }
+        UNIT_ASSERT(sharedSglist.Acquire());
+    }
+
+    Y_UNIT_TEST(DestructorClosesSglistWhenOwner)
+    {
+        TGuardedSgList sglistCopy;
+        {
+            TString data = "hello";
+            TWriteBlocksLocalRequest request;
+            SetupRequest(request, data);
+            request.TakeDataOwnership();
+            sglistCopy = request.Sglist;
+        }
+        UNIT_ASSERT(!sglistCopy.Acquire());
+    }
+
+    Y_UNIT_TEST(CreateDependentRequestSharesSglist)
+    {
+        TString data = "hello";
+        TGuardedSgList depSglist;
+        {
+            TWriteBlocksLocalRequest owner;
+            SetupRequest(owner, data);
+            owner.TakeDataOwnership();
+            TWriteBlocksLocalRequest dep(
+                owner,
+                TWriteBlocksLocalRequest::TDependentTag{});
+            depSglist = dep.Sglist;
+            UNIT_ASSERT(!dep.IsOwner());
+        }
+        UNIT_ASSERT(!depSglist.Acquire());
+    }
+
+    Y_UNIT_TEST(CreateDependentRequestDoesNotCopyBlocks)
+    {
+        TString data = "hello";
+        TWriteBlocksLocalRequest owner;
+        SetupRequest(owner, data);
+        owner.TakeDataOwnership();
+        UNIT_ASSERT_VALUES_EQUAL(1, owner.GetBlocks().BuffersSize());
+
+        TWriteBlocksLocalRequest dep(
+            owner,
+            TWriteBlocksLocalRequest::TDependentTag{});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, dep.GetBlocks().BuffersSize());
+    }
+
+    Y_UNIT_TEST(TakeOwnershipCopiesData)
+    {
+        TString data = "hello";
+        TWriteBlocksLocalRequest request;
+        SetupRequest(request, data);
+        UNIT_ASSERT(!request.IsOwner());
+
+        request.TakeDataOwnership();
+
+        UNIT_ASSERT(request.IsOwner());
+        auto guard = request.Sglist.Acquire();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(1u, guard.Get().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf("hello"),
+            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+    }
+
+    Y_UNIT_TEST(TakeOwnershipDataIsIndependent)
+    {
+        TString data = "hello";
+        TWriteBlocksLocalRequest request;
+        SetupRequest(request, data);
+        request.TakeDataOwnership();
+
+        data = "world";
+
+        auto guard = request.Sglist.Acquire();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf("hello"),
+            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+    }
+
+    Y_UNIT_TEST(TakeOwnershipIsIdempotent)
+    {
+        TString data = "hello";
+        TWriteBlocksLocalRequest request;
+        SetupRequest(request, data);
+        request.TakeDataOwnership();
+
+        request.TakeDataOwnership();
+
+        UNIT_ASSERT(request.IsOwner());
+        auto guard = request.Sglist.Acquire();
+        UNIT_ASSERT_VALUES_EQUAL(1u, guard.Get().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf("hello"),
+            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+    }
+}
+
+}   // namespace NCloud::NBlockStore

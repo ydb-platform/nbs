@@ -8,45 +8,43 @@ namespace NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBlocksLocalRequest TWriteBlocksLocalRequest::Clone() const
+TWriteBlocksLocalRequest::~TWriteBlocksLocalRequest()
 {
-    auto request = CreateDependentRequest();
-    if (SglistOwner) {
-        request.CopySglistIntoBuffers();
-    }
-
-    return request;
+    CloseOwnedSglist();
 }
 
-TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() const
+TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
+    const TWriteBlocksLocalRequest& source,
+    TDependentTag)
 {
-    Y_ABORT_UNLESS(GetDescriptor()->field_count() == 8);
-
-    TWriteBlocksLocalRequest copiedRecord;
+    Y_ABORT_UNLESS(source.GetDescriptor()->field_count() == 8);
 
     // Copy all protobuf fields except Blocks (field 4)
-    copiedRecord.MutableHeaders()->CopyFrom(GetHeaders());
-    copiedRecord.SetDiskId(GetDiskId());
-    copiedRecord.SetStartIndex(GetStartIndex());
-    copiedRecord.SetFlags(GetFlags());
-    copiedRecord.SetSessionId(GetSessionId());
-    copiedRecord.SetBlockSize(GetBlockSize());
-    copiedRecord.MutableChecksums()->CopyFrom(GetChecksums());
+    MutableHeaders()->CopyFrom(source.GetHeaders());
+    SetDiskId(source.GetDiskId());
+    SetStartIndex(source.GetStartIndex());
+    SetFlags(source.GetFlags());
+    SetSessionId(source.GetSessionId());
+    SetBlockSize(source.GetBlockSize());
+    MutableChecksums()->CopyFrom(source.GetChecksums());
 
     // Copy non-protobuf fields
-    copiedRecord.Sglist = Sglist;
-    copiedRecord.BlocksCount = BlocksCount;
-
-    return copiedRecord;
+    Sglist = source.Sglist;
+    BlocksCount = source.BlocksCount;
 }
 
-void TWriteBlocksLocalRequest::CopySglistIntoBuffers()
+void TWriteBlocksLocalRequest::TakeDataOwnership()
 {
+    if (OwnsSglist || Sglist.Empty()) {
+        return;
+    }
+
     auto g = Sglist.Acquire();
     if (!g) {
         return;
     }
 
+    MutableBlocks()->Clear();
     const auto& sgList = g.Get();
     TSgList newSgList;
     newSgList.reserve(sgList.size());
@@ -56,15 +54,23 @@ void TWriteBlocksLocalRequest::CopySglistIntoBuffers()
         memcpy(buffer.begin(), block.Data(), block.Size());
         newSgList.emplace_back(buffer.data(), buffer.size());
     }
+    Sglist = TGuardedSgList(std::move(newSgList));
+    OwnsSglist = true;
+}
 
-    TGuardedSgList newGuardedSgList(std::move(newSgList));
-    Sglist = newGuardedSgList;
-    SglistOwner.emplace(std::move(newGuardedSgList));
+void TWriteBlocksLocalRequest::CloseOwnedSglist()
+{
+    if (OwnsSglist && !Sglist.Empty()) {
+        Sglist.Close();
+        OwnsSglist = false;
+    }
 }
 
 TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)
 {
-    return request.CreateDependentRequest();
+    return TWriteBlocksLocalRequest(
+        request,
+        TWriteBlocksLocalRequest::TDependentTag{});
 }
 
 TWriteBlocksRequest CopyRequest(const TWriteBlocksRequest& request)

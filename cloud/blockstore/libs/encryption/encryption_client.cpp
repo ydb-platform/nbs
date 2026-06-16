@@ -561,8 +561,9 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
 
     TGuardedSgList guardedSgList(std::move(encryptedSglist));
 
-    auto encryptedRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-    *encryptedRequest = request->CreateDependentRequest();
+    auto encryptedRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>(
+        *request,
+        NProto::TWriteBlocksLocalRequest::TDependentTag{});
     encryptedRequest->Sglist = guardedSgList;
 
     auto future = Client->WriteBlocksLocal(
