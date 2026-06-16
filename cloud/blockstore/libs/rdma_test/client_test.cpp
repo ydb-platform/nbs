@@ -24,7 +24,7 @@ class TRequest: public NCloud::NStorage::NRdma::TClientRequest
 {
 public:
     TRequest(
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
+        NCloud::NStorage::NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context)
         : NCloud::NStorage::NRdma::TClientRequest(
               std::move(handler),
@@ -70,7 +70,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     {}
 
     TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> AllocateRequest(
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
+        NCloud::NStorage::NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) override

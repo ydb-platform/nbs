@@ -18,7 +18,7 @@ NActors::IActorPtr CreateNonreplicatedPartitionRdma(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
-    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
     NActors::TActorId volumeActorId,
     NActors::TActorId statActorId);
 

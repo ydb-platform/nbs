@@ -51,6 +51,7 @@ struct TTestEnv
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
     TStorageConfigPtr Config;
 
     static void AddDevice(
@@ -104,8 +105,17 @@ struct TTestEnv
         , VolumeActorId(0, "VVV")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentState(std::make_shared<TDiskAgentState>())
-        , RdmaClient(std::make_shared<TRdmaClientTest>())
     {
+        RdmaClient = std::make_shared<TRdmaClientTest>();
+        RdmaProxy = CreateTestRdmaProxy(
+            runtime,
+            VolumeActorId,
+            ActorId,
+            RdmaClient,
+            devices,
+            {},
+            {});
+
         SetupLogging();
 
         NProto::TStorageServiceConfig storageConfig;
@@ -156,7 +166,7 @@ struct TTestEnv
             std::move(config),
             CreateDiagnosticsConfig(),
             std::move(partConfig),
-            RdmaClient,
+            RdmaProxy,
             VolumeActorId,
             VolumeActorId
         );

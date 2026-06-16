@@ -58,7 +58,7 @@ struct TTestEnv
     TVector<TActorId> ReplicaActors;
     TVector<TActorId> DiskAgentActors;
     TVector<NProto::TLaggingAgent> LaggingAgents;
-    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IProxyPtr RdmaProxy;
 
     static void AddDevice(
         ui32 nodeId,
@@ -168,10 +168,16 @@ struct TTestEnv
         , VolumeActorId(Runtime.GetNodeId(0), "volume")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentStates(std::move(diskAgentStates))
-        , RdmaClient(
-              useRdma ? std::make_shared<TRdmaClientTest>()
-                      : NCloud::NStorage::NRdma::IClientPtr())
     {
+        if (useRdma) {
+            RdmaProxy = CreateTestRdmaProxy(
+                runtime,
+                VolumeActorId,
+                MirrorPartActorId,
+                Devices,
+                Replicas,
+                Migrations);
+        }
         SetupLogging();
 
         Runtime.SetRegistrationObserverFunc(
@@ -243,7 +249,7 @@ struct TTestEnv
             partConfig,
             Migrations,
             Replicas,
-            RdmaClient,
+            RdmaProxy,
             std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             VolumeActorId,

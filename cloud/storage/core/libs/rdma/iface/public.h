@@ -30,8 +30,11 @@ using TClientRequestPtr = std::unique_ptr<TClientRequest>;
 struct IClientEndpoint;
 using IClientEndpointPtr = std::shared_ptr<IClientEndpoint>;
 
-struct IClientHandler;
-using IClientHandlerPtr = std::shared_ptr<IClientHandler>;
+struct IClientRequestHandler;
+using IClientRequestHandlerPtr = std::shared_ptr<IClientRequestHandler>;
+
+struct IClientEndpointHandler;
+using IClientEndpointHandlerPtr = std::shared_ptr<IClientEndpointHandler>;
 
 struct TClientConfig;
 using TClientConfigPtr = std::shared_ptr<TClientConfig>;
@@ -52,5 +55,8 @@ using TProtoMessage = google::protobuf::Message;
 using TProtoMessagePtr = std::unique_ptr<TProtoMessage>;
 
 class TProtoMessageSerializer;
+
+struct IProxy;
+using IProxyPtr = std::shared_ptr<IProxy>;
 
 }   // namespace NCloud::NStorage::NRdma

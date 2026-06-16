@@ -124,6 +124,10 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleRdmaConnected(
+        const TEvVolume::TEvRdmaConnected::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleRdmaUnavailable(
         const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
         const NActors::TActorContext& ctx);

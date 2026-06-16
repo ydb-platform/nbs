@@ -776,7 +776,12 @@ public:
 
     bool GetUseRdma() const
     {
-        return UseRdma && !RdmaUnavailable;
+        return UseRdma;
+    }
+
+    bool GetRdmaUnavailable() const
+    {
+        return RdmaUnavailable;
     }
 
     bool GetUseFastPath() const
@@ -784,9 +789,24 @@ public:
         return UseFastPath;
     }
 
-    void SetRdmaUnavailable()
+    // returns true if the state has changed
+    bool SetRdmaConnected()
     {
+        if (!RdmaUnavailable) {
+            return false;
+        }
+        RdmaUnavailable = false;
+        return true;
+    }
+
+    // returns true if the state has changed
+    bool SetRdmaUnavailable()
+    {
+        if (RdmaUnavailable) {
+            return false;
+        }
         RdmaUnavailable = true;
+        return true;
     }
 
     TDuration GetMaxTimedOutDeviceStateDuration() const

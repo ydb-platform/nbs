@@ -94,7 +94,7 @@ Y_FORCE_INLINE ui64 GetCycleCount() noexcept {
 #elif defined(_arm64_)
     ui64 x;
 
-    __asm__ __volatile__("isb; mrs %0, cntvct_el0"
+    __asm__ __volatile__("isb \n mrs %0, cntvct_el0"
                          : "=r"(x));
 
     return x;

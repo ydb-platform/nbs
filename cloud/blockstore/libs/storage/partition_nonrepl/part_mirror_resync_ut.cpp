@@ -312,7 +312,7 @@ struct TTestEnv
             PartConfig,
             TMigrations(),
             Replicas,
-            nullptr, // rdmaClient
+            nullptr, // rdmaProxy
             std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             TActorId(), // statActorId
@@ -386,7 +386,7 @@ struct TTestEnv
             PartConfig,
             TMigrations(),
             Replicas,
-            nullptr,   // rdmaClient
+            nullptr,   // rdmaProxy
             std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             VolumeActorId,

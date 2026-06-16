@@ -57,7 +57,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TMigrations migrations,
         TVector<TDevices> replicas,
-        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         TActorId volumeActorId,
         TActorId statActorId,
@@ -66,7 +66,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
-    , RdmaClient(std::move(rdmaClient))
+    , RdmaProxy(std::move(rdmaProxy))
     , PartitionBudgetManager(std::move(partitionBudgetManager))
     , DiskId(partConfig->GetName())
     , VolumeActorId(volumeActorId)
@@ -133,7 +133,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
                 State.GetRWClientId(),
                 replicaInfo.Config,
                 replicaInfo.Migrations,
-                RdmaClient,
+                RdmaProxy,
                 VolumeActorId,
                 SelfId(),
                 migrationSrcActorId);
@@ -144,7 +144,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
                 replicaInfo.Config,
                 VolumeActorId,
                 SelfId(),
-                RdmaClient);
+                RdmaProxy);
         }
 
         State.AddReplicaActor(NCloud::Register(ctx, std::move(actor)));

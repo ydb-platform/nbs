@@ -92,7 +92,7 @@ struct TRequest
 
     TRequest(
             std::weak_ptr<TClientEndpoint> endpoint,
-            IClientHandlerPtr handler,
+            IClientRequestHandlerPtr handler,
             std::unique_ptr<TNullContext> context)
         : TClientRequest(std::move(handler), std::move(context))
         , StartedCycles(GetCycleCount())
@@ -435,7 +435,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TString Host;
     ui32 Port;
-    IClientHandlerPtr Handler;
+    IClientEndpointHandlerPtr Handler;
     TEndpointCountersPtr Counters;
     TLog Log;
     TReconnect Reconnect;
@@ -454,7 +454,6 @@ private:
     NVerbs::TCompletionChannelPtr CompletionChannel = NVerbs::NullPtr;
     NVerbs::TCompletionQueuePtr CompletionQueue = NVerbs::NullPtr;
 
-    TPromise<IClientEndpointPtr> StartResult = NewPromise<IClientEndpointPtr>();
     TPromise<void> StopResult = NewPromise<void>();
 
     std::atomic<ui64> FlushStartCycles = 0;
@@ -531,7 +530,7 @@ public:
 
     // called from external thread
     TResultOrError<TClientRequestPtr> AllocateRequest(
-        IClientHandlerPtr handler,
+        IClientRequestHandlerPtr handler,
         std::unique_ptr<TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) noexcept override;
@@ -584,6 +583,7 @@ TClientEndpoint::TClientEndpoint(
         NVerbs::TConnectionPtr connection,
         TString host,
         ui32 port,
+        IClientEndpointHandlerPtr handler,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log)
@@ -591,6 +591,7 @@ TClientEndpoint::TClientEndpoint(
     , Connection(std::move(connection))
     , Host(std::move(host))
     , Port(port)
+    , Handler(std::move(handler)
     , Counters(std::move(stats))
     , Log(log)
     , Reconnect(config->MaxReconnectDelay)
@@ -797,7 +798,7 @@ void TClientEndpoint::StartReceive() noexcept
 
 // implements IClientEndpoint
 TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
-    IClientHandlerPtr handler,
+    IClientRequestHandlerPtr handler,
     std::unique_ptr<TNullContext> context,
     size_t requestBytes,
     size_t responseBytes) noexcept
@@ -1521,6 +1522,9 @@ private:
         return AtomicGet(StopFlag) != 0;
     }
 
+    // NOTE: if the number of CM threads ever changes,
+    // TEndpointProxy::RestartEndpoint has to be rewritten to support multiple
+    // writers
     void* ThreadProc() override
     {
         NCloud::SetCurrentThreadName("RDMA.CM");
@@ -1865,7 +1869,6 @@ private:
 
     TClientConfigPtr Config;
     TEndpointCountersPtr Counters;
-    TLog Log;
 
     TConnectionPollerPtr ConnectionPoller;
     TVector<TCompletionPollerPtr> CompletionPollers;
@@ -1879,9 +1882,10 @@ public:
     // called from external thread
     void Start() noexcept override;
     void Stop() noexcept override;
-    TFuture<IClientEndpointPtr> StartEndpoint(
+    IClientEndpointPtr StartEndpoint(
         TString host,
-        ui32 port) noexcept override;
+        ui32 port,
+        IClientEndpointHandlerPtr handler) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
     bool IsAlignedDataEnabled() const override;
 
@@ -1969,9 +1973,10 @@ void TClient::Stop() noexcept
 }
 
 // implements IClient
-TFuture<IClientEndpointPtr> TClient::StartEndpoint(
+IClientEndpointPtr TClient::StartEndpoint(
     TString host,
-    ui32 port) noexcept
+    ui32 port,
+    IClientEndpointHandlerPtr handler) noexcept
 {
     auto unavailable = [&](TString message) {
         return MakeErrorFuture<IClientEndpointPtr>(
@@ -1984,7 +1989,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     }
 
     try {
-        auto endpoint = std::make_shared<TClientEndpoint>(
+        auto endpoint = std::ake_shared<TClientEndpoint>(
             Verbs,
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
@@ -1993,12 +1998,10 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
             Counters,
             Log);
 
-        auto future = endpoint->StartResult.GetFuture();
-
         ConnectionPoller->Attach(endpoint.get());
         PickPoller().Acquire(endpoint);
         BeginResolveAddress(endpoint.get());
-        return future;
+        return endpoint;
 
     } catch (const TServiceError& e) {
         return unavailable("unable to start rdma endpoint");
@@ -2091,18 +2094,9 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
     }
 
     if (endpoint->Reconnect.Hanging()) {
-        // if this is our first connection, fail over to IC
-        if (endpoint->StartResult.Initialized()) {
-            RDMA_ERROR(endpoint->Log, "connection timeout");
-
-            auto startResult = std::move(endpoint->StartResult);
-            startResult.SetException(std::make_exception_ptr(TServiceError(
-                MakeError(E_RDMA_UNAVAILABLE, "connection timeout"))));
-
-            StopEndpoint(endpoint);
-            return;
-        }
-        // otherwise keep trying
+        endpoint->Handler->HandleUnavailable(
+            endpoint->Host,
+            endpoint->Port);
     }
 
     RDMA_DEBUG(
@@ -2172,6 +2166,8 @@ void TClient::Disconnect(TClientEndpoint* endpoint) noexcept
     if (endpoint->WaitMode == EWaitMode::Poll) {
         endpoint->AbortRequestsEvent.Set();
     }
+
+    endpoint->Handler->HandleDisconnected();
 }
 
 void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
@@ -2321,10 +2317,7 @@ void TClient::HandleConnected(
 
     RDMA_INFO(endpoint->Log, "connected");
 
-    if (endpoint->StartResult.Initialized()) {
-        auto startResult = std::move(endpoint->StartResult);
-        startResult.SetValue(endpoint->shared_from_this());
-    }
+    endpoint->Handler->HandleConnected(endpoint->Host, endpoint->Port);
 }
 
 void TClient::HandleRejected(

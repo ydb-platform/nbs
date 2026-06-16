@@ -12,7 +12,7 @@ IActorPtr CreateNonreplicatedPartitionRdma(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
-    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IProxyPtr rdmaProxy,
     TActorId volumeActorId,
     TActorId statActorId)
 {
@@ -20,7 +20,7 @@ IActorPtr CreateNonreplicatedPartitionRdma(
         std::move(config),
         std::move(diagnosticsConfig),
         std::move(partConfig),
-        std::move(rdmaClient),
+        std::move(rdmaProxy),
         volumeActorId,
         statActorId);
 }

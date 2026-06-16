@@ -1,5 +1,6 @@
 #include "volume_actor.h"
 
+#include "rdma_status_notifier.h"
 #include "volume_database.h"
 
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
@@ -12,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/rdma/iface/proxy.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
@@ -445,12 +447,59 @@ TVolumeActor::EStatus TVolumeActor::GetVolumeStatus() const
     return TVolumeActor::STATUS_OFFLINE;
 }
 
-NCloud::NStorage::NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
+void TVolumeActor::SetupRdmaProxy(const TActorContext& ctx)
 {
-    return (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma())
-               ? RdmaClient
-               : NCloud::NStorage::NRdma::IClientPtr{};
+    if (!RdmaClient) {
+        return;
+    }
+
+    TVector<std::pair<TString, ui32>> endpoints;
+
+    // FIXME: issue-5803
+    for (const auto& device: State->GetMeta().GetDevices()) {
+        endpoints.push_back(
+            {device.GetAgentId(), device.GetRdmaEndpoint().GetPort()});
+    }
+
+    for (const auto& replica: State->GetMeta().GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            endpoints.push_back(
+                {device.GetAgentId(), device.GetRdmaEndpoint().GetPort()});
+        }
+    }
+
+    for (const auto& migration: State->GetMeta().GetMigrations()) {
+        const auto& device = migration.GetTargetDevice();
+        endpoints.push_back(
+            {device.GetAgentId(), device.GetRdmaEndpoint().GetPort()});
+    }
+
+    try {
+        RdmaProxy = NRdma::CreateProxy(
+            RdmaClient,
+            std::make_shared<TRdmaStatusNotifier>(ctx, SelfId()),
+            std::move(endpoints));
+    }
+    catch (const TServiceError &e) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Unable to initialize rdma proxy: %s",
+            LogTitle.GetWithTime().c_str(),
+            e.what());
+    }
 }
+
+NCloud::NStorage::NRdma::IProxyPtr TVolumeActor::GetRdmaProxy() const
+{
+    if (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma() &&
+        !State->GetRdmaUnavailable())
+    {
+        return RdmaProxy;
+    }
+    return NCloud::NStorage::NRdma::IProxyPtr{};
+}
+
 
 ui64 TVolumeActor::GetBlocksCount() const
 {
@@ -1145,6 +1194,7 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolume::TEvRetryAcquireReleaseDisk,
             HandleRetryAcquireReleaseDisk);
+        HFunc(TEvVolume::TEvRdmaConnected, HandleRdmaConnected);
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,

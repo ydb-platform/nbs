@@ -130,6 +130,7 @@ bool TFollowerDiskActor::OnMessage(
 {
     Y_UNUSED(ctx);
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvVolume::TEvRdmaConnected, HandleRdmaConnected);
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
@@ -337,6 +338,13 @@ void TFollowerDiskActor::ForwardRequestToFollowerPartition(
     const NActors::TActorContext& ctx)
 {
     ForwardMessageToActor(ev, ctx, FollowerPartitionActorId);
+}
+
+void TFollowerDiskActor::HandleRdmaConnected(
+    const TEvVolume::TEvRdmaConnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, LeaderVolumeActorId);
 }
 
 void TFollowerDiskActor::HandleRdmaUnavailable(

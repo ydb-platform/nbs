@@ -123,7 +123,7 @@ struct TClientRequest: public NRdma::TClientRequest
 public:
     TClientRequest(
         const TActorId& rdmaActorId,
-        NRdma::IClientHandlerPtr handler,
+        NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NRdma::TNullContext> context,
         ui32 requestSize,
         ui32 responseSize)
@@ -169,7 +169,7 @@ public:
         TEndpointId endpointId);
 
     auto AllocateRequest(
-        NRdma::IClientHandlerPtr handler,
+        NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes)
@@ -203,7 +203,7 @@ TClientEndpoint::TClientEndpoint(
 {}
 
 auto TClientEndpoint::AllocateRequest(
-    NRdma::IClientHandlerPtr handler,
+    NRdma::IClientRequestHandlerPtr handler,
     std::unique_ptr<NRdma::TNullContext> context,
     size_t requestBytes,
     size_t responseBytes) -> TResultOrError<NRdma::TClientRequestPtr>
@@ -1084,8 +1084,7 @@ public:
 
     // IClient
 
-    auto StartEndpoint(TString host, ui32 port)
-        -> TFuture<NRdma::IClientEndpointPtr> override;
+    NRdma::IClientEndpointPtr StartEndpoint(TString host, ui32 port) override;
 
     void DumpHtml(IOutputStream& out) const override;
 

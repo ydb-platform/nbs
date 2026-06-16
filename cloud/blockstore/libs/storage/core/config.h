@@ -567,6 +567,7 @@ public:
     ui32 GetRdmaTargetPort() const;
     bool GetUseNonreplicatedRdmaActor() const;
     bool GetUseRdma() const;
+    bool GetRdmaUnavailable() const;
 
     bool GetNonReplicatedDontSuspendDevices() const;
     TDuration GetAddClientRetryTimeoutIncrement() const;

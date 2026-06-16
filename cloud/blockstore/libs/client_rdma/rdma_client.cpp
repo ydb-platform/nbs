@@ -615,7 +615,7 @@ public:
 
 class TRdmaDataEndpoint
     : public TEndpointBase
-    , public NRdma::IClientHandler
+    , public NRdma::IClientRequestHandler
     , public std::enable_shared_from_this<TRdmaDataEndpoint>
 {
     const ITraceSerializerPtr TraceSerializer;
