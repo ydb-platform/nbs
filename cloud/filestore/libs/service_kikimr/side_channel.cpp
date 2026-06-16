@@ -411,10 +411,16 @@ public:
     {
         Y_UNUSED(callContext);
 
-        // Iovec base addresses are pointers in this process and cannot be
-        // sent over the wire. Materialize them into Buffer before dispatching.
-        if (request->IovecsSize() > 0) {
-            MoveIovecsToBuffer(*request);
+        const ui64 iovecsSize = request->IovecsSize();
+        const ui64 bufferOffset = request->GetBufferOffset();
+        if (iovecsSize > 0 && bufferOffset > 0) {
+            NProto::TWriteDataResponse errorResponse;
+            *errorResponse.MutableError() = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "BufferOffset=" << bufferOffset
+                    << ", iovecsSize=" << iovecsSize << " are both nonzero");
+            response.SetValue(std::move(errorResponse));
+            return true;
         }
 
         auto channel = AccessFileSystemChannel(*request);
@@ -423,7 +429,15 @@ public:
             *request,
             std::move(response),
             [](TRequest& req, const NProto::TWriteDataRequest& body) {
-                *req.MutableWriteData() = body;
+                auto& writeData = *req.MutableWriteData();
+                writeData = body;
+
+                // Iovec base addresses are pointers in this process and cannot
+                // be sent over the wire. Materialize them into Buffer before
+                // dispatching.
+                if (writeData.IovecsSize() > 0) {
+                    MoveIovecsToBuffer(writeData);
+                }
             },
             [](NProto::TWriteDataResponse& resp, TResponse& r) {
                 resp = std::move(*r.MutableWriteData());
