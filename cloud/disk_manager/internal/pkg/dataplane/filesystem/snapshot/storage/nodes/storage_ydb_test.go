@@ -456,6 +456,58 @@ func TestListNodesByShardReturnsShardAndParentRefs(t *testing.T) {
 	require.Equal(t, expectedShard3, nodesByShard)
 }
 
+func TestListNodeRefsByShard(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-list-node-refs-by-shard"
+	shardFilesystemID := "shard-list-node-refs"
+	nodeCount := 100000
+
+	nodes := make([]nfs.Node, 0, nodeCount)
+	for i := 0; i < nodeCount; i++ {
+		nodes = append(nodes, makeNodeWithShard(
+			nfs.RootNodeID,
+			uint64(i+10),
+			fmt.Sprintf("node-%06d", i),
+			nfs_client.NODE_KIND_FILE,
+			shardFilesystemID,
+			fmt.Sprintf("shard-node-%06d", i),
+		))
+	}
+
+	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
+	require.NoError(t, err)
+
+	pageSize := uint64(100)
+	checkPage := func(offset uint64) {
+		nodesByShard, err := f.storage.ListNodesByShard(
+			f.ctx,
+			snapshotID,
+			shardFilesystemID,
+			pageSize,
+			offset,
+		)
+		require.NoError(t, err)
+		require.Len(t, nodesByShard, int(pageSize))
+
+		for i, node := range nodesByShard {
+			nodeIndex := int(offset) + i
+			expected := makeNodeRestoredAsNode(
+				uint64(nodeIndex+10),
+				fmt.Sprintf("node-%06d", nodeIndex),
+				nfs_client.NODE_KIND_FILE,
+				fmt.Sprintf("shard-node-%06d", nodeIndex),
+			)
+			require.Equal(t, expected, node)
+		}
+	}
+
+	checkPage(0)
+	checkPage(uint64(nodeCount) / 2)
+	checkPage(uint64(nodeCount) - pageSize)
+}
+
 func TestDeleteSnapshotData(t *testing.T) {
 	deleteLimit := uint64(2)
 	f := createFixture(t, deleteLimit)

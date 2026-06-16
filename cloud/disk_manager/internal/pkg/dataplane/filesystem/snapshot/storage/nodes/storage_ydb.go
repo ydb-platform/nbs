@@ -112,6 +112,34 @@ func scanNodeRefByShard(result persistence.Result) (nodeRefByShard, error) {
 	return nodeRef, nil
 }
 
+func scanNodeRefsByShard(
+	ctx context.Context,
+	res persistence.Result,
+) ([]nodeRefByShard, error) {
+
+	var nodeRefs []nodeRefByShard
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			nodeRef, err := scanNodeRefByShard(res)
+			if err != nil {
+				return nil, errors.NewNonRetriableErrorf(
+					"listNodeRefsByShard: failed to parse row: %w",
+					err,
+				)
+			}
+
+			nodeRefs = append(nodeRefs, nodeRef)
+		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
+	return nodeRefs, nil
+}
+
 func nodeStructTypeString() string {
 	return `Struct<
 		filesystem_snapshot_id: Utf8,
@@ -515,26 +543,7 @@ func (s *storageYDB) listNodeRefsByShard(
 	}
 	defer res.Close()
 
-	var nodeRefs []nodeRefByShard
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			nodeRef, err := scanNodeRefByShard(res)
-			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"listNodeRefsByShard: failed to parse row: %w",
-					err,
-				)
-			}
-
-			nodeRefs = append(nodeRefs, nodeRef)
-		}
-	}
-
-	if res.Err() != nil {
-		return nil, errors.NewRetriableError(res.Err())
-	}
-
-	return nodeRefs, nil
+	return scanNodeRefsByShard(ctx, res)
 }
 
 func (s *storageYDB) listNodeRefs(
