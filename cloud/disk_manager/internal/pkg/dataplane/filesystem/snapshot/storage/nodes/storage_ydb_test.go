@@ -274,15 +274,16 @@ func TestListNodesByShardReturnsEmptyForNodesWithoutShard(t *testing.T) {
 	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
 	require.NoError(t, err)
 
-	nodesByShard, err := f.storage.ListNodesByShard(
+	nodesByShard, nextCookie, err := f.storage.ListNodesByShard(
 		f.ctx,
 		snapshotID,
 		"",
 		100,
-		0,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Empty(t, nodesByShard)
+	require.Nil(t, nextCookie)
 }
 
 func TestListNodesByShardReturnsShardAndParentRefs(t *testing.T) {
@@ -415,45 +416,64 @@ func TestListNodesByShardReturnsShardAndParentRefs(t *testing.T) {
 		),
 	}
 
-	nodesByShard, err := f.storage.ListNodesByShard(
+	nodesByShard, nextCookie, err := f.storage.ListNodesByShard(
 		f.ctx,
 		snapshotID,
 		"shard-1",
 		100,
-		0,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, expectedShard1, nodesByShard)
+	require.Nil(t, nextCookie)
 
-	nodesByShard, err = f.storage.ListNodesByShard(
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
 		f.ctx,
 		snapshotID,
 		"shard-1",
 		1,
-		0,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, expectedShard1[:1], nodesByShard)
+	require.Equal(t, &NodeRefsByShardCookie{
+		ParentNodeID: 10,
+		Name:         "child-a",
+		StoreAsChild: true,
+	}, nextCookie)
 
-	nodesByShard, err = f.storage.ListNodesByShard(
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"shard-1",
+		100,
+		nextCookie,
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedShard1[1:], nodesByShard)
+	require.Nil(t, nextCookie)
+
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
 		f.ctx,
 		snapshotID,
 		"shard-2",
 		100,
-		0,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, expectedShard2, nodesByShard)
+	require.Nil(t, nextCookie)
 
-	nodesByShard, err = f.storage.ListNodesByShard(
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
 		f.ctx,
 		snapshotID,
 		"shard-3",
 		100,
-		0,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, expectedShard3, nodesByShard)
+	require.Nil(t, nextCookie)
 }
 
 func TestListNodeRefsByShard(t *testing.T) {
@@ -465,6 +485,7 @@ func TestListNodeRefsByShard(t *testing.T) {
 	nodeCount := 100000
 
 	nodes := make([]nfs.Node, 0, nodeCount)
+	expected := make([]nfs.Node, 0, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		nodes = append(nodes, makeNodeWithShard(
 			nfs.RootNodeID,
@@ -474,38 +495,40 @@ func TestListNodeRefsByShard(t *testing.T) {
 			shardFilesystemID,
 			fmt.Sprintf("shard-node-%06d", i),
 		))
+		expected = append(expected, makeNodeRestoredAsNode(
+			uint64(i+10),
+			fmt.Sprintf("node-%06d", i),
+			nfs_client.NODE_KIND_FILE,
+			fmt.Sprintf("shard-node-%06d", i),
+		))
 	}
 
 	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
 	require.NoError(t, err)
 
 	pageSize := uint64(100)
-	checkPage := func(offset uint64) {
-		nodesByShard, err := f.storage.ListNodesByShard(
+	var collected []nfs.Node
+	var cookie *NodeRefsByShardCookie
+	for {
+		nodesByShard, nextCookie, err := f.storage.ListNodesByShard(
 			f.ctx,
 			snapshotID,
 			shardFilesystemID,
 			pageSize,
-			offset,
+			cookie,
 		)
 		require.NoError(t, err)
-		require.Len(t, nodesByShard, int(pageSize))
 
-		for i, node := range nodesByShard {
-			nodeIndex := int(offset) + i
-			expected := makeNodeRestoredAsNode(
-				uint64(nodeIndex+10),
-				fmt.Sprintf("node-%06d", nodeIndex),
-				nfs_client.NODE_KIND_FILE,
-				fmt.Sprintf("shard-node-%06d", nodeIndex),
-			)
-			require.Equal(t, expected, node)
+		collected = append(collected, nodesByShard...)
+		if nextCookie == nil {
+			break
 		}
+
+		require.Len(t, nodesByShard, int(pageSize))
+		cookie = nextCookie
 	}
 
-	checkPage(0)
-	checkPage(uint64(nodeCount) / 2)
-	checkPage(uint64(nodeCount) - pageSize)
+	require.Equal(t, expected, collected)
 }
 
 func TestDeleteSnapshotData(t *testing.T) {
@@ -576,15 +599,16 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, listed)
 
-	nodesByShard, err := f.storage.ListNodesByShard(
+	nodesByShard, nextShardCookie, err := f.storage.ListNodesByShard(
 		f.ctx,
 		snapshotID,
 		"delete-shard",
 		100,
-		0,
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, nodesByShard)
+	require.Nil(t, nextShardCookie)
 
 	err = f.storage.DeleteSnapshotData(f.ctx, snapshotID)
 	require.NoError(t, err)
@@ -613,15 +637,16 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, mapping)
 
-	nodesByShard, err = f.storage.ListNodesByShard(
+	nodesByShard, nextShardCookie, err = f.storage.ListNodesByShard(
 		f.ctx,
 		snapshotID,
 		"delete-shard",
 		100,
-		0,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Empty(t, nodesByShard)
+	require.Nil(t, nextShardCookie)
 }
 
 func TestGetDestinationNodeIDs(t *testing.T) {

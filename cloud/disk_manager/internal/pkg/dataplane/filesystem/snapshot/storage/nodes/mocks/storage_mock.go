@@ -42,12 +42,13 @@ func (s *StorageMock) ListNodesByShard(
 	snapshotID string,
 	shardFilesystemID string,
 	limit uint64,
-	offset uint64,
-) ([]nfs.Node, error) {
+	cookie *nodes.NodeRefsByShardCookie,
+) ([]nfs.Node, *nodes.NodeRefsByShardCookie, error) {
 
-	args := s.Called(ctx, snapshotID, shardFilesystemID, limit, offset)
+	args := s.Called(ctx, snapshotID, shardFilesystemID, limit, cookie)
 	res, _ := args.Get(0).([]nfs.Node)
-	return res, args.Error(1)
+	nextCookie, _ := args.Get(1).(*nodes.NodeRefsByShardCookie)
+	return res, nextCookie, args.Error(2)
 }
 
 func (s *StorageMock) DeleteSnapshotData(

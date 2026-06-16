@@ -28,8 +28,8 @@ type Storage interface {
 		snapshotID string,
 		shardFilesystemID string,
 		limit uint64,
-		offset uint64,
-	) ([]nfs.Node, error)
+		cookie *NodeRefsByShardCookie,
+	) ([]nfs.Node, *NodeRefsByShardCookie, error)
 
 	DeleteSnapshotData(
 		ctx context.Context,
@@ -62,4 +62,11 @@ type Storage interface {
 		snapshotID string,
 		destinationFilesystemID string,
 	) error
+}
+
+// NodeRefsByShardCookie identifies a position in the node_refs_by_shard order.
+type NodeRefsByShardCookie struct {
+	ParentNodeID uint64
+	Name         string
+	StoreAsChild bool
 }

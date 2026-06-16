@@ -71,6 +71,15 @@ type nodeRefByShard struct {
 	storeAsChild      bool
 }
 
+func (n nodeRefByShard) Cookie() *NodeRefsByShardCookie {
+
+	return &NodeRefsByShardCookie{
+		ParentNodeID: n.parentNodeID,
+		Name:         n.name,
+		StoreAsChild: n.storeAsChild,
+	}
+}
+
 func nodeRefByShardStructTypeString() string {
 	return `Struct<
 		filesystem_snapshot_id: Utf8,
@@ -514,36 +523,80 @@ func (s *storageYDB) listNodeRefsByShard(
 	snapshotID string,
 	shardFilesystemID string,
 	limit uint64,
-	offset uint64,
-) ([]nodeRefByShard, error) {
+	cookie *NodeRefsByShardCookie,
+) ([]nodeRefByShard, *NodeRefsByShardCookie, error) {
 
-	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $snapshot_id as Utf8;
-		declare $shard_filesystem_id as Utf8;
-		declare $limit as Uint64;
-		declare $offset as Uint64;
+	queryLimit := limit + 1
 
-		select *
-		from node_refs_by_shard
-		where filesystem_snapshot_id = $snapshot_id
-			and shard_filesystem_id = $shard_filesystem_id
-		order by parent_node_id, name, store_as_child
-		limit $limit
-		offset $offset
-	`, s.tablesPath),
-		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$shard_filesystem_id", persistence.UTF8Value(shardFilesystemID)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
-		persistence.ValueParam("$offset", persistence.Uint64Value(offset)),
-	)
+	var res persistence.Result
+	var err error
+	if cookie == nil {
+		res, err = session.StreamExecuteRO(
+			ctx,
+			fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $snapshot_id as Utf8;
+				declare $shard_filesystem_id as Utf8;
+				declare $limit as Uint64;
+
+				select *
+				from node_refs_by_shard
+				where filesystem_snapshot_id = $snapshot_id
+					and shard_filesystem_id = $shard_filesystem_id
+				order by parent_node_id, name, store_as_child
+				limit $limit
+			`, s.tablesPath),
+			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+			persistence.ValueParam("$shard_filesystem_id", persistence.UTF8Value(shardFilesystemID)),
+			persistence.ValueParam("$limit", persistence.Uint64Value(queryLimit)),
+		)
+	} else {
+		res, err = session.StreamExecuteRO(
+			ctx,
+			fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $snapshot_id as Utf8;
+				declare $shard_filesystem_id as Utf8;
+				declare $limit as Uint64;
+				declare $cookie_parent_node_id as Uint64;
+				declare $cookie_name as Utf8;
+				declare $cookie_store_as_child as Bool;
+
+				select *
+				from node_refs_by_shard
+				where filesystem_snapshot_id = $snapshot_id
+					and shard_filesystem_id = $shard_filesystem_id
+					and AsTuple(parent_node_id, name, store_as_child) >=
+						AsTuple($cookie_parent_node_id, $cookie_name, $cookie_store_as_child)
+				order by parent_node_id, name, store_as_child
+				limit $limit
+			`, s.tablesPath),
+			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+			persistence.ValueParam("$shard_filesystem_id", persistence.UTF8Value(shardFilesystemID)),
+			persistence.ValueParam("$limit", persistence.Uint64Value(queryLimit)),
+			persistence.ValueParam("$cookie_parent_node_id", persistence.Uint64Value(cookie.ParentNodeID)),
+			persistence.ValueParam("$cookie_name", persistence.UTF8Value(cookie.Name)),
+			persistence.ValueParam("$cookie_store_as_child", persistence.BoolValue(cookie.StoreAsChild)),
+		)
+	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer res.Close()
 
-	return scanNodeRefsByShard(ctx, res)
+	nodeRefs, err := scanNodeRefsByShard(ctx, res)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if uint64(len(nodeRefs)) <= limit {
+		return nodeRefs, nil, nil
+	}
+
+	nextCookie := nodeRefs[int(limit)].Cookie()
+	return nodeRefs[:int(limit)], nextCookie, nil
 }
 
 func (s *storageYDB) listNodeRefs(
@@ -704,19 +757,19 @@ func (s *storageYDB) listNodesByShard(
 	snapshotID string,
 	shardFilesystemID string,
 	limit uint64,
-	offset uint64,
-) ([]nfs.Node, error) {
+	cookie *NodeRefsByShardCookie,
+) ([]nfs.Node, *NodeRefsByShardCookie, error) {
 
-	nodeRefsByShard, err := s.listNodeRefsByShard(
+	nodeRefsByShard, nextCookie, err := s.listNodeRefsByShard(
 		ctx,
 		session,
 		snapshotID,
 		shardFilesystemID,
 		limit,
-		offset,
+		cookie,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	uniqueNodeIDs := make(map[uint64]struct{}, len(nodeRefsByShard))
@@ -732,14 +785,14 @@ func (s *storageYDB) listNodesByShard(
 
 	attrs, err := s.fetchNodeAttrs(ctx, session, snapshotID, nodeIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	nodes := make([]nfs.Node, 0, len(nodeRefsByShard))
 	for _, nodeRefByShard := range nodeRefsByShard {
 		node, ok := attrs[nodeRefByShard.nodeID]
 		if !ok {
-			return nil, errors.NewNonRetriableErrorf(
+			return nil, nil, errors.NewNonRetriableErrorf(
 				"node not found: snapshot_id=%v node_id=%v",
 				snapshotID,
 				nodeRefByShard.nodeID,
@@ -760,7 +813,7 @@ func (s *storageYDB) listNodesByShard(
 		nodes = append(nodes, node)
 	}
 
-	return nodes, nil
+	return nodes, nextCookie, nil
 }
 
 func (s *storageYDB) deleteFromTables(
@@ -1087,27 +1140,28 @@ func (s *storageYDB) ListNodesByShard(
 	snapshotID string,
 	shardFilesystemID string,
 	limit uint64,
-	offset uint64,
-) ([]nfs.Node, error) {
+	cookie *NodeRefsByShardCookie,
+) ([]nfs.Node, *NodeRefsByShardCookie, error) {
 
 	var result []nfs.Node
+	var nextCookie *NodeRefsByShardCookie
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			result, err = s.listNodesByShard(
+			result, nextCookie, err = s.listNodesByShard(
 				ctx,
 				session,
 				snapshotID,
 				shardFilesystemID,
 				limit,
-				offset,
+				cookie,
 			)
 			return err
 		},
 	)
-	return result, err
+	return result, nextCookie, err
 }
 
 func (s *storageYDB) CleanupRestorationNodeIDsMapping(
