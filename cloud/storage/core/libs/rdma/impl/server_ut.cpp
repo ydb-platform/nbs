@@ -129,6 +129,32 @@ bool WaitUntil(
 }
 
 
+void SetupFlushOnQpError(NVerbs::TTestContextPtr context)
+{
+    context->ModifyQP = [ctx = context.Get()](
+        ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+
+        if (!((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR)) {
+            return;
+        }
+        with_lock (ctx->CompletionLock) {
+            ctx->HandleCompletionEvent = [](ibv_wc* wc) {
+                wc->status = IBV_WC_WR_FLUSH_ERR;
+                wc->opcode = static_cast<ibv_wc_opcode>(0);
+            };
+            std::move(
+                ctx->RecvEvents.begin(),
+                ctx->RecvEvents.end(),
+                std::back_inserter(ctx->ProcessedRecvEvents));
+            ctx->RecvEvents.clear();
+            ctx->ReqIds.clear();
+        }
+        ctx->CompletionHandle.Set();
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST(TRdmaServerTest, ShouldStartEndpoint)
@@ -219,6 +245,23 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
     testContext->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
     {
         Y_UNUSED(qp);
+
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            with_lock (testContext->CompletionLock) {
+                testContext->HandleCompletionEvent = [](ibv_wc* wc) {
+                    wc->status = IBV_WC_WR_FLUSH_ERR;
+                    wc->opcode = static_cast<ibv_wc_opcode>(0);
+                };
+                std::move(
+                    testContext->RecvEvents.begin(),
+                    testContext->RecvEvents.end(),
+                    std::back_inserter(testContext->ProcessedRecvEvents));
+                testContext->RecvEvents.clear();
+                testContext->ReqIds.clear();
+            }
+            testContext->CompletionHandle.Set();
+            return;
+        }
 
         const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
         if (mask != expectedMask) {
@@ -370,6 +413,7 @@ TEST(TRdmaServerTest, ShouldHandleSessionError)
 TEST(TRdmaServerTest, ShouldHandleErrors)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
+    SetupFlushOnQpError(context);
 
     auto verbs = NVerbs::CreateTestVerbs(context);
     auto monitoring = CreateMonitoringServiceStub();
@@ -424,26 +468,32 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
 
     // emulate exchange with the client
 
+    ibv_recv_wr badWr;
+    badWr.wr_id = Max<ui64>();
     TVector<ibv_recv_wr*> recv;
 
     with_lock(context->CompletionLock) {
-        for (size_t i = 0; i < 5; i++) {
+        recv.push_back(&badWr);
+        context->ProcessedRecvEvents.push_back(&badWr);
+
+        for (size_t i = 0; i < 4; i++) {
             auto* wr = context->RecvEvents.back();
             context->RecvEvents.pop_back();
             context->ProcessedRecvEvents.push_back(wr);
             recv.push_back(wr);
         }
         context->HandleCompletionEvent = [&](ibv_wc* wc) {
+            // bad id, good opcode
+            if (wc->wr_id == badWr.wr_id) {
+                return;
+            }
+
             // good id, good opcode, error status
-            if (wc->wr_id == recv[0]->wr_id) {
+            if (wc->wr_id == recv[1]->wr_id) {
                 wc->status = IBV_WC_RETRY_EXC_ERR;
                 return;
             }
-            // bad id, good opcode
-            if (wc->wr_id == recv[1]->wr_id) {
-                wc->wr_id = Max<ui64>();
-                return;
-            }
+
             // good id, bad opcode
             if (wc->wr_id == recv[2]->wr_id) {
                 wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
@@ -555,6 +605,7 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
+    SetupFlushOnQpError(context);
 
     std::atomic<rdma_cm_id*> sessionId{nullptr};
     NThreading::TPromise<void> sessionDestroyed =
@@ -619,8 +670,18 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
 
     verbs->Disconnect(sessionId.load());
 
-    EXPECT_FALSE(sessionDestroyed.GetFuture().HasValue())
-        << "Session was destroyed while the handler still owns the context";
+    // Wait for recv WR drain: SetupFlushOnQpError moves RecvEvents →
+    // ProcessedRecvEvents; the CQ thread consumes ProcessedRecvEvents.
+    // Both empty means all flush completions have been processed.
+    ASSERT_TRUE(WaitUntil([&] {
+        auto g = Guard(context->CompletionLock);
+        return context->RecvEvents.empty() &&
+               context->ProcessedRecvEvents.empty();
+    }));
+
+    // Drain complete + ExecutingRequests == 1 → IsFlushed() is false →
+    // session cannot be released yet.
+    ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 
     endpoint->SendResponse(handler->Context, 0);
 
@@ -631,6 +692,7 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
+    SetupFlushOnQpError(context);
 
     std::atomic<rdma_cm_id*> sessionId{nullptr};
     NThreading::TPromise<void> sessionDestroyed =
@@ -696,23 +758,15 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
     verbs->Disconnect(sessionId.load());
 
-    EXPECT_FALSE(sessionDestroyed.GetFuture().HasValue())
-        << "Session was destroyed while the handler still owns the context";
+    ASSERT_TRUE(WaitUntil([&] {
+        auto g = Guard(context->CompletionLock);
+        return context->RecvEvents.empty() &&
+               context->ProcessedRecvEvents.empty();
+    }));
+
+    ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 
     endpoint->SendResponse(handler->Context, 0);
-
-    with_lock (context->CompletionLock) {
-        context->HandleCompletionEvent = [](ibv_wc* wc) {
-            wc->status = IBV_WC_WR_FLUSH_ERR;
-            wc->opcode = static_cast<ibv_wc_opcode>(0);
-        };
-        std::move(
-            context->RecvEvents.begin(),
-            context->RecvEvents.end(),
-            std::back_inserter(context->ProcessedRecvEvents));
-        context->RecvEvents.clear();
-    }
-    context->CompletionHandle.Set();
 
     sessionDestroyed.GetFuture().GetValueSync();
 }

@@ -667,17 +667,6 @@ bool TServerSession::IsFlushed() const
         && RecvQueue.Size() == Config->RecvQueueSize;
 }
 
-bool TServerSession::CanReleaseAfterStop() const
-{
-    // After Flush() transitions the QP to IBV_QPS_ERR the hardware stops all
-    // DMA synchronously. Consuming flush completions is a bookkeeping step,
-    // not a safety requirement for buffer deregistration. Therefore during
-    // shutdown we only need ExecutingRequests == 0 (no TaskQueue task holds a
-    // buffer reference) rather than full WR queue drain.
-    return FlushStarted
-        && ExecutingRequests == 0;
-}
-
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
 {
     auto id = TWorkRequestId(wc->wr_id);
@@ -1518,14 +1507,12 @@ private:
         return hasWork;
     }
 
-    void DisconnectFlushed(bool stopRequested = false)
+    void DisconnectFlushed()
     {
         auto sessions = Sessions.Get();
 
         for (const auto& session: *sessions) {
-            if (session->IsFlushed() ||
-                (stopRequested && session->CanReleaseAfterStop()))
-            {
+            if (session->IsFlushed()) {
                  Release(session.get());
             }
         }
@@ -1571,7 +1558,7 @@ private:
                     }
             }
 
-            DisconnectFlushed(ShouldStop());
+            DisconnectFlushed();
         }
     }
 };
