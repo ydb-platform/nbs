@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
@@ -2220,6 +2221,43 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
             if (!CanExecuteWriteRequest()) {
                 SPAN_CLASS_STYLE("label label-danger", "margin-left:10px") {
                     out << "Writes blocked by checkpoint";
+                }
+            }
+
+            if (VolumeHealthSyncActorId) {
+                RenderBrokenDevicesStatus(out);
+            }
+        }
+    }
+}
+
+void TVolumeActor::RenderBrokenDevicesStatus(IOutputStream& out) const
+{
+    HTML (out) {
+        if (DeviceUUIDToBrokenAt.empty()) {
+            SPAN_CLASS_STYLE ("label label-success", "margin-left:10px") {
+                out << "No broken devices";
+            }
+            return;
+        }
+
+        SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
+            out << DeviceUUIDToBrokenAt.size() << " broken device(s)";
+        }
+
+        THashSet<TString> brokenHosts;
+        for (const auto* dev: GetAllDevices(State->GetMeta())) {
+            if (DeviceUUIDToBrokenAt.contains(dev->GetDeviceUUID())) {
+                brokenHosts.insert(dev->GetAgentId());
+            }
+        }
+
+        if (!brokenHosts.empty()) {
+            DIV () {
+                for (const auto& host: brokenHosts) {
+                    DIV () {
+                        out << host;
+                    }
                 }
             }
         }
