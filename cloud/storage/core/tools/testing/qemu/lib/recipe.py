@@ -445,7 +445,7 @@ def _prepare_test_environment(ssh, virtio):
             # no portable way to do this globally
             "ulimit -c unlimited"
         ] + [
-            # Fix msan and tsan segfaults when build with old clang 14 and run in ubuntu 24.04
+            # Fix msan and tsan segfaults when build with old clang 16 and run in ubuntu 24.04
             # Maybe be fixed in clang 18+
             "sudo sysctl -w vm.mmap_rnd_bits=28",
         ] + [
