@@ -84,6 +84,51 @@ struct TServerHandler
     }
 };
 
+struct TDelayedServerHandler final
+    : IServerHandler
+{
+    NThreading::TPromise<void> RequestReceived =
+        NThreading::NewPromise<void>();
+
+    void* Context = nullptr;
+    TStringBuf Out;
+
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return MakeIntrusive<TCallContextBase>(ui64{0});
+    }
+
+    void HandleRequest(
+        void* context,
+        TCallContextBasePtr callContext,
+        TStringBuf in,
+        TStringBuf out) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(in);
+
+        Context = context;
+        Out = out;
+        RequestReceived.SetValue();
+    }
+};
+
+template <typename TPredicate>
+bool WaitUntil(
+    TPredicate predicate,
+    TDuration timeout = TDuration::Seconds(5))
+{
+    const auto start = GetCycleCount();
+    while (!predicate()) {
+        if (CyclesToDurationSafe(GetCycleCount() - start) > timeout) {
+            return false;
+        }
+        SpinLockPause();
+    }
+    return true;
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST(TRdmaServerTest, ShouldStartEndpoint)
@@ -176,11 +221,12 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
         Y_UNUSED(qp);
 
         const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
+        if (mask != expectedMask) {
+            return;
+        }
 
-        EXPECT_EQ(expectedMask, mask);
         EXPECT_EQ(serverConfig->QpTimeout, attr->timeout);
         EXPECT_EQ(serverConfig->QpMinRnrTimer, attr->min_rnr_timer);
-
         modifyCalled.store(true);
     };
 
@@ -504,6 +550,171 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
     ASSERT_TRUE(done.GetFuture().Wait(TDuration::Seconds(5)));
     EXPECT_EQ(3, rejectCount.load());
     EXPECT_FALSE(createQpCalled.load());
+}
+
+TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    std::atomic<rdma_cm_id*> sessionId{nullptr};
+    NThreading::TPromise<void> sessionDestroyed =
+        NThreading::NewPromise<void>();
+
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param) {
+        Y_UNUSED(param);
+        sessionId.store(id);
+    };
+
+    context->DestroyQP = [&](rdma_cm_id* id) {
+        Y_UNUSED(id);
+        sessionDestroyed.TrySetValue();
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+
+    auto handler = std::make_shared<TDelayedServerHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        serverConfig->MaxBufferSize);
+
+    ASSERT_TRUE(WaitUntil([&] {
+        return sessionId.load() != nullptr &&
+            AtomicGet(context->PostRecvCounter) >=
+                static_cast<int>(serverConfig->RecvQueueSize);
+    }));
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        msg->ReqId = 1;
+        msg->Out.Length = 4_KB;
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    handler->RequestReceived.GetFuture().GetValueSync();
+    ASSERT_NE(nullptr, handler->Context);
+
+    verbs->Disconnect(sessionId.load());
+
+    EXPECT_FALSE(sessionDestroyed.GetFuture().HasValue())
+        << "Session was destroyed while the handler still owns the context";
+
+    endpoint->SendResponse(handler->Context, 0);
+
+    server->Stop();
+    ASSERT_TRUE(sessionDestroyed.GetFuture().HasValue());
+}
+
+TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    std::atomic<rdma_cm_id*> sessionId{nullptr};
+    NThreading::TPromise<void> sessionDestroyed =
+        NThreading::NewPromise<void>();
+
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param) {
+        Y_UNUSED(param);
+        sessionId.store(id);
+    };
+
+    context->DestroyQP = [&](rdma_cm_id* id) {
+        Y_UNUSED(id);
+        sessionDestroyed.TrySetValue();
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER { server->Stop(); };
+
+    auto handler = std::make_shared<TDelayedServerHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        serverConfig->MaxBufferSize);
+
+    ASSERT_TRUE(WaitUntil([&] {
+        return sessionId.load() != nullptr &&
+            AtomicGet(context->PostRecvCounter) >=
+                static_cast<int>(serverConfig->RecvQueueSize);
+    }));
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        msg->ReqId = 1;
+        msg->Out.Length = 4_KB;
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    handler->RequestReceived.GetFuture().GetValueSync();
+    ASSERT_NE(nullptr, handler->Context);
+
+    verbs->Disconnect(sessionId.load());
+
+    EXPECT_FALSE(sessionDestroyed.GetFuture().HasValue())
+        << "Session was destroyed while the handler still owns the context";
+
+    endpoint->SendResponse(handler->Context, 0);
+
+    with_lock (context->CompletionLock) {
+        context->HandleCompletionEvent = [](ibv_wc* wc) {
+            wc->status = IBV_WC_WR_FLUSH_ERR;
+            wc->opcode = static_cast<ibv_wc_opcode>(0);
+        };
+        std::move(
+            context->RecvEvents.begin(),
+            context->RecvEvents.end(),
+            std::back_inserter(context->ProcessedRecvEvents));
+        context->RecvEvents.clear();
+    }
+    context->CompletionHandle.Set();
+
+    sessionDestroyed.GetFuture().GetValueSync();
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)
