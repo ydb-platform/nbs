@@ -374,7 +374,6 @@ TString TInitializer::GetDeviceModel(const TString& path)
     auto it = PathToModel.find(path);
     if (it == PathToModel.end()) {
         auto [model, error] = NvmeManager->GetDeviceModel(path);
-        it = PathToModel.emplace(path, model).first;
         if (HasError(error)) {
             with_lock (Lock) {
                 Errors.push_back(
@@ -382,7 +381,9 @@ TString TInitializer::GetDeviceModel(const TString& path)
                     << "Can't get model for " << path.Quote() << ": "
                     << FormatError(error));
             }
+            return model;
         }
+        it = PathToModel.emplace(path, model).first;
     }
 
     return it->second;
@@ -407,6 +408,9 @@ void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
     for (auto& file: FileDevices) {
         if (file.GetSerialNumber().empty()) {
             file.SetSerialNumber(GetSerialNumber(file.GetPath()));
+        }
+        if (file.GetDeviceModel().empty()) {
+            file.SetDeviceModel(GetDeviceModel(file.GetPath()));
         }
     }
 

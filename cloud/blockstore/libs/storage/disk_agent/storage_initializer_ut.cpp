@@ -81,7 +81,7 @@ struct TTestNvmeManager
     {
         auto it = PathToModel.find(TFsPath{path}.Basename());
         if (it == PathToModel.end()) {
-            return MakeError(MAKE_SYSTEM_ERROR(42));
+            return MakeError(MAKE_SYSTEM_ERROR(ENOENT));
         }
 
         return it->second;

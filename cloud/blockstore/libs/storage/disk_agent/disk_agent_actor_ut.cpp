@@ -146,7 +146,7 @@ struct TTestNvmeManager: NNvme::INvmeManager
 
         auto it = PathToSerial.find(device);
         if (it == PathToSerial.end()) {
-            return MakeError(MAKE_SYSTEM_ERROR(42), path);
+            return MakeError(MAKE_SYSTEM_ERROR(ENOENT), path);
         }
 
         return it->second;
@@ -163,7 +163,7 @@ struct TTestNvmeManager: NNvme::INvmeManager
 
         auto it = PathToModel.find(path);
         if (it == PathToModel.end()) {
-            return MakeError(MAKE_SYSTEM_ERROR(42), path);
+            return MakeError(MAKE_SYSTEM_ERROR(ENOENT), path);
         }
 
         return it->second;
