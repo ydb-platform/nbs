@@ -441,9 +441,17 @@ def _prepare_test_environment(ssh, virtio):
             "export {}={}".format(k, shlex.quote(v))
             for k, v in vm_env.items()
         ] + [
-            # this should be a part of `setup_coredumps`, but there seems to be
-            # no portable way to do this globally
-            "ulimit -c unlimited"
+            # Keep this locally as well so the test wrapper records the
+            # effective limits in artifacts even when guest-wide limits are set.
+            "ulimit -Hc unlimited || true",
+            "ulimit -Sc unlimited || true",
+            "ulimit -Ha >/tmp/run_test.ulimit.hard 2>&1",
+            "ulimit -Sa >/tmp/run_test.ulimit.soft 2>&1",
+            "cat /proc/self/limits >/tmp/run_test.limits 2>&1",
+            "printf '%s\\n' \"$1\" >/tmp/run_test.command 2>&1",
+            "export ASAN_OPTIONS=\"${ASAN_OPTIONS:+$ASAN_OPTIONS:}disable_coredump=0\"",
+            "export MSAN_OPTIONS=\"${MSAN_OPTIONS:+$MSAN_OPTIONS:}disable_coredump=0\"",
+            "export TSAN_OPTIONS=\"${TSAN_OPTIONS:+$TSAN_OPTIONS:}disable_coredump=0\""
         ] + [
             '"$@"',
             "exit_code=$?",
