@@ -84,6 +84,7 @@ func getNfsConfigMap() configurator.ConfigMap {
 		"nfs-log.txt":                {Proto: &kikimrProto.TLogConfig{}, FileName: "log.txt"},
 		"nfs-sys.txt":                {Proto: &kikimrProto.TActorSystemConfig{}, FileName: "sys.txt"},
 		"vhost-log.txt":              {Proto: &kikimrProto.TLogConfig{}, FileName: "vhost-log.txt"},
+		"nfs-shared-cache.txt":       {Proto: &kikimrProto.TSharedCacheConfig{}, FileName: "shared-cache.txt"},
 	}
 }
 
