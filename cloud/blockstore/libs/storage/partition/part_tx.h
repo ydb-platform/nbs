@@ -439,6 +439,7 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
         const ui64 CommitId;
         const TCompactionOptions CompactionOptions;
+        const bool SplitCompactionTxEnabled;
 
         TVector<TRangeCompaction> RangeCompactions;
         TInstant TxStarted;
@@ -450,11 +451,13 @@ struct TTxPartition
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
                 TCompactionOptions compactionOptions,
+                bool splitCompactionTxEnabled,
                 const TVector<std::pair<ui32, TBlockRange32>>& ranges,
                 TInstant txStarted)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , CompactionOptions(compactionOptions)
+            , SplitCompactionTxEnabled(splitCompactionTxEnabled)
             , TxStarted(txStarted)
         {
             RangeCompactions.reserve(ranges.size());

@@ -411,6 +411,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             false,  // blobPatchingEnabled
             0,      // mergedBlobThreshold
             compactionCommitId,
+            TTestExecutor::TabletId,
             storageInfo,
             state,
             args,
@@ -457,6 +458,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             false,
             0,
             compactionCommitId,
+            TTestExecutor::TabletId,
             storageInfo,
             state,
             args,

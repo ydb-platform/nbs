@@ -52,7 +52,7 @@ struct TRangeCompactionInfo
     const TBlockMask ZeroBlobSkipMask;
     const ui32 BlobsSkippedByCompaction;
     const ui32 BlocksSkippedByCompaction;
-    TVector<ui32> BlockChecksums;
+    TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
     TGuardedBuffer<TBlockBuffer> BlobContent;
@@ -73,7 +73,7 @@ struct TRangeCompactionInfo
             TBlockMask zeroBlobSkipMask,
             ui32 blobsSkippedByCompaction,
             ui32 blocksSkippedByCompaction,
-            TVector<ui32> blockChecksums,
+            TVector<std::optional<ui32>> blockChecksums,
             EChannelDataKind channelDataKind,
             TBlockBuffer blobContent,
             TVector<ui32> zeroBlocks,

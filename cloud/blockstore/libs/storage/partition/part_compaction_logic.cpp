@@ -44,7 +44,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     TBlockMask zeroBlobSkipMask,
     ui32 blobsSkippedByCompaction,
     ui32 blocksSkippedByCompaction,
-    TVector<ui32> blockChecksums,
+    TVector<std::optional<ui32>> blockChecksums,
     EChannelDataKind channelDataKind,
     TBlockBuffer blobContent,
     TVector<ui32> zeroBlocks,
@@ -447,7 +447,7 @@ void FillBlobsInfoToRead(
 struct TBuildBlobContentAndMasksResult
 {
     TBlockBuffer BlobContent;
-    TVector<ui32> BlockChecksums;
+    TVector<std::optional<ui32>> BlockChecksums;
     TVector<ui32> ZeroBlocks;
     TBlockMask DataBlobSkipMask;
     TBlockMask ZeroBlobSkipMask;
@@ -519,7 +519,7 @@ TBuildBlobContentAndMasksResult BuildBlobContentAndMasks(
                         result.BlockChecksums.size(),   // ChecksumIndex
                         mark.BlobId,
                         mark.BlobOffset);
-                    result.BlockChecksums.push_back(0);
+                    result.BlockChecksums.push_back(std::nullopt);
                 }
 
                 if (zeroBlobId) {

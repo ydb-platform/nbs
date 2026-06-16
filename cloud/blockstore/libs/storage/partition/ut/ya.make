@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 SRCS(
     part_database_ut.cpp
     part_state_ut.cpp
+    part_compaction_logic_ut.cpp
     part_ut.cpp
 )
 

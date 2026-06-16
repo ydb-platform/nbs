@@ -33,6 +33,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVector<ui32> EnsureBlockChecksums(
+    const TVector<std::optional<ui32>>& blockChecksums,
+    ui64 tabletId)
+{
+    TVector<ui32> result;
+    result.reserve(blockChecksums.size());
+    for (const auto& checksum: blockChecksums) {
+        STORAGE_VERIFY(checksum, TWellKnownEntityTypes::TABLET, tabletId);
+        result.push_back(*checksum);
+    }
+    return result;
+}
+
 class TCompactionActor final
     : public TActorBootstrapped<TCompactionActor>
 {
@@ -88,14 +101,13 @@ private:
     TVector<TRangeCompactionInfo> RangeCompactionInfos;
     TVector<TRequest> Requests;
 
-    const bool SplitTxEnabled;
+    // If true, partition compaction splits the per-blob BlockMask / BlobMeta
+    // read into a separate transaction issued by TCompactionActor instead of
+    // doing it inside the main TCompaction prepare phase.
+    const bool SplitCompactionTxEnabled;
+
     TVector<TPartialBlobId> BlobsToReadBlockMasks;
     TVector<TPartialBlobId> BlobsToReadBlobMetas;
-
-    THashMap<TPartialBlobId, size_t, TPartialBlobIdHash>
-        BlockMaskResponseIndex;
-    THashMap<TPartialBlobId, size_t, TPartialBlobIdHash>
-        BlobMetaResponseIndex;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
@@ -156,7 +168,7 @@ private:
     void AddBlobs(const TActorContext& ctx);
     void MakeDiffs(TRangeCompactionInfo& rc);
 
-    void ContinueAfterBlobInfo(const TActorContext& ctx);
+    void CompactionReadBlobInfosFinished(const TActorContext& ctx);
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
     bool HandleError(const TActorContext& ctx, const NProto::TError& error);
@@ -235,7 +247,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
-    , SplitTxEnabled(splitTxEnabled)
+    , SplitCompactionTxEnabled(splitTxEnabled)
     , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
     , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
     , CompactionTxTime(compactionTxTime)
@@ -253,35 +265,27 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
         "Compaction",
         RequestInfo->CallContext->RequestId);
 
-    if (SplitTxEnabled &&
+    if (SplitCompactionTxEnabled &&
         (!BlobsToReadBlockMasks.empty() || !BlobsToReadBlobMetas.empty()))
     {
-        size_t blockMaskResponseIndex = 0;
-        for (const auto& blobId: BlobsToReadBlockMasks) {
-            BlockMaskResponseIndex[blobId] = blockMaskResponseIndex;
-            ++blockMaskResponseIndex;
-        }
-
-        size_t blobMetaResponseIndex = 0;
-        for (const auto& blobId: BlobsToReadBlobMetas) {
-            BlobMetaResponseIndex[blobId] = blobMetaResponseIndex;
-            ++blobMetaResponseIndex;
-        }
-
         auto request = std::make_unique<
             TEvPartitionPrivate::TEvCompactionReadBlobInfoRequest>(
-            std::move(BlobsToReadBlockMasks),
-            std::move(BlobsToReadBlobMetas));
+            BlobsToReadBlockMasks,
+            BlobsToReadBlobMetas);
 
         NCloud::Send(ctx, Tablet, std::move(request));
         return;
     }
 
-    ContinueAfterBlobInfo(ctx);
+    CompactionReadBlobInfosFinished(ctx);
 }
 
-void TCompactionActor::ContinueAfterBlobInfo(const TActorContext& ctx)
+void TCompactionActor::CompactionReadBlobInfosFinished(const TActorContext& ctx)
 {
+    for (auto& rc: RangeCompactionInfos) {
+        ApplyChecksumFixups(rc);
+    }
+
     if (Requests) {
         ReadBlocks(ctx);
 
@@ -605,7 +609,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         const TPartialBlobId& blobId,
         TBlockRange32 range,
         TBlockMask skipMask,
-        const TVector<ui32>& blockChecksums,
+        const TVector<std::optional<ui32>>& blockChecksums,
         ui32 blobsSkipped,
         ui32 blocksSkipped,
         EChannelDataKind channelDataKind)
@@ -619,8 +623,15 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             --range.End;
         }
 
+        auto ensuredBlockChecksums =
+            EnsureBlockChecksums(blockChecksums, TabletId);
+
         if (channelDataKind == EChannelDataKind::Merged) {
-            mergedBlobs.emplace_back(blobId, range, skipMask, blockChecksums);
+            mergedBlobs.emplace_back(
+                blobId,
+                range,
+                skipMask,
+                std::move(ensuredBlockChecksums));
             mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else if (channelDataKind == EChannelDataKind::Mixed) {
             TVector<ui32> blockIndices(Reserve(range.Size()));
@@ -634,7 +645,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             mixedBlobs.emplace_back(
                 blobId,
                 std::move(blockIndices),
-                blockChecksums,
+                std::move(ensuredBlockChecksums),
                 0);   // unknown blob alignment
             mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else {
@@ -892,13 +903,16 @@ void TCompactionActor::HandleReadBlobResponse(
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
     auto& rc = *batch.RangeCompactionInfo;
-    ApplyChecksumFixups(rc);
 
     const auto n = Min(batch.Requests.size(), msg->BlockChecksums.size());
     for (ui32 i = 0; i < n; ++i) {
         const auto* r = batch.Requests[i];
+        STORAGE_VERIFY(
+            rc.BlockChecksums[r->IndexInBlobContent],
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
         const auto expectedChecksum =
-            rc.BlockChecksums[r->IndexInBlobContent];
+            *rc.BlockChecksums[r->IndexInBlobContent];
 
         auto error = VerifyBlockChecksum(
             msg->BlockChecksums[i],
@@ -1017,28 +1031,33 @@ void TCompactionActor::HandleCompactionReadBlobInfoResponse(
         return;
     }
 
-    Y_ABORT_UNLESS(
-        msg->BlockMasksForBlobs.size() == BlockMaskResponseIndex.size());
-    Y_ABORT_UNLESS(
-        msg->BlobMetasForBlobs.size() == BlobMetaResponseIndex.size());
+    for (size_t i = 0; i < BlobsToReadBlobMetas.size(); ++i) {
+        const auto& blobId = BlobsToReadBlobMetas[i];
+        const auto& blobMeta = msg->BlobMetasForBlobs[i];
 
-    for (auto& rc: RangeCompactionInfos) {
-        for (auto& [blobId, ab]: rc.AffectedBlobs) {
-            if (auto it = BlockMaskResponseIndex.find(blobId);
-                it != BlockMaskResponseIndex.end())
-            {
-                ab.BlockMask = msg->BlockMasksForBlobs[it->second];
+        for (auto& rc: RangeCompactionInfos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
             }
-
-            if (auto it = BlobMetaResponseIndex.find(blobId);
-                it != BlobMetaResponseIndex.end())
-            {
-                ab.BlobMeta = msg->BlobMetasForBlobs[it->second];
-            }
+            ab->BlobMeta = blobMeta;
         }
     }
 
-    ContinueAfterBlobInfo(ctx);
+    for (size_t i = 0; i < BlobsToReadBlockMasks.size(); ++i) {
+        const auto& blobId = BlobsToReadBlockMasks[i];
+        const auto& blockMask = msg->BlockMasksForBlobs[i];
+
+        for (auto& rc: RangeCompactionInfos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
+            }
+            ab->BlockMask = blockMask;
+        }
+    }
+
+    CompactionReadBlobInfosFinished(ctx);
 }
 
 void TCompactionActor::HandlePoisonPill(
@@ -1699,10 +1718,18 @@ void TPartitionActor::HandleCompaction(
 
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
+    const bool splitCompactionTxEnabled =
+        Config->GetSplitCompactionTxEnabled() ||
+        Config->IsSplitCompactionTxFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+
     auto tx = CreateTx<TCompaction>(
         requestInfo,
         commitId,
         msg->CompactionOptions,
+        splitCompactionTxEnabled,
         std::move(ranges),
         ctx.Now());
 
@@ -1863,7 +1890,7 @@ bool TPartitionActor::PrepareCompaction(
             rangeCompaction.AffectedBlobs.size());
     }
 
-    if (SplitCompactionTxEnabled) {
+    if (args.SplitCompactionTxEnabled) {
         // BlockMask / BlobMeta are read in a separate TX issued by
         // TCompactionActor.
         return ready;
@@ -2001,7 +2028,7 @@ void TPartitionActor::CompleteCompaction(
         std::move(requests),
         compactionTxTime,
         LogTitle.GetChild(GetCycleCount()),
-        SplitCompactionTxEnabled,
+        args.SplitCompactionTxEnabled,
         TVector<TPartialBlobId>(
             args.BlobsToReadBlockMasks.begin(),
             args.BlobsToReadBlockMasks.end()),
