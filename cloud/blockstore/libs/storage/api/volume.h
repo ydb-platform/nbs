@@ -21,6 +21,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(RemoveClient,                                              __VA_ARGS__)\
     xxx(WaitReady,                                                 __VA_ARGS__)\
     xxx(DescribeBlocks,                                            __VA_ARGS__)\
+    xxx(DescribeBlob,                                              __VA_ARGS__)\
     xxx(GetPartitionInfo,                                          __VA_ARGS__)\
     xxx(CompactRange,                                              __VA_ARGS__)\
     xxx(GetCompactionStatus,                                       __VA_ARGS__)\
@@ -63,6 +64,7 @@ namespace NCloud::NBlockStore::NStorage {
 // responses which are forwarded back via volume (volume has handlers for these)
 #define BLOCKSTORE_VOLUME_HANDLED_RESPONSES(xxx, ...)                          \
     xxx(DescribeBlocks,           __VA_ARGS__)                                 \
+    xxx(DescribeBlob,             __VA_ARGS__)                                 \
     xxx(GetPartitionInfo,         __VA_ARGS__)                                 \
     xxx(CompactRange,             __VA_ARGS__)                                 \
     xxx(GetCompactionStatus,      __VA_ARGS__)                                 \
@@ -394,6 +396,9 @@ struct TEvVolume
 
         EvGetLinkStatusRequest = EvBegin + 72,
         EvGetLinkStatusResponse = EvBegin + 73,
+
+        EvDescribeBlobRequest = EvBegin + 74,
+        EvDescribeBlobResponse = EvBegin + 75,
 
         EvEnd
     };
