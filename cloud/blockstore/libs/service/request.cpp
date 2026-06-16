@@ -8,11 +8,15 @@ namespace NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBlocksLocalRequest::~TWriteBlocksLocalRequest()
+TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
+    TWriteBlocksLocalRequest&& other) noexcept
+    : TWriteBlocksRequest(std::move(other))
+    , Sglist(std::move(other.Sglist))
+    , BlocksCount(std::exchange(other.BlocksCount, 0))
+    , OwnsSglist(std::exchange(other.OwnsSglist, false))
 {
-    if (OwnsSglist && !Sglist.Empty()) {
-        Sglist.Close();
-        OwnsSglist = false;
+    if (OwnsSglist) {
+        RebuildSglistFromBlocks();
     }
 }
 
@@ -34,6 +38,26 @@ TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
     // Copy non-protobuf fields
     Sglist = source.Sglist;
     BlocksCount = source.BlocksCount;
+}
+
+TWriteBlocksLocalRequest& TWriteBlocksLocalRequest::operator=(
+    TWriteBlocksLocalRequest&& other) noexcept
+{
+    CloseOwnedSglist();
+
+    TWriteBlocksRequest::operator=(std::move(other));
+    Sglist = std::move(other.Sglist);
+    BlocksCount = std::exchange(other.BlocksCount, 0);
+    OwnsSglist = std::exchange(other.OwnsSglist, false);
+    if (OwnsSglist) {
+        RebuildSglistFromBlocks();
+    }
+    return *this;
+}
+
+TWriteBlocksLocalRequest::~TWriteBlocksLocalRequest()
+{
+    CloseOwnedSglist();
 }
 
 void TWriteBlocksLocalRequest::TakeDataOwnership()
@@ -61,6 +85,24 @@ void TWriteBlocksLocalRequest::TakeDataOwnership()
     OwnsSglist = true;
 }
 
+void TWriteBlocksLocalRequest::CloseOwnedSglist()
+{
+    if (OwnsSglist && !Sglist.Empty()) {
+        Sglist.Close();
+        OwnsSglist = false;
+    }
+}
+
+void TWriteBlocksLocalRequest::RebuildSglistFromBlocks()
+{
+    TSgList newSgList;
+    const auto& buffers = GetBlocks().buffers();
+    newSgList.reserve(buffers.size());
+    for (const auto& buffer: buffers) {
+        newSgList.emplace_back(buffer.data(), buffer.size());
+    }
+    Sglist = TGuardedSgList(std::move(newSgList));
+}
 
 TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)
 {

@@ -129,6 +129,32 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
             TStringBuf("hello"),
             TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
     }
+
+    Y_UNIT_TEST(MoveAssignmentTransfersOwnershipAndClosesOldSglist)
+    {
+        TString data1 = "hello";
+        TWriteBlocksLocalRequest dst;
+        SetupRequest(dst, data1);
+        dst.TakeDataOwnership();
+        TGuardedSgList oldSglist = dst.Sglist;
+
+        TString data2 = "world";
+        TWriteBlocksLocalRequest src;
+        SetupRequest(src, data2);
+        src.TakeDataOwnership();
+
+        dst = std::move(src);
+
+        UNIT_ASSERT(!oldSglist.Acquire());
+
+        UNIT_ASSERT(dst.IsOwner());
+        auto guard = dst.Sglist.Acquire();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(1u, guard.Get().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf("world"),
+            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+    }
 }
 
 }   // namespace NCloud::NBlockStore
