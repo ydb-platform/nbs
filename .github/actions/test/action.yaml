@@ -71,6 +71,9 @@ outputs:
   failed_tests:
     description: "List of failed tests"
     value: ${{ steps.check_test_results.outputs.failed_tests }}
+  test_failed:
+    description: "Whether tests failed"
+    value: ${{ steps.check_test_results.outputs.failed_tests }}
 
 runs:
   using: composite

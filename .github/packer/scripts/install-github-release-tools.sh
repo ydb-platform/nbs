@@ -6,6 +6,7 @@ INSTALL_CMD=${INSTALL_CMD:-/usr/bin/install}
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TOOL_VERSIONS_FILE=${TOOL_VERSIONS_FILE:-"${SCRIPT_DIR}/github-release-tools.txt"}
 ACTION_VALIDATOR_VERSION=
+ACTIONLINT_VERSION=
 SHELLCHECK_VERSION=
 SHFMT_VERSION=
 YQ_VERSION=
@@ -54,6 +55,9 @@ load_tool_versions() {
             action-validator)
                 ACTION_VALIDATOR_VERSION=${version}
                 ;;
+            actionlint)
+                ACTIONLINT_VERSION=${version}
+                ;;
             shellcheck)
                 SHELLCHECK_VERSION=${version}
                 ;;
@@ -94,6 +98,9 @@ installed_tool_version() {
     case "${tool}" in
         action-validator)
             "${bin}" --version 2> /dev/null | awk '{print $2; exit}'
+            ;;
+        actionlint)
+            "${bin}" -version 2> /dev/null | awk '{print $1; exit}'
             ;;
         shellcheck)
             "${bin}" --version 2> /dev/null | awk -F': ' '/^version:/ {print $2; exit}'
@@ -163,6 +170,23 @@ install_action_validator() {
     "${INSTALL_DIR}/action-validator" --version
 }
 
+install_actionlint() {
+    local archive tmp_dir url version_without_v
+    require_tool_version actionlint "${ACTIONLINT_VERSION}"
+    version_without_v=${ACTIONLINT_VERSION#v}
+    archive="actionlint_${version_without_v}_linux_amd64.tar.gz"
+    url="https://github.com/rhysd/actionlint/releases/download/${ACTIONLINT_VERSION}/${archive}"
+    tmp_dir=$(mktemp -d)
+
+    ensure_install_dir
+    curl -fsSL -o "${tmp_dir}/${archive}" -L "${url}"
+    tar -xzf "${tmp_dir}/${archive}" -C "${tmp_dir}"
+    "${INSTALL_CMD}" -m 0755 "${tmp_dir}/actionlint" "${INSTALL_DIR}/actionlint"
+    rm -rf "${tmp_dir}"
+
+    "${INSTALL_DIR}/actionlint" -version
+}
+
 install_shfmt() {
     local url
     require_tool_version shfmt "${SHFMT_VERSION}"
@@ -206,6 +230,10 @@ install_tool() {
             version=${ACTION_VALIDATOR_VERSION}
             require_tool_version "${tool}" "${version}"
             ;;
+        actionlint)
+            version=${ACTIONLINT_VERSION}
+            require_tool_version "${tool}" "${version}"
+            ;;
         shellcheck)
             version=${SHELLCHECK_VERSION}
             require_tool_version "${tool}" "${version}"
@@ -238,6 +266,9 @@ install_tool() {
         action-validator)
             install_action_validator
             ;;
+        actionlint)
+            install_actionlint
+            ;;
         shellcheck)
             install_shellcheck
             ;;
@@ -251,7 +282,7 @@ install_tool() {
 }
 
 if [ "$#" -eq 0 ]; then
-    set -- action-validator shellcheck shfmt yq
+    set -- action-validator actionlint shellcheck shfmt yq
 fi
 
 load_tool_versions
