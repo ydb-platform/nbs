@@ -24,8 +24,6 @@
 
 #include <util/generic/string.h>
 
-#include <memory>
-
 namespace NCloud::NBlockStore {
 
 namespace NProto {
@@ -69,6 +67,10 @@ struct TReadBlocksLocalResponse: public TReadBlocksResponse
 
 struct TWriteBlocksLocalRequest: public TWriteBlocksRequest
 {
+    // Tag struct for constructor disambiguation (tag dispatch).
+    // Pass TDependentTag{} to select the constructor that creates a dependent
+    // (non-owning) copy: proto fields are copied, Sglist is shared with the
+    // source, OwnsSglist stays false.
     struct TDependentTag
     {
     };
@@ -107,8 +109,6 @@ struct TWriteBlocksLocalRequest: public TWriteBlocksRequest
 
 private:
     bool OwnsSglist = false;
-
-    void CloseOwnedSglist();
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;

@@ -10,7 +10,10 @@ namespace NProto {
 
 TWriteBlocksLocalRequest::~TWriteBlocksLocalRequest()
 {
-    CloseOwnedSglist();
+    if (OwnsSglist && !Sglist.Empty()) {
+        Sglist.Close();
+        OwnsSglist = false;
+    }
 }
 
 TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
@@ -58,13 +61,6 @@ void TWriteBlocksLocalRequest::TakeDataOwnership()
     OwnsSglist = true;
 }
 
-void TWriteBlocksLocalRequest::CloseOwnedSglist()
-{
-    if (OwnsSglist && !Sglist.Empty()) {
-        Sglist.Close();
-        OwnsSglist = false;
-    }
-}
 
 TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)
 {
