@@ -94,6 +94,7 @@ func Create(
 	}
 
 	logging.Info(ctx, "Created node_refs_by_shard table")
+
 	err = db.CreateOrAlterTable(
 		ctx,
 		storageFolder,
