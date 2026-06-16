@@ -22,13 +22,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using EVersion = EFileRingBufferVersion;
 using THeader = TFileRingBufferHeader;
 using TEntryHeader = TFileRingBufferEntryHeader;
 
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr ui32 VERSION_PREV = 4;
-constexpr ui32 VERSION = 5;
 constexpr ui64 INVALID_POS = Max<ui64>();
 
 // Reserve some space after header so adding new fields will not require data
@@ -36,6 +33,16 @@ constexpr ui64 INVALID_POS = Max<ui64>();
 constexpr ui64 HeaderReserveSize = 256;
 
 static_assert(sizeof(THeader) <= HeaderReserveSize);
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFileRingBufferArgs
+{
+    TString FilePath;
+    ui64 DataCapacity = 0;
+    ui64 MetadataCapacity = 0;
+    EFileRingBufferVersion Version = EFileRingBufferVersion::NotInitialized;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -99,16 +106,16 @@ struct TEntryInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THeader InitHeader(ui64 dataCapacity, ui64 metadataCapacity)
+THeader InitHeader(const TFileRingBufferArgs& args)
 {
     THeader res;
-    res.Version = VERSION;
+    res.Version = args.Version;
     res.HeaderSize = sizeof(THeader);
     res.MetadataOffset = HeaderReserveSize;
-    res.MetadataCapacity = metadataCapacity;
+    res.MetadataCapacity = args.MetadataCapacity;
     res.DataOffset =
         AlignUp(res.MetadataOffset + res.MetadataCapacity, sizeof(ui64));
-    res.DataCapacity = dataCapacity;
+    res.DataCapacity = args.DataCapacity;
     return res;
 }
 
@@ -119,6 +126,7 @@ THeader InitHeader(ui64 dataCapacity, ui64 metadataCapacity)
 class TFileRingBuffer::TImpl
 {
 private:
+    const TFileRingBufferArgs Args;
     TFileMap Map;
 
     std::unique_ptr<IFileRingBufferDataProcessor> Data;
@@ -157,9 +165,17 @@ private:
             const auto eh = Data->ReadEntryHeader(pos);
             if (eh.DataSize != 0) {
                 const auto* data = Data->GetEntryDataPtr(pos, eh.DataSize);
-                return data != nullptr
-                    ? TEntryInfo::Create(pos, eh, data)
-                    : TEntryInfo::CreateInvalid();
+                if (data == nullptr) {
+                    return TEntryInfo::CreateInvalid();
+                }
+
+                if (eh.FreeFlag && eh.DataChecksum != 0 &&
+                    Capabilities.EntryHeaderIsCoveredByChecksum)
+                {
+                    return TEntryInfo::CreateInvalid();
+                }
+
+                return TEntryInfo::Create(pos, eh, data);
             }
             pos = 0;
         }
@@ -190,6 +206,12 @@ private:
             return TEntryInfo::CreateInvalid();
         }
 
+        if (eh.FreeFlag && eh.DataChecksum != 0 &&
+            Capabilities.EntryHeaderIsCoveredByChecksum)
+        {
+            return TEntryInfo::CreateInvalid();
+        }
+
         return TEntryInfo::Create(pos, eh, data);
     }
 
@@ -205,12 +227,13 @@ private:
             : TEntryInfo::CreateInvalid();
     }
 
-    void CreateDataProcessor()
+    void CreateDataProcessor(EVersion version)
     {
         Data = CreateFileRingBufferDataProcessor(
+            version,
             GetMappedData(Header()->DataOffset, Header()->DataCapacity));
 
-        Capabilities = Data->GetCapabilities();
+        Capabilities = Data->GetCapabilities(true);
     }
 
     void ValidateStructure()
@@ -218,7 +241,6 @@ private:
         const ui64 mapLength = static_cast<ui64>(Map.Length());
         const auto& h = *Header();
 
-        Y_ABORT_UNLESS(h.Version == VERSION);
         Y_ABORT_UNLESS(sizeof(THeader) == h.HeaderSize);
         Y_ABORT_UNLESS(h.HeaderSize <= h.MetadataOffset);
         Y_ABORT_UNLESS(h.MetadataOffset <= h.DataOffset);
@@ -282,15 +304,39 @@ private:
         MemCopy(dst.data(), src.data(), size);
     }
 
-    void Migrate()
+    bool IsMigrationNeeded() const
     {
-        // In the new version, the highest bits of the entry size are treated as
-        // a tag value - need to ensure that nobody use it
-        VisitEntries([](const TEntryInfo& e)
-                     { Y_ABORT_UNLESS(e.GetTag() == 0); });
+        return Header()->Version != Args.Version;
+    }
 
-        Header()->Version = VERSION;
-        Header()->Unused = 0;
+    void TryMigrate()
+    {
+        if (!IsMigrationNeeded() || IsCorrupted()) {
+            return;
+        }
+
+        // Migration to any version can be performed when the buffer is empty
+        if (Empty()) {
+            Header()->Version = Args.Version;
+            CreateDataProcessor(Args.Version);
+            return;
+        }
+
+        // WriteBackCache needs functionality of V5+ (tags) for entries created
+        // in older version (V4) - we need to make migration immediately to
+        // at least V5 in order to provide this functionality.
+        // Transition V4 -> V5 can be made without emptying the buffer.
+        if (Header()->Version == EVersion::V4 && Args.Version > EVersion::V4) {
+            // Parse entry headers using newer version
+            CreateDataProcessor(EVersion::V5);
+
+            // In the new version, the highest bits of the entry size are
+            // treated as a tag value - need to ensure that they are not used
+            VisitEntries([](const TEntryInfo& e)
+                         { Y_ABORT_UNLESS(e.Header.Tag == 0); });
+
+            Header()->Version = EVersion::V5;
+        }
     }
 
     void ResizeMetadata(ui64 desiredMetadataCapacity)
@@ -366,6 +412,10 @@ private:
         } else {
             Header()->ReadPos = front.ActualPos;
         }
+
+        if (IsMigrationNeeded()) {
+            TryMigrate();
+        }
     }
 
     void WriteSlackSpaceMarker(ui64 pos)
@@ -386,30 +436,37 @@ private:
     }
 
 public:
-    TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
-        : Map(filePath, TMemoryMapCommon::oRdWr)
+    explicit TImpl(const TFileRingBufferArgs& args)
+        : Args(args)
+        , Map(args.FilePath, TMemoryMapCommon::oRdWr)
     {
+        Y_ABORT_UNLESS(
+            IsSupportedFileRingBufferVersion(args.Version),
+            "Unsupported requested FileRingBuffer version - %u",
+            static_cast<ui32>(args.Version));
+
         if (static_cast<ui64>(Map.Length()) < sizeof(THeader)) {
-            auto header = InitHeader(dataCapacity, metadataCapacity);
+            auto header = InitHeader(args);
             Map.ResizeAndRemap(0, header.DataOffset + header.DataCapacity);
             *Header() = header;
         } else {
             Map.Map(0, Map.Length());
         }
 
-        if (Header()->Version == VERSION_PREV) {
-            // Migration needs access to entries
-            CreateDataProcessor();
-            Migrate();
-        }
+        Y_ABORT_UNLESS(
+            IsSupportedFileRingBufferVersion(
+                static_cast<EVersion>(Header()->Version)),
+            "Unsupported current FileRingBuffer version - %u, file: %s",
+            static_cast<ui32>(Header()->Version),
+            args.FilePath.c_str());
 
         ValidateStructure();
 
-        if (Header()->MetadataCapacity != metadataCapacity) {
-            ResizeMetadata(metadataCapacity);
+        if (Header()->MetadataCapacity != Args.MetadataCapacity) {
+            ResizeMetadata(Args.MetadataCapacity);
         }
 
-        CreateDataProcessor();
+        CreateDataProcessor(Header()->Version);
 
         ValidateDataStructure();
 
@@ -463,6 +520,12 @@ public:
             return MakeError(
                 E_ARGUMENT,
                 "Zero size allocations are not allowed");
+        }
+
+        if (IsMigrationNeeded()) {
+            // Return "storage is full" error.
+            // Migration will happen when the buffer is emptied.
+            return nullptr;
         }
 
         if (size > Capabilities.MaxAllocationByteCount) {
@@ -733,7 +796,7 @@ public:
 
     ui32 GetVersion() const
     {
-        return Header()->Version;
+        return static_cast<ui32>(Header()->Version);
     }
 
     ui64 GetMaxObservedEntryByteCount() const
@@ -744,6 +807,10 @@ public:
     ui64 GetAvailableByteCount() const
     {
         if (IsCorrupted()) {
+            return 0;
+        }
+
+        if (IsMigrationNeeded()) {
             return 0;
         }
 
@@ -810,10 +877,15 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFileRingBuffer::TFileRingBuffer(
-        const TString& filePath,
-        ui64 dataCapacity,
-        ui64 metadataCapacity)
-    : Impl(new TImpl(filePath, dataCapacity, metadataCapacity))
+    const TString& filePath,
+    ui64 dataCapacity,
+    ui64 metadataCapacity,
+    EFileRingBufferVersion version)
+    : Impl(new TImpl(
+          {.FilePath = filePath,
+           .DataCapacity = dataCapacity,
+           .MetadataCapacity = metadataCapacity,
+           .Version = version}))
 {}
 
 TFileRingBuffer::~TFileRingBuffer() = default;

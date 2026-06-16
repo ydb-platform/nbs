@@ -11,6 +11,8 @@
 
 namespace NCloud {
 
+using EVersion = EFileRingBufferVersion;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,13 +96,16 @@ struct TReferenceImplementation
     static constexpr ui32 EntryOverhead = 8;
 
     const ui32 MaxWeight;
+    const EVersion Version;
+
     TDeque<TString> Q;
     ui32 ReadPos = 0;
     ui32 WritePos = 0;
     ui32 SlackSpace = 0;
 
-    explicit TReferenceImplementation(ui32 maxWeight)
+    TReferenceImplementation(ui32 maxWeight, EVersion version)
         : MaxWeight(maxWeight)
+        , Version(version)
     {}
 
     bool PushBack(TStringBuf data)
@@ -109,7 +114,11 @@ struct TReferenceImplementation
             return false;
         }
 
-        const ui32 sz = EntryOverhead + data.size();
+        ui32 sz = EntryOverhead + data.size();
+        if (Version >= EVersion::V6) {
+            sz = AlignUp(sz, static_cast<ui32>(sizeof(ui64)));
+        }
+
         if (sz > MaxWeight) {
             return false;
         }
@@ -155,7 +164,11 @@ struct TReferenceImplementation
             return;
         }
 
-        const ui32 sz = Q.front().size() + EntryOverhead;
+        ui32 sz = Q.front().size() + EntryOverhead;
+        if (Version >= EVersion::V6) {
+            sz = AlignUp(sz, static_cast<ui32>(sizeof(ui64)));
+        }
+
         ReadPos += sz;
         if (MaxWeight - ReadPos <= SlackSpace) {
             UNIT_ASSERT_VALUES_EQUAL(SlackSpace, MaxWeight - ReadPos);
@@ -200,6 +213,11 @@ TString Dump(const TReferenceImplementation& ri)
         sb << entry;
     }
     return sb;
+}
+
+TVector<EFileRingBufferVersion> GetVersionsForTest()
+{
+    return {EVersion::V4, EVersion::V5, EVersion::V6};
 }
 
 }   // namespace
@@ -280,7 +298,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldPushPopReferenceImplementation)
     {
         const ui32 len = 64;
-        TReferenceImplementation rb(len);
+        TReferenceImplementation rb(len, EVersion::V5);
 
         DoTestShouldPushPop(rb);
     }
@@ -365,18 +383,21 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         ui32 len,
         ui32 testBytes,
         ui32 testUpToEntrySize,
-        ui32 metadataSize)
+        ui32 metadataSize,
+        EVersion version)
     {
         const auto f = TTempFileHandle();
         const double restoreProbability = 0.05;
         std::unique_ptr<TFileRingBuffer> rb;
-        TReferenceImplementation ri(len);
+        TReferenceImplementation ri(len, version);
 
-        auto restore = [&] () {
+        auto restore = [&]()
+        {
             rb = std::make_unique<TFileRingBuffer>(
                 f.GetName(),
                 len,
-                metadataSize);
+                metadataSize,
+                version);
         };
 
         restore();
@@ -432,10 +453,26 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         }
     }
 
+    void DoRandomizedPushPopRestore(
+        ui32 len,
+        ui32 testBytes,
+        ui32 testUpToEntrySize,
+        ui32 metadataSize)
+    {
+        for (auto version: GetVersionsForTest()) {
+            DoRandomizedPushPopRestore(
+                len,
+                testBytes,
+                testUpToEntrySize,
+                metadataSize,
+                version);
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotWriteBeyondBufferWhenEmpty)
     {
         const auto f = TTempFileHandle();
-        auto ri = TReferenceImplementation(64);
+        auto ri = TReferenceImplementation(64, EVersion::V5);
         auto rb = TFileRingBuffer(f.GetName(), 64);
 
         TString data(36, 'a');
@@ -734,7 +771,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->ValidateMetadata());
 
         {
-            // Corrupt metadata Crc32
+            // Corrupt metadata
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, 256);
             char* data = static_cast<char*>(m.Ptr());
@@ -770,32 +807,35 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 dataLen = 36;
         const ui32 metadataLen = 8;
 
-        const TString fileDumpVer4 =
-            "BAAAAEgAAAAkAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAgBAAAAAAAACA"
-            "AAAAAAAAAAAQAAAAAAAAgAAAD56yynAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-            "AAAAAAAAAAAEZvcm1hdFY0CAAAABcbOq5Tb21lRGF0YQAAAAAAAAAAAAAAAAAAAAAA"
-            "AAAA";
+        auto rb = std::make_unique<TFileRingBuffer>(
+            f.GetName(),
+            dataLen,
+            metadataLen,
+            EVersion::V4);
+
+        rb->SetMetadata("FormatV4");
+        rb->PushBack("SomeData");
 
         {
-            TString decoded = Base64Decode(fileDumpVer4);
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-            m.ResizeAndRemap(0, decoded.size());
-            decoded.copy(reinterpret_cast<char*>(m.Ptr()), decoded.size());
+            m.ResizeAndRemap(0, m.Length());
             // Check version before migration
             UNIT_ASSERT_VALUES_EQUAL(4, *reinterpret_cast<ui32*>(m.Ptr()));
         }
 
-        TFileRingBuffer rb(f.GetName(), dataLen, metadataLen);
-        UNIT_ASSERT(!rb.IsCorrupted());
-        UNIT_ASSERT_VALUES_EQUAL("FormatV4", rb.GetMetadata());
-        UNIT_ASSERT_VALUES_EQUAL("SomeData", rb.Front());
+        rb = std::make_unique<TFileRingBuffer>(
+            f.GetName(),
+            dataLen,
+            metadataLen,
+            EVersion::V5);
+
+        UNIT_ASSERT(!rb->IsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL("FormatV4", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL("SomeData", rb->Front());
 
         {
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-            m.ResizeAndRemap(0, f.GetLength());
+            m.ResizeAndRemap(0, m.Length());
             // Check version after migration
             UNIT_ASSERT_VALUES_EQUAL(5, *reinterpret_cast<ui32*>(m.Ptr()));
         }
@@ -1098,54 +1138,165 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     Y_UNIT_TEST(ShouldSupportTags)
     {
+        auto check = [](EVersion version)
+        {
+            const auto f = TTempFileHandle();
+            const ui32 len = 36;
+
+            auto rb =
+                std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, version);
+
+            UNIT_ASSERT_VALUES_EQUAL(7, rb->GetMaxTag());
+
+            const TString data1 = "abc";
+            const TString data2 = "defg";
+
+            auto* ptr1 = rb->Alloc(data1.size()).GetResult();
+            UNIT_ASSERT(ptr1 != nullptr);
+            data1.copy(ptr1, data1.size());
+            rb->Commit();
+
+            auto* ptr2 = rb->Alloc(data2.size()).GetResult();
+            UNIT_ASSERT(ptr2 != nullptr);
+            data2.copy(ptr2, data2.size());
+            rb->Commit();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr1));
+            UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr2));
+
+            rb->SetTag(ptr1, 1);
+            rb->SetTag(ptr2, 2);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr1));
+            UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr2));
+
+            // Recreate cache - old pointers become invalid
+            rb =
+                std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, version);
+
+            const auto* ptr3 = Find(*rb, TStringBuf(data1)).data();
+            UNIT_ASSERT(ptr3 != nullptr);
+            UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr3));
+
+            const auto* ptr4 = Find(*rb, TStringBuf(data2)).data();
+            UNIT_ASSERT(ptr4 != nullptr);
+            UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr4));
+
+            rb->PopFront();
+            rb->PopFront();
+            UNIT_ASSERT(rb->Empty());
+
+            // Reuse entry
+            auto* ptr5 = rb->Alloc(data1.size()).GetResult();
+            UNIT_ASSERT(ptr5 != nullptr);
+            data1.copy(ptr5, data1.size());
+            rb->Commit();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr5));
+        };
+
+        check(EVersion::V5);
+        check(EVersion::V6);
+    }
+
+    Y_UNIT_TEST(CheckAlignmentForVersionV6)
+    {
         const auto f = TTempFileHandle();
         const ui32 len = 36;
-        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
 
-        const TString data1 = "abc";
-        const TString data2 = "defg";
+        TFileRingBuffer rb(f.GetName(), len, 0, EVersion::V6);
 
-        auto* ptr1 = rb->Alloc(data1.size()).GetResult();
+        auto ptr1 = rb.Alloc(2).GetResult();
         UNIT_ASSERT(ptr1 != nullptr);
-        data1.copy(ptr1, data1.size());
-        rb->Commit();
+        ptr1[0] = 'a';
+        ptr1[1] = 'b';
+        UNIT_ASSERT(rb.Commit());
 
-        auto* ptr2 = rb->Alloc(data2.size()).GetResult();
+        auto ptr2 = rb.Alloc(1).GetResult();
         UNIT_ASSERT(ptr2 != nullptr);
-        data2.copy(ptr2, data2.size());
-        rb->Commit();
+        ptr2[0] = 'c';
+        rb.Commit();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr1));
-        UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr2));
+        UNIT_ASSERT(AlignDown(ptr1, sizeof(ui64)) == ptr1);
+        UNIT_ASSERT(AlignDown(ptr2, sizeof(ui64)) == ptr2);
+    }
 
-        rb->SetTag(ptr1, 1);
-        rb->SetTag(ptr2, 2);
+    Y_UNIT_TEST(ShouldMigrate)
+    {
+        auto check = [](EVersion srcVersion,
+                        EVersion dstVersion,
+                        bool immediateMigration)
+        {
+            const auto f = TTempFileHandle();
+            const ui32 len = 128;
 
-        UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr1));
-        UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr2));
+            auto rb = std::make_unique<TFileRingBuffer>(
+                f.GetName(),
+                len,
+                8,
+                srcVersion);
 
-        // Recreate cache - old pointers become invalid
-        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+            rb->SetMetadata("abc");
+            UNIT_ASSERT(rb->PushBack("123"));
+            UNIT_ASSERT(rb->PushBack("4"));
+            UNIT_ASSERT(rb->PushBack("xz"));
 
-        const auto* ptr3 = Find(*rb, TStringBuf(data1)).data();
-        UNIT_ASSERT(ptr3 != nullptr);
-        UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr3));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(srcVersion),
+                rb->GetVersion());
 
-        const auto* ptr4 = Find(*rb, TStringBuf(data2)).data();
-        UNIT_ASSERT(ptr4 != nullptr);
-        UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr4));
+            rb = std::make_unique<TFileRingBuffer>(
+                f.GetName(),
+                len,
+                8,
+                dstVersion);
 
-        rb->PopFront();
-        rb->PopFront();
-        UNIT_ASSERT(rb->Empty());
+            UNIT_ASSERT(rb->Validate().empty());
 
-        // Reuse entry
-        auto* ptr5 = rb->Alloc(data1.size()).GetResult();
-        UNIT_ASSERT(ptr5 != nullptr);
-        data1.copy(ptr5, data1.size());
-        rb->Commit();
+            UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
+            UNIT_ASSERT_VALUES_EQUAL("123, 4, xz", Dump(*rb));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr5));
+            UNIT_ASSERT_VALUES_EQUAL(immediateMigration, rb->PushBack("!"));
+
+            if (immediateMigration) {
+                // Migration happened with non-empty buffer
+                UNIT_ASSERT_VALUES_EQUAL("123, 4, xz, !", Dump(*rb));
+
+                rb->PopFront();
+                rb->PopFront();
+                rb->PopFront();
+            } else {
+                // Migration didn't happen - need to empty the buffer first
+                UNIT_ASSERT_VALUES_EQUAL(0, rb->GetAvailableByteCount());
+
+                rb->PopFront();
+                rb->PopFront();
+                rb->PopFront();
+
+                UNIT_ASSERT_LT(0, rb->GetAvailableByteCount());
+
+                UNIT_ASSERT(rb->PushBack("!"));
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL("!", Dump(*rb));
+            UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(dstVersion),
+                rb->GetVersion());
+
+            UNIT_ASSERT(rb->Validate().empty());
+        };
+
+        // Version upgrade
+        check(EVersion::V4, EVersion::V5, true);
+        check(EVersion::V4, EVersion::V6, false);
+        check(EVersion::V5, EVersion::V6, false);
+
+        // Version downgrade
+        check(EVersion::V6, EVersion::V5, false);
+        check(EVersion::V6, EVersion::V4, false);
+        check(EVersion::V5, EVersion::V4, false);
     }
 }
 

@@ -15,6 +15,7 @@ SRCS(
     dynamic_persistent_table_ut.cpp
     file_map_memory_limiter_ut.cpp
     file_ring_buffer_ut.cpp
+    file_ring_buffer_format_ut.cpp
     persistent_table_ut.cpp
 )
 

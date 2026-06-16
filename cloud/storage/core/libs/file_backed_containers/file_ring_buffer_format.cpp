@@ -12,7 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <class TEntryHeader>
+template <class TEntryHeader, bool RequireAlignment>
 class TData
 {
 private:
@@ -21,7 +21,13 @@ private:
 public:
     explicit TData(std::span<char> data)
         : Data(data)
-    {}
+    {
+        if constexpr (RequireAlignment) {
+            Y_ABORT_UNLESS(
+                AlignDown(Data.data(), sizeof(ui64)) == Data.data(),
+                "Data buffer is not properly aligned");
+        }
+    }
 
     ui64 Size() const
     {
@@ -35,6 +41,12 @@ public:
     // or is not aligned.
     TEntryHeader* GetEntryHeaderPtr(ui64 pos) const
     {
+        if constexpr (RequireAlignment) {
+            if (AlignDown(pos, sizeof(ui64)) != pos) {
+                return nullptr;
+            }
+        }
+
         const bool valid =
             pos < Data.size() && sizeof(TEntryHeader) <= Data.size() - pos;
 
@@ -44,16 +56,27 @@ public:
 
     // Treats memory at position pos as TEntryHeader and memory right after
     // the header as entry data.
+    // Checks for alignment if RequireAlignment is set.
     // Ensures that [pos, pos + sizeof(TEntryHeader) + dataSize) is within data
     // bounds.
-    // Returns pointer to entry data or nullptr if it is outside data bounds.
+    // Returns pointer to entry data or nullptr if it is outside data bounds
+    // or is not aligned.
     char* GetEntryDataPtr(ui64 pos, ui64 dataSize) const
     {
+        if constexpr (RequireAlignment) {
+            if (AlignDown(pos, sizeof(ui64)) != pos) {
+                return nullptr;
+            }
+        }
+
         if (pos >= Data.size()) {
             return nullptr;
         }
 
-        const ui64 tailSize = Data.size() - pos;
+        ui64 tailSize = Data.size() - pos;
+        if constexpr (RequireAlignment) {
+            tailSize = AlignDown(tailSize, sizeof(ui64));
+        }
 
         const bool valid = sizeof(TEntryHeader) <= tailSize &&
                            dataSize <= tailSize - sizeof(TEntryHeader);
@@ -63,6 +86,10 @@ public:
 
     ui64 GetMaxDataSize(ui64 maxEntrySize) const
     {
+        if constexpr (RequireAlignment) {
+            maxEntrySize = AlignDown(maxEntrySize, sizeof(ui64));
+        }
+
         return maxEntrySize > sizeof(TEntryHeader)
                    ? maxEntrySize - sizeof(TEntryHeader)
                    : 0;
@@ -71,17 +98,12 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileRingBufferDataProcessor: public IFileRingBufferDataProcessor
+class TFileRingBufferDataProcessorV4: public IFileRingBufferDataProcessor
 {
 private:
     // Entry header layout (lower bits come first):
-    // [ DataSize (28 bits) | Tag (3 bits) | FreeFlag (1 bit) ]
+    // [ DataSize (31 bits) | FreeFlag (1 bit) ]
     // [ Checksum (32 bits) ]
-    static constexpr ui32 MaxDataSize = (1U << 28U) - 1U;
-    static constexpr ui32 MaxTag = (1U << 3U) - 1U;
-    static constexpr ui32 TagShift = 28U;
-    static constexpr ui32 FreeFlagMask = 1U << 31U;
-
     struct Y_PACKED TEntryHeader
     {
         ui32 DataSize = 0;
@@ -90,18 +112,133 @@ private:
 
     static_assert(sizeof(TEntryHeader) == sizeof(ui64));
 
-    TData<TEntryHeader> Data;
+    TData<TEntryHeader, false> Data;
+
+    static constexpr ui32 MaxDataSize = (1U << 31U) - 1U;
+    static constexpr ui32 FreeFlagMask = 1U << 31U;
 
 public:
-    explicit TFileRingBufferDataProcessor(std::span<char> data)
+    explicit TFileRingBufferDataProcessorV4(std::span<char> data)
         : Data(data)
     {}
 
-    TFileRingBufferCapabilities GetCapabilities() const override
+    TFileRingBufferCapabilities GetCapabilities(
+        bool takeBufferSizeIntoAccount) const override
     {
         return {
-            .MaxAllocationByteCount = GetMaxAllocationByteCount(Data.Size()),
+            .MaxAllocationByteCount =
+                takeBufferSizeIntoAccount
+                    ? GetMaxAllocationByteCount(Data.Size())
+                    : MaxDataSize,
+            .MaxTag = 0,
+            .Alignment = 1,
+            .EntryHeaderIsCoveredByChecksum = false,
+        };
+    }
+
+    TFileRingBufferEntryHeader ReadEntryHeader(ui64 pos) const override
+    {
+        auto* eh = Data.GetEntryHeaderPtr(pos);
+        if (eh == nullptr) {
+            return {};
+        }
+
+        return {
+            .DataSize = eh->DataSize & MaxDataSize,
+            .DataChecksum = eh->Checksum,
+            .Tag = 0,
+            .FreeFlag = (eh->DataSize & FreeFlagMask) != 0,
+        };
+    }
+
+    bool WriteEntryHeader(
+        ui64 pos,
+        const TFileRingBufferEntryHeader& header) override
+    {
+        if (header.DataSize > MaxDataSize || header.Tag != 0) {
+            return false;
+        }
+
+        auto* eh = Data.GetEntryHeaderPtr(pos);
+        if (eh == nullptr) {
+            return false;
+        }
+
+        eh->DataSize = header.DataSize | (header.FreeFlag ? FreeFlagMask : 0);
+        eh->Checksum = header.DataChecksum;
+        return true;
+    }
+
+    ui64 GetEntrySize(ui64 dataSize) const override
+    {
+        return sizeof(TEntryHeader) + dataSize;
+    }
+
+    ui64 GetMaxAllocationByteCount(ui64 maxEntrySize) const override
+    {
+        return Min(
+            Data.GetMaxDataSize(maxEntrySize),
+            static_cast<ui64>(MaxDataSize));
+    }
+
+    const char* GetEntryDataPtr(ui64 pos, ui64 dataSize) const override
+    {
+        return Data.GetEntryDataPtr(pos, dataSize);
+    }
+
+    char* GetEntryDataPtr(ui64 pos, ui64 dataSize) override
+    {
+        return Data.GetEntryDataPtr(pos, dataSize);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TFileRingBufferDataProcessorV5Base
+{
+protected:
+    // Entry header layout (lower bits come first):
+    // [ DataSize (28 bits) | Tag (3 bits) | FreeFlag (1 bit) ]
+    // [ Checksum (32 bits) ]
+    static constexpr ui32 MaxDataSize = (1U << 28U) - 1U;
+    static constexpr ui32 MaxTag = (1U << 3U) - 1U;
+    static constexpr ui32 TagShift = 28U;
+    static constexpr ui32 FreeFlagMask = 1U << 31U;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TFileRingBufferDataProcessorV5
+    : public TFileRingBufferDataProcessorV5Base
+    , public IFileRingBufferDataProcessor
+{
+private:
+    struct Y_PACKED TEntryHeader
+    {
+        ui32 DataSize = 0;
+        ui32 Checksum = 0;
+    };
+
+    static_assert(sizeof(TEntryHeader) == sizeof(ui64));
+
+    TData<TEntryHeader, false> Data;
+
+public:
+    explicit TFileRingBufferDataProcessorV5(std::span<char> data)
+        : Data(data)
+    {}
+
+    TFileRingBufferCapabilities GetCapabilities(
+        bool takeBufferSizeIntoAccount) const override
+    {
+        return {
+            .MaxAllocationByteCount =
+                takeBufferSizeIntoAccount
+                    ? GetMaxAllocationByteCount(Data.Size())
+                    : MaxDataSize,
             .MaxTag = MaxTag,
+            .Alignment = 1,
+            .EntryHeaderIsCoveredByChecksum = false,
         };
     }
 
@@ -162,14 +299,128 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TFileRingBufferDataProcessorV6
+    : public TFileRingBufferDataProcessorV5Base
+    , public IFileRingBufferDataProcessor
+{
+private:
+    TData<ui64, true> Data;
+
+public:
+    explicit TFileRingBufferDataProcessorV6(std::span<char> data)
+        : Data(data)
+    {}
+
+    TFileRingBufferCapabilities GetCapabilities(
+        bool takeBufferSizeIntoAccount) const override
+    {
+        return {
+            .MaxAllocationByteCount =
+                takeBufferSizeIntoAccount
+                    ? GetMaxAllocationByteCount(Data.Size())
+                    : MaxDataSize,
+            .MaxTag = MaxTag,
+            .Alignment = sizeof(ui64),
+            .EntryHeaderIsCoveredByChecksum = true,
+        };
+    }
+
+    TFileRingBufferEntryHeader ReadEntryHeader(ui64 pos) const override
+    {
+        auto* eh = Data.GetEntryHeaderPtr(pos);
+        if (eh == nullptr) {
+            return {};
+        }
+
+        ui32 lower = static_cast<ui32>(*eh);
+        ui32 upper = static_cast<ui32>(*eh >> 32U);
+
+        return {
+            .DataSize = lower & MaxDataSize,
+            .DataChecksum = upper ^ IntHash(lower),
+            .Tag = (lower >> TagShift) & MaxTag,
+            .FreeFlag = (lower & FreeFlagMask) != 0,
+        };
+    }
+
+    bool WriteEntryHeader(
+        ui64 pos,
+        const TFileRingBufferEntryHeader& header) override
+    {
+        if (header.DataSize > MaxDataSize || header.Tag > MaxTag) {
+            return false;
+        }
+
+        auto* eh = Data.GetEntryHeaderPtr(pos);
+        if (eh == nullptr) {
+            return false;
+        }
+
+        ui32 lower = header.DataSize | (header.Tag << TagShift) |
+                     (header.FreeFlag ? FreeFlagMask : 0);
+        ui32 upper = header.DataChecksum ^ IntHash(lower);
+        ui64 value = (static_cast<ui64>(upper) << 32U) | lower;
+
+        // We need to atomically store header and checksum in order to
+        // maintain data consistency
+        __atomic_store_n(eh, value, __ATOMIC_RELAXED);
+
+        return true;
+    }
+
+    ui64 GetEntrySize(ui64 dataSize) const override
+    {
+        return sizeof(ui64) + AlignUp(dataSize, sizeof(ui64));
+    }
+
+    ui64 GetMaxAllocationByteCount(ui64 maxEntrySize) const override
+    {
+        return Min(
+            Data.GetMaxDataSize(maxEntrySize),
+            static_cast<ui64>(MaxDataSize));
+    }
+
+    const char* GetEntryDataPtr(ui64 pos, ui64 dataSize) const override
+    {
+        return Data.GetEntryDataPtr(pos, dataSize);
+    }
+
+    char* GetEntryDataPtr(ui64 pos, ui64 dataSize) override
+    {
+        return Data.GetEntryDataPtr(pos, dataSize);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 std::unique_ptr<IFileRingBufferDataProcessor> CreateFileRingBufferDataProcessor(
+    EFileRingBufferVersion version,
     std::span<char> data)
 {
-    return std::make_unique<TFileRingBufferDataProcessor>(data);
+    switch (version) {
+        case EFileRingBufferVersion::V4:
+            return std::make_unique<TFileRingBufferDataProcessorV4>(data);
+        case EFileRingBufferVersion::V5:
+            return std::make_unique<TFileRingBufferDataProcessorV5>(data);
+        case EFileRingBufferVersion::V6:
+            return std::make_unique<TFileRingBufferDataProcessorV6>(data);
+        default:
+            Y_ABORT_UNLESS(
+                false,
+                "Unsupported file ring buffer version - %u",
+                static_cast<ui32>(version));
+    }
+}
+
+bool IsSupportedFileRingBufferVersion(EFileRingBufferVersion version)
+{
+    return version == EFileRingBufferVersion::V4 ||
+           version == EFileRingBufferVersion::V5 ||
+           version == EFileRingBufferVersion::V6;
 }
 
 }   // namespace NCloud
