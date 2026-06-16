@@ -104,7 +104,9 @@ public:
             const auto& blob = Args.MixedBlobs[i];
             ProcessNewBlob(ctx, db, blob);
             UpdateCompactionCounters(blob);
-            if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
+            if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT ||
+                Args.Mode == ADD_COMPACTION_RESULT)
+            {
                 UpdateUsedBlocks(db, blob);
             }
 
@@ -129,7 +131,9 @@ public:
             const auto& blob = Args.MergedBlobs[i];
             ProcessNewBlob(ctx, db, blob);
             UpdateCompactionCounters(blob);
-            if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
+            if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT ||
+                Args.Mode == ADD_COMPACTION_RESULT)
+            {
                 UpdateUsedBlocks(db, blob);
             }
 
@@ -581,10 +585,27 @@ private:
 
     void UpdateUsedBlocks(TPartitionDatabase& db, const TAddMergedBlob& blob)
     {
+        if (blob.SkipMask.Empty()) {
+            if (IsDeletionMarker(blob.BlobId)) {
+                State.UnsetUsedBlocks(db, blob.BlockRange);
+            } else {
+                State.SetUsedBlocks(db, blob.BlockRange);
+            }
+            return;
+        }
+
+        TVector<ui32> blocks;
+        blocks.reserve(blob.BlockRange.Size() - blob.SkipMask.Count());
+        for (const auto blockIndex: xrange(blob.BlockRange)) {
+            if (!blob.SkipMask.Get(blockIndex - blob.BlockRange.Start)) {
+                blocks.push_back(blockIndex);
+            }
+        }
+
         if (IsDeletionMarker(blob.BlobId)) {
-            State.UnsetUsedBlocks(db, blob.BlockRange);
+            State.UnsetUsedBlocks(db, blocks);
         } else {
-            State.SetUsedBlocks(db, blob.BlockRange, blob.SkipMask.Count());
+            State.SetUsedBlocks(db, blocks);
         }
     }
 

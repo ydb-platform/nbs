@@ -323,7 +323,7 @@ void TPartitionActor::ExecuteWriteBlocks(
         // update counters
         State->DecrementFreshBlocksInFlight(sr.Range.Size());
 
-        State->SetUsedBlocks(db, sr.Range, 0);
+        State->SetUsedBlocks(db, sr.Range);
     }
 
     db.WriteMeta(State->GetMeta());

@@ -721,7 +721,7 @@ public:
         return GetUsedBlocksCount() + GetNewlyZeroedBlocks();
     }
 
-    void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);
+    void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void SetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
