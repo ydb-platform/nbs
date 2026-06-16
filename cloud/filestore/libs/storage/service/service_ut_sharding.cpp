@@ -8236,6 +8236,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             true /* directoryCreationInShards */,
             true /* forceDirectoryCreationInShards */);
 
+        // ResizeFileStore triggers tablet suicide (shard reconfiguration),
+        // need to re-establish the session after restart
+        WaitForTabletStart(service);
+        headers = service.InitSession(fsConfig.FsId, "client");
+
         //
         // dir2, dir3, subdir2 - managed by shards.
         //
