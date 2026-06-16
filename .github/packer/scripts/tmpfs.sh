@@ -26,12 +26,12 @@ fi
 # Create mount point if doesn't exist
 if [[ ! -d "${TMPFS_MOUNT_POINT}" ]]; then
     echo "Creating directory: ${TMPFS_MOUNT_POINT}"
-    sudo mkdir -p "${TMPFS_MOUNT_POINT}"
+    mkdir -p "${TMPFS_MOUNT_POINT}"
 fi
 
 if ! grep -q "^tmpfs ${TMPFS_MOUNT_POINT}" /etc/fstab; then
     echo "tmpfs ${TMPFS_MOUNT_POINT} tmpfs defaults,noatime,nodiratime,mode=1777,size=${TMPFS_SIZE} 0 0" \
-                                                                                                         | sudo tee -a /etc/fstab > /dev/null
+        | tee -a /etc/fstab > /dev/null
     echo "Added to /etc/fstab"
 fi
 

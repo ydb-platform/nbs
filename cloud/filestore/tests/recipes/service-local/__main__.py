@@ -61,7 +61,14 @@ def start(argv):
         verbose=args.verbose)
 
     filestore_server = FilestoreServer(configurator=filestore_configurator)
-    filestore_server.start()
+
+    # Keep local-service test results independent of the runner user's default
+    # umask while preserving the established POSIX compliance expectations.
+    old_umask = os.umask(0o002)
+    try:
+        filestore_server.start()
+    finally:
+        os.umask(old_umask)
 
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_server.pid))

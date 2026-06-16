@@ -7,6 +7,7 @@ RUNNER_SHA256_X64={sha256_x64}
 RUNNER_SHA256_ARM64={sha256_arm64}
 RUNNER_LABELS={label}
 REPO_URL={repo_url}
+RUNNER_USER={runner_user}
 RUNNER_REGISTRATION_TOKEN={token}
 
 set -x
@@ -14,6 +15,109 @@ set -x
 echo "fixing /etc/hosts"
 echo "::1 localhost" | tee -a /etc/hosts
 grep localhost /etc/hosts
+
+mkdir -p /coredumps
+chmod 1777 /coredumps
+grep -qF "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" /etc/sysctl.conf || echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" >> /etc/sysctl.conf
+grep -qF "kernel.core_uses_pid=1" /etc/sysctl.conf || echo "kernel.core_uses_pid=1" >> /etc/sysctl.conf
+grep -qF "fs.suid_dumpable=0" /etc/sysctl.conf || echo "fs.suid_dumpable=0" >> /etc/sysctl.conf
+grep -qF "* soft memlock unlimited" /etc/security/limits.conf || echo "* soft memlock unlimited" >> /etc/security/limits.conf
+grep -qF "* hard memlock unlimited" /etc/security/limits.conf || echo "* hard memlock unlimited" >> /etc/security/limits.conf
+sysctl -p || true
+
+RUNNER_HOME=$(getent passwd "$RUNNER_USER" | cut -d: -f6)
+if [ -z "$RUNNER_HOME" ]; then
+    echo "Runner user does not exist: $RUNNER_USER"
+    exit 1
+fi
+
+if [ ! -x /usr/local/bin/actions-runner-collect-system-logs.sh ]; then
+    cat > /usr/local/bin/actions-runner-collect-system-logs.sh << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ne 0 ]; then
+    echo "usage: $0" >&2
+    exit 2
+fi
+
+LOG_DIR=/home/github/tmp_test/logs
+SYSTEM_LOGS_DIR=$LOG_DIR/system_logs
+KERN_LOG_PATH=$LOG_DIR/kern.log
+TMP_TEST_DIR=/home/github/tmp_test
+
+RUNNER_UID=${{SUDO_UID:-}}
+RUNNER_GID=${{SUDO_GID:-}}
+if [ -z "$RUNNER_UID" ] || [ -z "$RUNNER_GID" ]; then
+    RUNNER_UID=$(id -u github)
+    RUNNER_GID=$(id -g github)
+fi
+
+TMP_DIR=$(mktemp -d /tmp/actions-runner-system-logs.XXXXXX)
+TMP_SYSTEM_LOGS_DIR=$TMP_DIR/system_logs
+TMP_KERN_LOG_PATH=$TMP_DIR/kern.log
+
+cleanup() {{
+    rm -rf "$TMP_DIR"
+}}
+trap cleanup EXIT
+
+mkdir -p "$TMP_SYSTEM_LOGS_DIR"
+
+if dmesg -T > "$TMP_SYSTEM_LOGS_DIR/dmesg.log" 2> /dev/null; then
+    chmod 0644 "$TMP_SYSTEM_LOGS_DIR/dmesg.log"
+fi
+
+if [ -r /var/log/kern.log ]; then
+    install -m 0644 /var/log/kern.log "$TMP_KERN_LOG_PATH"
+fi
+
+if [ -r /var/log/syslog ]; then
+    install -m 0644 /var/log/syslog "$TMP_SYSTEM_LOGS_DIR/syslog.log"
+fi
+
+for atop_log in /var/log/atop/atop_*; do
+    if [ -r "$atop_log" ]; then
+        install -m 0644 "$atop_log" "$TMP_SYSTEM_LOGS_DIR/$(basename "$atop_log")"
+    fi
+done
+
+for dir in "$TMP_TEST_DIR" "$LOG_DIR"; do
+    if [ -L "$dir" ] || {{ [ -e "$dir" ] && [ ! -d "$dir" ]; }}; then
+        rm -f "$dir"
+    fi
+    mkdir -p "$dir"
+    if [ -L "$dir" ] || [ ! -d "$dir" ]; then
+        echo "Refusing to publish system logs through unsafe path: $dir" >&2
+        exit 1
+    fi
+    chown "$RUNNER_UID:$RUNNER_GID" "$dir"
+    chmod 0755 "$dir"
+done
+
+rm -rf "$SYSTEM_LOGS_DIR"
+rm -f "$KERN_LOG_PATH"
+
+find "$TMP_SYSTEM_LOGS_DIR" -type d -exec chmod 0755 {{}} +
+find "$TMP_SYSTEM_LOGS_DIR" -type f -exec chmod 0644 {{}} +
+chown -R "$RUNNER_UID:$RUNNER_GID" "$TMP_SYSTEM_LOGS_DIR"
+mv -T "$TMP_SYSTEM_LOGS_DIR" "$SYSTEM_LOGS_DIR"
+
+if [ -e "$TMP_KERN_LOG_PATH" ]; then
+    chown "$RUNNER_UID:$RUNNER_GID" "$TMP_KERN_LOG_PATH"
+    chmod 0644 "$TMP_KERN_LOG_PATH"
+    mv -T "$TMP_KERN_LOG_PATH" "$KERN_LOG_PATH"
+fi
+
+EOF
+    chmod 0755 /usr/local/bin/actions-runner-collect-system-logs.sh
+fi
+
+cat > "/etc/sudoers.d/99-$RUNNER_USER" << EOF
+Cmnd_Alias GITHUB_RUNNER_LOGS = /usr/local/bin/actions-runner-collect-system-logs.sh
+$RUNNER_USER ALL=(root) NOPASSWD: GITHUB_RUNNER_LOGS
+EOF
+chmod 0440 "/etc/sudoers.d/99-$RUNNER_USER"
 
 if [ "$UPDATE_RUNNER" = "true" ]; then
     mkdir -p /actions-runner
@@ -64,7 +168,8 @@ else
     echo "Runner is not installed and UPDATE_RUNNER is not true"
     exit 1
 fi
-export RUNNER_ALLOW_RUNASROOT=1
+
+chown -R "$RUNNER_USER:$RUNNER_USER" /actions-runner
 
 # trying to catch registration error
 exit_code=1
@@ -72,7 +177,7 @@ i=0
 until [ "$exit_code" -eq 0 ] || [ "$i" -gt 3 ]; do
     echo ./config.sh --labels "$RUNNER_LABELS" --url "$REPO_URL" --token XXX --unattended
     set +x
-    timeout 60 ./config.sh --labels "$RUNNER_LABELS" --url "$REPO_URL" --token "$RUNNER_REGISTRATION_TOKEN" --unattended
+    timeout 60 env HOME="$RUNNER_HOME" USER="$RUNNER_USER" LOGNAME="$RUNNER_USER" runuser -u "$RUNNER_USER" -- ./config.sh --labels "$RUNNER_LABELS" --url "$REPO_URL" --token "$RUNNER_REGISTRATION_TOKEN" --unattended
     set -x
     exit_code=$?
     i=$((i + 1))
@@ -90,6 +195,7 @@ fi
 touch /actions-runner/.env
 sed -i '/^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/d' /actions-runner/.env
 echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/actions-runner-job-completed-cleanup.sh" >> /actions-runner/.env
+chown -R "$RUNNER_USER:$RUNNER_USER" /actions-runner
 
 # true to skip the error and to boot vm correctly
 sed -i \
@@ -98,9 +204,10 @@ OOMPolicy=continue \
 OOMScoreAdjust=-900 \
 Delegate=yes \
 TasksMax=infinity \
+LimitMEMLOCK=infinity \
 Restart=on-failure \
 RestartSec=5s \
 Slice=actions-runner.slice' \
     ./bin/actions.runner.service.template
-./svc.sh install || true
+./svc.sh install "$RUNNER_USER" || true
 ./svc.sh start || true
