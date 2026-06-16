@@ -251,9 +251,13 @@ func (client *Client) ListNVMeDevices(
 func (client *Client) AcquireNVMeDevice(
 	ctx context.Context,
 	serialNumber string,
+	idempotenceId string,
 ) (*protos.TNVMeDeviceDesc, error) {
 
 	req := &protos.TAcquireNVMeDeviceRequest{
+		Headers: &protos.THeaders{
+			IdempotenceId: idempotenceId,
+		},
 		SerialNumber: serialNumber,
 	}
 
@@ -268,9 +272,13 @@ func (client *Client) AcquireNVMeDevice(
 func (client *Client) ReleaseNVMeDevice(
 	ctx context.Context,
 	serialNumber string,
+	idempotenceId string,
 ) error {
 
 	req := &protos.TReleaseNVMeDeviceRequest{
+		Headers: &protos.THeaders{
+			IdempotenceId: idempotenceId,
+		},
 		SerialNumber: serialNumber,
 	}
 
