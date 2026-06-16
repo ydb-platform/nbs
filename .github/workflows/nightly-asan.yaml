@@ -4,9 +4,9 @@ run-name: |
       && (
             inputs.comment != ''
             && format('Nightly build (asan) (manual) (comment: {0})', inputs.comment)
-            || format('Nightly build (asan) (manual)')
+            || 'Nightly build (asan) (manual)'
           )
-      || format('Nightly build (asan) (schedule)')
+      || 'Nightly build (asan) (schedule)'
     }}
 on:
   schedule:
