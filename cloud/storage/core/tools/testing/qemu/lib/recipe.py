@@ -19,6 +19,7 @@ from .common import (
     get_qemu_bios,
     get_qemu_firmware,
     get_qemu_kvm,
+    sanitizer_core_options_exports,
 )
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
@@ -434,6 +435,17 @@ def _prepare_test_environment(ssh, virtio):
     library.python.testing.recipe.set_env(
         "TEST_ENV_WRAPPER", vm_env['TEST_ENV_WRAPPER'])
 
+    test_env_sh = '\n'.join(
+        [
+            "#!/bin/bash",
+            "ulimit -Hc unlimited || true",
+            "ulimit -Sc unlimited || true",
+        ] + sanitizer_core_options_exports() + [
+            'exec /bin/bash -lc "$1"',
+        ]
+    )
+    ssh("sudo tee /test_env.sh <<'TEST-ENV' && sudo chmod +x /test_env.sh\n{}\nTEST-ENV".format(test_env_sh))
+
     run_test_sh = '\n'.join(
         [
             "#!/bin/bash"
@@ -449,10 +461,7 @@ def _prepare_test_environment(ssh, virtio):
             "ulimit -Sa >/tmp/run_test.ulimit.soft 2>&1",
             "cat /proc/self/limits >/tmp/run_test.limits 2>&1",
             "printf '%s\\n' \"$1\" >/tmp/run_test.command 2>&1",
-            "export ASAN_OPTIONS=\"${ASAN_OPTIONS:+$ASAN_OPTIONS:}disable_coredump=0\"",
-            "export MSAN_OPTIONS=\"${MSAN_OPTIONS:+$MSAN_OPTIONS:}disable_coredump=0\"",
-            "export TSAN_OPTIONS=\"${TSAN_OPTIONS:+$TSAN_OPTIONS:}disable_coredump=0\""
-        ] + [
+        ] + sanitizer_core_options_exports() + [
             '"$@"',
             "exit_code=$?",
             "sync",

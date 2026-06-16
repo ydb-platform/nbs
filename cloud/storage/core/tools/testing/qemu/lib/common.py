@@ -1,10 +1,25 @@
 import logging
 import os
 import platform
+import shlex
 import tarfile
 import yatest.common as common
 
 logger = logging.getLogger(__name__)
+
+SANITIZER_OPTIONS = (
+    "ASAN_OPTIONS",
+    "MSAN_OPTIONS",
+    "TSAN_OPTIONS",
+    "UBSAN_OPTIONS",
+)
+
+
+def sanitizer_core_options_exports():
+    return [
+        'export {name}="${{{name}:+${name}:}}disable_coredump=0"'.format(name=name)
+        for name in SANITIZER_OPTIONS
+    ]
 
 
 class SshToGuest(object):
@@ -18,6 +33,16 @@ class SshToGuest(object):
 
         if timeout is not None:
             cmd = ["timeout", str(timeout)]
+
+        if command:
+            quoted_command = shlex.quote(command)
+            command = (
+                "if [ -x /test_env.sh ]; then "
+                "exec /test_env.sh {command}; "
+                "else "
+                "exec /bin/bash -lc {command}; "
+                "fi"
+            ).format(command=quoted_command)
 
         cmd += [
             "ssh",
