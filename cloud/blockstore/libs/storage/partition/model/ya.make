@@ -6,6 +6,7 @@ GENERATE_ENUM_SERIALIZATION(mixed_index_cache.h)
 GENERATE_ENUM_SERIALIZATION(operation_status.h)
 
 SRCS(
+    background_ops_throttling.cpp
     barrier.cpp
     blob_index.cpp
     blob_to_confirm.cpp
