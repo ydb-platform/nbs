@@ -753,6 +753,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             error.GetMessage(),
             "is stopped",
             FormatError(error));
+
+        promise.SetValue();
     }
 
     Y_UNIT_TEST_F(ShouldAcquireAndReleaseDeviceMT, TFixture)
@@ -1234,13 +1236,47 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 E_TRY_AGAIN,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release in progress",
+                FormatError(error));
         }
+
         {
             auto future = Service->ReleaseNVMeDevice(sn, "xxx");
             const auto& error = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TRY_AGAIN,
                 error.GetCode(),
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Another operation is in progress",
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release",
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-1");
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "idempotence id was used for a different operation type",
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release",
                 FormatError(error));
         }
 
@@ -1250,6 +1286,10 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TRY_AGAIN,
                 error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Another operation is in progress",
                 FormatError(error));
         }
 
@@ -1282,7 +1322,36 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
         }
 
-        // Start a new operation (sync)
+        {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-1");
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "idempotence id was used for a different operation type",
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release",
+                FormatError(error));
+        }
+
+        // Start new operation (sync)
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, EmptyIdempotenceId);
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
         {
             auto future = Service->ReleaseNVMeDevice(sn, EmptyIdempotenceId);
 
