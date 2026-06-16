@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <thread>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -129,29 +130,16 @@ bool WaitUntil(
 }
 
 
-void SetupFlushOnQpError(NVerbs::TTestContextPtr context)
+auto SetupFlushOnQpError(NVerbs::TTestContextPtr context)
 {
-    context->ModifyQP = [ctx = context.Get()](
-        ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    return [ctx = std::move(context)](ibv_qp* qp, ibv_qp_attr* attr, int mask)
     {
         Y_UNUSED(qp);
 
         if (!((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR)) {
             return;
         }
-        with_lock (ctx->CompletionLock) {
-            ctx->HandleCompletionEvent = [](ibv_wc* wc) {
-                wc->status = IBV_WC_WR_FLUSH_ERR;
-                wc->opcode = static_cast<ibv_wc_opcode>(0);
-            };
-            std::move(
-                ctx->RecvEvents.begin(),
-                ctx->RecvEvents.end(),
-                std::back_inserter(ctx->ProcessedRecvEvents));
-            ctx->RecvEvents.clear();
-            ctx->ReqIds.clear();
-        }
-        ctx->CompletionHandle.Set();
+        NVerbs::Flush(ctx);
     };
 }
 
@@ -247,19 +235,7 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
         Y_UNUSED(qp);
 
         if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
-            with_lock (testContext->CompletionLock) {
-                testContext->HandleCompletionEvent = [](ibv_wc* wc) {
-                    wc->status = IBV_WC_WR_FLUSH_ERR;
-                    wc->opcode = static_cast<ibv_wc_opcode>(0);
-                };
-                std::move(
-                    testContext->RecvEvents.begin(),
-                    testContext->RecvEvents.end(),
-                    std::back_inserter(testContext->ProcessedRecvEvents));
-                testContext->RecvEvents.clear();
-                testContext->ReqIds.clear();
-            }
-            testContext->CompletionHandle.Set();
+            NVerbs::Flush(testContext);
             return;
         }
 
@@ -413,7 +389,7 @@ TEST(TRdmaServerTest, ShouldHandleSessionError)
 TEST(TRdmaServerTest, ShouldHandleErrors)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
-    SetupFlushOnQpError(context);
+    context->ModifyQP = SetupFlushOnQpError(context);
 
     auto verbs = NVerbs::CreateTestVerbs(context);
     auto monitoring = CreateMonitoringServiceStub();
@@ -605,7 +581,21 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
-    SetupFlushOnQpError(context);
+
+    NThreading::TPromise<void> flushTriggered =
+        NThreading::NewPromise<void>();
+
+    // Combine flush-on-error with a signal so the test can wait until Stop()
+    // has actually entered the flush phase before calling SendResponse.
+    auto flushHook = SetupFlushOnQpError(context);
+    context->ModifyQP = [flushTriggered, flushHook = std::move(flushHook)](
+        ibv_qp* qp, ibv_qp_attr* attr, int mask) mutable
+    {
+        flushHook(qp, attr, mask);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            flushTriggered.TrySetValue();
+        }
+    };
 
     std::atomic<rdma_cm_id*> sessionId{nullptr};
     NThreading::TPromise<void> sessionDestroyed =
@@ -668,31 +658,32 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
     handler->RequestReceived.GetFuture().GetValueSync();
     ASSERT_NE(nullptr, handler->Context);
 
-    verbs->Disconnect(sessionId.load());
-
-    // Wait for recv WR drain: SetupFlushOnQpError moves RecvEvents →
-    // ProcessedRecvEvents; the CQ thread consumes ProcessedRecvEvents.
-    // Both empty means all flush completions have been processed.
-    ASSERT_TRUE(WaitUntil([&] {
-        auto g = Guard(context->CompletionLock);
-        return context->RecvEvents.empty() &&
-               context->ProcessedRecvEvents.empty();
-    }));
-
-    // Drain complete + ExecutingRequests == 1 → IsFlushed() is false →
-    // session cannot be released yet.
+    // ExecutingRequests == 1: session cannot be released yet.
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
+
+    // Run Stop() in a background thread — it will block inside the flush loop
+    // waiting for ExecutingRequests == 0.
+    std::thread stopThread([&] { server->Stop(); });
+    Y_DEFER {
+        if (stopThread.joinable()) {
+            stopThread.join();
+        }
+    };
+
+    // Wait until Stop() has actually reached the flush phase (ModifyQP hook
+    // fired), guaranteeing it is now blocked on IsFlushed().
+    flushTriggered.GetFuture().GetValueSync();
 
     endpoint->SendResponse(handler->Context, 0);
 
-    server->Stop();
+    stopThread.join();
     ASSERT_TRUE(sessionDestroyed.GetFuture().HasValue());
 }
 
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
-    SetupFlushOnQpError(context);
+    context->ModifyQP = SetupFlushOnQpError(context);
 
     std::atomic<rdma_cm_id*> sessionId{nullptr};
     NThreading::TPromise<void> sessionDestroyed =
@@ -758,10 +749,11 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
     verbs->Disconnect(sessionId.load());
 
-    ASSERT_TRUE(WaitUntil([&] {
-        auto g = Guard(context->CompletionLock);
-        return context->RecvEvents.empty() &&
-               context->ProcessedRecvEvents.empty();
+    ASSERT_TRUE(WaitUntil([c = GetServerCounters(monitoring)] {
+        return c->GetCounter("ActiveRecv")->Val()  == 0 &&
+               c->GetCounter("ActiveSend")->Val()  == 0 &&
+               c->GetCounter("ActiveWrite")->Val() == 0 &&
+               c->GetCounter("ActiveRead")->Val()  == 0;
     }));
 
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());

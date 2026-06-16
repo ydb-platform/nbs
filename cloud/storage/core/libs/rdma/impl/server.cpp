@@ -343,7 +343,6 @@ public:
     bool HandleInputRequests() noexcept;
     bool HandleCompletionEvents() noexcept;
     bool IsFlushed() const;
-    bool CanReleaseAfterStop() const;
 
 private:
     // called from CQ thread
