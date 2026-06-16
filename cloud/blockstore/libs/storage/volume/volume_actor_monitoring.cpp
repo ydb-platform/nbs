@@ -2236,13 +2236,9 @@ void TVolumeActor::RenderBrokenDevicesStatus(IOutputStream& out) const
     HTML (out) {
         if (DeviceUUIDToBrokenAt.empty()) {
             SPAN_CLASS_STYLE ("label label-success", "margin-left:10px") {
-                out << "No broken devices";
+                out << "All agents available";
             }
             return;
-        }
-
-        SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
-            out << DeviceUUIDToBrokenAt.size() << " broken device(s)";
         }
 
         THashSet<TString> brokenHosts;
@@ -2250,6 +2246,10 @@ void TVolumeActor::RenderBrokenDevicesStatus(IOutputStream& out) const
             if (DeviceUUIDToBrokenAt.contains(dev->GetDeviceUUID())) {
                 brokenHosts.insert(dev->GetAgentId());
             }
+        }
+
+        SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
+            out << brokenHosts.size() << " agent(s) unavailable";
         }
 
         if (!brokenHosts.empty()) {
