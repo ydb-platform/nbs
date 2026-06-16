@@ -106,9 +106,7 @@ TEST(TRdmaClientTest, ShouldStartEndpoint)
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint("::", 10020);
-
-        Y_UNUSED(clientEndpoint);
+        client->StartEndpoint("::", 10020);
 }
 
 TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
@@ -131,8 +129,7 @@ TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
         client->Stop();
     };
 
-    auto clientEndpoint = client->StartEndpoint("::", 10020);
-    Y_UNUSED(clientEndpoint);
+    client->StartEndpoint("::", 10020);
     ASSERT_EQ(42, testContext->ToS);
 }
 
@@ -219,7 +216,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
         client->Stop();
     };
 
-    auto ep = client->StartEndpoint("::", 10020).GetValue(5s);
+    auto ep = client->StartEndpoint("::", 10020).ExtractValueSync();
     ASSERT_TRUE(ep);
 
     ASSERT_TRUE(resolveAddressCalled.load());
@@ -262,11 +259,11 @@ TEST(TRdmaClientTest, ShouldDetachFromPoller)
             client->Stop();
         };
 
-        auto shared = client->StartEndpoint("::", 10020).GetValue(5s);
+        auto shared = client->StartEndpoint("::", 10020).ExtractValueSync();
         ASSERT_EQ(2u, shared.use_count());
 
         shared->Stop().Wait();
-        auto deadline = GetCycleCount() + DurationToCycles(TDuration::Seconds(10));
+        auto deadline = GetCycleCount() + DurationToCycles(10s);
         while (deadline > GetCycleCount() && shared.use_count() > 1) {
             SpinLockPause();
         }
@@ -296,12 +293,8 @@ TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint(
-            "::",
-            10020);
-
         try {
-            clientEndpoint.GetValue(10s);
+            client->StartEndpoint("::", 10020).ExtractValueSync();
             FAIL() << "expected exception";
         } catch (const TServiceError& e) {
             ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -343,8 +336,7 @@ TEST(TRdmaClientTest, ShouldHandleGetAddressInfoError)
         };
 
         try {
-            auto clientEndpoint = client->StartEndpoint("::", 10020);
-            clientEndpoint.GetValue(10s);
+            client->StartEndpoint("::", 10020).ExtractValueSync();
             FAIL() << "expected exception";
         } catch (const TServiceError& e) {
             ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -384,7 +376,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
             client->Stop();
         };
 
-        auto ep = client->StartEndpoint("::", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         testContext->PostSend = [&](auto* qp, auto* wr) {
             Y_UNUSED(qp);
@@ -450,14 +442,14 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
             TManualEvent ev;
             TResponse response;
 
-            auto request = ep->AllocateRequest(
+            auto request = endpoint->AllocateRequest(
                 std::make_shared<TClientHandler>(),
                 makeContext(&ev, &response),
                 RequestBytes,
                 ResponseBytes);
             ASSERT_FALSE(HasError(request.GetError()));
 
-            ep->SendRequest(
+            endpoint->SendRequest(
                 request.ExtractResult(),
                 MakeIntrusive<TCallContextBase>(0u));
 
@@ -523,7 +515,7 @@ TEST(TRdmaClientTest, ShouldReuseChunks)
             registered++;
         };
 
-        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         TVector<TClientRequestPtr> requests;
         int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
@@ -571,7 +563,7 @@ TEST(TRdmaClientTest, ShouldAdjustMaxChunkAlloc)
             registered++;
         };
 
-        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         TVector<TClientRequestPtr> requests;
         int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
@@ -623,7 +615,7 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
             sent.Signal();
         };
 
-        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         struct TClientHandler: IClientHandler
         {
@@ -682,7 +674,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
             client->Stop();
         };
 
-        auto ep = client->StartEndpoint("::", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         struct TResponse
         {
@@ -715,32 +707,32 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         const size_t requestBytes = 1024;
         const size_t responseBytes = 1024;
 
-        auto request1 = ep->AllocateRequest(
+        auto request1 = endpoint->AllocateRequest(
             std::make_shared<TClientHandler>(),
             makeContext(response1, ev1),
             requestBytes,
             responseBytes);
         ASSERT_FALSE(HasError(request1.GetError()));
 
-        auto reqId1 = ep->SendRequest(
+        auto reqId1 = endpoint->SendRequest(
             request1.ExtractResult(),
             MakeIntrusive<TCallContextBase>(0u));
 
         TManualEvent ev2;
         TResponse response2;
 
-        auto request2 = ep->AllocateRequest(
+        auto request2 = endpoint->AllocateRequest(
             std::make_shared<TClientHandler>(),
             makeContext(response2, ev2),
             requestBytes,
             responseBytes);
         ASSERT_FALSE(HasError(request2.GetError()));
 
-        auto reqId2 = ep->SendRequest(
+        auto reqId2 = endpoint->SendRequest(
             request2.ExtractResult(),
             MakeIntrusive<TCallContextBase>(0u));
 
-        ep->CancelRequest(reqId2);
+        endpoint->CancelRequest(reqId2);
 
         ev2.WaitT(5s);
         ASSERT_TRUE(response2.Received);
@@ -751,7 +743,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         ASSERT_EQ(E_CANCELLED, error2.GetCode());
 
         ASSERT_FALSE(response1.Received);
-        ep->CancelRequest(reqId1);
+        endpoint->CancelRequest(reqId1);
 
         ev1.WaitT(5s);
         ASSERT_TRUE(response1.Received);
@@ -804,9 +796,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
             };
         }
 
-        auto clientEndpoint = client->StartEndpoint(
-            "::",
-            10020);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         testContext->PostSend = [&](auto* qp, auto* wr) {
             Y_UNUSED(qp);
@@ -814,8 +804,6 @@ TEST(TRdmaClientTest, ShouldReconnect)
                 reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
             testContext->ReqIds.push_back(msg->ReqId);
         };
-
-        auto ep = clientEndpoint.GetValue(5s);
 
         Disconnect(testContext);
 
@@ -856,14 +844,14 @@ TEST(TRdmaClientTest, ShouldReconnect)
         size_t requestBytes = 1024;
         size_t responseBytes = 1024;
 
-        auto request = ep->AllocateRequest(
+        auto request = endpoint->AllocateRequest(
             std::make_shared<TClientHandler>(),
             makeContext(),
             requestBytes,
             responseBytes);
         ASSERT_FALSE(HasError(request.GetError()));
 
-        ep->SendRequest(
+        endpoint->SendRequest(
             request.ExtractResult(),
             MakeIntrusive<TCallContextBase>(0u));
 
@@ -913,8 +901,7 @@ TEST(TRdmaClientTest, ShouldForceReconnect)
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint("::", 10020);
-        auto ep = clientEndpoint.GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         // Increase reconnect timer delay up to "MaxReconnectDelay".
         for (int i = 0; i < 10; i++) {
@@ -922,7 +909,7 @@ TEST(TRdmaClientTest, ShouldForceReconnect)
         }
 
         const auto now = TInstant::Now();
-        ep->TryForceReconnect();
+        endpoint->TryForceReconnect();
 
         // wait for receive queue to initialize 2nd time after reconnect
         ui64 recv;
@@ -959,10 +946,9 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
             client->Stop();
         };
 
-        auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         auto counters = GetClientCounters(monitoring);
-
         auto active = counters->GetCounter("ActiveRecv");
         auto errors = counters->GetCounter("Errors");
 
@@ -1063,7 +1049,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
             sizeof(acceptMsg));
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
     ASSERT_TRUE(endpoint);
 
     // first connect attempt is sent with the current protocol version
@@ -1135,7 +1121,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
     };
 
     try {
-        client->StartEndpoint("::", 10020).GetValue(10s);
+        client->StartEndpoint("::", 10020).ExtractValueSync();
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -1204,7 +1190,7 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
             sizeof(acceptMsg));
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
     ASSERT_TRUE(endpoint);
 
     ASSERT_EQ(RDMA_PROTO_VERSION, firstConnectVersion.load());
@@ -1281,7 +1267,7 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
             sizeof(acceptMsg));
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).GetValue(5s);
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
     ASSERT_TRUE(endpoint);
 
     // initial attempt uses configured queue sizes
@@ -1337,7 +1323,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
     };
 
     try {
-        client->StartEndpoint("::", 10020).GetValue(10s);
+        client->StartEndpoint("::", 10020).ExtractValueSync();
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
