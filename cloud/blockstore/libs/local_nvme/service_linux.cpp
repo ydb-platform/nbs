@@ -296,7 +296,7 @@ auto TLocalNVMeService::StopImpl() -> TFuture<void>
 
 void TLocalNVMeService::Stop()
 {
-    EServiceState state = ServiceState;
+    const EServiceState state = ServiceState;
     if (state == EServiceState::Stopped || state == EServiceState::NotReady) {
         // Service is not running
         return;
@@ -535,8 +535,6 @@ bool TLocalNVMeService::TryRestoreStateFromCache()
 
 void TLocalNVMeService::Initialize()
 {
-    STORAGE_INFO("Initializing... " << int(ServiceState.load()));
-
     // Store a pointer to the current continuation so Initialize can be stopped
     // if Stop is called.
     InitializeCont = RunningCont();
@@ -568,11 +566,14 @@ void TLocalNVMeService::Initialize()
     }
 
     EServiceState state = ServiceState;
-    if (state == EServiceState::Initializing) {
-        ServiceState.compare_exchange_strong(state, EServiceState::Running);
+    if (state != EServiceState::Initializing) {
+        Y_DEBUG_ABORT_UNLESS(state == EServiceState::Stopped);
+        return;
     }
 
-    STORAGE_INFO("Service initialized:" << int(state));
+    if (!ServiceState.compare_exchange_strong(state, EServiceState::Running)) {
+        Y_DEBUG_ABORT_UNLESS(state == EServiceState::Stopped);
+    }
 }
 
 auto TLocalNVMeService::BindDeviceToDriver(

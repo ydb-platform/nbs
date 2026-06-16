@@ -264,12 +264,8 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
     void TearDown(NUnitTest::TTestContext& /* testContext */) override
     {
-        if (Service) {
         Service->Stop();
-        }
-
         Executor->Stop();
-
         Logging->Stop();
 
         if (StateCacheFile) {
@@ -1021,10 +1017,6 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         Service->Stop();
         Service = nullptr;
 
-        Cerr << "====================================" << Endl;
-
-        //  DeviceProvider->ListNVMeDevicesImpl.SetValue(
-
         {
             TFileOutput file{Config->GetStateCacheFilePath()};
             file << "broken ;;";
@@ -1034,15 +1026,6 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         Service->Start();
 
         SetProviderReady();
-
-        Cerr << "============== Stop ..." << Endl;
-
-        // XXX
-        Service->Stop();
-
-        Cerr << "============== End ======================" << Endl;
-
-        /*
 
         {
             auto [devices, error] = ListNVMeDevices();
@@ -1058,8 +1041,6 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                     "#" << i);
             }
         }
-
-        //*/
     }
 
     Y_UNIT_TEST_F(ShouldHandleRequestsAsync, TFixture)
