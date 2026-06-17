@@ -93,6 +93,7 @@ private:
         const auto mediaKind = volumeConfig.GetStorageMediaKind();
         volumeParams.MediaKind =
             static_cast<NCloud::NProto::EStorageMediaKind>(mediaKind);
+        volumeParams.IsSystem = volumeConfig.GetIsSystem();
 
         if (volumeConfig.ExplicitChannelProfilesSize()) {
             Y_DEBUG_ABORT_UNLESS(volumeConfig.ExplicitChannelProfilesSize() > 3);

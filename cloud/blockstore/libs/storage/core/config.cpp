@@ -275,6 +275,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SSDUnitWriteIops,                   ui32,      1000                   )\
     xxx(SSDMaxReadIops,                     ui32,      20000                  )\
     xxx(SSDMaxWriteIops,                    ui32,      40000                  )\
+    xxx(SystemSSDUnitReadBandwidth,         ui32,      15                     )\
+    xxx(SystemSSDUnitWriteBandwidth,        ui32,      15                     )\
+    xxx(SystemSSDMaxReadBandwidth,          ui32,      450                    )\
+    xxx(SystemSSDMaxWriteBandwidth,         ui32,      450                    )\
+    xxx(SystemSSDUnitReadIops,              ui32,      1000                   )\
+    xxx(SystemSSDUnitWriteIops,             ui32,      1000                   )\
+    xxx(SystemSSDMaxReadIops,               ui32,      20000                  )\
+    xxx(SystemSSDMaxWriteIops,              ui32,      40000                  )\
     xxx(RealSSDUnitReadIops,                ui32,      400                    )\
     xxx(RealSSDUnitWriteIops,               ui32,      1000                   )\
     /* 16000 ReadBlob requests per sec utilize all our cpus                    \
