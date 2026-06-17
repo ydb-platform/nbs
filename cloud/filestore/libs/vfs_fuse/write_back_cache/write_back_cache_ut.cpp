@@ -195,7 +195,7 @@ struct TBootstrap
     ui32 MaxSumWriteRequestsSize = 0;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
-    bool ParallelWritesEnabled = false;
+    bool FlushWritesInParallelEnabled = false;
     bool DisableExpectedDataValidation = false;
 
     TCallContextPtr CallContext;
@@ -227,7 +227,7 @@ struct TBootstrap
         , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
-        , ParallelWritesEnabled(args.ParallelWritesEnabled)
+        , FlushWritesInParallelEnabled(args.ParallelWritesEnabled)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -381,7 +381,7 @@ struct TBootstrap
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
-             .ParallelWritesEnabled = ParallelWritesEnabled});
+             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled});
 
         ModuleStats = Cache.CreateModuleStats();
     }
@@ -2439,11 +2439,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TShouldMaintainVisibilityOrderWhenParallelWritesDisabledTest()
             : TBootstrap(
                   {.AutomaticFlushPeriod = TDuration::MilliSeconds(1),
+                   .MaxWriteRequestSize = 1024,
                    .UseTestTimerAndScheduler = false,
                    // WriteBackCache may execute Flush before ExpectedData is
                    // updated in WriteData future callback in a multi-threaded
                    // environment
-                   .DoNotCheckWriteDataRequestBuffer = true})
+                   .DoNotCheckWriteDataRequestBuffer = true,
+                   .ParallelWritesEnabled = false})
         {}
 
         struct TReaderResult

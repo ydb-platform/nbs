@@ -5399,7 +5399,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 
-    Y_UNIT_TEST(ShouldHandleServerWriteBackCacheParallelWritesEnabledFeature)
+    Y_UNIT_TEST(ShouldHandleServerWriteBackCacheFlushWritesInParallelEnabledFeature)
     {
         // Sends 3 WriteData requests to WriteBackCache: [0, 3), [6, 9), [3, 6)
         //
@@ -5420,7 +5420,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(true);
-            features.SetServerWriteBackCacheParallelWritesEnabled(
+            features.SetServerWriteBackCacheFlushWritesInParallelEnabled(
                 parallelWritesEnabled);
 
             TBootstrap bootstrap(

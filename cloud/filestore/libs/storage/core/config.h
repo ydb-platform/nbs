@@ -342,7 +342,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
-    bool GetServerWriteBackCacheParallelWritesEnabled() const;
+    bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;

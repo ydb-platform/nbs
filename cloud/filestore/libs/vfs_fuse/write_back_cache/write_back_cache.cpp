@@ -81,7 +81,7 @@ public:
         , RequestBuilder(CreateWriteDataRequestBuilder(
               {.FileSystemId = args.FileSystemId,
                .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
-               .MaxWriteRequestsCount = args.ParallelWritesEnabled
+               .MaxWriteRequestsCount = args.FlushWritesInParallelEnabled
                                             ? args.FlushMaxWriteRequestsCount
                                             : 1,
                .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,

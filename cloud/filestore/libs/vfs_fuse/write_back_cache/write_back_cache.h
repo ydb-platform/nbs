@@ -73,7 +73,7 @@ struct TWriteBackCacheArgs
     // This significantly improves flushing performance but an external reader
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
-    bool ParallelWritesEnabled = false;
+    bool FlushWritesInParallelEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

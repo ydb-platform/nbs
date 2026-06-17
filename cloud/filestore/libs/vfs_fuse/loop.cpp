@@ -1063,9 +1063,9 @@ private:
                                  ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled(),
-                         .ParallelWritesEnabled =
+                         .FlushWritesInParallelEnabled =
                              FileSystemConfig
-                                 ->GetServerWriteBackCacheParallelWritesEnabled()});
+                                 ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
 
                     if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                         auto future = WriteBackCache.Drain();
@@ -1277,8 +1277,8 @@ private:
 
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
-        config.SetServerWriteBackCacheParallelWritesEnabled(
-            features.GetServerWriteBackCacheParallelWritesEnabled());
+        config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
+            features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());

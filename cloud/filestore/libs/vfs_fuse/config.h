@@ -51,7 +51,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
-    bool GetServerWriteBackCacheParallelWritesEnabled() const;
+    bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetDirectoryHandlesStorageEnabled() const;
 
