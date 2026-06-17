@@ -261,7 +261,7 @@ private:
         if (cur.ActualPos != Header()->ReadPos) {
             if (cur.ActualPos == 0 && Header()->WritePos == 0) {
                 // Valid situation when Alloc was interrupted for empty buffer
-                Header()->ReadPos = 0;
+                SyncAndUpdateReadPosition(0);
             } else {
                 SetCorrupted();
                 return;
@@ -410,7 +410,7 @@ private:
         if (front.IsInvalid()) {
             SetCorrupted();
         } else {
-            Header()->ReadPos = front.ActualPos;
+            SyncAndUpdateReadPosition(front.ActualPos);
         }
 
         if (IsMigrationNeeded()) {
@@ -421,6 +421,30 @@ private:
     void WriteSlackSpaceMarker(ui64 pos)
     {
         Data->WriteEntryHeader(pos, {});
+    }
+
+    void SyncRead()
+    {
+        __atomic_fetch_add(&Header()->Sync, 1, __ATOMIC_ACQUIRE);
+    }
+
+    void SyncWrite()
+    {
+        __atomic_fetch_add(&Header()->Sync, 1, __ATOMIC_RELEASE);
+    }
+
+    // Ensures that the prior writes are visible before updating read position
+    void SyncAndUpdateReadPosition(ui64 pos)
+    {
+        SyncWrite();
+        Header()->ReadPos = pos;
+    }
+
+    // Ensures that the prior writes are visible before updating write position
+    void SyncAndUpdateWritePosition(ui64 pos)
+    {
+        SyncWrite();
+        Header()->WritePos = pos;
     }
 
     bool ValidateAccess(const char* name) const
@@ -459,6 +483,8 @@ public:
             "Unsupported current FileRingBuffer version - %u, file: %s",
             static_cast<ui32>(Header()->Version),
             args.FilePath.c_str());
+
+        SyncRead();
 
         ValidateStructure();
 
@@ -549,17 +575,14 @@ public:
         if (Empty()) {
             if (Header()->WritePos != 0) {
                 // In order to fully utilize space when the buffer is empty,
-                // we need to reset read and write positions and ensure that
+                // we need to reset both ReadPos and WritePos to 0.
+                //
+                // We cannot do this atomically - we need to ensure that
                 // the state can be restored from the intermediate state
-                WriteSlackSpaceMarker(Header()->WritePos);
 
-                // A compiler-only fence is sufficient here because there is no
-                // concurrent access to the memory and we just need to ensure
-                // that a compiler does not reorder writes.
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                Header()->WritePos = 0;
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                Header()->ReadPos = 0;
+                WriteSlackSpaceMarker(Header()->WritePos);
+                SyncAndUpdateWritePosition(0);
+                SyncAndUpdateReadPosition(0);
                 writePos = 0;
             }
         } else {
@@ -617,14 +640,9 @@ public:
 
         Y_ABORT_UNLESS(written);
 
-        // A compiler-only fence is sufficient here because there is no
-        // concurrent access to the memory and we just need to ensure
-        // that a compiler does not reorder writes.
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        Header()->WritePos =
+        SyncAndUpdateWritePosition(
             CurrentAllocation.ActualPos +
-            Data->GetEntrySize(CurrentAllocation.Header.DataSize);
+            Data->GetEntrySize(CurrentAllocation.Header.DataSize));
 
         EntryMap[CurrentAllocation.Data] = CurrentAllocation.ActualPos;
 
