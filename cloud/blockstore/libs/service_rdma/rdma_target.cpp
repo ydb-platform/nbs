@@ -359,15 +359,12 @@ private:
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
         Y_ENSURE_RETURN(request->GetBlockSize() != 0, "empty BlockSize");
 
-        TGuardedBuffer dataBuffer(
-            TString(requestData.data(), requestData.length()));
-
         auto [sglist, error] = SgListNormalize(
-            TBlockDataRef{dataBuffer.Get().data(), dataBuffer.Get().length()},
+            {requestData.data(), requestData.length()},
             request->GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
-        auto guardedSgList = dataBuffer.CreateGuardedSgList(std::move(sglist));
+        TGuardedSgList guardedSgList(sglist);
 
         auto req = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         req->CopyFrom(*request);
@@ -380,7 +377,6 @@ private:
 
         future.Subscribe(
             [=,
-             dataBuffer = std::move(dataBuffer),
              guardedSgList = std::move(guardedSgList),
              taskQueue = TaskQueue,
              endpoint = Endpoint,
@@ -391,7 +387,6 @@ private:
 
                 taskQueue->ExecuteSimple(
                     [=,
-                     dataBuffer = std::move(dataBuffer),
                      guardedSgList = std::move(guardedSgList),
                      response = std::move(response)]() mutable
                     {
@@ -402,6 +397,8 @@ private:
                             response.MutableDeprecatedTrace()->Clear();
                             response.MutableHeaders()->ClearTrace();
                         }
+
+                        guardedSgList.Close();
 
                         ui32 flags = 0;
                         SetProtoFlag(
