@@ -1512,7 +1512,7 @@ private:
 
         for (const auto& session: *sessions) {
             if (session->IsFlushed()) {
-                 Release(session.get());
+                Release(session.get());
             }
         }
     }
