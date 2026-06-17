@@ -38,10 +38,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TDuration DefaultTimeout = 5s;
+
 struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
 {
-    TPromise<TVector<NProto::TNVMeDevice>> Promise =
-        NewPromise<TVector<NProto::TNVMeDevice>>();
+    using TListNVMeDevicesFn =
+        std::function<TFuture<TVector<NProto::TNVMeDevice>>()>;
+
+    TPromise<TListNVMeDevicesFn> ListNVMeDevicesImpl =
+        NewPromise<TListNVMeDevicesFn>();
 
     void Start() final
     {}
@@ -52,7 +57,12 @@ struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
     [[nodiscard]] auto ListNVMeDevices()
         -> TFuture<TVector<NProto::TNVMeDevice>> final
     {
-        return Promise;
+        return ListNVMeDevicesImpl.GetFuture().Apply(
+            [](const auto& future)
+            {
+                const auto& func = future.GetValue();
+                return func();
+            });
     }
 };
 
@@ -101,7 +111,7 @@ public:
         auto& info = SanitizeInfo[ctrlPath];
         if (info.Status.GetCode() == E_TRY_AGAIN) {
             return MakeError(
-                E_TRY_AGAIN,
+                E_INVALID_STATE,
                 "previous sanitize operation has not been completed yet");
         }
 
@@ -222,6 +232,8 @@ struct TTestSysFs final: ISysFs
 
 struct TFixtureBase: public NUnitTest::TBaseFixture
 {
+    const TString EmptyIdempotenceId;
+
     TString StateCacheFile;
     TVector<NProto::TNVMeDevice> Devices;
 
@@ -393,11 +405,10 @@ struct TFixture: public TFixtureBase
     void TearDown(NUnitTest::TTestContext& testContext) override
     {
         TFixtureBase::TearDown(testContext);
-
         DeviceProvider.reset();
     }
 
-    void SetProviderReady()
+    auto CreateDeviceList() const -> TVector<NProto::TNVMeDevice>
     {
         TVector<NProto::TNVMeDevice> devices;
 
@@ -426,7 +437,13 @@ struct TFixture: public TFixtureBase
             device.SetSerialNumber("unexpected");
         }
 
-        DeviceProvider->Promise.SetValue(devices);
+        return devices;
+    }
+
+    void SetProviderReady()
+    {
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&] { return MakeFuture(CreateDeviceList()); });
     }
 };
 
@@ -527,7 +544,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             return vfioDev;
         };
 
-        auto future = Service->AcquireNVMeDevice(device.GetSerialNumber());
+        auto future = Service->AcquireNVMeDevice(
+            device.GetSerialNumber(),
+            EmptyIdempotenceId);
 
         const auto& [r, error] = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -544,7 +563,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         for (const auto& sn: {serialNumber, TString("UNK")}) {
             {
-                auto future = Service->AcquireNVMeDevice(sn);
+                auto future =
+                    Service->AcquireNVMeDevice(sn, EmptyIdempotenceId);
                 const auto& [_, error] = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_REJECTED,
@@ -553,7 +573,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             }
 
             {
-                auto future = Service->ReleaseNVMeDevice(sn);
+                auto future =
+                    Service->ReleaseNVMeDevice(sn, EmptyIdempotenceId);
                 const auto& error = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_REJECTED,
@@ -577,7 +598,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         {
-            auto future = Service->AcquireNVMeDevice("UNK");
+            auto future = Service->AcquireNVMeDevice("UNK", EmptyIdempotenceId);
             const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
@@ -586,7 +607,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         {
-            auto future = Service->ReleaseNVMeDevice("UNK");
+            auto future = Service->ReleaseNVMeDevice("UNK", EmptyIdempotenceId);
             const auto& error = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
@@ -608,7 +629,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 return {};
             };
 
-            auto future = Service->AcquireNVMeDevice(serialNumber);
+            auto future =
+                Service->AcquireNVMeDevice(serialNumber, EmptyIdempotenceId);
             const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -628,7 +650,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 0,
                 NVMeManager->GetSanitizeInfo(ctrlPath).Count);
 
-            auto future = Service->ReleaseNVMeDevice(serialNumber);
+            auto future =
+                Service->ReleaseNVMeDevice(serialNumber, EmptyIdempotenceId);
 
             NVMeManager->WaitSanitizeRequested();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -656,26 +679,82 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
     }
 
-    Y_UNIT_TEST_F(ShouldHandleListDevicesError, TFixture)
+    Y_UNIT_TEST_F(ShouldRetryListDevicesError, TFixture)
     {
-        DeviceProvider->Promise.SetException(
-            std::make_exception_ptr(std::runtime_error{"fail"}));
+        const ui32 successfulAttempt = 3;
 
-        {
-            auto [_, error] = ListNVMeDevices();
+        std::atomic<ui32> attempts = 0;
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&]
+            {
+                ++attempts;
+                if (attempts < successfulAttempt) {
+                    return MakeErrorFuture<TVector<NProto::TNVMeDevice>>(
+                        std::make_exception_ptr(
+                            TServiceError{E_IO} << "fail #"
+                                                << attempts.load()));
+                }
+
+                return MakeFuture(CreateDeviceList());
+            });
+
+        for (;;) {
+            auto future = Service->ListNVMeDevices();
+            const auto& [devices, error] = future.GetValueSync();
+
+            UNIT_ASSERT_GE(successfulAttempt, attempts);
+
+            if (!HasError(error)) {
+                UNIT_ASSERT_VALUES_EQUAL(successfulAttempt, attempts.load());
+                UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+
+                break;
+            }
+
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FAIL,
+                E_REJECTED,
                 error.GetCode(),
                 FormatError(error));
-        }
 
-        {
-            auto [_, error] = ListNVMeDevices();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FAIL,
-                error.GetCode(),
-                FormatError(error));
+            Sleep(100ms);
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldCancelInitializationOnStop, TFixture)
+    {
+        TAutoEvent shouldStop;
+
+        TPromise<void> promise = NewPromise();
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&]
+            {
+                shouldStop.Signal();
+
+                return promise.GetFuture().Apply(
+                    [](const auto&) -> TVector<NProto::TNVMeDevice>
+                    { ythrow TServiceError{E_IO} << "fail"; });
+            });
+
+        const bool ok = shouldStop.WaitT(DefaultTimeout);
+        UNIT_ASSERT(ok);
+
+        Service->Stop();
+
+        auto future = Service->ListNVMeDevices();
+        const auto& [devices, error] = future.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            error.GetCode(),
+            FormatError(error));
+
+        UNIT_ASSERT_STRING_CONTAINS_C(
+            error.GetMessage(),
+            "is stopped",
+            FormatError(error));
+
+        promise.SetValue();
     }
 
     Y_UNIT_TEST_F(ShouldAcquireAndReleaseDeviceMT, TFixture)
@@ -696,10 +775,14 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
                     for (int i = 0; i != requestNum; ++i) {
                         futures.push_back(
-                            Service->AcquireNVMeDevice("UNK").Apply(
-                                [](const auto& future)
-                                { return future.GetValue().GetError(); }));
-                        futures.push_back(Service->ReleaseNVMeDevice("UNK"));
+                            Service
+                                ->AcquireNVMeDevice("UNK", EmptyIdempotenceId)
+                                .Apply(
+                                    [](const auto& future)
+                                    { return future.GetValue().GetError(); }));
+                        futures.push_back(Service->ReleaseNVMeDevice(
+                            "UNK",
+                            EmptyIdempotenceId));
                         Sleep(10ms);
                     }
 
@@ -756,7 +839,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         {
-            auto future = Service->AcquireNVMeDevice("NVME_0");
+            auto future =
+                Service->AcquireNVMeDevice("NVME_0", EmptyIdempotenceId);
             const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -766,7 +850,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         {
-            auto future = Service->AcquireNVMeDevice("NVME_2");
+            auto future =
+                Service->AcquireNVMeDevice("NVME_2", EmptyIdempotenceId);
             const auto& [device, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -798,7 +883,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         {
             const TString ctrlPath = "/dev/nvme0";
-            auto future = Service->ReleaseNVMeDevice("NVME_0");
+            auto future =
+                Service->ReleaseNVMeDevice("NVME_0", EmptyIdempotenceId);
 
             NVMeManager->WaitSanitizeRequested();
             NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
@@ -864,18 +950,20 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         {
-            auto future =
-                Service->AcquireNVMeDevice(Devices[0].GetSerialNumber());
+            auto future = Service->AcquireNVMeDevice(
+                Devices[0].GetSerialNumber(),
+                EmptyIdempotenceId);
             const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT,
+                E_INVALID_STATE,
                 error.GetCode(),
                 FormatError(error));
         }
 
         {
-            auto future =
-                Service->AcquireNVMeDevice(Devices[1].GetSerialNumber());
+            auto future = Service->AcquireNVMeDevice(
+                Devices[1].GetSerialNumber(),
+                EmptyIdempotenceId);
             const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -884,11 +972,12 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         {
-            auto future =
-                Service->AcquireNVMeDevice(Devices[2].GetSerialNumber());
+            auto future = Service->AcquireNVMeDevice(
+                Devices[2].GetSerialNumber(),
+                EmptyIdempotenceId);
             const auto& [_, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT,
+                E_INVALID_STATE,
                 error.GetCode(),
                 FormatError(error));
         }
@@ -970,14 +1059,18 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         const TString ctrlPath1 = "/dev/nvme0";
         const TString ctrlPath2 = "/dev/nvme1";
 
-        auto future1 = Service->ReleaseNVMeDevice(Devices[0].GetSerialNumber());
+        auto future1 = Service->ReleaseNVMeDevice(
+            Devices[0].GetSerialNumber(),
+            EmptyIdempotenceId);
         NVMeManager->WaitSanitizeRequested();
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             NVMeManager->GetSanitizeInfo(ctrlPath1).Count);
         UNIT_ASSERT(!future1.HasValue());
 
-        auto future2 = Service->ReleaseNVMeDevice(Devices[1].GetSerialNumber());
+        auto future2 = Service->ReleaseNVMeDevice(
+            Devices[1].GetSerialNumber(),
+            EmptyIdempotenceId);
         NVMeManager->WaitSanitizeRequested();
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -1057,7 +1150,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         const TString ctrlPath = "/dev/nvme0";
 
-        auto future = Service->ReleaseNVMeDevice(Devices[0].GetSerialNumber());
+        auto future = Service->ReleaseNVMeDevice(
+            Devices[0].GetSerialNumber(),
+            EmptyIdempotenceId);
         NVMeManager->WaitSanitizeRequested();
         NVMeManager->UpdateSanitizeStatus(
             ctrlPath,
@@ -1071,6 +1166,310 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_FAIL, error.GetCode(), FormatError(error));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotAllowConcurrentRequestsForSameDevice, TFixture)
+    {
+        SetProviderReady();
+        {
+            auto [_, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const auto& sn = Devices[0].GetSerialNumber();
+        const TString ctrlPath = "/dev/nvme0";
+
+        auto future1 = Service->ReleaseNVMeDevice(sn, EmptyIdempotenceId);
+        NVMeManager->WaitSanitizeRequested();
+
+        {
+            auto future2 = Service->ReleaseNVMeDevice(sn, EmptyIdempotenceId);
+            const auto& error = future2.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
+
+        {
+            const auto& error = future1.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldExecuteOperationIdempotentlyByIdempotenceId, TFixture)
+    {
+        SetProviderReady();
+        {
+            auto [_, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const auto& device = Devices[0];
+        const auto& sn = device.GetSerialNumber();
+        const TString ctrlPath = "/dev/nvme0";
+
+        SysFs->GetVfioDeviceForPCIDeviceImpl =
+            [&](const TString& pciAddr) -> TString
+        {
+            if (pciAddr == device.GetPCIAddress()) {
+                return "vfio0";
+            }
+            return {};
+        };
+
+        {
+            auto future = Service->ReleaseNVMeDevice(sn, "idempotence-id-1");
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release in progress",
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->ReleaseNVMeDevice(sn, "xxx");
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Another operation is in progress",
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release",
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-1");
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "idempotence id was used for a different operation type",
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release",
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->ReleaseNVMeDevice(sn, EmptyIdempotenceId);
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Another operation is in progress",
+                FormatError(error));
+        }
+
+        NVMeManager->WaitSanitizeRequested();
+        NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
+
+        for (;;) {
+            auto future = Service->ReleaseNVMeDevice(sn, "idempotence-id-1");
+            const auto& error = future.GetValueSync();
+            if (!HasError(error)) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    S_OK,
+                    error.GetCode(),
+                    FormatError(error));
+                break;
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+            Sleep(100ms);
+        }
+
+        {
+            auto future = Service->ReleaseNVMeDevice(sn, "idempotence-id-1");
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-1");
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "idempotence id was used for a different operation type",
+                FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                "Release",
+                FormatError(error));
+        }
+
+        // Start new operation (sync)
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, EmptyIdempotenceId);
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->ReleaseNVMeDevice(sn, EmptyIdempotenceId);
+
+            NVMeManager->WaitSanitizeRequested();
+            NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
+
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        for (;;) {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-2");
+            const auto& [_, error] = future.GetValueSync();
+            if (!HasError(error)) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    S_OK,
+                    error.GetCode(),
+                    FormatError(error));
+                break;
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+            Sleep(100ms);
+        }
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-2");
+            const auto& [device, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-3");
+            const auto& [device, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        for (;;) {
+            auto future = Service->AcquireNVMeDevice(sn, "idempotence-id-3");
+            const auto& [_, error] = future.GetValueSync();
+
+            UNIT_ASSERT_C(HasError(error), FormatError(error));
+
+            if (error.GetCode() == E_INVALID_STATE) {
+                break;
+            }
+
+            Sleep(100ms);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldCancelOperationOnStopping, TFixture)
+    {
+        SetProviderReady();
+        {
+            auto [_, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const TString ctrlPath = "/dev/nvme0";
+        const TString idempotenceId1 = "1";
+
+        {
+            auto future1 =
+                Service->ReleaseNVMeDevice(Devices[0].GetSerialNumber(), "xxx");
+            const auto& error = future1.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        NVMeManager->WaitSanitizeRequested();
+
+        auto future2 =
+            Service->ReleaseNVMeDevice(Devices[1].GetSerialNumber(), "");
+
+        NVMeManager->WaitSanitizeRequested();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            NVMeManager->GetSanitizeInfo(ctrlPath).Count);
+
+        UNIT_ASSERT(!future2.HasValue());
+
+        Service->Stop();
+
+        {
+            auto future1 =
+                Service->ReleaseNVMeDevice(Devices[0].GetSerialNumber(), "xxx");
+            const auto& error = future1.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        UNIT_ASSERT(future2.HasValue());
+
+        const auto& error = future2.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            error.GetCode(),
+            FormatError(error));
     }
 
     Y_UNIT_TEST_F(ShouldGetDevicesFromInfra, TFixtureInfra)

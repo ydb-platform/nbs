@@ -36,9 +36,13 @@ public:
             Devices);
     }
 
-    [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
+    [[nodiscard]] auto AcquireNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId)
         -> TFuture<TResultOrError<NProto::TNVMeDevice>> final
     {
+        Y_UNUSED(idempotenceId);
+
         const auto* disk = FindIfPtr(
             Devices,
             [&](const auto& disk)
@@ -55,9 +59,12 @@ public:
                 << "Disk " << serialNumber.Quote() << " not found"));
     }
 
-    [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] auto ReleaseNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId) -> TFuture<NProto::TError> final
     {
+        Y_UNUSED(idempotenceId);
+
         const auto* disk = FindIfPtr(
             Devices,
             [&](const auto& disk)

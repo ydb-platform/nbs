@@ -61,18 +61,21 @@ struct TTestLocalNVMeService: public ILocalNVMeService
             Devices);
     }
 
-    [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
+    [[nodiscard]] auto AcquireNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId)
         -> TFuture<TResultOrError<NProto::TNVMeDevice>> override
     {
-        Y_UNUSED(serialNumber);
+        Y_UNUSED(serialNumber, idempotenceId);
 
         return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(MakeError(S_OK));
     }
 
-    [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> override
+    [[nodiscard]] auto ReleaseNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId) -> TFuture<NProto::TError> override
     {
-        Y_UNUSED(serialNumber);
+        Y_UNUSED(serialNumber, idempotenceId);
 
         return MakeFuture(MakeError(S_OK));
     }

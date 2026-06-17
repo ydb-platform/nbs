@@ -24,14 +24,14 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceStubTest)
         }
 
         {
-            auto future = service->AcquireNVMeDevice("foo");
+            auto future = service->AcquireNVMeDevice("foo", "idempotence-id");
             const auto& [_, error] = future.GetValueSync();
 
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
         }
 
         {
-            auto future = service->ReleaseNVMeDevice("foo");
+            auto future = service->ReleaseNVMeDevice("foo", "idempotence-id");
             const auto& error = future.GetValueSync();
 
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
