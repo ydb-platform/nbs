@@ -28,13 +28,13 @@ class SshToGuest(object):
         self.port = port
         self.key = key
 
-    def get_command(self, command, timeout=None):
+    def get_command(self, command, timeout=None, wrap_test_env=True):
         cmd = []
 
         if timeout is not None:
             cmd = ["timeout", str(timeout)]
 
-        if command:
+        if command and wrap_test_env:
             quoted_command = shlex.quote(command)
             command = (
                 "if [ -x /test_env.sh ]; then "

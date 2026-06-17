@@ -142,7 +142,7 @@ def start_instance(args, inst_index):
 
     if args.invoke_test:
         recipe_set_env("TEST_COMMAND_WRAPPER",
-                       " ".join(ssh.get_command("sudo /run_test.sh")),
+                       " ".join(ssh.get_command("sudo /run_test.sh", wrap_test_env=False)),
                        inst_index)
 
     ready_flag_path = recipe_get_env("QEMU_SET_READY_FLAG", inst_index)
