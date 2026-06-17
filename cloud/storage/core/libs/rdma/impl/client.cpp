@@ -1513,6 +1513,7 @@ public:
     void Detach(TClientEndpoint* endpoint)
     {
         PollHandle.Detach(endpoint->ReconnectTimerHandle());
+        PollHandle.Detach(endpoint->DisconnectEventHandle());
     }
 
 private:
