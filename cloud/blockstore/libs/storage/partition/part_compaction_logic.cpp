@@ -34,10 +34,10 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockMask GetFullBlockMask()
+TBlockMask GetFullBlockMask(ui32 maxBlocksCount)
 {
     TBlockMask mask;
-    mask.Set(0, MaxBlocksCount);
+    mask.Set(0, maxBlocksCount);
     return mask;
 }
 
@@ -440,7 +440,7 @@ void ReadAffectedBlobsForCompaction(
         } else if (state.GetCleanupQueue().HasBlob(kv.first)) {
             // If the blob is in the cleanup queue, we should not try to add
             // this blob to cleanup queue again.
-            kv.second.BlockMask = GetFullBlockMask();
+            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
         }
 
         if (args.ChecksumsEnabled) {

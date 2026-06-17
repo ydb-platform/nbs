@@ -644,7 +644,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blockMask->Set(blobOffset);
                 }
             } else {
-                blob.BlockMask = GetFullBlockMask();
+                blob.BlockMask = GetFullBlockMask(MaxBlocksInBlob);
             }
 
             auto& blockMask = blob.BlockMask.GetRef();
