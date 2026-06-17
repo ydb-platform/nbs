@@ -357,12 +357,17 @@ private:
         LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
+        Y_ENSURE_RETURN(request->GetBlockSize() != 0, "empty BlockSize");
+
+        TGuardedBuffer dataBuffer(
+            TString(requestData.data(), requestData.length()));
+
         auto [sglist, error] = SgListNormalize(
-            {requestData.data(), requestData.length()},
+            TBlockDataRef{dataBuffer.Get().data(), dataBuffer.Get().length()},
             request->GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
-        TGuardedSgList guardedSgList(sglist);
+        auto guardedSgList = dataBuffer.CreateGuardedSgList(std::move(sglist));
 
         auto req = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         req->CopyFrom(*request);
@@ -375,15 +380,20 @@ private:
 
         future.Subscribe(
             [=,
+             dataBuffer = std::move(dataBuffer),
+             guardedSgList = std::move(guardedSgList),
              taskQueue = TaskQueue,
              endpoint = Endpoint,
-             weakSelf = weak_from_this()](auto future)
+             weakSelf = weak_from_this()](auto future) mutable
             {
                 auto response = ExtractResponse(future);
                 FillResponse(callContext, response);
 
                 taskQueue->ExecuteSimple(
-                    [=, response = std::move(response)]() mutable
+                    [=,
+                     dataBuffer = std::move(dataBuffer),
+                     guardedSgList = std::move(guardedSgList),
+                     response = std::move(response)]() mutable
                     {
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
