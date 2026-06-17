@@ -169,7 +169,7 @@ struct TBootstrapArgs
     bool UseTestTimerAndScheduler = true;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
-    bool ParallelWritesEnabled = true;
+    bool FlushWritesInParallelEnabled = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -227,7 +227,7 @@ struct TBootstrap
         , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
-        , FlushWritesInParallelEnabled(args.ParallelWritesEnabled)
+        , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -1021,14 +1021,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         bool WithCacheRecreation = false;
         bool ZeroCopyWriteEnabled = false;
-        bool ParallelWritesEnabled = false;
+        bool FlushWritesInParallelEnabled = false;
     };
 
     void TestShouldReadAfterWriteRandomized(const TTestArgs& args) {
         TBootstrap b({
             .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled,
-            .DoNotCheckWriteDataRequestBuffer = !args.ParallelWritesEnabled,
-            .ParallelWritesEnabled = args.ParallelWritesEnabled,
+            .DoNotCheckWriteDataRequestBuffer =
+                !args.FlushWritesInParallelEnabled,
+            .FlushWritesInParallelEnabled = args.FlushWritesInParallelEnabled,
         });
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
@@ -1094,7 +1095,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 stats.GetNodeCount(),
                 b.Metrics.Nodes.Count->Get());
 
-            if (args.ParallelWritesEnabled) {
+            if (args.FlushWritesInParallelEnabled) {
                 // If parallel writes are disabled, multiple Flush operations
                 // will be needed to flush all unflushed data - these values
                 // will be different
@@ -1117,21 +1118,24 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReadAfterWriteRandomized)
     {
         TestShouldReadAfterWriteRandomized({});
-        TestShouldReadAfterWriteRandomized({.ParallelWritesEnabled = true});
+        TestShouldReadAfterWriteRandomized(
+            {.FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreation)
     {
         TestShouldReadAfterWriteRandomized({.WithCacheRecreation = true});
         TestShouldReadAfterWriteRandomized(
-            {.WithCacheRecreation = true, .ParallelWritesEnabled = true});
+            {.WithCacheRecreation = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithZeroCopy)
     {
         TestShouldReadAfterWriteRandomized({.ZeroCopyWriteEnabled = true});
         TestShouldReadAfterWriteRandomized(
-            {.ZeroCopyWriteEnabled = true, .ParallelWritesEnabled = true});
+            {.ZeroCopyWriteEnabled = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreationAndZeroCopy)
@@ -1141,7 +1145,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TestShouldReadAfterWriteRandomized(
             {.WithCacheRecreation = true,
              .ZeroCopyWriteEnabled = true,
-             .ParallelWritesEnabled = true});
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(FullyRandomizedWithWriteFailures)
@@ -2362,15 +2366,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
     }
 
-    Y_UNIT_TEST(ShouldHandleParallelWritesEnabled)
+    Y_UNIT_TEST(ShouldHandleFlushWritesInParallelEnabled)
     {
-        auto test = [&](bool parallelWritesEnabled)
+        auto test = [&](bool flushWritesInParallelEnabled)
         {
             TBootstrap b({
                 .UseTestTimerAndScheduler = true,
                 // Easier calculation of the request size
                 .ZeroCopyWriteEnabled = false,
-                .ParallelWritesEnabled = parallelWritesEnabled,
+                .FlushWritesInParallelEnabled = flushWritesInParallelEnabled,
             });
 
             TStringBuilder sb;
@@ -2402,14 +2406,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL("[0,16)", test(true));
     }
 
-    Y_UNIT_TEST(ShouldNeverSplitRequestsWhenParallelWritesDisabled)
+    Y_UNIT_TEST(ShouldNeverSplitRequestsWhenFlushWritesInParallelDisabled)
     {
-        auto test = [&](bool parallelWritesEnabled)
+        auto test = [&](bool flushWritesInParallelEnabled)
         {
             TBootstrap b({
                 .MaxWriteRequestSize = 2,
                 .UseTestTimerAndScheduler = true,
-                .ParallelWritesEnabled = parallelWritesEnabled,
+                .FlushWritesInParallelEnabled = flushWritesInParallelEnabled,
             });
 
             int writeCount = 0;
@@ -2437,14 +2441,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(2, test(true));
     }
 
-    struct TShouldMaintainVisibilityOrderWhenParallelWritesDisabledTest
+    struct TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest
         : TBootstrap
     {
         const ui64 BytesToWrite = 16 * 1024 * 1024;
         const ui64 MaxBytesPerWrite = 256;
         const ui64 NodeId = 1;
 
-        TShouldMaintainVisibilityOrderWhenParallelWritesDisabledTest()
+        TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest()
             : TBootstrap(
                   {.AutomaticFlushPeriod = TDuration::MilliSeconds(1),
                    .MaxWriteRequestSize = 1024,
@@ -2453,7 +2457,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                    // updated in WriteData future callback in a multi-threaded
                    // environment
                    .DoNotCheckWriteDataRequestBuffer = true,
-                   .ParallelWritesEnabled = false})
+                   .FlushWritesInParallelEnabled = false})
         {}
 
         struct TReaderResult
@@ -2511,9 +2515,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
     };
 
-    Y_UNIT_TEST(ShouldMaintainVisibilityOrderWhenParallelWritesDisabled)
+    Y_UNIT_TEST(ShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabled)
     {
-        TShouldMaintainVisibilityOrderWhenParallelWritesDisabledTest b;
+        TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest b;
 
         // Test 1: write 'X' in forward order
 

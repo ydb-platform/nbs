@@ -5416,12 +5416,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // - take [0, 3) and [6, 9) - 2 WriteData requests in parallel are ok
         // - take [6, 9) - consolidate to [0, 9)
 
-        auto test = [&](bool parallelWritesEnabled)
+        auto test = [&](bool flushWritesInParallelEnabled)
         {
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(true);
             features.SetServerWriteBackCacheFlushWritesInParallelEnabled(
-                parallelWritesEnabled);
+                flushWritesInParallelEnabled);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
