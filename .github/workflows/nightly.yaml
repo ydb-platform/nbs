@@ -1,11 +1,11 @@
 name: Nightly build
 run-name: |
   ${{ github.event_name == 'schedule'
-      && format('Nightly build (schedule)')
+      && 'Nightly build (schedule)'
       || (
             inputs.comment != ''
             && format('Nightly build (manual) (comment: {0})', inputs.comment)
-            || format('Nightly build (manual)')
+            || 'Nightly build (manual)'
           )
     }}
 on:

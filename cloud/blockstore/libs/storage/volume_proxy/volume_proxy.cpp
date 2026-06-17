@@ -61,6 +61,18 @@ constexpr bool IsDataPlaneMethod =
     std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod> ||
     std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>;
 
+template <typename TProtoMessage>
+const NProto::TTraceInfo& GetTraceInfo(const TProtoMessage& msg)
+{
+    if (msg.Record.GetHeaders().HasTrace()) {
+        return msg.Record.GetHeaders().GetTrace();
+    }
+    if constexpr (requires { msg.Record.MutableDeprecatedTrace(); }) {
+        return msg.Record.GetDeprecatedTrace();
+    }
+    return msg.Record.GetHeaders().GetTrace();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // VolumeProxy discovers the volume specified in the DiskId field of request,
@@ -831,13 +843,13 @@ void TVolumeProxyActor::HandleResponse(
 
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
-            msg->Record.GetHeaders().HasTrace()
-                ? msg->Record.GetHeaders().GetTrace()
-                : msg->Record.GetDeprecatedTrace(),
+            GetTraceInfo(*msg),
             it->second.CallContext->LWOrbit,
             it->second.SendTime,
             GetCycleCount());
-        msg->Record.ClearDeprecatedTrace();
+        if constexpr (requires { msg->Record.MutableDeprecatedTrace(); }) {
+            msg->Record.ClearDeprecatedTrace();
+        }
         msg->Record.MutableHeaders()->ClearTrace();
     }
 

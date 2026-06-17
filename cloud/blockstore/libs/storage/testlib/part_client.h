@@ -202,6 +202,9 @@ public:
         const TBlockRange32& range,
         const TString& checkpointId = "");
 
+    std::unique_ptr<TEvVolume::TEvDescribeBlobRequest>
+    CreateDescribeBlobRequest(const NKikimr::TLogoBlobID& blobId);
+
     std::unique_ptr<TEvVolume::TEvGetUsedBlocksRequest>
     CreateGetUsedBlocksRequest();
 

@@ -164,6 +164,40 @@ message TDescribeBlocksResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// DescribeBlob request/response.
+
+message TDescribeBlobRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to describe from.
+    string DiskId = 2;
+
+    // Blob id to inspect.
+    NKikimrProto.TLogoBlobID BlobId = 3;
+}
+
+message TBlockInBlob
+{
+    uint32 BlockIndex = 1;
+    uint64 CommitId = 2;
+    uint32 BlobOffset = 3;
+    uint32 Checksum = 4;
+}
+
+message TDescribeBlobResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    repeated TBlockInBlob Blocks = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // TRemoveOperation
 
 message TRemoveClientOperation

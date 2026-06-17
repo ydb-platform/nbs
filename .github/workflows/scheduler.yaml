@@ -53,12 +53,12 @@ on:
       max_vms_to_create:
         description: 'Max VMs to create'
         type: string
-        required: true
+        required: false
         default: "1"
       vms_ttl:
         description: 'VMs TTL (seconds)'
         type: string
-        required: true
+        required: false
         default: "86400"
       maximum_amount_of_vms_to_have:
         description: 'Maximum amount of VMs to have'
@@ -73,12 +73,12 @@ on:
       flavor:
         description: 'Runner flavor'
         type: string
-        required: true
+        required: false
         default: 'light'
       provision_mode:
         description: 'Provision mode (if set to initial it will use ubuntu-latest image)'
         type: string
-        required: true
+        required: false
         default: 'regular'
       loop:
         description: 'Loop the action'

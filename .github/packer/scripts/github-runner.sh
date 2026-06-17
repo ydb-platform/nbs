@@ -144,6 +144,11 @@ unzip awscliv2.zip
 ./aws/install
 rm -rf awscliv2.zip
 
+# mime types for ya make logs and other outputs
+MIME_TYPES_PLAINTEXT_LINE="text/plain out err log stderr stdout trace jsonl backtrace args"
+MIME_TYPES_FILE='/etc/mime.types'
+grep -qF -- "$MIME_TYPES_PLAINTEXT_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPES_PLAINTEXT_LINE" | tee -a "$MIME_TYPES_FILE" || true
+
 create_password_user "${USER_TO_CREATE}"
 create_password_user "${DEBUG_USER}"
 sed -i -e 's/\\\$/$/g' /etc/shadow
