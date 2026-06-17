@@ -88,6 +88,7 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
         UNIT_ASSERT(!request.IsOwner());
 
         request.TakeDataOwnership();
+        data = "world";
 
         UNIT_ASSERT(request.IsOwner());
         auto guard = request.Sglist.Acquire();
@@ -95,7 +96,7 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(1u, guard.Get().size());
         UNIT_ASSERT_VALUES_EQUAL(
             TStringBuf("hello"),
-            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+            guard.Get()[0].AsStringBuf());
     }
 
     Y_UNIT_TEST(TakeOwnershipDataIsIndependent)
@@ -110,7 +111,7 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
         auto guard = request.Sglist.Acquire();
         UNIT_ASSERT_VALUES_EQUAL(
             TStringBuf("hello"),
-            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+            guard.Get()[0].AsStringBuf());
     }
 
     Y_UNIT_TEST(TakeOwnershipIsIdempotent)
@@ -127,7 +128,7 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(1u, guard.Get().size());
         UNIT_ASSERT_VALUES_EQUAL(
             TStringBuf("hello"),
-            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+            guard.Get()[0].AsStringBuf());
     }
 
     Y_UNIT_TEST(MoveAssignmentTransfersOwnershipAndClosesOldSglist)
@@ -153,7 +154,7 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(1u, guard.Get().size());
         UNIT_ASSERT_VALUES_EQUAL(
             TStringBuf("world"),
-            TStringBuf(guard.Get()[0].Data(), guard.Get()[0].Size()));
+            guard.Get()[0].AsStringBuf());
     }
 }
 
