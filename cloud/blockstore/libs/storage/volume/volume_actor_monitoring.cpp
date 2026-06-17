@@ -1729,6 +1729,14 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
+        if (VolumeHealthSyncActorId) {
+            DIV_CLASS ("row") {
+                DIV_CLASS ("col-md-6") {
+                    RenderAvailableAgentsStatus(out);
+                }
+            }
+        }
+
         DIV_CLASS("row") {
             DIV_CLASS("col-md-6") {
                 RenderAppliedVolumeThrottlingRule(out);
@@ -2223,10 +2231,6 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
                     out << "Writes blocked by checkpoint";
                 }
             }
-
-            if (VolumeHealthSyncActorId) {
-                RenderAvailableAgentsStatus(out);
-            }
         }
     }
 }
@@ -2234,26 +2238,27 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
 void TVolumeActor::RenderAvailableAgentsStatus(IOutputStream& out) const
 {
     HTML (out) {
-        if (DeviceUUIDToBrokenAt.empty() && false) {
-            SPAN_CLASS_STYLE ("label label-success", "margin-left:10px") {
-                out << "All agents available";
-            }
-            return;
-        }
+        TAG (TH3) {
+            out << "Agent status:";
 
-        TSet<TString> unavailableAgents;
-        for (const auto* dev: GetAllDevices(State->GetMeta())) {
-            if (DeviceUUIDToBrokenAt.contains(dev->GetDeviceUUID())) {
-                unavailableAgents.insert(dev->GetAgentId());
+            if (DeviceUUIDToBrokenAt.empty()) {
+                SPAN_CLASS_STYLE ("label label-success", "margin-left:10px") {
+                    out << "All agents available";
+                }
+                return;
             }
-        }
 
-        SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
-            out << "Unavailable agent(s):";
-        }
-        for (const auto& host: unavailableAgents) {
-            SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
-                out << host;
+            TSet<TString> unavailableAgents;
+            for (const auto* dev: GetAllDevices(State->GetMeta())) {
+                if (DeviceUUIDToBrokenAt.contains(dev->GetDeviceUUID())) {
+                    unavailableAgents.insert(dev->GetAgentId());
+                }
+            }
+
+            for (const auto& host: unavailableAgents) {
+                SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
+                    out << host;
+                }
             }
         }
     }
