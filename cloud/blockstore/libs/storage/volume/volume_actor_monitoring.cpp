@@ -2248,18 +2248,9 @@ void TVolumeActor::RenderAvailableAgentsStatus(IOutputStream& out) const
             }
         }
 
-        if (!unavailableAgents.empty()) {
-            DIV () {
-                for (const auto& host: unavailableAgents) {
-                    DIV () {
-                        SPAN_CLASS_STYLE (
-                            "label label-danger",
-                            "margin-left:10px")
-                        {
-                            out << host;
-                        }
-                    }
-                }
+        for (const auto& host: unavailableAgents) {
+            SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
+                out << host;
             }
         }
     }
