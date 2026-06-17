@@ -273,7 +273,7 @@ private:
              taskQueue = TaskQueue,
              endpoint = Endpoint,
              weakSelf = weak_from_this()](
-                TFuture<NProto::TReadBlocksLocalResponse>) mutable
+                const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
             {
                 guardedSgList.Close();
                 auto response = ExtractResponse(future);
@@ -378,7 +378,7 @@ private:
              taskQueue = TaskQueue,
              endpoint = Endpoint,
              weakSelf = weak_from_this()](
-                TFuture<NProto::TWriteBlocksLocalResponse> future) mutable
+                const TFuture<NProto::TWriteBlocksLocalResponse>& future) mutable
             {
                 guardedSgList.Close();
                 auto response = ExtractResponse(future);
