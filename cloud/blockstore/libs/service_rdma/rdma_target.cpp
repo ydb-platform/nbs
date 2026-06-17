@@ -275,7 +275,6 @@ private:
              weakSelf = weak_from_this()](
                 const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
             {
-                guardedSgList.Close();
                 auto response = ExtractResponse(future);
                 FillResponse(callContext, response);
 
@@ -285,6 +284,8 @@ private:
                      guardedSgList = std::move(guardedSgList),
                      weakSelf = std::move(weakSelf)]() mutable
                     {
+                        guardedSgList.Close();
+
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
@@ -380,13 +381,14 @@ private:
              weakSelf = weak_from_this()](
                 const TFuture<NProto::TWriteBlocksLocalResponse>& future) mutable
             {
-                guardedSgList.Close();
                 auto response = ExtractResponse(future);
                 FillResponse(callContext, response);
 
                 taskQueue->ExecuteSimple(
                     [=, response = std::move(response)]() mutable
                     {
+                        guardedSgList.Close();
+
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
