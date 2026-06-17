@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -20,13 +21,12 @@ def tmpdir(**kwargs):
     finally:
         shutil.rmtree(tmp)
 
-
 QEMU_CONFIG = [
     '--static',
     '--prefix=/usr',
-    '--extra-cflags=-O3 -fno-semantic-interposition -falign-functions=32 -D_FORTIFY_SOURCE=2 -fPIE',
+    '--extra-cflags=-O3 -fno-semantic-interposition -falign-functions=32 -D_FORTIFY_SOURCE=2 -fPIE -Wno-maybe-uninitialized -Wno-array-bounds',
     '--extra-ldflags=-z noexecstack -z relro -z now',
-    '--target-list=x86_64-softmmu',
+    '--target-list=x86_64-softmmu aarch64-softmmu',
     '--audio-drv-list=',
     '--enable-attr',
     '--enable-cap-ng',
@@ -40,19 +40,17 @@ QEMU_CONFIG = [
     '--enable-virtfs',
     '--enable-vnc',
     '--enable-vnc-jpeg',
-    '--enable-vnc-png',
     '--enable-vvfat',
+    '--disable-auth-pam',
     '--disable-brlapi',
     '--disable-bzip2',
     '--disable-curl',
     '--disable-debug-tcg',
     '--disable-docs',
-    '--disable-fdt',
     '--disable-glusterfs',
     '--disable-gtk',
     '--disable-libiscsi',
     '--disable-libnfs',
-    '--disable-libssh2',
     '--disable-libusb',
     '--disable-lzo',
     '--disable-opengl',
@@ -63,8 +61,7 @@ QEMU_CONFIG = [
     '--disable-snappy',
     '--disable-spice',
     '--disable-tcg-interpreter',
-    '--disable-tcmalloc',
-    '--disable-tpm',
+    #'--disable-tpm',
     '--disable-usb-redir',
     '--disable-vnc-sasl',
     '--disable-vte',
@@ -101,12 +98,100 @@ QEMU_DEPS = [
     'pkg-config',
     'pkg-config',
     'podlators-perl',
-    'python',
-    'python-dev',
-    'python3-sphinx'
+    'python3',
+    'python3-tomli',
     'texinfo',
     'zlib1g-dev',
 ]
+
+
+QEMU_CONFIG_MIN_VERSION = [
+    ('--disable-gio', (7, 0, 0)),
+]
+
+QEMU_CONFIG_MAX_VERSION = [
+    ('--enable-vnc-png', (7, 0, 0)),
+    ('--disable-tcmalloc', (6, 0, 0)),
+]
+
+GIT_TAG_VERSION_RE = re.compile(
+    r'(?:^|[^0-9])(\d+)\.(\d+)(?:\.(\d+))?(?:[-.]?rc(\d+))?(?=$|[^0-9])')
+
+
+def git_tag_version_key(git_tag):
+    match = GIT_TAG_VERSION_RE.search(git_tag or '')
+    if match is None:
+        return None
+
+    major, minor, patch, rc = match.groups()
+    return (
+        int(major),
+        int(minor),
+        int(patch or 0),
+        0 if rc else 1,
+        int(rc or 0),
+    )
+
+
+def git_tag_less_than(git_tag, version):
+    git_tag_version = git_tag_version_key(git_tag)
+    if git_tag_version is None:
+        return False
+
+    return git_tag_version < tuple(version) # + (1, 0)
+
+
+def git_tag_greater_than(git_tag, version):
+    git_tag_version = git_tag_version_key(git_tag)
+    if git_tag_version is None:
+        return False
+
+    return git_tag_version >= tuple(version) # + (1, 0)
+
+
+def add_config(config, package):
+    if package not in config:
+        config.append(package)
+
+
+def config_matches_min_version(git_tag, version):
+    git_tag_version = git_tag_version_key(git_tag)
+    return git_tag_version is not None and not git_tag_less_than(git_tag, version)
+
+
+def config_matches_max_version(git_tag, version):
+    git_tag_version = git_tag_version_key(git_tag)
+    return git_tag_version is not None and not git_tag_greater_than(git_tag, version)
+
+
+def tag_tgz_path(path, git_tag):
+    if not git_tag:
+        return path
+
+    directory, filename = os.path.split(path)
+    tag = re.sub(r'[^A-Za-z0-9._-]+', '_', git_tag)
+
+    if filename.endswith('.tar.gz'):
+        basename = filename[:-len('.tar.gz')]
+        extension = '.tar.gz'
+    else:
+        basename, extension = os.path.splitext(filename)
+
+    return os.path.join(directory, '{}-{}{}'.format(basename, tag, extension))
+
+
+def qemu_config(args):
+    config = list(QEMU_CONFIG)
+
+    for package, version in QEMU_CONFIG_MIN_VERSION:
+        if config_matches_min_version(args.git_tag, version):
+            add_config(config, package)
+
+    for package, version in QEMU_CONFIG_MAX_VERSION:
+        if config_matches_max_version(args.git_tag, version):
+            add_config(config, package)
+
+    return config
 
 
 def run(args, **kwargs):
@@ -115,7 +200,7 @@ def run(args, **kwargs):
 
 
 def install_deps(args):
-    run(['sudo', 'apt-get', 'install', '--no-install-recommends', '-y'] + QEMU_DEPS)
+    run(['sudo', 'apt', 'install', '--no-install-recommends', '-y'] + QEMU_DEPS)
 
 
 def preprocess(args):
@@ -128,9 +213,10 @@ def checkout(args):
     if not os.path.exists(args.src):
         os.mkdir(args.src)
     else:
-        raise RuntimeError("src path already exists {}".format(args.src))
+        return
+    #    raise RuntimeError("src path already exists {}".format(args.src))
 
-    run(['git', 'clone', args.git, args.src])
+    run(['git', 'clone', '--recursive', args.git, args.src])
     if args.git_tag is not None:
         run(['git', 'checkout', args.git_tag], cwd=args.src)
 
@@ -144,6 +230,8 @@ def build(args):
                 os.path.abspath(args.src)], cwd=build_dir)
             src_dir = build_dir
 
+        config = qemu_config(args, src_dir)
+
         help = subprocess.check_output(
             [src_dir + '/configure', '--help'], cwd=build_dir)
 
@@ -154,10 +242,11 @@ def build(args):
 
         # commit b10d49d7619e4957b4b971f816661b57e5061d71
         if 'libssh2' not in help:
-            QEMU_CONFIG.remove('--disable-libssh2')
-            QEMU_CONFIG.append('--disable-libssh')
+            add_config(config, '--disable-libssh')
+        else:
+            add_config(config, '--disable-libssh2')
 
-        run([src_dir + '/configure'] + QEMU_CONFIG, cwd=build_dir)
+        run([src_dir + '/configure'] + config, cwd=build_dir)
         run(['make', '-j', str(os.sysconf('SC_NPROCESSORS_ONLN'))], cwd=build_dir)
 
         if os.path.isdir(args.out):
@@ -167,7 +256,7 @@ def build(args):
         else:
             with tmpdir(prefix='out-' + os.path.basename(args.src)) as out_dir:
                 target_dir = os.path.abspath(out_dir) + '/qemu'
-                target = os.path.abspath(args.out)
+                target = os.path.abspath(tag_tgz_path(args.out, args.git_tag))
 
                 run(['make', 'install', 'DESTDIR=' + target_dir], cwd=build_dir)
                 with tarfile.open(target, 'w:gz') as tar:
