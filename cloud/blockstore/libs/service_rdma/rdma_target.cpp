@@ -389,8 +389,8 @@ private:
                             *response.MutableError() = MakeError(
                                 E_REJECTED,
                                 TStringBuilder()
-                                    << "unable to GetValue from "
-                                       "WriteBlocksLocalResponse: "
+                                    << "Unable to get value from "
+                                       "WriteBlocksLocal response: "
                                     << CurrentExceptionMessage());
                         }
                         FillResponse(callContext, response);
