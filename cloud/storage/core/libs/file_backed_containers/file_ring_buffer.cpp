@@ -487,9 +487,13 @@ public:
 
         // We need to maintain data consistency on crash when another process
         // starts working with the same shared memory (memory-mapped file).
+        //
         // We need to ensure that memory writes are observed in the correct
         // order - it is achieved by treating ReadPos and WritePos pointing
         // to shared memory as atomics and using acquire and release semantics.
+        //
+        // Note that concurrent access to the buffer is still not allowed and
+        // should be managed at a higher level.
         SyncLoad();
 
         ValidateStructure();
@@ -584,7 +588,7 @@ public:
                 // we need to reset both ReadPos and WritePos to 0.
                 //
                 // We cannot do this atomically - we need to ensure that
-                // the state can be restored from the intermediate state
+                // the state can be restored from the intermediate state.
 
                 WriteSlackSpaceMarker(Header()->WritePos);
                 SyncAndUpdateWritePosition(0);
