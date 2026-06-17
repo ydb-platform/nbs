@@ -1025,9 +1025,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     };
 
     void TestShouldReadAfterWriteRandomized(const TTestArgs& args) {
-        TBootstrap b(
-            {.ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled,
-             .ParallelWritesEnabled = args.ParallelWritesEnabled});
+        TBootstrap b({
+            .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled,
+            .DoNotCheckWriteDataRequestBuffer = !args.ParallelWritesEnabled,
+            .ParallelWritesEnabled = args.ParallelWritesEnabled,
+        });
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1091,9 +1093,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 stats.GetNodeCount(),
                 b.Metrics.Nodes.Count->Get());
-            UNIT_ASSERT_VALUES_EQUAL(
-                stats.FlushCount,
-                b.Metrics.Flush.CompletedCount->Get());
+
+            if (args.ParallelWritesEnabled) {
+                // If parallel writes are disabled, multiple Flush operations
+                // will be needed to flush all unflushed data - these values
+                // will be different
+                UNIT_ASSERT_VALUES_EQUAL(
+                    stats.FlushCount,
+                    b.Metrics.Flush.CompletedCount->Get());
+            }
         }
 
         if (args.WithCacheRecreation) {
