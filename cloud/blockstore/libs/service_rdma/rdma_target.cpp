@@ -382,7 +382,14 @@ private:
                 taskQueue->ExecuteSimple(
                     [=, responseFuture = future]() mutable
                     {
-                        auto response = ExtractResponse(responseFuture);
+                        NProto::TWriteBlocksLocalResponse response;
+                        try {
+                            response = responseFuture.GetValue();
+                        } catch (...) {
+                            *response.MutableError() = MakeError(
+                                E_REJECTED,
+                                CurrentExceptionMessage());
+                        }
                         FillResponse(callContext, response);
 
                         guardedSgList.Close();
