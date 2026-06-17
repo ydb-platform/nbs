@@ -138,8 +138,19 @@ def write_user_data(filename, args):
         })
 
     if args.release in ["noble"]:
-        user_data['packages'].append("linux-generic-hwe-24.04")
+        user_data["packages"].append("linux-generic-hwe-24.04")
         # linux-generic-hwe-24.04-edge for linux 7+ kernel
+
+
+    if args.release in ["noble", "resolute"]:
+        # Fix msan and tsan segfaults when build with old clang 16 and run in ubuntu 24.04
+        # Maybe be fixed with clang 18+
+        user_data["write_files"].append(
+            {
+                "path": "/etc/sysctl.d/vm.mmap_rnd_bits.conf",
+                "content": "vm.mmap_rnd_bits=28",
+            }
+        )
 
     if args.plain_pwd:
         user_data['runcmd'].append(
