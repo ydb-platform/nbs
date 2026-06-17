@@ -425,6 +425,10 @@ private:
 
     void SyncLoad()
     {
+        // It is important to use the same shared memory address because
+        // paired release-acquire operations guarantee ordering and visibility
+        // of memory writes only when using the same atomic.
+
         auto readPos = __atomic_load_n(&Header()->ReadPos, __ATOMIC_ACQUIRE);
         auto writePos = __atomic_load_n(&Header()->WritePos, __ATOMIC_ACQUIRE);
 
