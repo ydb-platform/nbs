@@ -289,7 +289,7 @@ private:
             //
             // At the same time, the restriction MaxWriteRequestsCount == 1
             // should be treated as a special case when the request must never
-            // be split and should be sent as it.
+            // be split and should be sent as is.
 
             auto maxWriteRequestSize = Config.MaxWriteRequestsCount > 1
                 ? Config.MaxWriteRequestSize
