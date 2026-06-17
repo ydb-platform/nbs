@@ -2,6 +2,27 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+T GetIntWithNBits(unsigned n)
+{
+    T result = 0;
+    if (n == 0) {
+        return result;
+    }
+    if (n >= sizeof(T) * 8) {
+        result |= ~T{0};
+        return result;
+    }
+    result |= (T{1} << n) - 1;
+    return result;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlockMask BlockMaskFromString(TStringBuf s)
@@ -30,14 +51,13 @@ bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)
     for (size_t i = 0; i < mask.GetChunkCount(); ++i) {
         const auto chunk = mask.GetChunks()[i];
         if (blockCount < blocksInChunk) {
-            const TBitMap<blocksInChunk> m(chunk);
-            for (size_t j = 0; j < blockCount; ++j) {
-                if (!m.Test(j)) {
-                    return false;
-                }
-            }
-            return true;
-        } else if (chunk != ~TBlockMask::TChunk(0)) {
+            const TBitMap<blocksInChunk> actual(chunk);
+            const TBitMap<blocksInChunk> expectedMask(
+                GetIntWithNBits<TBlockMask::TChunk>(blockCount));
+            return (actual & expectedMask) == expectedMask;
+        }
+
+        if (chunk != ~TBlockMask::TChunk(0)) {
             return false;
         }
 

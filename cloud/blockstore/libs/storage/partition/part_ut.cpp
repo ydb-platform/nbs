@@ -13926,9 +13926,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 blockSize = DefaultBlockSize)
     {
         constexpr ui32 MaxBlobSize = 4_MB;
-        const ui32 maxBlocksPerBlob =
+        const ui32 maxBlocksInBlob =
             CalculateMaxBlocksInBlob(MaxBlobSize, blockSize);
-        const ui32 halfMaxBlocksPerBlob = maxBlocksPerBlob / 2;
+        const ui32 halfMaxBlocksInBlob = maxBlocksInBlob / 2;
 
         auto config = DefaultConfig();
         config.SetReadBlockMaskOnCompactionOptimizationEnabled(true);
@@ -13937,13 +13937,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         if (blockSize != DefaultBlockSize) {
             partitionInfo.BlockSize = blockSize;
         }
-        if (maxBlocksPerBlob != MaxBlocksCount) {
-            partitionInfo.MaxBlocksInBlob = maxBlocksPerBlob;
+        if (maxBlocksInBlob != MaxBlocksCount) {
+            partitionInfo.MaxBlocksInBlob = maxBlocksInBlob;
         }
 
         auto runtime = PrepareTestActorRuntime(
             config,
-            2 * maxBlocksPerBlob,
+            2 * maxBlocksInBlob,
             {},
             partitionInfo);
 
@@ -13959,27 +13959,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         WriteBlocksWithBlockSize(
             partition,
-            TBlockRange32::WithLength(0, maxBlocksPerBlob),
+            TBlockRange32::WithLength(0, maxBlocksInBlob),
             '1',
             blockSize);
 
         WriteBlocksWithBlockSize(
             partition,
-            TBlockRange32::WithLength(0, maxBlocksPerBlob),
+            TBlockRange32::WithLength(0, maxBlocksInBlob),
             '2',
             blockSize);
 
         WriteBlocksWithBlockSize(
             partition,
-            TBlockRange32::WithLength(maxBlocksPerBlob, maxBlocksPerBlob),
+            TBlockRange32::WithLength(maxBlocksInBlob, maxBlocksInBlob),
             '3',
             blockSize);
 
         WriteBlocksWithBlockSize(
             partition,
-            TBlockRange32::WithLength(
-                halfMaxBlocksPerBlob,
-                maxBlocksPerBlob),
+            TBlockRange32::WithLength(halfMaxBlocksInBlob, maxBlocksInBlob),
             '4',
             blockSize);
 
@@ -14004,8 +14002,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetBlobsProcessedDuringCompaction());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetBlockMaskReadDuringCompaction());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                stats.GetBlobsProcessedDuringCompaction());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                stats.GetBlockMaskReadDuringCompaction());
         }
 
         partition.Cleanup();
@@ -14017,18 +14019,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         //      3 3
 
         UNIT_ASSERT_VALUES_EQUAL(
-            GetBlocksContent('2', halfMaxBlocksPerBlob, blockSize) +
-                GetBlocksContent('4', halfMaxBlocksPerBlob, blockSize),
+            GetBlocksContent('2', halfMaxBlocksInBlob, blockSize) +
+                GetBlocksContent('4', halfMaxBlocksInBlob, blockSize),
             GetBlocksContent(partition.ReadBlocks(
-                TBlockRange32::WithLength(0, maxBlocksPerBlob))));
+                TBlockRange32::WithLength(0, maxBlocksInBlob))));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            GetBlocksContent('4', halfMaxBlocksPerBlob, blockSize) +
-                GetBlocksContent('3', halfMaxBlocksPerBlob, blockSize),
+            GetBlocksContent('4', halfMaxBlocksInBlob, blockSize) +
+                GetBlocksContent('3', halfMaxBlocksInBlob, blockSize),
             GetBlocksContent(partition.ReadBlocks(
-                TBlockRange32::WithLength(
-                    maxBlocksPerBlob,
-                    maxBlocksPerBlob))));
+                TBlockRange32::WithLength(maxBlocksInBlob, maxBlocksInBlob))));
 
         // Blobs from Second Compaction range should stay
         {
@@ -14045,8 +14045,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetBlobsProcessedDuringCompaction());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetBlockMaskReadDuringCompaction());
+            UNIT_ASSERT_VALUES_EQUAL(
+                5,
+                stats.GetBlobsProcessedDuringCompaction());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                stats.GetBlockMaskReadDuringCompaction());
         }
 
         partition.Cleanup();
@@ -14057,18 +14061,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         //  2 4
 
         UNIT_ASSERT_VALUES_EQUAL(
-            GetBlocksContent('2', halfMaxBlocksPerBlob, blockSize) +
-                GetBlocksContent('4', halfMaxBlocksPerBlob, blockSize),
+            GetBlocksContent('2', halfMaxBlocksInBlob, blockSize) +
+                GetBlocksContent('4', halfMaxBlocksInBlob, blockSize),
             GetBlocksContent(partition.ReadBlocks(
-                TBlockRange32::WithLength(0, maxBlocksPerBlob))));
+                TBlockRange32::WithLength(0, maxBlocksInBlob))));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            GetBlocksContent('4', halfMaxBlocksPerBlob, blockSize) +
-                GetBlocksContent('3', halfMaxBlocksPerBlob, blockSize),
+            GetBlocksContent('4', halfMaxBlocksInBlob, blockSize) +
+                GetBlocksContent('3', halfMaxBlocksInBlob, blockSize),
             GetBlocksContent(partition.ReadBlocks(
-                TBlockRange32::WithLength(
-                    maxBlocksPerBlob,
-                    maxBlocksPerBlob))));
+                TBlockRange32::WithLength(maxBlocksInBlob, maxBlocksInBlob))));
 
         // Blobs from Second Compaction range compacted
         {

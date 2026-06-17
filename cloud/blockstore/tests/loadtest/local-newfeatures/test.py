@@ -374,7 +374,7 @@ TESTS = [
 ]
 
 
-def _int_field(value, default=0):
+def _int_or_default(value, default=0):
     if value is None:
         return default
     return int(value)
@@ -385,41 +385,45 @@ def _channel_bytes_from_partition_info(partition_info):
     stats = partition_info.get("Stats", {})
     state = partition_info.get("State", {})
 
-    block_size = _int_field(config.get("BlockSize"))
-    blocks_count = _int_field(config.get("BlocksCount"))
+    block_size = _int_or_default(config.get("BlockSize"))
+    blocks_count = _int_or_default(config.get("BlocksCount"))
     bytes_count = blocks_count * block_size
 
-    mixed = _int_field(stats.get("MixedBlocksCount")) * block_size
-    merged = _int_field(stats.get("MergedBlocksCount")) * block_size
-    fresh_blocks = _int_field(state.get("FreshBlocksTotal"))
+    mixed = _int_or_default(stats.get("MixedBlocksCount")) * block_size
+    merged = _int_or_default(stats.get("MergedBlocksCount")) * block_size
+    fresh_blocks = _int_or_default(state.get("FreshBlocksTotal"))
     if fresh_blocks == 0:
-        fresh_blocks = _int_field(stats.get("FreshBlocksCount"))
+        fresh_blocks = _int_or_default(stats.get("FreshBlocksCount"))
     fresh = fresh_blocks * block_size
 
     return mixed, merged, fresh, bytes_count
 
 
-def check_channel_bytes_invariant(client, disk_id, partition_count=1):
+def calculate_bytes_count_for_disk(client, disk_id, partition_count=1):
     mixed = 0
     merged = 0
     fresh = 0
     bytes_count = 0
 
     for partition_id in range(partition_count):
-        try:
-            partition_info = get_partition_info(client, disk_id, partition_id)
-        except AssertionError:
-            if partition_id == 0:
-                raise
-            break
+        partition_info = get_partition_info(client, disk_id, partition_id)
 
         part_mixed, part_merged, part_fresh, part_bytes_count = (
             _channel_bytes_from_partition_info(partition_info)
         )
+
         mixed += part_mixed
         merged += part_merged
         fresh += part_fresh
         bytes_count += part_bytes_count
+    return mixed, merged, fresh, bytes_count
+
+
+def check_channel_bytes_invariant(client, disk_id, partition_count=1):
+
+    mixed, merged, fresh, bytes_count = calculate_bytes_count_for_disk(
+        client, disk_id, partition_count
+    )
 
     channel_bytes = mixed + merged + fresh
     assert channel_bytes < 2 * bytes_count, (
