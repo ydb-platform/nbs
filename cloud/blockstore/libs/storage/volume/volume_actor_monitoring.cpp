@@ -2234,7 +2234,7 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
 void TVolumeActor::RenderAvailableAgentsStatus(IOutputStream& out) const
 {
     HTML (out) {
-        if (DeviceUUIDToBrokenAt.empty()) {
+        if (DeviceUUIDToBrokenAt.empty() && false) {
             SPAN_CLASS_STYLE ("label label-success", "margin-left:10px") {
                 out << "All agents available";
             }
@@ -2248,6 +2248,9 @@ void TVolumeActor::RenderAvailableAgentsStatus(IOutputStream& out) const
             }
         }
 
+        SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
+            out << "Unavailable agent(s):";
+        }
         for (const auto& host: unavailableAgents) {
             SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
                 out << host;
