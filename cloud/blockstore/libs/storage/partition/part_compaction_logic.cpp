@@ -34,13 +34,6 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockMask GetFullBlockMask(ui32 maxBlocksCount)
-{
-    TBlockMask mask;
-    mask.Set(0, maxBlocksCount);
-    return mask;
-}
-
 TRangeCompactionInfo::TRangeCompactionInfo(
     TBlockRange32 blockRange,
     TPartialBlobId originalBlobId,

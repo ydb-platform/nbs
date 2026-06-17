@@ -46,4 +46,11 @@ bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)
     return true;
 }
 
+TBlockMask GetFullBlockMask(ui32 blockCount)
+{
+    TBlockMask mask;
+    mask.Set(0, blockCount);
+    return mask;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
