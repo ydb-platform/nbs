@@ -2225,13 +2225,13 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
             }
 
             if (VolumeHealthSyncActorId) {
-                RenderBrokenDevicesStatus(out);
+                RenderAvailableAgentsStatus(out);
             }
         }
     }
 }
 
-void TVolumeActor::RenderBrokenDevicesStatus(IOutputStream& out) const
+void TVolumeActor::RenderAvailableAgentsStatus(IOutputStream& out) const
 {
     HTML (out) {
         if (DeviceUUIDToBrokenAt.empty()) {
@@ -2241,22 +2241,23 @@ void TVolumeActor::RenderBrokenDevicesStatus(IOutputStream& out) const
             return;
         }
 
-        THashSet<TString> brokenHosts;
+        TSet<TString> unavailableAgents;
         for (const auto* dev: GetAllDevices(State->GetMeta())) {
             if (DeviceUUIDToBrokenAt.contains(dev->GetDeviceUUID())) {
-                brokenHosts.insert(dev->GetAgentId());
+                unavailableAgents.insert(dev->GetAgentId());
             }
         }
 
-        SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
-            out << brokenHosts.size() << " agent(s) unavailable";
-        }
-
-        if (!brokenHosts.empty()) {
+        if (!unavailableAgents.empty()) {
             DIV () {
-                for (const auto& host: brokenHosts) {
+                for (const auto& host: unavailableAgents) {
                     DIV () {
-                        out << host;
+                        SPAN_CLASS_STYLE (
+                            "label label-danger",
+                            "margin-left:10px")
+                        {
+                            out << host;
+                        }
                     }
                 }
             }
