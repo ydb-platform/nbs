@@ -725,6 +725,32 @@ TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribePath(
             std::move(handle));
 }
 
+void DescribePathWithPathDoesNotExist(
+    TTestBasicRuntime& runtime,
+    const TActorId& ssProxyId,
+    const TString& path)
+{
+    const auto sender = runtime.AllocateEdgeActor(NodeIdx);
+
+    runtime.Send(
+        new IEventHandle(
+            ssProxyId,
+            sender,
+            new TEvSSProxy::TEvDescribeSchemeRequest(path)),
+        NodeIdx);
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response =
+        runtime.GrabEdgeEventRethrow<
+            TEvSSProxy::TEvDescribeSchemeResponse>(handle);
+
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist),
+        response->GetError().GetCode(),
+        "describe expected to fail with StatusPathDoesNotExist for path: "
+            << path);
+}
+
 void CreateFileStore(
     TTestBasicRuntime& runtime,
     const TActorId& ssProxyId,
@@ -785,6 +811,103 @@ void CreateBlockStoreVolume(
     config.AddExplicitChannelProfiles()->SetPoolKind("pool-kind-1");
     config.AddExplicitChannelProfiles()->SetPoolKind("pool-kind-1");
     config.AddExplicitChannelProfiles()->SetPoolKind("pool-kind-2");
+
+    const auto sender = runtime.AllocateEdgeActor(NodeIdx);
+
+    runtime.Send(
+        new IEventHandle(
+            ssProxyId,
+            sender,
+            new TEvSSProxy::TEvModifySchemeRequest(
+                std::move(modifyScheme))),
+        NodeIdx);
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response =
+        runtime.GrabEdgeEventRethrow<
+            TEvSSProxy::TEvModifySchemeResponse>(handle);
+
+    UNIT_ASSERT_C(
+        !HasError(response->GetError()),
+        response->GetError());
+}
+
+void DropFileStore(
+    TTestBasicRuntime& runtime,
+    const TActorId& ssProxyId,
+    const TString& fileSystemId,
+    NKikimrScheme::EStatus expectedStatus = NKikimrScheme::StatusAccepted)
+{
+    NKikimrSchemeOp::TModifyScheme modifyScheme;
+    modifyScheme.SetWorkingDir("/MyRoot/nbs");
+    modifyScheme.SetOperationType(
+        NKikimrSchemeOp::ESchemeOpDropFileStore);
+    modifyScheme.MutableDrop()->SetName(fileSystemId);
+
+    const auto sender = runtime.AllocateEdgeActor(NodeIdx);
+
+    runtime.Send(
+        new IEventHandle(
+            ssProxyId,
+            sender,
+            new TEvSSProxy::TEvModifySchemeRequest(
+                std::move(modifyScheme))),
+        NodeIdx);
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response =
+        runtime.GrabEdgeEventRethrow<
+            TEvSSProxy::TEvModifySchemeResponse>(handle);
+
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        expectedStatus,
+        response->Status,
+        response->GetError());
+}
+
+void DropBlockStoreVolume(
+    TTestBasicRuntime& runtime,
+    const TActorId& ssProxyId,
+    const TString& diskId,
+    NKikimrScheme::EStatus expectedStatus = NKikimrScheme::StatusAccepted)
+{
+    NKikimrSchemeOp::TModifyScheme modifyScheme;
+    modifyScheme.SetWorkingDir("/MyRoot/nbs");
+    modifyScheme.SetOperationType(
+        NKikimrSchemeOp::ESchemeOpDropBlockStoreVolume);
+    modifyScheme.MutableDrop()->SetName(diskId);
+
+    const auto sender = runtime.AllocateEdgeActor(NodeIdx);
+
+    runtime.Send(
+        new IEventHandle(
+            ssProxyId,
+            sender,
+            new TEvSSProxy::TEvModifySchemeRequest(
+                std::move(modifyScheme))),
+        NodeIdx);
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response =
+        runtime.GrabEdgeEventRethrow<
+            TEvSSProxy::TEvModifySchemeResponse>(handle);
+
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        expectedStatus,
+        response->Status,
+        response->GetError());
+}
+
+void MakeDirectory(
+    TTestBasicRuntime& runtime,
+    const TActorId& ssProxyId,
+    const TString& workingDir,
+    const TString& name)
+{
+    NKikimrSchemeOp::TModifyScheme modifyScheme;
+    modifyScheme.SetWorkingDir(workingDir);
+    modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpMkDir);
+    modifyScheme.MutableMkDir()->SetName(name);
 
     const auto sender = runtime.AllocateEdgeActor(NodeIdx);
 
@@ -915,12 +1038,155 @@ void TestShouldListFileStoresAndBlockStoreVolumes(
     UNIT_ASSERT(foundBlockStoreVolume);
 }
 
+void TestShouldCreateAndDropFileStore(bool useSchemeCache)
+{
+    TTestBasicRuntime runtime;
+    TTestEnv env(runtime);
+
+    ui64 txId = 100;
+
+    TestMkDir(runtime, ++txId, "/MyRoot", "nbs");
+    env.TestWaitNotification(runtime, txId);
+
+    auto ssProxyId = SetupSSProxy(runtime, useSchemeCache);
+
+    CreateFileStore(runtime, ssProxyId, "fs");
+    {
+        const auto response =
+            DescribePath(runtime, ssProxyId, "/MyRoot/nbs/fs");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeFileStore,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+    }
+
+    // Check idempotency
+    CreateFileStore(runtime, ssProxyId, "fs");
+    {
+        const auto response =
+            DescribePath(runtime, ssProxyId, "/MyRoot/nbs/fs");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeFileStore,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+    }
+
+    DropFileStore(runtime, ssProxyId, "fs");
+    DescribePathWithPathDoesNotExist(runtime, ssProxyId, "/MyRoot/nbs/fs");
+
+    // A repeated drop of an already-removed filestore is reported as
+    // StatusPathDoesNotExist rather than a no-op success.
+    DropFileStore(
+        runtime,
+        ssProxyId,
+        "fs",
+        NKikimrScheme::StatusPathDoesNotExist);
+    DescribePathWithPathDoesNotExist(runtime, ssProxyId, "/MyRoot/nbs/fs");
+}
+
+void TestShouldCreateAndDropBlockStoreVolume(bool useSchemeCache)
+{
+    TTestBasicRuntime runtime;
+    TTestEnv env(runtime);
+
+    ui64 txId = 100;
+
+    TestMkDir(runtime, ++txId, "/MyRoot", "nbs");
+    env.TestWaitNotification(runtime, txId);
+
+    auto ssProxyId = SetupSSProxy(runtime, useSchemeCache);
+
+    CreateBlockStoreVolume(runtime, ssProxyId, "volume");
+    {
+        const auto response =
+            DescribePath(runtime, ssProxyId, "/MyRoot/nbs/volume");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeBlockStoreVolume,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+    }
+
+    // Check idempotency
+    CreateBlockStoreVolume(runtime, ssProxyId, "volume");
+    {
+        const auto response =
+            DescribePath(runtime, ssProxyId, "/MyRoot/nbs/volume");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeBlockStoreVolume,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+    }
+
+    DropBlockStoreVolume(runtime, ssProxyId, "volume");
+    DescribePathWithPathDoesNotExist(runtime, ssProxyId, "/MyRoot/nbs/volume");
+
+    // A repeated drop of an already-removed volume is reported as
+    // StatusPathDoesNotExist rather than a no-op success.
+    DropBlockStoreVolume(
+        runtime,
+        ssProxyId,
+        "volume",
+        NKikimrScheme::StatusPathDoesNotExist);
+    DescribePathWithPathDoesNotExist(runtime, ssProxyId, "/MyRoot/nbs/volume");
+}
+
+// Creating a directory that already exists makes SchemeShard answer
+// ExecComplete/StatusAlreadyExists and report the existing directory's
+// PathCreateTxId. The proxy must report success and keep the directory
+// resolvable through SchemeCache afterwards.
+void TestShouldCreateDirectoryIdempotently(bool useSchemeCache)
+{
+    TTestBasicRuntime runtime;
+    TTestEnv env(runtime);
+
+    ui64 txId = 100;
+
+    TestMkDir(runtime, ++txId, "/MyRoot", "nbs");
+    env.TestWaitNotification(runtime, txId);
+
+    auto ssProxyId = SetupSSProxy(runtime, useSchemeCache);
+
+    MakeDirectory(runtime, ssProxyId, "/MyRoot/nbs", "dir");
+
+    {
+        const auto response =
+            DescribePath(runtime, ssProxyId, "/MyRoot/nbs/dir");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeDir,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+    }
+
+    // A subsequent (idempotent) MkDir for the same path must succeed and
+    // the directory must still be resolvable through SchemeCache.
+    MakeDirectory(runtime, ssProxyId, "/MyRoot/nbs", "dir");
+
+    {
+        const auto response =
+            DescribePath(runtime, ssProxyId, "/MyRoot/nbs/dir");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeDir,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TSSProxyTest)
 {
+    Y_UNIT_TEST(ShouldCreateDirectoryIdempotentlyWithoutSchemeCache)
+    {
+        TestShouldCreateDirectoryIdempotently(false);
+    }
+
+    Y_UNIT_TEST(ShouldCreateDirectoryIdempotentlyWithSchemeCache)
+    {
+        TestShouldCreateDirectoryIdempotently(true);
+    }
+
     Y_UNIT_TEST(ShouldDescribeFileStoreWithSchemeCache)
     {
         TestShouldDescribeFileStore(true);
@@ -949,6 +1215,26 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldListFileStoresAndBlockStoreVolumesWithoutSchemeCache)
     {
         TestShouldListFileStoresAndBlockStoreVolumes(false);
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDropFileStoreWithSchemeCache)
+    {
+        TestShouldCreateAndDropFileStore(true);
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDropFileStoreWithoutSchemeCache)
+    {
+        TestShouldCreateAndDropFileStore(false);
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDropBlockStoreVolumeWithSchemeCache)
+    {
+        TestShouldCreateAndDropBlockStoreVolume(true);
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDropBlockStoreVolumeWithoutSchemeCache)
+    {
+        TestShouldCreateAndDropBlockStoreVolume(false);
     }
 }
 
