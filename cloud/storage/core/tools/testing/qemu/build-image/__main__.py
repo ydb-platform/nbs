@@ -141,7 +141,6 @@ def write_user_data(filename, args):
         user_data["packages"].append("linux-generic-hwe-24.04")
         # linux-generic-hwe-24.04-edge for linux 7+ kernel
 
-
     if args.release in ["noble", "resolute"]:
         # Fix msan and tsan segfaults when build with old clang 16 and run in ubuntu 24.04
         # Maybe be fixed with clang 18+
