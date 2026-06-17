@@ -152,10 +152,10 @@ def ordinary_prod_storage_config():
     return storage
 
 
-def storage_config_with_compaction_merged_blob_threshold_hdd():
+def storage_config_with_compaction_merged_blob_threshold_hdd(block_size=4096):
     storage = ordinary_prod_storage_config()
     storage.HDDMaxBlobsPerRange = 5
-    storage.CompactionMergedBlobThresholdHDD = 1025 * 4096
+    storage.CompactionMergedBlobThresholdHDD = 1025 * block_size
 
     return storage
 
@@ -184,6 +184,35 @@ class TestCase(object):
         self.storage_config_patches = storage_config_patches
         self.features_config_patch = features_config_patch
         self.restart_interval = restart_interval
+
+
+def bs8k_config_path(config_path):
+    return config_path.replace(".txt", "-bs8k.txt")
+
+
+BS8K_STORAGE_CONFIG_PATCHES_OVERRIDES = {
+    "version1-compaction-to-mixed-channel": [
+        ordinary_prod_storage_config(),
+        storage_config_with_compaction_merged_blob_threshold_hdd(block_size=8192),
+        ordinary_prod_storage_config(),
+    ],
+}
+
+
+def make_bs8k_test_cases(test_cases):
+    result = []
+    for test_case in test_cases:
+        result.append(TestCase(
+            test_case.name + "-bs8k",
+            bs8k_config_path(test_case.config_path),
+            BS8K_STORAGE_CONFIG_PATCHES_OVERRIDES.get(
+                test_case.name,
+                test_case.storage_config_patches,
+            ),
+            test_case.features_config_patch,
+            test_case.restart_interval,
+        ))
+    return result
 
 
 TESTS = [
@@ -337,6 +366,8 @@ TESTS = [
         None,
     ),
 ]
+
+TESTS += make_bs8k_test_cases(TESTS)
 
 
 def __run_test(test_case):
