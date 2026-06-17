@@ -141,10 +141,15 @@ public:
 
     bool ShouldFailOnError(const NProto::TError& error) override
     {
-        if (error.GetCode() == E_TRANSPORT_ERROR) {
+        if (Spec.GetAllowOverlappingSharedMemoryPages() &&
+            error.GetCode() == E_TRANSPORT_ERROR)
+        {
             if (error.GetMessage().Contains(
                     "E_TRANSPORT_ERROR Address range is in use"))
             {
+                // Do not fail on E_TRANSPORT_ERROR caused by address range is
+                // in use, as test can generate requests with overlapping memory
+                // pages.
                 return false;
             }
         }
