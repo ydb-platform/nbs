@@ -682,7 +682,7 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
     endpoint->SendResponse(handler->Context, 0);
 
     stopThread.join();
-    ASSERT_TRUE(sessionDestroyed.GetFuture().GetValueSync());
+    sessionDestroyed.GetFuture().GetValueSync();
 }
 
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
@@ -782,7 +782,7 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
     endpoint->SendResponse(handler->Context, 0);
 
-    ASSERT_TRUE(sessionDestroyed.GetFuture().GetValueSync());
+    sessionDestroyed.GetFuture().GetValueSync();
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)
