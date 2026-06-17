@@ -9,6 +9,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <exception>
+
 using namespace NThreading;
 
 namespace NCloud::NBlockStore {
@@ -395,15 +397,26 @@ TFuture<TResponse> TOverlappingRequestsGuard::DoExecuteRequest(
             Service.get(),
             std::move(callContext),
             std::move(request));
+        auto promise = NewPromise<TResponse>();
+        auto future = promise.GetFuture();
+
         result.Subscribe(
             [weakSelf = weak_from_this(),
-             requestId](const TFuture<TResponse>& f)
+             requestId,
+             promise = std::move(promise)](const TFuture<TResponse>& f) mutable
             {
-                if (auto self = weakSelf.lock()) {
-                    self->OnRequestFinished(requestId, f.GetValue().GetError());
+                try {
+                    auto response = f.GetValue();
+                    if (auto self = weakSelf.lock()) {
+                        auto error = response.GetError();
+                        self->OnRequestFinished(requestId, error);
+                    }
+                    promise.SetValue(std::move(response));
+                } catch (...) {
+                    promise.SetException(std::current_exception());
                 }
             });
-        return result;
+        return future;
     }
 
     std::unique_ptr<TInflight>& inflightPtr = overlapping->Value;
