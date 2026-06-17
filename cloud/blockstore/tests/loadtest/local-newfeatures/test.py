@@ -1,15 +1,25 @@
+import json
+import time
 import pytest
 import uuid
 
 import yatest.common as common
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
-from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
+from cloud.blockstore.config.server_pb2 import (
+    TServerAppConfig,
+    TServerConfig,
+    TKikimrServiceConfig,
+)
 from cloud.blockstore.config.storage_pb2 import CT_LOAD
 from cloud.blockstore.tests.python.lib.config import storage_config_with_default_limits
+from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
-from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test, \
-    get_restart_interval
+from cloud.blockstore.tests.python.lib.test_base import (
+    thread_count,
+    run_test,
+    get_restart_interval,
+)
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
@@ -87,7 +97,7 @@ def features_config_with_incremental_compaction():
     config = TFeaturesConfig()
 
     config.Features.add()
-    config.Features[0].Name = 'IncrementalCompaction'
+    config.Features[0].Name = "IncrementalCompaction"
     config.Features[0].Whitelist.CloudIds.append("test_cloud")
 
     return config
@@ -183,18 +193,22 @@ def storage_config_with_new_features_enabled():
 class TestCase(object):
 
     def __init__(
-            self,
-            name,
-            config_path,
-            storage_config_patches,
-            features_config_patch,
-            restart_interval=get_restart_interval(),
+        self,
+        name,
+        config_path,
+        storage_config_patches,
+        features_config_patch,
+        restart_interval=get_restart_interval(),
+        check_disk_size=False,
+        disk_id="",
     ):
         self.name = name
         self.config_path = config_path
         self.storage_config_patches = storage_config_patches
         self.features_config_patch = features_config_patch
         self.restart_interval = restart_interval
+        self.check_disk_size = check_disk_size
+        self.disk_id = disk_id
 
 
 TESTS = [
@@ -349,17 +363,154 @@ TESTS = [
     ),
     TestCase(
         "version1-8k-block-size-with-new-features",
-        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges-bs8k.txt",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-small-disk-bs8k.txt",
         [
             storage_config_with_new_features_enabled(),
         ],
         None,
+        check_disk_size=True,
+        disk_id="vol0",
     ),
 ]
 
 
+def _int_field(value, default=0):
+    if value is None:
+        return default
+    return int(value)
+
+
+def _channel_bytes_from_partition_info(partition_info):
+    config = partition_info.get("Config", {})
+    stats = partition_info.get("Stats", {})
+    state = partition_info.get("State", {})
+
+    block_size = _int_field(config.get("BlockSize"))
+    blocks_count = _int_field(config.get("BlocksCount"))
+    bytes_count = blocks_count * block_size
+
+    mixed = _int_field(stats.get("MixedBlocksCount")) * block_size
+    merged = _int_field(stats.get("MergedBlocksCount")) * block_size
+    fresh_blocks = _int_field(state.get("FreshBlocksTotal"))
+    if fresh_blocks == 0:
+        fresh_blocks = _int_field(stats.get("FreshBlocksCount"))
+    fresh = fresh_blocks * block_size
+
+    return mixed, merged, fresh, bytes_count
+
+
+def check_channel_bytes_invariant(client, disk_id, partition_count=1):
+    mixed = 0
+    merged = 0
+    fresh = 0
+    bytes_count = 0
+
+    for partition_id in range(partition_count):
+        try:
+            partition_info = get_partition_info(client, disk_id, partition_id)
+        except AssertionError:
+            if partition_id == 0:
+                raise
+            break
+
+        part_mixed, part_merged, part_fresh, part_bytes_count = (
+            _channel_bytes_from_partition_info(partition_info)
+        )
+        mixed += part_mixed
+        merged += part_merged
+        fresh += part_fresh
+        bytes_count += part_bytes_count
+
+    channel_bytes = mixed + merged + fresh
+    assert channel_bytes < 2 * bytes_count, (
+        "Disk {}: MixedBytesCount({}) + MergedBytesCount({}) + "
+        "FreshBytesCount({}) = {} must be less than 2 * BytesCount({})".format(
+            disk_id,
+            mixed,
+            merged,
+            fresh,
+            channel_bytes,
+            bytes_count,
+        )
+    )
+
+
+def get_partition_info(client, disk_id, partition_id=0):
+    req = {"DiskId": disk_id, "PartitionId": partition_id}
+
+    resp = client.execute_action("getpartitioninfo", req)
+
+    return json.loads(resp)
+
+
+def get_disk_blocks_count(client, disk_id, max_partitions=1):
+    blocks_count = 0
+
+    for partition_id in range(max_partitions):
+        try:
+            partition_info = get_partition_info(client, disk_id, partition_id)
+        except AssertionError:
+            if partition_id == 0:
+                raise
+            break
+
+        blocks_count += int(partition_info.get("Config", {}).get("BlocksCount", 0))
+
+    return blocks_count
+
+
+def compact_range(client, disk_id, start_index, blocks_count):
+    req = {
+        "DiskId": disk_id,
+        "StartIndex": str(start_index),
+        "BlocksCount": blocks_count,
+    }
+
+    resp = client.execute_action("compactrange", req)
+
+    return json.loads(resp)["OperationId"]
+
+
+def get_compaction_status(client, disk_id, operation_id):
+    req = {
+        "DiskId": disk_id,
+        "OperationId": operation_id,
+    }
+
+    resp = client.execute_action("getcompactionstatus", req)
+
+    return json.loads(resp)
+
+
+def wait_compaction(
+    client, disk_id, operation_id, poll_interval_sec=1, timeout_sec=300
+):
+    deadline = time.time() + timeout_sec
+
+    retry_count = 0
+
+    while time.time() < deadline:
+        retry_count += 1
+        status = get_compaction_status(client, disk_id, operation_id)
+        if status.get("IsCompleted"):
+            return status
+        time.sleep(poll_interval_sec)
+
+    raise AssertionError(
+        "Compaction of disk {} (operation {}) did not complete in {} seconds, retry count: {}".format(
+            disk_id, operation_id, timeout_sec, retry_count
+        )
+    )
+
+
+def compact_full_disk(client, disk_id):
+    blocks_count = get_disk_blocks_count(client, disk_id)
+    operation_id = compact_range(client, disk_id, 0, blocks_count)
+    return wait_compaction(client, disk_id, operation_id)
+
+
 def __run_test(test_case):
-    endpoint_storage_dir = common.output_path() + '/endpoints-' + str(uuid.uuid4())
+    endpoint_storage_dir = common.output_path() + "/endpoints-" + str(uuid.uuid4())
     nbd_socket_suffix = "_nbd"
 
     server = TServerAppConfig()
@@ -384,6 +535,8 @@ def __run_test(test_case):
     client = TClientConfig()
     client.NbdSocketSuffix = nbd_socket_suffix
 
+    nbs_client = NbsClient(env.nbs_port)
+
     try:
         ret = run_test(
             test_case.name,
@@ -394,7 +547,12 @@ def __run_test(test_case):
             endpoint_storage_dir=endpoint_storage_dir,
             env_processes=[env.nbs],
         )
+        if test_case.check_disk_size:
+            compact_full_disk(nbs_client, test_case.disk_id)
+            check_channel_bytes_invariant(nbs_client, test_case.disk_id)
     finally:
+        if test_case.disk_id != "":
+            nbs_client.destroy_volume(test_case.disk_id)
         env.tear_down()
 
     return ret
