@@ -216,24 +216,23 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
         acceptCalled.store(true);
     };
 
-    testContext->ModifyQP =
-        [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
-        {
-            Y_UNUSED(qp);
+    testContext->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
 
-            if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
-                NVerbs::Flush(testContext);
-                return;
-            }
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(testContext);
+            return;
+        }
 
-            const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
+        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
 
-            EXPECT_EQ(expectedMask, mask);
-            EXPECT_EQ(serverConfig->QpTimeout, attr->timeout);
-            EXPECT_EQ(serverConfig->QpMinRnrTimer, attr->min_rnr_timer);
+        EXPECT_EQ(expectedMask, mask);
+        EXPECT_EQ(serverConfig->QpTimeout, attr->timeout);
+        EXPECT_EQ(serverConfig->QpMinRnrTimer, attr->min_rnr_timer);
 
-            modifyCalled.store(true);
-        };
+        modifyCalled.store(true);
+    };
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -575,8 +574,7 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
 
-    NThreading::TPromise<void> flushTriggered =
-        NThreading::NewPromise<void>();
+    NThreading::TPromise<void> flushTriggered = NThreading::NewPromise<void>();
 
     // Combine flush-on-error with a signal so the test can wait until Stop()
     // has actually entered the flush phase before calling SendResponse.
@@ -595,12 +593,14 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
     NThreading::TPromise<void> sessionDestroyed =
         NThreading::NewPromise<void>();
 
-    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param) {
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
         Y_UNUSED(param);
         sessionId.store(id);
     };
 
-    context->DestroyQP = [&](rdma_cm_id* id) {
+    context->DestroyQP = [&](rdma_cm_id* id)
+    {
         Y_UNUSED(id);
         sessionDestroyed.TrySetValue();
     };
@@ -627,11 +627,13 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
-    ASSERT_TRUE(WaitUntil([&] {
-        return sessionId.load() != nullptr &&
-            AtomicGet(context->PostRecvCounter) >=
-                static_cast<int>(serverConfig->RecvQueueSize);
-    }));
+    ASSERT_TRUE(WaitUntil(
+        [&]
+        {
+            return sessionId.load() != nullptr &&
+                   AtomicGet(context->PostRecvCounter) >=
+                       static_cast<int>(serverConfig->RecvQueueSize);
+        }));
 
     with_lock (context->CompletionLock) {
         ASSERT_FALSE(context->RecvEvents.empty());
@@ -655,7 +657,8 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
     // Run Stop() in a background thread — it will block inside the flush loop
     // waiting for ExecutingRequests == 0.
     std::thread stopThread([&] { server->Stop(); });
-    Y_DEFER {
+    Y_DEFER
+    {
         if (stopThread.joinable()) {
             stopThread.join();
         }
@@ -665,19 +668,21 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
     // fired), guaranteeing it is now blocked on IsFlushed().
     flushTriggered.GetFuture().GetValueSync();
 
-    ASSERT_TRUE(WaitUntil([c = GetServerCounters(monitoring)] {
-        return c->GetCounter("ActiveRecv")->Val()  == 0 &&
-               c->GetCounter("ActiveSend")->Val()  == 0 &&
-               c->GetCounter("ActiveWrite")->Val() == 0 &&
-               c->GetCounter("ActiveRead")->Val()  == 0;
-    }));
+    ASSERT_TRUE(WaitUntil(
+        [c = GetServerCounters(monitoring)]
+        {
+            return c->GetCounter("ActiveRecv")->Val() == 0 &&
+                   c->GetCounter("ActiveSend")->Val() == 0 &&
+                   c->GetCounter("ActiveWrite")->Val() == 0 &&
+                   c->GetCounter("ActiveRead")->Val() == 0;
+        }));
 
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 
     endpoint->SendResponse(handler->Context, 0);
 
     stopThread.join();
-    ASSERT_TRUE(sessionDestroyed.GetFuture().HasValue());
+    ASSERT_TRUE(sessionDestroyed.GetFuture().GetValueSync());
 }
 
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
@@ -697,12 +702,14 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
     NThreading::TPromise<void> sessionDestroyed =
         NThreading::NewPromise<void>();
 
-    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param) {
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
         Y_UNUSED(param);
         sessionId.store(id);
     };
 
-    context->DestroyQP = [&](rdma_cm_id* id) {
+    context->DestroyQP = [&](rdma_cm_id* id)
+    {
         Y_UNUSED(id);
         sessionDestroyed.TrySetValue();
     };
@@ -719,7 +726,10 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
     auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
     server->Start();
-    Y_DEFER { server->Stop(); };
+    Y_DEFER
+    {
+        server->Stop();
+    };
 
     auto handler = std::make_shared<TDelayedServerHandler>();
     auto endpoint = server->StartEndpoint("::", 10020, handler);
@@ -730,11 +740,13 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
-    ASSERT_TRUE(WaitUntil([&] {
-        return sessionId.load() != nullptr &&
-            AtomicGet(context->PostRecvCounter) >=
-                static_cast<int>(serverConfig->RecvQueueSize);
-    }));
+    ASSERT_TRUE(WaitUntil(
+        [&]
+        {
+            return sessionId.load() != nullptr &&
+                   AtomicGet(context->PostRecvCounter) >=
+                       static_cast<int>(serverConfig->RecvQueueSize);
+        }));
 
     with_lock (context->CompletionLock) {
         ASSERT_FALSE(context->RecvEvents.empty());
@@ -757,18 +769,20 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
     verbs->Disconnect(sessionId.load());
 
-    ASSERT_TRUE(WaitUntil([c = GetServerCounters(monitoring)] {
-        return c->GetCounter("ActiveRecv")->Val()  == 0 &&
-               c->GetCounter("ActiveSend")->Val()  == 0 &&
-               c->GetCounter("ActiveWrite")->Val() == 0 &&
-               c->GetCounter("ActiveRead")->Val()  == 0;
-    }));
+    ASSERT_TRUE(WaitUntil(
+        [c = GetServerCounters(monitoring)]
+        {
+            return c->GetCounter("ActiveRecv")->Val() == 0 &&
+                   c->GetCounter("ActiveSend")->Val() == 0 &&
+                   c->GetCounter("ActiveWrite")->Val() == 0 &&
+                   c->GetCounter("ActiveRead")->Val() == 0;
+        }));
 
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 
     endpoint->SendResponse(handler->Context, 0);
 
-    sessionDestroyed.GetFuture().GetValueSync();
+    ASSERT_TRUE(sessionDestroyed.GetFuture().GetValueSync());
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)
