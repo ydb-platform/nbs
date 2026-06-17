@@ -382,17 +382,9 @@ private:
                 taskQueue->ExecuteSimple(
                     [=, responseFuture = future]() mutable
                     {
-                        NProto::TWriteBlocksLocalResponse response;
-                        try {
-                            response = responseFuture.GetValue();
-                        } catch (...) {
-                            *response.MutableError() = MakeError(
-                                E_REJECTED,
-                                TStringBuilder()
-                                    << "Unable to get value from "
-                                       "WriteBlocksLocal response: "
-                                    << CurrentExceptionMessage());
-                        }
+                        auto response =
+                            SafeExecute<NProto::TWriteBlocksLocalResponse>(
+                                [&] { return responseFuture.GetValue(); });
                         FillResponse(callContext, response);
 
                         guardedSgList.Close();
