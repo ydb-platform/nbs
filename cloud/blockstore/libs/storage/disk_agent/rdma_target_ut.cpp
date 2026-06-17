@@ -232,6 +232,44 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         UNIT_ASSERT_VALUES_EQUAL(1, rejectedCounter->Val());
     }
 
+    Y_UNIT_TEST(ShouldHandleManyCoveredOverlappedRequests)
+    {
+        TRdmaTestEnvironment env;
+
+        const auto blockRange = TBlockRange64::WithLength(0, 1024);
+
+        // Make first write request to set volume request id state.
+        {
+            auto writeFuture = env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+            auto writeResponse = writeFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                writeResponse.GetError().GetCode(),
+                writeResponse.GetError().GetMessage());
+        }
+
+        // Blast a lot of fully covered overlapped requests. Under ASAN this
+        // stresses response/error propagation between multiple callbacks.
+        TVector<NThreading::TFuture<NProto::TZeroDeviceBlocksResponse>> futures;
+        futures.reserve(256);
+        for (ui32 i = 0; i < 256; ++i) {
+            futures.push_back(env.Run(env.MakeZeroRequest(blockRange, 99)));
+        }
+
+        for (auto& future: futures) {
+            auto response = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        auto delayedCounter = env.Counters->GetCounter("Delayed");
+        auto rejectedCounter = env.Counters->GetCounter("Rejected");
+        UNIT_ASSERT_VALUES_EQUAL(0, delayedCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(256, rejectedCounter->Val());
+    }
+
     Y_UNIT_TEST(ShouldRespectDeviceErasure)
     {
         TRdmaTestEnvironment env(8_MB, 2);
