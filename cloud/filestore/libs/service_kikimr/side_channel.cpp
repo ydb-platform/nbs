@@ -194,7 +194,13 @@ public:
                 ep = EndpointPool,
                 generation
             ] (const TFuture<IAsyncEndpointPtr>& f) {
-                ep->Push(UnsafeExtractValue(f), generation);
+                // Copy instead of UnsafeExtractValue: this is a secondary
+                // subscriber (TryConnect already attached a logging
+                // subscriber to the same future). Moving the value out
+                // races with the logging callback when SetValue is still
+                // iterating callbacks on another thread while Subscribe
+                // runs us synchronously here.
+                ep->Push(f.GetValue(), generation);
             });
     }
 
@@ -279,7 +285,12 @@ public:
             ep = EndpointPool,
             generation
         ] (const TFuture<IAsyncEndpointPtr>& f) mutable {
-            auto e = UnsafeExtractValue(f);
+            // Copy instead of UnsafeExtractValue: this is a secondary
+            // subscriber (TryConnect attached a logging subscriber to the
+            // same future). Moving the value out races with the logging
+            // callback when SetValue is still iterating callbacks on
+            // another thread while Subscribe runs us synchronously here.
+            IAsyncEndpointPtr e = f.GetValue();
 
             if (!e) {
                 TResponse errorResponse;
