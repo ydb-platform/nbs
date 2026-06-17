@@ -379,12 +379,13 @@ private:
              endpoint = Endpoint,
              weakSelf = weak_from_this()](auto future)
             {
-                auto response = ExtractResponse(future);
-                FillResponse(callContext, response);
-
                 taskQueue->ExecuteSimple(
-                    [=, response = std::move(response)]() mutable
+                    [=, responseFuture = future]() mutable
                     {
+                        auto response = responseFuture.GetValue();
+                        FillResponse(callContext, response);
+
+                        guardedSgList.Close();
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
