@@ -382,7 +382,7 @@ private:
                 taskQueue->ExecuteSimple(
                     [=, responseFuture = future]() mutable
                     {
-                        auto response = responseFuture.GetValue();
+                        auto response = ExtractResponse(responseFuture);
                         FillResponse(callContext, response);
 
                         guardedSgList.Close();
