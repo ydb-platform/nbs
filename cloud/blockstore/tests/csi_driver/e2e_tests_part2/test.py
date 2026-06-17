@@ -63,6 +63,61 @@ def test_readonly_volume(mount_path, access_type, vm_mode, gid):
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
 
 
+def test_vm_mode_legacy_publish_allows_multiple_readers_and_single_writer():
+    env, run = csi.init(vm_mode=True)
+    volume_name = "example-disk"
+    volume_size = 1024 ** 3
+    access_type = "mount"
+    pod_name = "example-pod"
+    writer_pod_id = "writer"
+    reader_pod_ids = ["reader1", "reader2"]
+    pod_ids = [writer_pod_id] + reader_pod_ids
+
+    def mount_path(pod_id: str) -> Path:
+        return (
+            Path("/var/lib/kubelet/pods")
+            / pod_id
+            / "volumes/kubernetes.io~csi"
+            / volume_name
+            / "mount"
+        )
+
+    try:
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name, access_type, instance_id="")
+
+        env.csi.publish_volume(
+            pod_id=writer_pod_id,
+            volume_id=volume_name,
+            pod_name=pod_name,
+            access_type=access_type,
+            instance_id="",
+            access_mode="single-node-writer")
+
+        for pod_id in reader_pod_ids:
+            env.csi.publish_volume(
+                pod_id=pod_id,
+                volume_id=volume_name,
+                pod_name=pod_name,
+                access_type=access_type,
+                instance_id="",
+                access_mode="multi-node-reader-only")
+
+        assert "rw" == get_access_mode(str(mount_path(writer_pod_id)))
+        for pod_id in reader_pod_ids:
+            assert "ro" == get_access_mode(str(mount_path(pod_id)))
+
+        endpoints = run("listendpoints", "--proto").stdout
+        assert 3 == endpoints.count('DiskId: "example-disk"')
+        assert 2 == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_READ_ONLY")
+
+    except subprocess.CalledProcessError as e:
+        csi.log_called_process_error(e)
+        raise
+    finally:
+        csi.cleanup_after_test(env, volume_name, access_type, pod_ids)
+
+
 def test_mount_volume_group():
     # Scenario
     # 1. create volume and stage it

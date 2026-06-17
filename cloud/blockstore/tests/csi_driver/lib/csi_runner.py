@@ -190,8 +190,24 @@ class NbsCsiDriverRunner:
         return self._controller_run("deletevolume", "--id", name)
 
     @retry(max_retries=3)
-    def stage_volume(self, volume_id: str, access_type: str, is_nfs: bool = False, vhost_request_queues_count: int = 8):
-        args = ["stagevolume", "--volume-id", volume_id, "--access-type", access_type, "--vhost-request-queues-count", str(vhost_request_queues_count)]
+    def stage_volume(
+            self,
+            volume_id: str,
+            access_type: str,
+            is_nfs: bool = False,
+            vhost_request_queues_count: int = 8,
+            instance_id: str = "example-instance-id",
+            access_mode: str = "single-node-writer"):
+        args = [
+            "stagevolume",
+            "--volume-id",
+            volume_id,
+            "--access-type",
+            access_type,
+            "--vhost-request-queues-count",
+            str(vhost_request_queues_count),
+        ]
+        args += ["--instance-id", instance_id, "--access-mode", access_mode]
         if is_nfs:
             args += ["--backend", "nfs"]
 
@@ -215,7 +231,9 @@ class NbsCsiDriverRunner:
             fs_type: str = "",
             readonly: bool = False,
             volume_mount_group: str = "",
-            is_nfs: bool = False):
+            is_nfs: bool = False,
+            instance_id: str = "example-instance-id",
+            access_mode: str = "single-node-writer"):
         args = [
             "publishvolume",
             "--pod-id",
@@ -228,6 +246,10 @@ class NbsCsiDriverRunner:
             fs_type,
             "--access-type",
             access_type,
+            "--instance-id",
+            instance_id,
+            "--access-mode",
+            access_mode,
         ]
         if readonly:
             args += ["--readonly"]

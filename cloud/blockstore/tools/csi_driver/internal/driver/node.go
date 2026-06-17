@@ -250,6 +250,32 @@ func parseVolumeId(volumeId string) (nbsId string, instanceId string) {
 	return nbsId, instanceId
 }
 
+func nbsVolumeAccessMode(
+	accessMode *csi.VolumeCapability_AccessMode,
+	readonly bool,
+) nbsapi.EVolumeAccessMode {
+	if readOnlyVolumeAccess(accessMode, readonly) {
+		return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_ONLY
+	}
+
+	return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE
+}
+
+func readOnlyVolumeAccess(
+	accessMode *csi.VolumeCapability_AccessMode,
+	readonly bool,
+) bool {
+	if accessMode != nil {
+		switch accessMode.GetMode() {
+		case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+			csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			return true
+		}
+	}
+
+	return readonly
+}
+
 func (s *nodeService) NodeStageVolume(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -343,6 +369,7 @@ func (s *nodeService) NodeStageVolume(
 						nbsId,
 						req.VolumeContext,
 						req.VolumeCapability.GetMount(),
+						nbsVolumeAccessMode(req.VolumeCapability.AccessMode, false),
 						vhostSettings,
 						stageData.ClientIndex)
 				}
@@ -666,7 +693,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeAccessMode: nbsVolumeAccessMode(req.VolumeCapability.AccessMode, req.Readonly),
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
@@ -741,6 +768,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	diskId string,
 	volumeContext map[string]string,
 	volumeCapabilities *csi.VolumeCapability_MountVolume,
+	volumeAccessMode nbsapi.EVolumeAccessMode,
 	vhostSettings vhostSettings,
 	clientIndex uint) error {
 
@@ -777,7 +805,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeAccessMode: volumeAccessMode,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
@@ -837,7 +865,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
-	if req.Readonly {
+	if readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 
@@ -925,7 +953,12 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 
 	diskId := req.VolumeId
 	instanceId := ""
-	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(
+		ctx,
+		instanceId,
+		diskId,
+		req.VolumeContext,
+		req.VolumeCapability.AccessMode)
 	if err != nil {
 		return err
 	}
@@ -999,7 +1032,12 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 
 	diskId := req.VolumeId
 	instanceId := ""
-	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(
+		ctx,
+		instanceId,
+		diskId,
+		req.VolumeContext,
+		req.VolumeCapability.AccessMode)
 	if err != nil {
 		return err
 	}
@@ -1029,14 +1067,19 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 			"Staging target path is not mounted: %w", req.VolumeId)
 	}
 
-	return s.mountBlockDevice(diskId, devicePath, req.TargetPath, req.Readonly)
+	return s.mountBlockDevice(
+		diskId,
+		devicePath,
+		req.TargetPath,
+		readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly))
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
 	ctx context.Context,
 	instanceId string,
 	diskId string,
-	volumeContext map[string]string) (*nbsapi.TStartEndpointResponse, error) {
+	volumeContext map[string]string,
+	accessMode *csi.VolumeCapability_AccessMode) (*nbsapi.TStartEndpointResponse, error) {
 
 	endpointDir := s.getEndpointDir(instanceId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
@@ -1067,7 +1110,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeAccessMode: nbsVolumeAccessMode(accessMode, false),
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
@@ -1575,7 +1618,7 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	if req.Readonly {
+	if readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 

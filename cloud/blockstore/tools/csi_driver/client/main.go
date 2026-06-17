@@ -40,6 +40,60 @@ func (b *BackendValue) Type() string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type AccessModeValue csi.VolumeCapability_AccessMode_Mode
+
+func (a *AccessModeValue) String() string {
+	switch csi.VolumeCapability_AccessMode_Mode(*a) {
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:
+		return "single-node-writer"
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY:
+		return "single-node-reader-only"
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+		return "multi-node-reader-only"
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER:
+		return "multi-node-single-writer"
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
+		return "multi-node-multi-writer"
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER:
+		return "single-node-single-writer"
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER:
+		return "single-node-multi-writer"
+	default:
+		return "unknown"
+	}
+}
+
+func (a *AccessModeValue) Set(val string) error {
+	switch val {
+	case "single-node-writer":
+		*a = AccessModeValue(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)
+	case "single-node-reader-only":
+		*a = AccessModeValue(csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY)
+	case "multi-node-reader-only":
+		*a = AccessModeValue(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY)
+	case "multi-node-single-writer":
+		*a = AccessModeValue(csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER)
+	case "multi-node-multi-writer":
+		*a = AccessModeValue(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)
+	case "single-node-single-writer":
+		*a = AccessModeValue(csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER)
+	case "single-node-multi-writer":
+		*a = AccessModeValue(csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER)
+	default:
+		return errors.New(`must be one of "single-node-writer", "single-node-reader-only", ` +
+			`"multi-node-reader-only", "multi-node-single-writer", "multi-node-multi-writer", ` +
+			`"single-node-single-writer", "single-node-multi-writer"`)
+	}
+
+	return nil
+}
+
+func (a *AccessModeValue) Type() string {
+	return "string"
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func dialGrpcContext(
 	ctx context.Context,
 	endpoint string,
@@ -258,8 +312,9 @@ func getTargetPath(podId string, volumeId string, accessType string) string {
 }
 
 func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, stagingTargetPath, accessType, vhostRequestQueuesCount string
+	var volumeId, stagingTargetPath, accessType, vhostRequestQueuesCount, instanceId string
 	backend := BackendValue("nbs")
+	accessMode := AccessModeValue(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)
 	cmd := cobra.Command{
 		Use:   "stagevolume",
 		Short: "Send stage volume request to the CSI node",
@@ -275,19 +330,23 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 			}
 
 			volumeContext := map[string]string{
-				"instanceId":         "example-instance-id",
 				"backend":            string(backend),
 				"requestQueuesCount": vhostRequestQueuesCount,
 			}
+			if instanceId != "" {
+				volumeContext["instanceId"] = instanceId
+			}
 
-			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 			response, err := client.NodeStageVolume(
 				ctx,
 				&csi.NodeStageVolumeRequest{
 					VolumeId:          volumeId,
 					StagingTargetPath: stagingTargetPath,
-					VolumeCapability:  createVolumeCapability(accessMode, accessType, ""),
-					VolumeContext:     volumeContext,
+					VolumeCapability: createVolumeCapability(
+						csi.VolumeCapability_AccessMode_Mode(accessMode),
+						accessType,
+						""),
+					VolumeContext: volumeContext,
 				},
 			)
 			if err != nil {
@@ -327,6 +386,17 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 		"8",
 		"Specify vhost request queues count",
 	)
+	cmd.Flags().StringVar(
+		&instanceId,
+		"instance-id",
+		"example-instance-id",
+		"instance id; empty value uses legacy VM publish path",
+	)
+	cmd.Flags().Var(
+		&accessMode,
+		"access-mode",
+		"CSI volume access mode",
+	)
 
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
@@ -336,11 +406,12 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 }
 
 func newPublishVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, podId, stagingTargetPath, podName, fsType string
+	var volumeId, podId, stagingTargetPath, podName, fsType, instanceId string
 	var accessType string
 	var readOnly bool
 	var volumeMountGroup string
 	backend := BackendValue("nbs")
+	accessMode := AccessModeValue(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)
 	cmd := cobra.Command{
 		Use:   "publishvolume",
 		Short: "Send publish volume request to the CSI node",
@@ -362,12 +433,12 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 				"csi.storage.k8s.io/pod.namespace":             "default",
 				"csi.storage.k8s.io/pod.name":                  podName,
 				"storage.kubernetes.io/csiProvisionerIdentity": "someIdentity",
-				"instanceId": "example-instance-id",
-				"fsType":     fsType,
-				"backend":    string(backend),
+				"fsType":  fsType,
+				"backend": string(backend),
 			}
-
-			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+			if instanceId != "" {
+				volumeContext["instanceId"] = instanceId
+			}
 
 			response, err := client.NodePublishVolume(
 				ctx,
@@ -376,10 +447,13 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 					PublishContext:    nil,
 					StagingTargetPath: stagingTargetPath,
 					TargetPath:        getTargetPath(podId, volumeId, accessType),
-					VolumeCapability:  createVolumeCapability(accessMode, accessType, volumeMountGroup),
-					Readonly:          readOnly,
-					Secrets:           nil,
-					VolumeContext:     volumeContext,
+					VolumeCapability: createVolumeCapability(
+						csi.VolumeCapability_AccessMode_Mode(accessMode),
+						accessType,
+						volumeMountGroup),
+					Readonly:      readOnly,
+					Secrets:       nil,
+					VolumeContext: volumeContext,
 				},
 			)
 			if err != nil {
@@ -433,10 +507,21 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		"",
 		"fs group id",
 	)
+	cmd.Flags().StringVar(
+		&instanceId,
+		"instance-id",
+		"example-instance-id",
+		"instance id; empty value uses legacy VM publish path",
+	)
 	cmd.Flags().Var(
 		&backend,
 		"backend",
 		"Specify backend to use [nfs, nbs]",
+	)
+	cmd.Flags().Var(
+		&accessMode,
+		"access-mode",
+		"CSI volume access mode",
 	)
 
 	err := cmd.MarkFlagRequired("volume-id")
