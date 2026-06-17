@@ -423,28 +423,25 @@ private:
         Data->WriteEntryHeader(pos, {});
     }
 
-    void SyncRead()
+    void SyncLoad()
     {
-        __atomic_fetch_add(&Header()->Sync, 1, __ATOMIC_ACQUIRE);
-    }
+        auto readPos = __atomic_load_n(&Header()->ReadPos, __ATOMIC_ACQUIRE);
+        auto writePos = __atomic_load_n(&Header()->WritePos, __ATOMIC_ACQUIRE);
 
-    void SyncWrite()
-    {
-        __atomic_fetch_add(&Header()->Sync, 1, __ATOMIC_RELEASE);
+        Y_UNUSED(readPos);
+        Y_UNUSED(writePos);
     }
 
     // Ensures that the prior writes are visible before updating read position
     void SyncAndUpdateReadPosition(ui64 pos)
     {
-        SyncWrite();
-        Header()->ReadPos = pos;
+        __atomic_store_n(&Header()->ReadPos, pos, __ATOMIC_RELEASE);
     }
 
     // Ensures that the prior writes are visible before updating write position
     void SyncAndUpdateWritePosition(ui64 pos)
     {
-        SyncWrite();
-        Header()->WritePos = pos;
+        __atomic_store_n(&Header()->WritePos, pos, __ATOMIC_RELEASE);
     }
 
     bool ValidateAccess(const char* name) const
@@ -484,7 +481,12 @@ public:
             static_cast<ui32>(Header()->Version),
             args.FilePath.c_str());
 
-        SyncRead();
+        // We need to maintain data consistency on crash when another process
+        // starts working with the same shared memory (memory-mapped file).
+        // We need to ensure that memory writes are observed in the correct
+        // order - it is achieved by treating ReadPos and WritePos pointing
+        // to shared memory as atomics and using acquire and release semantics.
+        SyncLoad();
 
         ValidateStructure();
 

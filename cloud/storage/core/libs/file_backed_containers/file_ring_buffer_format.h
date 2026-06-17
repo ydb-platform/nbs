@@ -78,8 +78,8 @@ struct TFileRingBufferHeader
     ui64 DataCapacity = 0;
     ui64 ReadPos = 0;
     ui64 WritePos = 0;
-    // Used for multi-threading synchronization
-    ui64 Sync = 0;
+    // Previously was: LastEntrySize
+    ui64 Unused = 0;
     ui64 DataOffset = 0;
     ui64 MetadataCapacity = 0;
     ui64 MetadataOffset = 0;
