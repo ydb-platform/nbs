@@ -12,7 +12,10 @@
 namespace NCloud::NFileStore::NServer {
 
 namespace {
-static constexpr size_t MinPageSize = 4096;
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr size_t MinPageSize = 4096;
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,12 +210,12 @@ TServerState::AdjustAndLockIovecs(
 
     int i = 0;
     NProto::TError err;
-    for (; i < iovecs.size(); ++i) {
-        const auto& base = iovecs[i].GetBase();
-        const auto& length = iovecs[i].GetLength();
+    for (; i < adjustedIovecs.size(); ++i) {
+        const ui64& base = adjustedIovecs[i].GetBase() - regionAddress;
+        const ui64& length = adjustedIovecs[i].GetLength();
         // The last iovec in a request may have a length smaller than PageSize.
         if (base % pageSize != 0 || length > pageSize ||
-            (length < pageSize && i != iovecs.size() - 1))
+            (length < pageSize && i != adjustedIovecs.size() - 1))
         {
             err = MakeError(
                 E_ARGUMENT,
@@ -235,7 +238,8 @@ TServerState::AdjustAndLockIovecs(
         // Unlock previously locked pages in case of error
         if (i > 0) {
             for (int j = i - 1; j >= 0; --j) {
-                ui64 index = iovecs[j].GetBase() / pageSize;
+                const ui64& base = adjustedIovecs[j].GetBase() - regionAddress;
+                ui64 index = base / pageSize;
                 auto ret = region.UnlockPage(index);
                 Y_DEBUG_ABORT_UNLESS(ret);
             }
@@ -267,22 +271,33 @@ NProto::TError TServerState::UnlockIovecs(
     }
 
     NProto::TError err;
-    TString failedIndexes;
+    TString failedOffsets;
     for (const auto& iovec: iovecs) {
-        ui64 index = (iovec.GetBase() - regionAddress) / pageSize;
-        bool ret = region.UnlockPage(index);
-        if (!ret) {
-            if (!failedIndexes.empty()) {
-                failedIndexes += ", ";
+        bool failed = false;
+        if (iovec.GetBase() >= regionAddress) {
+            const ui64& base = iovec.GetBase() - regionAddress;
+            ui64 index = base / pageSize;
+            if (!region.UnlockPage(index)) {
+                failed = true;
             }
-            failedIndexes += std::to_string(index);
+        } else {
+            failed = true;
+        }
+
+        if (failed) {
+            if (!failedOffsets.empty()) {
+                failedOffsets += ", ";
+            }
+            failedOffsets += std::to_string(iovec.GetBase());
         }
     }
 
-    if (!failedIndexes.empty()) {
-        err = MakeError(
+    if (!failedOffsets.empty()) {
+        return MakeError(
             E_TRANSPORT_ERROR,
-            Sprintf("Failed to unlock pages: %s", failedIndexes.c_str()));
+            Sprintf(
+                "Failed to unlock pages with offsets: %s",
+                failedOffsets.c_str()));
     }
 
     return {};
