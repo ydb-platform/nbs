@@ -437,7 +437,7 @@ void TPartitionActor::HandleDescribeBlob(
     ExecuteTx(
         ctx,
         CreateTx<TDescribeBlob>(
-            std::move(requestInfo),
+            requestInfo,
             MakePartialBlobId(blobId),
             false  // httpInfo
         ));
