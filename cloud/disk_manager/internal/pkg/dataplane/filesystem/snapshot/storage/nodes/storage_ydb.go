@@ -72,7 +72,6 @@ type nodeRefByShard struct {
 }
 
 func (n nodeRefByShard) Cookie() *NodeRefsByShardCookie {
-
 	return &NodeRefsByShardCookie{
 		ParentNodeID: n.parentNodeID,
 		Name:         n.name,
