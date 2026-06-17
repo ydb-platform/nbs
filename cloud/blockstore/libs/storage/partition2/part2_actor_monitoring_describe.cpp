@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <contrib/ydb/core/base/logoblob.h>
+
 #include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -67,7 +69,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDescribeBlobVisitor final
-    : public IMergedBlockVisitor
+    : public IFreshBlockVisitor
+    , public IMergedBlockVisitor
 {
 private:
     TTxPartition::TDescribeBlob& Args;
@@ -79,11 +82,23 @@ public:
 
     void Visit(
         const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& blobId) override
+    {
+        Y_UNUSED(blockContent);
+        if (blobId == Args.BlobId) {
+            Args.Blocks.emplace_back(block, blobId, 0);
+        }
+    }
+
+    void Visit(
+        const TBlock& block,
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
-        Y_UNUSED(blobId);
-        Args.Blocks.emplace_back(block, Args.BlobId, blobOffset);
+        if (blobId == Args.BlobId) {
+            Args.Blocks.emplace_back(block, blobId, blobOffset);
+        }
     }
 };
 
@@ -192,6 +207,13 @@ bool TPartitionActor::PrepareDescribeBlob(
     Y_UNUSED(ctx);
 
     TPartitionDatabase db(tx.DB);
+    TDescribeBlobVisitor visitor(args);
+
+    State->FindFreshBlocks(visitor);
+
+    if (!args.Blocks.empty()) {
+        return true;
+    }
 
     TMaybe<TBlockList> blockList;
     if (!db.ReadBlockList(args.BlobId, blockList)) {
@@ -210,7 +232,6 @@ bool TPartitionActor::PrepareDescribeBlob(
         return false;
     }
 
-    TDescribeBlobVisitor visitor(args);
     return State->FindMergedBlocks(db, {{{args.BlobId, 0}}, 0}, visitor);
 }
 
@@ -228,6 +249,20 @@ void TPartitionActor::CompleteDescribeBlob(
     const TActorContext& ctx,
     TTxPartition::TDescribeBlob& args)
 {
+    if (!args.HttpInfo) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlobResponse>();
+        for (const auto& ref: args.Blocks) {
+            auto* block = response->Record.AddBlocks();
+            block->SetBlockIndex(ref.Block.BlockIndex);
+            block->SetCommitId(ref.Block.MinCommitId);
+            block->SetBlobOffset(ref.BlobOffset);
+            block->SetChecksum(0);
+        }
+
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
     using namespace NMonitoringUtils;
 
     TStringStream out;
@@ -275,6 +310,43 @@ void TPartitionActor::CompleteDescribeBlob(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TPartitionActor::HandleDescribeBlob(
+    const TEvVolume::TEvDescribeBlobRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    TRequestScope timer(*requestInfo);
+
+    LWTRACK(
+        RequestReceived_Partition,
+        requestInfo->CallContext->LWOrbit,
+        "DescribeBlob",
+        requestInfo->CallContext->RequestId);
+
+    const auto blobId = LogoBlobIDFromLogoBlobID(msg->Record.GetBlobId());
+    if (!blobId) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlobResponse>(
+            MakeError(E_ARGUMENT, "invalid blob id in DescribeBlob request"));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
+    ExecuteTx<TDescribeBlob>(
+        ctx,
+        std::move(requestInfo),
+        MakePartialBlobId(blobId),
+        false  // httpInfo
+    );
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TPartitionActor::HandleHttpInfo_Describe(
     const TActorContext& ctx,
     const TCgiParameters& params,
@@ -304,7 +376,9 @@ void TPartitionActor::HandleHttpInfo_Describe(
             ExecuteTx<TDescribeBlob>(
                 ctx,
                 std::move(requestInfo),
-                MakePartialBlobId(blobId));
+                MakePartialBlobId(blobId),
+                true  // httpInfo
+            );
         } else {
             TStringStream out;
             out << "invalid blob specified: " << blob.Quote() <<

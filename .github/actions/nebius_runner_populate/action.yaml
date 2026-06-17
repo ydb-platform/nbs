@@ -34,6 +34,9 @@ inputs:
     description: "Nebius CLI config.yaml content for SDK authentication"
 
 outputs:
+  RUNNING_VMS_COUNT:
+    value: ${{ steps.populate.outputs.RUNNING_VMS_COUNT }}
+    description: "running vms count"
   VMS_TO_CREATE:
     value: ${{ steps.populate.outputs.VMS_TO_CREATE }}
     description: "vms to create"
@@ -43,6 +46,9 @@ outputs:
   BROKEN_VMS_TO_REMOVE:
     value: ${{ steps.populate.outputs.BROKEN_VMS_TO_REMOVE }}
     description: "broken vms to remove"
+  DATE:
+    value: ${{ steps.populate.outputs.DATE }}
+    description: "schedule calculation timestamp"
 
 runs:
   using: composite
