@@ -814,4 +814,8 @@ message TStorageConfig
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 514;
+
+    // Limit max number in-flight requests to create/configure/destroy shards.
+    optional bool ShardManagementRequestThrottlingEnabled = 515;
+    optional uint32 MaxShardManagementRequestsInFlight = 516;
 }

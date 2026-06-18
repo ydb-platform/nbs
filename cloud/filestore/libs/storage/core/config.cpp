@@ -78,6 +78,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
                                                                                \
+    xxx(ShardManagementRequestThrottlingEnabled,       bool,    false         )\
+    xxx(MaxShardManagementRequestsInFlight,            ui32,    1000          )\
+                                                                               \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
     xxx(LargeDeletionMarkerBlocks,                      ui64,   1_GB / 4_KB   )\
