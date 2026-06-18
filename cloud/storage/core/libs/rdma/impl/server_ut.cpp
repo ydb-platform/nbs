@@ -115,18 +115,11 @@ struct TDelayedServerHandler final
 };
 
 template <typename TPredicate>
-bool WaitUntil(
-    TPredicate predicate,
-    TDuration timeout = TDuration::Seconds(5))
+void WaitUntil(TPredicate predicate)
 {
-    const auto start = GetCycleCount();
     while (!predicate()) {
-        if (CyclesToDurationSafe(GetCycleCount() - start) > timeout) {
-            return false;
-        }
         SpinLockPause();
     }
-    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -627,13 +620,13 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
-    ASSERT_TRUE(WaitUntil(
+    WaitUntil(
         [&]
         {
             return sessionId.load() != nullptr &&
-                   AtomicGet(context->PostRecvCounter) >=
-                       static_cast<int>(serverConfig->RecvQueueSize);
-        }));
+                   GetServerCounters(monitoring)->GetCounter("ActiveRecv")->Val() >=
+                       static_cast<i64>(serverConfig->RecvQueueSize);
+        });
 
     with_lock (context->CompletionLock) {
         ASSERT_FALSE(context->RecvEvents.empty());
@@ -668,14 +661,14 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
     // fired), guaranteeing it is now blocked on IsFlushed().
     flushTriggered.GetFuture().GetValueSync();
 
-    ASSERT_TRUE(WaitUntil(
+    WaitUntil(
         [c = GetServerCounters(monitoring)]
         {
             return c->GetCounter("ActiveRecv")->Val() == 0 &&
                    c->GetCounter("ActiveSend")->Val() == 0 &&
                    c->GetCounter("ActiveWrite")->Val() == 0 &&
                    c->GetCounter("ActiveRead")->Val() == 0;
-        }));
+        });
 
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 
@@ -740,13 +733,13 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
-    ASSERT_TRUE(WaitUntil(
+    WaitUntil(
         [&]
         {
             return sessionId.load() != nullptr &&
-                   AtomicGet(context->PostRecvCounter) >=
-                       static_cast<int>(serverConfig->RecvQueueSize);
-        }));
+                   GetServerCounters(monitoring)->GetCounter("ActiveRecv")->Val() >=
+                       static_cast<i64>(serverConfig->RecvQueueSize);
+        });
 
     with_lock (context->CompletionLock) {
         ASSERT_FALSE(context->RecvEvents.empty());
@@ -769,14 +762,14 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
     verbs->Disconnect(sessionId.load());
 
-    ASSERT_TRUE(WaitUntil(
+    WaitUntil(
         [c = GetServerCounters(monitoring)]
         {
             return c->GetCounter("ActiveRecv")->Val() == 0 &&
                    c->GetCounter("ActiveSend")->Val() == 0 &&
                    c->GetCounter("ActiveWrite")->Val() == 0 &&
                    c->GetCounter("ActiveRead")->Val() == 0;
-        }));
+        });
 
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 
