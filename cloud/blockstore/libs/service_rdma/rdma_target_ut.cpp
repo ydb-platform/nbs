@@ -18,7 +18,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMockEndpoint: public NCloud::NStorage::NRdma::IServerEndpoint
+class TTestEndpoint: public NCloud::NStorage::NRdma::IServerEndpoint
 {
     NThreading::TPromise<void> Done{NThreading::NewPromise<void>()};
 
@@ -46,9 +46,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMockServer: public NCloud::NStorage::NRdma::IServer
+class TTestServer: public NCloud::NStorage::NRdma::IServer
 {
-    std::shared_ptr<TMockEndpoint> MockEndpoint;
+    std::shared_ptr<TTestEndpoint> MockEndpoint;
     NCloud::NStorage::NRdma::IServerHandlerPtr Handler;
 
 public:
@@ -60,7 +60,7 @@ public:
         Y_UNUSED(host);
         Y_UNUSED(port);
         Handler = std::move(handler);
-        MockEndpoint = std::make_shared<TMockEndpoint>();
+        MockEndpoint = std::make_shared<TTestEndpoint>();
         return MockEndpoint;
     }
 
@@ -73,7 +73,7 @@ public:
         return Handler;
     }
 
-    std::shared_ptr<TMockEndpoint> GetEndpoint() const
+    std::shared_ptr<TTestEndpoint> GetEndpoint() const
     {
         return MockEndpoint;
     }
@@ -83,7 +83,7 @@ public:
 
 struct TTestEnv
 {
-    std::shared_ptr<TMockServer> Server;
+    std::shared_ptr<TTestServer> Server;
     IStartablePtr Target;
 
     NCloud::NStorage::NRdma::IServerHandlerPtr GetHandler() const
@@ -91,7 +91,7 @@ struct TTestEnv
         return Server->GetHandler();
     }
 
-    std::shared_ptr<TMockEndpoint> GetEndpoint() const
+    std::shared_ptr<TTestEndpoint> GetEndpoint() const
     {
         return Server->GetEndpoint();
     }
@@ -99,7 +99,7 @@ struct TTestEnv
 
 TTestEnv CreateTestEnv(IBlockStorePtr service)
 {
-    auto mockServer = std::make_shared<TMockServer>();
+    auto mockServer = std::make_shared<TTestServer>();
 
     NProto::TRdmaTarget rdmaTargetProto;
     auto config =
