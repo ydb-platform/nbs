@@ -282,7 +282,9 @@ private:
                      guardedSgList = std::move(guardedSgList),
                      weakSelf = std::move(weakSelf)]() mutable
                     {
-                        auto response = future.GetValue();
+                        auto response =
+                            SafeExecute<NProto::TReadBlocksLocalResponse>(
+                                [&] { return future.GetValue();});
                         FillResponse(callContext, response);
 
                         guardedSgList.Close();
@@ -385,7 +387,9 @@ private:
                 taskQueue->ExecuteSimple(
                     [=, future = future]() mutable
                     {
-                        auto response = future.GetValue();
+                        auto response =
+                            SafeExecute<NProto::TWriteBlocksLocalResponse>(
+                                [&] { return future.GetValue();});
                         FillResponse(callContext, response);
                         guardedSgList.Close();
 
