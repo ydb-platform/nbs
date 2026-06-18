@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
@@ -16,10 +17,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createPlacementGroupTask struct {
-	storage    resources.Storage
-	nbsFactory nbs.Factory
-	request    *protos.CreatePlacementGroupRequest
-	state      *protos.CreatePlacementGroupTaskState
+	storage      resources.Storage
+	nbsFactory   nbs.Factory
+	cellSelector cells.CellSelector
+	request      *protos.CreatePlacementGroupRequest
+	state        *protos.CreatePlacementGroupTaskState
 }
 
 func (t *createPlacementGroupTask) Save() ([]byte, error) {
@@ -42,16 +44,49 @@ func (t *createPlacementGroupTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.ZoneId)
+	var client nbs.Client
+
+	// On retry, check if PG was already persisted so we use its stored cell
+	// instead of running cell selection that may fail with changed config.
+	existingMeta, err := t.storage.GetPlacementGroupMeta(
+		ctx,
+		t.request.GroupId,
+	)
 	if err != nil {
 		return err
+	}
+
+	if existingMeta != nil {
+		client, err = t.nbsFactory.GetClient(ctx, existingMeta.ZoneID)
+		if err != nil {
+			return err
+		}
+	} else if len(t.state.GetSelectedCellId()) > 0 {
+		client, err = t.nbsFactory.GetClient(ctx, t.state.GetSelectedCellId())
+		if err != nil {
+			return err
+		}
+	} else {
+		client, err = t.cellSelector.SelectCellForPlacementGroup(
+			ctx,
+			t.request.ZoneId,
+		)
+
+		if err == nil {
+			t.state.SelectedCellId = client.ZoneID()
+			err = execCtx.SaveState(ctx)
+		}
+
+		if err != nil {
+			return err
+		}
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 
 	placementGroupMeta, err := t.storage.CreatePlacementGroup(ctx, resources.PlacementGroupMeta{
 		ID:                      t.request.GroupId,
-		ZoneID:                  t.request.ZoneId,
+		ZoneID:                  client.ZoneID(),
 		PlacementStrategy:       t.request.PlacementStrategy,
 		PlacementPartitionCount: t.request.PlacementPartitionCount,
 
@@ -90,11 +125,6 @@ func (t *createPlacementGroupTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	placementGroupMeta, err := t.storage.DeletePlacementGroup(
@@ -112,6 +142,16 @@ func (t *createPlacementGroupTask) Cancel(
 			"id %v is not accepted",
 			t.request.GroupId,
 		)
+	}
+
+	zoneID := t.request.ZoneId
+	if len(placementGroupMeta.ZoneID) > 0 {
+		zoneID = placementGroupMeta.ZoneID
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
 	}
 
 	err = client.DeletePlacementGroup(ctx, t.request.GroupId)

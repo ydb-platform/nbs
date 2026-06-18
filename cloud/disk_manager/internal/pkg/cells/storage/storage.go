@@ -128,6 +128,40 @@ func scanClusterCapacities(
 	return clusterCapacities, nil
 }
 
+func scanAggregatedClusterCapacities(
+	ctx context.Context,
+	res persistence.Result,
+	zoneID string,
+) ([]ClusterCapacity, error) {
+
+	var clusterCapacities []ClusterCapacity
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var cellID string
+			var freeBytes, totalBytes uint64
+
+			err := res.ScanNamed(
+				persistence.OptionalWithDefault("cell_id", &cellID),
+				persistence.OptionalWithDefault("free_bytes", &freeBytes),
+				persistence.OptionalWithDefault("total_bytes", &totalBytes),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			clusterCapacities = append(clusterCapacities, ClusterCapacity{
+				ZoneID:     zoneID,
+				CellID:     cellID,
+				FreeBytes:  freeBytes,
+				TotalBytes: totalBytes,
+			})
+		}
+	}
+
+	return clusterCapacities, nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Storage interface {
@@ -141,6 +175,13 @@ type Storage interface {
 		ctx context.Context,
 		zone_id string,
 		kind types.DiskKind,
+	) ([]ClusterCapacity, error)
+
+	// Returns most recent capacities aggregated across all disk kinds per
+	// cell. For each cell, free bytes are summed over all kinds.
+	GetRecentAggregatedClusterCapacities(
+		ctx context.Context,
+		zone_id string,
 	) ([]ClusterCapacity, error)
 }
 

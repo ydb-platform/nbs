@@ -35,6 +35,15 @@ func (s *StorageMock) GetRecentClusterCapacities(
 	return args.Get(0).([]storage.ClusterCapacity), args.Error(1)
 }
 
+func (s *StorageMock) GetRecentAggregatedClusterCapacities(
+	ctx context.Context,
+	zoneID string,
+) ([]storage.ClusterCapacity, error) {
+
+	args := s.Called(ctx, zoneID)
+	return args.Get(0).([]storage.ClusterCapacity), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

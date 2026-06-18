@@ -2,9 +2,12 @@ package placementgroup
 
 import (
 	"context"
+	"slices"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -49,8 +52,10 @@ func getPlacementStrategy(
 ////////////////////////////////////////////////////////////////////////////////
 
 type service struct {
-	taskScheduler tasks.Scheduler
-	nbsFactory    nbs.Factory
+	taskScheduler   tasks.Scheduler
+	nbsFactory      nbs.Factory
+	resourceStorage resources.Storage
+	cellSelector    cells.CellSelector
 }
 
 func (s *service) CreatePlacementGroup(
@@ -151,18 +156,29 @@ func (s *service) ListPlacementGroups(
 		)
 	}
 
-	client, err := s.nbsFactory.GetClient(ctx, req.ZoneId)
+	cellIDs, err := s.cellSelector.ResolveCells(req.ZoneId)
 	if err != nil {
 		return nil, err
 	}
 
-	ids, err := client.ListPlacementGroups(ctx)
-	if err != nil {
-		return nil, err
+	var allIDs []string
+
+	for _, cellID := range cellIDs {
+		client, err := s.nbsFactory.GetClient(ctx, cellID)
+		if err != nil {
+			return nil, err
+		}
+
+		ids, err := client.ListPlacementGroups(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		allIDs = append(allIDs, ids...)
 	}
 
 	return &disk_manager.ListPlacementGroupsResponse{
-		GroupIds: ids,
+		GroupIds: allIDs,
 	}, nil
 }
 
@@ -180,7 +196,32 @@ func (s *service) DescribePlacementGroup(
 		)
 	}
 
-	client, err := s.nbsFactory.GetClient(ctx, req.GroupId.ZoneId)
+	pgMeta, err := s.resourceStorage.GetPlacementGroupMeta(
+		ctx,
+		req.GroupId.GroupId,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	zoneID := req.GroupId.ZoneId
+	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
+		zoneCells, err := s.cellSelector.ResolveCells(req.GroupId.ZoneId)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
+			return nil, errors.NewNonRetriableErrorf(
+				"placement group %v is in zone %v, not in requested zone %v",
+				req.GroupId.GroupId,
+				pgMeta.ZoneID,
+				req.GroupId.ZoneId,
+			)
+		}
+		zoneID = pgMeta.ZoneID
+	}
+
+	client, err := s.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return nil, err
 	}
@@ -207,10 +248,14 @@ func (s *service) DescribePlacementGroup(
 func NewService(
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	resourceStorage resources.Storage,
+	cellSelector cells.CellSelector,
 ) Service {
 
 	return &service{
-		taskScheduler: taskScheduler,
-		nbsFactory:    nbsFactory,
+		taskScheduler:   taskScheduler,
+		nbsFactory:      nbsFactory,
+		resourceStorage: resourceStorage,
+		cellSelector:    cellSelector,
 	}
 }

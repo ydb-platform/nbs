@@ -2,20 +2,26 @@ package placementgroup
 
 import (
 	"context"
+	"slices"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type alterPlacementGroupMembershipTask struct {
-	nbsFactory nbs.Factory
-	request    *protos.AlterPlacementGroupMembershipRequest
-	state      *protos.AlterPlacementGroupMembershipTaskState
+	storage      resources.Storage
+	nbsFactory   nbs.Factory
+	cellSelector cells.CellSelector
+	request      *protos.AlterPlacementGroupMembershipRequest
+	state        *protos.AlterPlacementGroupMembershipTaskState
 }
 
 func (t *alterPlacementGroupMembershipTask) Save() ([]byte, error) {
@@ -38,7 +44,29 @@ func (t *alterPlacementGroupMembershipTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.ZoneId)
+	pgMeta, err := t.storage.GetPlacementGroupMeta(ctx, t.request.GroupId)
+	if err != nil {
+		return err
+	}
+
+	zoneID := t.request.ZoneId
+	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
+		zoneCells, err := t.cellSelector.ResolveCells(t.request.ZoneId)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
+			return errors.NewNonRetriableErrorf(
+				"placement group %v is in zone %v, not in requested zone %v",
+				t.request.GroupId,
+				pgMeta.ZoneID,
+				t.request.ZoneId,
+			)
+		}
+		zoneID = pgMeta.ZoneID
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return err
 	}

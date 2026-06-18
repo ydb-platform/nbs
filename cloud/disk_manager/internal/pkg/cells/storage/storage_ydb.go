@@ -75,6 +75,26 @@ func (s *storageYDB) GetRecentClusterCapacities(
 	return capacities, err
 }
 
+func (s *storageYDB) GetRecentAggregatedClusterCapacities(
+	ctx context.Context,
+	zone_id string,
+) ([]ClusterCapacity, error) {
+
+	var capacities []ClusterCapacity
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) (err error) {
+			capacities, err = s.getRecentAggregatedClusterCapacities(
+				ctx,
+				session,
+				zone_id,
+			)
+			return err
+		},
+	)
+	return capacities, err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *storageYDB) updateClusterCapacities(ctx context.Context,
@@ -176,4 +196,43 @@ func (s *storageYDB) getRecentClusterCapacities(
 	defer res.Close()
 
 	return scanClusterCapacities(ctx, res)
+}
+
+func (s *storageYDB) getRecentAggregatedClusterCapacities(
+	ctx context.Context,
+	session *persistence.Session,
+	zone_id string,
+) ([]ClusterCapacity, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $zone_id as Utf8;
+
+		$recent = (
+			SELECT
+				t.cell_id,
+				t.free_bytes,
+				t.total_bytes,
+				ROW_NUMBER() OVER
+				(PARTITION BY t.cell_id, t.kind ORDER BY t.created_at DESC) AS row_number
+			FROM cluster_capacity AS t
+			WHERE t.zone_id = $zone_id
+		);
+		SELECT
+			cell_id,
+			SUM(free_bytes) AS free_bytes,
+			SUM(total_bytes) AS total_bytes
+		FROM $recent
+		WHERE row_number = 1
+		GROUP BY cell_id
+	`, s.tablesPath),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zone_id)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	return scanAggregatedClusterCapacities(ctx, res, zone_id)
 }

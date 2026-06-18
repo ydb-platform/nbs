@@ -2,11 +2,13 @@ package placementgroup
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
@@ -17,10 +19,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deletePlacementGroupTask struct {
-	storage    resources.Storage
-	nbsFactory nbs.Factory
-	request    *protos.DeletePlacementGroupRequest
-	state      *protos.DeletePlacementGroupTaskState
+	storage      resources.Storage
+	nbsFactory   nbs.Factory
+	cellSelector cells.CellSelector
+	request      *protos.DeletePlacementGroupRequest
+	state        *protos.DeletePlacementGroupTaskState
 }
 
 func (t *deletePlacementGroupTask) Save() ([]byte, error) {
@@ -43,11 +46,6 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	placementGroup, err := t.storage.DeletePlacementGroup(
@@ -65,6 +63,28 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 			"id %v is not accepted",
 			t.request.GroupId,
 		)
+	}
+
+	zoneID := t.request.ZoneId
+	if len(placementGroup.ZoneID) > 0 {
+		zoneCells, err := t.cellSelector.ResolveCells(t.request.ZoneId)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(zoneCells, placementGroup.ZoneID) {
+			return errors.NewNonRetriableErrorf(
+				"placement group %v is in zone %v, not in requested zone %v",
+				t.request.GroupId,
+				placementGroup.ZoneID,
+				t.request.ZoneId,
+			)
+		}
+		zoneID = placementGroup.ZoneID
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
 	}
 
 	err = client.DeletePlacementGroup(ctx, t.request.GroupId)
