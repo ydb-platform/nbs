@@ -24,7 +24,7 @@ void TDirectoryEntryVersionCache::UnregisterHandle(fuse_ino_t directory)
     }
 }
 
-void TDirectoryEntryVersionCache::ChangeVersion(
+void TDirectoryEntryVersionCache::AdvanceVersion(
     fuse_ino_t directory,
     const TString& name,
     ui64 version)

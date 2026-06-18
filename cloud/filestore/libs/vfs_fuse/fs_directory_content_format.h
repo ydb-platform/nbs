@@ -38,7 +38,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 using TNodeIdVisitor = std::function<bool(ui64)>;
-using TDirectoryEntryVisitor = std::function<bool(ui64, TStringBuf)>;
+using TDirectoryEntryVisitor = std::function<bool(TStringBuf)>;
 NProto::TError ResetCacheTimeouts(
     char* data,
     ui64 len,

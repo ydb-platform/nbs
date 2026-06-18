@@ -33,7 +33,7 @@ public:
         TLog log,
         TDirectoryHandleModuleStatsPtr stats,
         TDirectoryHandleStoragePtr storage,
-        TDirectoryEntryVersionCache* directoryEntryVersionCache = nullptr);
+        TDirectoryEntryVersionCache* directoryEntryVersionCache);
 
     ui64 CreateHandle(fuse_ino_t ino);
 

@@ -13,7 +13,7 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
         TDirectoryEntryVersionCache cache;
 
         cache.UnregisterHandle(1);
-        cache.ChangeVersion(1, "child", 10);
+        cache.AdvanceVersion(1, "child", 10);
 
         UNIT_ASSERT_VALUES_EQUAL(0, cache.GetVersion(1, "child"));
 
@@ -27,13 +27,13 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
         TDirectoryEntryVersionCache cache;
         cache.RegisterHandle(1);
 
-        cache.ChangeVersion(1, "child", 10);
+        cache.AdvanceVersion(1, "child", 10);
         UNIT_ASSERT_VALUES_EQUAL(10, cache.GetVersion(1, "child"));
 
-        cache.ChangeVersion(1, "child", 5);
+        cache.AdvanceVersion(1, "child", 5);
         UNIT_ASSERT_VALUES_EQUAL(10, cache.GetVersion(1, "child"));
 
-        cache.ChangeVersion(1, "child", 15);
+        cache.AdvanceVersion(1, "child", 15);
         UNIT_ASSERT_VALUES_EQUAL(15, cache.GetVersion(1, "child"));
     }
 
@@ -42,7 +42,7 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
         TDirectoryEntryVersionCache cache;
         cache.RegisterHandle(1);
         cache.RegisterHandle(1);
-        cache.ChangeVersion(1, "child", 10);
+        cache.AdvanceVersion(1, "child", 10);
 
         cache.UnregisterHandle(1);
         UNIT_ASSERT_VALUES_EQUAL(10, cache.GetVersion(1, "child"));
@@ -60,9 +60,9 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
         cache.RegisterHandle(1);
         cache.RegisterHandle(2);
 
-        cache.ChangeVersion(1, "child", 10);
-        cache.ChangeVersion(1, "other", 20);
-        cache.ChangeVersion(2, "child", 30);
+        cache.AdvanceVersion(1, "child", 10);
+        cache.AdvanceVersion(1, "other", 20);
+        cache.AdvanceVersion(2, "child", 30);
 
         UNIT_ASSERT_VALUES_EQUAL(10, cache.GetVersion(1, "child"));
         UNIT_ASSERT_VALUES_EQUAL(20, cache.GetVersion(1, "other"));

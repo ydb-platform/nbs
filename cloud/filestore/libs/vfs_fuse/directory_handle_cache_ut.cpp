@@ -92,7 +92,8 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
         return TDirectoryHandleCache(
             Log,
             stats,
-            CreateStorage(stats, persistentHandleMaxSize));
+            CreateStorage(stats, persistentHandleMaxSize),
+            nullptr);
     }
 };
 
@@ -144,7 +145,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
     Y_UNIT_TEST(ShouldReturnChunkForClosedHandleContentUpdate)
     {
-        auto cache = TDirectoryHandleCache(Log, CreateStats(), nullptr);
+        auto cache = TDirectoryHandleCache(Log, CreateStats(), nullptr, nullptr);
 
         const ui64 id = cache.CreateHandle(42);
         auto handle = cache.FindHandle(id);
@@ -316,7 +317,8 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             NMetrics::CreateMetricsRegistryStub();
         stats->RegisterCounters(metricsRegistry, aggregatableMetricsRegistry);
 
-        auto cache = TDirectoryHandleCache(Log, stats, CreateStorage(stats));
+        auto cache =
+            TDirectoryHandleCache(Log, stats, CreateStorage(stats), nullptr);
 
         const ui64 id = cache.CreateHandle(42);
         auto handle = cache.FindHandle(id);
@@ -379,7 +381,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         const ui64 id = cache.CreateHandle(42);
 
-        entryVersionCache.ChangeVersion(42, "child", 10);
+        entryVersionCache.AdvanceVersion(42, "child", 10);
         UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
 
         UNIT_ASSERT(cache.RemoveHandle(id, 42));
@@ -398,7 +400,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         const ui64 firstId = cache.CreateHandle(42);
         const ui64 secondId = cache.CreateHandle(42);
 
-        entryVersionCache.ChangeVersion(42, "child", 10);
+        entryVersionCache.AdvanceVersion(42, "child", 10);
         UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
 
         UNIT_ASSERT(cache.RemoveHandle(firstId, 42));
@@ -420,8 +422,8 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         cache.CreateHandle(42);
         cache.CreateHandle(43);
 
-        entryVersionCache.ChangeVersion(42, "child1", 10);
-        entryVersionCache.ChangeVersion(43, "child2", 20);
+        entryVersionCache.AdvanceVersion(42, "child1", 10);
+        entryVersionCache.AdvanceVersion(43, "child2", 20);
 
         cache.Clear();
 
@@ -441,8 +443,8 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         cache.CreateHandle(42);
         cache.CreateHandle(43);
 
-        entryVersionCache.ChangeVersion(42, "child1", 10);
-        entryVersionCache.ChangeVersion(43, "child2", 20);
+        entryVersionCache.AdvanceVersion(42, "child1", 10);
+        entryVersionCache.AdvanceVersion(43, "child2", 20);
 
         cache.Reset();
 
@@ -472,7 +474,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         UNIT_ASSERT(cache.FindHandle(handleId));
 
-        entryVersionCache.ChangeVersion(100, "child", 10);
+        entryVersionCache.AdvanceVersion(100, "child", 10);
         UNIT_ASSERT_VALUES_EQUAL(
             10,
             entryVersionCache.GetVersion(100, "child"));

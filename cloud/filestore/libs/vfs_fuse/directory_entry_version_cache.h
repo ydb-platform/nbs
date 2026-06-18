@@ -33,7 +33,7 @@ private:
 public:
     void RegisterHandle(fuse_ino_t directory);
     void UnregisterHandle(fuse_ino_t directory);
-    void ChangeVersion(fuse_ino_t directory, const TString& name, ui64 version);
+    void AdvanceVersion(fuse_ino_t directory, const TString& name, ui64 version);
     ui64 GetVersion(fuse_ino_t directory, TStringBuf name) const;
 };
 

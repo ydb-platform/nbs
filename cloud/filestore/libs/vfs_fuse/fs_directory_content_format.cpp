@@ -112,7 +112,6 @@ NProto::TError ResetCacheTimeouts(
 
         if (de->dirent.ino != MissingNodeId &&
             shouldResetEntryTimeout(
-                de->dirent.ino,
                 TStringBuf(de->dirent.name, de->dirent.namelen)))
         {
             de->entry_out.entry_valid = 0;

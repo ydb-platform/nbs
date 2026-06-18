@@ -157,7 +157,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             [] (ui64 ino) {
                 return ino != 10003 && ino != MissingNodeId;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -200,7 +200,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -245,7 +245,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -314,7 +314,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 seenInos.push_back(ino);
                 return true;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -346,7 +346,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -398,7 +398,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -443,7 +443,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return false;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -460,7 +460,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return false;
             },
-            [] (ui64, TStringBuf) {
+            [] (TStringBuf) {
                 return true;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));

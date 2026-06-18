@@ -100,7 +100,7 @@ void TFileSystem::ReadDir(
                 return fs.NodeCache.GetNodeVersion(nodeId) >
                        content.CacheVersion;
             },
-            [&] (ui64, TStringBuf name) {
+            [&] (TStringBuf name) {
                 return fs.DirectoryEntryVersionCache.GetVersion(ino, name) >
                        content.CacheVersion;
             });

@@ -207,7 +207,7 @@ void TFileSystem::InvalidateDirectoryEntryInCache(
         << " " << name.Quote()
         << ", version: " << version);
 
-    DirectoryEntryVersionCache.ChangeVersion(parent, name, version);
+    DirectoryEntryVersionCache.AdvanceVersion(parent, name, version);
 }
 
 void TFileSystem::UpdateXAttrCache(
