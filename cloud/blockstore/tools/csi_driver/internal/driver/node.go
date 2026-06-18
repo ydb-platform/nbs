@@ -1287,33 +1287,6 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 		fsConfig,
 		endpointDir)
 
-	if fsConfig.SizeGb == 0 {
-		// legacy local filestore config - passthrough StartEndpoint to nfs-local service
-		if s.nfsLocalClient == nil {
-			return fmt.Errorf("nfs local client wasn't created")
-		}
-		_, err := s.nfsLocalClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
-			Endpoint: &nfsapi.TEndpointConfig{
-				SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-				FileSystemId:     fsConfig.Id,
-				ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-				VhostQueuesCount: vhostSettings.queuesCount,
-				Persistent:       true,
-			},
-		})
-		if err != nil {
-			if s.IsGrpcTimeoutError(err) {
-				s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-					SocketPath: filepath.Join(endpointDir, nfsSocketName),
-				})
-			}
-
-			return fmt.Errorf("failed to start nfs local endpoint: %w", err)
-		}
-
-		return nil
-	}
-
 	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
 		return fmt.Errorf("nfs local clients weren't created")
 	}
@@ -1619,22 +1592,6 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 	stageData *StageData) error {
 
 	log.Printf("csi.nodeUnstageLocalFileStoreStopEndpoint: fsConfig=%+v, stageData=%+v", fsConfig, stageData)
-
-	if fsConfig.SizeGb == 0 {
-		// legacy local filestore config - passthrough StopEndpoint to nfs-local service
-		if s.nfsLocalClient == nil {
-			return fmt.Errorf("NFS local clients wasn't created")
-		}
-
-		_, err := s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
-		})
-		if err != nil {
-			return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop local nfs endpoint (%T)", s.nfsLocalClient)
-		}
-
-		return nil
-	}
 
 	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
 		return fmt.Errorf("NFS local clients weren't created")
