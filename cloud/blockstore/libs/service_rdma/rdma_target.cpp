@@ -318,10 +318,6 @@ private:
                                     response,
                                     "ReadBlocks");
                             }
-                            response = NProto::TReadBlocksLocalResponse{};
-                            *response.MutableError() = MakeError(
-                                E_REJECTED,
-                                "Unable to serialize ReadBlocks response");
                             if (auto ep = endpoint.lock()) {
                                 ep->SendError(
                                     context,
@@ -424,10 +420,6 @@ private:
                                     response,
                                     "WriteBlocks");
                             }
-                            response = NProto::TWriteBlocksLocalResponse{};
-                            *response.MutableError() = MakeError(
-                                E_REJECTED,
-                                "Unable to serialize WriteBlocks response");
                             if (auto ep = endpoint.lock()) {
                                 ep->SendError(
                                     context,

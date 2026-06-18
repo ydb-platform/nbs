@@ -48,7 +48,7 @@ public:
 
 class TTestServer: public NCloud::NStorage::NRdma::IServer
 {
-    std::shared_ptr<TTestEndpoint> MockEndpoint;
+    std::shared_ptr<TTestEndpoint> Endpoint;
     NCloud::NStorage::NRdma::IServerHandlerPtr Handler;
 
 public:
@@ -60,8 +60,8 @@ public:
         Y_UNUSED(host);
         Y_UNUSED(port);
         Handler = std::move(handler);
-        MockEndpoint = std::make_shared<TTestEndpoint>();
-        return MockEndpoint;
+        Endpoint = std::make_shared<TTestEndpoint>();
+        return Endpoint;
     }
 
     void Start() override {}
@@ -75,7 +75,7 @@ public:
 
     std::shared_ptr<TTestEndpoint> GetEndpoint() const
     {
-        return MockEndpoint;
+        return Endpoint;
     }
 };
 
@@ -99,7 +99,7 @@ struct TTestEnv
 
 TTestEnv CreateTestEnv(IBlockStorePtr service)
 {
-    auto mockServer = std::make_shared<TTestServer>();
+    auto server = std::make_shared<TTestServer>();
 
     NProto::TRdmaTarget rdmaTargetProto;
     auto config =
@@ -112,12 +112,12 @@ TTestEnv CreateTestEnv(IBlockStorePtr service)
         config,
         std::move(logging),
         std::move(traceSerializer),
-        mockServer,
+        server,
         std::move(service));
 
     target->Start();
 
-    return TTestEnv{std::move(mockServer), std::move(target)};
+    return TTestEnv{std::move(server), std::move(target)};
 }
 
 }   // namespace
