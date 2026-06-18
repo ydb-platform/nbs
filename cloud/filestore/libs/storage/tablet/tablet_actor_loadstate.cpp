@@ -201,6 +201,34 @@ void TIndexTabletActor::ExecuteTx_LoadState(
         LogTag << " Completed preparing tablet state");
 }
 
+void TIndexTabletActor::ApplyStorageConfigOverrides(
+    const TActorContext& ctx,
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& fileSystemId)
+{
+    Config->Reset(BaseStorageConfig);
+
+    // Features config is applied first, then the per-tablet StorageConfig
+    // override is merged on top.
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Setting CloudId=" << cloudId << ", FolderId=" << folderId
+               << ", EntityId=" << fileSystemId
+               << " for the storage config features overrides");
+    Config->SetCloudFolderEntity(cloudId, folderId, fileSystemId);
+
+    if (StorageConfigOverride.ByteSize()) {
+        Config->Merge(StorageConfigOverride);
+        LOG_INFO_S(
+            ctx,
+            TFileStoreComponents::TABLET,
+            LogTag << " Merged per-tablet StorageConfig override on top of "
+                      "features config");
+    }
+}
+
 void TIndexTabletActor::CompleteAdapterLoadState(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadState& args)
@@ -276,17 +304,6 @@ void TIndexTabletActor::CompleteAdapterLoadState(
 
     RunRegularTasks(ctx);
 
-    LOG_INFO_S(
-        ctx,
-        TFileStoreComponents::TABLET,
-        LogTag << " Setting CloudId=" << GetCloudId() << ", FolderId="
-               << GetFolderId() << ", EntityId=" << GetFileSystemId()
-               << " for the storage config features overrides");
-    Config->SetCloudFolderEntity(
-        GetCloudId(),
-        GetFolderId(),
-        GetFileSystemId());
-
     CompleteStateLoad();
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
@@ -299,10 +316,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
 {
     if (args.StorageConfig.Defined()) {
         StorageConfigOverride = *args.StorageConfig;
-        Config->Merge(*args.StorageConfig.Get());
-        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-            LogTag << " Merge StorageConfig with config from tablet database");
     }
+
+    ApplyStorageConfigOverrides(
+        ctx,
+        args.FileSystem.GetCloudId(),
+        args.FileSystem.GetFolderId(),
+        args.FileSystem.GetFileSystemId());
 
     if (HasError(args.Error)) {
         LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,
@@ -513,17 +533,6 @@ void TIndexTabletActor::CompleteTx_LoadState(
         LogTag << " Scheduling OpLog ops");
     ReplayOpLog(ctx, args.OpLog);
     RunRegularTasks(ctx);
-
-    LOG_INFO_S(
-        ctx,
-        TFileStoreComponents::TABLET,
-        LogTag << " Setting CloudId=" << GetCloudId() << ", FolderId="
-               << GetFolderId() << ", EntityId=" << GetFileSystemId()
-               << " for the storage config features overrides");
-    Config->SetCloudFolderEntity(
-        GetCloudId(),
-        GetFolderId(),
-        GetFileSystemId());
 
     CompleteStateLoad();
 

@@ -181,6 +181,7 @@ private:
 
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
+    NProto::TStorageConfig BaseStorageConfig;
 
     ui32 BackpressureErrorCount = 0;
     TInstant BackpressurePeriodStart;
@@ -530,6 +531,12 @@ private:
     void CompleteAdapterLoadState(
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TLoadState& args);
+
+    void ApplyStorageConfigOverrides(
+        const NActors::TActorContext& ctx,
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fileSystemId);
 
     bool IsMainTablet() const;
     bool BehaveAsShard(const NProto::THeaders& headers) const;

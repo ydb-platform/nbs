@@ -643,6 +643,11 @@ void TStorageConfig::Merge(const NProto::TStorageConfig& storageConfig)
     ProtoConfig.MergeFrom(storageConfig);
 }
 
+void TStorageConfig::Reset(const NProto::TStorageConfig& storageConfig)
+{
+    ProtoConfig = storageConfig;
+}
+
 TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     const TString& name) const
 {
