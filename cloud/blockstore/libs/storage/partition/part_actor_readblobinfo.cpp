@@ -51,9 +51,6 @@ bool TPartitionActor::PrepareCompactionReadBlobInfo(
 
     bool ready = true;
 
-    State->IncrementBlockMaskReadDuringCompaction(
-        args.BlobsToReadBlockMasks.size());
-
     for (size_t i = 0; i < args.BlobsToReadBlockMasks.size(); ++i) {
         TMaybe<TBlockMask> mask;
         if (!db.ReadBlockMask(args.BlobsToReadBlockMasks[i], mask)) {
@@ -117,6 +114,9 @@ void TPartitionActor::CompleteCompactionReadBlobInfo(
         TStringBuilder() << "Blob metas size mismatch: "
                          << args.BlobMetas.size()
                          << " != " << args.BlobsToReadBlobMetas.size());
+
+    State->IncrementBlockMaskReadDuringCompaction(
+        args.BlobsToReadBlockMasks.size());
 
     TRequestScope timer(*args.RequestInfo);
 
