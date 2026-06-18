@@ -80,8 +80,13 @@ void TIndexTabletActor::HandleUpdateLeakyBucketCounters(
     const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& /*ev*/,
     const NActors::TActorContext& ctx)
 {
-    // update write cost multiplier for metrics
-    UpdateWriteCostMultiplierDueToBackpressure();
+    const bool throttlingEnabled =
+        Config->GetThrottlingEnabled() &&
+        GetPerformanceProfile().GetThrottlingEnabled();
+    if (throttlingEnabled || SoftBackpressureThrottlingActive) {
+        // update write cost multiplier for metrics
+        UpdateWriteCostMultiplierDueToBackpressure();
+    }
 
     const ui64 currentRate = std::ceil(
         GetThrottlingPolicy().CalculateCurrentSpentBudgetShare(ctx.Now()) * 100);
@@ -162,9 +167,26 @@ bool TIndexTabletActor::ThrottleIfNeeded(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    if (!Config->GetThrottlingEnabled() ||
-        !GetPerformanceProfile().GetThrottlingEnabled() ||
-        ev->Get()->Record.GetHeaders().GetThrottlingDisabled())
+    if (ev->Get()->Record.GetHeaders().GetThrottlingDisabled()) {
+        return false;
+    }
+
+    const bool throttlingEnabled =
+        Config->GetThrottlingEnabled() &&
+        GetPerformanceProfile().GetThrottlingEnabled();
+    const bool hasPostponedRequests = Throttler &&
+        Throttler->GetPostponedRequestsCount();
+    const bool softBackpressureThrottlingEnabled =
+        !throttlingEnabled &&
+        CalculateWriteCostMultiplierBackpressure() > 0.0;
+
+    SetSoftBackpressureThrottlingActive(
+        softBackpressureThrottlingEnabled,
+        hasPostponedRequests);
+
+    if (!throttlingEnabled &&
+        !softBackpressureThrottlingEnabled &&
+        !hasPostponedRequests)
     {
         return false;
     }

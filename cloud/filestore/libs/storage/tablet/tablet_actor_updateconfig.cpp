@@ -301,6 +301,7 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     UpdateLogTag();
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
+    SoftBackpressureThrottlingActive = false;
     ResetThrottlingPolicy();
 
     ApplyStorageConfigOverrides(

@@ -294,6 +294,7 @@ void TIndexTabletActor::CompleteAdapterLoadState(
 
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
+    SoftBackpressureThrottlingActive = false;
     ResetThrottlingPolicy();
 
     if (FastShardServer) {
@@ -527,6 +528,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
+    SoftBackpressureThrottlingActive = false;
     ResetThrottlingPolicy();
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,

@@ -1,5 +1,7 @@
 #include "tablet_actor.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
@@ -378,11 +380,10 @@ TIndexTabletActor::GetBackpressureValues() const
     };
 }
 
-void TIndexTabletActor::UpdateWriteCostMultiplierDueToBackpressure()
+double TIndexTabletActor::CalculateWriteCostMultiplierBackpressure() const
 {
     if (!Config->GetSoftBackpressureEnabled()) {
-        AccessThrottlingPolicy().UpdateWriteCostMultiplierDueToBackpressure(0.0);
-        return;
+        return 0.0;
     }
 
     const auto bpThresholds = BuildBackpressureThresholds();
@@ -427,11 +428,14 @@ void TIndexTabletActor::UpdateWriteCostMultiplierDueToBackpressure()
             bpThresholds.CollectGarbage,
             bpValues.CollectGarbage));
 
-    AccessThrottlingPolicy().UpdateWriteCostMultiplierDueToBackpressure(
-        backpressure);
+    return backpressure;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+void TIndexTabletActor::UpdateWriteCostMultiplierDueToBackpressure()
+{
+    AccessThrottlingPolicy().UpdateWriteCostMultiplierDueToBackpressure(
+        CalculateWriteCostMultiplierBackpressure());
+}
 
 void TIndexTabletActor::ResetThrottlingPolicy()
 {
@@ -444,6 +448,29 @@ void TIndexTabletActor::ResetThrottlingPolicy()
     } else {
         Throttler->ResetPolicy(AccessThrottlingPolicy());
     }
+}
+
+void TIndexTabletActor::SetSoftBackpressureThrottlingActive(
+    bool active,
+    bool hasPostponedRequests)
+{
+    if (SoftBackpressureThrottlingActive == active) {
+        return;
+    }
+
+    if (hasPostponedRequests) {
+        return;
+    }
+
+    SoftBackpressureThrottlingActive = active;
+
+    TThrottlerConfig config;
+    Convert(GetPerformanceProfile(), config);
+    if (SoftBackpressureThrottlingActive) {
+        ApplySoftBackpressureParameters(*Config, config.DefaultParameters);
+    }
+    AccessThrottlingPolicy().Reset(config);
+    ResetThrottlingPolicy();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

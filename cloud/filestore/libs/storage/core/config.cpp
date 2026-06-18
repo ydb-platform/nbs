@@ -373,6 +373,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(StatFileStoreCacheTTL,              TDuration,  TDuration::Zero()     )\
                                                                                \
     xxx(ExternalReadDataPayload,                bool,   false                 )\
+    xxx(SoftBackpressureMaxWriteBandwidth,             ui32,    10'240        )\
+    xxx(SoftBackpressureMaxReadBandwidth,              ui32,    30'720        )\
+    xxx(SoftBackpressureMaxWriteIops,                  ui32,    10'000        )\
+    xxx(SoftBackpressureMaxReadIops,                   ui32,    100'000       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

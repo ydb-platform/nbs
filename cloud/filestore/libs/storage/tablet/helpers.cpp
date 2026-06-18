@@ -1,6 +1,10 @@
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/config.h>
+
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
+
+#include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -321,6 +325,37 @@ void Convert(
         l.MaxPostponedCount = src.GetMaxPostponedCount();
         l.MaxPostponedTime = TDuration::MilliSeconds(src.GetMaxPostponedTime());
         l.MaxWriteCostMultiplier = src.GetMaxWriteCostMultiplier();
+    }
+}
+
+void ApplySoftBackpressureParameters(
+    const TStorageConfig& storageConfig,
+    TDefaultParameters& parameters)
+{
+    const ui32 maxWriteBandwidth =
+        storageConfig.GetSoftBackpressureMaxWriteBandwidth();
+    if (maxWriteBandwidth) {
+        parameters.MaxWriteBandwidth =
+            static_cast<ui64>(maxWriteBandwidth) * 1_MB;
+    }
+
+    const ui32 maxReadBandwidth =
+        storageConfig.GetSoftBackpressureMaxReadBandwidth();
+    if (maxReadBandwidth) {
+        parameters.MaxReadBandwidth =
+            static_cast<ui64>(maxReadBandwidth) * 1_MB;
+    }
+
+    const ui32 maxWriteIops =
+        storageConfig.GetSoftBackpressureMaxWriteIops();
+    if (maxWriteIops) {
+        parameters.MaxWriteIops = maxWriteIops;
+    }
+
+    const ui32 maxReadIops =
+        storageConfig.GetSoftBackpressureMaxReadIops();
+    if (maxReadIops) {
+        parameters.MaxReadIops = maxReadIops;
     }
 }
 

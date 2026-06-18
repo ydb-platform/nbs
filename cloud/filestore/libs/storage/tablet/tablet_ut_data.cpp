@@ -2672,6 +2672,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    void DoTestSoftBackpressureThrottlingDefaults(
+        const TFileSystemConfig& tabletConfig,
+        bool throttlingEnabled,
+        ui32 expectedError)
+    {
+        const ui32 block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(throttlingEnabled);
+        storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
+        storageConfig.SetSoftBackpressureEnabled(true);
+        storageConfig.SetSoftBackpressureMaxWriteBandwidth(1);
+        storageConfig.SetSoftBackpressureMaxWriteIops(1);
+        storageConfig.SetFlushThresholdForBackpressureSoft(block);
+        storageConfig.SetFlushThresholdForBackpressure(3 * block);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TFileSystemConfig config = tabletConfig;
+        config.PerformanceProfile.ThrottlingEnabled = throttlingEnabled;
+        config.PerformanceProfile.MaxReadIops = 1'000;
+        config.PerformanceProfile.MaxWriteIops = 1'000;
+        config.PerformanceProfile.MaxReadBandwidth = 64_MB;
+        config.PerformanceProfile.MaxWriteBandwidth = 64_MB;
+        config.PerformanceProfile.MaxPostponedWeight = 1; // reject delayed writes
+        config.PerformanceProfile.MaxWriteCostMultiplier = 5;
+        config.PerformanceProfile.MaxPostponedTime =
+            TDuration::Seconds(25).MilliSeconds();
+        config.PerformanceProfile.MaxPostponedCount = 64;
+        config.PerformanceProfile.BurstPercentage = 300;
+        config.PerformanceProfile.DefaultPostponedRequestWeight = 1_KB;
+        tablet.UpdateConfig(config);
+
+        auto id = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        tablet.SendWriteDataRequest(handle, 0, block, 'a');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+
+        tablet.SendWriteDataRequest(handle, block, block, 'b');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+
+        // soft limit: 1 block, hard limit: 3 blocks,
+        // we added 2 blocks
+        // with backpressure our multiplier will increase to 3
+        tablet.SendWriteDataRequest(handle, 2 * block, block, 'c');
+        tablet.AssertWriteDataQuickResponse(expectedError);
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST_16K(ShouldNotThrottleWritesDueToSoftBackpressureIfDisabled)
     {
         DoTestSoftBackpressureWriteThrottling(tabletConfig, false);
@@ -2680,6 +2743,109 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST_16K(ShouldThrottleWritesDueToSoftBackpressureIfEnabled)
     {
         DoTestSoftBackpressureWriteThrottling(tabletConfig, true);
+    }
+
+    TABLET_TEST_16K(ShouldThrottleWritesDueToSoftBackpressureIfThrottlingDisabled)
+    {
+        DoTestSoftBackpressureThrottlingDefaults(
+            tabletConfig,
+            false,
+            E_FS_THROTTLED);
+    }
+
+    TABLET_TEST_16K(ShouldNotApplySoftBackpressureDefaultsToEnabledThrottling)
+    {
+        DoTestSoftBackpressureThrottlingDefaults(
+            tabletConfig,
+            true,
+            S_OK);
+    }
+
+    TABLET_TEST_16K(
+        ShouldPreserveSoftBackpressureAccountingUntilPostponedQueueIsDrained)
+    {
+        const ui32 block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(true);
+        storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
+        storageConfig.SetSoftBackpressureEnabled(true);
+        storageConfig.SetWriteBlobThreshold(1_GB);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThresholdForBackpressureSoft(block);
+        storageConfig.SetFlushThresholdForBackpressure(4 * block);
+        storageConfig.SetSoftBackpressureMaxWriteBandwidth(1);
+        storageConfig.SetSoftBackpressureMaxWriteIops(1);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TFileSystemConfig config = tabletConfig;
+        config.PerformanceProfile.ThrottlingEnabled = false;
+        config.PerformanceProfile.MaxReadIops = 1'000;
+        config.PerformanceProfile.MaxWriteIops = 1'000;
+        config.PerformanceProfile.MaxReadBandwidth = 64_MB;
+        config.PerformanceProfile.MaxWriteBandwidth = 64_MB;
+        config.PerformanceProfile.MaxPostponedWeight = block;
+        config.PerformanceProfile.MaxWriteCostMultiplier = 5;
+        config.PerformanceProfile.MaxPostponedTime =
+            TDuration::Seconds(25).MilliSeconds();
+        config.PerformanceProfile.MaxPostponedCount = 64;
+        config.PerformanceProfile.BurstPercentage = 100;
+        config.PerformanceProfile.DefaultPostponedRequestWeight = 1_KB;
+        tablet.UpdateConfig(config);
+
+        auto id = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto writeDataThrottlingDisabled = [&](
+            ui64 offset,
+            ui32 len,
+            char fill)
+        {
+            auto request = tablet.CreateWriteDataRequest(
+                handle,
+                offset,
+                len,
+                fill);
+            request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+            tablet.SendRequest(std::move(request));
+        };
+
+        writeDataThrottlingDisabled(0, block, 'a');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+        writeDataThrottlingDisabled(block, block, 'b');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+
+        tablet.SendWriteDataRequest(handle, 2 * block, block, 'c');
+        // postponed write fills the soft-mode queue budget
+        tablet.AssertWriteDataNoResponse();
+
+        tablet.Flush();
+
+        tablet.SendWriteDataRequest(handle, 3 * block, block, 'd');
+        // flushing backpressure must not reset queued weight
+        tablet.AssertWriteDataQuickResponse(E_FS_THROTTLED);
+
+        tablet.AdvanceTime(TDuration::Hours(1));
+        // the original postponed write still completes
+        tablet.AssertWriteDataResponse(S_OK);
+
+        tablet.DestroyHandle(handle);
     }
 
     TABLET_TEST_16K(ShouldRejectWritesDueToBackpressure)

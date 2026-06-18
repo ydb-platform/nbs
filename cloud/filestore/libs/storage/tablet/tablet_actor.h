@@ -167,6 +167,7 @@ private:
 
     TThrottlerLogger ThrottlerLogger;
     ITabletThrottlerPtr Throttler;
+    bool SoftBackpressureThrottlingActive = false;
 
     TStorageConfigPtr Config;
     TDiagnosticsConfigPtr DiagConfig;
@@ -447,6 +448,10 @@ private:
     TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
+    void SetSoftBackpressureThrottlingActive(
+        bool active,
+        bool hasPostponedRequests);
+    double CalculateWriteCostMultiplierBackpressure() const;
     void UpdateWriteCostMultiplierDueToBackpressure();
 
     void ExecuteTx_AddBlob_Write(
