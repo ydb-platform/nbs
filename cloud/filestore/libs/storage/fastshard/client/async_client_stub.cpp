@@ -4,6 +4,8 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TAsyncClient::TAsyncClient() = default;
+
 NThreading::TFuture<IAsyncEndpointPtr> TAsyncClient::Connect(
     const TString& host,
     ui16 port)
