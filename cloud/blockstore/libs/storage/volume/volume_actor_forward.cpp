@@ -774,10 +774,10 @@ void TVolumeActor::ForwardRequest(
             case ELeadershipStatus::Follower: {
                 if (!isCopyingClient) {
                     // Any operations on the follower disk are prohibited for
-                    // an ordinary client.
+                    // an ordinary client. Reconnect to the principal disk.
                     replyError(MakeError(
-                        E_PRECONDITION_FAILED,
-                        makeMessage(NLog::PRI_ERROR)));
+                        E_BS_INVALID_SESSION,
+                        makeMessage(NLog::PRI_INFO)));
                     return;
                 }
                 break;
