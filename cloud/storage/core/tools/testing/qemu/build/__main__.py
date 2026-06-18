@@ -180,7 +180,7 @@ def tag_tgz_path(path, git_tag):
     return os.path.join(directory, '{}-{}{}'.format(basename, tag, extension))
 
 
-def qemu_config(args):
+def qemu_config(args, src_dir):
     config = list(QEMU_CONFIG)
 
     for package, version in QEMU_CONFIG_MIN_VERSION:
