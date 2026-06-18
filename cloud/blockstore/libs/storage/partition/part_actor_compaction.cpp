@@ -1905,6 +1905,9 @@ bool TPartitionActor::PrepareCompaction(
         return ready;
     }
 
+    State->IncrementBlockMaskReadDuringCompaction(
+        args.BlobsToReadBlockMasks.size());
+
     for (const auto& blobId: args.BlobsToReadBlockMasks) {
         TMaybe<TBlockMask> blockMask;
         if (db.ReadBlockMask(blobId, blockMask)) {
@@ -1965,6 +1968,11 @@ void TPartitionActor::CompleteCompaction(
     TTxPartition::TCompaction& args)
 {
     TRequestScope timer(*args.RequestInfo);
+
+    for (auto& rangeCompaction: args.RangeCompactions) {
+        State->IncrementBlobsProcessedDuringCompaction(
+            rangeCompaction.AffectedBlobs.size());
+    }
 
     const auto compactionTxTime = ctx.Now() - args.TxStarted;
 

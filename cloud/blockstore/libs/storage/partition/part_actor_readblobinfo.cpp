@@ -51,6 +51,9 @@ bool TPartitionActor::PrepareCompactionReadBlobInfo(
 
     bool ready = true;
 
+    State->IncrementBlockMaskReadDuringCompaction(
+        args.BlobsToReadBlockMasks.size());
+
     for (size_t i = 0; i < args.BlobsToReadBlockMasks.size(); ++i) {
         TMaybe<TBlockMask> mask;
         if (!db.ReadBlockMask(args.BlobsToReadBlockMasks[i], mask)) {

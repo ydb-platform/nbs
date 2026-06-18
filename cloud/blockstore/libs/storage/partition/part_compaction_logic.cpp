@@ -410,8 +410,6 @@ void FillBlobsInfoToRead(
     THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas)
 {
     for (auto& kv: args.AffectedBlobs) {
-        state.IncrementBlobsProcessedDuringCompaction();
-
         if (state.GetCleanupQueue().HasBlob(kv.first)) {
             kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
             continue;
@@ -427,7 +425,6 @@ void FillBlobsInfoToRead(
         if (!blobFullyAvailableForRangeCompaction ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
-            state.IncrementBlockMaskReadDuringCompaction();
             blobsToReadBlockMasks.emplace(kv.first);
         }
     }
