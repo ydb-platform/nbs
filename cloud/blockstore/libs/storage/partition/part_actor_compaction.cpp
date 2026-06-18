@@ -40,7 +40,13 @@ TVector<ui32> EnsureBlockChecksums(
     TVector<ui32> result;
     result.reserve(blockChecksums.size());
     for (const auto& checksum: blockChecksums) {
-        STORAGE_VERIFY(checksum, TWellKnownEntityTypes::TABLET, tabletId);
+        if (!checksum) {
+            ReportBlockChecksumAbsent(
+                "block checksum is absent",
+                {{"tabletId", ToString(tabletId)}});
+            result.push_back(0);
+            continue;
+        }
         result.push_back(*checksum);
     }
     return result;
@@ -907,12 +913,15 @@ void TCompactionActor::HandleReadBlobResponse(
     const auto n = Min(batch.Requests.size(), msg->BlockChecksums.size());
     for (ui32 i = 0; i < n; ++i) {
         const auto* r = batch.Requests[i];
-        STORAGE_VERIFY(
-            rc.BlockChecksums[r->IndexInBlobContent],
-            TWellKnownEntityTypes::TABLET,
-            TabletId);
-        const auto expectedChecksum =
-            *rc.BlockChecksums[r->IndexInBlobContent];
+        if (!rc.BlockChecksums[r->IndexInBlobContent]) {
+            ReportBlockChecksumAbsent(
+                "block checksum is absent",
+                {{"blobId", ToString(MakeBlobId(TabletId, r->BlobId))},
+                 {"blockIndex", r->BlockIndex},
+                 {"blobOffset", r->BlobOffset}});
+            rc.BlockChecksums[r->IndexInBlobContent] = 0;
+        }
+        const auto expectedChecksum = *rc.BlockChecksums[r->IndexInBlobContent];
 
         auto error = VerifyBlockChecksum(
             msg->BlockChecksums[i],

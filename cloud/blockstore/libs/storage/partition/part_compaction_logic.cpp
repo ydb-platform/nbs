@@ -92,10 +92,11 @@ void ApplyChecksumFixups(TRangeCompactionInfo& rc)
         Y_ABORT_UNLESS(ab);
         auto* meta = ab->BlobMeta.Get();
         Y_ABORT_UNLESS(meta);
-        if (fixup.BlobOffset < meta->BlockChecksumsSize()) {
-            rc.BlockChecksums[fixup.ChecksumIndex] =
-                meta->GetBlockChecksums(fixup.BlobOffset);
-        }
+
+        ui32 checksum = fixup.BlobOffset < meta->BlockChecksumsSize()
+                            ? meta->GetBlockChecksums(fixup.BlobOffset)
+                            : 0;
+        rc.BlockChecksums[fixup.ChecksumIndex] = checksum;
     }
 }
 
