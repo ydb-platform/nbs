@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 
+#include <cloud/storage/core/libs/common/block_data_ref.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -197,7 +198,7 @@ private:
         const NProto::TReadBlocksResponse& response,
         TStringBuf out,
         ui32 flags,
-        TGuardedSgList::TGuard& guard) const
+        TBlockDataRef data) const
     {
         return SUCCEEDED(response.GetError().GetCode())
                    ? TProtoMessageSerializer::SerializeWithData(
@@ -205,7 +206,7 @@ private:
                          TBlockStoreServerProtocol::EvReadBlocksResponse,
                          flags,
                          response,
-                         guard.Get())
+                         TBlockDataRefSpan{{data}})
                    : TProtoMessageSerializer::Serialize(
                          out,
                          TBlockStoreServerProtocol::EvReadBlocksResponse,
@@ -271,31 +272,29 @@ private:
              blockSize = request->GetBlockSize(),
              taskQueue = TaskQueue,
              endpoint = Endpoint,
-             weakSelf = weak_from_this()](auto future) mutable
+             weakSelf = weak_from_this()](
+                const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
             {
-                auto response = ExtractResponse(future);
-                FillResponse(callContext, response);
-
                 taskQueue->ExecuteSimple(
                     [=,
+                     future = future,
                      buffer = std::move(buffer),
                      guardedSgList = std::move(guardedSgList),
                      weakSelf = std::move(weakSelf)]() mutable
                     {
+                        auto response =
+                            SafeExecute<NProto::TReadBlocksLocalResponse>(
+                                [&] { return future.GetValue();});
+                        FillResponse(callContext, response);
+
+                        guardedSgList.Close();
+
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
                             // solution to avoid sending traces between nodes
                             response.MutableDeprecatedTrace()->Clear();
                             response.MutableHeaders()->ClearTrace();
-                        }
-
-                        auto guard = guardedSgList.Acquire();
-                        if (!guard) {
-                            *response.MutableError() = MakeError(
-                                E_CANCELLED,
-                                "failed to acquire sglist in Rdma ReadBlocks "
-                                "handler");
                         }
 
                         ui32 flags = 0;
@@ -310,17 +309,15 @@ private:
                                 response,
                                 out,
                                 flags,
-                                guard);
+                                TBlockDataRef{
+                                    buffer.Get().data(),
+                                    buffer.Get().length()});
                         } catch (...) {
                             if (auto self = weakSelf.lock()) {
                                 self->OnSerializeException(
                                     response,
                                     "ReadBlocks");
                             }
-                            response = NProto::TReadBlocksLocalResponse{};
-                            *response.MutableError() = MakeError(
-                                E_REJECTED,
-                                "Unable to serialize ReadBlocks response");
                             if (auto ep = endpoint.lock()) {
                                 ep->SendError(
                                     context,
@@ -357,6 +354,8 @@ private:
         LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
+        Y_ENSURE_RETURN(request->GetBlockSize() != 0, "empty BlockSize");
+
         auto [sglist, error] = SgListNormalize(
             {requestData.data(), requestData.length()},
             request->GetBlockSize());
@@ -375,16 +374,24 @@ private:
 
         future.Subscribe(
             [=,
+             guardedSgList = std::move(guardedSgList),
              taskQueue = TaskQueue,
              endpoint = Endpoint,
-             weakSelf = weak_from_this()](auto future)
+             weakSelf = weak_from_this()](
+                const TFuture<NProto::TWriteBlocksLocalResponse>&
+                    future) mutable
             {
-                auto response = ExtractResponse(future);
-                FillResponse(callContext, response);
-
                 taskQueue->ExecuteSimple(
-                    [=, response = std::move(response)]() mutable
+                    [=,
+                     guardedSgList = std::move(guardedSgList),
+                     future = future]() mutable
                     {
+                        auto response =
+                            SafeExecute<NProto::TWriteBlocksLocalResponse>(
+                                [&] { return future.GetValue(); });
+                        FillResponse(callContext, response);
+                        guardedSgList.Close();
+
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
@@ -413,10 +420,6 @@ private:
                                     response,
                                     "WriteBlocks");
                             }
-                            response = NProto::TWriteBlocksLocalResponse{};
-                            *response.MutableError() = MakeError(
-                                E_REJECTED,
-                                "Unable to serialize WriteBlocks response");
                             if (auto ep = endpoint.lock()) {
                                 ep->SendError(
                                     context,
