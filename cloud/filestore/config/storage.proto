@@ -808,4 +808,10 @@ message TStorageConfig
 
     // Makes tablet's DestroyHandle op handler reply before the tx is committed.
     optional bool TabletUnsafeAsyncDestroyHandleEnabled = 513;
+
+    // Allows flushing WriteData requests to the underlying storage in parallel.
+    // This significantly improves flushing performance but an external reader
+    // may observe the effects of newer writes before older ones.
+    // With parallel writes off, only sequential writes will be optimized.
+    optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 514;
 }

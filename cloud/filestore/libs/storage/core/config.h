@@ -66,6 +66,7 @@ public:
     TStorageConfig(const TStorageConfig&) = default;
 
     void Merge(const NProto::TStorageConfig& storageConfig);
+    void Reset(const NProto::TStorageConfig& storageConfig);
 
     TValueByName GetValueByName(const TString& fieldName) const;
 
@@ -342,6 +343,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+    bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;

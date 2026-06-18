@@ -1740,7 +1740,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             1,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             VolumeBlockCount,   // block count per partition
-            "vol2"));
+            "vol2",
+            "cloud",
+            "folder",
+            1, // partitionCount
+            0, // blocksPerStripe
+            "source-disk-id=vol1" // Created as follower for vol1
+        ));
         volume2.WaitReady();
         Volumes["vol2"] = {
             .VolumeClient = &volume2,
@@ -1798,10 +1804,15 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 checkWrite(volume1, CopyVolumeClientId, E_REJECTED);
                 checkZero(volume1, CopyVolumeClientId, E_REJECTED);
             }
-            {   // vol2 rejected IO with CopyVolumeClientId.
+            {   // vol2 accepted write-IO with CopyVolumeClientId.
                 checkRead(volume2, CopyVolumeClientId, E_ARGUMENT);
-                checkWrite(volume2, CopyVolumeClientId, E_REJECTED);
-                checkZero(volume2, CopyVolumeClientId, E_REJECTED);
+                checkWrite(volume2, CopyVolumeClientId, S_OK);
+                checkZero(volume2, CopyVolumeClientId, S_OK);
+            }
+            {   // vol2 rejected IO with "normal" clientId.
+                checkRead(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkWrite(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkZero(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
             }
         }
 
@@ -1836,6 +1847,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 checkRead(volume2, CopyVolumeClientId, E_ARGUMENT);
                 checkWrite(volume2, CopyVolumeClientId, S_OK);
                 checkZero(volume2, CopyVolumeClientId, S_OK);
+            }
+            {   // Follower rejected IO with "normal" clientId.
+                checkRead(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkWrite(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkZero(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
             }
         }
 
@@ -1879,6 +1895,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 checkRead(volume2, CopyVolumeClientId, E_ARGUMENT);
                 checkWrite(volume2, CopyVolumeClientId, S_OK);
                 checkZero(volume2, CopyVolumeClientId, S_OK);
+            }
+            {   // Follower rejected IO with "normal" clientId.
+                checkRead(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkWrite(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkZero(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
             }
         }
 
@@ -1936,8 +1957,14 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 checkZero(volume2, CopyVolumeClientId, E_REJECTED);
             }
 
+            {   // vol2 rejected IO with unknown clientid.
+                checkRead(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkWrite(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+                checkZero(volume2, clientInfo1.GetClientId(), E_BS_INVALID_SESSION);
+            }
+
             volume2.AddClient(clientInfo1);
-            {   // vol2 rejected IO with CopyVolumeClientId.
+            {   // vol2 accepted IO with "normal" clientId.
                 checkRead(volume2, clientInfo1.GetClientId(), S_OK);
                 checkWrite(volume2, clientInfo1.GetClientId(), S_OK);
                 checkZero(volume2, clientInfo1.GetClientId(), S_OK);

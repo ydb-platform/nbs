@@ -18,4 +18,6 @@ TStringBuf BlockMaskAsString(const TBlockMask& mask);
 
 bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount);
 
+TBlockMask GetFullBlockMask(ui32 blockCount);
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

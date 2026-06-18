@@ -68,6 +68,12 @@ struct TWriteBackCacheArgs
     // If the flag is enabled, WriteBackCache will generate WriteData requests
     // with iovecs.
     bool ZeroCopyWriteEnabled = false;
+
+    // Allows flushing WriteData requests to the underlying storage in parallel.
+    // This significantly improves flushing performance but an external reader
+    // may observe the effects of newer writes before older ones.
+    // With parallel writes off, only sequential writes will be optimized.
+    bool FlushWritesInParallelEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

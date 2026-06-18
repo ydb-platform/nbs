@@ -280,7 +280,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GuestPageCacheDisabled,                    bool,     false            )\
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
-    xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
+    xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
+    xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
     xxx(GuestCachingType,                                                      \
@@ -640,6 +641,11 @@ void TStorageConfig::SetCloudFolderEntity(
 void TStorageConfig::Merge(const NProto::TStorageConfig& storageConfig)
 {
     ProtoConfig.MergeFrom(storageConfig);
+}
+
+void TStorageConfig::Reset(const NProto::TStorageConfig& storageConfig)
+{
+    ProtoConfig = storageConfig;
 }
 
 TStorageConfig::TValueByName TStorageConfig::GetValueByName(
