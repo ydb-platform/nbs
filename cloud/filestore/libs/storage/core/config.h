@@ -428,6 +428,8 @@ public:
     ui64 GetCollectGarbageThresholdForBackpressureSoft() const;
 
     [[nodiscard]] TDuration GetStatFileStoreCacheTTL() const;
+
+    [[nodiscard]] bool GetExternalReadDataPayload() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

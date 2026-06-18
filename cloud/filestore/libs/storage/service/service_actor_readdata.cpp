@@ -137,6 +137,10 @@ private:
 
     void ReadData(const TActorContext& ctx, const TString& fallbackReason);
 
+    NProto::TError ProcessExternalPayload(
+        const TRope& payload,
+        NProto::TReadDataResponse& readDataResponse);
+
     void HandleReadDataResponse(
         const TEvService::TEvReadDataResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -723,6 +727,59 @@ void TReadDataActor::ReadData(
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
+NProto::TError TReadDataActor::ProcessExternalPayload(
+    const TRope& payload,
+    NProto::TReadDataResponse& readDataResponse)
+{
+    ui64 bufferSize = readDataResponse.GetLength();
+    if (payload.size() != bufferSize) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Payload has an incorrect size. Expected size: "
+                << bufferSize << " Actual size: " << payload.size());
+    }
+
+    ui64 remainingBufferSize = bufferSize;
+    auto it = payload.begin();
+    if (!ReadRequest.GetIovecs().empty()) {
+        for (auto& iovec: ReadRequest.GetIovecs()) {
+            ui64 currentOffset = 0;
+            while (iovec.GetLength() > currentOffset) {
+                ui64 dataToWrite =
+                    Min(iovec.GetLength() - currentOffset, remainingBufferSize);
+                if (dataToWrite == 0) {
+                    break;
+                }
+                TRopeUtils::Memcpy(
+                    reinterpret_cast<char*>(iovec.GetBase()),
+                    it,
+                    dataToWrite);
+                remainingBufferSize -= dataToWrite;
+                currentOffset += dataToWrite;
+                it += dataToWrite;
+            }
+        }
+    } else {
+        auto& buffer = *readDataResponse.MutableBuffer();
+        buffer.ReserveAndResize(bufferSize);
+        TRopeUtils::Memcpy(&buffer[0], it, payload.size());
+        remainingBufferSize -= payload.size();
+    }
+
+    if (remainingBufferSize != 0) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Failed to read buffer from payload. "
+                   " Expected buffer size: "
+                << bufferSize << " Actual bytes copied from payload: "
+                << bufferSize - remainingBufferSize);
+    }
+
+    return {};
+}
+
 void TReadDataActor::HandleReadDataResponse(
     const TEvService::TEvReadDataResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -752,6 +809,27 @@ void TReadDataActor::HandleReadDataResponse(
     if (!isResponseParsed) {
         auto* msg = ev->Get();
         response->Record = std::move(msg->Record);
+
+        ui64 bufferSize = response->Record.GetLength();
+        if (response->Record.GetBuffer().empty() && bufferSize != 0) {
+            if (msg->GetPayloadCount() != 1 ||
+                msg->GetTotalPayloadSize() != bufferSize)
+            {
+                HandleError(
+                    ctx,
+                    MakeError(
+                        E_ARGUMENT,
+                        "Payload is unavailable or has an incorrect size"));
+                return;
+            }
+            auto err = ProcessExternalPayload(
+                msg->GetPayload(0),
+                response->Record);
+            if (HasError(err)) {
+                HandleError(ctx, err);
+                return;
+            }
+        }
     }
 
     auto& record = response->Record;
@@ -1062,7 +1140,10 @@ void TStorageServiceActor::HandleReadData(
         std::move(shardState),
         session->MediaKind,
         useTwoStageRead,
-        filestore.GetFeatures().GetUseCustomReadDataResponseParser(),
+        // UseCustomReadDataResponseParser is deprecated and not compatible with
+        // ExternalReadDataPayload
+        filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
+            !filestore.GetFeatures().GetExternalReadDataPayload(),
         filestore.GetFeatures().GetZeroCopyReadEnabled());
 
     NCloud::Register(ctx, std::move(actor));
