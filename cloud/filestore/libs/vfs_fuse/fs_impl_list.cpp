@@ -101,7 +101,8 @@ void TFileSystem::ReadDir(
                        content.CacheVersion;
             },
             [&] (TStringBuf name) {
-                return fs.DirectoryEntryVersionCache.GetVersion(ino, name) >
+                return content.CacheVersion == 0 || // loaded from disk
+                       fs.DirectoryEntryVersionCache.GetVersion(ino, name) >
                        content.CacheVersion;
             });
 

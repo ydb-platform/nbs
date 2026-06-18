@@ -40,12 +40,6 @@ TDirectoryHandleCache::TDirectoryHandleCache(
         Storage->LoadHandles(Handles);
     }
 
-    if (DirectoryEntryVersionCache) {
-        for (const auto& [_, handle]: Handles) {
-            DirectoryEntryVersionCache->RegisterHandle(handle->Index);
-        }
-    }
-
     IncreaseStats(SumDirectoryHandlesStats(Handles), Handles.size());
 }
 

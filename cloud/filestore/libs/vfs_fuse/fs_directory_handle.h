@@ -25,6 +25,8 @@ struct TDirectoryContent
     TBufferPtr Content = nullptr;
     size_t Offset = 0;
     size_t Size = 0;
+    // GlobalCacheVersion starts from 1
+    // so this starting value is used to identify values loaded from disk
     ui64 CacheVersion = 0;
 
     const char* GetData() const

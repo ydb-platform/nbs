@@ -452,7 +452,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(43, "child2"));
     }
 
-    Y_UNIT_TEST(ShouldRegisterEntryVersionCacheForLoadedHandles)
+    Y_UNIT_TEST(ShouldNotRegisterEntryVersionCacheForLoadedHandles)
     {
         const ui64 handleId = 42;
         {
@@ -476,7 +476,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         entryVersionCache.AdvanceVersion(100, "child", 10);
         UNIT_ASSERT_VALUES_EQUAL(
-            10,
+            0,
             entryVersionCache.GetVersion(100, "child"));
     }
 
