@@ -114,6 +114,8 @@ void FillFeatures(
 
     features->SetUseCustomReadDataResponseParser(
         config.GetUseCustomReadDataResponseParser());
+
+    features->SetStatFileStoreCacheTTLMs(config.GetStatFileStoreCacheTTLMs());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -56,6 +56,7 @@ message TFileStoreFeatures
     bool UseListNodesInternal = 41;
     bool UseCustomReadDataResponseParser = 42;
     optional uint64 DirectoryHandlesPersistentHandleMaxSize = 43;
+    uint32 StatFileStoreCacheTTLMs = 44;
 }
 
 message TFileStore

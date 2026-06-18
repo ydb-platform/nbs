@@ -198,6 +198,9 @@ message TGetStorageStatsRequest
     // By default requests to shards do not fetch other shards, requests
     // to the main tablet fetch all the shards.
     EStatsRequestMode Mode = 8;
+
+    // If the cache is older than Now() - CacheTTL, it is not used.
+    uint32 CacheTTLMs = 9;
 }
 
 message TGetStorageStatsResponse

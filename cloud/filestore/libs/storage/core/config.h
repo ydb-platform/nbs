@@ -412,6 +412,8 @@ public:
     [[nodiscard]] ui32 GetFastShardServerPort() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
+
+    [[nodiscard]] ui32 GetStatFileStoreCacheTTLMs() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

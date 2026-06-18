@@ -793,4 +793,7 @@ message TStorageConfig
 
     // If this flag is on, new filesystems are created with CompressNodeRef.
     optional bool EnableNodeRefCompression = 504;
+
+    // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
+    optional uint32 StatFileStoreCacheTTLMs = 505;
 }
