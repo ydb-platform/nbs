@@ -2110,13 +2110,13 @@ func TestStorageYDBCreatePoolWithImageSize(t *testing.T) {
 	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
 
 	// Check idempotency.
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
 
 	baseDisks[0].CreateTaskID = "create"
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
@@ -2176,7 +2176,7 @@ func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
 	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
 
 	baseDisks[0].CreateTaskID = "create"
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
@@ -2347,7 +2347,7 @@ func TestStorageYDBRetireBaseDiskForDeletedPoolUsingImageSize(t *testing.T) {
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
