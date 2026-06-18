@@ -21,7 +21,11 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
+	monitoring_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/config"
+	monitoring_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
+	prometheus_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/monitoring/metrics"
 	test_config "github.com/ydb-platform/nbs/cloud/disk_manager/test/remote/cmd/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -48,6 +52,7 @@ const (
 	largeBlockSize        = 128 * 1024
 
 	resourceExpirationTimeout = 48 * time.Hour
+	periodicRunSleep          = 10 * time.Minute
 )
 
 var curLaunchID string
@@ -1502,10 +1507,57 @@ type testCase struct {
 	) (resources, error)
 }
 
+type remoteTestMetrics struct {
+	cleanupErrorsCount monitoring_metrics.Counter
+	fails              monitoring_metrics.CounterVec
+	success            monitoring_metrics.Counter
+}
+
+func newRemoteTestMetrics(
+	registry monitoring_metrics.Registry,
+) *remoteTestMetrics {
+
+	_ = registry.FuncGauge("remoteTestRunning", func() float64 {
+		return 1
+	})
+
+	return &remoteTestMetrics{
+		cleanupErrorsCount: registry.Counter("cleanupErrorsCount"),
+		fails: registry.CounterVec("fails", []string{
+			"testName",
+		}),
+		success: registry.Counter("success"),
+	}
+}
+
+func (m *remoteTestMetrics) reportCleanupError() {
+	m.cleanupErrorsCount.Inc()
+}
+
+func (m *remoteTestMetrics) reportFailure(testName string) {
+	m.fails.With(map[string]string{
+		"testName": testName,
+	}).Inc()
+}
+
+func (m *remoteTestMetrics) reportSuccess() {
+	m.success.Inc()
+}
+
+func newTestBlackList(testsBlackList []string) map[string]struct{} {
+	blackList := make(map[string]struct{}, len(testsBlackList))
+	for _, testName := range testsBlackList {
+		blackList[testName] = struct{}{}
+	}
+
+	return blackList
+}
+
 func runTests(
 	testConfig *test_config.TestConfig,
 	clientConfig *client_config.ClientConfig,
 	nbsConfig *nbs_client_config.ClientConfig,
+	testMetrics *remoteTestMetrics,
 ) error {
 
 	curLaunchID = generateID()
@@ -1533,11 +1585,14 @@ func runTests(
 		testConfig.GetZoneID(),
 	)
 	if err != nil {
+		testMetrics.reportCleanupError()
 		return fmt.Errorf(
 			"failed to cleanup resources from previous runs: %w",
 			err,
 		)
 	}
+
+	testsBlackList := newTestBlackList(testConfig.GetTestsBlackList())
 
 	tests := []testCase{
 		{
@@ -1595,10 +1650,16 @@ func runTests(
 	log.Printf("Starting tests")
 
 	for _, test := range tests {
+		if _, ok := testsBlackList[test.Name]; ok {
+			log.Printf("Skipping blacklisted test %v", test.Name)
+			continue
+		}
+
 		log.Printf("Starting test %v", test.Name)
 
 		se, err := test.Run(ctx, client, privateClient, testConfig, nbsConfig)
 		if err != nil {
+			testMetrics.reportFailure(test.Name)
 			return fmt.Errorf("test %v run failed: %w", test.Name, err)
 		}
 
@@ -1606,6 +1667,8 @@ func runTests(
 
 		err = cleanupResources(ctx, client, se)
 		if err != nil {
+			testMetrics.reportCleanupError()
+			testMetrics.reportFailure(test.Name)
 			return fmt.Errorf(
 				"test %v failed to cleanup resources from current run: %w",
 				test.Name,
@@ -1615,7 +1678,51 @@ func runTests(
 	}
 
 	log.Printf("All tests successfully finished")
+	testMetrics.reportSuccess()
 	return nil
+}
+
+func newRemoteTestMetricsFromConfig(
+	ctx context.Context,
+	testConfig *test_config.TestConfig,
+) *remoteTestMetrics {
+
+	if !testConfig.GetMetricsReportingEnabled() {
+		return newRemoteTestMetrics(monitoring_metrics.NewEmptyRegistry())
+	}
+
+	log.Printf("Starting Prometheus metrics reporting")
+
+	monPort := testConfig.GetMonitoringPort()
+	mon := monitoring.NewMonitoring(
+		&monitoring_config.MonitoringConfig{
+			Port: &monPort,
+		},
+		prometheus_metrics.NewPrometheusRegistry,
+	)
+	mon.Start(ctx)
+
+	return newRemoteTestMetrics(mon.NewRegistry("remote_test"))
+}
+
+func runTestsPeriodically(
+	testConfig *test_config.TestConfig,
+	clientConfig *client_config.ClientConfig,
+	nbsConfig *nbs_client_config.ClientConfig,
+	testMetrics *remoteTestMetrics,
+) error {
+
+	for {
+		err := runTests(testConfig, clientConfig, nbsConfig, testMetrics)
+		if err != nil {
+			log.Printf("Remote tests run failed: %v", err)
+		} else {
+			log.Printf("Remote tests run succeeded")
+		}
+
+		log.Printf("Sleeping for %v before next run", periodicRunSleep)
+		time.Sleep(periodicRunSleep)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1642,7 +1749,24 @@ func main() {
 			)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTests(testConfig, clientConfig, nbsConfig)
+			ctx := newContext(clientConfig)
+			testMetrics := newRemoteTestMetricsFromConfig(ctx, testConfig)
+
+			if testConfig.GetPeriodicRunsEnabled() {
+				return runTestsPeriodically(
+					testConfig,
+					clientConfig,
+					nbsConfig,
+					testMetrics,
+				)
+			}
+
+			return runTests(
+				testConfig,
+				clientConfig,
+				nbsConfig,
+				testMetrics,
+			)
 		},
 	}
 
