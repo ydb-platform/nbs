@@ -15,15 +15,16 @@ def _process_coredumps_script(gdb, backtrace_dir):
 
         sudo mkdir -p "$backtrace_dir"
         sudo sysctl kernel.core_pattern kernel.core_uses_pid fs.suid_dumpable | sudo tee "$backtrace_dir/guest-coredump-sysctl.txt"
-        for f in /tmp/run_test.command /tmp/run_test.ulimit.soft /tmp/run_test.ulimit.hard /tmp/run_test.limits; do
+        for f in /tmp/run_test.command.txt /tmp/run_test.ulimit.soft.txt /tmp/run_test.ulimit.hard.txt /tmp/run_test.limits.txt; do
             sudo test -f "$f" && sudo cp -f "$f" "$backtrace_dir"
         done
-        sudo find /coredumps -maxdepth 1 -type f -printf '%f\\n' | sort | sudo tee "$backtrace_dir/guest-cores.txt"
+        sudo find /coredumps -maxdepth 1 -type f ! -name '*.txt' -printf '%f\\n' | sort | sudo tee "$backtrace_dir/guest-cores.txt"
+        sudo find /coredumps -maxdepth 1 -type f -name '*.txt' -exec cp -f {{}} "$backtrace_dir" \\;
         sudo dmesg | tail -n 200 | sudo tee "$backtrace_dir/guest-dmesg.txt"
 
         run_test_command=''
-        if sudo test -f /tmp/run_test.command; then
-            run_test_command=$(sudo cat /tmp/run_test.command)
+        if sudo test -f /tmp/run_test.command.txt; then
+            run_test_command=$(sudo cat /tmp/run_test.command.txt)
         fi
 
         core_executable_name() {{
@@ -36,7 +37,13 @@ def _process_coredumps_script(gdb, backtrace_dir):
             backtrace="$backtrace_dir/$core.backtrace"
             executable_name=$(core_executable_name "$core")
             run_test_basename="${{run_test_command##*/}}"
-            if [ -n "$run_test_command" ] && sudo test -x "$run_test_command" && [ "${{run_test_basename:0:15}}" = "$executable_name" ]; then
+            executable=''
+            if sudo test -s "/coredumps/$core.exe.txt"; then
+                executable=$(sudo cat "/coredumps/$core.exe.txt" | sed 's/!/\//g')
+            fi
+            if [ -n "$executable" ] && sudo test -x "$executable"; then
+                sudo "$gdb" "$executable" "/coredumps/$core" "${{gdb_args[@]}}" | sudo tee "$backtrace"
+            elif [ -n "$run_test_command" ] && sudo test -x "$run_test_command" && [ "${{run_test_basename:0:15}}" = "$executable_name" ]; then
                 sudo "$gdb" "$run_test_command" "/coredumps/$core" "${{gdb_args[@]}}" | sudo tee "$backtrace"
             else
                 sudo "$gdb" -c "/coredumps/$core" "${{gdb_args[@]}}" | sudo tee "$backtrace"
@@ -48,7 +55,36 @@ def _process_coredumps_script(gdb, backtrace_dir):
 def setup_coredumps(ssh):
     ssh("sudo mkdir -p /coredumps")
     ssh("sudo chmod 1777 /coredumps")
-    ssh("sudo sysctl -w 'kernel.core_pattern=/coredumps/%e.%p.%s'")
+    # this wrapper is needed because we want to use %E in the pattern
+    # and not %e, because %E expands to the executable filename, but
+    # with slashes replaced by '!' to avoid directory creation. 
+    # If the resulting core filename is too long, it is truncated
+    # to 128 bytes, including the trailing '*', and the '*' is
+    # appended to the truncated filename. (since Linux 5.19)
+    # and to get backtraces with correct executable names,
+    # So we create "short" core name that can be matched to the executable name
+    # and use it in the backtrace script to find the right executable for gdb.
+    # it also alleviates issue with too long file names (and simply looks nicer)
+    core_helper = textwrap.dedent("""\
+        #!/bin/bash
+        set -eu
+
+        core_dir=/coredumps
+        comm="${1//\\//_}"
+        comm="${comm//[[:space:]]/_}"
+        pid="$2"
+        signal="$3"
+        encoded_executable="$4"
+        core_name="$comm.$pid.$signal"
+
+        mkdir -p "$core_dir"
+        chmod 1777 "$core_dir"
+
+        cat > "$core_dir/$core_name"
+        printf '%s\\n' "$encoded_executable" > "$core_dir/$core_name.exe.txt"
+    """)
+    ssh(f"sudo tee /usr/local/bin/qemu-core-helper <<'EOF' && sudo chmod +x /usr/local/bin/qemu-core-helper\n{core_helper}\nEOF")
+    ssh("sudo sysctl -w 'kernel.core_pattern=|/usr/local/bin/qemu-core-helper %e %p %s %E'")
     ssh("sudo sysctl -w 'kernel.core_uses_pid=1'")
     # Tests are launched via `sudo /run_test.sh`, so their dumpability is
     # governed by fs.suid_dumpable. Keep dumps enabled for these guest-side

@@ -6,6 +6,8 @@ from os.path import abspath, basename, isabs, join
 
 logger = logging.getLogger(__name__)
 
+CORE_FILENAME_MAX_BYTES = 128
+
 CORE_PATTERN_WILDCARD_SPECIFIERS = (
     "%P",
     "%i",
@@ -37,6 +39,27 @@ def _core_comm(binary_path):
     return basename(binary_path)[:15] + '*'
 
 
+def _truncate_core_pattern(pattern):
+    if len(pattern.encode()) <= CORE_FILENAME_MAX_BYTES:
+        return pattern
+
+    # core(5): the resulting core filename is limited to 128 bytes on Linux.
+    # Keep the returned value a glob because truncation can remove suffix
+    # specifiers such as %p after the kernel expands the pattern.
+    truncated = pattern.encode()[:CORE_FILENAME_MAX_BYTES - 1]
+    while True:
+        try:
+            return truncated.decode() + '*'
+        except UnicodeDecodeError:
+            truncated = truncated[:-1]
+
+# Technically we do not need this function, because it is used in Daemon class
+# and it itself calls common.execute with core_pattern argument, which, if set 
+# to None will automatically use yatool builtin pattern discovery inside 
+# `recover_core_dump_file`
+# https://github.com/yandex/yatool/blob/main/library/python/cores/__init__.py#L24
+# but we have few special cases like cloud/storage/core/tools/testing/unstable-process/
+# which launch process, but we want to actually track different process
 def core_pattern(binary_path, cwd=None):
     with open("/proc/sys/kernel/core_pattern") as f:
         p = f.read().strip("\n")
@@ -51,7 +74,8 @@ def core_pattern(binary_path, cwd=None):
             p = p.replace('%e', _core_comm(binary_path))
             for specifier in CORE_PATTERN_WILDCARD_SPECIFIERS:
                 p = p.replace(specifier, '*')
-            return p.replace(literal_percent, '%')
+            p = p.replace(literal_percent, '%')
+            return _truncate_core_pattern(p)
 
     name = binary_path.replace("/", "_")
     name = name.replace(".", "_")

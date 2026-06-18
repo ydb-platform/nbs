@@ -457,10 +457,10 @@ def _prepare_test_environment(ssh, virtio):
             # effective limits in artifacts even when guest-wide limits are set.
             "ulimit -Hc unlimited || true",
             "ulimit -Sc unlimited || true",
-            "ulimit -Ha >/tmp/run_test.ulimit.hard 2>&1",
-            "ulimit -Sa >/tmp/run_test.ulimit.soft 2>&1",
-            "cat /proc/self/limits >/tmp/run_test.limits 2>&1",
-            "printf '%s\\n' \"$1\" >/tmp/run_test.command 2>&1",
+            "ulimit -Ha >/tmp/run_test.ulimit.hard.txt 2>&1",
+            "ulimit -Sa >/tmp/run_test.ulimit.soft.txt 2>&1",
+            "cat /proc/self/limits >/tmp/run_test.limits.txt 2>&1",
+            "printf '%s\\n' \"$1\" >/tmp/run_test.command.txt 2>&1",
         ] + sanitizer_core_options_exports() + [
             '"$@"',
             "exit_code=$?",
