@@ -261,6 +261,16 @@ func nbsVolumeAccessMode(
 	return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE
 }
 
+func nbsVolumeMountMode(
+	accessMode nbsapi.EVolumeAccessMode,
+) nbsapi.EVolumeMountMode {
+	if accessMode == nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_ONLY {
+		return nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE
+	}
+
+	return nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL
+}
+
 func readOnlyVolumeAccess(
 	accessMode *csi.VolumeCapability_AccessMode,
 	readonly bool,
@@ -684,6 +694,9 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
+	volumeAccessMode := nbsVolumeAccessMode(
+		req.VolumeCapability.AccessMode,
+		req.Readonly)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -693,8 +706,8 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		VolumeAccessMode: nbsVolumeAccessMode(req.VolumeCapability.AccessMode, req.Readonly),
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  nbsVolumeMountMode(volumeAccessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			false,
@@ -806,7 +819,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
 		VolumeAccessMode: volumeAccessMode,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeMountMode:  nbsVolumeMountMode(volumeAccessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			false,
@@ -1101,6 +1114,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
+	volumeAccessMode := nbsVolumeAccessMode(accessMode, false)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   unixSocketPath,
@@ -1110,8 +1124,8 @@ func (s *nodeService) startNbsEndpointForNBD(
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
-		VolumeAccessMode: nbsVolumeAccessMode(accessMode, false),
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  nbsVolumeMountMode(volumeAccessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			true,
