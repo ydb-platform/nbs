@@ -7,7 +7,6 @@ from os.path import abspath, basename, isabs, join
 logger = logging.getLogger(__name__)
 
 CORE_PATTERN_WILDCARD_SPECIFIERS = (
-    "%p",
     "%P",
     "%i",
     "%I",
@@ -33,6 +32,11 @@ def _full_binary_path(binary_path, cwd):
     return abspath(binary_path)
 
 
+def _core_comm(binary_path):
+    # Linux truncates %e to the first 15 bytes of task comm.
+    return basename(binary_path)[:15] + '*'
+
+
 def core_pattern(binary_path, cwd=None):
     with open("/proc/sys/kernel/core_pattern") as f:
         p = f.read().strip("\n")
@@ -41,11 +45,10 @@ def core_pattern(binary_path, cwd=None):
 
         if not p.startswith('|'):
             full_binary_path = _full_binary_path(binary_path, cwd)
-            mask = basename(binary_path)[:8] + '*'
             literal_percent = "__CORE_PATTERN_LITERAL_PERCENT__"
             p = p.replace('%%', literal_percent)
             p = p.replace('%E', full_binary_path.replace("/", "!"))
-            p = p.replace('%e', mask)
+            p = p.replace('%e', _core_comm(binary_path))
             for specifier in CORE_PATTERN_WILDCARD_SPECIFIERS:
                 p = p.replace(specifier, '*')
             return p.replace(literal_percent, '%')

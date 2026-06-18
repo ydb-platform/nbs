@@ -26,20 +26,17 @@ def _process_coredumps_script(gdb, backtrace_dir):
             run_test_command=$(sudo cat /tmp/run_test.command)
         fi
 
-        decode_core_executable() {{
+        core_executable_name() {{
             local core="$1"
-            local binary_path="${{core#core.}}"
-            binary_path=$(printf '%s\\n' "$binary_path" | sed -E 's/(\\.[^.]*){{4}}$//; s/!/\\//g')
-            printf '%s\\n' "$binary_path"
+            printf '%s\\n' "$core" | sed -E 's/\\.[^.]*\\.[^.]*$//'
         }}
 
         while IFS= read -r core; do
             [ -n "$core" ] || continue
             backtrace="$backtrace_dir/$core.backtrace"
-            binary_path=$(decode_core_executable "$core")
-            if [ -n "$binary_path" ] && sudo test -e "$binary_path"; then
-                sudo "$gdb" "$binary_path" "/coredumps/$core" "${{gdb_args[@]}}" | sudo tee "$backtrace"
-            elif [ -n "$run_test_command" ] && sudo test -x "$run_test_command"; then
+            executable_name=$(core_executable_name "$core")
+            run_test_basename="${{run_test_command##*/}}"
+            if [ -n "$run_test_command" ] && sudo test -x "$run_test_command" && [ "${{run_test_basename:0:15}}" = "$executable_name" ]; then
                 sudo "$gdb" "$run_test_command" "/coredumps/$core" "${{gdb_args[@]}}" | sudo tee "$backtrace"
             else
                 sudo "$gdb" -c "/coredumps/$core" "${{gdb_args[@]}}" | sudo tee "$backtrace"
@@ -51,7 +48,7 @@ def _process_coredumps_script(gdb, backtrace_dir):
 def setup_coredumps(ssh):
     ssh("sudo mkdir -p /coredumps")
     ssh("sudo chmod 1777 /coredumps")
-    ssh("sudo sysctl -w 'kernel.core_pattern=/coredumps/core.%E.%u.%b.%p.%t'")
+    ssh("sudo sysctl -w 'kernel.core_pattern=/coredumps/%e.%p.%s'")
     ssh("sudo sysctl -w 'kernel.core_uses_pid=1'")
     # Tests are launched via `sudo /run_test.sh`, so their dumpability is
     # governed by fs.suid_dumpable. Keep dumps enabled for these guest-side
