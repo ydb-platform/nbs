@@ -547,6 +547,7 @@ private:
     void RenderUptime(IOutputStream& out) const;
     void RenderScrubbingStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
+    void RenderAvailableAgentsStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
     void RenderLaggingStatus(IOutputStream& out) const;
     void RenderAppliedVolumeThrottlingRule(IOutputStream& out) const;
