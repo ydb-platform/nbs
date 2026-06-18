@@ -42,6 +42,7 @@ void TServiceActor::HandleDescribeVolumeModel(
     volumeParams.BlocksCountPerPartition =
         partitionsInfo.BlocksCountPerPartition;
     volumeParams.MediaKind = request.GetStorageMediaKind();
+    volumeParams.IsSystem = request.GetIsSystem();
 
     NKikimrBlockStore::TVolumeConfig config;
     config.SetBlockSize(request.GetBlockSize());
