@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <thread>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -83,6 +84,64 @@ struct TServerHandler
         Y_UNUSED(out);
     }
 };
+
+struct TDelayedServerHandler final
+    : IServerHandler
+{
+    NThreading::TPromise<void> RequestReceived =
+        NThreading::NewPromise<void>();
+
+    void* Context = nullptr;
+    TStringBuf Out;
+
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return MakeIntrusive<TCallContextBase>(ui64{0});
+    }
+
+    void HandleRequest(
+        void* context,
+        TCallContextBasePtr callContext,
+        TStringBuf in,
+        TStringBuf out) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(in);
+
+        Context = context;
+        Out = out;
+        RequestReceived.SetValue();
+    }
+};
+
+template <typename TPredicate>
+bool WaitUntil(
+    TPredicate predicate,
+    TDuration timeout = TDuration::Seconds(5))
+{
+    const auto start = GetCycleCount();
+    while (!predicate()) {
+        if (CyclesToDurationSafe(GetCycleCount() - start) > timeout) {
+            return false;
+        }
+        SpinLockPause();
+    }
+    return true;
+}
+
+
+auto SetupFlushOnQpError(NVerbs::TTestContextPtr context)
+{
+    return [ctx = std::move(context)](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+
+        if (!((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR)) {
+            return;
+        }
+        NVerbs::Flush(ctx);
+    };
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -175,12 +234,18 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
     {
         Y_UNUSED(qp);
 
-        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(testContext);
+            return;
+        }
 
-        EXPECT_EQ(expectedMask, mask);
+        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
+        if (mask != expectedMask) {
+            return;
+        }
+
         EXPECT_EQ(serverConfig->QpTimeout, attr->timeout);
         EXPECT_EQ(serverConfig->QpMinRnrTimer, attr->min_rnr_timer);
-
         modifyCalled.store(true);
     };
 
@@ -324,6 +389,7 @@ TEST(TRdmaServerTest, ShouldHandleSessionError)
 TEST(TRdmaServerTest, ShouldHandleErrors)
 {
     auto context = MakeIntrusive<NVerbs::TTestContext>();
+    context->ModifyQP = SetupFlushOnQpError(context);
 
     auto verbs = NVerbs::CreateTestVerbs(context);
     auto monitoring = CreateMonitoringServiceStub();
@@ -378,26 +444,32 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
 
     // emulate exchange with the client
 
+    ibv_recv_wr badWr;
+    badWr.wr_id = Max<ui64>();
     TVector<ibv_recv_wr*> recv;
 
     with_lock(context->CompletionLock) {
-        for (size_t i = 0; i < 5; i++) {
+        recv.push_back(&badWr);
+        context->ProcessedRecvEvents.push_back(&badWr);
+
+        for (size_t i = 0; i < 4; i++) {
             auto* wr = context->RecvEvents.back();
             context->RecvEvents.pop_back();
             context->ProcessedRecvEvents.push_back(wr);
             recv.push_back(wr);
         }
         context->HandleCompletionEvent = [&](ibv_wc* wc) {
+            // bad id, good opcode
+            if (wc->wr_id == badWr.wr_id) {
+                return;
+            }
+
             // good id, good opcode, error status
-            if (wc->wr_id == recv[0]->wr_id) {
+            if (wc->wr_id == recv[1]->wr_id) {
                 wc->status = IBV_WC_RETRY_EXC_ERR;
                 return;
             }
-            // bad id, good opcode
-            if (wc->wr_id == recv[1]->wr_id) {
-                wc->wr_id = Max<ui64>();
-                return;
-            }
+
             // good id, bad opcode
             if (wc->wr_id == recv[2]->wr_id) {
                 wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
@@ -504,6 +576,191 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
     ASSERT_TRUE(done.GetFuture().Wait(TDuration::Seconds(5)));
     EXPECT_EQ(3, rejectCount.load());
     EXPECT_FALSE(createQpCalled.load());
+}
+
+TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    NThreading::TPromise<void> flushTriggered =
+        NThreading::NewPromise<void>();
+
+    // Combine flush-on-error with a signal so the test can wait until Stop()
+    // has actually entered the flush phase before calling SendResponse.
+    auto flushHook = SetupFlushOnQpError(context);
+    context->ModifyQP = [flushTriggered, flushHook = std::move(flushHook)](
+        ibv_qp* qp, ibv_qp_attr* attr, int mask) mutable
+    {
+        flushHook(qp, attr, mask);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            flushTriggered.TrySetValue();
+        }
+    };
+
+    std::atomic<rdma_cm_id*> sessionId{nullptr};
+    NThreading::TPromise<void> sessionDestroyed =
+        NThreading::NewPromise<void>();
+
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param) {
+        Y_UNUSED(param);
+        sessionId.store(id);
+    };
+
+    context->DestroyQP = [&](rdma_cm_id* id) {
+        Y_UNUSED(id);
+        sessionDestroyed.TrySetValue();
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+
+    auto handler = std::make_shared<TDelayedServerHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        serverConfig->MaxBufferSize);
+
+    ASSERT_TRUE(WaitUntil([&] {
+        return sessionId.load() != nullptr &&
+            AtomicGet(context->PostRecvCounter) >=
+                static_cast<int>(serverConfig->RecvQueueSize);
+    }));
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        msg->ReqId = 1;
+        msg->Out.Length = 4_KB;
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    handler->RequestReceived.GetFuture().GetValueSync();
+    ASSERT_NE(nullptr, handler->Context);
+
+    // ExecutingRequests == 1: session cannot be released yet.
+    ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
+
+    // Run Stop() in a background thread — it will block inside the flush loop
+    // waiting for ExecutingRequests == 0.
+    std::thread stopThread([&] { server->Stop(); });
+    Y_DEFER {
+        if (stopThread.joinable()) {
+            stopThread.join();
+        }
+    };
+
+    // Wait until Stop() has actually reached the flush phase (ModifyQP hook
+    // fired), guaranteeing it is now blocked on IsFlushed().
+    flushTriggered.GetFuture().GetValueSync();
+
+    endpoint->SendResponse(handler->Context, 0);
+
+    stopThread.join();
+    ASSERT_TRUE(sessionDestroyed.GetFuture().HasValue());
+}
+
+TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+    context->ModifyQP = SetupFlushOnQpError(context);
+
+    std::atomic<rdma_cm_id*> sessionId{nullptr};
+    NThreading::TPromise<void> sessionDestroyed =
+        NThreading::NewPromise<void>();
+
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param) {
+        Y_UNUSED(param);
+        sessionId.store(id);
+    };
+
+    context->DestroyQP = [&](rdma_cm_id* id) {
+        Y_UNUSED(id);
+        sessionDestroyed.TrySetValue();
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER { server->Stop(); };
+
+    auto handler = std::make_shared<TDelayedServerHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        serverConfig->MaxBufferSize);
+
+    ASSERT_TRUE(WaitUntil([&] {
+        return sessionId.load() != nullptr &&
+            AtomicGet(context->PostRecvCounter) >=
+                static_cast<int>(serverConfig->RecvQueueSize);
+    }));
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        msg->ReqId = 1;
+        msg->Out.Length = 4_KB;
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    handler->RequestReceived.GetFuture().GetValueSync();
+    ASSERT_NE(nullptr, handler->Context);
+
+    verbs->Disconnect(sessionId.load());
+
+    ASSERT_TRUE(WaitUntil([c = GetServerCounters(monitoring)] {
+        return c->GetCounter("ActiveRecv")->Val()  == 0 &&
+               c->GetCounter("ActiveSend")->Val()  == 0 &&
+               c->GetCounter("ActiveWrite")->Val() == 0 &&
+               c->GetCounter("ActiveRead")->Val()  == 0;
+    }));
+
+    ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
+
+    endpoint->SendResponse(handler->Context, 0);
+
+    sessionDestroyed.GetFuture().GetValueSync();
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)
