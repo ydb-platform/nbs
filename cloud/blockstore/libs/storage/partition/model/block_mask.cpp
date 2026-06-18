@@ -7,18 +7,22 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
+    requires(
+        std::is_integral_v<T> && std::is_unsigned_v<T> &&
+        !std::is_same_v<T, bool>)
 T GetIntWithNBits(unsigned n)
 {
-    T result = 0;
+    constexpr unsigned bits = std::numeric_limits<T>::digits;
+
     if (n == 0) {
-        return result;
+        return T{0};
     }
-    if (n >= sizeof(T) * 8) {
-        result |= ~T{0};
-        return result;
+
+    if (n >= bits) {
+        return std::numeric_limits<T>::max();
     }
-    result |= (T{1} << n) - 1;
-    return result;
+
+    return static_cast<T>(std::numeric_limits<T>::max() >> (bits - n));
 }
 
 }   // namespace
@@ -53,7 +57,7 @@ bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)
         if (blockCount < blocksInChunk) {
             const TBitMap<blocksInChunk> actual(chunk);
             const TBitMap<blocksInChunk> expectedMask(
-                GetIntWithNBits<TBlockMask::TChunk>(blockCount));
+                GetIntWithNBits<bool>(blockCount));
             return (actual & expectedMask) == expectedMask;
         }
 
