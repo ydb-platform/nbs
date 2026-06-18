@@ -275,15 +275,16 @@ private:
              weakSelf = weak_from_this()](
                 const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
             {
-                auto response = ExtractResponse(future);
-                FillResponse(callContext, response);
-
                 taskQueue->ExecuteSimple(
                     [=,
+                     future = future,
                      buffer = std::move(buffer),
                      guardedSgList = std::move(guardedSgList),
                      weakSelf = std::move(weakSelf)]() mutable
                     {
+                        auto response = future.GetValue();
+                        FillResponse(callContext, response);
+
                         guardedSgList.Close();
 
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
@@ -381,12 +382,11 @@ private:
              weakSelf = weak_from_this()](
                 const TFuture<NProto::TWriteBlocksLocalResponse>& future) mutable
             {
-                auto response = ExtractResponse(future);
-                FillResponse(callContext, response);
-
                 taskQueue->ExecuteSimple(
-                    [=, response = std::move(response)]() mutable
+                    [=, future = future]() mutable
                     {
+                        auto response = future.GetValue();
+                        FillResponse(callContext, response);
                         guardedSgList.Close();
 
                         if (response.ByteSizeLong() > MaxRealProtoSize) {
