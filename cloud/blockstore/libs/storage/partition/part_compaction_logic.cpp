@@ -34,13 +34,6 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockMask GetFullBlockMask()
-{
-    TBlockMask mask;
-    mask.Set(0, MaxBlocksCount);
-    return mask;
-}
-
 TRangeCompactionInfo::TRangeCompactionInfo(
     TBlockRange32 blockRange,
     TPartialBlobId originalBlobId,
@@ -440,7 +433,7 @@ void ReadAffectedBlobsForCompaction(
         } else if (state.GetCleanupQueue().HasBlob(kv.first)) {
             // If the blob is in the cleanup queue, we should not try to add
             // this blob to cleanup queue again.
-            kv.second.BlockMask = GetFullBlockMask();
+            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
         }
 
         if (args.ChecksumsEnabled) {
