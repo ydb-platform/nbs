@@ -1,7 +1,5 @@
 #include "server.h"
 
-#include <atomic>
-
 #include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
@@ -31,6 +29,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
+#include <atomic>
 #include <variant>
 
 namespace NCloud::NStorage::NRdma {
