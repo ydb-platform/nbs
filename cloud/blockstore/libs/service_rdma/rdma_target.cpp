@@ -382,14 +382,17 @@ private:
              taskQueue = TaskQueue,
              endpoint = Endpoint,
              weakSelf = weak_from_this()](
-                const TFuture<NProto::TWriteBlocksLocalResponse>& future) mutable
+                const TFuture<NProto::TWriteBlocksLocalResponse>&
+                    future) mutable
             {
                 taskQueue->ExecuteSimple(
-                    [=, future = future]() mutable
+                    [=,
+                     guardedSgList = std::move(guardedSgList),
+                     future = future]() mutable
                     {
                         auto response =
                             SafeExecute<NProto::TWriteBlocksLocalResponse>(
-                                [&] { return future.GetValue();});
+                                [&] { return future.GetValue(); });
                         FillResponse(callContext, response);
                         guardedSgList.Close();
 
