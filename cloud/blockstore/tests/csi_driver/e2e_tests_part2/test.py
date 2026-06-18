@@ -63,15 +63,16 @@ def test_readonly_volume(mount_path, access_type, vm_mode, gid):
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
 
 
-def test_vm_mode_legacy_publish_allows_multiple_readers_and_single_writer():
+def test_vm_mode_legacy_publish_distinguishes_reader_access_modes():
     env, run = csi.init(vm_mode=True)
     volume_name = "example-disk"
     volume_size = 1024 ** 3
     access_type = "mount"
     pod_name = "example-pod"
+    single_reader_pod_id = "single-reader"
     writer_pod_id = "writer"
     reader_pod_ids = ["reader1", "reader2"]
-    pod_ids = [writer_pod_id] + reader_pod_ids
+    published_pod_ids = []
 
     def mount_path(pod_id: str) -> Path:
         return (
@@ -87,12 +88,32 @@ def test_vm_mode_legacy_publish_allows_multiple_readers_and_single_writer():
         env.csi.stage_volume(volume_name, access_type, instance_id="")
 
         env.csi.publish_volume(
+            pod_id=single_reader_pod_id,
+            volume_id=volume_name,
+            pod_name=pod_name,
+            access_type=access_type,
+            instance_id="",
+            access_mode="single-node-reader-only")
+        published_pod_ids.append(single_reader_pod_id)
+
+        assert "ro" == get_access_mode(str(mount_path(single_reader_pod_id)))
+
+        endpoints = run("listendpoints", "--proto").stdout
+        assert 1 == endpoints.count('DiskId: "example-disk"')
+        assert 1 == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_READ_ONLY")
+        assert 0 == endpoints.count("VolumeMountMode: VOLUME_MOUNT_REMOTE")
+
+        env.csi.unpublish_volume(single_reader_pod_id, volume_name, access_type)
+        published_pod_ids.remove(single_reader_pod_id)
+
+        env.csi.publish_volume(
             pod_id=writer_pod_id,
             volume_id=volume_name,
             pod_name=pod_name,
             access_type=access_type,
             instance_id="",
             access_mode="single-node-writer")
+        published_pod_ids.append(writer_pod_id)
 
         for pod_id in reader_pod_ids:
             env.csi.publish_volume(
@@ -102,6 +123,7 @@ def test_vm_mode_legacy_publish_allows_multiple_readers_and_single_writer():
                 access_type=access_type,
                 instance_id="",
                 access_mode="multi-node-reader-only")
+            published_pod_ids.append(pod_id)
 
         assert "rw" == get_access_mode(str(mount_path(writer_pod_id)))
         for pod_id in reader_pod_ids:
@@ -110,12 +132,13 @@ def test_vm_mode_legacy_publish_allows_multiple_readers_and_single_writer():
         endpoints = run("listendpoints", "--proto").stdout
         assert 3 == endpoints.count('DiskId: "example-disk"')
         assert 2 == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_READ_ONLY")
+        assert 2 == endpoints.count("VolumeMountMode: VOLUME_MOUNT_REMOTE")
 
     except subprocess.CalledProcessError as e:
         csi.log_called_process_error(e)
         raise
     finally:
-        csi.cleanup_after_test(env, volume_name, access_type, pod_ids)
+        csi.cleanup_after_test(env, volume_name, access_type, published_pod_ids)
 
 
 def test_mount_volume_group():

@@ -262,9 +262,10 @@ func nbsVolumeAccessMode(
 }
 
 func nbsVolumeMountMode(
-	accessMode nbsapi.EVolumeAccessMode,
+	accessMode *csi.VolumeCapability_AccessMode,
 ) nbsapi.EVolumeMountMode {
-	if accessMode == nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_ONLY {
+	if accessMode != nil && accessMode.GetMode() ==
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
 		return nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE
 	}
 
@@ -379,6 +380,7 @@ func (s *nodeService) NodeStageVolume(
 						nbsId,
 						req.VolumeContext,
 						req.VolumeCapability.GetMount(),
+						req.VolumeCapability.AccessMode,
 						nbsVolumeAccessMode(req.VolumeCapability.AccessMode, false),
 						vhostSettings,
 						stageData.ClientIndex)
@@ -707,7 +709,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
 		VolumeAccessMode: volumeAccessMode,
-		VolumeMountMode:  nbsVolumeMountMode(volumeAccessMode),
+		VolumeMountMode:  nbsVolumeMountMode(req.VolumeCapability.AccessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			false,
@@ -781,6 +783,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	diskId string,
 	volumeContext map[string]string,
 	volumeCapabilities *csi.VolumeCapability_MountVolume,
+	accessMode *csi.VolumeCapability_AccessMode,
 	volumeAccessMode nbsapi.EVolumeAccessMode,
 	vhostSettings vhostSettings,
 	clientIndex uint) error {
@@ -819,7 +822,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
 		VolumeAccessMode: volumeAccessMode,
-		VolumeMountMode:  nbsVolumeMountMode(volumeAccessMode),
+		VolumeMountMode:  nbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			false,
@@ -1125,7 +1128,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: volumeAccessMode,
-		VolumeMountMode:  nbsVolumeMountMode(volumeAccessMode),
+		VolumeMountMode:  nbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			true,
