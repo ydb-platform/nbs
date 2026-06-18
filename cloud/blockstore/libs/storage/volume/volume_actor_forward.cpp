@@ -1114,7 +1114,6 @@ void TVolumeActor::HandleDescribeBlobResponse(
     ForwardResponse<TEvVolume::TDescribeBlobMethod>(ctx, ev);
 }
 
-
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \
     void TVolumeActor::Handle##name(                                           \
         const ns::TEv##name##Request::TPtr& ev,                                \
