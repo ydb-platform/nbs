@@ -8,7 +8,7 @@ using namespace NProtoSrv;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
+std::shared_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
 {
     Y_UNUSED(host, port);
     return nullptr;
