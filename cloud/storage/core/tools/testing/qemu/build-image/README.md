@@ -50,7 +50,7 @@ qemu-img convert -c -p -f qcow2 -O qcow2 rootfs.img rootfs-compressed.img
 ya upload --ttl=inf -T NBS_QEMU_DISK_IMAGE -d 'Customized Ubuntu Cloud Image in QCOW2 format'
 ```
 
-- Update [resource](https://github.com/ydb-platform/nbs/blob/main/cloud/storage/core/tools/testing/qemu/image/ya.make) in ya.make
+- Update [resource](https://github.com/ydb-platform/nbs/blob/main/cloud/storage/core/tools/testing/qemu/image-noble/ya.make) in ya.make
 
 ### Building for arm tests
 
