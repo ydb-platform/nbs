@@ -56,7 +56,7 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
 
     Y_UNIT_TEST(ShouldTrackDirectoriesIndependently)
     {
-        TDirectoryEntryVersionCache cache;
+        TDirectoryEntryVersionCache cache(2);
         cache.RegisterHandle(1);
         cache.RegisterHandle(2);
 

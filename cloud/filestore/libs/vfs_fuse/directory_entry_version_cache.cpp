@@ -2,14 +2,14 @@
 
 namespace NCloud::NFileStore::NFuse {
 
-void TDirectoryEntryVersionCache::RegisterHandle(fuse_ino_t directory)
+void TDirectoryEntryVersionCacheShard::RegisterHandle(fuse_ino_t directory)
 {
     with_lock (Lock) {
         ++Directories[directory].RefCount;
     }
 }
 
-void TDirectoryEntryVersionCache::UnregisterHandle(fuse_ino_t directory)
+void TDirectoryEntryVersionCacheShard::UnregisterHandle(fuse_ino_t directory)
 {
     with_lock (Lock) {
         auto it = Directories.find(directory);
@@ -24,7 +24,7 @@ void TDirectoryEntryVersionCache::UnregisterHandle(fuse_ino_t directory)
     }
 }
 
-void TDirectoryEntryVersionCache::AdvanceVersion(
+void TDirectoryEntryVersionCacheShard::AdvanceVersion(
     fuse_ino_t directory,
     const TString& name,
     ui64 version)
@@ -42,7 +42,7 @@ void TDirectoryEntryVersionCache::AdvanceVersion(
     }
 }
 
-ui64 TDirectoryEntryVersionCache::GetVersion(
+ui64 TDirectoryEntryVersionCacheShard::GetVersion(
     fuse_ino_t directory,
     TStringBuf name) const
 {

@@ -22,7 +22,7 @@ ELogPriority GetErrorPriority(ui32 code)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 NODE_CACHE_SHARD_COUNT = 16;
+constexpr ui32 CACHE_SHARD_COUNT = 16;
 
 ui64 GenerateCacheVersion(std::atomic<ui64>& version)
 {
@@ -55,7 +55,8 @@ TFileSystem::TFileSystem(
     , Log(Logging->CreateLog("NFS_FUSE"))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
-    , NodeCache(Config->GetFileSystemId(), NODE_CACHE_SHARD_COUNT)
+    , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
+    , DirectoryEntryVersionCache(CACHE_SHARD_COUNT)
     , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
           Log,
           std::move(directoryHandleStats),

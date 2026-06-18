@@ -7,7 +7,8 @@
 #include <util/generic/hash.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
-#include <util/system/mutex.h>
+#include <util/generic/vector.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -18,7 +19,7 @@ namespace NCloud::NFileStore::NFuse {
 // DirectoryHandleCache registers handles here, so when we don't have
 // handles pointing to directory, we erase all information regarding
 // entry changes to avoid unbound memory usage.
-class TDirectoryEntryVersionCache
+class TDirectoryEntryVersionCacheShard
 {
 private:
     struct TDirectoryState
@@ -27,7 +28,7 @@ private:
         THashMap<TString, ui64> ChildVersions;
     };
 
-    mutable TMutex Lock;
+    mutable TAdaptiveLock Lock;
     THashMap<fuse_ino_t, TDirectoryState> Directories;
 
 public:
@@ -35,6 +36,51 @@ public:
     void UnregisterHandle(fuse_ino_t directory);
     void AdvanceVersion(fuse_ino_t directory, const TString& name, ui64 version);
     ui64 GetVersion(fuse_ino_t directory, TStringBuf name) const;
+};
+
+class TDirectoryEntryVersionCache
+{
+private:
+    TVector<TDirectoryEntryVersionCacheShard> Shards;
+
+public:
+    TDirectoryEntryVersionCache()
+        : TDirectoryEntryVersionCache(1)
+    {}
+
+    explicit TDirectoryEntryVersionCache(ui32 shardCount)
+    {
+        for (ui32 i = 0; i < shardCount; ++i) {
+            Shards.emplace_back();
+        }
+    }
+
+public:
+    void RegisterHandle(fuse_ino_t directory)
+    {
+        Shards[directory % Shards.size()].RegisterHandle(directory);
+    }
+
+    void UnregisterHandle(fuse_ino_t directory)
+    {
+        Shards[directory % Shards.size()].UnregisterHandle(directory);
+    }
+
+    void AdvanceVersion(
+        fuse_ino_t directory,
+        const TString& name,
+        ui64 version)
+    {
+        Shards[directory % Shards.size()].AdvanceVersion(
+            directory,
+            name,
+            version);
+    }
+
+    ui64 GetVersion(fuse_ino_t directory, TStringBuf name) const
+    {
+        return Shards[directory % Shards.size()].GetVersion(directory, name);
+    }
 };
 
 }   // namespace NCloud::NFileStore::NFuse
