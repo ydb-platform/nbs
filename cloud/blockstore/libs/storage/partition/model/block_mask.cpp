@@ -57,7 +57,7 @@ bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)
         if (blockCount < blocksInChunk) {
             const TBitMap<blocksInChunk> actual(chunk);
             const TBitMap<blocksInChunk> expectedMask(
-                GetIntWithNBits<bool>(blockCount));
+                GetIntWithNBits<TBlockMask::TChunk>(blockCount));
             return (actual & expectedMask) == expectedMask;
         }
 
