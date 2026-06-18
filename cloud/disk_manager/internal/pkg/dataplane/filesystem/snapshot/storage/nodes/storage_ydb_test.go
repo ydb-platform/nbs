@@ -130,6 +130,79 @@ func makeNode(
 	})
 }
 
+func makeNodeWithShard(
+	parentID uint64,
+	nodeID uint64,
+	name string,
+	nodeType nfs_client.NodeType,
+	shardID string,
+	shardNodeName string,
+) nfs.Node {
+
+	return nfs.Node(nfs_client.Node{
+		ParentID:          parentID,
+		NodeID:            nodeID,
+		Name:              name,
+		Type:              nodeType,
+		Mode:              0o641,
+		UID:               uint32(1000 + nodeID),
+		GID:               uint32(2000 + nodeID),
+		Atime:             10000 + nodeID,
+		Mtime:             20000 + nodeID,
+		Ctime:             30000 + nodeID,
+		Size:              40000 + nodeID,
+		Links:             1,
+		ShardFileSystemID: shardID,
+		ShardNodeName:     shardNodeName,
+		// Parameters are unrealistic but used to ensure
+		// that all the values are retrieved from storage correctly.
+		LinkTarget: "link-target-" + name,
+		DevID:      50000 + nodeID,
+	})
+}
+
+func makeNodeRestoredAsRef(
+	parentID uint64,
+	nodeID uint64,
+	name string,
+	nodeType nfs_client.NodeType,
+	shardID string,
+	shardNodeName string,
+) nfs.Node {
+
+	result := makeNodeWithShard(
+		parentID,
+		nodeID,
+		name,
+		nodeType,
+		shardID,
+		shardNodeName,
+	)
+	result.NodeID = 0
+
+	return result
+}
+
+func makeNodeRestoredAsNode(
+	nodeID uint64,
+	name string,
+	nodeType nfs_client.NodeType,
+	shardNodeName string,
+) nfs.Node {
+
+	result := makeNodeWithShard(
+		nfs.RootNodeID,
+		nodeID,
+		name,
+		nodeType,
+		"",
+		"",
+	)
+	result.Name = shardNodeName
+
+	return result
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestSavedNodesAreListed(t *testing.T) {
@@ -188,6 +261,276 @@ func TestSavedNodesAreListed(t *testing.T) {
 	require.ElementsMatch(t, expected, collected)
 }
 
+func TestListNodesByShardReturnsEmptyForNodesWithoutShard(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-without-shards"
+	nodes := []nfs.Node{
+		makeNodeWithShard(1, 10, "alpha", nfs_client.NODE_KIND_DIR, "", ""),
+		makeNodeWithShard(1, 11, "beta", nfs_client.NODE_KIND_FILE, "", ""),
+		makeNodeWithShard(10, 12, "gamma", nfs_client.NODE_KIND_FILE, "", ""),
+	}
+	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
+	require.NoError(t, err)
+
+	nodesByShard, nextCookie, err := f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"",
+		100,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Empty(t, nodesByShard)
+	require.Nil(t, nextCookie)
+}
+
+func TestListNodesByShardReturnsShardAndParentRefs(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-list-by-shard"
+
+	parentA := makeNodeWithShard(
+		1,
+		10,
+		"parent-a",
+		nfs_client.NODE_KIND_DIR,
+		"shard-1",
+		"parent-a-in-shard",
+	)
+	parentB := makeNodeWithShard(
+		1,
+		20,
+		"parent-b",
+		nfs_client.NODE_KIND_DIR,
+		"shard-2",
+		"parent-b-in-shard",
+	)
+
+	childA := makeNodeWithShard(
+		10,
+		30,
+		"child-a",
+		nfs_client.NODE_KIND_FILE,
+		"shard-3",
+		"child-a-in-shard",
+	)
+	childSameShard := makeNodeWithShard(
+		10,
+		31,
+		"child-same-shard",
+		nfs_client.NODE_KIND_FILE,
+		"shard-1",
+		"child-same-shard-in-shard",
+	)
+	childB := makeNodeWithShard(
+		20,
+		40,
+		"child-b",
+		nfs_client.NODE_KIND_FILE,
+		"shard-3",
+		"child-b-in-shard",
+	)
+
+	err := f.storage.SaveNodes(
+		f.ctx,
+		snapshotID,
+		[]nfs.Node{
+			parentA,
+			parentB,
+		},
+	)
+	require.NoError(t, err)
+
+	err = f.storage.SaveNodes(
+		f.ctx,
+		snapshotID,
+		[]nfs.Node{
+			childA,
+			childSameShard,
+			childB,
+		},
+	)
+	require.NoError(t, err)
+
+	expectedShard1 := []nfs.Node{
+		makeNodeRestoredAsNode(
+			10,
+			"parent-a",
+			nfs_client.NODE_KIND_DIR,
+			"parent-a-in-shard",
+		),
+		makeNodeRestoredAsRef(
+			10,
+			30,
+			"child-a",
+			nfs_client.NODE_KIND_FILE,
+			"shard-3",
+			"child-a-in-shard",
+		),
+		makeNodeRestoredAsNode(
+			31,
+			"child-same-shard",
+			nfs_client.NODE_KIND_FILE,
+			"child-same-shard-in-shard",
+		),
+		makeNodeRestoredAsRef(
+			10,
+			31,
+			"child-same-shard",
+			nfs_client.NODE_KIND_FILE,
+			"shard-1",
+			"child-same-shard-in-shard",
+		),
+	}
+	expectedShard2 := []nfs.Node{
+		makeNodeRestoredAsNode(
+			20,
+			"parent-b",
+			nfs_client.NODE_KIND_DIR,
+			"parent-b-in-shard",
+		),
+		makeNodeRestoredAsRef(
+			20,
+			40,
+			"child-b",
+			nfs_client.NODE_KIND_FILE,
+			"shard-3",
+			"child-b-in-shard",
+		),
+	}
+	expectedShard3 := []nfs.Node{
+		makeNodeRestoredAsNode(
+			30,
+			"child-a",
+			nfs_client.NODE_KIND_FILE,
+			"child-a-in-shard",
+		),
+		makeNodeRestoredAsNode(
+			40,
+			"child-b",
+			nfs_client.NODE_KIND_FILE,
+			"child-b-in-shard",
+		),
+	}
+
+	nodesByShard, nextCookie, err := f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"shard-1",
+		100,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedShard1, nodesByShard)
+	require.Nil(t, nextCookie)
+
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"shard-1",
+		1,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedShard1[:1], nodesByShard)
+	require.Equal(t, &NodeRefsByShardCookie{
+		ParentNodeID: 10,
+		Name:         "child-a",
+		StoreAsChild: true,
+	}, nextCookie)
+
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"shard-1",
+		100,
+		nextCookie,
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedShard1[1:], nodesByShard)
+	require.Nil(t, nextCookie)
+
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"shard-2",
+		100,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedShard2, nodesByShard)
+	require.Nil(t, nextCookie)
+
+	nodesByShard, nextCookie, err = f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"shard-3",
+		100,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedShard3, nodesByShard)
+	require.Nil(t, nextCookie)
+}
+
+func TestListNodeRefsByShard(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-list-node-refs-by-shard"
+	shardFilesystemID := "shard-list-node-refs"
+	nodeCount := 100000
+
+	nodes := make([]nfs.Node, 0, nodeCount)
+	expected := make([]nfs.Node, 0, nodeCount)
+	for i := 0; i < nodeCount; i++ {
+		nodes = append(nodes, makeNodeWithShard(
+			nfs.RootNodeID,
+			uint64(i+10),
+			fmt.Sprintf("node-%06d", i),
+			nfs_client.NODE_KIND_FILE,
+			shardFilesystemID,
+			fmt.Sprintf("shard-node-%06d", i),
+		))
+		expected = append(expected, makeNodeRestoredAsNode(
+			uint64(i+10),
+			fmt.Sprintf("node-%06d", i),
+			nfs_client.NODE_KIND_FILE,
+			fmt.Sprintf("shard-node-%06d", i),
+		))
+	}
+
+	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
+	require.NoError(t, err)
+
+	pageSize := uint64(100)
+	var collected []nfs.Node
+	var cookie *NodeRefsByShardCookie
+	for {
+		nodesByShard, nextCookie, err := f.storage.ListNodesByShard(
+			f.ctx,
+			snapshotID,
+			shardFilesystemID,
+			pageSize,
+			cookie,
+		)
+		require.NoError(t, err)
+
+		collected = append(collected, nodesByShard...)
+		if nextCookie == nil {
+			break
+		}
+
+		require.Len(t, nodesByShard, int(pageSize))
+		cookie = nextCookie
+	}
+
+	require.Equal(t, expected, collected)
+}
+
 func TestDeleteSnapshotData(t *testing.T) {
 	deleteLimit := uint64(2)
 	f := createFixture(t, deleteLimit)
@@ -214,6 +557,8 @@ func TestDeleteSnapshotData(t *testing.T) {
 		makeHardlinkNode(parentNodeID, 200, "hardlink-a", 2),
 		makeHardlinkNode(parentNodeID, 200, "hardlink-b", 2),
 	)
+	nodes[0].ShardFileSystemID = "delete-shard"
+	nodes[0].ShardNodeName = "delete-shard-node"
 
 	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
 	require.NoError(t, err)
@@ -254,6 +599,17 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, listed)
 
+	nodesByShard, nextShardCookie, err := f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"delete-shard",
+		100,
+		nil,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, nodesByShard)
+	require.Nil(t, nextShardCookie)
+
 	err = f.storage.DeleteSnapshotData(f.ctx, snapshotID)
 	require.NoError(t, err)
 
@@ -280,6 +636,17 @@ func TestDeleteSnapshotData(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, mapping)
+
+	nodesByShard, nextShardCookie, err = f.storage.ListNodesByShard(
+		f.ctx,
+		snapshotID,
+		"delete-shard",
+		100,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Empty(t, nodesByShard)
+	require.Nil(t, nextShardCookie)
 }
 
 func TestGetDestinationNodeIDs(t *testing.T) {
