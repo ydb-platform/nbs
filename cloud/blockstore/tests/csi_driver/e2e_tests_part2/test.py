@@ -112,7 +112,7 @@ def test_vm_mode_legacy_publish_distinguishes_reader_access_modes():
             pod_name=pod_name,
             access_type=access_type,
             instance_id="",
-            access_mode="single-node-writer")
+            access_mode="multi-node-single-writer")
         published_pod_ids.append(writer_pod_id)
 
         for pod_id in reader_pod_ids:
@@ -132,7 +132,7 @@ def test_vm_mode_legacy_publish_distinguishes_reader_access_modes():
         endpoints = run("listendpoints", "--proto").stdout
         assert 3 == endpoints.count('DiskId: "example-disk"')
         assert 2 == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_READ_ONLY")
-        assert 2 == endpoints.count("VolumeMountMode: VOLUME_MOUNT_REMOTE")
+        assert 3 == endpoints.count("VolumeMountMode: VOLUME_MOUNT_REMOTE")
 
     except subprocess.CalledProcessError as e:
         csi.log_called_process_error(e)

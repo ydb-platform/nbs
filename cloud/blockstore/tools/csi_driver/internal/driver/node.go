@@ -264,9 +264,12 @@ func nbsVolumeAccessMode(
 func nbsVolumeMountMode(
 	accessMode *csi.VolumeCapability_AccessMode,
 ) nbsapi.EVolumeMountMode {
-	if accessMode != nil && accessMode.GetMode() ==
-		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-		return nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE
+	if accessMode != nil {
+		switch accessMode.GetMode() {
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+			csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER:
+			return nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE
+		}
 	}
 
 	return nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL
