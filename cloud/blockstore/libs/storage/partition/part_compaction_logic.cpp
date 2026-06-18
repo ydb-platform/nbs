@@ -197,7 +197,7 @@ public:
         return true;
     }
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId, ui32 skippedBlocksCount) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
         ab.MaxCommitIdInCompactionRange = blobId.CommitId();
@@ -206,6 +206,7 @@ public:
             CompactionMap.GetRangeIndex(blockRange.End) -
             CompactionMap.GetRangeIndex(blockRange.Start) + 1;
         ab.MergedBlockRange = blockRange;
+        ab.SkippedBlocksCountForMergedBlob = skippedBlocksCount;
         return true;
     }
 
@@ -654,6 +655,7 @@ void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
             auto* mergedBlocks = meta.MutableMergedBlocks();
             mergedBlocks->SetStart(ab.MergedBlockRange->Start);
             mergedBlocks->SetEnd(ab.MergedBlockRange->End);
+            mergedBlocks->SetSkipped(*ab.SkippedBlocksCountForMergedBlob);
             continue;
         }
 

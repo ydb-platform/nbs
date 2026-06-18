@@ -383,6 +383,56 @@ bool TPartitionDatabase::FindMixedBlocks(
     return ready;
 }
 
+bool TPartitionDatabase::FindMixedBlocks(
+    IMixedBlocksIndexVisitor& visitor,
+    const TVector<ui32>& blocks,
+    const TVector<ui64>& commitIds)
+{
+    using TTable = TPartitionSchema::MixedBlocksIndex;
+
+    bool ready = true;
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        const ui32 blockIndex = blocks[i];
+        const ui64 commitId = commitIds[i];
+
+        auto it =
+            Table<TTable>().Key(blockIndex, ReverseCommitId(commitId)).Select();
+
+        if (!it.IsReady()) {
+            ready = false;
+            continue;
+        }
+
+        if (!it.IsValid()) {
+            ready = false;
+            continue;
+        }
+
+        ui64 blobCommitId = it.GetValue<TTable::BlobCommitId>();
+        auto blobId = MakePartialBlobId(
+            blobCommitId ? blobCommitId : commitId,
+            it.GetValue<TTable::BlobId>());
+
+        ui32 blobOffsetAndCompactionRangeCount =
+            it.GetValue<TTable::BlobOffsetAndCompactionRangeCount>();
+        auto [blobOffset, compactionRangeCount] =
+            SplitBlobOffsetAndCompactionRangeCount(
+                blobOffsetAndCompactionRangeCount);
+
+        if (!visitor.VisitBlock(
+                blockIndex,
+                commitId,
+                blobId,
+                blobOffset,
+                compactionRangeCount))
+        {
+            return true;   // interrupted
+        }
+    }
+
+    return ready;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionDatabase::WriteMergedBlocks(
@@ -465,10 +515,6 @@ bool TPartitionDatabase::FindMergedBlocks(
                     commitId,
                     it.GetValue<TTable::BlobId>());
 
-                if (!blobsVisitor.Visit(range, blobId)) {
-                    return true;   // interrupted
-                }
-
                 const auto holeMask = BlockMaskFromString(
                     it.GetValueOrDefault<TTable::HoleMask>());
 
@@ -499,6 +545,10 @@ bool TPartitionDatabase::FindMergedBlocks(
                         return true;    // interrupted
                     }
                 }
+
+                if (!blobsVisitor.Visit(range, blobId, skipped)) {
+                    return true;   // interrupted
+                }
             }
         }
 
@@ -523,10 +573,12 @@ bool TPartitionDatabase::FindMergedBlocks(
     {
         bool Visit(
             TBlockRange32 blockRange,
-            const TPartialBlobId& blobId) override
+            const TPartialBlobId& blobId,
+            ui32 skippedBlocksCount) override
         {
             Y_UNUSED(blockRange);
             Y_UNUSED(blobId);
+            Y_UNUSED(skippedBlocksCount);
             return true;
         }
     };

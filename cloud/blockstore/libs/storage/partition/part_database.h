@@ -87,6 +87,10 @@ public:
         const TVector<ui32>& blocks,
         ui64 maxCommitId = Max());
 
+    bool FindMixedBlocks(
+        IMixedBlocksIndexVisitor& visitor,
+        const TVector<ui32>& blocks,
+        const TVector<ui64>& commitIds);
     //
     // MergedBlocksIndex
     //

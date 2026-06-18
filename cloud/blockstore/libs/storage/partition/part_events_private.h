@@ -138,6 +138,7 @@ struct TAffectedBlob
     ui64 MaxCommitIdInCompactionRange = 0;
     ui64 MinCommitIdInCompactionRange = Max<ui64>();
     std::optional<TBlockRange32> MergedBlockRange;
+    std::optional<ui32> SkippedBlocksCountForMergedBlob;
 
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
