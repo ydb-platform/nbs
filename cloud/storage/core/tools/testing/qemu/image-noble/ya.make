@@ -7,7 +7,7 @@ IF(ARCH_X86_64)
     # qemu-img convert -c -p -f qcow2 -O qcow2 rootfs.noble.amd64.uncompressed.img rootfs.noble.amd64.img
     FROM_SANDBOX(
         FILE
-        1234444011
+        12500613127
         RENAME RESOURCE
         OUT_NOAUTO rootfs.img
     )
@@ -16,7 +16,7 @@ ELSEIF (ARCH_ARM64)
     # qemu-img convert -c -p -f qcow2 -O qcow2 rootfs.noble.arm64.uncompressed.img rootfs.noble.arm64.img
     FROM_SANDBOX(
         FILE
-        1234444012
+        12500624574
         RENAME RESOURCE
         OUT_NOAUTO rootfs.img
     )
