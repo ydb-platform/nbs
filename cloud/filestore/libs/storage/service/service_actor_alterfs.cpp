@@ -108,7 +108,6 @@ private:
     void GetStorageStats(const TActorContext& ctx);
     void AlterFileStore(const TActorContext& ctx);
     void AlterShards(const TActorContext& ctx);
-    void AlterShard(const TActorContext& ctx, const ui32 shardIndex);
     void GetFileSystemTopology(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
     void CreateShard(const TActorContext& ctx, const ui32 shardIndex);
