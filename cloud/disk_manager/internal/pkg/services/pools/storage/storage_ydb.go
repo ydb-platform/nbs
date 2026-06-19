@@ -23,6 +23,8 @@ type storageYDB struct {
 	maxBaseDiskUnits                   uint64
 	takeBaseDisksToScheduleParallelism int
 	baseDiskIDPrefix                   string
+
+	adjustBaseDiskSizeToMinBaseDiskUnits bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -510,5 +512,7 @@ func NewStorage(
 		maxBaseDiskUnits:                   uint64(config.GetMaxBaseDiskUnits()),
 		takeBaseDisksToScheduleParallelism: takeBaseDisksToScheduleParallelism,
 		baseDiskIDPrefix:                   config.GetBaseDiskIdPrefix(),
+
+		adjustBaseDiskSizeToMinBaseDiskUnits: config.GetAdjustBaseDiskSizeToMinBaseDiskUnits(),
 	}, nil
 }
