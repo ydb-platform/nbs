@@ -39,7 +39,7 @@ def _process_coredumps_script(gdb, backtrace_dir):
             run_test_basename="${{run_test_command##*/}}"
             executable=''
             if sudo test -s "/coredumps/$core.exe.txt"; then
-                executable=$(sudo cat "/coredumps/$core.exe.txt" | sed 's/!/\//g')
+                executable=$(sudo cat "/coredumps/$core.exe.txt" | tr '!' '/')
             fi
             if [ -n "$executable" ] && sudo test -x "$executable"; then
                 sudo "$gdb" "$executable" "/coredumps/$core" "${{gdb_args[@]}}" | sudo tee "$backtrace"
