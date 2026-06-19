@@ -452,7 +452,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldRegisterEntryVersionCacheForCreatedHandle)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
+            std::make_shared<TDirectoryEntryVersionCache>(
+                1,
+                CreateDirectoryHandleStatsStub());
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -475,7 +477,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldKeepEntryVersionCacheUntilLastHandleIsRemoved)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
+            std::make_shared<TDirectoryEntryVersionCache>(
+                1,
+                CreateDirectoryHandleStatsStub());
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -504,7 +508,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnClear)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
+            std::make_shared<TDirectoryEntryVersionCache>(
+                1,
+                CreateDirectoryHandleStatsStub());
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -530,7 +536,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnReset)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
+            std::make_shared<TDirectoryEntryVersionCache>(
+                1,
+                CreateDirectoryHandleStatsStub());
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -566,7 +574,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         }
 
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
+            std::make_shared<TDirectoryEntryVersionCache>(
+                1,
+                CreateDirectoryHandleStatsStub());
         auto stats = CreateStats();
         auto cache = TDirectoryHandleCache(
             Log,

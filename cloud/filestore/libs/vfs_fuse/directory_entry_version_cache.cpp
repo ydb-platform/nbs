@@ -2,6 +2,19 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+TDirectoryEntryVersionCacheShard::~TDirectoryEntryVersionCacheShard()
+{
+    i64 removedCount = 0;
+
+    for (const auto& [_, state]: Directories) {
+        removedCount += static_cast<i64>(state.ChildVersions.size());
+    }
+
+    if (removedCount != 0) {
+        Stats->ChangeEntryVersionCacheEntryCount(-removedCount);
+    }
+}
+
 void TDirectoryEntryVersionCacheShard::RegisterHandle(fuse_ino_t directory)
 {
     with_lock (Lock) {
@@ -26,7 +39,7 @@ void TDirectoryEntryVersionCacheShard::UnregisterHandle(fuse_ino_t directory)
         }
     }
 
-    if (removedCount != 0 && Stats) {
+    if (removedCount != 0) {
         Stats->ChangeEntryVersionCacheEntryCount(-removedCount);
     }
 }
@@ -45,15 +58,15 @@ void TDirectoryEntryVersionCacheShard::AdvanceVersion(
         }
 
         auto& childVersions = it->second.ChildVersions;
-        inserted = !childVersions.contains(name);
+        auto [versionIt, newEntry] = childVersions.try_emplace(name, version);
+        inserted = newEntry;
 
-        auto& oldVersion = childVersions[name];
-        if (oldVersion < version) {
-            oldVersion = version;
+        if (versionIt->second < version) {
+            versionIt->second = version;
         }
     }
 
-    if (inserted && Stats) {
+    if (inserted) {
         Stats->ChangeEntryVersionCacheEntryCount(1);
     }
 }

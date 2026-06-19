@@ -10,6 +10,9 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/system/spinlock.h>
+#include <util/system/yassert.h>
+
+#include <utility>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -37,7 +40,11 @@ public:
     explicit TDirectoryEntryVersionCacheShard(
         TDirectoryHandleModuleStatsPtr stats)
         : Stats(std::move(stats))
-    {}
+    {
+        Y_ABORT_UNLESS(Stats);
+    }
+
+    ~TDirectoryEntryVersionCacheShard();
 
     void RegisterHandle(fuse_ino_t directory);
     void UnregisterHandle(fuse_ino_t directory);

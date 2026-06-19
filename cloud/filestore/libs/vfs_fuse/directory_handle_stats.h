@@ -62,4 +62,6 @@ TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStats(
     ITimerPtr timer,
     IDirectoryHandleStorageStatsPtr storageStats);
 
+TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStatsStub();
+
 }   // namespace NCloud::NFileStore::NFuse
