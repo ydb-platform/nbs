@@ -561,7 +561,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             entryVersionCache->GetVersion(43, "child2"));
     }
 
-    Y_UNIT_TEST(ShouldNotRegisterEntryVersionCacheForLoadedHandles)
+    Y_UNIT_TEST(ShouldRegisterEntryVersionCacheForLoadedHandles)
     {
         const ui64 handleId = 42;
         {
@@ -584,11 +584,20 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             CreateStorage(stats),
             entryVersionCache);
 
-        UNIT_ASSERT(cache.FindHandle(handleId));
+        auto loadedHandle = cache.FindHandle(handleId);
+        UNIT_ASSERT(loadedHandle);
+
+        auto chunk = loadedHandle->UpdateContent(
+            1024,
+            0,
+            CreateContent(1024, 'x'),
+            10,
+            {});
+        cache.AppendChunk(handleId, loadedHandle, chunk);
 
         entryVersionCache->AdvanceVersion(100, "child", 10);
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            10,
             entryVersionCache->GetVersion(100, "child"));
     }
 

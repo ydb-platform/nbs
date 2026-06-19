@@ -30,7 +30,7 @@ TDirectoryHandleCache::TDirectoryHandleCache(
     TLog log,
     TDirectoryHandleModuleStatsPtr stats,
     TDirectoryHandleStoragePtr storage,
-    std::shared_ptr<TDirectoryEntryVersionCache> directoryEntryVersionCache)
+    TDirectoryEntryVersionCachePtr directoryEntryVersionCache)
     : Log(std::move(log))
     , Storage(std::move(storage))
     , DirectoryEntryVersionCache(std::move(directoryEntryVersionCache))
@@ -38,6 +38,11 @@ TDirectoryHandleCache::TDirectoryHandleCache(
 {
     if (Storage) {
         Storage->LoadHandles(Handles);
+        if (DirectoryEntryVersionCache) {
+            for (const auto& [_, handle]: Handles) {
+                DirectoryEntryVersionCache->RegisterHandle(handle->Index);
+            }
+        }
     }
 
     IncreaseStats(SumDirectoryHandlesStats(Handles), Handles.size());

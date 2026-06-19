@@ -90,7 +90,7 @@ private:
 
     TNodeCache NodeCache;
 
-    std::shared_ptr<TDirectoryEntryVersionCache> DirectoryEntryVersionCache;
+    TDirectoryEntryVersionCachePtr DirectoryEntryVersionCache;
 
     std::unique_ptr<TDirectoryHandleCache> DirectoryHandleCache;
 
