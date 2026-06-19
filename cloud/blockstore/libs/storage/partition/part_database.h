@@ -89,8 +89,7 @@ public:
 
     bool FindMixedBlocks(
         IMixedBlocksIndexVisitor& visitor,
-        const TVector<ui32>& blocks,
-        const TVector<ui64>& commitIds);
+        const TVector<TBlock>& blocks);
     //
     // MergedBlocksIndex
     //

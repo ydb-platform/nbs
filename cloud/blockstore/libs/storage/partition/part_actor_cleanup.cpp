@@ -41,22 +41,41 @@ std::optional<TError> VerifyMixedBlocksMeta(
                                                : originalBlobId.CommitId();
     };
 
-    TVector<ui32> missedBlocks;
-    TVector<ui64> missedCommitIds;
+    TVector<TBlock> originalBlocks;
+    for (size_t i = 0; i < originalMixedBlocks.BlocksSize(); ++i) {
+        originalBlocks.emplace_back(
+            originalMixedBlocks.GetBlocks(i),
+            getCommitId(originalMixedBlocks, i),
+            false);
+    }
+
+    TVector<TBlock> recreatedBlocks;
+    for (size_t i = 0; i < recreatedMixedBlocks.BlocksSize(); ++i) {
+        recreatedBlocks.emplace_back(
+            recreatedMixedBlocks.GetBlocks(i),
+            getCommitId(recreatedMixedBlocks, i),
+            false);
+    }
+
+    auto cmp = [](const TBlock& l, const TBlock& r)
+    {
+        if (l.BlockIndex == r.BlockIndex) {
+            return l.CommitId < r.CommitId;
+        }
+        return l.BlockIndex < r.BlockIndex;
+    };
+
+    Sort(originalBlocks, cmp);
+    Sort(recreatedBlocks, cmp);
+
+    TVector<TBlock> missedBlocks;
 
     size_t recreatedIdx = 0, originalIdx = 0;
     while (recreatedIdx < recreatedMixedBlocks.BlocksSize() &&
            originalIdx < originalMixedBlocks.BlocksSize())
     {
-        const auto rBlockIndex = recreatedMixedBlocks.GetBlocks(recreatedIdx);
-        const auto rCommitId = getCommitId(recreatedMixedBlocks, recreatedIdx);
-
-        const auto oBlockIndex = originalMixedBlocks.GetBlocks(originalIdx);
-        const auto oCommitId = getCommitId(originalMixedBlocks, originalIdx);
-
-        if (rBlockIndex != oBlockIndex || rCommitId != oCommitId) {
-            missedBlocks.emplace_back(oBlockIndex);
-            missedCommitIds.emplace_back(oCommitId);
+        if (recreatedBlocks[recreatedIdx] != originalBlocks[originalIdx]) {
+            missedBlocks.emplace_back(originalBlocks[originalIdx]);
 
             ++originalIdx;
             continue;
@@ -67,11 +86,7 @@ std::optional<TError> VerifyMixedBlocksMeta(
     }
 
     for (; originalIdx < originalMixedBlocks.BlocksSize(); ++originalIdx) {
-        const auto oBlockIndex = originalMixedBlocks.GetBlocks(originalIdx);
-        const auto oCommitId = getCommitId(originalMixedBlocks, originalIdx);
-
-        missedBlocks.emplace_back(oBlockIndex);
-        missedCommitIds.emplace_back(oCommitId);
+        missedBlocks.emplace_back(originalBlocks[originalIdx]);
     }
 
     if (recreatedIdx < recreatedMixedBlocks.BlocksSize()) {
@@ -104,7 +119,7 @@ std::optional<TError> VerifyMixedBlocksMeta(
     };
 
     TVisitor visitor;
-    bool ready = db.FindMixedBlocks(visitor, missedBlocks, missedCommitIds);
+    bool ready = db.FindMixedBlocks(visitor, missedBlocks);
     if (!ready) {
         return std::nullopt;
     }

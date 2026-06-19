@@ -385,16 +385,12 @@ bool TPartitionDatabase::FindMixedBlocks(
 
 bool TPartitionDatabase::FindMixedBlocks(
     IMixedBlocksIndexVisitor& visitor,
-    const TVector<ui32>& blocks,
-    const TVector<ui64>& commitIds)
+    const TVector<TBlock>& blocks)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
     bool ready = true;
-    for (size_t i = 0; i < blocks.size(); ++i) {
-        const ui32 blockIndex = blocks[i];
-        const ui64 commitId = commitIds[i];
-
+    for (const auto& [blockIndex, commitId, _]: blocks) {
         auto it =
             Table<TTable>().Key(blockIndex, ReverseCommitId(commitId)).Select();
 
