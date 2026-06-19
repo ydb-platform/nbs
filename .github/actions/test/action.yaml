@@ -160,6 +160,7 @@ runs:
             --stat
             --output "$OUT_DIR"
             -DGITHUB_CI=yes
+            -DOPENSOURCE=yes
         )
 
         case "$BUILD_PRESET" in
