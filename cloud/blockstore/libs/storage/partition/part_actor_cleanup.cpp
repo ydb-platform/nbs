@@ -12,6 +12,8 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
 
+using namespace NProto;
+
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
@@ -21,7 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::optional<bool> VerifyMixedBlocksMeta(
+std::optional<TError> VerifyMixedBlocksMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
     const NProto::TBlobMeta::TMixedBlocks& originalMixedBlocks,
@@ -29,56 +31,51 @@ std::optional<bool> VerifyMixedBlocksMeta(
 {
     // Check that blocks from recreated blob meta are present in the original
     // blob meta and that their commit ids are the same.
-    // Some blocks may be missing in recreated blob meta? because we delete some
+    // Some blocks may be missing in recreated blob meta because we delete some
     // blocks from mixed index on compaction.
 
     auto getCommitId = [&](const NProto::TBlobMeta::TMixedBlocks& mixedBlocks,
                            size_t i) -> ui64
     {
         return i < mixedBlocks.CommitIdsSize() ? mixedBlocks.GetCommitIds(i)
-                                            : originalBlobId.CommitId();
+                                               : originalBlobId.CommitId();
     };
-
-    THashMap<ui32, ui64> blockIndexToCommitId;
-    for (size_t i = 0; i < originalMixedBlocks.BlocksSize(); ++i) {
-        blockIndexToCommitId[originalMixedBlocks.GetBlocks(i)] =
-            getCommitId(originalMixedBlocks, i);
-    }
-
-    for (size_t i = 0; i < recreatedMixedBlocks.BlocksSize(); ++i) {
-        const auto blockIndex = recreatedMixedBlocks.GetBlocks(i);
-        const auto commitId = getCommitId(recreatedMixedBlocks, i);
-
-        auto* originalCommitId = blockIndexToCommitId.FindPtr(blockIndex);
-        if (!originalCommitId) {
-            return false;
-        }
-        if (*originalCommitId != commitId) {
-            return false;
-        }
-    }
 
     TVector<ui32> missedBlocks;
     TVector<ui64> missedCommitIds;
 
-    THashMap<ui32, ui64> recreatedBlockIndexToCommitId;
-    for (size_t i = 0; i < recreatedMixedBlocks.BlocksSize(); ++i) {
-        recreatedBlockIndexToCommitId[recreatedMixedBlocks.GetBlocks(i)] =
-            getCommitId(recreatedMixedBlocks, i);
+    size_t recreatedIdx = 0, originalIdx = 0;
+    while (recreatedIdx < recreatedMixedBlocks.BlocksSize() &&
+           originalIdx < originalMixedBlocks.BlocksSize())
+    {
+        const auto rBlockIndex = recreatedMixedBlocks.GetBlocks(recreatedIdx);
+        const auto rCommitId = getCommitId(recreatedMixedBlocks, recreatedIdx);
+
+        const auto oBlockIndex = originalMixedBlocks.GetBlocks(originalIdx);
+        const auto oCommitId = getCommitId(originalMixedBlocks, originalIdx);
+
+        if (rBlockIndex != oBlockIndex || rCommitId != oCommitId) {
+            missedBlocks.emplace_back(oBlockIndex);
+            missedCommitIds.emplace_back(oCommitId);
+
+            ++originalIdx;
+            continue;
+        }
+
+        ++recreatedIdx;
+        ++originalIdx;
     }
 
-    for (const auto& [blockIndex, commitId]: blockIndexToCommitId) {
-        auto* recreatedCommitId =
-            recreatedBlockIndexToCommitId.FindPtr(blockIndex);
-        if (!recreatedCommitId) {
-            missedBlocks.emplace_back(blockIndex);
-            missedCommitIds.emplace_back(commitId);
-        }
+    if (recreatedIdx < recreatedMixedBlocks.BlocksSize()) {
+        return MakeError(
+            E_ARGUMENT,
+            "there is blocks that are not present in the original blob meta");
     }
 
     struct TVisitor final: public IMixedBlocksIndexVisitor
     {
-        bool hasMissedBlocks = false;
+        TVector<ui32> LeakedBlocks;
+        TVector<ui64> LeakedCommitIds;
 
         bool VisitBlock(
             ui32 blockIndex,
@@ -87,13 +84,13 @@ std::optional<bool> VerifyMixedBlocksMeta(
             ui16 blobOffset,
             ui8 compactionRangeCount) override
         {
-            Y_UNUSED(blockIndex);
-            Y_UNUSED(commitId);
             Y_UNUSED(blobId);
             Y_UNUSED(blobOffset);
             Y_UNUSED(compactionRangeCount);
 
-            hasMissedBlocks = true;
+            LeakedBlocks.emplace_back(blockIndex);
+            LeakedCommitIds.emplace_back(commitId);
+
             return false;
         }
     };
@@ -104,21 +101,36 @@ std::optional<bool> VerifyMixedBlocksMeta(
         return std::nullopt;
     }
 
-    return !visitor.hasMissedBlocks;
+    if (visitor.LeakedBlocks) {
+        TStringBuilder sb;
+        sb << "Leaked blocks in recreated blob meta BlockIndexes: ";
+        for (size_t i = 0; i < visitor.LeakedBlocks.size(); ++i) {
+            sb << visitor.LeakedBlocks[i] << " ";
+        }
+        sb << ", CommitIds: ";
+        for (size_t i = 0; i < visitor.LeakedCommitIds.size(); ++i) {
+            sb << visitor.LeakedCommitIds[i] << " ";
+        }
+        return MakeError(E_ARGUMENT, std::move(sb));
+    }
+
+    return MakeError(S_OK);
 }
 
-std::optional<bool> VerifyMergedBlocksMeta(
+std::optional<TError> VerifyMergedBlocksMeta(
     const NProto::TBlobMeta::TMergedBlocks& originalMergedBlocks,
     const NProto::TBlobMeta::TMergedBlocks& recreatedMergedBlocks)
 {
-    return originalMergedBlocks.GetStart() ==
-               recreatedMergedBlocks.GetStart() &&
-           originalMergedBlocks.GetEnd() == recreatedMergedBlocks.GetEnd() &&
-           originalMergedBlocks.GetSkipped() ==
-               recreatedMergedBlocks.GetSkipped();
+    bool ok =
+        originalMergedBlocks.GetStart() == recreatedMergedBlocks.GetStart() &&
+        originalMergedBlocks.GetEnd() == recreatedMergedBlocks.GetEnd() &&
+        originalMergedBlocks.GetSkipped() == recreatedMergedBlocks.GetSkipped();
+
+    return ok ? MakeError(S_OK)
+              : MakeError(E_ARGUMENT, "Mismatched merged blocks");
 }
 
-std::optional<bool> VerifyRecreatedBlobMeta(
+std::optional<TError> VerifyRecreatedBlobMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
     const NProto::TBlobMeta& blobMeta,
@@ -127,7 +139,7 @@ std::optional<bool> VerifyRecreatedBlobMeta(
     if (blobMeta.HasMixedBlocks() != recreatedBlobMeta.HasMixedBlocks() ||
         blobMeta.HasMergedBlocks() != recreatedBlobMeta.HasMergedBlocks())
     {
-        return false;
+        return MakeError(E_ARGUMENT, "Mismatched blob meta types");
     }
 
     if (blobMeta.HasMixedBlocks()) {
@@ -144,7 +156,7 @@ std::optional<bool> VerifyRecreatedBlobMeta(
             recreatedBlobMeta.GetMergedBlocks());
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 }   // namespace
@@ -347,16 +359,16 @@ bool TPartitionActor::PrepareCleanup(
                 continue;
             }
 
-            std::optional<bool> verified = VerifyRecreatedBlobMeta(
+            auto maybeError = VerifyRecreatedBlobMeta(
                 db,
                 item.BlobId,
                 args.BlobsMeta.back(),
                 item.BlobMeta);
-            if (!verified) {
+            if (!maybeError) {
                 ready = false;
                 continue;
             }
-            if (!*verified) {
+            if (HasError(*maybeError)) {
                 blobIdsToRemoveFromQueue.insert(item.BlobId);
                 ReportCleanupBlobMetaBlocksMismatch(
                     {{"diskId", PartitionConfig.GetDiskId()},
@@ -365,7 +377,8 @@ bool TPartitionActor::PrepareCleanup(
                      {"recreatedBlobMeta",
                       item.BlobMeta.ShortUtf8DebugString()},
                      {"originalBlobMeta",
-                      args.BlobsMeta.back().ShortUtf8DebugString()}});
+                      args.BlobsMeta.back().ShortUtf8DebugString()},
+                     {"error", FormatError(*maybeError)}});
             }
         } else {
             ready = false;

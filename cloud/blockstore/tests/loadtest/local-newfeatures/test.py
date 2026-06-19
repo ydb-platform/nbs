@@ -32,6 +32,7 @@ def default_storage_config():
     storage.V1GarbageCompactionEnabled = True
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30
     storage.CheckBlockChecksumsInBlobsUponRead = True
+    storage.VerifyRecreatedBlobMetasOnCleanup = True
 
     return storage
 
@@ -159,6 +160,7 @@ def ordinary_prod_storage_config():
     storage.FreshChannelWriteRequestsEnabled = True
     storage.BatchCompactionEnabled = True
     storage.HDDMaxBlobsPerRange = 5
+    storage.VerifyRecreatedBlobMetasOnCleanup = True
 
     return storage
 

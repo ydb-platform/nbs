@@ -32,10 +32,10 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
-            queue.Add({
-                TPartialBlobId(1, step, 3, 1024, 0, 0),
-                MakeCommitId(1, ++deletionStep)
-            });
+            queue.Add(
+                {TPartialBlobId(1, step, 3, 1024, 0, 0),
+                 MakeCommitId(1, ++deletionStep),
+                 {}});
         }
 
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(MakeCommitId(1, 20)), 10);
@@ -55,7 +55,8 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
         for (ui32 step: Steps) {
             queue.Add({
                 TPartialBlobId(1, step, 3, 1024, 0, 0),
-                MakeCommitId(1, ++deletionStep)
+                MakeCommitId(1, ++deletionStep),
+                {}
             });
         }
 
@@ -78,7 +79,8 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
         queue.Add({
             TPartialBlobId(1, 1, 3, 1024, 0, 0),
-            MakeCommitId(1, 1)
+            MakeCommitId(1, 1),
+            {}
         });
 
         UNIT_ASSERT(queue.HasBlob(blobId));
@@ -86,10 +88,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
         TPartialBlobId anotherBlobId(1, 2, 3, 1024, 0, 0);
         UNIT_ASSERT(!queue.HasBlob(anotherBlobId));
 
-        queue.Add({
-            anotherBlobId,
-            MakeCommitId(1, 2)
-        });
+        queue.Add({anotherBlobId, MakeCommitId(1, 2), {}});
 
         UNIT_ASSERT(queue.HasBlob(anotherBlobId));
     }
