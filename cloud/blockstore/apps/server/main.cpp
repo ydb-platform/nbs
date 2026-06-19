@@ -24,11 +24,18 @@
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
 
+#include <csignal>
+#include <cstdlib>
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)
 {
     using namespace NCloud::NBlockStore;
+
+    if (std::getenv("NBS_TEST_CRASH_ON_START")) {
+        std::raise(SIGSEGV);
+    }
 
     auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
     moduleFactories->CreateTicketParser = NKikimr::CreateTicketParser;

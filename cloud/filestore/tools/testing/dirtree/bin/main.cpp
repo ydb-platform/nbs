@@ -3,11 +3,18 @@
 
 #include <util/generic/yexception.h>
 
+#include <csignal>
+#include <cstdlib>
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)
 {
     using namespace NCloud::NFileStore;
+
+    if (std::getenv("FILESTORE_DIRTREE_TEST_CRASH_ON_START")) {
+        std::raise(SIGSEGV);
+    }
 
     ConfigureSignals();
 
