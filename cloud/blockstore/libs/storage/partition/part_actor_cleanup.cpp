@@ -66,6 +66,14 @@ std::optional<TError> VerifyMixedBlocksMeta(
         ++originalIdx;
     }
 
+    for (; originalIdx < originalMixedBlocks.BlocksSize(); ++originalIdx) {
+        const auto oBlockIndex = originalMixedBlocks.GetBlocks(originalIdx);
+        const auto oCommitId = getCommitId(originalMixedBlocks, originalIdx);
+
+        missedBlocks.emplace_back(oBlockIndex);
+        missedCommitIds.emplace_back(oCommitId);
+    }
+
     if (recreatedIdx < recreatedMixedBlocks.BlocksSize()) {
         return MakeError(
             E_ARGUMENT,
@@ -336,6 +344,7 @@ bool TPartitionActor::PrepareCleanup(
     TPartitionDatabase db(tx.DB);
 
     THashSet<TPartialBlobId, TPartialBlobIdHash> blobIdsToRemoveFromQueue;
+    THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> blobMetas;
 
     bool ready = true;
 
@@ -350,7 +359,8 @@ bool TPartitionActor::PrepareCleanup(
                 blobMeta.Defined(),
                 "Could not read meta data for blob: %s",
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
-            args.BlobsMeta.emplace_back(std::move(blobMeta.GetRef()));
+            auto& meta = blobMetas[item.BlobId];
+            meta = std::move(blobMeta.GetRef());
 
             const bool verifyRecreatedBlobMetasOnCleanup =
                 hasValidMetaInCleanupQueue &&
@@ -359,11 +369,8 @@ bool TPartitionActor::PrepareCleanup(
                 continue;
             }
 
-            auto maybeError = VerifyRecreatedBlobMeta(
-                db,
-                item.BlobId,
-                args.BlobsMeta.back(),
-                item.BlobMeta);
+            auto maybeError =
+                VerifyRecreatedBlobMeta(db, item.BlobId, meta, item.BlobMeta);
             if (!maybeError) {
                 ready = false;
                 continue;
@@ -376,8 +383,7 @@ bool TPartitionActor::PrepareCleanup(
                      {"blobId", ToString(MakeBlobId(TabletID(), item.BlobId))},
                      {"recreatedBlobMeta",
                       item.BlobMeta.ShortUtf8DebugString()},
-                     {"originalBlobMeta",
-                      args.BlobsMeta.back().ShortUtf8DebugString()},
+                     {"originalBlobMeta", meta.ShortUtf8DebugString()},
                      {"error", FormatError(*maybeError)}});
             }
         } else {
@@ -391,6 +397,10 @@ bool TPartitionActor::PrepareCleanup(
             [&](const auto& item) -> bool
             { return blobIdsToRemoveFromQueue.contains(item.BlobId); });
         args.CleanupQueue.erase(itemsToRemove.begin(), itemsToRemove.end());
+
+        for (const auto& item: args.CleanupQueue) {
+            args.BlobsMeta.push_back(std::move(blobMetas[item.BlobId]));
+        }
     }
 
     return ready;

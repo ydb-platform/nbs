@@ -404,7 +404,6 @@ bool TPartitionDatabase::FindMixedBlocks(
         }
 
         if (!it.IsValid()) {
-            ready = false;
             continue;
         }
 
