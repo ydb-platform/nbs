@@ -24,11 +24,14 @@ namespace {
 #define THROTTLING_PARAM(paramName)                                            \
     ui64 paramName(                                                            \
         const TStorageConfig& config,                                          \
-        const NCloud::NProto::EStorageMediaKind mediaKind)                     \
+        const NCloud::NProto::EStorageMediaKind mediaKind,                     \
+        const bool isSystem)                                                   \
     {                                                                          \
         switch (mediaKind) {                                                   \
             case NCloud::NProto::STORAGE_MEDIA_SSD:                            \
-                return config.GetSSD ## paramName();                           \
+                return isSystem                                                \
+                    ? config.GetSystemSSD ## paramName()                       \
+                    : config.GetSSD ## paramName();                            \
             case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:              \
                 return config.GetNonReplicatedSSD ## paramName();              \
             case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:              \
@@ -59,8 +62,14 @@ ui64 ReadBandwidth(
     const ui32 unitCount,
     const TVolumeParams& volumeParams)
 {
-    const auto unitBandwidth = UnitReadBandwidth(config, volumeParams.MediaKind);
-    const auto maxBandwidth = MaxReadBandwidth(config, volumeParams.MediaKind);
+    const auto unitBandwidth = UnitReadBandwidth(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
+    const auto maxBandwidth = MaxReadBandwidth(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
     return Max(
         static_cast<ui64>(volumeParams.MaxReadBandwidth),
         Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB
@@ -72,8 +81,14 @@ ui64 WriteBandwidth(
     const ui32 unitCount,
     const TVolumeParams& volumeParams)
 {
-    const auto unitBandwidth = UnitWriteBandwidth(config, volumeParams.MediaKind);
-    const auto maxBandwidth = MaxWriteBandwidth(config, volumeParams.MediaKind);
+    const auto unitBandwidth = UnitWriteBandwidth(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
+    const auto maxBandwidth = MaxWriteBandwidth(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
     const auto volumeMaxWriteBandwidth = volumeParams.MaxWriteBandwidth
         ? volumeParams.MaxWriteBandwidth : volumeParams.MaxReadBandwidth;
     return Max(
@@ -87,8 +102,14 @@ ui32 ReadIops(
     const ui32 unitCount,
     const TVolumeParams& volumeParams)
 {
-    const auto unitIops = UnitReadIops(config, volumeParams.MediaKind);
-    const auto maxIops = MaxReadIops(config, volumeParams.MediaKind);
+    const auto unitIops = UnitReadIops(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
+    const auto maxIops = MaxReadIops(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
     return Max(
         static_cast<ui64>(volumeParams.MaxReadIops),
         Min(maxIops, unitCount * unitIops)
@@ -100,8 +121,14 @@ ui32 WriteIops(
     const ui32 unitCount,
     const TVolumeParams& volumeParams)
 {
-    const auto unitIops = UnitWriteIops(config, volumeParams.MediaKind);
-    const auto maxIops = MaxWriteIops(config, volumeParams.MediaKind);
+    const auto unitIops = UnitWriteIops(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
+    const auto maxIops = MaxWriteIops(
+        config,
+        volumeParams.MediaKind,
+        volumeParams.IsSystem);
     const auto volumeMaxWriteIops = volumeParams.MaxWriteIops
         ? volumeParams.MaxWriteIops : volumeParams.MaxReadIops;
     return Max(
@@ -868,6 +895,7 @@ TVolumeParams ComputeVolumeParams(
     TVolumeParams volumeParams;
     volumeParams.BlockSize = blockSize;
     volumeParams.MediaKind = mediaKind;
+    volumeParams.IsSystem = isSystem;
     if (!IsDiskRegistryMediaKind(volumeParams.MediaKind)) {
         TPartitionsInfo partitionsInfo;
         if (partitionsCount) {

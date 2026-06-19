@@ -168,6 +168,14 @@ public:
     ui32 GetSSDUnitWriteIops() const;
     ui32 GetSSDMaxReadIops() const;
     ui32 GetSSDMaxWriteIops() const;
+    ui32 GetSystemSSDUnitReadBandwidth() const;
+    ui32 GetSystemSSDUnitWriteBandwidth() const;
+    ui32 GetSystemSSDMaxReadBandwidth() const;
+    ui32 GetSystemSSDMaxWriteBandwidth() const;
+    ui32 GetSystemSSDUnitReadIops() const;
+    ui32 GetSystemSSDUnitWriteIops() const;
+    ui32 GetSystemSSDMaxReadIops() const;
+    ui32 GetSystemSSDMaxWriteIops() const;
     ui32 GetRealSSDUnitReadIops() const;
     ui32 GetRealSSDUnitWriteIops() const;
     ui32 GetSSDMaxBlobsPerRange() const;

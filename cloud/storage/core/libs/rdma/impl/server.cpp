@@ -29,6 +29,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
+#include <atomic>
 #include <variant>
 
 namespace NCloud::NStorage::NRdma {
@@ -97,6 +98,11 @@ struct TRequest
 
     TPooledBuffer InBuffer {};
     TPooledBuffer OutBuffer {};
+
+    // Set in ExecuteRequest() before ownership is transferred to the handler
+    // via HandleRequest()/req.release(). Used to track floating requests that
+    // hold session buffer references but are not tracked by WR queue sizes.
+    bool TransferredToHandler = false;
 
     TRequest(std::weak_ptr<TServerSession> session)
         : Session(std::move(session))
@@ -294,7 +300,15 @@ private:
     TLockFreeList<TRequest> InputRequests;
     TSimpleList<TRequest> QueuedRequests;
     TEventHandle RequestEvent;
-    bool FlushStarted = false;
+    std::atomic<bool> FlushStarted{false};
+
+    // Count of requests currently transferred to the handler (via req.release()
+    // in ExecuteRequest) whose SendResponse/SendError has not yet been called.
+    // IsFlushed() waits for this to reach zero so session buffers are not freed
+    // while the handler or its async callbacks still hold in/out TStringBufs.
+    // This variable only gets accessed from the CQ thread,
+    // it doesn't really need to be atomic
+    ui64 ExecutingRequests{0};
 
 public:
     static TServerSession* FromEvent(rdma_cm_event* event)
@@ -625,6 +639,10 @@ bool TServerSession::HandleCompletionEvents() noexcept
 
 void TServerSession::Flush() noexcept
 {
+    if (FlushStarted) {
+        return;
+    }
+
     RDMA_DEBUG("flush queues");
 
     try {
@@ -640,7 +658,11 @@ void TServerSession::Flush() noexcept
 
 bool TServerSession::IsFlushed() const
 {
+    // ExecutingRequests counts requests transferred to the handler whose
+    // SendResponse/SendError has not yet been processed all the way through
+    // FreeRequest. Session buffers must not be freed while this is non-zero.
     return FlushStarted
+        && ExecutingRequests == 0
         && SendQueue.Size() == Config->SendQueueSize
         && RecvQueue.Size() == Config->RecvQueueSize;
 }
@@ -799,6 +821,9 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 {
     if (req == nullptr) {
         return;
+    }
+    if (req->TransferredToHandler) {
+        --ExecutingRequests;
     }
     RecvBuffers.ReleaseBuffer(req->InBuffer);
     SendBuffers.ReleaseBuffer(req->OutBuffer);
@@ -1009,6 +1034,9 @@ void TServerSession::ExecuteRequest(TRequestPtr req) noexcept
         ExecuteRequest,
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
+
+    req->TransferredToHandler = true;
+    ++ExecutingRequests;
 
     Handler->HandleRequest(req.get(), req->CallContext, in, out);
 
@@ -1397,6 +1425,18 @@ public:
         return Sessions.Get();
     }
 
+    bool HasSessions()
+    {
+        return !Sessions.Get()->empty();
+    }
+
+    void FlushSessions()
+    {
+        for (const auto& session: *Sessions.Get()) {
+            session->Flush();
+        }
+    }
+
 private:
     bool ShouldStop() const
     {
@@ -1484,8 +1524,23 @@ private:
         TAdaptiveWait aw(
             Config->AdaptiveWaitSleepDuration,
             Config->AdaptiveWaitSleepDelay);
+        bool flushStarted = false;
 
-        while (!ShouldStop()) {
+        while (true) {
+            if (ShouldStop()) {
+                if (!flushStarted) {
+                    if (WaitMode == EWaitMode::Poll) {
+                        StopEvent.Clear();
+                    }
+                    FlushSessions();
+                    flushStarted = true;
+                }
+
+                if (!HasSessions()) {
+                    break;
+                }
+            }
+
             switch (WaitMode) {
                 case EWaitMode::Poll:
                     HandlePollEvents();
