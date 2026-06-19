@@ -180,8 +180,8 @@ func getNbsClient(
 ) *mocks.NbsClientMock {
 
 	clientIndex := 0
-	for index, listEndpointsResponse := range listEndpointsResponses {
-		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+	for index := range listEndpointsResponses {
+		if len(listEndpointsResponses[index].Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
 			clientIndex = index
 		}
 	}
@@ -195,8 +195,8 @@ func getNfsClient(
 ) *mocks.NfsEndpointClientMock {
 
 	clientIndex := 0
-	for index, listEndpointsResponse := range listEndpointsResponses {
-		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+	for index := range listEndpointsResponses {
+		if len(listEndpointsResponses[index].Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
 			clientIndex = index
 		}
 	}
@@ -344,7 +344,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-				false,
+				UseFreeNbdDeviceFile: false,
 			},
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
@@ -596,7 +596,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-				false,
+				UseFreeNbdDeviceFile: false,
 			},
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
@@ -1008,7 +1008,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,
@@ -1177,7 +1177,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,
@@ -1701,7 +1701,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,
@@ -1710,7 +1710,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		NbdDeviceFile: nbdDeviceFile,
 	}, nil)
 
-	nbdError := fmt.Errorf("%w", nbsclient.ClientError{Code: nbsclient.E_FAIL})
+	nbdError := fmt.Errorf("%v", nbsclient.ClientError{Code: nbsclient.E_FAIL})
 	testCtx.mounter.On("HasBlockDevice", nbdDeviceFile).Return(false, nbdError)
 
 	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
@@ -1796,7 +1796,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-				false,
+				UseFreeNbdDeviceFile: false,
 			},
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
@@ -1885,7 +1885,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,
