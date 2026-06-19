@@ -37,7 +37,13 @@ namespace {
 // 5. Alter (actually resize) main filestore.
 // 6. Alter shards (if we resize them)
 // 7. Create shards if needed.
-// 8. Configure shards if we created some new ones.
+// If ShardManagementRequestThrottlingEnabled is true, we cap number of
+// in-flight requests in CreateShards and send call new CreateShard as soon as
+// previous one is completed in HandleCreateFileStoreResponse.
+// If ShardManagementRequestThrottlingEnabled is false, we send requests for all
+// shards at once.
+// 8. Configure shards if we created some new ones. Same as in step 7, we
+// throttle requests if ShardManagementRequestThrottlingEnabled is true.
 // 9. Configure main filestore if new shards were created.
 // The end!
 
