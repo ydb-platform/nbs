@@ -65,6 +65,7 @@ private:
     TVector<TString> ExistingShardIds;
     ui32 NextShardToCreate = 0;
     ui32 ShardsToCreate = 0;
+    ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
     ui32 ShardsToAlter = 0;
     ui32 ShardsToDescribe = 0;
@@ -101,10 +102,12 @@ private:
     void GetStorageStats(const TActorContext& ctx);
     void AlterFileStore(const TActorContext& ctx);
     void AlterShards(const TActorContext& ctx);
+    void AlterShard(const TActorContext& ctx, const ui32 shardIndex);
     void GetFileSystemTopology(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
     void CreateShard(const TActorContext& ctx, const ui32 shardIndex);
     void ConfigureShards(const TActorContext& ctx);
+    void ConfigureShard(const TActorContext& ctx, const ui32 shardIndex);
     void ConfigureMainFileStore(const TActorContext& ctx);
 
     void PatchStorageConfig();
@@ -182,16 +185,6 @@ private:
         }
 
         return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
-    }
-
-    ui32 GetShardManagementRequestsInFlightLimit() const
-    {
-        ui32 limit =
-            !StorageConfig->GetShardManagementRequestThrottlingEnabled()
-                ? Max<ui32>()
-                : StorageConfig->GetMaxShardManagementRequestsInFlight();
-        Y_ABORT_UNLESS(limit > 0);
-        return limit;
     }
 };
 
@@ -685,11 +678,16 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
     }
 
     NextShardToCreate = ExistingShardIds.size();
-    const ui32 endShardIndex = std::min<ui32>(
-        GetShardManagementRequestsInFlightLimit(),
-        FileStoreConfig.ShardConfigs.size());
+    const ui32 endShardIndex =
+        !StorageConfig->GetShardManagementRequestThrottlingEnabled()
+            ? FileStoreConfig.ShardConfigs.size()
+            : std::min<ui32>(
+                  NextShardToCreate +
+                      StorageConfig->GetMaxShardManagementRequestsInFlight(),
+                  FileStoreConfig.ShardConfigs.size());
     for (ui32 i = NextShardToCreate; i < endShardIndex; ++i) {
         CreateShard(ctx, i);
+        ++NextShardToCreate;
     }
 }
 
@@ -760,42 +758,58 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
         return;
     }
 
-    for (ui32 i = 0; i < FileStoreConfig.ShardConfigs.size(); ++i) {
-        auto request =
-            std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
-        request->Record.SetFileSystemId(
-            FileStoreConfig.ShardConfigs[i].GetFileSystemId());
-        request->Record.SetShardNo(i + 1);
-        request->Record.SetMainFileSystemId(FileSystemId);
-        request->Record.SetDirectoryCreationInShardsEnabled(
-            DirectoryCreationInShardsEnabled);
-        request->Record.SetForceDirectoryCreationInShards(
-            DirectoryCreationInShardsForced);
-        request->Record.SetStrictFileSystemSizeEnforcementEnabled(
-            StrictFileSystemSizeEnforcementEnabled);
-
-        if (DirectoryCreationInShardsEnabled ||
-            StrictFileSystemSizeEnforcementEnabled)
-        {
-            for (const auto& shard: FileStoreConfig.ShardConfigs) {
-                request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
-            }
-        }
-
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Configuring shard %s",
-            FileSystemId.c_str(),
-            request->Record.Utf8DebugString().Quote().c_str());
-
-        NCloud::Send(
-            ctx,
-            MakeIndexTabletProxyServiceId(),
-            std::move(request),
-            i // cookie
-        );
+    NextShardToConfigure = 0;
+    const ui32 endShardIndex =
+        !StorageConfig->GetShardManagementRequestThrottlingEnabled()
+            ? FileStoreConfig.ShardConfigs.size()
+            : std::min<ui32>(
+                  NextShardToConfigure +
+                      StorageConfig->GetMaxShardManagementRequestsInFlight(),
+                  FileStoreConfig.ShardConfigs.size());
+    for (ui32 i = NextShardToConfigure; i < endShardIndex; ++i) {
+        ConfigureShard(ctx, i);
+        ++NextShardToConfigure;
     }
+}
+
+void TAlterFileStoreActor::ConfigureShard(
+    const TActorContext& ctx,
+    const ui32 shardIndex)
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
+    request->Record.SetFileSystemId(
+        FileStoreConfig.ShardConfigs[shardIndex].GetFileSystemId());
+    request->Record.SetShardNo(shardIndex + 1);
+    request->Record.SetMainFileSystemId(FileSystemId);
+    request->Record.SetDirectoryCreationInShardsEnabled(
+        DirectoryCreationInShardsEnabled);
+    request->Record.SetForceDirectoryCreationInShards(
+        DirectoryCreationInShardsForced);
+    request->Record.SetStrictFileSystemSizeEnforcementEnabled(
+        StrictFileSystemSizeEnforcementEnabled);
+
+    if (DirectoryCreationInShardsEnabled ||
+        StrictFileSystemSizeEnforcementEnabled)
+    {
+        for (const auto& shard: FileStoreConfig.ShardConfigs) {
+            request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
+        }
+    }
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Configuring shard %s",
+        FileSystemId.c_str(),
+        request->Record.Utf8DebugString().Quote().c_str());
+
+    NCloud::Send(
+        ctx,
+        MakeIndexTabletProxyServiceId(),
+        std::move(request),
+        shardIndex   // cookie
+    );
 }
 
 void TAlterFileStoreActor::HandleConfigureShardResponse(
@@ -833,6 +847,9 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
     Y_DEBUG_ABORT_UNLESS(ShardsToConfigure);
     if (--ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
+    } else if (StorageConfig->GetShardManagementRequestThrottlingEnabled()) {
+        ConfigureShard(ctx, NextShardToConfigure);
+        ++NextShardToConfigure;
     }
 }
 
