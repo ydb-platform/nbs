@@ -51,53 +51,72 @@ const (
 	defaultBlockSize      = 4096
 	largeBlockSize        = 128 * 1024
 
-	resourceExpirationTimeout = 48 * time.Hour
-	periodicRunSleep          = 10 * time.Minute
+	defaultResourceExpirationTimeout = 48 * time.Hour
+	periodicRunSleep                 = 10 * time.Minute
 )
 
-var curLaunchID string
-var lastReqNumber int
+func parseResourceExpirationTimeout(
+	testConfig *test_config.TestConfig,
+) (time.Duration, error) {
 
-////////////////////////////////////////////////////////////////////////////////
+	value := testConfig.GetResourceExpirationTimeout()
+	if len(value) == 0 {
+		return defaultResourceExpirationTimeout, nil
+	}
 
-func resourceExpiredBefore() *timestamppb.Timestamp {
-	return timestamppb.New(time.Now().Add(-resourceExpirationTimeout))
+	timeout, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"failed to parse ResourceExpirationTimeout %q: %w",
+			value,
+			err,
+		)
+	}
+
+	if timeout < 0 {
+		return 0, fmt.Errorf(
+			"ResourceExpirationTimeout should be non-negative, got %q",
+			value,
+		)
+	}
+
+	return timeout, nil
 }
 
 func generateID() string {
 	return fmt.Sprintf("%v_%v", testSuiteName, uuid.Must(uuid.NewV4()).String())
 }
 
-func getRequestContext(ctx context.Context) context.Context {
-	if len(curLaunchID) == 0 {
-		curLaunchID = generateID()
-	}
-
-	lastReqNumber++
-
-	cookie := fmt.Sprintf("%v_%v", curLaunchID, lastReqNumber)
-	ctx = headers.SetOutgoingIdempotencyKey(ctx, cookie)
-	ctx = headers.SetOutgoingRequestID(ctx, cookie)
-	return ctx
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-func parseConfigs(
+type testRun struct {
+	dmClient                  client.Client
+	privateClient             internal_client.PrivateClient
+	nbsClient                 nbs.TestingClient
+	testConfig                *test_config.TestConfig
+	resourceExpirationTimeout time.Duration
+	metrics                   *remoteTestMetrics
+	currentLaunchID           string
+	lastReqNumber             int
+}
+
+func newTestRunFromConfig(
+	ctx context.Context,
 	testConfigFileName string,
-	testConfig *test_config.TestConfig,
 	clientConfigFileName string,
-	clientConfig *client_config.ClientConfig,
 	nbsConfigFileName string,
-	nbsConfig *nbs_client_config.ClientConfig,
-) error {
+) (*testRun, error) {
+
+	testConfig := &test_config.TestConfig{}
+	clientConfig := &client_config.ClientConfig{}
+	nbsConfig := &nbs_client_config.ClientConfig{}
 
 	if len(testConfigFileName) != 0 {
 		log.Printf("Reading test config file %v", testConfigFileName)
 
 		configBytes, err := os.ReadFile(testConfigFileName)
 		if err != nil {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"failed to read test config file %v: %w",
 				testConfigFileName,
 				err,
@@ -108,7 +127,7 @@ func parseConfigs(
 
 		err = proto.UnmarshalText(string(configBytes), testConfig)
 		if err != nil {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"failed to parse test config file %v as protobuf: %w",
 				testConfigFileName,
 				err,
@@ -120,7 +139,7 @@ func parseConfigs(
 
 	configBytes, err := os.ReadFile(clientConfigFileName)
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"failed to read Disk Manager config file %v: %w",
 			clientConfigFileName,
 			err,
@@ -131,7 +150,7 @@ func parseConfigs(
 
 	err = proto.UnmarshalText(string(configBytes), clientConfig)
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"failed to parse Disk Manager config file %v as protobuf: %w",
 			clientConfigFileName,
 			err,
@@ -142,34 +161,103 @@ func parseConfigs(
 
 	configBytes, err = os.ReadFile(nbsConfigFileName)
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"failed to read NBS config file %v: %w",
 			nbsConfigFileName,
 			err,
 		)
 	}
 
-	log.Printf("Parsing NBS client config file as protobuf")
+	log.Printf("Parsing NBS config file as protobuf")
 
 	err = proto.UnmarshalText(string(configBytes), nbsConfig)
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"failed to parse NBS config file %v as protobuf: %w",
 			nbsConfigFileName,
 			err,
 		)
 	}
 
-	return nil
+	resourceExpirationTimeout, err := parseResourceExpirationTimeout(testConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("Creating DM client with config=%v", clientConfig)
+
+	dmClient, err := internal_client.NewClient(ctx, clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	privateClient, err := internal_client.NewPrivateClientForCLI(ctx, clientConfig)
+	if err != nil {
+		_ = dmClient.Close()
+		return nil, fmt.Errorf("failed to create private client: %w", err)
+	}
+
+	nbsClient, err := nbs.NewTestingClient(ctx, testConfig.GetZoneID(), nbsConfig)
+	if err != nil {
+		_ = privateClient.Close()
+		_ = dmClient.Close()
+		return nil, fmt.Errorf("failed to create NBS testing client: %w", err)
+	}
+
+	return &testRun{
+		dmClient:                  dmClient,
+		privateClient:             privateClient,
+		nbsClient:                 nbsClient,
+		testConfig:                testConfig,
+		resourceExpirationTimeout: resourceExpirationTimeout,
+	}, nil
 }
 
-func waitOperation(
+func (r *testRun) Close() error {
+	var err error
+
+	if r.privateClient != nil {
+		err = r.privateClient.Close()
+	}
+
+	if r.dmClient != nil {
+		closeErr := r.dmClient.Close()
+		if err == nil {
+			err = closeErr
+		}
+	}
+
+	return err
+}
+
+func (r *testRun) resetLaunchID() {
+	r.currentLaunchID = generateID()
+	r.lastReqNumber = 0
+}
+
+func (r *testRun) getRequestContext(ctx context.Context) context.Context {
+	if len(r.currentLaunchID) == 0 {
+		r.resetLaunchID()
+	}
+
+	r.lastReqNumber++
+
+	cookie := fmt.Sprintf("%v_%v", r.currentLaunchID, r.lastReqNumber)
+	ctx = headers.SetOutgoingIdempotencyKey(ctx, cookie)
+	ctx = headers.SetOutgoingRequestID(ctx, cookie)
+	return ctx
+}
+
+func (r *testRun) resourceExpiredBefore() *timestamppb.Timestamp {
+	return timestamppb.New(time.Now().Add(-r.resourceExpirationTimeout))
+}
+
+func (r *testRun) waitOperation(
 	ctx context.Context,
-	client client.Client,
 	operation *disk_manager.Operation,
 ) error {
 
-	err := internal_client.WaitOperation(ctx, client, operation.Id)
+	err := internal_client.WaitOperation(ctx, r.dmClient, operation.Id)
 	if err != nil {
 		return fmt.Errorf("operation %v failed: %w", operation, err)
 	}
@@ -178,27 +266,17 @@ func waitOperation(
 	return nil
 }
 
-func newContext(config *client_config.ClientConfig) context.Context {
+func newContext() context.Context {
 	return logging.SetLogger(
 		context.Background(),
 		logging.NewStderrLogger(logging.InfoLevel),
 	)
 }
 
-func newNbsTestingClient(
-	ctx context.Context,
-	config *nbs_client_config.ClientConfig,
-	zoneID string,
-) (nbs.TestingClient, error) {
-
-	return nbs.NewTestingClient(ctx, zoneID, config)
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-func createEmptyDisk(
+func (r *testRun) createEmptyDisk(
 	ctx context.Context,
-	client client.Client,
 	zoneID string,
 	diskID string,
 	diskSize uint64,
@@ -223,7 +301,7 @@ func createEmptyDisk(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.CreateDisk(getRequestContext(ctx), req)
+	operation, err := r.dmClient.CreateDisk(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf("Create empty disk %+v failed: %v", diskID, err)
 		return fmt.Errorf("create empty disk %+v failed: %w", diskID, err)
@@ -234,18 +312,17 @@ func createEmptyDisk(
 		operation,
 	)
 
-	return waitOperation(ctx, client, operation)
+	return r.waitOperation(ctx, operation)
 }
 
-func fillNbsDisk(
+func (r *testRun) fillNbsDisk(
 	ctx context.Context,
-	nbsClient nbs.Client,
 	diskID string,
 	diskSize uint64,
 	diskDataSize uint64,
 ) (uint32, error) {
 
-	session, err := nbsClient.MountRW(
+	session, err := r.nbsClient.MountRW(
 		ctx,
 		diskID,
 		0,   // fillGeneration
@@ -289,9 +366,8 @@ func fillNbsDisk(
 	return acc.Sum32(), nil
 }
 
-func sendCreateDiskFromImageRequest(
+func (r *testRun) sendCreateDiskFromImageRequest(
 	ctx context.Context,
-	client client.Client,
 	zoneID string,
 	imageID string,
 	diskID string,
@@ -317,7 +393,7 @@ func sendCreateDiskFromImageRequest(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.CreateDisk(getRequestContext(ctx), req)
+	operation, err := r.dmClient.CreateDisk(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf(
 			"Create disk %+v request from image %v failed: %v",
@@ -336,9 +412,8 @@ func sendCreateDiskFromImageRequest(
 	return operation, nil
 }
 
-func createDiskFromImage(
+func (r *testRun) createDiskFromImage(
 	ctx context.Context,
-	client client.Client,
 	zoneID string,
 	imageID string,
 	diskID string,
@@ -347,9 +422,8 @@ func createDiskFromImage(
 	folderID string,
 ) error {
 
-	operation, err := sendCreateDiskFromImageRequest(
+	operation, err := r.sendCreateDiskFromImageRequest(
 		ctx,
-		client,
 		zoneID,
 		imageID,
 		diskID,
@@ -361,12 +435,11 @@ func createDiskFromImage(
 		return err
 	}
 
-	return waitOperation(ctx, client, operation)
+	return r.waitOperation(ctx, operation)
 }
 
-func createDiskFromSnapshot(
+func (r *testRun) createDiskFromSnapshot(
 	ctx context.Context,
-	client client.Client,
 	zoneID string,
 	snapshotID string,
 	diskID string,
@@ -393,7 +466,7 @@ func createDiskFromSnapshot(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.CreateDisk(getRequestContext(ctx), req)
+	operation, err := r.dmClient.CreateDisk(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf(
 			"Create disk %+v from snapshot %v failed: %v",
@@ -409,12 +482,11 @@ func createDiskFromSnapshot(
 		operation,
 	)
 
-	return waitOperation(ctx, client, operation)
+	return r.waitOperation(ctx, operation)
 }
 
-func sendDeleteDiskRequest(
+func (r *testRun) sendDeleteDiskRequest(
 	ctx context.Context,
-	client client.Client,
 	zoneID string,
 	diskID string,
 ) (*disk_manager.Operation, error) {
@@ -428,7 +500,7 @@ func sendDeleteDiskRequest(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.DeleteDisk(getRequestContext(ctx), req)
+	operation, err := r.dmClient.DeleteDisk(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf(
 			"Delete disk %+v failed: %v",
@@ -446,10 +518,8 @@ func sendDeleteDiskRequest(
 	return operation, nil
 }
 
-func sendConfigurePoolRequest(
+func (r *testRun) sendConfigurePoolRequest(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
 	zoneID string,
 	imageID string,
 	useImageSize bool,
@@ -464,7 +534,7 @@ func sendConfigurePoolRequest(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := privateClient.ConfigurePool(getRequestContext(ctx), req)
+	operation, err := r.privateClient.ConfigurePool(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf(
 			"Configure pool request for image %v failed: %v",
@@ -482,19 +552,15 @@ func sendConfigurePoolRequest(
 	return operation, nil
 }
 
-func configurePool(
+func (r *testRun) configurePool(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
 	zoneID string,
 	imageID string,
 	useImageSize bool,
 ) error {
 
-	operation, err := sendConfigurePoolRequest(
+	operation, err := r.sendConfigurePoolRequest(
 		ctx,
-		client,
-		privateClient,
 		zoneID,
 		imageID,
 		useImageSize,
@@ -503,20 +569,19 @@ func configurePool(
 		return err
 	}
 
-	return waitOperation(ctx, client, operation)
+	return r.waitOperation(ctx, operation)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func createImage(
+func (r *testRun) createImage(
 	ctx context.Context,
-	client client.Client,
 	req *disk_manager.CreateImageRequest,
 ) error {
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.CreateImage(getRequestContext(ctx), req)
+	operation, err := r.dmClient.CreateImage(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf("Create image %v failed: %v", req.DstImageId, err)
 		return fmt.Errorf("create image %v failed: %w", req.DstImageId, err)
@@ -527,12 +592,11 @@ func createImage(
 		operation,
 	)
 
-	return waitOperation(ctx, client, operation)
+	return r.waitOperation(ctx, operation)
 }
 
-func createImageFromURL(
+func (r *testRun) createImageFromURL(
 	ctx context.Context,
-	client client.Client,
 	imageID string,
 	folderID string,
 	url string,
@@ -549,12 +613,11 @@ func createImageFromURL(
 		Pooled:     true,
 	}
 
-	return createImage(ctx, client, req)
+	return r.createImage(ctx, req)
 }
 
-func createImageFromImage(
+func (r *testRun) createImageFromImage(
 	ctx context.Context,
-	client client.Client,
 	srcImageID string,
 	folderID string,
 	dstImageID string,
@@ -569,12 +632,11 @@ func createImageFromImage(
 		Pooled:     true,
 	}
 
-	return createImage(ctx, client, req)
+	return r.createImage(ctx, req)
 }
 
-func createImageFromDisk(
+func (r *testRun) createImageFromDisk(
 	ctx context.Context,
-	client client.Client,
 	zoneID string,
 	diskID string,
 	folderID string,
@@ -593,12 +655,11 @@ func createImageFromDisk(
 		Pooled:     true,
 	}
 
-	return createImage(ctx, client, req)
+	return r.createImage(ctx, req)
 }
 
-func sendDeleteImageRequest(
+func (r *testRun) sendDeleteImageRequest(
 	ctx context.Context,
-	client client.Client,
 	imageID string,
 ) (*disk_manager.Operation, error) {
 
@@ -608,7 +669,7 @@ func sendDeleteImageRequest(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.DeleteImage(getRequestContext(ctx), req)
+	operation, err := r.dmClient.DeleteImage(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf("Delete image %v failed: %v", imageID, err)
 		return nil, fmt.Errorf("delete image %v failed: %w", imageID, err)
@@ -622,9 +683,8 @@ func sendDeleteImageRequest(
 	return operation, nil
 }
 
-func createSnapshot(
+func (r *testRun) createSnapshot(
 	ctx context.Context,
-	client client.Client,
 	zoneID string,
 	diskID string,
 	snapshotID string,
@@ -642,7 +702,7 @@ func createSnapshot(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.CreateSnapshot(getRequestContext(ctx), req)
+	operation, err := r.dmClient.CreateSnapshot(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf(
 			"Create snapshot %v of disk %+v failed: %v",
@@ -663,12 +723,11 @@ func createSnapshot(
 		operation,
 	)
 
-	return waitOperation(ctx, client, operation)
+	return r.waitOperation(ctx, operation)
 }
 
-func sendDeleteSnapshotRequest(
+func (r *testRun) sendDeleteSnapshotRequest(
 	ctx context.Context,
-	client client.Client,
 	snapshotID string,
 ) (*disk_manager.Operation, error) {
 
@@ -678,7 +737,7 @@ func sendDeleteSnapshotRequest(
 
 	log.Printf("Sending request=%v", req)
 
-	operation, err := client.DeleteSnapshot(getRequestContext(ctx), req)
+	operation, err := r.dmClient.DeleteSnapshot(r.getRequestContext(ctx), req)
 	if err != nil {
 		log.Printf("Delete snapshot %v failed: %v", snapshotID, err)
 		return nil, fmt.Errorf("delete snapshot %v failed: %w", snapshotID, err)
@@ -703,15 +762,14 @@ type resources struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func cleanupResources(
+func (r *testRun) cleanupResources(
 	ctx context.Context,
-	client client.Client,
 	rs resources,
 ) error {
 
 	operations := make([]*disk_manager.Operation, 0)
 	for _, diskID := range rs.Disks {
-		operation, err := sendDeleteDiskRequest(ctx, client, rs.ZoneID, diskID)
+		operation, err := r.sendDeleteDiskRequest(ctx, rs.ZoneID, diskID)
 		if err != nil {
 			return err
 		}
@@ -720,7 +778,7 @@ func cleanupResources(
 	}
 
 	for _, imageID := range rs.Images {
-		operation, err := sendDeleteImageRequest(ctx, client, imageID)
+		operation, err := r.sendDeleteImageRequest(ctx, imageID)
 		if err != nil {
 			return err
 		}
@@ -729,7 +787,7 @@ func cleanupResources(
 	}
 
 	for _, snapshotID := range rs.Snapshots {
-		operation, err := sendDeleteSnapshotRequest(ctx, client, snapshotID)
+		operation, err := r.sendDeleteSnapshotRequest(ctx, snapshotID)
 		if err != nil {
 			return err
 		}
@@ -738,7 +796,7 @@ func cleanupResources(
 	}
 
 	for _, operation := range operations {
-		err := waitOperation(ctx, client, operation)
+		err := r.waitOperation(ctx, operation)
 		if err != nil {
 			return err
 		}
@@ -749,15 +807,14 @@ func cleanupResources(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func listDisks(
+func (r *testRun) listDisks(
 	ctx context.Context,
-	privateClient internal_client.PrivateClient,
 	folderID string,
 ) ([]string, error) {
 
-	resp, err := privateClient.ListDisks(ctx, &api.ListDisksRequest{
+	resp, err := r.privateClient.ListDisks(ctx, &api.ListDisksRequest{
 		FolderId:       folderID,
-		CreatingBefore: resourceExpiredBefore(),
+		CreatingBefore: r.resourceExpiredBefore(),
 	})
 	if err != nil {
 		return nil, err
@@ -766,15 +823,14 @@ func listDisks(
 	return resp.DiskIds, nil
 }
 
-func listImages(
+func (r *testRun) listImages(
 	ctx context.Context,
-	privateClient internal_client.PrivateClient,
 	folderID string,
 ) ([]string, error) {
 
-	resp, err := privateClient.ListImages(ctx, &api.ListImagesRequest{
+	resp, err := r.privateClient.ListImages(ctx, &api.ListImagesRequest{
 		FolderId:       folderID,
-		CreatingBefore: resourceExpiredBefore(),
+		CreatingBefore: r.resourceExpiredBefore(),
 	})
 	if err != nil {
 		return nil, err
@@ -783,15 +839,14 @@ func listImages(
 	return resp.ImageIds, nil
 }
 
-func listSnapshots(
+func (r *testRun) listSnapshots(
 	ctx context.Context,
-	privateClient internal_client.PrivateClient,
 	folderID string,
 ) ([]string, error) {
 
-	resp, err := privateClient.ListSnapshots(ctx, &api.ListSnapshotsRequest{
+	resp, err := r.privateClient.ListSnapshots(ctx, &api.ListSnapshotsRequest{
 		FolderId:       folderID,
-		CreatingBefore: resourceExpiredBefore(),
+		CreatingBefore: r.resourceExpiredBefore(),
 	})
 	if err != nil {
 		return nil, err
@@ -800,45 +855,39 @@ func listSnapshots(
 	return resp.SnapshotIds, nil
 }
 
-func cleanupResourcesFromPreviousRuns(
+func (r *testRun) cleanupResourcesFromPreviousRuns(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	zoneID string,
 ) error {
 
-	disks, err := listDisks(ctx, privateClient, folderID)
+	disks, err := r.listDisks(ctx, folderID)
 	if err != nil {
 		return err
 	}
 
-	images, err := listImages(ctx, privateClient, folderID)
+	images, err := r.listImages(ctx, folderID)
 	if err != nil {
 		return err
 	}
 
-	snapshots, err := listSnapshots(ctx, privateClient, folderID)
+	snapshots, err := r.listSnapshots(ctx, folderID)
 	if err != nil {
 		return err
 	}
 
 	rs := resources{
-		ZoneID:    zoneID,
+		ZoneID:    r.testConfig.GetZoneID(),
 		Disks:     disks,
 		Images:    images,
 		Snapshots: snapshots,
 	}
-	return cleanupResources(ctx, client, rs)
+	return r.cleanupResources(ctx, rs)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func testCreateEmptyDisk(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	diskID := generateID()
@@ -846,10 +895,9 @@ func testCreateEmptyDisk(
 		Disks: []string{diskID},
 	}
 
-	err := createEmptyDisk(
+	err := r.createEmptyDisk(
 		ctx,
-		client,
-		testConfig.GetZoneID(),
+		r.testConfig.GetZoneID(),
 		diskID,
 		1<<40,
 		defaultBlockSize,
@@ -864,10 +912,7 @@ func testCreateEmptyDisk(
 
 func testCreateImageFromURL(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	imageID := generateID()
@@ -875,12 +920,11 @@ func testCreateImageFromURL(
 		Images: []string{imageID},
 	}
 
-	err := createImageFromURL(
+	err := r.createImageFromURL(
 		ctx,
-		client,
 		imageID,
 		dataplaneForURLFolderID,
-		testConfig.GetImageURL(),
+		r.testConfig.GetImageURL(),
 	)
 	if err != nil {
 		return resources{}, err
@@ -891,10 +935,7 @@ func testCreateImageFromURL(
 
 func testCreateDiskFromImageImpl(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 	shouldConfigurePool bool,
 	useImageSize bool,
 	folderID string,
@@ -907,23 +948,20 @@ func testCreateDiskFromImageImpl(
 		Images: []string{imageID},
 	}
 
-	err := createImageFromURL(
+	err := r.createImageFromURL(
 		ctx,
-		client,
 		imageID,
 		folderID,
-		testConfig.GetImageURL(),
+		r.testConfig.GetImageURL(),
 	)
 	if err != nil {
 		return resources{}, err
 	}
 
 	if shouldConfigurePool {
-		err = configurePool(
+		err = r.configurePool(
 			ctx,
-			client,
-			privateClient,
-			testConfig.GetZoneID(),
+			r.testConfig.GetZoneID(),
 			imageID,
 			useImageSize,
 		)
@@ -932,10 +970,9 @@ func testCreateDiskFromImageImpl(
 		}
 	}
 
-	err = createDiskFromImage(
+	err = r.createDiskFromImage(
 		ctx,
-		client,
-		testConfig.GetZoneID(),
+		r.testConfig.GetZoneID(),
 		imageID,
 		diskID,
 		defaultDiskSize,
@@ -946,17 +983,12 @@ func testCreateDiskFromImageImpl(
 		return resources{}, err
 	}
 
-	nbsClient, err := newNbsTestingClient(ctx, nbsConfig, testConfig.GetZoneID())
-	if err != nil {
-		return resources{}, err
-	}
-
-	err = nbsClient.ValidateCrc32(
+	err = r.nbsClient.ValidateCrc32(
 		ctx,
 		diskID,
 		nbs.DiskContentInfo{
-			ContentSize: testConfig.GetImageSize(),
-			Crc32:       testConfig.GetImageCrc32(),
+			ContentSize: r.testConfig.GetImageSize(),
+			Crc32:       r.testConfig.GetImageCrc32(),
 		},
 	)
 	if err != nil {
@@ -968,18 +1000,12 @@ func testCreateDiskFromImageImpl(
 
 func testCreateDiskFromImage(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateDiskFromImageImpl(
 		ctx,
-		client,
-		privateClient,
-		testConfig,
-		nbsConfig,
+		r,
 		false, // shouldConfigureDiskPool
 		false, // useImageSize
 		dataplaneForURLFolderID,
@@ -989,18 +1015,12 @@ func testCreateDiskFromImage(
 // Test for NBS-2005.
 func testCreateDiskFromImageUsingImageSize(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateDiskFromImageImpl(
 		ctx,
-		client,
-		privateClient,
-		testConfig,
-		nbsConfig,
+		r,
 		true, // shouldConfigureDiskPool
 		true, // useImageSize
 		folderID,
@@ -1009,10 +1029,7 @@ func testCreateDiskFromImageUsingImageSize(
 
 func testCreateDisksFromImage(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	imageID := generateID()
@@ -1023,12 +1040,11 @@ func testCreateDisksFromImage(
 		rs.Disks = append(rs.Disks, generateID())
 	}
 
-	err := createImageFromURL(
+	err := r.createImageFromURL(
 		ctx,
-		client,
 		imageID,
 		folderID,
-		testConfig.GetImageURL(),
+		r.testConfig.GetImageURL(),
 	)
 	if err != nil {
 		return resources{}, err
@@ -1036,10 +1052,9 @@ func testCreateDisksFromImage(
 
 	operations := make([]*disk_manager.Operation, 0)
 	for _, diskID := range rs.Disks {
-		operation, err := sendCreateDiskFromImageRequest(
+		operation, err := r.sendCreateDiskFromImageRequest(
 			ctx,
-			client,
-			testConfig.GetZoneID(),
+			r.testConfig.GetZoneID(),
 			imageID,
 			diskID,
 			defaultDiskSize,
@@ -1054,7 +1069,7 @@ func testCreateDisksFromImage(
 	}
 
 	for _, operation := range operations {
-		err := waitOperation(ctx, client, operation)
+		err := r.waitOperation(ctx, operation)
 		if err != nil {
 			return resources{}, err
 		}
@@ -1065,10 +1080,7 @@ func testCreateDisksFromImage(
 
 func testRetireBaseDisks(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	imageID := generateID()
@@ -1083,23 +1095,20 @@ func testRetireBaseDisks(
 		rs.Disks = append(rs.Disks, generateID())
 	}
 
-	err := createImageFromURL(
+	err := r.createImageFromURL(
 		ctx,
-		client,
 		imageID,
 		folderID,
-		testConfig.GetImageURL(),
+		r.testConfig.GetImageURL(),
 	)
 	if err != nil {
 		return resources{}, err
 	}
 
 	useImageSize := false
-	err = configurePool(
+	err = r.configurePool(
 		ctx,
-		client,
-		privateClient,
-		testConfig.GetZoneID(),
+		r.testConfig.GetZoneID(),
 		imageID,
 		useImageSize,
 	)
@@ -1109,10 +1118,9 @@ func testRetireBaseDisks(
 
 	operations := make([]*disk_manager.Operation, 0)
 	for _, diskID := range rs.Disks {
-		operation, err := sendCreateDiskFromImageRequest(
+		operation, err := r.sendCreateDiskFromImageRequest(
 			ctx,
-			client,
-			testConfig.GetZoneID(),
+			r.testConfig.GetZoneID(),
 			imageID,
 			diskID,
 			defaultDiskSize,
@@ -1128,7 +1136,7 @@ func testRetireBaseDisks(
 
 	// Should wait for first disk creation in order to ensure that pool is
 	// created.
-	err = waitOperation(ctx, client, operations[0])
+	err = r.waitOperation(ctx, operations[0])
 	if err != nil {
 		return resources{}, err
 	}
@@ -1139,34 +1147,29 @@ func testRetireBaseDisks(
 		operation := operations[i]
 		diskID := rs.Disks[i]
 
-		nbsClient, err := newNbsTestingClient(ctx, nbsConfig, testConfig.GetZoneID())
-		if err != nil {
-			return resources{}, err
-		}
-
 		go func() {
-			err := waitOperation(ctx, client, operation)
+			err := r.waitOperation(ctx, operation)
 			if err != nil {
 				errs <- err
 				return
 			}
 
-			err = nbsClient.ValidateCrc32(
+			err = r.nbsClient.ValidateCrc32(
 				ctx,
 				diskID,
 				nbs.DiskContentInfo{
-					ContentSize: testConfig.GetImageSize(),
-					Crc32:       testConfig.GetImageCrc32(),
+					ContentSize: r.testConfig.GetImageSize(),
+					Crc32:       r.testConfig.GetImageCrc32(),
 				},
 			)
 			errs <- err
 		}()
 	}
 
-	reqCtx := getRequestContext(ctx)
-	operation, err := privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
+	reqCtx := r.getRequestContext(ctx)
+	operation, err := r.privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
 		ImageId: imageID,
-		ZoneId:  testConfig.GetZoneID(),
+		ZoneId:  r.testConfig.GetZoneID(),
 	})
 	if err != nil {
 		return resources{}, err
@@ -1182,7 +1185,7 @@ func testRetireBaseDisks(
 	}
 
 	for _, operation := range operations {
-		err := waitOperation(ctx, client, operation)
+		err := r.waitOperation(ctx, operation)
 		if err != nil {
 			return resources{}, err
 		}
@@ -1193,16 +1196,14 @@ func testRetireBaseDisks(
 
 func testCreateDiskFromSnapshotImpl(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	nbsConfig *nbs_client_config.ClientConfig,
-	zoneID string,
+	r *testRun,
 	diskKind disk_manager.DiskKind,
 	diskSize uint64,
 	blockSize uint64,
 	folderID string,
 ) (resources, error) {
 
+	zoneID := r.testConfig.GetZoneID()
 	diskID1 := generateID()
 	diskID2 := generateID()
 	snapshotID := generateID()
@@ -1211,14 +1212,8 @@ func testCreateDiskFromSnapshotImpl(
 		Snapshots: []string{snapshotID},
 	}
 
-	nbsClient, err := newNbsTestingClient(ctx, nbsConfig, zoneID)
-	if err != nil {
-		return resources{}, err
-	}
-
-	err = createEmptyDisk(
+	err := r.createEmptyDisk(
 		ctx,
-		client,
 		zoneID,
 		diskID1,
 		diskSize,
@@ -1229,9 +1224,8 @@ func testCreateDiskFromSnapshotImpl(
 		return resources{}, err
 	}
 
-	expectedCrc32, err := fillNbsDisk(
+	expectedCrc32, err := r.fillNbsDisk(
 		ctx,
-		nbsClient,
 		diskID1,
 		diskSize,
 		defaultDiskDataSize,
@@ -1240,9 +1234,8 @@ func testCreateDiskFromSnapshotImpl(
 		return resources{}, err
 	}
 
-	err = createSnapshot(
+	err = r.createSnapshot(
 		ctx,
-		client,
 		zoneID,
 		diskID1,
 		snapshotID,
@@ -1252,9 +1245,8 @@ func testCreateDiskFromSnapshotImpl(
 		return resources{}, err
 	}
 
-	err = createDiskFromSnapshot(
+	err = r.createDiskFromSnapshot(
 		ctx,
-		client,
 		zoneID,
 		snapshotID,
 		diskID2,
@@ -1267,7 +1259,7 @@ func testCreateDiskFromSnapshotImpl(
 		return resources{}, err
 	}
 
-	err = nbsClient.ValidateCrc32(
+	err = r.nbsClient.ValidateCrc32(
 		ctx,
 		diskID2,
 		nbs.DiskContentInfo{
@@ -1284,18 +1276,12 @@ func testCreateDiskFromSnapshotImpl(
 
 func testCreateDiskFromSnapshotInS3(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateDiskFromSnapshotImpl(
 		ctx,
-		client,
-		privateClient,
-		nbsConfig,
-		testConfig.GetZoneID(),
+		r,
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		defaultDiskSize,
 		defaultBlockSize,
@@ -1305,18 +1291,12 @@ func testCreateDiskFromSnapshotInS3(
 
 func testCreateDiskFromSnapshot(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateDiskFromSnapshotImpl(
 		ctx,
-		client,
-		privateClient,
-		nbsConfig,
-		testConfig.GetZoneID(),
+		r,
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		defaultDiskSize,
 		defaultBlockSize,
@@ -1326,18 +1306,12 @@ func testCreateDiskFromSnapshot(
 
 func testCreateLargeDiskFromSnapshot(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateDiskFromSnapshotImpl(
 		ctx,
-		client,
-		privateClient,
-		nbsConfig,
-		testConfig.GetZoneID(),
+		r,
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		defaultDiskSize,
 		largeBlockSize,
@@ -1347,18 +1321,12 @@ func testCreateLargeDiskFromSnapshot(
 
 func testCreateSsdNonreplicatedDiskFromSnapshot(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateDiskFromSnapshotImpl(
 		ctx,
-		client,
-		privateClient,
-		nbsConfig,
-		testConfig.GetZoneID(),
+		r,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		nonreplicatedDiskSize,
 		defaultBlockSize,
@@ -1368,18 +1336,12 @@ func testCreateSsdNonreplicatedDiskFromSnapshot(
 
 func testCreateHddNonreplicatedDiskFromSnapshot(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateDiskFromSnapshotImpl(
 		ctx,
-		client,
-		privateClient,
-		nbsConfig,
-		testConfig.GetZoneID(),
+		r,
 		disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 		nonreplicatedDiskSize,
 		defaultBlockSize,
@@ -1389,10 +1351,7 @@ func testCreateHddNonreplicatedDiskFromSnapshot(
 
 func testCreateImageFromImageImpl(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 	folderID string,
 ) (resources, error) {
 
@@ -1407,15 +1366,9 @@ func testCreateImageFromImageImpl(
 		Images: []string{imageID1, imageID2},
 	}
 
-	nbsClient, err := newNbsTestingClient(ctx, nbsConfig, testConfig.GetZoneID())
-	if err != nil {
-		return resources{}, err
-	}
-
-	err = createEmptyDisk(
+	err := r.createEmptyDisk(
 		ctx,
-		client,
-		testConfig.GetZoneID(),
+		r.testConfig.GetZoneID(),
 		diskID1,
 		diskSize,
 		defaultBlockSize,
@@ -1425,15 +1378,14 @@ func testCreateImageFromImageImpl(
 		return resources{}, err
 	}
 
-	expectedCrc32, err := fillNbsDisk(ctx, nbsClient, diskID1, diskSize, diskSize/2)
+	expectedCrc32, err := r.fillNbsDisk(ctx, diskID1, diskSize, diskSize/2)
 	if err != nil {
 		return resources{}, err
 	}
 
-	err = createImageFromDisk(
+	err = r.createImageFromDisk(
 		ctx,
-		client,
-		testConfig.GetZoneID(),
+		r.testConfig.GetZoneID(),
 		diskID1,
 		folderID,
 		imageID1,
@@ -1442,15 +1394,14 @@ func testCreateImageFromImageImpl(
 		return resources{}, err
 	}
 
-	err = createImageFromImage(ctx, client, imageID1, folderID, imageID2)
+	err = r.createImageFromImage(ctx, imageID1, folderID, imageID2)
 	if err != nil {
 		return resources{}, err
 	}
 
-	err = createDiskFromImage(
+	err = r.createDiskFromImage(
 		ctx,
-		client,
-		testConfig.GetZoneID(),
+		r.testConfig.GetZoneID(),
 		imageID2,
 		diskID2,
 		diskSize,
@@ -1461,7 +1412,7 @@ func testCreateImageFromImageImpl(
 		return resources{}, err
 	}
 
-	err = nbsClient.ValidateCrc32(
+	err = r.nbsClient.ValidateCrc32(
 		ctx,
 		diskID2,
 		nbs.DiskContentInfo{
@@ -1478,18 +1429,12 @@ func testCreateImageFromImageImpl(
 
 func testCreateImageFromImage(
 	ctx context.Context,
-	client client.Client,
-	privateClient internal_client.PrivateClient,
-	testConfig *test_config.TestConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
+	r *testRun,
 ) (resources, error) {
 
 	return testCreateImageFromImageImpl(
 		ctx,
-		client,
-		privateClient,
-		testConfig,
-		nbsConfig,
+		r,
 		folderID,
 	)
 }
@@ -1500,10 +1445,7 @@ type testCase struct {
 	Name string
 	Run  func(
 		context.Context,
-		client.Client,
-		internal_client.PrivateClient,
-		*test_config.TestConfig,
-		*nbs_client_config.ClientConfig,
+		*testRun,
 	) (resources, error)
 }
 
@@ -1544,6 +1486,26 @@ func (m *remoteTestMetrics) reportSuccess() {
 	m.success.Inc()
 }
 
+func (r *testRun) getMetrics(ctx context.Context) *remoteTestMetrics {
+	if r.metrics == nil {
+		r.metrics = newRemoteTestMetricsFromConfig(ctx, r.testConfig)
+	}
+
+	return r.metrics
+}
+
+func (r *testRun) reportCleanupError(ctx context.Context) {
+	r.getMetrics(ctx).reportCleanupError()
+}
+
+func (r *testRun) reportFailure(ctx context.Context, testName string) {
+	r.getMetrics(ctx).reportFailure(testName)
+}
+
+func (r *testRun) reportSuccess(ctx context.Context) {
+	r.getMetrics(ctx).reportSuccess()
+}
+
 func newTestBlackList(testsBlackList []string) map[string]struct{} {
 	blackList := make(map[string]struct{}, len(testsBlackList))
 	for _, testName := range testsBlackList {
@@ -1553,46 +1515,24 @@ func newTestBlackList(testsBlackList []string) map[string]struct{} {
 	return blackList
 }
 
-func runTests(
-	testConfig *test_config.TestConfig,
-	clientConfig *client_config.ClientConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
-	testMetrics *remoteTestMetrics,
-) error {
+func (r *testRun) runTests(ctx context.Context) error {
+	r.getMetrics(ctx)
 
-	curLaunchID = generateID()
+	r.resetLaunchID()
 
-	ctx := newContext(clientConfig)
+	log.Printf("Using launch id %v", r.currentLaunchID)
+	log.Printf("Using resource expiration timeout %v", r.resourceExpirationTimeout)
 
-	log.Printf("Creating DM client with config=%v", clientConfig)
-
-	client, err := internal_client.NewClient(ctx, clientConfig)
+	err := r.cleanupResourcesFromPreviousRuns(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create client: %w", err)
-	}
-	defer client.Close()
-
-	privateClient, err := internal_client.NewPrivateClientForCLI(ctx, clientConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create private client: %w", err)
-	}
-	defer privateClient.Close()
-
-	err = cleanupResourcesFromPreviousRuns(
-		ctx,
-		client,
-		privateClient,
-		testConfig.GetZoneID(),
-	)
-	if err != nil {
-		testMetrics.reportCleanupError()
+		r.reportCleanupError(ctx)
 		return fmt.Errorf(
 			"failed to cleanup resources from previous runs: %w",
 			err,
 		)
 	}
 
-	testsBlackList := newTestBlackList(testConfig.GetTestsBlackList())
+	testsBlackList := newTestBlackList(r.testConfig.GetTestsBlackList())
 
 	tests := []testCase{
 		{
@@ -1657,18 +1597,18 @@ func runTests(
 
 		log.Printf("Starting test %v", test.Name)
 
-		se, err := test.Run(ctx, client, privateClient, testConfig, nbsConfig)
+		se, err := test.Run(ctx, r)
 		if err != nil {
-			testMetrics.reportFailure(test.Name)
+			r.reportFailure(ctx, test.Name)
 			return fmt.Errorf("test %v run failed: %w", test.Name, err)
 		}
 
 		log.Printf("Test %v success", test.Name)
 
-		err = cleanupResources(ctx, client, se)
+		err = r.cleanupResources(ctx, se)
 		if err != nil {
-			testMetrics.reportCleanupError()
-			testMetrics.reportFailure(test.Name)
+			r.reportCleanupError(ctx)
+			r.reportFailure(ctx, test.Name)
 			return fmt.Errorf(
 				"test %v failed to cleanup resources from current run: %w",
 				test.Name,
@@ -1678,7 +1618,7 @@ func runTests(
 	}
 
 	log.Printf("All tests successfully finished")
-	testMetrics.reportSuccess()
+	r.reportSuccess(ctx)
 	return nil
 }
 
@@ -1705,15 +1645,10 @@ func newRemoteTestMetricsFromConfig(
 	return newRemoteTestMetrics(mon.NewRegistry("remote_test"))
 }
 
-func runTestsPeriodically(
-	testConfig *test_config.TestConfig,
-	clientConfig *client_config.ClientConfig,
-	nbsConfig *nbs_client_config.ClientConfig,
-	testMetrics *remoteTestMetrics,
-) error {
+func (r *testRun) runTestsPeriodically(ctx context.Context) error {
 
 	for {
-		err := runTests(testConfig, clientConfig, nbsConfig, testMetrics)
+		err := r.runTests(ctx)
 		if err != nil {
 			log.Printf("Remote tests run failed: %v", err)
 		} else {
@@ -1729,44 +1664,34 @@ func runTestsPeriodically(
 
 func main() {
 	var testConfigFileName string
-	testConfig := &test_config.TestConfig{}
-
 	var clientConfigFileName string
-	clientConfig := &client_config.ClientConfig{}
-
 	var nbsConfigFileName string
-	nbsConfig := &nbs_client_config.ClientConfig{}
 
 	rootCmd := &cobra.Command{
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return parseConfigs(
-				testConfigFileName,
-				testConfig,
-				clientConfigFileName,
-				clientConfig,
-				nbsConfigFileName,
-				nbsConfig,
-			)
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := newContext(clientConfig)
-			testMetrics := newRemoteTestMetricsFromConfig(ctx, testConfig)
+			ctx := newContext()
 
-			if testConfig.GetPeriodicRunsEnabled() {
-				return runTestsPeriodically(
-					testConfig,
-					clientConfig,
-					nbsConfig,
-					testMetrics,
-				)
+			r, err := newTestRunFromConfig(
+				ctx,
+				testConfigFileName,
+				clientConfigFileName,
+				nbsConfigFileName,
+			)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				err := r.Close()
+				if err != nil {
+					log.Printf("Failed to close test run: %v", err)
+				}
+			}()
+
+			if r.testConfig.GetPeriodicRunsEnabled() {
+				return r.runTestsPeriodically(ctx)
 			}
 
-			return runTests(
-				testConfig,
-				clientConfig,
-				nbsConfig,
-				testMetrics,
-			)
+			return r.runTests(ctx)
 		},
 	}
 
