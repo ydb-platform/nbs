@@ -4,7 +4,11 @@
 
 #include <util/generic/string.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -13,6 +17,7 @@ namespace {
 #define BLOCKSTORE_LOCAL_NVME_CONFIG(xxx)                                      \
     xxx(DevicesSourceUri,                TString,          ""                 )\
     xxx(StateCacheFilePath,              TString,          ""                 )\
+    xxx(UpdateDevicesInterval,           TDuration,        1min               )\
 // BLOCKSTORE_LOCAL_NVME_CONFIG
 
 #define BLOCKSTORE_LOCAL_NVME_DECLARE_CONFIG(name, type, value)                \
@@ -29,6 +34,12 @@ template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return TTarget(value);
+}
+
+template <>
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
+{
+    return TDuration::MilliSeconds(value);
 }
 
 }   //  namespace

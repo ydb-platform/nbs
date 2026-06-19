@@ -347,11 +347,12 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
         NProto::TLocalNVMeConfig proto;
         proto.SetStateCacheFilePath(StateCacheFile);
+        proto.SetUpdateDevicesInterval(TDuration::Seconds(1).MilliSeconds());
 
         Config = std::make_shared<TLocalNVMeConfig>(proto);
     }
 
-    auto ListNVMeDevices()
+    auto ListNVMeDevices() const
     {
         for (;;) {
             auto future = Service->ListNVMeDevices();
@@ -1470,6 +1471,94 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             E_REJECTED,
             error.GetCode(),
             FormatError(error));
+    }
+
+    Y_UNIT_TEST_F(ShouldStartWithoutNvmeDevicesAndDiscoverThemLater, TFixture)
+    {
+        const ui32 successfulAttempt = 3;
+
+        TAutoEvent lastRequest;
+        std::atomic<ui32> attempts = 0;
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&]
+            {
+                ++attempts;
+                if (attempts < successfulAttempt) {
+                    return MakeFuture(TVector<NProto::TNVMeDevice>());
+                }
+
+                lastRequest.Signal();
+
+                return MakeFuture(CreateDeviceList());
+            });
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, attempts.load());
+
+        lastRequest.WaitT(
+            Config->GetUpdateDevicesInterval() * successfulAttempt);
+
+        UNIT_ASSERT_VALUES_EQUAL(successfulAttempt, attempts.load());
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+            for (size_t i = 0; i != Devices.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    Devices[i].DebugString(),
+                    devices[i].DebugString(),
+                    "#" << i);
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldStopWhilePollingForNvmeDevices, TFixture)
+    {
+        const ui32 lastAttempt = 2;
+
+        TAutoEvent lastRequest;
+        std::atomic<ui32> attempts = 0;
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&]
+            {
+                ++attempts;
+                if (attempts >= lastAttempt) {
+                    lastRequest.Signal();
+                }
+
+                return MakeFuture(TVector<NProto::TNVMeDevice>());
+            });
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, attempts.load());
+
+        lastRequest.WaitT(Config->GetUpdateDevicesInterval() * lastAttempt);
+
+        UNIT_ASSERT_VALUES_EQUAL(lastAttempt, attempts.load());
+
+        Service->Stop();
     }
 
     Y_UNIT_TEST_F(ShouldGetDevicesFromInfra, TFixtureInfra)
