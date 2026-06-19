@@ -86,7 +86,13 @@ func newStorage(
 	db *persistence.YDBClient,
 ) Storage {
 
-	return newStorageWithConfig(t, ctx, db, makeDefaultConfig(), metrics.NewEmptyRegistry())
+	return newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		makeDefaultConfig(),
+		metrics.NewEmptyRegistry(),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2110,13 +2116,13 @@ func TestStorageYDBCreatePoolWithImageSize(t *testing.T) {
 	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
 
 	// Check idempotency.
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
 
 	baseDisks[0].CreateTaskID = "create"
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
@@ -2157,6 +2163,51 @@ func TestStorageYDBCreatePoolWithImageSize(t *testing.T) {
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
+
+}
+
+func TestStorageYDBCreatePoolWithImageSizeAndAdjustBaseDiskSizeToMinBaseDiskUnits(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	maxActiveSlots := uint32(640)
+	maxBaseDisksInflight := uint32(1)
+	maxBaseDiskUnits := uint32(640)
+	adjustBaseDiskSizeToMinBaseDiskUnits := true
+	config := &pools_config.PoolsConfig{
+		MaxActiveSlots:       &maxActiveSlots,
+		MaxBaseDisksInflight: &maxBaseDisksInflight,
+		MaxBaseDiskUnits:     &maxBaseDiskUnits,
+
+		AdjustBaseDiskSizeToMinBaseDiskUnits: &adjustBaseDiskSizeToMinBaseDiskUnits,
+	}
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	imageSize := uint64(10)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
@@ -2176,7 +2227,7 @@ func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
 	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
 
 	baseDisks[0].CreateTaskID = "create"
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
@@ -2347,7 +2398,7 @@ func TestStorageYDBRetireBaseDiskForDeletedPoolUsingImageSize(t *testing.T) {
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)

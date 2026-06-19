@@ -9,7 +9,11 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCommonGenerateBaseDiskForPool(t *testing.T) {
+func testCommonGenerateBaseDiskForPool(
+	t *testing.T,
+	adjustBaseDiskSizeToMinBaseDiskUnits bool,
+) {
+
 	maxActiveSlots := uint64(640)
 	maxBaseDiskUnits := uint64(640)
 
@@ -40,6 +44,8 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 		storage := &storageYDB{
 			maxActiveSlots:   maxActiveSlots,
 			maxBaseDiskUnits: maxBaseDiskUnits,
+
+			adjustBaseDiskSizeToMinBaseDiskUnits: adjustBaseDiskSizeToMinBaseDiskUnits,
 		}
 
 		var srcDisk *types.Disk
@@ -69,17 +75,29 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 	require.Equal(t, uint64(640), baseDisk.units)
 
 	baseDisk = generate(1)
-	require.Equal(t, uint64(192<<30), baseDisk.size)
+	if adjustBaseDiskSizeToMinBaseDiskUnits {
+		require.Equal(t, uint64(192<<30), baseDisk.size)
+	} else {
+		require.Equal(t, uint64(32<<30), baseDisk.size)
+	}
 	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(30), baseDisk.units)
 
 	baseDisk = generate(32 << 30)
-	require.Equal(t, uint64(192<<30), baseDisk.size)
+	if adjustBaseDiskSizeToMinBaseDiskUnits {
+		require.Equal(t, uint64(192<<30), baseDisk.size)
+	} else {
+		require.Equal(t, uint64(32<<30), baseDisk.size)
+	}
 	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(30), baseDisk.units)
 
 	baseDisk = generate((32 << 30) + 1)
-	require.Equal(t, uint64(192<<30), baseDisk.size)
+	if adjustBaseDiskSizeToMinBaseDiskUnits {
+		require.Equal(t, uint64(192<<30), baseDisk.size)
+	} else {
+		require.Equal(t, uint64(64<<30), baseDisk.size)
+	}
 	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(30), baseDisk.units)
 
@@ -119,6 +137,11 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 	require.Equal(t, uint64(4096<<30), baseDisk.size)
 	require.Equal(t, uint64(1), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(1), baseDisk.units)
+}
+
+func TestCommonGenerateBaseDiskForPool(t *testing.T) {
+	testCommonGenerateBaseDiskForPool(t, false)
+	testCommonGenerateBaseDiskForPool(t, true)
 }
 
 func TestCommonFreeSlots(t *testing.T) {

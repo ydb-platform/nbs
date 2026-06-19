@@ -706,17 +706,21 @@ func (s *storageYDB) generateBaseDisk(
 		// otherwise the overlay disks sharing it get underperformed (#6257).
 		if units < minBaseDiskUnits {
 			units = minBaseDiskUnits
-			// Grow the disk so it physically holds enough SSD units to back
-			// that performance.
-			ssdUnits = units / regularUnitsPerSSDUnit
-			// Never shrink the base disk below the image size (for safety).
-			size = max(size, ssdUnits*baseDiskUnitSize)
+
+			if s.adjustBaseDiskSizeToMinBaseDiskUnits {
+				// Grow the disk so that it physically contains enough SSD units
+				// to provide the required performance. The larger the disk, the
+				// higher the performance.
+				ssdUnits = units / regularUnitsPerSSDUnit
+				// Never shrink the base disk below the image size (for safety).
+				size = max(size, ssdUnits*baseDiskUnitSize)
+			}
 		}
 
 		units = min(units, s.maxBaseDiskUnits)
 
-		// There cannot be more slots than units because each unit represents
-		// the smallest possible disk.
+		// There cannot be more slots than units because each overlay disk
+		// consumes at least one unit.
 		maxActiveSlots = min(units, s.maxActiveSlots)
 	}
 
