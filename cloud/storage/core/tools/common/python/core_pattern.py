@@ -25,6 +25,11 @@ CORE_PATTERN_WILDCARD_SPECIFIERS = (
 )
 
 TRUNCATION_WILDCARD_SPECIFIER_MAX_BYTES = {
+    # yatest expands %p to the real PID after core_pattern() returns.
+    # If %p is before a long %E expansion, Linux truncates the real filename
+    # after writing the expanded PID, not the two-byte "%p" token. Reserve
+    # enough bytes for the largest Linux pid_t decimal value while truncating
+    # our recovery glob.
     "%p": 10,
 }
 
@@ -49,18 +54,28 @@ def _escape_recover_core_pattern_literal_percent(text):
 
 
 def _wildcard_variable_width_specifiers_for_truncation(pattern):
+    # Some specifiers that remain in the returned glob are expanded later by
+    # yatest's recover_core_dump_file(). Replace those before truncating long
+    # patterns, otherwise the later expansion can make the glob longer than
+    # the actual filename Linux wrote under core(5)'s 128-byte limit.
     wildcard_expansion_extra_bytes = 0
     parts = []
     offset = 0
     for part in re.split(r"(%.)", pattern):
         max_bytes = TRUNCATION_WILDCARD_SPECIFIER_MAX_BYTES.get(part)
         part_bytes = len(part.encode())
+        # Specifiers past the kernel truncation boundary cannot affect the
+        # actual filename prefix, so leave them alone. They will usually be
+        # removed by the final truncation below.
         if max_bytes is None or offset >= CORE_FILENAME_MAX_BYTES:
             parts.append(part)
             offset += part_bytes
             continue
 
         parts.append('*')
+        # Account for the bytes hidden by replacing a variable-width specifier
+        # with a one-byte glob. This keeps our truncated glob shorter by the
+        # same amount Linux may spend on the real expansion.
         wildcard_expansion_extra_bytes += max_bytes - len('*')
         offset += part_bytes
 
@@ -71,6 +86,9 @@ def _truncate_core_pattern(pattern):
     if len(pattern.encode()) <= CORE_FILENAME_MAX_BYTES:
         return pattern
 
+    # First make the visible prefix conservative for later-expanded tokens
+    # such as %p, then cut it to the same byte budget Linux applies to the
+    # fully expanded core filename.
     pattern, wildcard_expansion_extra_bytes = _wildcard_variable_width_specifiers_for_truncation(pattern)
 
     # core(5): the resulting core filename is limited to 128 bytes on Linux.
