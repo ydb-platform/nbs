@@ -85,6 +85,7 @@ def setup_coredumps(ssh):
     """)
     ssh(f"sudo tee /usr/local/bin/qemu-core-helper <<'EOF' && sudo chmod +x /usr/local/bin/qemu-core-helper\n{core_helper}\nEOF")
     ssh("sudo sysctl -w 'kernel.core_pattern=|/usr/local/bin/qemu-core-helper %e %p %s %E'")
+    ssh("sudo sysctl -w 'kernel.core_pipe_limit=4'")
     ssh("sudo sysctl -w 'kernel.core_uses_pid=1'")
     # Tests are launched via `sudo /run_test.sh`, so their dumpability is
     # governed by fs.suid_dumpable. Keep dumps enabled for these guest-side
