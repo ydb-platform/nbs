@@ -670,7 +670,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
@@ -781,7 +781,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
@@ -806,7 +806,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
 	if !mounted {
 		return s.statusErrorf(codes.FailedPrecondition,
-			"Staging target path is not mounted: %w", req.VolumeId)
+			"Staging target path is not mounted: %s", req.VolumeId)
 	}
 
 	readOnly, _ := s.mounter.IsFilesystemRemountedAsReadonly(req.StagingTargetPath)
@@ -946,7 +946,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	hasBlockDevice, err := s.mounter.HasBlockDevice(ctx, resp.NbdDeviceFile)
 	if !hasBlockDevice {
 		return s.statusErrorf(codes.Unavailable,
-			"Nbd device is not available: %w", err)
+			"Nbd device is not available: %v", err)
 	}
 
 	mnt := req.VolumeCapability.GetMount()
@@ -1026,7 +1026,7 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 	mounted, _ := s.mounter.IsMountPoint(devicePath)
 	if !mounted {
 		return s.statusErrorf(codes.FailedPrecondition,
-			"Staging target path is not mounted: %w", req.VolumeId)
+			"Staging target path is not mounted: %s", req.VolumeId)
 	}
 
 	return s.mountBlockDevice(diskId, devicePath, req.TargetPath, req.Readonly)
@@ -1071,7 +1071,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
@@ -1116,7 +1116,7 @@ func (s *nodeService) cleanupNbsEndpoint(ctx context.Context, instanceId string,
 		UnixSocketPath: filepath.Join(s.getEndpointDir(instanceId, diskId), nbsSocketName),
 	})
 	if err != nil {
-		logVolume(diskId, "StopEndpoint failed in cleanup: %w", err)
+		logVolume(diskId, "StopEndpoint failed in cleanup: %v", err)
 	}
 }
 
@@ -1883,7 +1883,7 @@ func (s *nodeService) NodeGetVolumeStats(
 
 		return nil, s.statusErrorf(
 			codes.Internal,
-			"NodeGetVolumeStats failed: %w", err)
+			"NodeGetVolumeStats failed: %v", err)
 	}
 
 	if !mounted {
