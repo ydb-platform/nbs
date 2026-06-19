@@ -34,6 +34,6 @@ message PoolsConfig {
     optional string BaseDiskIdPrefix = 22 [default = "base-"];
     // Makes base disks created from small images (for example, 32 GiB) larger,
     // so that they are large enough to achieve the performance corresponding to
-    // `minBaseDiskUnits`.
+    // `minBaseDiskUnits`. See #6257 for details
     optional bool AdjustBaseDiskSizeToMinBaseDiskUnits = 23 [default = false];
 }
