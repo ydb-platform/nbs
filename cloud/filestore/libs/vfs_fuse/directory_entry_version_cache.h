@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "directory_handle_stats.h"
 #include "fuse.h"
 
 #include <util/generic/hash.h>
@@ -30,8 +31,14 @@ private:
 
     mutable TAdaptiveLock Lock;
     THashMap<fuse_ino_t, TDirectoryState> Directories;
+    TDirectoryHandleModuleStatsPtr Stats;
 
 public:
+    explicit TDirectoryEntryVersionCacheShard(
+        TDirectoryHandleModuleStatsPtr stats)
+        : Stats(std::move(stats))
+    {}
+
     void RegisterHandle(fuse_ino_t directory);
     void UnregisterHandle(fuse_ino_t directory);
     void AdvanceVersion(fuse_ino_t directory, const TString& name, ui64 version);
@@ -44,14 +51,12 @@ private:
     TVector<TDirectoryEntryVersionCacheShard> Shards;
 
 public:
-    TDirectoryEntryVersionCache()
-        : TDirectoryEntryVersionCache(1)
-    {}
-
-    explicit TDirectoryEntryVersionCache(ui32 shardCount)
+    explicit TDirectoryEntryVersionCache(
+        ui32 shardCount,
+        TDirectoryHandleModuleStatsPtr stats)
     {
         for (ui32 i = 0; i < shardCount; ++i) {
-            Shards.emplace_back();
+            Shards.emplace_back(stats);
         }
     }
 

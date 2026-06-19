@@ -10,7 +10,7 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
 {
     Y_UNIT_TEST(ShouldNotRememberChangesWithoutRegisteredHandle)
     {
-        TDirectoryEntryVersionCache cache;
+        TDirectoryEntryVersionCache cache(1, nullptr);
 
         cache.UnregisterHandle(1);
         cache.AdvanceVersion(1, "child", 10);
@@ -24,7 +24,7 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
 
     Y_UNIT_TEST(ShouldKeepLargestVersionForRegisteredEntry)
     {
-        TDirectoryEntryVersionCache cache;
+        TDirectoryEntryVersionCache cache(1, nullptr);
         cache.RegisterHandle(1);
 
         cache.AdvanceVersion(1, "child", 10);
@@ -39,7 +39,7 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
 
     Y_UNIT_TEST(ShouldKeepVersionsUntilLastHandleIsUnregistered)
     {
-        TDirectoryEntryVersionCache cache;
+        TDirectoryEntryVersionCache cache(1, nullptr);
         cache.RegisterHandle(1);
         cache.RegisterHandle(1);
         cache.AdvanceVersion(1, "child", 10);
@@ -56,7 +56,7 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
 
     Y_UNIT_TEST(ShouldTrackDirectoriesIndependently)
     {
-        TDirectoryEntryVersionCache cache(2);
+        TDirectoryEntryVersionCache cache(2, nullptr);
         cache.RegisterHandle(1);
         cache.RegisterHandle(2);
 

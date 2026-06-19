@@ -14,6 +14,7 @@ TDirectoryHandleModuleStats::TDirectoryHandleModuleStats(
     : CacheSize(timer)
     , ChunkCount(timer)
     , OpenHandleCount(timer)
+    , EntryVersionCacheEntryCount(timer)
     , StorageStats(std::move(storageStats))
 {}
 
@@ -38,6 +39,10 @@ void TDirectoryHandleModuleStats::RegisterCounters(
         {NMetrics::CreateSensor("MaxOpenHandleCount")},
         NMetrics::CreateMetric([self]
                                { return self->OpenHandleCount.GetValue(); }));
+    localMetricsRegistry->Register(
+        {NMetrics::CreateSensor("MaxEntryVersionCacheEntryCount")},
+        NMetrics::CreateMetric(
+            [self] { return self->EntryVersionCacheEntryCount.GetValue(); }));
     localMetricsRegistry->Register(
         {NMetrics::CreateSensor("RewindCount")},
         NMetrics::CreateMetric([self] { return self->RewindCount.Get(); }),
@@ -66,6 +71,11 @@ void TDirectoryHandleModuleStats::ChangeOpenHandleCount(i64 delta)
     OpenHandleCount.Change(delta);
 }
 
+void TDirectoryHandleModuleStats::ChangeEntryVersionCacheEntryCount(i64 delta)
+{
+    EntryVersionCacheEntryCount.Change(delta);
+}
+
 void TDirectoryHandleModuleStats::IncrementRewindCount()
 {
     RewindCount.Inc();
@@ -78,6 +88,7 @@ void TDirectoryHandleModuleStats::UpdateStats(TInstant now)
     CacheSize.UpdateMax();
     ChunkCount.UpdateMax();
     OpenHandleCount.UpdateMax();
+    EntryVersionCacheEntryCount.UpdateMax();
     if (StorageStats) {
         StorageStats->UpdateStats();
     }

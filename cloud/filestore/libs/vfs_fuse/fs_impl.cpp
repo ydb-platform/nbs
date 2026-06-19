@@ -57,7 +57,9 @@ TFileSystem::TFileSystem(
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
     , DirectoryEntryVersionCache(
-          std::make_shared<TDirectoryEntryVersionCache>(CACHE_SHARD_COUNT))
+          std::make_shared<TDirectoryEntryVersionCache>(
+              CACHE_SHARD_COUNT,
+              directoryHandleStats))
     , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
           Log,
           std::move(directoryHandleStats),

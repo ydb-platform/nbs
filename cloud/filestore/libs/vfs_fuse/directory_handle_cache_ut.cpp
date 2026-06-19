@@ -370,8 +370,13 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             NMetrics::CreateMetricsRegistryStub();
         stats->RegisterCounters(metricsRegistry, aggregatableMetricsRegistry);
 
-        auto cache =
-            TDirectoryHandleCache(Log, stats, CreateStorage(stats), nullptr);
+        auto entryVersionCache =
+            std::make_shared<TDirectoryEntryVersionCache>(1, stats);
+        auto cache = TDirectoryHandleCache(
+            Log,
+            stats,
+            CreateStorage(stats),
+            entryVersionCache);
 
         const ui64 id = cache.CreateHandle(42);
         auto handle = cache.FindHandle(id);
@@ -386,6 +391,19 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto maxOpenHandleCount = counters->FindCounter("MaxOpenHandleCount");
         UNIT_ASSERT(maxOpenHandleCount);
         UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
+
+        auto maxEntryVersionCacheEntryCount =
+            counters->FindCounter("MaxEntryVersionCacheEntryCount");
+        UNIT_ASSERT(maxEntryVersionCacheEntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, maxEntryVersionCacheEntryCount->Val());
+
+        entryVersionCache->AdvanceVersion(42, "child", 10);
+        entryVersionCache->AdvanceVersion(42, "child", 20);
+        entryVersionCache->AdvanceVersion(42, "other", 30);
+
+        stats->UpdateStats(timer->Now());
+        metricsRegistry->Update(timer->Now());
+        UNIT_ASSERT_VALUES_EQUAL(2, maxEntryVersionCacheEntryCount->Val());
 
         auto rawCapacityByteMaxCount =
             counters->FindCounter("Storage_RawCapacityByteMaxCount");
@@ -421,12 +439,20 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         metricsRegistry->Update(timer->Now());
 
         UNIT_ASSERT_GT(memoryLimiterRejectionCount->Val(), 0);
+
+        cache.RemoveHandle(id);
+        cache.CreateHandle(43);
+        entryVersionCache->AdvanceVersion(43, "child", 40);
+
+        stats->UpdateStats(timer->Now());
+        metricsRegistry->Update(timer->Now());
+        UNIT_ASSERT_VALUES_EQUAL(2, maxEntryVersionCacheEntryCount->Val());
     }
 
     Y_UNIT_TEST(ShouldRegisterEntryVersionCacheForCreatedHandle)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>();
+            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -449,7 +475,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldKeepEntryVersionCacheUntilLastHandleIsRemoved)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>();
+            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -478,7 +504,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnClear)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>();
+            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -504,7 +530,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
     Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnReset)
     {
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>();
+            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
@@ -540,7 +566,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         }
 
         auto entryVersionCache =
-            std::make_shared<TDirectoryEntryVersionCache>();
+            std::make_shared<TDirectoryEntryVersionCache>(1, nullptr);
         auto stats = CreateStats();
         auto cache = TDirectoryHandleCache(
             Log,

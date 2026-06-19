@@ -61,7 +61,7 @@ void RunUpdateNodeBench(ui64 iters, ui32 threads, ui32 shards)
 
 void RunAdvanceEntryVersionBench(ui64 iters, ui32 threads, ui32 shards)
 {
-    TDirectoryEntryVersionCache cache(shards);
+    TDirectoryEntryVersionCache cache(shards, nullptr);
     std::atomic<ui64> version = 0;
     const ui64 directoryCount = 4'096;
 
