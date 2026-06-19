@@ -115,6 +115,9 @@ void TPartitionActor::CompleteCompactionReadBlobInfo(
                          << args.BlobMetas.size()
                          << " != " << args.BlobsToReadBlobMetas.size());
 
+    State->IncrementBlockMaskReadDuringCompaction(
+        args.BlobsToReadBlockMasks.size());
+
     TRequestScope timer(*args.RequestInfo);
 
     auto response = std::make_unique<
