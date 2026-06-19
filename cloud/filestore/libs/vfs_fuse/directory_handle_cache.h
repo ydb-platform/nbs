@@ -20,7 +20,7 @@ private:
     TAdaptiveLock Lock;
     TDirectoryHandleMap Handles;
     TDirectoryHandleStoragePtr Storage;
-    TDirectoryEntryVersionCache* DirectoryEntryVersionCache = nullptr;
+    std::shared_ptr<TDirectoryEntryVersionCache> DirectoryEntryVersionCache;
 
     TDirectoryHandleModuleStatsPtr Stats;
 
@@ -33,7 +33,7 @@ public:
         TLog log,
         TDirectoryHandleModuleStatsPtr stats,
         TDirectoryHandleStoragePtr storage,
-        TDirectoryEntryVersionCache* directoryEntryVersionCache);
+        std::shared_ptr<TDirectoryEntryVersionCache> directoryEntryVersionCache);
 
     ui64 CreateHandle(fuse_ino_t ino);
 

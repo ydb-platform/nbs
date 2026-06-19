@@ -56,12 +56,13 @@ TFileSystem::TFileSystem(
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
-    , DirectoryEntryVersionCache(CACHE_SHARD_COUNT)
+    , DirectoryEntryVersionCache(
+          std::make_shared<TDirectoryEntryVersionCache>(CACHE_SHARD_COUNT))
     , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
           Log,
           std::move(directoryHandleStats),
           std::move(directoryHandleStorage),
-          &DirectoryEntryVersionCache))
+          DirectoryEntryVersionCache))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
@@ -208,7 +209,7 @@ void TFileSystem::InvalidateDirectoryEntryInCache(
         << " " << name.Quote()
         << ", version: " << version);
 
-    DirectoryEntryVersionCache.AdvanceVersion(parent, name, version);
+    DirectoryEntryVersionCache->AdvanceVersion(parent, name, version);
 }
 
 void TFileSystem::UpdateXAttrCache(

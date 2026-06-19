@@ -30,10 +30,10 @@ TDirectoryHandleCache::TDirectoryHandleCache(
     TLog log,
     TDirectoryHandleModuleStatsPtr stats,
     TDirectoryHandleStoragePtr storage,
-    TDirectoryEntryVersionCache* directoryEntryVersionCache)
+    std::shared_ptr<TDirectoryEntryVersionCache> directoryEntryVersionCache)
     : Log(std::move(log))
     , Storage(std::move(storage))
-    , DirectoryEntryVersionCache(directoryEntryVersionCache)
+    , DirectoryEntryVersionCache(std::move(directoryEntryVersionCache))
     , Stats(std::move(stats))
 {
     if (Storage) {

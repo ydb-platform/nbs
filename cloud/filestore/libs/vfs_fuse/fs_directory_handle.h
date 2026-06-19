@@ -26,7 +26,8 @@ struct TDirectoryContent
     size_t Offset = 0;
     size_t Size = 0;
     // GlobalCacheVersion starts from 1
-    // so this starting value is used to identify values loaded from disk
+    // so this starting value is used to identify values
+    // recovered after restart from persistent storage
     ui64 CacheVersion = 0;
 
     const char* GetData() const

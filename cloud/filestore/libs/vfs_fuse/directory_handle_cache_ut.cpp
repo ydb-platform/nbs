@@ -305,6 +305,59 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
     }
 
+    Y_UNIT_TEST(ShouldResetLoadedContentCacheVersionAfterRestart)
+    {
+        ui64 loadedHandleId = 0;
+        {
+            auto cache = CreateStoredCache();
+
+            loadedHandleId = cache.CreateHandle(100);
+            auto handle = cache.FindHandle(loadedHandleId);
+            UNIT_ASSERT(handle);
+
+            auto chunk = handle->UpdateContent(
+                1024,
+                0,
+                CreateContent(1024, 'x'),
+                10,
+                {});
+            cache.AppendChunk(loadedHandleId, handle, chunk);
+
+            auto content = handle->ReadContent(1024, 0, Log);
+            UNIT_ASSERT(content);
+            UNIT_ASSERT_VALUES_EQUAL(10, content->CacheVersion);
+        }
+
+        auto cache = CreateStoredCache();
+
+        auto loadedHandle = cache.FindHandle(loadedHandleId);
+        UNIT_ASSERT(loadedHandle);
+
+        auto loadedContent = loadedHandle->ReadContent(1024, 0, Log);
+        UNIT_ASSERT(loadedContent);
+        UNIT_ASSERT_VALUES_EQUAL(0, loadedContent->CacheVersion);
+
+        const ui64 newHandleId = cache.CreateHandle(200);
+        auto newHandle = cache.FindHandle(newHandleId);
+        UNIT_ASSERT(newHandle);
+
+        auto chunk = newHandle->UpdateContent(
+            1024,
+            0,
+            CreateContent(1024, 'y'),
+            20,
+            {});
+        cache.AppendChunk(newHandleId, newHandle, chunk);
+
+        auto newContent = newHandle->ReadContent(1024, 0, Log);
+        UNIT_ASSERT(newContent);
+        UNIT_ASSERT_VALUES_EQUAL(20, newContent->CacheVersion);
+
+        loadedContent = loadedHandle->ReadContent(1024, 0, Log);
+        UNIT_ASSERT(loadedContent);
+        UNIT_ASSERT_VALUES_EQUAL(0, loadedContent->CacheVersion);
+    }
+
     Y_UNIT_TEST(ShouldRegisterMetrics)
     {
         auto timer = CreateWallClockTimer();
@@ -372,84 +425,106 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
     Y_UNIT_TEST(ShouldRegisterEntryVersionCacheForCreatedHandle)
     {
-        TDirectoryEntryVersionCache entryVersionCache;
+        auto entryVersionCache =
+            std::make_shared<TDirectoryEntryVersionCache>();
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
             nullptr,
-            &entryVersionCache);
+            entryVersionCache);
 
         const ui64 id = cache.CreateHandle(42);
 
-        entryVersionCache.AdvanceVersion(42, "child", 10);
-        UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
+        entryVersionCache->AdvanceVersion(42, "child", 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            entryVersionCache->GetVersion(42, "child"));
 
         UNIT_ASSERT(cache.RemoveHandle(id, 42));
-        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            entryVersionCache->GetVersion(42, "child"));
     }
 
     Y_UNIT_TEST(ShouldKeepEntryVersionCacheUntilLastHandleIsRemoved)
     {
-        TDirectoryEntryVersionCache entryVersionCache;
+        auto entryVersionCache =
+            std::make_shared<TDirectoryEntryVersionCache>();
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
             nullptr,
-            &entryVersionCache);
+            entryVersionCache);
 
         const ui64 firstId = cache.CreateHandle(42);
         const ui64 secondId = cache.CreateHandle(42);
 
-        entryVersionCache.AdvanceVersion(42, "child", 10);
-        UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
+        entryVersionCache->AdvanceVersion(42, "child", 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            entryVersionCache->GetVersion(42, "child"));
 
         UNIT_ASSERT(cache.RemoveHandle(firstId, 42));
-        UNIT_ASSERT_VALUES_EQUAL(10, entryVersionCache.GetVersion(42, "child"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            entryVersionCache->GetVersion(42, "child"));
 
         UNIT_ASSERT(cache.RemoveHandle(secondId, 42));
-        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            entryVersionCache->GetVersion(42, "child"));
     }
 
     Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnClear)
     {
-        TDirectoryEntryVersionCache entryVersionCache;
+        auto entryVersionCache =
+            std::make_shared<TDirectoryEntryVersionCache>();
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
             nullptr,
-            &entryVersionCache);
+            entryVersionCache);
 
         cache.CreateHandle(42);
         cache.CreateHandle(43);
 
-        entryVersionCache.AdvanceVersion(42, "child1", 10);
-        entryVersionCache.AdvanceVersion(43, "child2", 20);
+        entryVersionCache->AdvanceVersion(42, "child1", 10);
+        entryVersionCache->AdvanceVersion(43, "child2", 20);
 
         cache.Clear();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child1"));
-        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(43, "child2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            entryVersionCache->GetVersion(42, "child1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            entryVersionCache->GetVersion(43, "child2"));
     }
 
     Y_UNIT_TEST(ShouldUnregisterEntryVersionCacheOnReset)
     {
-        TDirectoryEntryVersionCache entryVersionCache;
+        auto entryVersionCache =
+            std::make_shared<TDirectoryEntryVersionCache>();
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
             nullptr,
-            &entryVersionCache);
+            entryVersionCache);
 
         cache.CreateHandle(42);
         cache.CreateHandle(43);
 
-        entryVersionCache.AdvanceVersion(42, "child1", 10);
-        entryVersionCache.AdvanceVersion(43, "child2", 20);
+        entryVersionCache->AdvanceVersion(42, "child1", 10);
+        entryVersionCache->AdvanceVersion(43, "child2", 20);
 
         cache.Reset();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(42, "child1"));
-        UNIT_ASSERT_VALUES_EQUAL(0, entryVersionCache.GetVersion(43, "child2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            entryVersionCache->GetVersion(42, "child1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            entryVersionCache->GetVersion(43, "child2"));
     }
 
     Y_UNIT_TEST(ShouldNotRegisterEntryVersionCacheForLoadedHandles)
@@ -464,20 +539,21 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 TDirectoryHandleChunk{.Index = 100});
         }
 
-        TDirectoryEntryVersionCache entryVersionCache;
+        auto entryVersionCache =
+            std::make_shared<TDirectoryEntryVersionCache>();
         auto stats = CreateStats();
         auto cache = TDirectoryHandleCache(
             Log,
             stats,
             CreateStorage(stats),
-            &entryVersionCache);
+            entryVersionCache);
 
         UNIT_ASSERT(cache.FindHandle(handleId));
 
-        entryVersionCache.AdvanceVersion(100, "child", 10);
+        entryVersionCache->AdvanceVersion(100, "child", 10);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            entryVersionCache.GetVersion(100, "child"));
+            entryVersionCache->GetVersion(100, "child"));
     }
 
 }
