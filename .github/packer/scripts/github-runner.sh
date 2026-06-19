@@ -182,7 +182,7 @@ chmod 1777 /coredumps
 {
     echo "fs.aio-max-nr=1048576"
     echo "vm.swappiness=1"
-    echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t"
+    echo "kernel.core_pattern=/coredumps/%e.%p.%s"
     echo "kernel.core_uses_pid=1"
     echo "fs.suid_dumpable=0"
 } >> /etc/sysctl.conf
