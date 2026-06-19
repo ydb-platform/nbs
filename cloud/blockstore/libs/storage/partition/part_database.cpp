@@ -520,6 +520,10 @@ bool TPartitionDatabase::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.GetValueOrDefault<TTable::SkipMask>());
 
+                if (!blobsVisitor.Visit(range, blobId, skipMask.Count())) {
+                    return true;   // interrupted
+                }
+
                 ui32 skipped = 0;
                 for (ui32 blockIndex = range.Start; blockIndex < start; ++blockIndex) {
                     ui16 pos = blockIndex - range.Start;
@@ -543,10 +547,6 @@ bool TPartitionDatabase::FindMergedBlocks(
                     if (!visitor.Visit(blockIndex, commitId, blobId, blobOffset)) {
                         return true;    // interrupted
                     }
-                }
-
-                if (!blobsVisitor.Visit(range, blobId, skipped)) {
-                    return true;   // interrupted
                 }
             }
         }
