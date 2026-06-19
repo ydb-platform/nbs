@@ -20,10 +20,7 @@ def do_test(test_name, aux_params):
 
     working_dir = os.path.join(mount_dir, "wd")
 
-    ret = ssh(
-        f"FILESTORE_DIRTREE_TEST_CRASH_ON_START=1 "
-        f"{dirtree_bin} --test-dir {working_dir} --seed 111 {aux_params}"
-    )
+    ret = ssh(f"{dirtree_bin} --test-dir {working_dir} --seed 111 {aux_params}")
     results_path = f"{common.output_path()}/{test_name}_results.txt"
     with open(results_path, 'w') as results:
         results.write(ret.stdout.decode("utf8"))

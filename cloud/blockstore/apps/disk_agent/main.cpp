@@ -9,18 +9,11 @@
 
 #include <util/generic/yexception.h>
 
-#include <csignal>
-#include <cstdlib>
-
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)
 {
     using namespace NCloud::NBlockStore;
-
-    if (std::getenv("DISK_AGENT_TEST_CRASH_ON_START")) {
-        std::raise(SIGSEGV);
-    }
 
     auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
     moduleFactories->CreateTicketParser = NKikimr::CreateTicketParser;
