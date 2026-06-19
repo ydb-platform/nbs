@@ -45,10 +45,10 @@ TWriteBlocksLocalRequest& TWriteBlocksLocalRequest::operator=(
 {
     CloseOwnedSglist();
 
-    TWriteBlocksRequest::operator=(std::move(other));
     Sglist = std::move(other.Sglist);
     BlocksCount = std::exchange(other.BlocksCount, 0);
     OwnsSglist = std::exchange(other.OwnsSglist, false);
+    TWriteBlocksRequest::operator=(std::move(other));
     if (OwnsSglist) {
         RebuildSglistFromBlocks();
     }
