@@ -29,7 +29,6 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
-#include <atomic>
 #include <variant>
 
 namespace NCloud::NStorage::NRdma {
@@ -308,7 +307,7 @@ private:
     // while the handler or its async callbacks still hold in/out TStringBufs.
     // This variable only gets accessed from the CQ thread,
     // it doesn't really need to be atomic
-    ui64 ExecutingRequests{0};
+    ui64 ExecutingRequests = 0;
 
 public:
     static TServerSession* FromEvent(rdma_cm_event* event)
@@ -1005,7 +1004,6 @@ void TServerSession::ReadRequestDataCompleted(TSendWr* send) noexcept
 
     Y_ABORT_UNLESS(req->State == ERequestState::ReadRequestData);
 
-    SendQueue.Push(send);
     Counters->ReadRequestCompleted();
 
     LWTRACK(
@@ -1013,6 +1011,16 @@ void TServerSession::ReadRequestDataCompleted(TSendWr* send) noexcept
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
 
+    if (FlushStarted) {
+        // The RDMA READ completed successfully, but the session is already being
+        // disconnected. The client may have freed its request buffer before the
+        // read completed, so InBuffer may contain garbage. Do not dispatch to
+        // the handler — just discard the request and recycle the WR.
+        FreeRequest(std::move(req), send);
+        return;
+    }
+
+    SendQueue.Push(send);
     ExecuteRequest(std::move(req));
 }
 

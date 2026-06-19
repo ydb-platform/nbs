@@ -1871,6 +1871,14 @@ private:
     TConnectionPollerPtr ConnectionPoller;
     TVector<TCompletionPollerPtr> CompletionPollers;
 
+    // Endpoints that have been stopped but are waiting for
+    // RDMA_CM_EVENT_TIMEWAIT_EXIT before their buffer pools are freed.
+    // TIMEWAIT_EXIT guarantees that any in-flight RDMA READ operations the
+    // server initiated against our buffers have completed. Without this delay,
+    // the server may read freed (garbage) memory.
+    // Accessed only from the connection poller thread — no lock needed.
+    THashMap<rdma_cm_id*, TClientEndpointPtr> DyingEndpoints;
+
 public:
     TClient(
         NVerbs::IVerbsPtr verbs,
@@ -1906,6 +1914,7 @@ private:
         NVerbs::TConnectionEventPtr event) noexcept;
     TCompletionPoller& PickPoller() noexcept;
     void StopEndpoint(TClientEndpoint* endpoint) noexcept;
+    TClientEndpointPtr ExtractDyingEndpoint(rdma_cm_id* id) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1957,7 +1966,7 @@ void TClient::Start() noexcept
 void TClient::Stop() noexcept
 {
     if (ConnectionPoller) {
-        ConnectionPoller->Stop();
+        ConnectionPoller->Stop();  // joins connection poller thread
         ConnectionPoller.reset();
     }
 
@@ -1965,6 +1974,12 @@ void TClient::Stop() noexcept
         poller->Stop();
     }
     CompletionPollers.clear();
+
+    // Force cleanup of any endpoints still waiting for TIMEWAIT_EXIT.
+    // This covers abrupt disconnects (client crash, network failure) where
+    // the event never arrives. All pollers have stopped at this point,
+    // so no more in-flight RDMA operations are possible.
+    DyingEndpoints.clear();
 
     RDMA_INFO("stop client");
 }
@@ -2025,9 +2040,19 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
             // multicast is not used
             break;
 
-        case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-            // QPs is not re-used
+        case RDMA_CM_EVENT_TIMEWAIT_EXIT: {
+            // The QP has exited TIME_WAIT: all in-flight RDMA READ operations
+            // the server initiated against our request buffers have completed.
+            // It is now safe to call rdma_destroy_id and deregister the MRs
+            // (free the buffer pool). We must ack the event (event.reset())
+            // BEFORE calling rdma_destroy_id (~TClientEndpoint via ~Connection),
+            // so dying outlives the event pointer reset.
+            auto dying = ExtractDyingEndpoint(event->id);
+            event.reset();  // rdma_ack_cm_event — must precede rdma_destroy_id
+            // dying goes out of scope here → ~TClientEndpoint → ~Connection
+            //   → DestroyId → rdma_destroy_id — safe because event is acked
             break;
+        }
 
         case RDMA_CM_EVENT_CONNECT_RESPONSE:
             // generated only if rdma_id doesn't have associated QP
@@ -2072,9 +2097,29 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
         endpoint->Poller->Detach(endpoint);
     }
     endpoint->DestroyQP();
-    endpoint->Connection.reset();
+
+    // Deliberately do NOT reset Connection here. Keep the rdma_cm_id alive so
+    // that RDMA_CM_EVENT_TIMEWAIT_EXIT can fire. That event signals that the
+    // remote RNIC has finished all in-flight RDMA READ operations against our
+    // buffers, making it safe to call rdma_destroy_id and deregister MRs.
+    // Connection (and buffer pools) are freed in ExtractDyingEndpoint(), called
+    // from the TIMEWAIT_EXIT handler. TClient::Stop() clears the map as a
+    // fallback for abrupt disconnects where TIMEWAIT_EXIT never arrives.
+    DyingEndpoints[endpoint->Connection.get()] = endpoint->shared_from_this();
+
     endpoint->StopResult.SetValue();
     endpoint->Poller->Release(endpoint);
+}
+
+TClientEndpointPtr TClient::ExtractDyingEndpoint(rdma_cm_id* id) noexcept
+{
+    auto it = DyingEndpoints.find(id);
+    if (it == DyingEndpoints.end()) {
+        return {};
+    }
+    auto endpoint = std::move(it->second);
+    DyingEndpoints.erase(it);
+    return endpoint;
 }
 
 // implements IConnectionEventHandler
