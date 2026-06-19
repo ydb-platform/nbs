@@ -136,6 +136,7 @@ echo "install esp6 /bin/false" > /etc/modprobe.d/disable-esp6.conf
 echo "install rxrpc /bin/false" > /etc/modprobe.d/disable-rxrpc.conf
 
 pip3 install -r /tmp/packer/requirements.txt
+pip3 install -r /tmp/packer/requirements_dev.txt
 
 INSTALL_DIR=/usr/local/bin bash /tmp/packer/install-github-release-tools.sh action-validator shellcheck shfmt yq
 
