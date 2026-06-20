@@ -214,7 +214,10 @@ protected:
     void OnResponse(const NProtoPrivate::TCreateSessionResponse& record)
         override
     {
-        if (record.GetAdapterModeEnabled() && Response->Record.HasFileStore()) {
+        if (record.GetAdapterModeEnabled()
+                && Response
+                && Response->Record.HasFileStore())
+        {
             auto* f = Response->Record.MutableFileStore()->MutableFeatures();
             ProcessAdapterModeFeatures(*f);
         }
@@ -508,8 +511,10 @@ void TIndexTabletActor::CompleteTx_CreateSession(
 
     if (FastShard) {
         response->Record.SetAdapterModeEnabled(true);
-        auto* f = response->Record.MutableFileStore()->MutableFeatures();
-        ProcessAdapterModeFeatures(*f);
+        if (!args.Request.GetNoFileStoreInfo()) {
+            auto* f = response->Record.MutableFileStore()->MutableFeatures();
+            ProcessAdapterModeFeatures(*f);
+        }
     }
 
     TVector<TString> shardIds;
