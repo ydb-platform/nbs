@@ -245,6 +245,15 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         WaitReadyRequests.pop_front();
     }
 
+    //
+    // Adapter mode doesn't support multiple-stage IO yet.
+    //
+
+    NProto::TStorageConfig adapterModeOverrides;
+    adapterModeOverrides.SetTwoStageReadEnabled(false);
+    adapterModeOverrides.SetThreeStageWriteEnabled(false);
+    Config->Merge(adapterModeOverrides);
+
     TThrottlerConfig config;
     Convert(args.FileSystem.GetPerformanceProfile(), config);
 

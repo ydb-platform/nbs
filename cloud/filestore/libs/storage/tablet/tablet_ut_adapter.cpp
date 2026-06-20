@@ -20,6 +20,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
     TABLET_TEST_4K_ONLY(ShouldUseAdapter)
     {
         NProto::TStorageConfig storageConfig;
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetThreeStageWriteEnabled(true);
         TTestEnv env({}, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
@@ -42,7 +44,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
 
         tablet.ReconnectPipe();
         tablet.WaitReady();
-        tablet.InitSession("client", "session");
+        {
+            auto response = tablet.InitSession("client", "session");
+
+            //
+            // For adapter mode multiple-stage io should be disabled regardless
+            // of the flags in StorageConfig.
+            //
+
+            const auto& feat = response->Record.GetFileStore().GetFeatures();
+            UNIT_ASSERT(!feat.GetTwoStageReadEnabled());
+            UNIT_ASSERT(!feat.GetThreeStageWriteEnabled());
+        }
 
         const TString shardId1 = "shard1";
         const TString uuid1 = CreateGuidAsString();
