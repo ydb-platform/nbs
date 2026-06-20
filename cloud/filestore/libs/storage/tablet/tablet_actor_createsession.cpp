@@ -187,11 +187,39 @@ void Convert(
     fileStore.SetShardNo(fileSystem.GetShardNo());
 }
 
+void ProcessAdapterModeFeatures(NProto::TFileStoreFeatures& f)
+{
+    //
+    // Adapter mode doesn't support multiple-stage IO yet. Disabling
+    // multiple-stage IO for the whole FS for simplicity if at least one shard
+    // is configured in adapter mode.
+    //
+
+    f.SetTwoStageReadEnabled(false);
+    f.SetThreeStageWriteEnabled(false);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-using TCreateShardSessionsActor = TShardRequestActor<
+using TCreateShardSessionsActorBase = TShardRequestActor<
     TEvIndexTablet::TEvCreateSessionRequest,
     TEvIndexTablet::TEvCreateSessionResponse>;
+
+class TCreateShardSessionsActor: public TCreateShardSessionsActorBase
+{
+public:
+    using TCreateShardSessionsActorBase::TCreateShardSessionsActorBase;
+
+protected:
+    void OnResponse(const NProtoPrivate::TCreateSessionResponse& record)
+        override
+    {
+        if (record.GetAdapterModeEnabled() && Response->Record.HasFileStore()) {
+            auto* f = Response->Record.MutableFileStore()->MutableFeatures();
+            ProcessAdapterModeFeatures(*f);
+        }
+    }
+};
 
 }   // namespace
 
@@ -476,6 +504,12 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             "%s New session TFileStoreFeatures '%s'",
             LogTag.c_str(),
             fileStore.GetFeatures().ShortDebugString().c_str());
+    }
+
+    if (FastShard) {
+        response->Record.SetAdapterModeEnabled(true);
+        auto* f = response->Record.MutableFileStore()->MutableFeatures();
+        ProcessAdapterModeFeatures(*f);
     }
 
     TVector<TString> shardIds;

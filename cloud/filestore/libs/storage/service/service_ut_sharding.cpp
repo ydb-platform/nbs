@@ -202,7 +202,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                                                                               \
     TTestEnv env({}, config);                                                 \
                                                                               \
-    ui32 nodeIdx = env.AddDynamicNode();                                     \
+    ui32 nodeIdx = env.AddDynamicNode();                                      \
                                                                               \
     TServiceClient service(env.GetRuntime(), nodeIdx);                        \
     auto fsInfo = CreateFileSystem(service, fsConfig);                        \
@@ -373,6 +373,61 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto& sessions = response.GetSessions();
             UNIT_ASSERT_VALUES_EQUAL(0, sessions.size());
         }
+    }
+
+    SERVICE_TEST(ShouldCheckForShardsInAdapterModeUponSessionCreationInShards)
+    {
+        //
+        // Enabling some features which shouldn't work for adapter-mode shards.
+        //
+
+        TShardedFileSystemConfig fsConfig;
+        config.SetTwoStageReadEnabled(true);
+        config.SetThreeStageWriteEnabled(true);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        //
+        // Configuring one of the shards to use the adapter mode.
+        //
+
+        {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(fsConfig.Shard1Id);
+            request.SetIsFastShard(true);
+            request.SetShardNo(1);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        THeaders headers = {
+            .FileSystemId = fsConfig.FsId,
+            .ClientId = "client",
+            .SessionId = "",
+            .SessionSeqNo = 0};
+
+        auto response = service.CreateSession(
+            headers,
+            "" /* checkpointId */,
+            false /* restoreClientSession */,
+            0 /* sessionSeqNo */,
+            false /* readOnly */);
+
+        //
+        // Checking that the unsupported features are disabled.
+        //
+
+        const auto& f = response->Record.GetFileStore().GetFeatures();
+        UNIT_ASSERT(!f.GetTwoStageReadEnabled());
+        UNIT_ASSERT(!f.GetThreeStageWriteEnabled());
     }
 
     SERVICE_TEST(ShouldRestoreSessionInShardAfterShardRestart)

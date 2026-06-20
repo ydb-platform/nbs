@@ -46,15 +46,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         tablet.WaitReady();
         {
             auto response = tablet.InitSession("client", "session");
-
-            //
-            // For adapter mode multiple-stage io should be disabled regardless
-            // of the flags in StorageConfig.
-            //
-
-            const auto& feat = response->Record.GetFileStore().GetFeatures();
-            UNIT_ASSERT(!feat.GetTwoStageReadEnabled());
-            UNIT_ASSERT(!feat.GetThreeStageWriteEnabled());
+            UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
         }
 
         const TString shardId1 = "shard1";
