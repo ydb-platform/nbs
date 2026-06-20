@@ -2210,6 +2210,48 @@ func TestStorageYDBCreatePoolWithImageSizeAndAdjustBaseDiskSizeToMinBaseDiskUnit
 	require.NoError(t, err)
 }
 
+func TestStorageYDBCreatePoolWithLargerImageSize(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	maxActiveSlots := uint32(640)
+	maxBaseDisksInflight := uint32(1)
+	maxBaseDiskUnits := uint32(640)
+	config := &pools_config.PoolsConfig{
+		MaxActiveSlots:       &maxActiveSlots,
+		MaxBaseDisksInflight: &maxBaseDisksInflight,
+		MaxBaseDiskUnits:     &maxBaseDiskUnits,
+	}
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	imageSize := uint64(7 * baseDiskUnitSize)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+	require.Equal(t, 7*baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, uint64(70), baseDisks[0].Units)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
 func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()

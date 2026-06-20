@@ -34,6 +34,15 @@ message PoolsConfig {
     optional string BaseDiskIdPrefix = 22 [default = "base-"];
     // Makes base disks created from small images (for example, 32 GiB) larger,
     // so that they are large enough to achieve the performance corresponding to
-    // `minBaseDiskUnits`. See #6257 for details
+    // `minBaseDiskUnits`. See #6257 for details.
     optional bool AdjustBaseDiskSizeToMinBaseDiskUnits = 23 [default = false];
+    // Controls how many base disk allocation units are allocated for a given
+    // number of overlay disk allocation units.
+    // The lower this value, the higher the aggregated bandwidth that can be
+    // achieved when reading from base disks and lower overcommit.
+    // IMPORTANT NOTE:
+    //  * It can't be less than 1
+    //  * Reducing this number also increases the total size of the base disks
+    //    that need to be allocated.
+    optional uint32 BaseDiskOverSubscription = 24 [default = 2];
 }
