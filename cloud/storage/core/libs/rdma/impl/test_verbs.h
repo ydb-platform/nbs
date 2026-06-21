@@ -15,6 +15,13 @@ namespace NCloud::NStorage::NRdma::NVerbs {
 
 struct TTestContext: TAtomicRefCount<TTestContext>
 {
+    ~TTestContext()
+    {
+        for (auto* send: SendEvents) {
+            delete send;
+        }
+    }
+
     rdma_cm_id* Connection = nullptr;
     TEventHandle ConnectionHandle;
     TVector<std::unique_ptr<rdma_cm_id>> ClientConnections;

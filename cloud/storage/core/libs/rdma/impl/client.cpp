@@ -894,10 +894,6 @@ bool TClientEndpoint::HandleInputRequests() noexcept
         RequestEvent.Clear();
     }
 
-    if (!CheckState(EEndpointState::Connected)) {
-        return false;
-    }
-
     auto requests = InputRequests.DequeueAll();
     if (!requests) {
         return false;
@@ -967,12 +963,6 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
         CancelRequestEvent.Clear();
     }
 
-    if (!CheckState(EEndpointState::Connected) &&
-        !CheckState(EEndpointState::Disconnecting))
-    {
-        return false;
-    }
-
     THashSet<ui64> clientRequestIdToCancel;
     for (auto req: CancelRequests.DequeueAll()) {
         clientRequestIdToCancel.emplace(req.ClientRequestId);
@@ -1017,10 +1007,6 @@ void TClientEndpoint::AbortRequests() noexcept
         AbortRequestsEvent.Clear();
     }
 
-    if (!CheckState(EEndpointState::Disconnecting)) {
-        return;
-    }
-
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
@@ -1057,12 +1043,6 @@ void TClientEndpoint::AbortRequest(
 
 bool TClientEndpoint::HandleCompletionEvents() noexcept
 {
-    if (!CheckState(EEndpointState::Connected) &&
-        !CheckState(EEndpointState::Disconnecting))
-    {
-        return false;
-    }
-
     try {
         ibv_cq* cq = CompletionQueue.get();
 
@@ -1761,10 +1741,16 @@ private:
         auto hasWork = false;
 
         for (const auto& endpoint: *endpoints) {
-            hasWork |= endpoint->HandleCancelRequests();
-            hasWork |= endpoint->HandleInputRequests();
-            hasWork |= endpoint->HandleCompletionEvents();
-            endpoint->AbortRequests();
+            if (endpoint->CheckState(EEndpointState::Connected)) {
+                hasWork |= endpoint->HandleCancelRequests();
+                hasWork |= endpoint->HandleInputRequests();
+                hasWork |= endpoint->HandleCompletionEvents();
+            }
+            if (endpoint->CheckState(EEndpointState::Disconnecting)) {
+                hasWork |= endpoint->HandleCancelRequests();
+                hasWork |= endpoint->HandleCompletionEvents();
+                endpoint->AbortRequests();
+            }
         }
 
         return hasWork;
@@ -1813,6 +1799,8 @@ private:
                     << "[send_queue.size=" << endpoint->SendQueue.Size()
                     << " recv_queue.size=" << endpoint->RecvQueue.Size() << "]");
             }
+
+            Detach(endpoint.get());
 
             endpoint->ChangeState(
                 EEndpointState::Disconnecting,
@@ -2068,9 +2056,6 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
 {
     RDMA_INFO(endpoint->Log, "release resources");
     ConnectionPoller->Detach(endpoint);
-    if (endpoint->CompletionChannel) {
-        endpoint->Poller->Detach(endpoint);
-    }
     endpoint->DestroyQP();
     endpoint->Connection.reset();
     endpoint->StopResult.SetValue();
@@ -2137,7 +2122,6 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
             // fallthrough
 
         case EEndpointState::Disconnected:
-            endpoint->Poller->Detach(endpoint);
             endpoint->DestroyQP();
             endpoint->SetConnection(
                 ConnectionPoller->CreateConnection(Config->IpTypeOfService));
