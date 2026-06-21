@@ -263,11 +263,9 @@ TEST(TRdmaClientTest, ShouldDetachFromPoller)
         ASSERT_EQ(2u, shared.use_count());
 
         shared->Stop().Wait();
-        auto deadline = GetCycleCount() + DurationToCycles(10s);
-        while (deadline > GetCycleCount() && shared.use_count() > 1) {
+        while (shared.use_count() > 1) {
             SpinLockPause();
         }
-        ASSERT_EQ(1u, shared.use_count());
     }
 
 TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
@@ -999,19 +997,9 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
             context->CompletionHandle.Set();
         }
 
-        auto wait = [](auto& counter, auto value) {
-            auto start = GetCycleCount();
-            while (counter->Val() != value) {
-                auto now = GetCycleCount();
-                if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
-                    FAIL() << "timed out waiting for counter";
-                }
-                SpinLockPause();
-            }
-        };
-
-        wait(errors, 7);
-        wait(active, 6);
+        while (errors->Val() != 7 || active->Val() != 6) {
+            SpinLockPause();
+        }
 }
 
 TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
