@@ -57,7 +57,6 @@ void FillDescribeDataResponse(
     const TTabletStorageInfo& info,
     const ui64 tabletId,
     const ui32 blockSize,
-    const TByteRange& responseRange,
     const TTxIndexTablet::TReadData& args,
     NProtoPrivate::TDescribeDataResponse* record)
 {
@@ -73,32 +72,9 @@ void FillDescribeDataResponse(
     // using TMap to make responses more stable and, thus, easier to test
     TMap<TPartialBlobId, TBlobRanges> blobRanges;
 
-    const auto alignedResponseRange = responseRange.AlignedSuperRange();
-    const ui64 responseBeginBlock = alignedResponseRange.FirstBlock();
-    const ui64 responseEndBlock =
-        responseBeginBlock + alignedResponseRange.BlockCount();
-
     args.BlockRanges.VisitBlobRanges(
         [&] (const TBlockRanges::TBlobRange& range) {
-            const ui64 rangeBeginBlock = range.BlockIndex;
-            const ui64 rangeEndBlock = rangeBeginBlock + range.BlocksCount;
-
-            const ui64 beginBlock =
-                Max<ui64>(rangeBeginBlock, responseBeginBlock);
-            const ui64 endBlock =
-                Min<ui64>(rangeEndBlock, responseEndBlock);
-
-            if (beginBlock >= endBlock) {
-                return;
-            }
-
-            auto clipped = range;
-            clipped.BlockIndex = IntegerCast<ui32>(beginBlock);
-            clipped.BlocksCount = IntegerCast<ui32>(endBlock - beginBlock);
-            clipped.BlobOffset = IntegerCast<ui32>(
-                ui64(range.BlobOffset) + beginBlock - rangeBeginBlock);
-
-            blobRanges[clipped.BlobId].push_back(clipped);
+            blobRanges[range.BlobId].push_back(range);
         });
 
     for (const auto& [blobId, ranges]: blobRanges) {
@@ -142,10 +118,6 @@ void FillDescribeDataResponse(
     NProtoPrivate::TFreshDataRange freshRange;
     for (ui32 i = 0; i < actualBlockCount; ++i) {
         const ui64 curOffset = args.ActualRange().Offset + ui64(i) * blockSize;
-        const TByteRange blockByteRange(curOffset, blockSize, blockSize);
-        if (!responseRange.Overlaps(blockByteRange)) {
-            continue;
-        }
 
         const auto& bytes = args.Bytes[i];
 
@@ -1025,7 +997,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
                 *Info(),
                 TabletID(),
                 GetBlockSize(),
-                *args.ReadAheadRange,
                 args,
                 &record);
             RegisterReadAheadResult(
@@ -1042,7 +1013,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
             *Info(),
             TabletID(),
             GetBlockSize(),
-            args.AlignedByteRange,
             args,
             &record);
 
