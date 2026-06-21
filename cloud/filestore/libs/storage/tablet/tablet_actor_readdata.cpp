@@ -63,9 +63,6 @@ void FillDescribeDataResponse(
     // metadata
     record->SetFileSize(args.Node->Attrs.GetSize());
 
-    // 1. Blob data is derived directly from the overlay. VisitBlobRanges
-    //    already joins adjacent ranges that belong to the same blob, so we
-    //    only need to clip them to the requested response range.
     using TBlobRange = TBlockRanges::TBlobRange;
     using TBlobRanges = TVector<TBlobRange>;
 
@@ -97,22 +94,6 @@ void FillDescribeDataResponse(
     }
 
     const ui64 actualFirstBlock = args.ActualRange().FirstBlock();
-
-    // 2. Fresh blocks and fresh byte ranges.
-    //
-    //    The overlay only tracks per-block provenance, not the actual fresh
-    //    data, so fresh-block content and byte intervals are taken from
-    //    args.Buffer / args.Bytes, exactly as the original (vector-based)
-    //    implementation did. We must walk the actual range block-by-block
-    //    (not via the overlay) because:
-    //      - blocks carrying only fresh bytes have an Empty overlay source and
-    //        are skipped by VisitRanges, yet still need their byte intervals
-    //        emitted ("pure fresh bytes");
-    //      - the relative order of fresh-block ranges and fresh-byte ranges
-    //        must follow ascending block index.
-    //
-    //    The overlay is consulted only to classify each block as a fresh block
-    //    (block-level Fresh source) vs. anything else.
     const ui32 actualBlockCount = args.ActualRange().BlockCount();
 
     NProtoPrivate::TFreshDataRange freshRange;
@@ -282,11 +263,6 @@ public:
                 (blockOffset + 1) * Args.ActualRange().BlockSize
             );
 
-            // Bytes are applied if they are newer than whatever block-level
-            // *data* currently wins for this block. A block whose winning
-            // source is Empty or Deleted has no data, so its visible-data
-            // commit id is 0 and any byte interval is recorded -- matching the
-            // original behavior where a deleted/empty block was reset to {}.
             if (Args.BlockRanges.GetVisibleDataCommitId(
                     IntegerCast<ui32>(
                         Args.ActualRange().FirstBlock() + blockOffset))
