@@ -119,13 +119,14 @@ def test_publish_distinguishes_remote_mount_access_modes(
             instance_id=instance_id,
             access_mode=access_mode)
 
-    def publish(pod_id: str, access_mode: str):
+    def publish(pod_id: str, access_mode: str, readonly: bool = False):
         env.csi.publish_volume(
             pod_id=pod_id,
             volume_id=volume_name,
             pod_name=pod_name,
             access_type=access_type,
             instance_id=instance_id,
+            readonly=readonly,
             access_mode=access_mode)
         published_pod_ids.append(pod_id)
 
@@ -137,7 +138,7 @@ def test_publish_distinguishes_remote_mount_access_modes(
         env.csi.create_volume(name=volume_name, size=volume_size)
 
         if vm_mode and instance_id == "":
-            stage("single-node-writer")
+            stage("single-node-reader-only")
 
             publish(single_reader_pod_id, "single-node-reader-only")
 
@@ -151,11 +152,14 @@ def test_publish_distinguishes_remote_mount_access_modes(
                 remote=0)
 
             unpublish(single_reader_pod_id)
+            env.csi.unstage_volume(volume_name)
+
+            stage("multi-node-single-writer")
 
             publish(writer_pod_id, "multi-node-single-writer")
 
             for pod_id in reader_pod_ids:
-                publish(pod_id, "multi-node-reader-only")
+                publish(pod_id, "multi-node-single-writer", readonly=True)
 
             assert "rw" == get_access_mode(str(target_path(writer_pod_id)))
             for pod_id in reader_pod_ids:
