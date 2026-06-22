@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -352,15 +353,10 @@ void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
 
     const auto& error = msg->GetError();
 
-    // TODO: use E_NOT_FOUND instead of StatusPathDoesNotExist
     if (FAILED(error.GetCode())) {
-        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-           auto status =
-                static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
-            if (status == NKikimrScheme::StatusPathDoesNotExist) {
-                CreateVolume(ctx);
-                return;
-            }
+        if (IsNotFoundSchemeShardError(error)) {
+            CreateVolume(ctx);
+            return;
         }
 
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
@@ -421,18 +417,14 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
     const auto& diskId = VolumeConfig.GetDiskId();
 
     if (FAILED(error.GetCode())) {
-        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-            auto status =
-                static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
-            if (FirstCreationAttempt &&
-                ParentDirs &&
-                status == NKikimrScheme::StatusPathDoesNotExist)
-            {
-                // Try creating intermediate directories
-                FirstCreationAttempt = false;
-                EnsureDirs(ctx);
-                return;
-            }
+        if (FirstCreationAttempt &&
+            ParentDirs &&
+            IsNotFoundSchemeShardError(error))
+        {
+            // Try creating intermediate directories
+            FirstCreationAttempt = false;
+            EnsureDirs(ctx);
+            return;
         }
 
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,

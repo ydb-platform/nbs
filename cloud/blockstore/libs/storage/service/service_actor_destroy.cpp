@@ -367,7 +367,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
 
     const auto* msg = ev->Get();
 
-    if (IsNotFoundSchemeShardError(msg->GetError())) {
+    if (IsDiskNotFoundError(msg->GetError())) {
         if (Sync) {
             VolumeNotFoundInSS = true;
             DeallocateDisk(ctx);
@@ -485,7 +485,7 @@ void TDestroyVolumeActor::HandleGracefulShutdownResponse(
             DiskId.Quote().data(),
             FormatError(error).data());
 
-        if (IsNotFoundSchemeShardError(error)) {
+        if (IsDiskNotFoundError(error)) {
             DestroyVolume(ctx);
         } else {
             ReplyAndDie(ctx, std::move(error));

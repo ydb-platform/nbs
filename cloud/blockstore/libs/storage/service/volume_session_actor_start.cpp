@@ -347,9 +347,7 @@ void TStartVolumeActor::HandleDescribeVolumeResponse(
 {
     const auto* msg = ev->Get();
 
-    if (msg->GetStatus() ==
-        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-    {
+    if (IsDiskNotFoundError(msg->GetError())) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -360,7 +358,7 @@ void TStartVolumeActor::HandleDescribeVolumeResponse(
         return;
     }
 
-    if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
+    if (!HasError(msg->GetError())) {
         auto volumeTabletId = msg->
             PathDescription.
             GetBlockStoreVolumeDescription().

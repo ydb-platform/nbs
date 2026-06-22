@@ -211,9 +211,7 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
 {
     const auto* msg = ev->Get();
 
-    if (msg->GetStatus() ==
-        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-    {
+    if (IsDiskNotFoundError(msg->GetError())) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -222,7 +220,7 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
             ClientId.Quote().data());
 
         Error = MakeError(S_ALREADY, "Volume is already destroyed");
-    } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
+    } else if (!HasError(msg->GetError())) {
         auto volumeTabletId = msg->
             PathDescription.
             GetBlockStoreVolumeDescription().
