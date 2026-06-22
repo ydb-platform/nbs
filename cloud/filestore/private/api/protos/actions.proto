@@ -55,3 +55,18 @@ message TToggleServiceStateRequest
 message TToggleServiceStateResponse
 {
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfigureUnconfirmedWriteForget request/response
+
+message TConfigureUnconfirmedWriteForgetRequest
+{
+    // Number of following eligible unconfirmed three-stage writes whose commit
+    // id should be left without ConfirmAddData if the write succeeds.
+    uint64 RequestsToForget = 1;
+}
+
+message TConfigureUnconfirmedWriteForgetResponse
+{
+    uint64 RequestsToForget = 1;
+}

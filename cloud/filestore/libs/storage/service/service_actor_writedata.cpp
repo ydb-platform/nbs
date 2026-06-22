@@ -151,6 +151,7 @@ private:
     TVector<double> ApproximateFreeSpaceShares;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     TRope Rope;
+    const bool ForgetUnconfirmedCommit;
 
 public:
     TWriteDataActor(
@@ -163,7 +164,8 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool forgetUnconfirmedCommit)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -175,6 +177,7 @@ public:
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
+        , ForgetUnconfirmedCommit(forgetUnconfirmedCommit)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -479,6 +482,9 @@ private:
         --RemainingBlobsToWrite;
         if (RemainingBlobsToWrite == 0) {
             if (UseUnconfirmedFlow) {
+                if (ForgetUnconfirmedCommit) {
+                    return ForgetConfirmAddDataAndReply(ctx, "WriteBlobs");
+                }
                 ConfirmAddData(ctx);
             } else {
                 AddData(ctx);
@@ -673,6 +679,22 @@ private:
             GenerateBlobIdsResponse.GetCommitId());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+    }
+
+    void ForgetConfirmAddDataAndReply(
+        const TActorContext& ctx,
+        const char* stage)
+    {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s Forgetting unconfirmed commitId=%lu after %s: "
+            "ConfirmAddData will not be sent",
+            LogTag.c_str(),
+            GenerateBlobIdsResponse.GetCommitId(),
+            stage);
+
+        ReplyAndDie(ctx, {});
     }
 
     void HandleConfirmAddDataResponse(
@@ -930,6 +952,18 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TStorageServiceActor::ShouldForgetUnconfirmedWrite()
+{
+    if (UnconfirmedWriteRequestsToForget == 0) {
+        return false;
+    }
+
+    --UnconfirmedWriteRequestsToForget;
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TStorageServiceActor::HandleWriteData(
     const TEvService::TEvWriteDataRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -1041,6 +1075,18 @@ void TStorageServiceActor::HandleWriteData(
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
+        const bool forgetUnconfirmedCommit =
+            filestore.GetFeatures().GetUnconfirmedFlowEnabled() &&
+            ShouldForgetUnconfirmedWrite();
+        if (forgetUnconfirmedCommit) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s Unconfirmed write commit will be forgotten for requestId=%lu",
+                logTag.c_str(),
+                msg->CallContext->RequestId);
+        }
+
         auto actor = std::make_unique<TWriteDataActor>(
             std::move(msg->Record),
             range,
@@ -1051,7 +1097,8 @@ void TStorageServiceActor::HandleWriteData(
             session->RequestStats,
             ProfileLog,
             TraceSerializer,
-            session->MediaKind);
+            session->MediaKind,
+            forgetUnconfirmedCommit);
         NCloud::Register(ctx, std::move(actor));
     } else {
         LOG_DEBUG(
