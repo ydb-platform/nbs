@@ -347,7 +347,6 @@ TString TInitializer::GetSerialNumber(const TString& path)
     auto it = PathToSerial.find(path);
     if (it == PathToSerial.end()) {
         auto [sn, error] = NvmeManager->GetSerialNumber(path);
-        it = PathToSerial.emplace(path, sn).first;
         if (HasError(error)) {
             with_lock (Lock) {
                 Errors.push_back(
@@ -355,7 +354,9 @@ TString TInitializer::GetSerialNumber(const TString& path)
                     << "Can't get serial number for " << path.Quote() << ": "
                     << FormatError(error));
             }
+            return sn;
         }
+        it = PathToSerial.emplace(path, sn).first;
     }
 
     return it->second;
