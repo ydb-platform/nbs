@@ -310,6 +310,60 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "buf:bufvalue cstr:cstring empty t:1.001s + ");
     }
 
+    Y_UNIT_TEST(GetChildOfChild)
+    {
+        const ui64 startTime = 0;
+        TLogTitle logTitle{
+            startTime,
+            TLogTitle::TPartitionNonrepl{.DiskId = "disk1"}};
+
+        const ui64 childTime = GetCyclesPerMillisecond() * 1001;
+        const ui64 grandChildTime =
+            childTime + GetCyclesPerMillisecond() * 1001;
+        const ui64 greatGrandChildTime =
+            grandChildTime + GetCyclesPerMillisecond() * 1001;
+
+        auto child = logTitle.GetChild(childTime);
+        auto grandChild = child.GetChild(grandChildTime);
+        auto greatGrandChild = grandChild.GetChild(greatGrandChildTime);
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            child.GetWithTime(),
+            "[nrd:disk1 t:1.001s + ");
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            grandChild.GetWithTime(),
+            "[nrd:disk1 t:1.001s + 1.001s + ");
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            greatGrandChild.GetWithTime(),
+            "[nrd:disk1 t:1.001s + 1.001s + 1.001s + ");
+    }
+
+    Y_UNIT_TEST(GetChildOfChildWithTags)
+    {
+        const ui64 startTime = 0;
+        TLogTitle logTitle{
+            startTime,
+            TLogTitle::TPartitionNonrepl{.DiskId = "disk1"}};
+
+        const ui64 childTime = GetCyclesPerMillisecond() * 1001;
+        const ui64 grandChildTime =
+            childTime + GetCyclesPerMillisecond() * 1001;
+
+        auto child = logTitle.GetChildWithTags(childTime, {{"cp", "123"}});
+        auto grandChild =
+            child.GetChildWithTags(grandChildTime, {{"rq", "456"}});
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            child.GetWithTime(),
+            "[nrd:disk1 cp:123 t:1.001s + ");
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            grandChild.GetWithTime(),
+            "[nrd:disk1 cp:123 t:1.001s rq:456 + 1.001s + ");
+    }
+
     Y_UNIT_TEST(GetForDiskRegistry)
     {
         TLogTitle logTitle{
