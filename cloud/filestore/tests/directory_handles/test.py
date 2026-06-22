@@ -24,6 +24,7 @@ RETRY_COUNT = 3
 WAIT_TIMEOUT_MS = 1000
 MAX_DIRS = 25000
 WAIT_FILE_TIMEOUT_MS = 15000
+WAIT_FILE_RETRY_COUNT = 10
 
 
 @retrying.retry(
@@ -63,7 +64,7 @@ def create_file(ssh: SshToGuest, dir: str, file_name: str):
     return ssh(f"sudo touch {dir}/{file_name}")
 
 
-@retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT_MS)
+@retry(stop_max_attempt_number=WAIT_FILE_RETRY_COUNT, wait_fixed=WAIT_TIMEOUT_MS)
 def wait_for_file(ssh: SshToGuest, file_path: str):
     return ssh(f"test -f {file_path}")
 
