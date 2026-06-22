@@ -7741,6 +7741,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
         config.SetMaxShardCount(1024);
+        config.SetMaxShardManagementRequestsInFlight(0);
 
         const TString fsId = "test";
 
@@ -7754,11 +7755,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             service.CreateFileStore(fsId, fsSize);
 
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                shardCount,
-                counters.CreateMaxInFlight,
-                "#" << counters.CreateRequests << ", "
-                    << counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL_C(shardCount, counters.CreateMaxInFlight);
         }
 
         WaitForTabletStart(service);
@@ -7830,6 +7829,55 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             sevenBytesHandlesCount,
             mainStats.GetStats().GetSevenBytesHandlesCount());
+    }
+
+    SERVICE_TEST(ShouldCreateALotOfshardsThrottled)
+    {
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 324;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+        const ui32 requestsLimit = 32;
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+        config.SetMaxShardCount(1024);
+        config.SetMaxShardManagementRequestsInFlight(requestsLimit);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.CreateFileStore(fsId, fsSize);
+
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                requestsLimit,
+                counters.CreateMaxInFlight);
+        }
+
+        WaitForTabletStart(service);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // Check that the main fs and all the shards have the same size
+        const auto stats = GetStorageStats(service, fsId).GetStats();
+        const auto& shardStats = stats.GetShardStats();
+        UNIT_ASSERT_EQUAL(shardCount, shardStats.size());
+        UNIT_ASSERT_EQUAL(fsSize, stats.GetTotalBlocksCount());
+        for (const auto& shardStat: shardStats) {
+            UNIT_ASSERT_EQUAL(fsSize, shardStat.GetTotalBlocksCount());
+        }
     }
 
     SERVICE_TEST(ShouldUseOldHandles)

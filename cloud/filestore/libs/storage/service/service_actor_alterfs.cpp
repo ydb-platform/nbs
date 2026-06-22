@@ -37,13 +37,13 @@ namespace {
 // 5. Alter (actually resize) main filestore.
 // 6. Alter shards (if we resize them)
 // 7. Create shards if needed.
-// If ShardManagementRequestThrottlingEnabled is true, we cap number of
+// If MaxShardManagementRequestsInFlight is non-zero, we cap number of
 // in-flight requests in CreateShards and send call new CreateShard as soon as
 // previous one is completed in HandleCreateFileStoreResponse.
-// If ShardManagementRequestThrottlingEnabled is false, we send requests for all
+// If MaxShardManagementRequestsInFlight is zero, we send requests for all
 // shards at once.
 // 8. Configure shards if we created some new ones. Same as in step 7, we
-// throttle requests if ShardManagementRequestThrottlingEnabled is true.
+// throttle requests if MaxShardManagementRequestsInFlight is non-zero.
 // 9. Configure main filestore if new shards were created.
 // The end!
 
@@ -683,13 +683,12 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
     }
 
     NextShardToCreate = ExistingShardIds.size();
-    const ui32 endShardIndex =
-        !StorageConfig->GetShardManagementRequestThrottlingEnabled()
-            ? FileStoreConfig.ShardConfigs.size()
-            : std::min<ui32>(
-                  NextShardToCreate +
-                      StorageConfig->GetMaxShardManagementRequestsInFlight(),
-                  FileStoreConfig.ShardConfigs.size());
+    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
+    const ui32 endShardIndex = (limit == 0)
+                                   ? FileStoreConfig.ShardConfigs.size()
+                                   : std::min<ui32>(
+                                         NextShardToCreate + limit,
+                                         FileStoreConfig.ShardConfigs.size());
     for (ui32 i = NextShardToCreate; i < endShardIndex; ++i) {
         CreateShard(ctx, i);
         ++NextShardToCreate;
@@ -748,7 +747,7 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
     Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
     if (--ShardsToCreate == 0) {
         ConfigureShards(ctx);
-    } else if (StorageConfig->GetShardManagementRequestThrottlingEnabled()) {
+    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
         CreateShard(ctx, NextShardToCreate);
         ++NextShardToCreate;
     }
@@ -764,13 +763,12 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
     }
 
     NextShardToConfigure = 0;
-    const ui32 endShardIndex =
-        !StorageConfig->GetShardManagementRequestThrottlingEnabled()
-            ? FileStoreConfig.ShardConfigs.size()
-            : std::min<ui32>(
-                  NextShardToConfigure +
-                      StorageConfig->GetMaxShardManagementRequestsInFlight(),
-                  FileStoreConfig.ShardConfigs.size());
+    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
+    const ui32 endShardIndex = (limit == 0)
+                                   ? FileStoreConfig.ShardConfigs.size()
+                                   : std::min<ui32>(
+                                         NextShardToConfigure + limit,
+                                         FileStoreConfig.ShardConfigs.size());
     for (ui32 i = NextShardToConfigure; i < endShardIndex; ++i) {
         ConfigureShard(ctx, i);
         ++NextShardToConfigure;
@@ -852,7 +850,7 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
     Y_DEBUG_ABORT_UNLESS(ShardsToConfigure);
     if (--ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
-    } else if (StorageConfig->GetShardManagementRequestThrottlingEnabled()) {
+    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
         ConfigureShard(ctx, NextShardToConfigure);
         ++NextShardToConfigure;
     }

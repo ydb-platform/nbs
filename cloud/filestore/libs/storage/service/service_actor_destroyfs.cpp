@@ -93,16 +93,6 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         const NProto::TError& error = {});
-
-    ui32 GetShardManagementRequestsInFlightLimit() const
-    {
-        ui32 limit =
-            !StorageConfig->GetShardManagementRequestThrottlingEnabled()
-                ? Max<ui32>()
-                : StorageConfig->GetMaxShardManagementRequestsInFlight();
-        Y_ABORT_UNLESS(limit > 0);
-        return limit;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -370,9 +360,9 @@ void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
 
 void TDestroyFileStoreActor::DestroyShards(const TActorContext& ctx)
 {
-    const ui32 endShardIndex = std::min<ui32>(
-        GetShardManagementRequestsInFlightLimit(),
-        ShardIds.size());
+    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
+    const ui32 endShardIndex =
+        (limit == 0) ? ShardIds.size() : std::min<ui32>(limit, ShardIds.size());
     for (ui32 i = 0; i < endShardIndex; ++i) {
         DestroyShard(ctx, i);
         NextShardToDestroy = i + 1;
@@ -441,8 +431,7 @@ void TDestroyFileStoreActor::HandleDestroyFileStoreResponse(
 
         if (DestroyedShardCount == ShardIds.size()) {
             DestroyFileStore(ctx);
-        } else if (StorageConfig->GetShardManagementRequestThrottlingEnabled())
-        {
+        } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
             if (NextShardToDestroy < ShardIds.size()) {
                 DestroyShard(ctx, NextShardToDestroy);
                 ++NextShardToDestroy;

@@ -334,7 +334,6 @@ public:
 
     bool GetDirectoryCreationInShardsEnabled() const;
 
-    bool GetShardManagementRequestThrottlingEnabled() const;
     ui32 GetMaxShardManagementRequestsInFlight() const;
 
     bool GetGuestWriteBackCacheEnabled() const;
