@@ -14,11 +14,7 @@ TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
     , Sglist(std::move(other.Sglist))
     , BlocksCount(std::exchange(other.BlocksCount, 0))
     , OwnsSglist(std::exchange(other.OwnsSglist, false))
-{
-    if (OwnsSglist) {
-        RebuildSglistFromBlocks();
-    }
-}
+{}
 
 TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
     const TWriteBlocksLocalRequest& source,
@@ -49,9 +45,6 @@ TWriteBlocksLocalRequest& TWriteBlocksLocalRequest::operator=(
     BlocksCount = std::exchange(other.BlocksCount, 0);
     OwnsSglist = std::exchange(other.OwnsSglist, false);
     TWriteBlocksRequest::operator=(std::move(other));
-    if (OwnsSglist) {
-        RebuildSglistFromBlocks();
-    }
     return *this;
 }
 
@@ -91,17 +84,6 @@ void TWriteBlocksLocalRequest::CloseOwnedSglist()
         Sglist.Close();
         OwnsSglist = false;
     }
-}
-
-void TWriteBlocksLocalRequest::RebuildSglistFromBlocks()
-{
-    TSgList newSgList;
-    const auto& buffers = GetBlocks().buffers();
-    newSgList.reserve(buffers.size());
-    for (const auto& buffer: buffers) {
-        newSgList.emplace_back(buffer.data(), buffer.size());
-    }
-    Sglist = TGuardedSgList(std::move(newSgList));
 }
 
 TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)

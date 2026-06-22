@@ -111,11 +111,6 @@ private:
     bool OwnsSglist = false;
 
     void CloseOwnedSglist();
-
-    // After a protobuf move, short strings (SSO) may be relocated to a new
-    // address, so raw pointers in Sglist become stale. This method rebuilds
-    // Sglist from the current buffer addresses in the Blocks field.
-    void RebuildSglistFromBlocks();
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;

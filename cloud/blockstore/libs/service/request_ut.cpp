@@ -131,6 +131,69 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
             guard.Get()[0].AsStringBuf());
     }
 
+    Y_UNIT_TEST(DependentRemainsValidAfterOwnerMove)
+    {
+        TString data = "hello";
+        TWriteBlocksLocalRequest owner;
+        SetupRequest(owner, data);
+        owner.TakeDataOwnership();
+
+        TWriteBlocksLocalRequest dep(
+            owner,
+            TWriteBlocksLocalRequest::TDependentTag{});
+        TGuardedSgList depSglist = dep.Sglist;
+
+        TWriteBlocksLocalRequest moved = std::move(owner);
+
+        auto guard = depSglist.Acquire();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf("hello"),
+            guard.Get()[0].AsStringBuf());
+    }
+
+    Y_UNIT_TEST(DependentInvalidatedAfterMovedOwnerDestroyed)
+    {
+        TString data = "hello";
+        TGuardedSgList depSglist;
+        {
+            TWriteBlocksLocalRequest owner;
+            SetupRequest(owner, data);
+            owner.TakeDataOwnership();
+
+            TWriteBlocksLocalRequest dep(
+                owner,
+                TWriteBlocksLocalRequest::TDependentTag{});
+            depSglist = dep.Sglist;
+
+            TWriteBlocksLocalRequest moved = std::move(owner);
+        }
+        UNIT_ASSERT(!depSglist.Acquire());
+    }
+
+    Y_UNIT_TEST(MoveOwnerSglistAddressIsStable)
+    {
+        // RepeatedPtrField<string> move transfers the pointer array, not the
+        // string objects, so buffer.data() addresses are stable after a move.
+        TString data = "hello";
+        TWriteBlocksLocalRequest src;
+        SetupRequest(src, data);
+        src.TakeDataOwnership();
+
+        const char* addrBefore;
+        {
+            auto guard = src.Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            addrBefore = guard.Get()[0].Data();
+        }
+
+        TWriteBlocksLocalRequest dst = std::move(src);
+
+        auto guard = dst.Sglist.Acquire();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(addrBefore, guard.Get()[0].Data());
+    }
+
     Y_UNIT_TEST(MoveAssignmentTransfersOwnershipAndClosesOldSglist)
     {
         TString data1 = "hello";
