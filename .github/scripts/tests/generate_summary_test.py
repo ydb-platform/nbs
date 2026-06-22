@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts.tests import generate_summary as gs
@@ -20,6 +21,13 @@ def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase) -> 
     assert result.is_timed_out is True
     assert result.log_urls["DIR"] == "https://logs/path/index.html"
     assert result.log_urls["stdout"] == "https://stdout"
+
+
+def test_from_junit_normalizes_non_finite_elapsed(mk_testcase) -> None:
+    for value in ("NaN", "Infinity", "-Infinity"):
+        result = gs.TestResult.from_junit(mk_testcase(time=value))
+
+        assert result.elapsed == 0.0
 
 
 def test_gen_summary_creates_html_and_aggregates_counters(
@@ -129,6 +137,39 @@ def test_write_summary_writes_markdown_table_and_footnote(tmp_path: Path) -> Non
     )
     assert "[1](https://summary/ya-test.html)" in content
     assert "[^1]: All mute rules are defined" in content
+
+
+def test_write_summary_json_keeps_counts_per_report(tmp_path: Path) -> None:
+    line = gs.TestSummaryLine("Tests")
+    line.add(gs.TestResult("cls", "ok", gs.TestStatus.PASS, {}, 1.2, False))
+    line.add_report("ya-test.html", "https://summary/ya-test.html")
+
+    summary = gs.TestSummary()
+    summary.add_line(line)
+
+    gs.write_summary_json(summary, str(tmp_path), build_failed_count=2)
+
+    payload = json.loads((tmp_path / "summary.json").read_text())
+    assert payload["aggregate_build_failed_count"] == 2
+    assert payload["reports"][0]["counts"]["FAIL_BUILD"] == 0
+    assert payload["reports"][0]["total"] == 1
+    assert len(payload["reports"][0]["tests"]) == 1
+
+
+def test_write_summary_json_normalizes_non_finite_elapsed(tmp_path: Path) -> None:
+    line = gs.TestSummaryLine("Tests")
+    line.add(gs.TestResult("cls", "nan", gs.TestStatus.PASS, {}, float("nan"), False))
+
+    summary = gs.TestSummary()
+    summary.add_line(line)
+
+    gs.write_summary_json(summary, str(tmp_path))
+
+    content = (tmp_path / "summary.json").read_text()
+    assert "NaN" not in content
+
+    payload = json.loads(content)
+    assert payload["reports"][0]["tests"][0]["elapsed_seconds"] == 0.0
 
 
 def test_get_comment_text_respects_build_failed_count(monkeypatch) -> None:
