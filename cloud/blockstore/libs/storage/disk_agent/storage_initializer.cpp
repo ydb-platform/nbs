@@ -545,6 +545,7 @@ bool TInitializer::TryToAcceptCurrentConfigs(
     STORAGE_WARN("Current config is broken, fallback to the cached one.");
     FileDevices = cachedDevices;
     SetupSerialNumbers(FileDevices);
+    SetupDeviceModels(FileDevices);
 
     Errors.push_back(TStringBuilder()
         << "broken config: " << FormatError(error));
