@@ -406,7 +406,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 }
 
 func newPublishVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, podId, stagingTargetPath, podName, fsType, instanceId string
+	var volumeId, podId, stagingTargetPath, targetPath, podName, fsType, instanceId string
 	var accessType string
 	var readOnly bool
 	var volumeMountGroup string
@@ -439,6 +439,9 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 			if instanceId != "" {
 				volumeContext["instanceId"] = instanceId
 			}
+			if targetPath == "" {
+				targetPath = getTargetPath(podId, volumeId, accessType)
+			}
 
 			response, err := client.NodePublishVolume(
 				ctx,
@@ -446,7 +449,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 					VolumeId:          volumeId,
 					PublishContext:    nil,
 					StagingTargetPath: stagingTargetPath,
-					TargetPath:        getTargetPath(podId, volumeId, accessType),
+					TargetPath:        targetPath,
 					VolumeCapability: createVolumeCapability(
 						csi.VolumeCapability_AccessMode_Mode(accessMode),
 						accessType,
@@ -476,6 +479,12 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		"/var/lib/kubelet/plugins/kubernetes.io/csi/nbs.csi.nebius.ai/"+
 			"a/globalmount",
 		"staging target path",
+	)
+	cmd.Flags().StringVar(
+		&targetPath,
+		"target-path",
+		"",
+		"target path",
 	)
 	cmd.Flags().StringVar(
 		&podName,
@@ -588,7 +597,7 @@ func newNodeUnstageVolumeCommand(endpoint *string) *cobra.Command {
 }
 
 func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, podId, accessType string
+	var volumeId, podId, targetPath, accessType string
 	cmd := cobra.Command{
 		Use:   "unpublishvolume",
 		Short: "Send unpublish volume request to the CSI node",
@@ -599,12 +608,18 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 			)
 			defer cancelFunc()
 			client, err := newNodeClient(ctx, *endpoint)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if targetPath == "" {
+				targetPath = getTargetPath(podId, volumeId, accessType)
+			}
 
 			response, err := client.NodeUnpublishVolume(
 				ctx,
 				&csi.NodeUnpublishVolumeRequest{
 					VolumeId:   volumeId,
-					TargetPath: getTargetPath(podId, volumeId, accessType),
+					TargetPath: targetPath,
 				},
 			)
 			if err != nil {
@@ -621,6 +636,12 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 		"volume id",
 	)
 	cmd.Flags().StringVar(&podId, "pod-id", "", "pod id")
+	cmd.Flags().StringVar(
+		&targetPath,
+		"target-path",
+		"",
+		"target path",
+	)
 	cmd.Flags().StringVar(
 		&accessType,
 		"access-type",
