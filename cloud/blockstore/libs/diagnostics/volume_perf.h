@@ -29,6 +29,7 @@ private:
 
     TAtomic ExpectedScore = 0;
     TAtomic CurrentScore = 0;
+    TAtomic CurrentRequestCount = 0;
 
     ui64 UpdateCounter = 0;
     TIntrusivePtr<NMonitoring::TCounterForPtr> Counter;
@@ -43,11 +44,13 @@ private:
         bool Suffered = false;
         long ExpectedScore = 0;
         long ActualScore = 0;
+        long RequestCount = 0;
     };
     std::array<TSample, SampleCount> Samples = {};
     TAtomic SufferCount = 0;
     TAtomic SmoothSufferCount = 0;
     TAtomic CriticalSufferCount = 0;
+    TAtomic RequestCount = 0;
 
 private:
     TVolumePerfSettings GetConfigSettings(
@@ -101,6 +104,11 @@ public:
     bool IsSufferingCritically() const
     {
         return GetCriticalSufferCount() != 0;
+    }
+
+    ui32 GetIops() const
+    {
+        return AtomicGet(RequestCount) / UpdateCountersInterval.Seconds();
     }
 
     // for testing purpose

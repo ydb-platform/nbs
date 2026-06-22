@@ -20,8 +20,15 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TVolumePerfStatus = std::pair<TString, ui32>;
-using TVolumePerfStatuses = TVector<TVolumePerfStatus>;
+struct TVolumePerfStatus
+{
+    ui32 SufferCount;
+    ui32 ReadWriteIops;
+};
+
+using TVolumePerfStatusesElement = std::pair<TString, TVolumePerfStatus>;
+
+using TVolumePerfStatuses = TVector<TVolumePerfStatusesElement>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
