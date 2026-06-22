@@ -45,16 +45,26 @@ TDuration SecondsToDuration(double seconds)
     return TDuration::MicroSeconds(ceil(1e6 * seconds));
 }
 
-TDuration CostPerIO(ui64 maxIops, ui64 maxBandwidth, ui64 byteCount)
+TDuration
+CostPerIO(const ui64 maxIops, const ui64 maxBandwidth, const ui64 byteCount)
+{
+    return CostPerIO(maxIops, maxBandwidth, byteCount, 1);
+}
+
+TDuration CostPerIO(
+    const ui64 maxIops,
+    const ui64 maxBandwidth,
+    const ui64 byteCount,
+    const ui64 ioCount)
 {
     Y_DEBUG_ABORT_UNLESS(maxIops);
 
-    double cost = 1.0 / static_cast<double>(maxIops);
+    double cost = ioCount / static_cast<double>(maxIops);
 
     // 0 is special value which disables throttling by byteCount
     if (maxBandwidth) {
-        cost += static_cast<double>(byteCount)
-            / static_cast<double>(maxBandwidth);
+        cost +=
+            static_cast<double>(byteCount) / static_cast<double>(maxBandwidth);
     }
 
     return SecondsToDuration(cost);
