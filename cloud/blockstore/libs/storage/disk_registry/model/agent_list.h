@@ -70,6 +70,10 @@ public:
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
         TLog log);
 
+    // Returns S_OK if the data is the same. Returns an error if the data is
+    // different.
+    NProto::TError CompareMeaningfullFields(const TAgentList& other) const;
+
     const TVector<NProto::TAgentConfig>& GetAgents() const
     {
         return Agents;
