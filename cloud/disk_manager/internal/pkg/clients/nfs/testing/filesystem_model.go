@@ -299,14 +299,14 @@ func (f *FileSystemModel) CreateNodesRecursively(
 	}
 
 	expectedNode := nfs.Node{
-		ParentNodeID:   parentNodeID,
-		Name:       nodeToCreate.Name,
-		Type:       nodeToCreate.FileType,
-		Mode:       mode,
-		UID:        1,
-		GID:        1,
-		LinkTarget: nodeToCreate.Target,
-		DevID:      nodeToCreate.DevID,
+		ParentNodeID: parentNodeID,
+		Name:         nodeToCreate.Name,
+		Type:         nodeToCreate.FileType,
+		Mode:         mode,
+		UID:          1,
+		GID:          1,
+		LinkTarget:   nodeToCreate.Target,
+		DevID:        nodeToCreate.DevID,
 	}
 	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
@@ -553,13 +553,13 @@ func (m *ParallelFilesystemModel) createChildren(
 			id, err := m.session.CreateNode(
 				ctx,
 				nfs.Node{
-					ParentNodeID:   parentNodeID,
-					Name:       child.Name,
-					Type:       child.FileType,
-					Mode:       0o777,
-					UID:        1,
-					GID:        1,
-					LinkTarget: child.Target,
+					ParentNodeID: parentNodeID,
+					Name:         child.Name,
+					Type:         child.FileType,
+					Mode:         0o777,
+					UID:          1,
+					GID:          1,
+					LinkTarget:   child.Target,
 				},
 			)
 			if err != nil {

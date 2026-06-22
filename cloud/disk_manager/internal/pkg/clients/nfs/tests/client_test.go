@@ -401,11 +401,11 @@ func TestCreateNodeIdempotent(t *testing.T) {
 
 	node := nfs.Node{
 		ParentNodeID: nfs.RootNodeID,
-		Name:     "testfile",
-		Mode:     0644,
-		UID:      1,
-		GID:      1,
-		Type:     nfs.NODE_KIND_FILE,
+		Name:         "testfile",
+		Mode:         0644,
+		UID:          1,
+		GID:          1,
+		Type:         nfs.NODE_KIND_FILE,
 	}
 
 	createdID, err := session.CreateNode(ctx, node)
