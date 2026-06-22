@@ -110,6 +110,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 deviceSpaceInBytes,
                 deviceInfo.GetDeviceFreeSpaceInBytes());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "",
+                deviceInfo.GetStoragePoolName());
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_POOL_KIND_DEFAULT,
+                deviceInfo.GetStoragePoolKind());
+
+            const auto& poolDeviceInfo = agentInfo.GetDevices(1);
+            UNIT_ASSERT_VALUES_EQUAL(
+                "local-ssd",
+                poolDeviceInfo.GetStoragePoolName());
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_POOL_KIND_LOCAL,
+                poolDeviceInfo.GetStoragePoolKind());
         }
 
         {
@@ -578,6 +593,139 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
         UNIT_ASSERT_VALUES_EQUAL(online, 2);
         UNIT_ASSERT_VALUES_EQUAL(warning, 1);
         UNIT_ASSERT_VALUES_EQUAL(unavailable, 1);
+    }
+
+    Y_UNIT_TEST(ShouldFilterByAgentId)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto agentConfig1 = AgentConfig(
+            1,
+            {
+                Device("dev-1", "uuid-1", "rack-1"),
+                Device("dev-2", "uuid-2", "rack-1"),
+            });
+
+        auto agentConfig2 = AgentConfig(
+            2,
+            {
+                Device("dev-3", "uuid-3", "rack-2"),
+                Device("dev-4", "uuid-4", "rack-2"),
+            });
+
+        auto agentConfig3 = AgentConfig(
+            3,
+            {
+                Device("dev-5", "uuid-5", "rack-3"),
+            });
+
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents(
+                    {agentConfig1, agentConfig2, agentConfig3})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        {
+            auto agentsInfo = state.QueryAgentsInfo({});
+            UNIT_ASSERT_VALUES_EQUAL(3, agentsInfo.size());
+        }
+
+        {
+            NProto::TQueryAgentsInfoRequest::TAgentFilter filter;
+            filter.AddAgentIds(agentConfig2.GetAgentId());
+
+            auto agentsInfo = state.QueryAgentsInfo(filter);
+            UNIT_ASSERT_VALUES_EQUAL(1, agentsInfo.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig2.GetAgentId(),
+                agentsInfo[0].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo[0].DevicesSize());
+        }
+
+        {
+            NProto::TQueryAgentsInfoRequest::TAgentFilter filter;
+            filter.AddAgentIds(agentConfig1.GetAgentId());
+            filter.AddAgentIds(agentConfig3.GetAgentId());
+
+            auto agentsInfo = state.QueryAgentsInfo(filter);
+            UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig1.GetAgentId(),
+                agentsInfo[0].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig3.GetAgentId(),
+                agentsInfo[1].GetAgentId());
+        }
+
+        {
+            NProto::TQueryAgentsInfoRequest::TAgentFilter filter;
+            filter.AddAgentIds("nonexistent-agent");
+
+            auto agentsInfo = state.QueryAgentsInfo(filter);
+            UNIT_ASSERT_VALUES_EQUAL(0, agentsInfo.size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFilterByAgentIdAndState)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto agentConfig1 = AgentConfig(
+            1,
+            {
+                Device("dev-1", "uuid-1", "rack-1"),
+            });
+
+        auto agentConfig2 = AgentConfig(
+            2,
+            {
+                Device("dev-2", "uuid-2", "rack-2"),
+            });
+
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents({agentConfig1, agentConfig2})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                state.UpdateAgentState(
+                    db,
+                    agentConfig1.GetAgentId(),
+                    NProto::EAgentState::AGENT_STATE_WARNING,
+                    TInstant::Now(),
+                    "test",
+                    affectedDisks);
+            });
+
+        {
+            NProto::TQueryAgentsInfoRequest::TAgentFilter filter;
+            filter.AddAgentIds(agentConfig1.GetAgentId());
+            filter.MutableStates()->Add(
+                NProto::EAgentState::AGENT_STATE_WARNING);
+
+            auto agentsInfo = state.QueryAgentsInfo(filter);
+            UNIT_ASSERT_VALUES_EQUAL(1, agentsInfo.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig1.GetAgentId(),
+                agentsInfo[0].GetAgentId());
+        }
+
+        {
+            NProto::TQueryAgentsInfoRequest::TAgentFilter filter;
+            filter.AddAgentIds(agentConfig1.GetAgentId());
+            filter.MutableStates()->Add(
+                NProto::EAgentState::AGENT_STATE_ONLINE);
+
+            auto agentsInfo = state.QueryAgentsInfo(filter);
+            UNIT_ASSERT_VALUES_EQUAL(0, agentsInfo.size());
+        }
     }
 }
 
