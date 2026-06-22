@@ -104,6 +104,7 @@ bool TDirectoryHandleCache::RemoveHandle(ui64 handleId, fuse_ino_t ino)
         }
 
         if (Storage) {
+            Storage=nullptr;
             Storage->RemoveHandle(handleId);
         }
     }
