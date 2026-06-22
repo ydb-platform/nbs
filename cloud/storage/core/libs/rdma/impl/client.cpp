@@ -492,6 +492,7 @@ private:
     TActiveRequests ActiveRequests;
 
     std::atomic<ui64> ReqIdPool{0};
+    std::atomic<bool> RetryExceeded{false};
 
     int NegotiatedProtocolVersion = RDMA_PROTO_VERSION;
 
@@ -1021,6 +1022,12 @@ void TClientEndpoint::AbortRequests() noexcept
         return;
     }
 
+    const bool retryExceeded = RetryExceeded.exchange(false);
+    const ui32 errCode =
+        retryExceeded ? E_RDMA_RETRY_EXCEEDED : E_RDMA_UNAVAILABLE;
+    TString errMsg =
+        retryExceeded ? "retry count exceeded" : "endpoint is unavailable";
+
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
@@ -1031,13 +1038,13 @@ void TClientEndpoint::AbortRequests() noexcept
         Y_ABORT_UNLESS(req);
         RDMA_DEBUG("abort request " << req->ReqId);
         Counters->RequestDequeued();
-        AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
+        AbortRequest(std::move(req), errCode, errMsg);
     }
 
     while (auto req = ActiveRequests.Pop()) {
         RDMA_DEBUG("request " << req->ReqId << " aborted");
         Counters->RequestAborted();
-        AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
+        AbortRequest(std::move(req), errCode, errMsg);
     }
 }
 
@@ -1101,6 +1108,11 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
             return -1;
         }
         if (wc->status != IBV_WC_SUCCESS) {
+            if (wc->status == IBV_WC_RETRY_EXC_ERR &&
+                Config.RetryExceededNotification)
+            {
+                RetryExceeded = true;
+            }
             RDMA_ERROR(send << " " << NVerbs::GetStatusString(wc->status));
             Counters->Error();
             Counters->SendRequestCompleted();
@@ -1129,6 +1141,11 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
             return -1;
         }
         if (wc->status != IBV_WC_SUCCESS) {
+            if (wc->status == IBV_WC_RETRY_EXC_ERR &&
+                Config.RetryExceededNotification)
+            {
+                RetryExceeded = true;
+            }
             RDMA_ERROR(recv << " " << NVerbs::GetStatusString(wc->status));
             Counters->Error();
             Counters->RecvResponseCompleted();

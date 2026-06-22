@@ -118,4 +118,9 @@ message TRdmaClient
     // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
     uint32 QpMinRnrTimer = 21;
+
+    // When enabled, IBV_WC_RETRY_EXC_ERR completions cause in-flight requests
+    // to be aborted with E_RDMA_RETRY_EXCEEDED instead of E_RDMA_UNAVAILABLE,
+    // letting upper layers (e.g. nonreplicated partition) fall back from RDMA.
+    bool RetryExceededNotification = 22;
 }
