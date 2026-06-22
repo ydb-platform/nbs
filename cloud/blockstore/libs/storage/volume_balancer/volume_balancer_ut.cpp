@@ -414,6 +414,9 @@ NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
                 *feature->MutableBlacklist()->MutableFolderIds()->Add() =
                     c.second;
             }
+            // All but blacklisted
+            feature->SetCloudProbability(1);
+            feature->SetFolderProbability(1);
         } else {
             for (const auto& c: list) {
                 *feature->MutableWhitelist()->MutableCloudIds()->Add() =
@@ -421,6 +424,9 @@ NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
                 *feature->MutableWhitelist()->MutableFolderIds()->Add() =
                     c.second;
             }
+            // None but whitelisted
+            feature->SetCloudProbability(0);
+            feature->SetFolderProbability(0);
         }
     }
     return std::make_shared<NFeatures::TFeaturesConfig>(config);
