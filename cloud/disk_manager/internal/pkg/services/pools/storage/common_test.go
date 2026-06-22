@@ -16,6 +16,7 @@ func testCommonGenerateBaseDiskForPool(
 
 	maxActiveSlots := uint64(640)
 	maxBaseDiskUnits := uint64(640)
+	baseDiskOverSubscription := uint64(2)
 
 	check := func(
 		actual baseDisk,
@@ -46,6 +47,8 @@ func testCommonGenerateBaseDiskForPool(
 			maxBaseDiskUnits: maxBaseDiskUnits,
 
 			adjustBaseDiskSizeToMinBaseDiskUnits: adjustBaseDiskSizeToMinBaseDiskUnits,
+
+			baseDiskOverSubscription: baseDiskOverSubscription,
 		}
 
 		var srcDisk *types.Disk
@@ -137,6 +140,36 @@ func testCommonGenerateBaseDiskForPool(
 	require.Equal(t, uint64(4096<<30), baseDisk.size)
 	require.Equal(t, uint64(1), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(1), baseDisk.units)
+
+	// Tests without base disk oversubscription.
+	maxActiveSlots = 640
+	maxBaseDiskUnits = 640
+	baseDiskOverSubscription = 1
+
+	baseDisk = generate(192 << 30)
+	require.Equal(t, uint64(192<<30), baseDisk.size)
+	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(30), baseDisk.units)
+
+	baseDisk = generate((192 << 30) + 1)
+	require.Equal(t, uint64(224<<30), baseDisk.size)
+	require.Equal(t, uint64(35), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(35), baseDisk.units)
+
+	baseDisk = generate(1024 << 30)
+	require.Equal(t, uint64(1024<<30), baseDisk.size)
+	require.Equal(t, uint64(160), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(160), baseDisk.units)
+
+	baseDisk = generate(2048 << 30)
+	require.Equal(t, uint64(2048<<30), baseDisk.size)
+	require.Equal(t, uint64(320), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(320), baseDisk.units)
+
+	baseDisk = generate(4096 << 30)
+	require.Equal(t, uint64(4096<<30), baseDisk.size)
+	require.Equal(t, uint64(640), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(640), baseDisk.units)
 }
 
 func TestCommonGenerateBaseDiskForPool(t *testing.T) {

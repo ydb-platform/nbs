@@ -127,6 +127,7 @@ func (d *baseDisk) toBaseDisk() BaseDisk {
 		CheckpointID:        d.checkpointID,
 		CreateTaskID:        d.createTaskID,
 		Size:                d.size,
+		Units:               d.units,
 		Ready:               d.status == baseDiskStatusReady,
 	}
 }
@@ -674,7 +675,6 @@ const (
 	// 32 GB.
 	baseDiskUnitSize            = uint64(32 << 30)
 	minBaseDiskUnits            = 30
-	baseDiskOverSubscription    = 2
 	overlayDiskOverSubscription = 30
 	// Represents how many regular (HDD-equivalent) performance units one SSD
 	// allocation unit is worth.
@@ -701,7 +701,7 @@ func (s *storageYDB) generateBaseDisk(
 		size = ssdUnits * baseDiskUnitSize
 
 		// Regular (HDD-equivalent) units with oversubscription.
-		units = baseDiskOverSubscription * regularUnitsPerSSDUnit * ssdUnits
+		units = s.baseDiskOverSubscription * regularUnitsPerSSDUnit * ssdUnits
 		// A base disk must provide at least minBaseDiskUnits of performance,
 		// otherwise the overlay disks sharing it get underperformed (#6257).
 		if units < minBaseDiskUnits {
