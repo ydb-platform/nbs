@@ -58,7 +58,13 @@ public:
         ui32 blockIndex,
         ui32 blocksCount) const;
 
-    void AddDeletionMarker(ui32 rangeId, TDeletionMarker deletionMarker);
+    void AddDeletionMarker(
+        ui32 rangeId,
+        TDeletionMarker deletionMarker);
+
+    void AddDeletionMarkerOutOfOrder(
+        ui32 rangeId,
+        TDeletionMarker deletionMarker);
 
     TVector<TDeletionMarker> ExtractDeletionMarkers(ui32 rangeId);
 
