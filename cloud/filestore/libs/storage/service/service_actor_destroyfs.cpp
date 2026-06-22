@@ -380,7 +380,7 @@ void TDestroyFileStoreActor::DestroyShard(
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        shardIndex + 1);
+        shardIndex + 1 /* cookie */);
 }
 
 void TDestroyFileStoreActor::DestroyFileStore(const TActorContext& ctx)

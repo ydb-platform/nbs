@@ -171,14 +171,6 @@ private:
     {
         switch (ev->GetTypeRewrite()) {
             case TEvSSProxy::EvCreateFileStoreRequest: {
-                // using TRequest = TEvSSProxy::TEvCreateFileStoreRequest;
-                // const auto* msg = ev->Get<TRequest>();
-
-                // This is a shard if
-                // msg->Config.GetFileSystemId().StartsWith(ShardIdPrefix)
-                // where
-                // ShardIdPrefix(TStringBuilder() << fsId << ShardNumPrefix)
-
                 if (++CreateRequests > CreateResponses) {
                     CreateMaxInFlight = std::max(
                         CreateMaxInFlight,
@@ -188,8 +180,6 @@ private:
             }
 
             case TEvSSProxy::EvCreateFileStoreResponse: {
-                // using TResponse = TEvSSProxy::TEvCreateFileStoreResponse;
-                // const auto* msg = ev->Get<TResponse>();
                 ++CreateResponses;
                 break;
             }
@@ -7831,7 +7821,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             mainStats.GetStats().GetSevenBytesHandlesCount());
     }
 
-    SERVICE_TEST(ShouldCreateALotOfshardsThrottled)
+    SERVICE_TEST(ShouldCreateALotOfShardsThrottled)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 1024;

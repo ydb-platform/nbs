@@ -33,17 +33,18 @@ namespace {
 // resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
 // ShouldConfigureMainFileStore.
 // 4. Describe shards. We need this step to get config version of shards in case
-// we need to resize them.
-// 5. Alter (actually resize) main filestore.
-// 6. Alter shards (if we resize them)
-// 7. Create shards if needed.
-// If MaxShardManagementRequestsInFlight is non-zero, we cap number of
-// in-flight requests in CreateShards and send call new CreateShard as soon as
-// previous one is completed in HandleCreateFileStoreResponse.
+// we need to resize them. If MaxShardManagementRequestsInFlight is non-zero, we
+// cap number of in-flight requests, emitting new requests on each response.
 // If MaxShardManagementRequestsInFlight is zero, we send requests for all
 // shards at once.
-// 8. Configure shards if we created some new ones. Same as in step 7, we
-// throttle requests if MaxShardManagementRequestsInFlight is non-zero.
+// 5. Alter (actually resize) main filestore.
+// 6. Alter shards (if we resize them). If MaxShardManagementRequestsInFlight is
+// non-zero, we cap number of in-flight requests.
+// 7. Create shards if needed. If MaxShardManagementRequestsInFlight is
+// non-zero, we cap number of in-flight requests.
+// 8. Configure shards if we created some new ones.
+// If MaxShardManagementRequestsInFlight is non-zero, we cap number of in-flight
+// requests.
 // 9. Configure main filestore if new shards were created.
 // The end!
 
