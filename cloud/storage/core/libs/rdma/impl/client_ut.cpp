@@ -140,7 +140,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     auto monitoring = CreateMonitoringServiceStub();
 
     auto clientConfig = std::make_shared<TClientConfig>();
-    clientConfig->ResolveTimeout = TDuration::MilliSeconds(123);
+    clientConfig->ResolveTimeout = 123ms;
     clientConfig->QpRetryCount = 3;
     clientConfig->QpRnrRetryCount = 5;
     clientConfig->QpTimeout = 7;
@@ -455,7 +455,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                 // complete request right away
                 handleRequest(*testContext);
 
-                ev.WaitT(5s);
+                ev.WaitT(clientConfig->MaxResponseDelay + 1s);
                 ASSERT_TRUE(response.Received);
 
                 // request duration is measured against the wall clock, so it
@@ -468,7 +468,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                 }
             } else {
                 // do not complete request to trigger timeout
-                ev.WaitT(5s);
+                ev.WaitT(clientConfig->MaxResponseDelay + 1s);
                 ASSERT_TRUE(response.Received);
 
                 NProto::TError error =
@@ -645,10 +645,10 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
             request.ExtractResult(),
             MakeIntrusive<TCallContextBase>(0u));
 
-        ASSERT_TRUE(sent.WaitT(5s));
+        ASSERT_TRUE(sent.Wait());
 
         Disconnect(testContext);
-        ASSERT_TRUE(handler->Done.WaitT(5s));
+        ASSERT_TRUE(handler->Done.Wait());
     }
 
 TEST(TRdmaClientTest, ShouldCancelRequests)
@@ -732,7 +732,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
 
         endpoint->CancelRequest(reqId2);
 
-        ev2.WaitT(5s);
+        ev2.Wait();
         ASSERT_TRUE(response2.Received);
         ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2.Status);
 
@@ -743,7 +743,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         ASSERT_FALSE(response1.Received);
         endpoint->CancelRequest(reqId1);
 
-        ev1.WaitT(5s);
+        ev1.Wait();
         ASSERT_TRUE(response1.Received);
         ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response1.Status);
 
@@ -872,7 +872,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
             }
         }
 
-        ev.WaitT(5s);
+        ev.Wait();
         ASSERT_TRUE(response.Received);
         ASSERT_EQ(0u, response.Status);
     }
@@ -1067,7 +1067,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
         request.ExtractResult(),
         MakeIntrusive<TCallContextBase>(0u));
 
-    ASSERT_TRUE(sent.WaitT(5s));
+    sent.Wait();
     ASSERT_EQ(RDMA_PROTO_PREV_VERSION, sentVersion.load());
 }
 
