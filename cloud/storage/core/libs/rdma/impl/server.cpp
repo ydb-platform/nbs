@@ -1016,6 +1016,9 @@ void TServerSession::ReadRequestDataCompleted(TSendWr* send) noexcept
         // disconnected. The client may have freed its request buffer before the
         // read completed, so InBuffer may contain garbage. Do not dispatch to
         // the handler — just discard the request and recycle the WR.
+        // RequestStarted() was already called in RecvRequestCompleted(), so
+        // balance it with RequestAborted() to keep ActiveRequests accurate.
+        Counters->RequestAborted();
         FreeRequest(std::move(req), send);
         return;
     }

@@ -451,6 +451,43 @@ private:
     std::atomic<EEndpointState> State = EEndpointState::Disconnected;
     std::atomic_flag StopFlag = ATOMIC_FLAG_INIT;
 
+    // Tracks the MR / buffer-pool lifetime state needed to safely tear down an
+    // endpoint whose peer may have issued RDMA READs against our request buffers.
+    //
+    // Transitions (all monotone within one connection lifetime):
+    //   HandleConnected  → Connected           (resets state for each new connection)
+    //   AbortRequests()  → Connected→Aborting, TimewaitExited→AbortingTimewaitExited
+    //   TIMEWAIT_EXIT    → Connected→TimewaitExited, Aborting→AbortingTimewaitExited
+    //
+    // StopEndpoint checks: park in DyingEndpoints iff state ∈ {Connected, Aborting}
+    //                      (timewait not yet done but was connected).
+    // FreeRequest checks: skip ReleaseBuffer iff state ∈ {Aborting, AbortingTimewaitExited}
+    //                     (AbortRequests started; buffers kept for peer RDMA READs).
+    enum class ETimewaitState {
+        // Never reached Connected. TIMEWAIT_EXIT will not fire; no RDMA READs
+        // against our buffers possible. StopEndpoint resets immediately.
+        // FreeRequest releases buffers normally.
+        NotConnected,
+
+        // Endpoint reached Connected at some point. Peer may issue RDMA READs.
+        // StopEndpoint must park in DyingEndpoints. FreeRequest releases normally.
+        Connected,
+
+        // AbortRequests() started. FreeRequest skips ReleaseBuffer so custom
+        // (oversized) chunks survive until ~TBufferPool() after TIMEWAIT_EXIT.
+        // StopEndpoint parks in DyingEndpoints.
+        Aborting,
+
+        // RDMA_CM_EVENT_TIMEWAIT_EXIT fired before StopEndpoint ran (early).
+        // StopEndpoint can reset Connection immediately. FreeRequest releases normally.
+        TimewaitExited,
+
+        // AbortRequests started AND TIMEWAIT_EXIT fired (either order).
+        // StopEndpoint resets immediately; FreeRequest skips ReleaseBuffer.
+        AbortingTimewaitExited,
+    };
+    ETimewaitState TimewaitState = ETimewaitState::NotConnected;
+
     NVerbs::TCompletionChannelPtr CompletionChannel = NVerbs::NullPtr;
     NVerbs::TCompletionQueuePtr CompletionQueue = NVerbs::NullPtr;
 
@@ -746,7 +783,8 @@ void TClientEndpoint::SetupQP()
     ibv_qp_attr qpAttr{};
     int mask = 0;
     if (Config.QpTimeout > 0) {
-        qpAttr.timeout = Config.QpTimeout;
+        //qpAttr.timeout = Config.QpTimeout;
+        qpAttr.timeout = 18;
         mask |= IBV_QP_TIMEOUT;
     }
     if (Config.QpMinRnrTimer > 0) {
@@ -1019,6 +1057,21 @@ void TClientEndpoint::AbortRequests() noexcept
 
     if (!CheckState(EEndpointState::Disconnecting)) {
         return;
+    }
+
+    // Transition to Aborting (or AbortingTimewaitExited) under AllocationLock
+    // so that FreeRequest() sees the new state and skips ReleaseBuffer().
+    // This keeps buffer pool chunks — including custom (oversized) chunks that
+    // ReleaseBuffer would otherwise deregister and free immediately — alive
+    // until ~TBufferPool() fires after RDMA_CM_EVENT_TIMEWAIT_EXIT.
+    with_lock (AllocationLock) {
+        if (TimewaitState == ETimewaitState::Connected) {
+            TimewaitState = ETimewaitState::Aborting;
+        } else if (TimewaitState == ETimewaitState::TimewaitExited) {
+            TimewaitState = ETimewaitState::AbortingTimewaitExited;
+        }
+        // NotConnected: no RDMA READs possible, no need to suppress release.
+        // Aborting / AbortingTimewaitExited: already set, nothing to do.
     }
 
     auto requests = InputRequests.DequeueAll();
@@ -1372,6 +1425,16 @@ void TClientEndpoint::Disconnect() noexcept
 
         // disconnect
         case EEndpointState::Connected:
+            // Initiate the RDMA CM disconnect handshake (DREQ/DREP) so that
+            // the kernel starts the TIME_WAIT cycle and eventually delivers
+            // RDMA_CM_EVENT_TIMEWAIT_EXIT on the EventChannel. Without this
+            // call the event is never generated and the DyingEndpoints drain
+            // loop in TConnectionPoller would time out on every stop.
+            try {
+                Verbs->Disconnect(Connection.get());
+            } catch (const TServiceError& e) {
+                RDMA_ERROR("rdma_disconnect failed: " << e.what());
+            }
             DisconnectEvent.Set();
             return;
     }
@@ -1397,6 +1460,15 @@ bool TClientEndpoint::FlushHanging() const
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 {
     with_lock (AllocationLock) {
+        if (TimewaitState == ETimewaitState::Aborting ||
+            TimewaitState == ETimewaitState::AbortingTimewaitExited)
+        {
+            // AbortRequests() is in progress. Skip ReleaseBuffer so that
+            // buffer pool chunks (especially custom/oversized chunks that
+            // ReleaseBuffer would immediately call ibv_dereg_mr + free()) stay
+            // alive until ~TBufferPool() fires after TIMEWAIT_EXIT.
+            return;
+        }
         SendBuffers.ReleaseBuffer(req->InBuffer);
         RecvBuffers.ReleaseBuffer(req->OutBuffer);
     }
@@ -1455,6 +1527,12 @@ private:
 
     TAtomic StopFlag = 0;
     TEventHandle StopEvent;
+
+    // Endpoints waiting for RDMA_CM_EVENT_TIMEWAIT_EXIT before their buffer
+    // pools / MRs are freed. Owned here so the drain loop can observe the
+    // map and keep the thread alive until it is empty.
+    // Accessed only from the connection poller thread — no lock needed.
+    THashMap<rdma_cm_id*, TClientEndpointPtr> DyingEndpoints;
 
 public:
     TConnectionPoller(
@@ -1516,6 +1594,24 @@ public:
         PollHandle.Detach(endpoint->DisconnectEventHandle());
     }
 
+    void KeepAliveUntilTimewaitExit(
+        rdma_cm_id* id,
+        TClientEndpointPtr endpoint) noexcept
+    {
+        DyingEndpoints[id] = std::move(endpoint);
+    }
+
+    TClientEndpointPtr ExtractDyingEndpoint(rdma_cm_id* id) noexcept
+    {
+        auto it = DyingEndpoints.find(id);
+        if (it == DyingEndpoints.end()) {
+            return {};
+        }
+        auto ep = std::move(it->second);
+        DyingEndpoints.erase(it);
+        return ep;
+    }
+
 private:
     bool ShouldStop() const
     {
@@ -1550,6 +1646,40 @@ private:
                         EventHandler->Disconnect(
                             PtrFromTag<TClientEndpoint>(event.data.ptr));
                         break;
+                }
+            }
+        }
+
+        // Drain phase: wait for RDMA_CM_EVENT_TIMEWAIT_EXIT on all dying
+        // endpoints before letting the thread exit. TIMEWAIT guarantees that
+        // all peer-side in-flight RDMA READs against our request buffers have
+        // completed, after which it is safe to deregister MRs.
+        //
+        // StopEvent is level-triggered (always readable after Stop()), so
+        // clear it now to let PollHandle.Wait() block properly on EventChannel.
+        // EventChannel is already in PollHandle from the constructor, so no
+        // extra fd registration is needed.
+        //
+        // If PollHandle.Wait() times out with no events, the far end is gone
+        // (abrupt disconnect) and TIMEWAIT_EXIT will not arrive; break and
+        // accept the risk.
+        StopEvent.Clear();
+        while (!DyingEndpoints.empty()) {
+            size_t signaled = PollHandle.Wait(POLL_TIMEOUT);
+            if (!signaled) {
+                RDMA_WARN(
+                    "timed out waiting for RDMA_CM_EVENT_TIMEWAIT_EXIT; "
+                    << DyingEndpoints.size()
+                    << " endpoint(s) may still be read by the remote RNIC");
+                break;
+            }
+            for (size_t i = 0; i < signaled; ++i) {
+                const auto& event = PollHandle.GetEvent(i);
+                if (!event.events || !event.data.ptr) {
+                    continue;  // StopEvent remnant; ignore
+                }
+                if (EventFromTag(event.data.ptr) == EPollEvent::ConnectionEvent) {
+                    HandleConnectionEvents();
                 }
             }
         }
@@ -1871,14 +2001,6 @@ private:
     TConnectionPollerPtr ConnectionPoller;
     TVector<TCompletionPollerPtr> CompletionPollers;
 
-    // Endpoints that have been stopped but are waiting for
-    // RDMA_CM_EVENT_TIMEWAIT_EXIT before their buffer pools are freed.
-    // TIMEWAIT_EXIT guarantees that any in-flight RDMA READ operations the
-    // server initiated against our buffers have completed. Without this delay,
-    // the server may read freed (garbage) memory.
-    // Accessed only from the connection poller thread — no lock needed.
-    THashMap<rdma_cm_id*, TClientEndpointPtr> DyingEndpoints;
-
 public:
     TClient(
         NVerbs::IVerbsPtr verbs,
@@ -1914,7 +2036,6 @@ private:
         NVerbs::TConnectionEventPtr event) noexcept;
     TCompletionPoller& PickPoller() noexcept;
     void StopEndpoint(TClientEndpoint* endpoint) noexcept;
-    TClientEndpointPtr ExtractDyingEndpoint(rdma_cm_id* id) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1966,7 +2087,7 @@ void TClient::Start() noexcept
 void TClient::Stop() noexcept
 {
     if (ConnectionPoller) {
-        ConnectionPoller->Stop();  // joins connection poller thread
+        ConnectionPoller->Stop();
         ConnectionPoller.reset();
     }
 
@@ -1974,12 +2095,6 @@ void TClient::Stop() noexcept
         poller->Stop();
     }
     CompletionPollers.clear();
-
-    // Force cleanup of any endpoints still waiting for TIMEWAIT_EXIT.
-    // This covers abrupt disconnects (client crash, network failure) where
-    // the event never arrives. All pollers have stopped at this point,
-    // so no more in-flight RDMA operations are possible.
-    DyingEndpoints.clear();
 
     RDMA_INFO("stop client");
 }
@@ -2043,14 +2158,25 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
         case RDMA_CM_EVENT_TIMEWAIT_EXIT: {
             // The QP has exited TIME_WAIT: all in-flight RDMA READ operations
             // the server initiated against our request buffers have completed.
-            // It is now safe to call rdma_destroy_id and deregister the MRs
-            // (free the buffer pool). We must ack the event (event.reset())
-            // BEFORE calling rdma_destroy_id (~TClientEndpoint via ~Connection),
-            // so dying outlives the event pointer reset.
-            auto dying = ExtractDyingEndpoint(event->id);
-            event.reset();  // rdma_ack_cm_event — must precede rdma_destroy_id
-            // dying goes out of scope here → ~TClientEndpoint → ~Connection
-            //   → DestroyId → rdma_destroy_id — safe because event is acked
+            auto dying = ConnectionPoller->ExtractDyingEndpoint(event->id);
+            if (dying) {
+                // StopEndpoint already ran and parked the endpoint.
+                // Ack the event first (rdma_ack_cm_event must precede
+                // rdma_destroy_id), then let dying drop.
+                event.reset();
+                // dying → ~TClientEndpoint → ~Connection → rdma_destroy_id
+            } else if (endpoint->Connection.get() == event->id) {
+                // TIMEWAIT_EXIT arrived before StopEndpoint ran for this
+                // connection. Advance state so StopEndpoint can reset
+                // Connection immediately without parking in DyingEndpoints.
+                // (Events for previous connections — id already destroyed via
+                // SetConnection — are ignored; their context is stale.)
+                if (endpoint->TimewaitState == ETimewaitState::Connected) {
+                    endpoint->TimewaitState = ETimewaitState::TimewaitExited;
+                } else if (endpoint->TimewaitState == ETimewaitState::Aborting) {
+                    endpoint->TimewaitState = ETimewaitState::AbortingTimewaitExited;
+                }
+            }
             break;
         }
 
@@ -2098,29 +2224,25 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
     }
     endpoint->DestroyQP();
 
-    // Deliberately do NOT reset Connection here. Keep the rdma_cm_id alive so
-    // that RDMA_CM_EVENT_TIMEWAIT_EXIT can fire. That event signals that the
-    // remote RNIC has finished all in-flight RDMA READ operations against our
-    // buffers, making it safe to call rdma_destroy_id and deregister MRs.
-    // Connection (and buffer pools) are freed in ExtractDyingEndpoint(), called
-    // from the TIMEWAIT_EXIT handler. TClient::Stop() clears the map as a
-    // fallback for abrupt disconnects where TIMEWAIT_EXIT never arrives.
-    DyingEndpoints[endpoint->Connection.get()] = endpoint->shared_from_this();
+    const auto ts = endpoint->TimewaitState;
+    if (ts == ETimewaitState::Connected || ts == ETimewaitState::Aborting) {
+        // Was connected and TIMEWAIT_EXIT has not yet fired. Park the endpoint
+        // so the connection poller's drain loop keeps it alive until the event
+        // arrives, after which it is safe to deregister MRs.
+        ConnectionPoller->KeepAliveUntilTimewaitExit(
+            endpoint->Connection.get(),
+            endpoint->shared_from_this());
+    } else {
+        // NotConnected: no RDMA READs possible, TIMEWAIT_EXIT will not fire.
+        // TimewaitExited / AbortingTimewaitExited: timewait already done.
+        // In all these cases reset the connection immediately.
+        endpoint->Connection.reset();
+    }
 
     endpoint->StopResult.SetValue();
     endpoint->Poller->Release(endpoint);
 }
 
-TClientEndpointPtr TClient::ExtractDyingEndpoint(rdma_cm_id* id) noexcept
-{
-    auto it = DyingEndpoints.find(id);
-    if (it == DyingEndpoints.end()) {
-        return {};
-    }
-    auto endpoint = std::move(it->second);
-    DyingEndpoints.erase(it);
-    return endpoint;
-}
 
 // implements IConnectionEventHandler
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
@@ -2353,6 +2475,10 @@ void TClient::HandleConnected(
     endpoint->ChangeState(
         EEndpointState::Connecting,
         EEndpointState::Connected);
+    // Reset to Connected for each new connection so that TimewaitExited /
+    // Aborting state from a previous connection does not carry over and
+    // cause StopEndpoint to reset immediately or FreeRequest to skip release.
+    endpoint->TimewaitState = ETimewaitState::Connected;
 
     endpoint->Reconnect.Cancel();
     try {
