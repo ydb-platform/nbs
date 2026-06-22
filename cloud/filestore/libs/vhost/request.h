@@ -553,7 +553,6 @@ struct TUnlinkRequest
     }
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRmDirRequest
@@ -564,10 +563,10 @@ struct TRmDirRequest
         In = TIn::Create(name.size() + 1);
         In->Header.opcode = FUSE_RMDIR;
         In->Header.nodeid = parentNodeId;
-        strcpy((char*)In->Data(), name.c_str());
+        char* data = static_cast<char*>(In->Data());
+        strcpy(data, name.c_str());
     }
 };
-
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -22,7 +22,7 @@ namespace NCloud::NFileStore::NFuse {
 //
 // DirectoryHandleCache registers handles here, so when we don't have
 // handles pointing to directory, we erase all information regarding
-// entry changes to avoid unbound memory usage.
+// entry changes to avoid unbounded memory usage.
 class TDirectoryEntryVersionCacheShard
 {
 private:

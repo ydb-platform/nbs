@@ -24,8 +24,6 @@ void TDirectoryEntryVersionCacheShard::RegisterHandle(fuse_ino_t directory)
 
 void TDirectoryEntryVersionCacheShard::UnregisterHandle(fuse_ino_t directory)
 {
-    i64 removedCount = 0;
-
     with_lock (Lock) {
         auto it = Directories.find(directory);
         if (it == Directories.end()) {
@@ -34,13 +32,10 @@ void TDirectoryEntryVersionCacheShard::UnregisterHandle(fuse_ino_t directory)
 
         auto& state = it->second;
         if (--state.RefCount == 0) {
-            removedCount = static_cast<i64>(state.ChildVersions.size());
+            i64 removedCount = static_cast<i64>(state.ChildVersions.size());
             Directories.erase(it);
+            Stats->ChangeEntryVersionCacheEntryCount(-removedCount);
         }
-    }
-
-    if (removedCount != 0) {
-        Stats->ChangeEntryVersionCacheEntryCount(-removedCount);
     }
 }
 
@@ -49,8 +44,6 @@ void TDirectoryEntryVersionCacheShard::AdvanceVersion(
     const TString& name,
     ui64 version)
 {
-    bool inserted = false;
-
     with_lock (Lock) {
         auto it = Directories.find(directory);
         if (it == Directories.end()) {
@@ -58,16 +51,15 @@ void TDirectoryEntryVersionCacheShard::AdvanceVersion(
         }
 
         auto& childVersions = it->second.ChildVersions;
-        auto [versionIt, newEntry] = childVersions.try_emplace(name, version);
-        inserted = newEntry;
+        auto [versionIt, inserted] = childVersions.try_emplace(name, version);
 
         if (versionIt->second < version) {
             versionIt->second = version;
         }
-    }
 
-    if (inserted) {
-        Stats->ChangeEntryVersionCacheEntryCount(1);
+        if (inserted) {
+            Stats->ChangeEntryVersionCacheEntryCount(1);
+        }
     }
 }
 
