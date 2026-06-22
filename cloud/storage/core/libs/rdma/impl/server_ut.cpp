@@ -405,7 +405,7 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
 
     context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
         PostSend<TResponseMessage>(context, qp, wr);
-    }
+    };
 
     // emulate client connection
 
@@ -586,6 +586,10 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
         }
     };
 
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TResponseMessage>(context, qp, wr);
+    };
+
     std::atomic<rdma_cm_id*> sessionId{nullptr};
     NThreading::TPromise<void> sessionDestroyed =
         NThreading::NewPromise<void>();
@@ -693,6 +697,10 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
             return;
         }
         NVerbs::Flush(context);
+    };
+
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TResponseMessage>(context, qp, wr);
     };
 
     std::atomic<rdma_cm_id*> sessionId{nullptr};

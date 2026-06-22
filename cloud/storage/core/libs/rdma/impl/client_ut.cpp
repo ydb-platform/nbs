@@ -338,10 +338,12 @@ TEST(TRdmaClientTest, ShouldNotTriggerCompletionAfterFlushTimeout)
 
         // stall completion poller again to let connection poller destroy
         // endpoint and trigger use-after-free
-        context->HandleCompletionEvent = [&](ibv_wc* wc) {
-            Y_UNUSED(wc);
-            sleep(1);
-        };
+        with_lock (context->CompletionLock) {
+            context->HandleCompletionEvent = [&](ibv_wc* wc) {
+                Y_UNUSED(wc);
+                sleep(1);
+            };
+        }
 
         auto request = endpoint->AllocateRequest(
             std::make_shared<TClientHandler>(),
@@ -466,7 +468,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
 
         testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
             PostSend<TRequestMessage>(testContext, qp, wr);
-        }
+        };
 
         struct TResponse
         {
@@ -879,8 +881,8 @@ TEST(TRdmaClientTest, ShouldReconnect)
         auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
-            PostSend<TRequestMessage>(context, qp, wr);
-        }
+            PostSend<TRequestMessage>(testContext, qp, wr);
+        };
 
         Disconnect(testContext);
 
