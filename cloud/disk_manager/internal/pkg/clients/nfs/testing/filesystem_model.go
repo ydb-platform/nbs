@@ -289,7 +289,7 @@ type FileSystemModel struct {
 }
 
 func (f *FileSystemModel) CreateNodesRecursively(
-	parentID uint64,
+	parentNodeID uint64,
 	nodeToCreate Node,
 ) {
 
@@ -299,14 +299,14 @@ func (f *FileSystemModel) CreateNodesRecursively(
 	}
 
 	expectedNode := nfs.Node{
-		ParentID:   parentID,
-		Name:       nodeToCreate.Name,
-		Type:       nodeToCreate.FileType,
-		Mode:       mode,
-		UID:        1,
-		GID:        1,
-		LinkTarget: nodeToCreate.Target,
-		DevID:      nodeToCreate.DevID,
+		ParentNodeID: parentNodeID,
+		Name:         nodeToCreate.Name,
+		Type:         nodeToCreate.FileType,
+		Mode:         mode,
+		UID:          1,
+		GID:          1,
+		LinkTarget:   nodeToCreate.Target,
+		DevID:        nodeToCreate.DevID,
 	}
 	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
@@ -349,7 +349,7 @@ func (f *FileSystemModel) CollectStats() {
 			node := f.ExpectedNodes[index]
 			nodeWithStats, err := f.session.GetNodeAttr(
 				ctx,
-				node.ParentID,
+				node.ParentNodeID,
 				node.Name,
 			)
 			if err != nil {
@@ -455,7 +455,7 @@ func (f *FileSystemModel) RequireNodesEqual(
 	require.Equal(f.t, len(f.ExpectedNodes), len(nodes))
 	for index, node := range nodes {
 		expectedNode := f.ExpectedNodes[index]
-		require.Equal(f.t, expectedNode.ParentID, node.ParentID)
+		require.Equal(f.t, expectedNode.ParentNodeID, node.ParentNodeID)
 		require.Equal(f.t, expectedNode.Name, node.Name)
 		require.Equal(f.t, expectedNode.Type, node.Type)
 		if !expectedNode.Type.IsSymlink() {
@@ -537,7 +537,7 @@ type ParallelFilesystemModel struct {
 }
 
 func (m *ParallelFilesystemModel) createChildren(
-	parentID uint64,
+	parentNodeID uint64,
 	children []Node,
 ) {
 
@@ -553,13 +553,13 @@ func (m *ParallelFilesystemModel) createChildren(
 			id, err := m.session.CreateNode(
 				ctx,
 				nfs.Node{
-					ParentID:   parentID,
-					Name:       child.Name,
-					Type:       child.FileType,
-					Mode:       0o777,
-					UID:        1,
-					GID:        1,
-					LinkTarget: child.Target,
+					ParentNodeID: parentNodeID,
+					Name:         child.Name,
+					Type:         child.FileType,
+					Mode:         0o777,
+					UID:          1,
+					GID:          1,
+					LinkTarget:   child.Target,
 				},
 			)
 			if err != nil {

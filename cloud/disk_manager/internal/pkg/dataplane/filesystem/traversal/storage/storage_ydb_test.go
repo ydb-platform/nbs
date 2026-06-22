@@ -129,10 +129,10 @@ func TestNodesScheduling(t *testing.T) {
 			1,
 			"cookie1",
 			[]nfs.Node{
-				{NodeID: 2, ParentID: 1},
-				{NodeID: 3, ParentID: 1},
-				{NodeID: 5, ParentID: 1},
-				{NodeID: 6, ParentID: 1},
+				{NodeID: 2, ParentNodeID: 1},
+				{NodeID: 3, ParentNodeID: 1},
+				{NodeID: 5, ParentNodeID: 1},
+				{NodeID: 6, ParentNodeID: 1},
 			},
 		),
 	)
@@ -144,7 +144,7 @@ func TestNodesScheduling(t *testing.T) {
 			2,
 			"cookie2",
 			[]nfs.Node{
-				{NodeID: 4, ParentID: 2},
+				{NodeID: 4, ParentNodeID: 2},
 			},
 		),
 	)
@@ -164,8 +164,8 @@ func TestNodesScheduling(t *testing.T) {
 			1, // nodeID
 			"cookie99",
 			[]nfs.Node{
-				{NodeID: 99, ParentID: 1},
-				{NodeID: 100, ParentID: 1},
+				{NodeID: 99, ParentNodeID: 1},
+				{NodeID: 100, ParentNodeID: 1},
 			}, // children
 		),
 	)
@@ -213,9 +213,9 @@ func TestNodesScheduling(t *testing.T) {
 	err = f.storage.ScheduleChildNodesForListing(
 		f.ctx,
 		otherSnapshot,
-		99,                                      // nodeID
-		"",                                      // nextCookie
-		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
+		99, // nodeID
+		"", // nextCookie
+		[]nfs.Node{{NodeID: 101, ParentNodeID: 99}}, // children
 	)
 	require.NoError(t, err)
 	entries, err = f.storage.SelectNodesToList(
@@ -252,16 +252,16 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 		nfs.RootNodeID,
 		"cookie1",
 		[]nfs.Node{
-			{NodeID: 2, ParentID: nfs.RootNodeID},
-			{NodeID: 3, ParentID: nfs.RootNodeID},
-			{NodeID: 4, ParentID: nfs.RootNodeID},
-			{NodeID: 5, ParentID: nfs.RootNodeID},
-			{NodeID: 1001, ParentID: nfs.RootNodeID},
-			{NodeID: 1002, ParentID: nfs.RootNodeID},
-			{NodeID: 1003, ParentID: nfs.RootNodeID},
-			{NodeID: 1004, ParentID: nfs.RootNodeID},
-			{NodeID: 1005, ParentID: nfs.RootNodeID},
-			{NodeID: 1006, ParentID: nfs.RootNodeID},
+			{NodeID: 2, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 3, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 4, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 5, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1001, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1002, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1003, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1004, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1005, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1006, ParentNodeID: nfs.RootNodeID},
 		},
 	))
 
@@ -271,11 +271,11 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 		nfs.RootNodeID,
 		"cookie2",
 		[]nfs.Node{
-			{NodeID: 2, ParentID: nfs.RootNodeID},
-			{NodeID: 3, ParentID: nfs.RootNodeID},
-			{NodeID: 4, ParentID: nfs.RootNodeID},
-			{NodeID: 1002, ParentID: nfs.RootNodeID},
-			{NodeID: 1005, ParentID: nfs.RootNodeID},
+			{NodeID: 2, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 3, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 4, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1002, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1005, ParentNodeID: nfs.RootNodeID},
 		},
 	))
 

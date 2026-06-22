@@ -45,26 +45,26 @@ func (t *transferFromSnapshotToFilesystemTask) traversalID(
 	return fmt.Sprintf("restore_%s_%s", t.snapshotID(), execCtx.GetTaskID())
 }
 
-func (t *transferFromSnapshotToFilesystemTask) getParentIDsInDestinationFs(
+func (t *transferFromSnapshotToFilesystemTask) getParentNodeIDsInDestinationFs(
 	ctx context.Context,
 	nodes []nfs.Node,
 ) (map[uint64]uint64, error) {
 
-	parentIDSet := make(map[uint64]struct{})
+	parentNodeIDSet := make(map[uint64]struct{})
 	for _, node := range nodes {
-		parentIDSet[node.ParentID] = struct{}{}
+		parentNodeIDSet[node.ParentNodeID] = struct{}{}
 	}
 
-	srcParentIDs := make([]uint64, 0, len(parentIDSet))
-	for id := range parentIDSet {
-		srcParentIDs = append(srcParentIDs, id)
+	srcParentNodeIDs := make([]uint64, 0, len(parentNodeIDSet))
+	for id := range parentNodeIDSet {
+		srcParentNodeIDs = append(srcParentNodeIDs, id)
 	}
 
 	return t.nodesStorage.GetDestinationNodeIDs(
 		ctx,
 		t.snapshotID(),
 		t.filesystemID(),
-		srcParentIDs,
+		srcParentNodeIDs,
 	)
 }
 
@@ -125,7 +125,7 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 
 	hardlinksByNodeID := t.groupHardlinksByNodeID(batch)
 
-	parentMapping, err := t.getParentIDsInDestinationFs(ctx, batch)
+	parentMapping, err := t.getParentNodeIDsInDestinationFs(ctx, batch)
 	if err != nil {
 		return false, err
 	}
@@ -142,8 +142,8 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 
 	for srcNodeID, nodes := range hardlinksByNodeID {
 		for i := range nodes {
-			if dstParentID, ok := parentMapping[nodes[i].ParentID]; ok {
-				nodes[i].ParentID = dstParentID
+			if dstParentNodeID, ok := parentMapping[nodes[i].ParentNodeID]; ok {
+				nodes[i].ParentNodeID = dstParentNodeID
 			}
 		}
 
@@ -303,13 +303,13 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 
 		// Traversal lists one directory at a time, so all nodes in the same
 		// listing result have the same parent.
-		srcParentID := nodes[0].ParentID
+		srcParentNodeID := nodes[0].ParentNodeID
 
 		parentMapping, err := t.nodesStorage.GetDestinationNodeIDs(
 			ctx,
 			t.snapshotID(),
 			t.filesystemID(),
-			[]uint64{srcParentID},
+			[]uint64{srcParentNodeID},
 		)
 		if err != nil {
 			return err
@@ -322,8 +322,8 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 				continue
 			}
 
-			if dstParentID, ok := parentMapping[node.ParentID]; ok {
-				node.ParentID = dstParentID
+			if dstParentNodeID, ok := parentMapping[node.ParentNodeID]; ok {
+				node.ParentNodeID = dstParentNodeID
 			}
 
 			dstNodeID, err := session.CreateNodeIdempotent(ctx, node)

@@ -14092,6 +14092,170 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoTestShouldCleanupMergedBlobsWithoutReadingBlockMasks(32_KB);
     }
 
+    Y_UNIT_TEST(ShouldCompactWithSplitCompactionTx)
+    {
+        auto config = DefaultConfig();
+        config.SetSplitCompactionTxEnabled(true);
+        config.SetReadBlockMaskOnCompactionOptimizationEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount),
+            '1');
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount),
+            '2');
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount),
+            '3');
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(512, MaxBlocksCount),
+            '4');
+
+        partition.Compaction();
+
+        // The split-tx path must produce the same observable counters as the
+        // legacy path — these match ShouldCleanupMergedBlobsWithoutReadingBlockMasks.
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                stats.GetBlobsProcessedDuringCompaction());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                stats.GetBlockMaskReadDuringCompaction());
+        }
+
+        partition.Cleanup();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('2', 512) + GetBlocksContent('4', 512),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(0, MaxBlocksCount))));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('4', 512) + GetBlocksContent('3', 512),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount))));
+    }
+
+    Y_UNIT_TEST(ShouldCompactWithSplitCompactionTxWithoutOptimization)
+    {
+        auto config = DefaultConfig();
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount),
+            '1');
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount),
+            '2');
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount),
+            '3');
+
+        partition.Compaction();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('2', MaxBlocksCount),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(0, MaxBlocksCount))));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('3', MaxBlocksCount),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount))));
+    }
+
+    Y_UNIT_TEST(ShouldCompactZeroedRangeWithSplitCompactionTx)
+    {
+        auto config = DefaultConfig();
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '1');
+        partition.ZeroBlocks(TBlockRange32::WithLength(0, 1024));
+
+        partition.Compaction();
+
+        // Reads after compaction must return zeros, not '1's.
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlocksContent(
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 1024))));
+    }
+
+    Y_UNIT_TEST(ShouldCompactWithGarbageBlobsWithSplitCompactionTx)
+    {
+        auto config = DefaultConfig();
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), '1');
+        partition.WriteBlocks(TBlockRange32::WithLength(512, 512), '2');
+
+        partition.Compaction();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), '3');
+
+        bool intercept = true;
+
+        std::unique_ptr<IEventHandle> compactionReadBlobInfoRequest;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvCompactionReadBlobInfoRequest &&
+                    intercept)
+                {
+                    compactionReadBlobInfoRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendCompactionRequest();
+
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(compactionReadBlobInfoRequest);
+        intercept = false;
+
+        partition.Cleanup();
+
+        runtime->SendAsync(compactionReadBlobInfoRequest.release());
+
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), S_OK);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('3', 512) + GetBlocksContent('2', 512),
+            GetBlocksContent(
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 1024))));
+    }
+
     Y_UNIT_TEST(
         ShouldNotLoseAnyMixedMergedBlocksWhileWaitingForCheckpointCreation)
     {

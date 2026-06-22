@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/config/local_nvme.pb.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/fwd.h>
 
 #include <variant>
@@ -25,6 +26,7 @@ public:
 
     [[nodiscard]] TString GetDevicesSourceUri() const;
     [[nodiscard]] TString GetStateCacheFilePath() const;
+    [[nodiscard]] TDuration GetUpdateDevicesInterval() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

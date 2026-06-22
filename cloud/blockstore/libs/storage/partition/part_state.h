@@ -726,14 +726,14 @@ public:
     void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
 
-    void IncrementBlobsProcessedDuringCompaction()
+    void IncrementBlobsProcessedDuringCompaction(ui64 value)
     {
-        ++BlobsProcessedDuringCompaction;
+        BlobsProcessedDuringCompaction += value;
     }
 
-    void IncrementBlockMaskReadDuringCompaction()
+    void IncrementBlockMaskReadDuringCompaction(ui64 value)
     {
-        ++BlockMaskReadDuringCompaction;
+        BlockMaskReadDuringCompaction += value;
     }
 
     ui64 GetBlobsProcessedDuringCompaction() const

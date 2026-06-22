@@ -48,7 +48,6 @@ type LocalFsOverride int
 
 const (
 	LocalFsOverrideDisabled LocalFsOverride = iota
-	LocalFsOverrideLegacyEnabled
 	LocalFsOverrideEnabled
 )
 
@@ -181,8 +180,8 @@ func getNbsClient(
 ) *mocks.NbsClientMock {
 
 	clientIndex := 0
-	for index, listEndpointsResponse := range listEndpointsResponses {
-		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+	for index := range listEndpointsResponses {
+		if len(listEndpointsResponses[index].Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
 			clientIndex = index
 		}
 	}
@@ -196,8 +195,8 @@ func getNfsClient(
 ) *mocks.NfsEndpointClientMock {
 
 	clientIndex := 0
-	for index, listEndpointsResponse := range listEndpointsResponses {
-		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+	for index := range listEndpointsResponses {
+		if len(listEndpointsResponses[index].Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
 			clientIndex = index
 		}
 	}
@@ -345,7 +344,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-				false,
+				UseFreeNbdDeviceFile: false,
 			},
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
@@ -514,11 +513,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		deviceName = *deviceNameOpt
 	}
 
-	if localFsOverride == LocalFsOverrideLegacyEnabled {
-		testCtx.localFsOverrides[defaultDiskId] = ExternalFsConfig{
-			Id: defaultDiskId,
-		}
-	} else if localFsOverride == LocalFsOverrideEnabled {
+	if localFsOverride == LocalFsOverrideEnabled {
 		testCtx.localFsOverrides[defaultDiskId] = ExternalFsConfig{
 			Id:         defaultDiskId,
 			Type:       "local",
@@ -601,7 +596,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-				false,
+				UseFreeNbdDeviceFile: false,
 			},
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
@@ -612,7 +607,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 
 	nfsListEndpointsResponses := generateNfsListEndpointsResponses(testCtx.nfsVhostReplicaCount)
 	expectedNfsClient := getNfsClient(testCtx.nfsClients, nfsListEndpointsResponses)
-	if localFsOverride == LocalFsOverrideLegacyEnabled || localFsOverride == LocalFsOverrideEnabled {
+	if localFsOverride == LocalFsOverrideEnabled {
 		expectedNfsClient = testCtx.nfsLocalClient
 	}
 
@@ -789,16 +784,6 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			backendReplicaCount:   1,
 		},
 		{
-			name:                  "LocalFilestoreForKubevirtLegacy",
-			backend:               "nfs",
-			deviceNameOpt:         nil,
-			perInstanceVolumes:    false,
-			localFsOverride:       LocalFsOverrideLegacyEnabled,
-			requestQueuesCountOpt: nil,
-			backendReplicaCount:   1,
-		},
-		// Per-instance volume tests (perInstanceVolumes = true, requestQueuesCountOpt = nil)
-		{
 			name:                  "DiskForKubevirt",
 			backend:               "nbs",
 			deviceNameOpt:         nil,
@@ -869,15 +854,6 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			deviceNameOpt:         nil,
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
-			requestQueuesCountOpt: &rqc32,
-			backendReplicaCount:   1,
-		},
-		{
-			name:                  "LocalFilestoreForKubevirtMultiqueueLegacy",
-			backend:               "nfs",
-			deviceNameOpt:         nil,
-			perInstanceVolumes:    false,
-			localFsOverride:       LocalFsOverrideLegacyEnabled,
 			requestQueuesCountOpt: &rqc32,
 			backendReplicaCount:   1,
 		},
@@ -1032,7 +1008,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,
@@ -1201,7 +1177,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,
@@ -1725,7 +1701,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,
@@ -1734,7 +1710,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		NbdDeviceFile: nbdDeviceFile,
 	}, nil)
 
-	nbdError := fmt.Errorf("%w", nbsclient.ClientError{Code: nbsclient.E_FAIL})
+	nbdError := fmt.Errorf("%v", nbsclient.ClientError{Code: nbsclient.E_FAIL})
 	testCtx.mounter.On("HasBlockDevice", nbdDeviceFile).Return(false, nbdError)
 
 	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
@@ -1820,7 +1796,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-				false,
+				UseFreeNbdDeviceFile: false,
 			},
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
@@ -1909,7 +1885,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbs.TClientProfile{
 			HostType: &hostType,

@@ -73,6 +73,23 @@ void EnqueueConnectionEvent(
     context->ConnectionHandle.Set();
 }
 
+void Flush(TTestContextPtr context)
+{
+    with_lock (context->CompletionLock) {
+        context->HandleCompletionEvent = [] (ibv_wc* wc) {
+            wc->status = IBV_WC_WR_FLUSH_ERR;
+            wc->opcode = static_cast<ibv_wc_opcode>(0);
+        };
+        std::move(
+            context->RecvEvents.begin(),
+            context->RecvEvents.end(),
+            std::back_inserter(context->ProcessedRecvEvents));
+        context->RecvEvents.clear();
+        context->ReqIds.clear();
+    }
+    context->CompletionHandle.Set();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // TODO: implement queue pairs (qp) - right now the code in this file completely
@@ -664,22 +681,7 @@ void Disconnect(TTestContextPtr context)
         RDMA_CM_EVENT_DISCONNECTED,
         static_cast<rdma_cm_id*>(context->Connection));
 
-    with_lock (context->CompletionLock) {
-        context->HandleCompletionEvent = [] (ibv_wc* wc) {
-            wc->status = IBV_WC_WR_FLUSH_ERR;
-            wc->opcode = static_cast<ibv_wc_opcode>(0);
-        };
-
-        std::move(
-            context->RecvEvents.begin(),
-            context->RecvEvents.end(),
-            std::back_inserter(context->ProcessedRecvEvents));
-
-        context->RecvEvents.clear();
-        context->ReqIds.clear();
-    }
-
-    context->CompletionHandle.Set();
+    Flush(context);
 }
 
 }   // namespace NCloud::NStorage::NRdma::NVerbs

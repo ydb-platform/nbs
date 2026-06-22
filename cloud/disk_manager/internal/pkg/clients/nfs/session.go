@@ -39,7 +39,7 @@ func (n Node) String() string {
 	return fmt.Sprintf(
 		"parent=%d name=%q node_id=%d type=%s uid=%d gid=%d "+
 			"shard_filesystem_id=%q shard_node_name=%q",
-		n.ParentID,
+		n.ParentNodeID,
 		n.Name,
 		n.NodeID,
 		n.Type,
@@ -164,7 +164,7 @@ func (s *sessionWithMetrics) CreateNodeIdempotent(
 		existing, err := s.nfs.GetNodeAttr(
 			ctx,
 			s.session,
-			node.ParentID,
+			node.ParentNodeID,
 			node.Name,
 		)
 		if err != nil {

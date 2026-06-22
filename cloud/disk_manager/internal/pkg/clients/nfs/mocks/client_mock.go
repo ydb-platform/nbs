@@ -124,7 +124,7 @@ func (c *ClientMock) UnsafeCreateNode(
 func (c *ClientMock) UnsafeCreateNodeRef(
 	ctx context.Context,
 	filesystemID string,
-	parentID uint64,
+	parentNodeID uint64,
 	name string,
 	childID uint64,
 	shardID string,
@@ -134,7 +134,7 @@ func (c *ClientMock) UnsafeCreateNodeRef(
 	args := c.Called(
 		ctx,
 		filesystemID,
-		parentID,
+		parentNodeID,
 		name,
 		childID,
 		shardID,

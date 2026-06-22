@@ -128,6 +128,11 @@ build {
   }
 
   provisioner "file" {
+    source      = "${path.cwd}/scripts/requirements_dev.txt"
+    destination = "${local.tmp_directory}/requirements_dev.txt"
+  }
+
+  provisioner "file" {
     source      = "${path.cwd}/scripts/actions-runner-job-completed-cleanup.sh"
     destination = "${local.tmp_directory}/actions-runner-job-completed-cleanup.sh"
   }
