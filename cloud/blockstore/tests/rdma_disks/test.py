@@ -2,7 +2,6 @@ import os
 import pytest
 import time
 
-import yatest.common as yatest_common
 import cloud.blockstore.tests.python.lib.daemon as daemon
 
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
@@ -94,12 +93,12 @@ def _get_agent_id(i):
     return f'node-{i:04}.nbs-dev.hwaas.man.nbhost.net'
 
 
-def _create_disk_agent_configurator(ydb, i):
+def _create_disk_agent_configurator(ydb, tmp_path, i):
 
     agent_id = _get_agent_id(i)
 
     data_path = get_unique_path_for_current_test(
-        output_path=yatest_common.output_path(),
+        output_path=tmp_path,
         sub_folder=f"{agent_id}_data")
 
     data_path = os.path.join(data_path, "dev", "disk", "by-partlabel")
@@ -132,10 +131,10 @@ def _create_disk_agent_configurator(ydb, i):
     return cfg
 
 
-def test_m3_rdma_simple_io(ydb, nbs):
+def test_m3_rdma_simple_io(ydb, nbs, tmp_path):
 
     disk_agent_configs = [
-        _create_disk_agent_configurator(ydb, i) for i in range(3)]
+        _create_disk_agent_configurator(ydb, tmp_path, i) for i in range(3)]
 
     disk_agents = [daemon.start_disk_agent(cfg) for cfg in disk_agent_configs]
 
@@ -170,10 +169,10 @@ def test_m3_rdma_simple_io(ydb, nbs):
         disk_agent.kill()
 
 
-def test_m3_rdma_restart_disk_agent_during_migration(ydb, nbs):
+def test_m3_rdma_restart_disk_agent_during_migration(ydb, nbs, tmp_path):
 
     disk_agent_configs = [
-        _create_disk_agent_configurator(ydb, i) for i in range(4)]
+        _create_disk_agent_configurator(ydb, tmp_path, i) for i in range(4)]
 
     disk_agents = [daemon.start_disk_agent(cfg) for cfg in disk_agent_configs]
 

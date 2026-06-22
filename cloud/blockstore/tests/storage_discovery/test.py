@@ -16,8 +16,6 @@ from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, \
     start_disk_agent, get_fqdn
 
-import yatest.common as yatest_common
-
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
     ensure_path_exists
 
@@ -117,10 +115,10 @@ def disk_registry_set_writable_state(nbs):
 
 
 @pytest.fixture(name='data_path')
-def create_data_path():
+def create_data_path(tmp_path):
 
     p = get_unique_path_for_current_test(
-        output_path=yatest_common.output_path(),
+        output_path=tmp_path,
         sub_folder="data")
 
     p = os.path.join(p, "dev", "disk", "by-partlabel")
