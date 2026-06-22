@@ -281,7 +281,7 @@ void TAlterFileStoreActor::DescribeShards(const TActorContext& ctx)
 
     for (ui32 i = 0; i < endShardIndex; ++i) {
         DescribeShard(ctx, i);
-        ++NextShardToDescribe;
+        NextShardToDescribe = i + 1;
     }
 }
 
@@ -480,7 +480,7 @@ void TAlterFileStoreActor::AlterShards(const TActorContext& ctx)
     NextShardToAlter = 0;
     for (ui32 i = 0; i < ShardsToAlter; ++i) {
         AlterShard(ctx, i);
-        ++NextShardToAlter;
+        NextShardToAlter = i + 1;
     }
 }
 
@@ -729,7 +729,7 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
                                          FileStoreConfig.ShardConfigs.size());
     for (ui32 i = NextShardToCreate; i < endShardIndex; ++i) {
         CreateShard(ctx, i);
-        ++NextShardToCreate;
+        NextShardToCreate = i + 1;
     }
 }
 
@@ -786,8 +786,10 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
     if (--ShardsToCreate == 0) {
         ConfigureShards(ctx);
     } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        CreateShard(ctx, NextShardToCreate);
-        ++NextShardToCreate;
+        if (NextShardToCreate < FileStoreConfig.ShardConfigs.size()) {
+            CreateShard(ctx, NextShardToCreate);
+            ++NextShardToCreate;
+        }
     }
 }
 
@@ -809,7 +811,7 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
                                          FileStoreConfig.ShardConfigs.size());
     for (ui32 i = NextShardToConfigure; i < endShardIndex; ++i) {
         ConfigureShard(ctx, i);
-        ++NextShardToConfigure;
+        NextShardToConfigure = i + 1;
     }
 }
 
@@ -889,8 +891,10 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
     if (--ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
     } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        ConfigureShard(ctx, NextShardToConfigure);
-        ++NextShardToConfigure;
+        if (NextShardToConfigure < FileStoreConfig.ShardConfigs.size()) {
+            ConfigureShard(ctx, NextShardToConfigure);
+            ++NextShardToConfigure;
+        }
     }
 }
 

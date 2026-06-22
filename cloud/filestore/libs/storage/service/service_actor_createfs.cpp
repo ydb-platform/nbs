@@ -335,8 +335,7 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
         if (--ShardsToCreate == 0) {
             ConfigureShards(ctx);
-        } else if (StorageConfig->GetMaxShardManagementRequestsInFlight())
-        {
+        } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
             if (NextShardToCreate < FileStoreConfig.ShardConfigs.size()) {
                 CreateShard(ctx, NextShardToCreate);
                 ++NextShardToCreate;

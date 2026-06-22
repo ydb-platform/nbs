@@ -360,6 +360,7 @@ void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
 
 void TDestroyFileStoreActor::DestroyShards(const TActorContext& ctx)
 {
+    NextShardToDestroy = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
     const ui32 endShardIndex =
         (limit == 0) ? ShardIds.size() : std::min<ui32>(limit, ShardIds.size());
