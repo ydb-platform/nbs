@@ -584,7 +584,8 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
     ui32 maxBytes,
     TString* next,
     ui32* skippedRefs,
-    NProto::EListNodesSizeMode sizeMode)
+    NProto::EListNodesSizeMode sizeMode,
+    ui32 maxRows)
 {
     using TTableBase = typename TIndexTabletSchema::NodeRefs;
     auto it = Table<TTable>()
@@ -619,6 +620,7 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
             } else {
                 bytes += ref.Name.size();
             }
+            --maxRows;
         } else {
             ++skipped;
         }
@@ -627,7 +629,7 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
             return false;   // not ready
         }
 
-        if (maxBytes && bytes >= maxBytes) {
+        if (maxBytes && bytes >= maxBytes || maxRows == 0) {
             break;
         }
     }
@@ -652,7 +654,8 @@ TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefs>(
     ui32,
     TString*,
     ui32*,
-    NProto::EListNodesSizeMode);
+    NProto::EListNodesSizeMode,
+    ui32 maxRows);
 
 template bool
 TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefsNoPrecharge>(
@@ -663,7 +666,8 @@ TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefsNoPrecharge>(
     ui32,
     TString*,
     ui32*,
-    NProto::EListNodesSizeMode);
+    NProto::EListNodesSizeMode,
+    ui32 maxRows);
 
 bool TIndexTabletDatabase::ReadNodeRefs(
     ui64 nodeId,
@@ -674,7 +678,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     TString* next,
     ui32* skippedRefs,
     bool noAutoPrecharge,
-    NProto::EListNodesSizeMode sizeMode)
+    NProto::EListNodesSizeMode sizeMode,
+    ui32 maxRows)
 {
     if (noAutoPrecharge) {
         return ReadNodeRefsBase<TIndexTabletSchema::NodeRefsNoPrecharge>(
@@ -685,7 +690,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
             maxBytes,
             next,
             skippedRefs,
-            sizeMode);
+            sizeMode,
+            maxRows);
     }
     return ReadNodeRefsBase<TIndexTabletSchema::NodeRefs>(
         nodeId,
@@ -695,7 +701,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
         maxBytes,
         next,
         skippedRefs,
-        sizeMode);
+        sizeMode,
+        maxRows);
 }
 
 bool TIndexTabletDatabase::ReadNodeRefs(
@@ -2309,7 +2316,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     TString* next,
     ui32* skippedRefs,
     bool noAutoPrecharge,
-    NProto::EListNodesSizeMode sizeMode)
+    NProto::EListNodesSizeMode sizeMode,
+    ui32 maxRows)
 {
     ui32 skipped = 0;
     if (!skippedRefs) {
@@ -2324,7 +2332,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
         next,
         skippedRefs,
         noAutoPrecharge,
-        sizeMode);
+        sizeMode,
+        maxRows);
     if (result) {
         // If ReadNodeRefs was successful, it is reasonable to update the cache
         // with the values that have just been read.
