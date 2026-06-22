@@ -651,9 +651,9 @@ func lockAndExecuteTask(
 		task,
 		taskStorage,
 		taskState,
+		hangingTaskTimeout,
 		inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout,
-		hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging,
 	)
 
