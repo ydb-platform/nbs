@@ -36,8 +36,6 @@ WORKLOAD_COMMENT_EDIT_ATTEMPTS = 5
 WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS = float(
     os.environ.get("WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", "1.0")
 )
-SUMMARY_JSON_SCHEMA = "nbs-test-summary"
-SUMMARY_JSON_SCHEMA_VERSION = 1
 WORKLOAD_CHECK_STATUS_ICONS = {
     "pending": ":white_circle:",
     "running": ":hourglass_flowing_sand:",
@@ -492,53 +490,6 @@ def write_summary(
                 fp.write(f"{line}\n")
 
         fp.write("\n")
-
-
-def write_summary_json(
-    summary: TestSummary,
-    summary_out_folder: str,
-    build_failed_count: int = 0,
-) -> None:
-    payload = {
-        "schema": SUMMARY_JSON_SCHEMA,
-        "schema_version": SUMMARY_JSON_SCHEMA_VERSION,
-        "aggregate_build_failed_count": build_failed_count,
-        "reports": [
-            {
-                "title": line.title,
-                "report_url": line.report_url,
-                "total": line.test_count,
-                "counts": {
-                    status.name: (
-                        max(build_failed_count, line.count(status))
-                        if status == TestStatus.FAIL_BUILD
-                        else line.count(status)
-                    )
-                    for status in TestStatus.summary_table_order()
-                },
-                "tests": [
-                    {
-                        "classname": test.classname,
-                        "name": test.name,
-                        "full_name": test.full_name,
-                        "status": test.status.name,
-                        "status_label": test.status.label,
-                        "elapsed_seconds": finite_elapsed_seconds(
-                            test.elapsed,
-                            test.classname,
-                            test.name,
-                        ),
-                        "is_timed_out": test.is_timed_out,
-                    }
-                    for test in sorted(line.tests, key=attrgetter("full_name"))
-                ],
-            }
-            for line in summary.lines
-        ],
-    }
-
-    with open(os.path.join(summary_out_folder, "summary.json"), "w") as fp:
-        json.dump(payload, fp, separators=(",", ":"), allow_nan=False)
 
 
 def gen_summary(
@@ -1335,11 +1286,6 @@ def main() -> None:
         write_summary(
             summary,
             args.summary_out_env_path,
-        )
-        write_summary_json(
-            summary,
-            args.summary_out_path,
-            build_failed_count=get_build_failed_count(),
         )
     elif not args.update_workload_status_only:
         LOGGER.error("No summary inputs provided")
