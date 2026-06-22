@@ -1562,17 +1562,25 @@ func TestTryExecutingTask(t *testing.T) {
 	}
 
 	state := storage.TaskState{
-		ID:           taskID,
-		TaskType:     "task",
-		Request:      []byte{1, 2, 3},
-		State:        []byte{2, 3, 4},
-		GenerationID: 3,
+		ID:               taskID,
+		TaskType:         "task",
+		Request:          []byte{1, 2, 3},
+		State:            []byte{2, 3, 4},
+		CreatedAt:        time.Now().Add(-2 * time.Hour),
+		GenerationID:     3,
+		InflightDuration: 45 * time.Minute,
+		StallingDuration: 20 * time.Minute,
 	}
 	runner.On("lockTask", ctx, taskInfo).Return(state, nil)
 	task.On("Load", state.Request, state.State).Return(nil)
 	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Maybe()
 	runnerMetrics.On("OnExecutionStarted", mock.Anything)
-	runner.On("executeTask", mock.Anything, mock.Anything, task)
+	runner.On("executeTask", mock.Anything, mock.Anything, task).Run(
+		func(args mock.Arguments) {
+			execCtx := args.Get(1).(*executionContext)
+			require.False(t, execCtx.IsHanging())
+		},
+	)
 	runnerMetrics.On("OnExecutionStopped")
 
 	err = lockAndExecuteTask(
