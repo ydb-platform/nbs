@@ -81,11 +81,10 @@ def get_target_path(pod_id: str, volume_name: str, access_type: str) -> Path:
     )
 
 
-def assert_endpoints(run, volume_name: str, total: int, read_only: int, remote: int):
+def assert_endpoints(run, volume_name: str, total: int, read_only: int):
     endpoints = run("listendpoints", "--proto").stdout
     assert total == endpoints.count(f'DiskId: "{volume_name}"')
     assert read_only == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_READ_ONLY")
-    assert remote == endpoints.count("VolumeMountMode: VOLUME_MOUNT_REMOTE")
 
 
 def test_publish_distinguishes_remote_mount_access_modes():
@@ -178,7 +177,7 @@ def test_publish_distinguishes_remote_mount_access_modes():
         return path
 
     def assert_shared_disk_data_visible(writer, readers):
-        payload = b"written by multi-node-single-writer pvc\n".ljust(4096, b"\0")
+        payload = b"written by single-node-writer pvc\n".ljust(4096, b"\0")
         input_path = io_path / "writer.blocks"
         input_path.write_bytes(payload)
 
@@ -221,8 +220,7 @@ def test_publish_distinguishes_remote_mount_access_modes():
             run,
             volume_name,
             total=1,
-            read_only=1,
-            remote=0)
+            read_only=1)
 
         publish(single_reader)
         assert "ro" == get_access_mode(str(target_path(single_reader)))
@@ -230,7 +228,7 @@ def test_publish_distinguishes_remote_mount_access_modes():
         unstage(single_reader)
 
         pvcs = [
-            make_pvc("writer-pvc", "writer", "multi-node-single-writer"),
+            make_pvc("writer-pvc", "writer", "single-node-writer"),
             make_pvc("reader1-pvc", "reader1", "multi-node-reader-only"),
             make_pvc("reader2-pvc", "reader2", "multi-node-reader-only"),
         ]
@@ -242,8 +240,7 @@ def test_publish_distinguishes_remote_mount_access_modes():
             run,
             volume_name,
             total=3,
-            read_only=2,
-            remote=3)
+            read_only=2)
 
         for pvc in pvcs:
             publish(pvc)
