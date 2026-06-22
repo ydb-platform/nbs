@@ -163,7 +163,7 @@ type Client interface {
 	UnsafeCreateNodeRef(
 		ctx context.Context,
 		filesystemID string,
-		parentID uint64,
+		parentNodeID uint64,
 		name string,
 		childID uint64,
 		shardID string,
