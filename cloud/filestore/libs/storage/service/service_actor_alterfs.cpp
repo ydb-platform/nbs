@@ -73,7 +73,9 @@ private:
     ui32 ShardsToCreate = 0;
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
+    ui32 NextShardToAlter = 0;
     ui32 ShardsToAlter = 0;
+    ui32 NextShardToDescribe = 0;
     ui32 ShardsToDescribe = 0;
     ui32 MaxShardCount = 0;
     ui64 SevenBytesHandlesCount = 0;
@@ -105,9 +107,11 @@ private:
 
     void DescribeMainFileStore(const TActorContext& ctx);
     void DescribeShards(const TActorContext& ctx);
+    void DescribeShard(const TActorContext& ctx, const ui32 shardIndex);
     void GetStorageStats(const TActorContext& ctx);
     void AlterFileStore(const TActorContext& ctx);
     void AlterShards(const TActorContext& ctx);
+    void AlterShard(const TActorContext& ctx, const ui32 shardIndex);
     void GetFileSystemTopology(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
     void CreateShard(const TActorContext& ctx, const ui32 shardIndex);
@@ -268,13 +272,26 @@ void TAlterFileStoreActor::DescribeShards(const TActorContext& ctx)
         return;
     }
 
-    for (ui32 i = 0; i < ShardsToDescribe; ++i) {
-        auto request =
-            std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
-                FileStoreConfig.ShardConfigs[i].GetFileSystemId());
+    NextShardToDescribe = 0;
+    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
+    const ui32 endShardIndex = (limit == 0)
+                                   ? ShardsToDescribe
+                                   : std::min<ui32>(limit, ShardsToDescribe);
 
-        NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), i);
+    for (ui32 i = 0; i < endShardIndex; ++i) {
+        DescribeShard(ctx, i);
+        ++NextShardToDescribe;
     }
+}
+
+void TAlterFileStoreActor::DescribeShard(
+    const TActorContext& ctx,
+    const ui32 shardIndex)
+{
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
+        FileStoreConfig.ShardConfigs[shardIndex].GetFileSystemId());
+
+    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), shardIndex);
 }
 
 void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
@@ -328,6 +345,11 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         Y_ABORT_UNLESS(ShardsToDescribe);
         if (--ShardsToDescribe == 0) {
             AlterFileStore(ctx);
+        } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+            if (NextShardToDescribe < ExistingShardIds.size()) {
+                DescribeShard(ctx, NextShardToDescribe);
+                ++NextShardToDescribe;
+            }
         }
         return;
     }
@@ -454,13 +476,23 @@ void TAlterFileStoreActor::AlterShards(const TActorContext& ctx)
         return;
     }
 
+    NextShardToAlter = 0;
     for (ui32 i = 0; i < ShardsToAlter; ++i) {
-        FileStoreConfig.ShardConfigs[i].ClearBlockSize();
-        FileStoreConfig.ShardConfigs[i].SetAlterTs(ctx.Now().MicroSeconds());
-        auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
-            FileStoreConfig.ShardConfigs[i]);
-        NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), i);
+        AlterShard(ctx, i);
+        ++NextShardToAlter;
     }
+}
+
+void TAlterFileStoreActor::AlterShard(
+    const TActorContext& ctx,
+    const ui32 shardIndex)
+{
+    FileStoreConfig.ShardConfigs[shardIndex].ClearBlockSize();
+    FileStoreConfig.ShardConfigs[shardIndex].SetAlterTs(
+        ctx.Now().MicroSeconds());
+    auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
+        FileStoreConfig.ShardConfigs[shardIndex]);
+    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), shardIndex);
 }
 
 void TAlterFileStoreActor::HandleAlterFileStoreResponse(
@@ -497,6 +529,11 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
     Y_ABORT_UNLESS(ShardsToAlter);
     if (--ShardsToAlter == 0) {
         CreateShards(ctx);
+    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+        if (NextShardToAlter < ExistingShardIds.size()) {
+            AlterShard(ctx, NextShardToAlter);
+            ++NextShardToAlter;
+        }
     }
 }
 

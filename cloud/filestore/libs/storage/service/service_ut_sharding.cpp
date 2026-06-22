@@ -7757,7 +7757,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateRequests);
             UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateResponses);
-            UNIT_ASSERT_VALUES_EQUAL_C(shardCount, counters.CreateMaxInFlight);
+            UNIT_ASSERT_VALUES_EQUAL(shardCount, counters.CreateMaxInFlight);
         }
 
         WaitForTabletStart(service);
@@ -7861,9 +7861,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateRequests);
             UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateResponses);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                requestsLimit,
-                counters.CreateMaxInFlight);
+            UNIT_ASSERT_VALUES_EQUAL(requestsLimit, counters.CreateMaxInFlight);
         }
 
         WaitForTabletStart(service);
