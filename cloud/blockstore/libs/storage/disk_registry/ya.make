@@ -39,6 +39,7 @@ SRCS(
     disk_registry_actor_purge_host_cms.cpp
     disk_registry_actor_query_agents_info.cpp
     disk_registry_actor_query_available_storage.cpp
+    disk_registry_actor_query_known_storage.cpp
     disk_registry_actor_register.cpp
     disk_registry_actor_regular.cpp
     disk_registry_actor_release.cpp

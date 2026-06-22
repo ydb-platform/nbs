@@ -23,4 +23,5 @@ client_methods = [
     ("stop_endpoint", "StopEndpoint"),
     ("refresh_endpoint", "RefreshEndpoint"),
     ("list_endpoints", "ListEndpoints"),
+    ("query_known_storage", "QueryKnownStorage"),
 ]

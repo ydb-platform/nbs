@@ -140,6 +140,9 @@ def _test_every_method_impl(sync):
             "keyring_id": 42,
         },
         "query_agents_info": {},
+        "query_known_storage": {
+            "agent_ids": ["DefaultAgentId"],
+        },
     }
 
     for client_method in client_methods:
