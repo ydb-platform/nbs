@@ -403,6 +403,10 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
             10020,
             std::make_shared<TServerHandler>());
 
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TResponseMessage>(context, qp, wr);
+    }
+
     // emulate client connection
 
     NVerbs::CreateConnection(context);

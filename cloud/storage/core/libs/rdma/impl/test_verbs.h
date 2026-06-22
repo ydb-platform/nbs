@@ -74,6 +74,18 @@ using TTestContextPtr = TIntrusivePtr<TTestContext>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <M>
+void PostSend(TTestContextPtr context, ibv_qp* qp, ibv_send_wr* wr)
+{
+    Y_UNUSED(qp);
+    const auto* msg = reinterpret_cast<M*>(wr->sg_list[0].addr);
+    context->ReqIds.push_back(msg->ReqId);
+    context->SendEvents.push_back(new ibv_send_wr(*wr));
+    context->CompletionHandle.Set();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 IVerbsPtr CreateTestVerbs(TTestContextPtr context);
 
 void CreateConnection(TTestContextPtr context);

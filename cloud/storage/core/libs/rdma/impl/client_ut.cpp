@@ -464,6 +464,10 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
 
         auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+            PostSend<TRequestMessage>(testContext, qp, wr);
+        }
+
         struct TResponse
         {
             bool Received = false;
@@ -873,6 +877,10 @@ TEST(TRdmaClientTest, ShouldReconnect)
         }
 
         auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+            PostSend<TRequestMessage>(context, qp, wr);
+        }
 
         Disconnect(testContext);
 

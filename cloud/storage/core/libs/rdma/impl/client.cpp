@@ -548,7 +548,8 @@ public:
     bool HandleCancelRequests() noexcept;
     bool HandleCompletionEvents() noexcept;
     void AbortRequests() noexcept;
-    bool Flushed() const;
+    bool ClientRequestsFlushed() const;
+    bool WorkRequestsFlushed() const;
     bool FlushHanging() const;
 
     void SetNegotiatedProtocolVersion(int negotiatedProtocolVersion);
@@ -1357,14 +1358,18 @@ void TClientEndpoint::Disconnect() noexcept
     }
 }
 
-bool TClientEndpoint::Flushed() const
+bool TClientEndpoint::ClientRequestsFlushed() const
 {
-    return SendQueue.Size() == Config.SendQueueSize
-        && RecvQueue.Size() == Config.RecvQueueSize
-        && ActiveRequests.Empty()
+    return ActiveRequests.Empty()
         && !InputRequests
         && !QueuedRequests
         && !CancelRequests;
+}
+
+bool TClientEndpoint::WorkRequestsFlushed() const
+{
+    return SendQueue.Size() == Config.SendQueueSize
+        && RecvQueue.Size() == Config.RecvQueueSize;
 }
 
 bool TClientEndpoint::FlushHanging() const
@@ -1791,15 +1796,22 @@ private:
                 continue;
             }
 
-            if (!endpoint->Flushed()) {
+            if (!endpoint->ClientRequestsFlushed()) {
+                continue;
+            }
+
+            if (!endpoint->WorkRequestsFlushed()) {
                 if (!endpoint->FlushHanging()) {
                     continue;
                 }
+                // either we have a bug or underlying layer didn't flush WRs in time
                 RDMA_ERROR(endpoint->Log, "flush timeout "
                     << "[send_queue.size=" << endpoint->SendQueue.Size()
                     << " recv_queue.size=" << endpoint->RecvQueue.Size() << "]");
             }
 
+            // detach immediately to prevent completions from arriving during
+            // destruction sequence
             Detach(endpoint.get());
 
             endpoint->ChangeState(
@@ -2116,6 +2128,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 
         // create new connection and try again
         case EEndpointState::Connecting:
+            endpoint->Poller->Detach(endpoint);
             endpoint->ChangeState(
                 EEndpointState::Connecting,
                 EEndpointState::Disconnected);
