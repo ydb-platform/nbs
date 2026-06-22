@@ -219,6 +219,25 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
             TStringBuf("world"),
             guard.Get()[0].AsStringBuf());
     }
+
+    Y_UNIT_TEST(DestructorClosesSglistWhenOwnerSglistCleared)
+    {
+        TString data = "hello";
+        TGuardedSgList depSglist;
+        {
+            TWriteBlocksLocalRequest owner;
+            SetupRequest(owner, data);
+            owner.TakeDataOwnership();
+
+            TWriteBlocksLocalRequest dep(
+                owner,
+                TWriteBlocksLocalRequest::TDependentTag{});
+            depSglist = dep.Sglist;
+
+            owner.Sglist.SetSgList({});
+        }
+        UNIT_ASSERT(!depSglist.Acquire());
+    }
 }
 
 }   // namespace NCloud::NBlockStore
