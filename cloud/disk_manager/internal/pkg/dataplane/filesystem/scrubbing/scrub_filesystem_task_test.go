@@ -452,7 +452,7 @@ func TestScrubFilesystemTaskNodeDeletedDuringScrubbing(t *testing.T) {
 				err := rmTree(
 					f.ctx,
 					deleteSession,
-					node.ParentID,
+					node.ParentNodeID,
 					node.Name,
 				)
 				require.NoError(t, err)

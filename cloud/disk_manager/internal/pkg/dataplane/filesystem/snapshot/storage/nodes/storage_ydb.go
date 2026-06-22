@@ -56,7 +56,7 @@ func nodeRefStructValue(
 
 	return persistence.StructValue(
 		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentID)),
+		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentNodeID)),
 		persistence.StructFieldValue("name", persistence.UTF8Value(node.Name)),
 		persistence.StructFieldValue("child_node_id", persistence.Uint64Value(node.NodeID)),
 	)
@@ -207,7 +207,7 @@ func hardlinkStructValue(
 	return persistence.StructValue(
 		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
 		persistence.StructFieldValue("node_id", persistence.Uint64Value(node.NodeID)),
-		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentID)),
+		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentNodeID)),
 		persistence.StructFieldValue("name", persistence.UTF8Value(node.Name)),
 	)
 }
@@ -237,12 +237,12 @@ func restoreMappingStructValue(
 
 func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 	var (
-		parentID    uint64
-		name        string
-		childNodeID uint64
+		parentNodeID uint64
+		name         string
+		childNodeID  uint64
 	)
 	err := result.ScanNamed(
-		persistence.OptionalWithDefault("parent_node_id", &parentID),
+		persistence.OptionalWithDefault("parent_node_id", &parentNodeID),
 		persistence.OptionalWithDefault("name", &name),
 		persistence.OptionalWithDefault("child_node_id", &childNodeID),
 	)
@@ -251,9 +251,9 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 	}
 
 	return nfs.Node{
-		ParentID: parentID,
-		NodeID:   childNodeID,
-		Name:     name,
+		ParentNodeID: parentNodeID,
+		NodeID:       childNodeID,
+		Name:         name,
 	}, nil
 }
 
@@ -420,12 +420,12 @@ func (s *storageYDB) saveNodesByShard(
 	parentNodeIDs := make([]uint64, 0, len(nodes))
 	seenParentNodeIDs := make(map[uint64]struct{})
 	for _, node := range nodes {
-		if _, ok := seenParentNodeIDs[node.ParentID]; ok {
+		if _, ok := seenParentNodeIDs[node.ParentNodeID]; ok {
 			continue
 		}
 
-		seenParentNodeIDs[node.ParentID] = struct{}{}
-		parentNodeIDs = append(parentNodeIDs, node.ParentID)
+		seenParentNodeIDs[node.ParentNodeID] = struct{}{}
+		parentNodeIDs = append(parentNodeIDs, node.ParentNodeID)
 	}
 
 	parentAttrs, err := s.fetchNodeAttrs(ctx, session, snapshotID, parentNodeIDs)
@@ -445,7 +445,7 @@ func (s *storageYDB) saveNodesByShard(
 		nodeRef := nodeRefByShard{
 			snapshotID:        snapshotID,
 			shardFilesystemID: node.ShardFileSystemID,
-			parentNodeID:      node.ParentID,
+			parentNodeID:      node.ParentNodeID,
 			name:              node.Name,
 			nodeID:            node.NodeID,
 			storeAsChild:      false,
@@ -454,7 +454,7 @@ func (s *storageYDB) saveNodesByShard(
 	}
 
 	for _, node := range nodes {
-		parent, ok := parentAttrs[node.ParentID]
+		parent, ok := parentAttrs[node.ParentNodeID]
 		if !ok || len(parent.ShardFileSystemID) == 0 {
 			continue
 		}
@@ -462,7 +462,7 @@ func (s *storageYDB) saveNodesByShard(
 		nodeRef := nodeRefByShard{
 			snapshotID:        snapshotID,
 			shardFilesystemID: parent.ShardFileSystemID,
-			parentNodeID:      node.ParentID,
+			parentNodeID:      node.ParentNodeID,
 			name:              node.Name,
 			nodeID:            node.NodeID,
 			storeAsChild:      true,
@@ -799,11 +799,11 @@ func (s *storageYDB) listNodesByShard(
 		}
 
 		if nodeRefByShard.storeAsChild {
-			node.ParentID = nodeRefByShard.parentNodeID
+			node.ParentNodeID = nodeRefByShard.parentNodeID
 			node.Name = nodeRefByShard.name
 			node.NodeID = 0
 		} else {
-			node.ParentID = uint64(nfs.RootNodeID)
+			node.ParentNodeID = uint64(nfs.RootNodeID)
 			node.Name = node.ShardNodeName
 			node.ShardFileSystemID = ""
 			node.ShardNodeName = ""
@@ -1297,7 +1297,7 @@ func (s *storageYDB) listHardLinks(
 			var node nfs.Node
 			err := res.ScanNamed(
 				persistence.OptionalWithDefault("node_id", &node.NodeID),
-				persistence.OptionalWithDefault("parent_node_id", &node.ParentID),
+				persistence.OptionalWithDefault("parent_node_id", &node.ParentNodeID),
 				persistence.OptionalWithDefault("name", &node.Name),
 			)
 			if err != nil {

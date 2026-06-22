@@ -400,7 +400,7 @@ func TestCreateNodeIdempotent(t *testing.T) {
 	defer session.Close(ctx)
 
 	node := nfs.Node{
-		ParentID: nfs.RootNodeID,
+		ParentNodeID: nfs.RootNodeID,
 		Name:     "testfile",
 		Mode:     0644,
 		UID:      1,
@@ -581,8 +581,8 @@ func newInMemoryTestShardBackup(
 	}
 
 	for _, node := range nodes {
-		backup.nodesByParent[node.ParentID] = append(
-			backup.nodesByParent[node.ParentID],
+		backup.nodesByParent[node.ParentNodeID] = append(
+			backup.nodesByParent[node.ParentNodeID],
 			node,
 		)
 
@@ -633,7 +633,7 @@ func (i inMemoryTestShardBackup) restoreNode(ctx context.Context, node nfs.Node)
 
 func (i inMemoryTestShardBackup) createChildRef(
 	ctx context.Context,
-	parentID uint64,
+	parentNodeID uint64,
 	child nfs.Node,
 ) {
 
@@ -644,7 +644,7 @@ func (i inMemoryTestShardBackup) createChildRef(
 	err := i.client.UnsafeCreateNodeRef(
 		ctx,
 		i.shardFileSystemID,
-		parentID,
+		parentNodeID,
 		child.Name,
 		uint64(0), // childID
 		shardID,
