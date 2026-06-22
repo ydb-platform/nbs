@@ -1,0 +1,25 @@
+RECURSE_FOR_TESTS(
+    split1
+    split2
+    split3
+    split4
+    split5
+    split6
+    split7
+    split8
+    split9
+    split10
+    split11
+    split12
+    split13
+    split14
+    split15
+    split16
+    env1
+    env2
+    env3
+    env4
+    env5
+    env6
+    env7
+)

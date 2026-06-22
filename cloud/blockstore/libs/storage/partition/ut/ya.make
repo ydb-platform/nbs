@@ -1,17 +1,5 @@
-UNITTEST_FOR(cloud/blockstore/libs/storage/partition)
-
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
-
-SRCS(
-    part_database_ut.cpp
-    part_state_ut.cpp
-    part_ut.cpp
+RECURSE_FOR_TESTS(
+    database
+    partition
+    state
 )
-
-PEERDIR(
-    cloud/blockstore/libs/storage/testlib
-)
-
-YQL_LAST_ABI_VERSION()
-
-END()
