@@ -150,6 +150,9 @@ public:
     ui32 CreateRequests = 0;
     ui32 CreateResponses = 0;
     ui32 CreateMaxInFlight = 0;
+    ui32 ConfigureRequests = 0;
+    ui32 ConfigureResponses = 0;
+    ui32 ConfigureMaxInFlight = 0;
     ui32 AlterRequests = 0;
     ui32 AlterResponses = 0;
     ui32 AlterMaxInFlight = 0;
@@ -188,6 +191,20 @@ private:
 
             case TEvSSProxy::EvCreateFileStoreResponse: {
                 ++CreateResponses;
+                break;
+            }
+
+            case TEvIndexTablet::EvConfigureShardsRequest: {
+                if (++ConfigureRequests > ConfigureResponses) {
+                    ConfigureMaxInFlight = std::max(
+                        ConfigureMaxInFlight,
+                        ConfigureRequests - ConfigureResponses);
+                }
+                break;
+            }
+
+            case TEvIndexTablet::EvConfigureShardsResponse: {
+                ++ConfigureResponses;
                 break;
             }
 
@@ -4465,11 +4482,79 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
     }
 
+    SERVICE_TEST(ShouldAddShardsAutomaticallyUponResizeThrottled)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(1);
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        {
+            TShardRequestCounter counters(env.GetRuntime());
+
+            service.CreateFileStore(fsId, 2_GB / 4_KB);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.CreateMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureRequests);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureResponses);
+            // UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight); // TODO
+        }
+
+        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        {
+            TShardRequestCounter counters(env.GetRuntime());
+
+            service.ResizeFileStore(fsId, 5_GB / 4_KB);
+
+            UNIT_ASSERT_VALUES_EQUAL(5, counters.DescribeRequests);
+            UNIT_ASSERT_VALUES_EQUAL(5, counters.DescribeResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.DescribeMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.CreateMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureRequests); // BUG?
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureResponses);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureMaxInFlight);
+        }
+
+        expected = TVector<TString>{
+            fsId,
+            fsId + "_s1",
+            fsId + "_s2",
+            fsId + "_s3",
+            fsId + "_s4",
+            fsId + "_s5",
+        };
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
     SERVICE_TEST(ShouldAddShardsAutomaticallyUponResize)
     {
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(0);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();

@@ -190,6 +190,7 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
 
 void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)
 {
+    NextShardToCreate = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
     const ui32 endShardIndex =
         (limit == 0)
@@ -225,6 +226,7 @@ void TCreateFileStoreActor::CreateShard(
 
 void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
+    NextShardToConfigure = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
     const ui32 endShardIndex =
         (limit == 0)
