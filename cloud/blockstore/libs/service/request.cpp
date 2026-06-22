@@ -80,7 +80,7 @@ void TWriteBlocksLocalRequest::TakeDataOwnership()
 
 void TWriteBlocksLocalRequest::CloseOwnedSglist()
 {
-    if (OwnsSglist && !Sglist.Empty()) {
+    if (OwnsSglist) {
         Sglist.Close();
         OwnsSglist = false;
     }
