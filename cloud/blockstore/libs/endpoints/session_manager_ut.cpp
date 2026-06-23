@@ -651,6 +651,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                 response.GetError().GetCode(),
                 FormatError(response.GetError()));
         }
+
+        scheduler->Stop();
     }
 }
 
