@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import pytest
 import uuid
@@ -20,6 +21,7 @@ from cloud.blockstore.tests.python.lib.test_base import (
     run_test,
     get_restart_interval,
 )
+from cloud.blockstore.tests.python.lib.daemon import get_counters
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
@@ -554,6 +556,31 @@ def __run_test(test_case):
             endpoint_storage_dir=endpoint_storage_dir,
             env_processes=[env.nbs],
         )
+
+        blacklisted_events = set(
+            [
+                "AppCriticalEvents/CpuWaitCounterReadError",
+                "AppCriticalEvents/EndpointRestoringError",
+                "AppCriticalEvents/ManuallyPreemptedVolumesFileError",
+                "AppCriticalEvents/ReassignTablet",
+                "AppCriticalEvents/TabletBSFailure",
+                "AppCriticalEvents/CollectGarbageError",
+                "AppCriticalEvents/TrimFreshLogError",
+                "AppCriticalEvents/InitFreshBlocksError",
+            ]
+        )
+        counters = get_counters(env.mon_port)
+        crits = counters.find_all([{"sensor": re.compile(r"AppCriticalEvents/.*")}])
+
+        crits_with_errors = [
+            crit
+            for crit in crits
+            if crit["value"] > 0 and crit["labels"]["sensor"] not in blacklisted_events
+        ]
+        assert (
+            len(crits_with_errors) == 0
+        ), f"Critical events occurred: {crits_with_errors}"
+
         if test_case.check_disk_size:
             compact_full_disk(nbs_client, test_case.disk_id)
             check_channel_bytes_invariant(nbs_client, test_case.disk_id)
