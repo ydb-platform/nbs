@@ -3,6 +3,7 @@ package snapshot
 import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config"
+	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
 	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -41,9 +42,9 @@ func validateConfig(config *snapshot_config.FilesystemSnapshotConfig) error {
 
 func Register(taskRegistry *tasks.Registry) error {
 	err := taskRegistry.Register(
-		"dataplane.TransferFromFilesystemToSnapshot",
+		"dataplane.CreateSnapshotFromFilesystem",
 		func() tasks.Task {
-			return &transferFromFilesystemToSnapshotTask{}
+			return &createSnapshotFromFilesystemTask{}
 		},
 	)
 	if err != nil {
@@ -62,6 +63,7 @@ func RegisterForExecution(
 	taskRegistry *tasks.Registry,
 	config *snapshot_config.FilesystemSnapshotConfig,
 	factory nfs.Factory,
+	storage snapshot_storage.Storage,
 	traversalStorage traversal_storage.Storage,
 	nodesStorage nodes_storage.Storage,
 ) error {
@@ -72,11 +74,12 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution(
-		"dataplane.TransferFromFilesystemToSnapshot",
+		"dataplane.CreateSnapshotFromFilesystem",
 		func() tasks.Task {
-			return &transferFromFilesystemToSnapshotTask{
+			return &createSnapshotFromFilesystemTask{
 				config:           config,
 				factory:          factory,
+				storage:          storage,
 				traversalStorage: traversalStorage,
 				nodesStorage:     nodesStorage,
 			}

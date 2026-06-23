@@ -813,7 +813,7 @@ func ScheduleFilesystemScrubbing(
 	return taskID
 }
 
-func ScheduleTransferFromFilesystemToSnapshot(
+func ScheduleCreateSnapshotFromFilesystem(
 	t *testing.T,
 	ctx context.Context,
 	zoneID string,
@@ -828,10 +828,10 @@ func ScheduleTransferFromFilesystemToSnapshot(
 	taskID, err := scheduler.ScheduleTask(
 		tasks_headers.SetIncomingIdempotencyKey(
 			ctx,
-			fmt.Sprintf("transfer_fs_to_snap_%v_%v", t.Name(), lastReqNumber),
+			fmt.Sprintf("create_snap_from_fs_%v_%v", t.Name(), lastReqNumber),
 		),
-		"dataplane.TransferFromFilesystemToSnapshot",
-		"Transfer from filesystem to snapshot",
+		"dataplane.CreateSnapshotFromFilesystem",
+		"Create snapshot from filesystem",
 		&snapshot_protos.CreateFilesystemSnapshotRequest{
 			Filesystem: &types.Filesystem{
 				ZoneId:       zoneID,
