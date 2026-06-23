@@ -275,9 +275,10 @@ void TAlterFileStoreActor::DescribeShards(const TActorContext& ctx)
 
     NextShardToDescribe = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex = (limit == 0)
-                                   ? ShardsToDescribe
-                                   : std::min<ui32>(limit, ShardsToDescribe);
+    const ui32 endShardIndex =
+        (limit == 0)
+            ? ShardsToDescribe
+            : std::min<ui32>(NextShardToDescribe + limit, ShardsToDescribe);
 
     for (ui32 i = 0; i < endShardIndex; ++i) {
         DescribeShard(ctx, i);

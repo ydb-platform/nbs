@@ -192,10 +192,11 @@ void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)
 {
     NextShardToCreate = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex =
-        (limit == 0)
-            ? FileStoreConfig.ShardConfigs.size()
-            : std::min<ui32>(limit, FileStoreConfig.ShardConfigs.size());
+    const ui32 endShardIndex = (limit == 0)
+                                   ? FileStoreConfig.ShardConfigs.size()
+                                   : std::min<ui32>(
+                                         NextShardToCreate + limit,
+                                         FileStoreConfig.ShardConfigs.size());
     for (ui32 i = 0; i < endShardIndex; ++i) {
         CreateShard(ctx, i);
         NextShardToCreate = i + 1;
@@ -228,10 +229,11 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
     NextShardToConfigure = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex =
-        (limit == 0)
-            ? FileStoreConfig.ShardConfigs.size()
-            : std::min<ui32>(limit, FileStoreConfig.ShardConfigs.size());
+    const ui32 endShardIndex = (limit == 0)
+                                   ? FileStoreConfig.ShardConfigs.size()
+                                   : std::min<ui32>(
+                                         NextShardToConfigure + limit,
+                                         FileStoreConfig.ShardConfigs.size());
     for (ui32 i = 0; i < endShardIndex; ++i) {
         ConfigureShard(ctx, i);
         NextShardToConfigure = i + 1;
