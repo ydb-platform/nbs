@@ -197,7 +197,10 @@ public:
         return true;
     }
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId, ui32 skippedBlocksCount) override
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        ui32 skippedBlocksCount) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
         ab.MaxCommitIdInCompactionRange = blobId.CommitId();
@@ -205,8 +208,10 @@ public:
         ab.CompactionRangeCount =
             CompactionMap.GetRangeIndex(blockRange.End) -
             CompactionMap.GetRangeIndex(blockRange.Start) + 1;
-        ab.MergedBlockRange = blockRange;
-        ab.SkippedBlocksCountForMergedBlob = skippedBlocksCount;
+
+        ab.MergedBlobsSpecificInfo.ConstructInPlace();
+        ab.MergedBlobsSpecificInfo->BlockRange = blockRange;
+        ab.MergedBlobsSpecificInfo->SkippedBlocksCount = skippedBlocksCount;
         return true;
     }
 
@@ -650,12 +655,13 @@ TBlobPatchingResult ResolveBlobPatchingCandidate(
 void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
 {
     for (auto& [blobId, ab]: args.AffectedBlobs) {
-        if (ab.MergedBlockRange) {
-            auto& meta = ab.RecreatedBlobMeta.emplace();
+        if (ab.MergedBlobsSpecificInfo) {
+            auto& info = ab.MergedBlobsSpecificInfo.GetRef();
+            auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
             auto* mergedBlocks = meta.MutableMergedBlocks();
-            mergedBlocks->SetStart(ab.MergedBlockRange->Start);
-            mergedBlocks->SetEnd(ab.MergedBlockRange->End);
-            mergedBlocks->SetSkipped(*ab.SkippedBlocksCountForMergedBlob);
+            mergedBlocks->SetStart(info.BlockRange.Start);
+            mergedBlocks->SetEnd(info.BlockRange.End);
+            mergedBlocks->SetSkipped(info.SkippedBlocksCount);
             continue;
         }
 
@@ -665,7 +671,7 @@ void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
             continue;
         }
 
-        auto& meta = ab.RecreatedBlobMeta.emplace();
+        auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
         auto* mixedBlocks = meta.MutableMixedBlocks();
         for (const auto& affectedBlock: ab.AffectedBlocks) {
             mixedBlocks->AddBlocks(affectedBlock.BlockIndex);

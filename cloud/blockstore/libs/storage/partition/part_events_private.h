@@ -134,11 +134,17 @@ using TAffectedBlocks = TVector<TAffectedBlock>;
 
 struct TAffectedBlob
 {
+    struct TMergedBlobsSpecificInfo
+    {
+        TBlockRange32 BlockRange;
+        ui32 SkippedBlocksCount = 0;
+    };
+
     ui8 CompactionRangeCount = 0;
     ui64 MaxCommitIdInCompactionRange = 0;
     ui64 MinCommitIdInCompactionRange = Max<ui64>();
-    std::optional<TBlockRange32> MergedBlockRange;
-    std::optional<ui32> SkippedBlocksCountForMergedBlob;
+    // Filled only for merged blobs.
+    TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
 
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
@@ -148,7 +154,7 @@ struct TAffectedBlob
     // consistency checks.
     TMaybe<NProto::TBlobMeta> BlobMeta;
 
-    std::optional<NProto::TBlobMeta> RecreatedBlobMeta;
+    TMaybe<NProto::TBlobMeta> RecreatedBlobMeta;
 };
 
 using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;

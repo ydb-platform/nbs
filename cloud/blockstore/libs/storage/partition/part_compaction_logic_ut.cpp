@@ -283,7 +283,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 TBlockMask{});
         });
 
-        state.GetCleanupQueue().Add({blobId, executor.CommitId()});
+        state.GetCleanupQueue().Add({blobId, executor.CommitId(), {}});
 
         TTxPartition::TRangeCompaction args(
             0,
@@ -501,7 +501,9 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         const auto blobId = TPartialBlobId(1, 0);
 
         TAffectedBlob ab;
-        ab.MergedBlockRange = TBlockRange32::MakeClosedInterval(10, 20);
+        ab.MergedBlobsSpecificInfo.ConstructInPlace();
+        ab.MergedBlobsSpecificInfo->BlockRange = TBlockRange32::MakeClosedInterval(10, 20);
+        ab.MergedBlobsSpecificInfo->SkippedBlocksCount = 11;
         args.AffectedBlobs.emplace(blobId, std::move(ab));
 
         RecreateBlobMetas(args, CommitId);
@@ -515,6 +517,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         const auto& mergedBlocks = recreatedMeta->GetMergedBlocks();
         UNIT_ASSERT_VALUES_EQUAL(10u, mergedBlocks.GetStart());
         UNIT_ASSERT_VALUES_EQUAL(20u, mergedBlocks.GetEnd());
+        UNIT_ASSERT_VALUES_EQUAL(11u, mergedBlocks.GetSkipped());
     }
 
     Y_UNIT_TEST(ShouldRecreateMixedBlobMetaWhenFullyAvailable)

@@ -596,18 +596,16 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                const NProto::TBlobMeta* blobMeta = nullptr;
+                NProto::TBlobMeta blobMeta;
                 if (kv.second.RecreatedBlobMeta) {
-                    blobMeta = &kv.second.RecreatedBlobMeta.value();
+                    blobMeta = kv.second.RecreatedBlobMeta.GetRef();
                 }
                 if (kv.second.BlobMeta) {
-                    blobMeta = &kv.second.BlobMeta.GetRef();
+                    blobMeta = kv.second.BlobMeta.GetRef();
                 }
 
                 bool inserted = State.GetCleanupQueue().Add(
-                    {kv.first,
-                     DeletionCommitId,
-                     blobMeta ? *blobMeta : NProto::TBlobMeta()});
+                    {kv.first, DeletionCommitId, std::move(blobMeta)});
 
                 STORAGE_VERIFY_DEBUG_C(
                     inserted,

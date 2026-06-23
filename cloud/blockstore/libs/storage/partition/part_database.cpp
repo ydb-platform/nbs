@@ -391,10 +391,12 @@ bool TPartitionDatabase::FindMixedBlocks(
 
     bool ready = true;
     for (const auto& [blockIndex, commitId, _]: blocks) {
-        auto it =
-            Table<TTable>().Key(blockIndex, ReverseCommitId(commitId)).Select();
+        auto query = Table<TTable>().Key(blockIndex, ReverseCommitId(commitId));
+
+        auto it = query.Select();
 
         if (!it.IsReady()) {
+            query.Precharge();
             ready = false;
             continue;
         }
