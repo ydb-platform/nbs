@@ -15095,6 +15095,144 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(i, response->Record.GetBlocks(i).GetBlobOffset());
         }
     }
+
+    void DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(
+        bool ignoringZeroedCompactionEnabled)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        config.SetWriteBlobThresholdSSD(1_MB);
+        config.SetCleanupThreshold(1000);
+        config.SetSSDMaxBlobsPerRange(1000);
+        config.SetFlushThreshold(1000_MB);
+        config.SetV1GarbageCompactionEnabled(true);
+        config.SetIgnoringZeroedCompactionEnabled(ignoringZeroedCompactionEnabled);
+        config.SetCompactionGarbageThreshold(999999);
+        config.SetCompactionRangeGarbageThreshold(20);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            2048,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto expectedCompactionMode = ignoringZeroedCompactionEnabled
+            ? TEvPartitionPrivate::IgnoringZeroedCompaction
+            : TEvPartitionPrivate::GarbageCompaction;
+
+        TAutoPtr<IEventHandle> compactionRequest;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvCompactionRequest)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionPrivate::TEvCompactionRequest>();
+                    if (msg->Mode == expectedCompactionMode &&
+                        !compactionRequest)
+                    {
+                        compactionRequest = event.Release();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        const auto assertUsedBlocksCountGreaterThanBlockCount = [&]
+        {
+            const auto& stats = partition.StatPartition()->Record.GetStats();
+            const ui64 blockCount =
+                stats.GetMixedBlocksCount() + stats.GetMergedBlocksCount();
+            UNIT_ASSERT_C(
+                stats.GetUsedBlocksCount() > blockCount,
+                "UsedBlocksCount=" << stats.GetUsedBlocksCount()
+                    << ", blockCount=" << blockCount);
+        };
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512));
+        // Zero blocks should be written to fresh. They will not unset used
+        // blocks until flush.
+        partition.ZeroBlocks(TBlockRange32::WithLength(0, 128));
+        partition.ZeroBlocks(TBlockRange32::WithLength(128, 128));
+        partition.ZeroBlocks(TBlockRange32::WithLength(256, 128));
+
+        TCompactionOptions options;
+        options.set(ToBit(ECompactionOption::Full));
+        options.set(ToBit(ECompactionOption::Forced));
+        partition.Compaction(0, options);
+        partition.Cleanup();
+
+        assertUsedBlocksCountGreaterThanBlockCount();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512);
+        }
+
+        partition.WriteBlocks(TBlockRange32::WithLength(1024, 512));
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        UNIT_ASSERT(!compactionRequest);
+        assertUsedBlocksCountGreaterThanBlockCount();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(1024, 256));
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        // Too many garbage in the range [1024, 2048), compaction should be
+        // triggered.
+        UNIT_ASSERT(compactionRequest);
+
+        assertUsedBlocksCountGreaterThanBlockCount();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128 + 768);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512 + 512);
+        }
+
+        runtime->Send(compactionRequest.Release());
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        partition.Cleanup();
+
+        assertUsedBlocksCountGreaterThanBlockCount();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128 + 512);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512 + 512);
+        }
+
+        partition.Flush();
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128 + 512);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 128 + 512);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRunGarbageCompactionWhenUsedBlocksCountGreaterThanBlockCount)
+    {
+        DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(false);
+    }
+
+    Y_UNIT_TEST(
+        ShouldRunIgnoringZeroedCompactionWhenUsedBlocksCountGreaterThanBlockCount)
+    {
+        DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(true);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
