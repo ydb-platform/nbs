@@ -124,7 +124,9 @@ def get_qemu_bios(is_arm_host=None):
         return None
 
     bindir = _get_qemu_bindir()
-    qemu_bios = os.path.join(bindir, "usr", "share", "qemu-efi-aarch64", "QEMU_EFI.fd")
+    # qemu_bios = os.path.join(bindir, "usr", "share", "qemu-efi-aarch64", "QEMU_EFI.fd")
+    qemu_bios = os.path.join(bindir, "usr", "share", "qemu", "edk2-aarch64-code.fd") # qemu nebius
+
     if not os.path.exists(qemu_bios):
         _unpack_qemu_bindir(bindir)
 
