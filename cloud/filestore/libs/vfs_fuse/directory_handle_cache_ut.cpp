@@ -93,7 +93,7 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
             Log,
             stats,
             CreateStorage(stats, persistentHandleMaxSize),
-            nullptr);
+            nullptr /* directoryEntryVersionCache */);
     }
 };
 
@@ -145,7 +145,11 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
     Y_UNIT_TEST(ShouldReturnChunkForClosedHandleContentUpdate)
     {
-        auto cache = TDirectoryHandleCache(Log, CreateStats(), nullptr, nullptr);
+        auto cache = TDirectoryHandleCache(
+            Log,
+            CreateStats(),
+            nullptr /* storage */,
+            nullptr /* directoryEntryVersionCache */);
 
         const ui64 id = cache.CreateHandle(42);
         auto handle = cache.FindHandle(id);
@@ -458,7 +462,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
-            nullptr,
+            nullptr /* storage */,
             entryVersionCache);
 
         const ui64 id = cache.CreateHandle(42);
@@ -483,7 +487,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
-            nullptr,
+            nullptr /* storage */,
             entryVersionCache);
 
         const ui64 firstId = cache.CreateHandle(42);
@@ -514,7 +518,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
-            nullptr,
+            nullptr /* storage */,
             entryVersionCache);
 
         cache.CreateHandle(42);
@@ -542,7 +546,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto cache = TDirectoryHandleCache(
             Log,
             CreateStats(),
-            nullptr,
+            nullptr /* storage */,
             entryVersionCache);
 
         cache.CreateHandle(42);

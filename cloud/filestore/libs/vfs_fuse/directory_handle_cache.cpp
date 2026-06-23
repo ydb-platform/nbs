@@ -91,7 +91,7 @@ void TDirectoryHandleCache::RemoveHandle(ui64 handleId)
     with_lock (Lock) {
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            const auto ino = it->second->Index;
+            const fuse_ino_t ino = it->second->Index;
             DecreaseStats(it->second->GetStats(), 1);
             Handles.erase(it);
             if (DirectoryEntryVersionCache) {
@@ -112,7 +112,7 @@ bool TDirectoryHandleCache::RemoveHandle(ui64 handleId, fuse_ino_t ino)
     with_lock (Lock) {
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            const auto handleIno = it->second->Index;
+            const fuse_ino_t handleIno = it->second->Index;
             isConsistent = handleIno == ino;
 
             DecreaseStats(it->second->GetStats(), 1);

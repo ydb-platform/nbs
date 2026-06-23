@@ -107,7 +107,9 @@ TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStats(
 
 TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStatsStub()
 {
-    return CreateDirectoryHandleStats(CreateWallClockTimer(), nullptr);
+    return CreateDirectoryHandleStats(
+        CreateWallClockTimer(),
+        nullptr /* storageStats */);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

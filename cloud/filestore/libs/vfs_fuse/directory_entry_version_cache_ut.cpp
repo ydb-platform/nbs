@@ -75,7 +75,9 @@ Y_UNIT_TEST_SUITE(TDirectoryEntryVersionCacheTest)
     Y_UNIT_TEST(ShouldDecreaseEntryCountOnDestroy)
     {
         auto timer = CreateWallClockTimer();
-        auto stats = CreateDirectoryHandleStats(timer, nullptr);
+        auto stats = CreateDirectoryHandleStats(
+            timer,
+            nullptr /* storageStats */);
 
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         auto metricsRegistry = NMetrics::CreateMetricsRegistry({}, counters);

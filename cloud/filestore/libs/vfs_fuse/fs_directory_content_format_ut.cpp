@@ -157,7 +157,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             [] (ui64 ino) {
                 return ino != 10003 && ino != MissingNodeId;
             },
-            [] (TStringBuf) {
+            [] (TStringBuf name) {
+                Y_UNUSED(name);
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -200,7 +201,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (TStringBuf) {
+            [] (TStringBuf name) {
+                Y_UNUSED(name);
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -245,7 +247,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (TStringBuf) {
+            [] (TStringBuf name) {
+                Y_UNUSED(name);
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -306,6 +309,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
         buffer->Resize(buffer->Size() - 10);
 
         TVector<ui64> seenInos;
+        TVector<TString> seenNames;
 
         auto error = ResetCacheTimeouts(
             buffer->Data(),
@@ -314,7 +318,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 seenInos.push_back(ino);
                 return true;
             },
-            [] (TStringBuf) {
+            [&] (TStringBuf name) {
+                seenNames.emplace_back(name);
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -330,6 +335,13 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
         UNIT_ASSERT_VALUES_EQUAL(2, seenInos.size());
         UNIT_ASSERT_VALUES_EQUAL(10001, seenInos[0]);
         UNIT_ASSERT_VALUES_EQUAL(10002, seenInos[1]);
+
+        //
+        // The incomplete dirent has no full name to visit.
+        // So, check that we have visited only the first one.
+        //
+        UNIT_ASSERT_VALUES_EQUAL(1, seenNames.size());
+        UNIT_ASSERT_VALUES_EQUAL("some-long-name", seenNames[0]);
     }
 
     Y_UNIT_TEST(ShouldDetectGarbage)
@@ -346,7 +358,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (TStringBuf) {
+            [] (TStringBuf name) {
+                Y_UNUSED(name);
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -398,7 +411,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return true;
             },
-            [] (TStringBuf) {
+            [] (TStringBuf name) {
+                Y_UNUSED(name);
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -443,7 +457,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return false;
             },
-            [] (TStringBuf) {
+            [] (TStringBuf name) {
+                Y_UNUSED(name);
                 return false;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -460,7 +475,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
                 Y_UNUSED(ino);
                 return false;
             },
-            [] (TStringBuf) {
+            [] (TStringBuf name) {
+                Y_UNUSED(name);
                 return true;
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
