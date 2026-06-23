@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"google.golang.org/protobuf/encoding/prototext"
 )
 
@@ -36,4 +37,17 @@ func ParseProto(
 	}
 
 	return nil
+}
+
+func GetAllDisksKind() []types.DiskKind {
+	return []types.DiskKind{
+		types.DiskKind_DISK_KIND_SSD,
+		types.DiskKind_DISK_KIND_HDD,
+		types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		types.DiskKind_DISK_KIND_SSD_MIRROR2,
+		types.DiskKind_DISK_KIND_SSD_LOCAL,
+		types.DiskKind_DISK_KIND_SSD_MIRROR3,
+		types.DiskKind_DISK_KIND_HDD_NONREPLICATED,
+		types.DiskKind_DISK_KIND_HDD_LOCAL,
+	}
 }

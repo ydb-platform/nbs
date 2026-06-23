@@ -112,6 +112,18 @@ func (t *createPlacementGroupTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	client, err := getClientByGroupSelector(
+		ctx,
+		t.storage,
+		t.nbsFactory,
+		t.cellSelector,
+		t.request.GroupId,
+		t.request.ZoneId,
+	)
+	if err != nil {
+		return err
+	}
+
 	selfTaskID := execCtx.GetTaskID()
 
 	placementGroupMeta, err := t.storage.DeletePlacementGroup(
@@ -129,16 +141,6 @@ func (t *createPlacementGroupTask) Cancel(
 			"id %v is not accepted",
 			t.request.GroupId,
 		)
-	}
-
-	zoneID := t.request.ZoneId
-	if len(placementGroupMeta.ZoneID) > 0 {
-		zoneID = placementGroupMeta.ZoneID
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, zoneID)
-	if err != nil {
-		return err
 	}
 
 	err = client.DeletePlacementGroup(ctx, t.request.GroupId)

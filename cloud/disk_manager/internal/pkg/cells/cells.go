@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"golang.org/x/sync/errgroup"
@@ -369,16 +370,7 @@ func (s *cellSelector) getRecentAggregatedClusterCapacities(
 	zoneID string,
 ) ([]storage.ClusterCapacity, error) {
 
-	diskKinds := []types.DiskKind{
-		types.DiskKind_DISK_KIND_SSD,
-		types.DiskKind_DISK_KIND_HDD,
-		types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		types.DiskKind_DISK_KIND_SSD_MIRROR2,
-		types.DiskKind_DISK_KIND_SSD_LOCAL,
-		types.DiskKind_DISK_KIND_SSD_MIRROR3,
-		types.DiskKind_DISK_KIND_HDD_NONREPLICATED,
-		types.DiskKind_DISK_KIND_HDD_LOCAL,
-	}
+	diskKinds := util.GetAllDisksKind()
 
 	aggregated := make(map[string]*storage.ClusterCapacity)
 
