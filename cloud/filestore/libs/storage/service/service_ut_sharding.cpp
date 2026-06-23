@@ -142,6 +142,7 @@ class TShardRequestCounter
 private:
     TTestActorRuntimeBase& Runtime;
     TTestActorRuntimeBase::TEventFilter PrevFilter;
+    THashMap<ui64, TActorId> ConfigureRequestSenders;
 
 public:
     ui32 DescribeRequests = 0;
@@ -194,7 +195,11 @@ private:
                 break;
             }
 
-            case TEvIndexTablet::EvConfigureShardsRequest: {
+            case TEvIndexTablet::EvConfigureAsShardRequest: {
+                if (ev->Recipient != MakeIndexTabletProxyServiceId()) {
+                    return;
+                }
+                ConfigureRequestSenders[ev->Cookie] = ev->Sender;
                 if (++ConfigureRequests > ConfigureResponses) {
                     ConfigureMaxInFlight = std::max(
                         ConfigureMaxInFlight,
@@ -203,7 +208,14 @@ private:
                 break;
             }
 
-            case TEvIndexTablet::EvConfigureShardsResponse: {
+            case TEvIndexTablet::EvConfigureAsShardResponse: {
+                auto it = ConfigureRequestSenders.find(ev->Cookie);
+                if (it == ConfigureRequestSenders.end() ||
+                    ev->Recipient != it->second)
+                {
+                    return;
+                }
+                ConfigureRequestSenders.erase(it);
                 ++ConfigureResponses;
                 break;
             }
@@ -4506,7 +4518,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureRequests);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureResponses);
-            // UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight); // TODO
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight);
         }
 
         TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
@@ -4519,19 +4531,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             TShardRequestCounter counters(env.GetRuntime());
 
-            service.ResizeFileStore(fsId, 5_GB / 4_KB);
+            service.ResizeFileStore(fsId, 6_GB / 4_KB);
 
-            UNIT_ASSERT_VALUES_EQUAL(5, counters.DescribeRequests);
-            UNIT_ASSERT_VALUES_EQUAL(5, counters.DescribeResponses);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.DescribeRequests);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.DescribeResponses);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.DescribeMaxInFlight);
 
-            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateRequests);
-            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(4, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(4, counters.CreateResponses);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.CreateMaxInFlight);
 
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureRequests); // BUG?
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureResponses);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureMaxInFlight);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureRequests);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight);
         }
 
         expected = TVector<TString>{
@@ -4541,6 +4553,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fsId + "_s3",
             fsId + "_s4",
             fsId + "_s5",
+            fsId + "_s6",
         };
         listing = service.ListFileStores();
         fsIds = listing->Record.GetFileStores();
