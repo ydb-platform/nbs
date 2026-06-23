@@ -82,7 +82,7 @@ func getClientByGroupSelector(
 
 	client, err := nbsFactory.GetClient(ctx, zoneID)
 
-	return client, err;
+	return client, err
 }
 ////////////////////////////////////////////////////////////////////////////////
 
