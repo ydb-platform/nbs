@@ -81,7 +81,6 @@ func (t *createPlacementGroupTask) Run(
 		CreatingAt:    time.Now(),
 		CreatedBy:     "", // TODO: Extract CreatedBy from execCtx
 	})
-
 	if err != nil {
 		return err
 	}
@@ -112,7 +111,7 @@ func (t *createPlacementGroupTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := getClientByGroupSelector(
+	client, err := selectClientByGroup(
 		ctx,
 		t.storage,
 		t.nbsFactory,

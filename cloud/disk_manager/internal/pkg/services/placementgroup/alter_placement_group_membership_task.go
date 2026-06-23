@@ -42,7 +42,7 @@ func (t *alterPlacementGroupMembershipTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := getClientByGroupSelector(
+	client, err := selectClientByGroup(
 		ctx,
 		t.storage,
 		t.nbsFactory,

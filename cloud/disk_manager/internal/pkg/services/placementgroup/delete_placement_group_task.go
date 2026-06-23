@@ -45,7 +45,7 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := getClientByGroupSelector(
+	client, err := selectClientByGroup(
 		ctx,
 		t.storage,
 		t.nbsFactory,

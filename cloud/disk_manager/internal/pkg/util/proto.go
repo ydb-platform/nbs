@@ -39,7 +39,8 @@ func ParseProto(
 	return nil
 }
 
-func GetAllDisksKind() []types.DiskKind {
+// Keep in sync with "internal/pkg/types/types.proto : enum DiskKind"
+func GetAllDiskKind() []types.DiskKind {
 	return []types.DiskKind{
 		types.DiskKind_DISK_KIND_SSD,
 		types.DiskKind_DISK_KIND_HDD,

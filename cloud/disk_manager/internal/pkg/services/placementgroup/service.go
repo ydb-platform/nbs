@@ -49,7 +49,7 @@ func getPlacementStrategy(
 	}
 }
 
-func getClientByGroupSelector(
+func selectClientByGroup(
 	ctx context.Context,
 	storage resources.Storage,
 	nbsFactory nbs.Factory,
@@ -232,7 +232,7 @@ func (s *service) DescribePlacementGroup(
 		)
 	}
 
-	client, err := getClientByGroupSelector(
+	client, err := selectClientByGroup(
 		ctx,
 		s.resourceStorage,
 		s.nbsFactory,
