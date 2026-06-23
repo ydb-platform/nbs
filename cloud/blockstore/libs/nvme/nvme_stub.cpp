@@ -74,7 +74,7 @@ public:
         return IsDeviceSsd;
     }
 
-    NProto::TError Sanitize(const TString& ctrlPath) override
+    NProto::TError StartSanitize(const TString& ctrlPath) override
     {
         Y_UNUSED(ctrlPath);
 

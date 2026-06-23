@@ -86,7 +86,7 @@ public:
             [&]
             {
                 STORAGE_DEBUG("Sanitize " << path.Quote());
-                CheckError(NVMe->Sanitize(path));
+                CheckError(NVMe->StartSanitize(path));
 
                 for (;;) {
                     const auto& [r, error] = NVMe->GetSanitizeStatus(path);

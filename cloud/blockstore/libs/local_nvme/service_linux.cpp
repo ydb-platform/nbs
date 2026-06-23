@@ -870,7 +870,7 @@ try {
 
     const TFsPath ctrlPath = GetNVMeCtrlPath(device);
 
-    CheckError(NVMeManager->Sanitize(ctrlPath));
+    CheckError(NVMeManager->StartSanitize(ctrlPath));
 
     for (;;) {
         auto [r, error] = NVMeManager->GetSanitizeStatus(ctrlPath);

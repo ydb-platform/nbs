@@ -104,7 +104,7 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
-    auto Sanitize(const TString& ctrlPath) -> NProto::TError final
+    auto StartSanitize(const TString& ctrlPath) -> NProto::TError final
     {
         std::unique_lock lock{Mutex};
 
