@@ -2,7 +2,6 @@ package placementgroup
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -46,29 +45,14 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	pgMeta, err := t.storage.GetPlacementGroupMeta(ctx, t.request.GroupId)
-	if err != nil {
-		return err
-	}
-
-	zoneID := t.request.ZoneId
-	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
-		zoneCells, err := t.cellSelector.ResolveCells(t.request.ZoneId)
-		if err != nil {
-			return err
-		}
-		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
-			return errors.NewNonRetriableErrorf(
-				"placement group %v is in zone %v, not in requested zone %v",
-				t.request.GroupId,
-				pgMeta.ZoneID,
-				t.request.ZoneId,
-			)
-		}
-		zoneID = pgMeta.ZoneID
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	client, err := getClientByGroupSelector(
+		ctx,
+		t.storage,
+		t.nbsFactory,
+		t.cellSelector,
+		t.request.GroupId,
+		t.request.ZoneId,
+	)
 	if err != nil {
 		return err
 	}

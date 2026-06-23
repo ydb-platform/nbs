@@ -49,6 +49,41 @@ func getPlacementStrategy(
 	}
 }
 
+func getClientByGroupSelector(
+	ctx context.Context,
+	storage resources.Storage,
+	nbsFactory nbs.Factory,
+	cellSelector cells.CellSelector,
+	groupId string,
+	reqZoneId string,
+) (nbs.Client, error) {
+
+	pgMeta, err := storage.GetPlacementGroupMeta(ctx, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	zoneID := reqZoneId
+	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
+		zoneCells, err := cellSelector.ResolveCells(reqZoneId)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
+			return nil, errors.NewNonRetriableErrorf(
+				"placement group %v is in zone %v, not in requested zone %v",
+				groupId,
+				pgMeta.ZoneID,
+				reqZoneId,
+			)
+		}
+		zoneID = pgMeta.ZoneID
+	}
+
+	client, err := nbsFactory.GetClient(ctx, zoneID)
+
+	return client, err;
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 type service struct {
@@ -196,32 +231,15 @@ func (s *service) DescribePlacementGroup(
 		)
 	}
 
-	pgMeta, err := s.resourceStorage.GetPlacementGroupMeta(
+	client, err := getClientByGroupSelector(
 		ctx,
+		s.resourceStorage,
+		s.nbsFactory,
+		s.cellSelector,
 		req.GroupId.GroupId,
+		req.GroupId.ZoneId,
 	)
-	if err != nil {
-		return nil, err
-	}
 
-	zoneID := req.GroupId.ZoneId
-	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
-		zoneCells, err := s.cellSelector.ResolveCells(req.GroupId.ZoneId)
-		if err != nil {
-			return nil, err
-		}
-		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
-			return nil, errors.NewNonRetriableErrorf(
-				"placement group %v is in zone %v, not in requested zone %v",
-				req.GroupId.GroupId,
-				pgMeta.ZoneID,
-				req.GroupId.ZoneId,
-			)
-		}
-		zoneID = pgMeta.ZoneID
-	}
-
-	client, err := s.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return nil, err
 	}
