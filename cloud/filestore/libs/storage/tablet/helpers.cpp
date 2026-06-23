@@ -332,18 +332,16 @@ void ApplySoftBackpressureParameters(
     const TStorageConfig& storageConfig,
     TDefaultParameters& parameters)
 {
-    const ui32 maxWriteBandwidth =
+    const ui64 maxWriteBandwidth =
         storageConfig.GetSoftBackpressureMaxWriteBandwidth();
     if (maxWriteBandwidth) {
-        parameters.MaxWriteBandwidth =
-            static_cast<ui64>(maxWriteBandwidth) * 1_MB;
+        parameters.MaxWriteBandwidth = maxWriteBandwidth * 1_MB;
     }
 
-    const ui32 maxReadBandwidth =
+    const ui64 maxReadBandwidth =
         storageConfig.GetSoftBackpressureMaxReadBandwidth();
     if (maxReadBandwidth) {
-        parameters.MaxReadBandwidth =
-            static_cast<ui64>(maxReadBandwidth) * 1_MB;
+        parameters.MaxReadBandwidth = maxReadBandwidth * 1_MB;
     }
 
     const ui32 maxWriteIops =
@@ -357,6 +355,22 @@ void ApplySoftBackpressureParameters(
     if (maxReadIops) {
         parameters.MaxReadIops = maxReadIops;
     }
+}
+
+TThrottlerConfig BuildThrottlerConfig(
+    const TStorageConfig& storageConfig,
+    const NProto::TFileStorePerformanceProfile& performanceProfile)
+{
+    TThrottlerConfig config;
+    Convert(performanceProfile, config);
+
+    const bool throttlingEnabled =
+        storageConfig.GetThrottlingEnabled() && config.ThrottlingEnabled;
+    if (storageConfig.GetSoftBackpressureEnabled() && !throttlingEnabled) {
+        ApplySoftBackpressureParameters(storageConfig, config.DefaultParameters);
+    }
+
+    return config;
 }
 
 bool IsLockingAllowed(

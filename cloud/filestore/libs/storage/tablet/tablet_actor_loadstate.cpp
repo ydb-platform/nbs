@@ -245,8 +245,9 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         WaitReadyRequests.pop_front();
     }
 
-    TThrottlerConfig config;
-    Convert(args.FileSystem.GetPerformanceProfile(), config);
+    const auto config = BuildThrottlerConfig(
+        *Config,
+        args.FileSystem.GetPerformanceProfile());
 
     LoadState(
         Executor()->Generation(),
@@ -294,7 +295,6 @@ void TIndexTabletActor::CompleteAdapterLoadState(
 
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
-    SoftBackpressureThrottlingActive = false;
     ResetThrottlingPolicy();
 
     if (FastShardServer) {
@@ -366,8 +366,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
         WaitReadyRequests.pop_front();
     }
 
-    TThrottlerConfig config;
-    Convert(args.FileSystem.GetPerformanceProfile(), config);
+    const auto config = BuildThrottlerConfig(
+        *Config,
+        args.FileSystem.GetPerformanceProfile());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Initializing tablet state");
@@ -528,7 +529,6 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
-    SoftBackpressureThrottlingActive = false;
     ResetThrottlingPolicy();
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,

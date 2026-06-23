@@ -80,13 +80,8 @@ void TIndexTabletActor::HandleUpdateLeakyBucketCounters(
     const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& /*ev*/,
     const NActors::TActorContext& ctx)
 {
-    const bool throttlingEnabled =
-        Config->GetThrottlingEnabled() &&
-        GetPerformanceProfile().GetThrottlingEnabled();
-    if (throttlingEnabled || SoftBackpressureThrottlingActive) {
-        // update write cost multiplier for metrics
-        UpdateWriteCostMultiplierDueToBackpressure();
-    }
+    // update write cost multiplier for metrics
+    UpdateWriteCostMultiplierDueToBackpressure();
 
     const ui64 currentRate = std::ceil(
         GetThrottlingPolicy().CalculateCurrentSpentBudgetShare(ctx.Now()) * 100);
@@ -179,10 +174,6 @@ bool TIndexTabletActor::ThrottleIfNeeded(
     const bool softBackpressureThrottlingEnabled =
         !throttlingEnabled &&
         CalculateWriteCostMultiplierBackpressure() > 0.0;
-
-    SetSoftBackpressureThrottlingActive(
-        softBackpressureThrottlingEnabled,
-        hasPostponedRequests);
 
     if (!throttlingEnabled &&
         !softBackpressureThrottlingEnabled &&

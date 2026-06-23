@@ -450,31 +450,6 @@ void TIndexTabletActor::ResetThrottlingPolicy()
     }
 }
 
-void TIndexTabletActor::SetSoftBackpressureThrottlingActive(
-    bool active,
-    bool hasPostponedRequests)
-{
-    if (SoftBackpressureThrottlingActive == active) {
-        return;
-    }
-
-    if (hasPostponedRequests) {
-        return;
-    }
-
-    SoftBackpressureThrottlingActive = active;
-
-    TThrottlerConfig config;
-    Convert(GetPerformanceProfile(), config);
-    if (SoftBackpressureThrottlingActive) {
-        ApplySoftBackpressureParameters(*Config, config.DefaultParameters);
-    }
-    AccessThrottlingPolicy().Reset(config);
-    ResetThrottlingPolicy();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TRequest>
 NProto::TError TIndexTabletActor::ValidateWriteRequest(
     const TActorContext& ctx,

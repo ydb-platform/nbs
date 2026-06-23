@@ -160,6 +160,10 @@ void Convert(
     const NProto::TFileStorePerformanceProfile& src,
     TThrottlerConfig& dst);
 
+TThrottlerConfig BuildThrottlerConfig(
+    const TStorageConfig& storageConfig,
+    const NProto::TFileStorePerformanceProfile& performanceProfile);
+
 void ApplySoftBackpressureParameters(
     const TStorageConfig& storageConfig,
     TDefaultParameters& parameters);

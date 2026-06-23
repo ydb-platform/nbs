@@ -1,5 +1,7 @@
 #include "tablet_actor.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/string/join.h>
@@ -287,8 +289,9 @@ void TIndexTabletActor::ExecuteTx_UpdateConfig(
 
     TIndexTabletDatabase db(tx.DB);
 
-    TThrottlerConfig config;
-    Convert(args.FileSystem.GetPerformanceProfile(), config);
+    const auto config = BuildThrottlerConfig(
+        *Config,
+        args.FileSystem.GetPerformanceProfile());
 
     UpdateConfig(db, *Config, args.FileSystem, config);
 }
@@ -301,7 +304,6 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     UpdateLogTag();
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
-    SoftBackpressureThrottlingActive = false;
     ResetThrottlingPolicy();
 
     ApplyStorageConfigOverrides(
