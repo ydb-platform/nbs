@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/iterator/enumerate.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -2675,20 +2676,32 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     void DoTestSoftBackpressureThrottlingDefaults(
         const TFileSystemConfig& tabletConfig,
         bool throttlingEnabled,
-        ui32 expectedError)
+        ui32 expectedError,
+        bool enableSoftBackpressureViaFeaturesConfig)
     {
         const ui32 block = tabletConfig.BlockSize;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetThrottlingEnabled(throttlingEnabled);
         storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
-        storageConfig.SetSoftBackpressureEnabled(true);
+        if (!enableSoftBackpressureViaFeaturesConfig) {
+            storageConfig.SetSoftBackpressureEnabled(true);
+        }
         storageConfig.SetSoftBackpressureMaxWriteBandwidth(1);
         storageConfig.SetSoftBackpressureMaxWriteIops(1);
         storageConfig.SetFlushThresholdForBackpressureSoft(block);
         storageConfig.SetFlushThresholdForBackpressure(3 * block);
 
         TTestEnv env({}, storageConfig);
+
+        if (enableSoftBackpressureViaFeaturesConfig) {
+            NCloud::NProto::TFeaturesConfig featuresConfigProto;
+            auto* feature = featuresConfigProto.AddFeatures();
+            feature->SetName("SoftBackpressureEnabled");
+            feature->MutableWhitelist()->AddCloudIds("test_cloud");
+            env.GetStorageConfig()->SetFeaturesConfig(
+                NFeatures::TFeaturesConfig(featuresConfigProto));
+        }
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2697,7 +2710,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             env.GetRuntime(),
             nodeIdx,
             tabletId,
-            tabletConfig);
+            tabletConfig,
+            !enableSoftBackpressureViaFeaturesConfig);
         tablet.InitSession("client", "session");
 
         TFileSystemConfig config = tabletConfig;
@@ -2750,7 +2764,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         DoTestSoftBackpressureThrottlingDefaults(
             tabletConfig,
             false,
-            E_FS_THROTTLED);
+            E_FS_THROTTLED,
+            false);
     }
 
     TABLET_TEST_16K(ShouldNotApplySoftBackpressureDefaultsToEnabledThrottling)
@@ -2758,7 +2773,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         DoTestSoftBackpressureThrottlingDefaults(
             tabletConfig,
             true,
-            S_OK);
+            S_OK,
+            false);
+    }
+
+    TABLET_TEST_16K(ShouldRebuildSoftBackpressureThrottlingAfterUpdateConfig)
+    {
+        DoTestSoftBackpressureThrottlingDefaults(
+            tabletConfig,
+            false,
+            E_FS_THROTTLED,
+            true);
     }
 
     TABLET_TEST_16K(

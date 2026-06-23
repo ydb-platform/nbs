@@ -45,6 +45,18 @@ NProto::TNode CreateAttrs(NProto::ENodeType type, int mode, ui64 size, ui64 uid,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsValidPerformanceProfile(
+    const NProto::TFileStorePerformanceProfile& profile)
+{
+    return profile.GetMaxReadIops()
+        && profile.GetMaxReadBandwidth()
+        && profile.GetMaxPostponedWeight()
+        && profile.GetMaxPostponedTime()
+        && profile.GetDefaultPostponedRequestWeight();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TNode CreateRegularAttrs(ui32 mode, ui32 uid, ui32 gid)
 {
     return CreateAttrs(NProto::E_REGULAR_NODE, mode, 0, uid, gid);
@@ -362,7 +374,9 @@ TThrottlerConfig BuildThrottlerConfig(
     const NProto::TFileStorePerformanceProfile& performanceProfile)
 {
     TThrottlerConfig config;
-    Convert(performanceProfile, config);
+    if (IsValidPerformanceProfile(performanceProfile)) {
+        Convert(performanceProfile, config);
+    }
 
     const bool throttlingEnabled =
         storageConfig.GetThrottlingEnabled() && config.ThrottlingEnabled;

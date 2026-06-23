@@ -160,6 +160,9 @@ void Convert(
     const NProto::TFileStorePerformanceProfile& src,
     TThrottlerConfig& dst);
 
+bool IsValidPerformanceProfile(
+    const NProto::TFileStorePerformanceProfile& profile);
+
 TThrottlerConfig BuildThrottlerConfig(
     const TStorageConfig& storageConfig,
     const NProto::TFileStorePerformanceProfile& performanceProfile);
