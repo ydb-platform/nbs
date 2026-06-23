@@ -1489,7 +1489,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         UNIT_ASSERT(subgroup);
         UNIT_ASSERT_VALUES_EQUAL(
             4,
-            subgroup->GetCounter("Compaction.Count")->GetAtomic());
+            subgroup->FindSubgroup("request", "Compaction")
+                ->GetCounter("Count")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldMarkNodeRefsExhaustive)

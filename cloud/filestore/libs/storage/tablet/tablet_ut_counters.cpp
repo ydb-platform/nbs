@@ -454,54 +454,70 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         }, true);
         Visitor.ValidateExpectedCounters({
             {{
-                {"sensor", "WriteBlob.Count"},
+                {"sensor", "Count"},
+                {"request", "WriteBlob"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "ReadBlob.Count"},
+                {"sensor", "Count"},
+                {"request", "ReadBlob"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "PatchBlob.Count"},
+                {"sensor", "Count"},
+                {"request", "PatchBlob"},
                 {"filesystem", "test"}}, 0},
             {{
-                {"sensor", "WriteData.Count"},
+                {"sensor", "Count"},
+                {"request", "WriteData"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "ReadData.Count"},
+                {"sensor", "Count"},
+                {"request", "ReadData"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "DescribeData.Count"},
+                {"sensor", "Count"},
+                {"request", "DescribeData"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "GenerateBlobIds.Count"},
+                {"sensor", "Count"},
+                {"request", "GenerateBlobIds"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "AddData.Count"},
+                {"sensor", "Count"},
+                {"request", "AddData"},
                 {"filesystem", "test"}}, 1},
         });
         Visitor.ValidateExpectedCounters({
             {{
-                {"sensor", "WriteBlob.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "WriteBlob"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "ReadBlob.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "ReadBlob"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "PatchBlob.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "PatchBlob"},
                 {"filesystem", "test"}}, 0},
             {{
-                {"sensor", "WriteData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "WriteData"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "ReadData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "ReadData"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "DescribeData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "DescribeData"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "GenerateBlobIds.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "GenerateBlobIds"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "AddData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "AddData"},
                 {"filesystem", "test"}}, sz},
             {{
                 {"sensor", "CurrentLoad"},
@@ -589,7 +605,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         for (const auto& requestName: requestNames) {
             expectedCounters.push_back(std::make_pair(
                 TVector<TTestRegistryVisitor::TLabel>({
-                    {"sensor", Sprintf("%s.TimeSumUs", requestName)},
+                    {"sensor", "TimeSumUs"},
+                    {"request", requestName},
                     {"filesystem", "test"}
                 }),
                 latencySensorPredicate

@@ -3111,7 +3111,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             ->FindSubgroup("component", "storage")
             ->FindSubgroup("type", "hdd");
         UNIT_ASSERT_LT(
-            tabletCounters->GetCounter("GetStorageStats.TimeSumUs")
+            tabletCounters->FindSubgroup("request", "GetStorageStats")
+                ->GetCounter("TimeSumUs")
                 ->GetAtomic(),
             10'000'000);
     }
@@ -5328,28 +5329,44 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // counters->OutputPlainText(Cerr);
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            counters->GetCounter("CreateHandle.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateHandle")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            counters->GetCounter("CreateHandleInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateHandleInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            counters->GetCounter("CreateNode.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateNode")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             6,
-            counters->GetCounter("CreateNodeInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateNodeInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("GetNodeAttr.Count")->GetAtomic());
+            counters->FindSubgroup("request", "GetNodeAttr")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("GetNodeAttrInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "GetNodeAttrInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("UnlinkNode.Count")->GetAtomic());
+            counters->FindSubgroup("request", "UnlinkNode")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("UnlinkNodeInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "UnlinkNodeInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
     }
 
     SERVICE_TEST(ShouldCreateFilesInFileShards)

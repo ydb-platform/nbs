@@ -65,7 +65,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{{"filesystem", "test"},
-              {"sensor", "CreateHandle.GuestKeepCacheSet"}},
+              {"sensor", "GuestKeepCacheSet"},
+              {"request", "CreateHandle"}},
              2},
         });
     }
@@ -144,7 +145,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
               {"sensor", "HandleStatsByNodeSumTotalSize"}},                    \
              sumTotalSize},                                                    \
             {{{"filesystem", "test"},                                          \
-              {"sensor", "CreateHandle.GuestKeepCacheSet"}},                   \
+              {"sensor", "GuestKeepCacheSet"},                                 \
+              {"request", "CreateHandle"}},                                    \
              keepCacheSet},                                                    \
         });                                                                    \
     }
