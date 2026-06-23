@@ -1,21 +1,13 @@
-UNITTEST_FOR(cloud/blockstore/libs/storage/volume_balancer)
-
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+# The actor-level balancer tests pull in the full storage test runtime and YDB testlib.
+# With UBSAN this currently produces a binary that exceeds x86_64 PC-relative
+# relocation limits during linking. Keep the smaller state tests enabled there.
+IF (SANITIZER_TYPE == "undefined")
+    RECURSE_FOR_TESTS(
+        state
+    )
 ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+    RECURSE_FOR_TESTS(
+        balancer
+        state
+    )
 ENDIF()
-
-SRCS(
-    volume_balancer_ut.cpp
-    volume_balancer_state_ut.cpp
-)
-
-PEERDIR(
-    cloud/blockstore/libs/diagnostics
-    cloud/blockstore/libs/storage/testlib
-)
-
-YQL_LAST_ABI_VERSION()
-
-END()
