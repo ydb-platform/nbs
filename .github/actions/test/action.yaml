@@ -636,7 +636,7 @@ runs:
             echo "empty_ya_bin=no" >> $GITHUB_OUTPUT
             echo "::group::upload-ya-dir"
 
-            df -h
+            df -h || true
             EXTENSION=tar.xz
             if [ "$EXTENSION" = "tar.zst" ] || [ "$EXTENSION" = "tar.zstd" ]; then COMPRESS_ARGS='zstd -16 -T60'; fi
             if [ "$EXTENSION" = "tar.xz" ]; then COMPRESS_ARGS='pixz -1'; fi
@@ -647,7 +647,7 @@ runs:
             time aws s3 cp --no-progress /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}"
             echo "${S3_WEBSITE_PREFIX}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_web_url.txt
             echo "${S3_BUCKET_PATH}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_s3_url.txt
-            df -h
+            df -h || true
             echo "::endgroup::"
         fi
     - name: upload ya url to s3 on success
@@ -672,7 +672,9 @@ runs:
     - name: show free space
       if: always()
       shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: df -h
+      run: |
+        mount || true
+        df -h || true
 
     - name: clean up
       if: always()
