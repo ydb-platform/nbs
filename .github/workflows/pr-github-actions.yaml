@@ -155,7 +155,7 @@ jobs:
         continue-on-error: true
 
       - name: set up dependencies
-        run: pip install -r .github/scripts/requirements_dev.txt
+        run: pip install -r .github/packer/scripts/requirements_dev.txt
 
       - name: Prepare s3
         if: ${{ env.ACT != 'true' }}
@@ -275,7 +275,7 @@ jobs:
       - name: set up dependencies
         run: |
           pip install -r .github/scripts/requirements.txt
-          pip install -r .github/scripts/requirements_dev.txt
+          pip install -r .github/packer/scripts/requirements_dev.txt
       - name: flake8
         id: flake8
         uses: ./.github/actions/lint_report

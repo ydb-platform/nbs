@@ -439,19 +439,25 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
         const ui64 CommitId;
         const TCompactionOptions CompactionOptions;
+        const bool SplitCompactionTxEnabled;
 
         TVector<TRangeCompaction> RangeCompactions;
         TInstant TxStarted;
+
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlockMasks;
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlobMetas;
 
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
                 TCompactionOptions compactionOptions,
+                bool splitCompactionTxEnabled,
                 const TVector<std::pair<ui32, TBlockRange32>>& ranges,
                 TInstant txStarted)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , CompactionOptions(compactionOptions)
+            , SplitCompactionTxEnabled(splitCompactionTxEnabled)
             , TxStarted(txStarted)
         {
             RangeCompactions.reserve(ranges.size());
@@ -465,6 +471,8 @@ struct TTxPartition
             for (auto& range: RangeCompactions) {
                 range.Clear();
             }
+            BlobsToReadBlockMasks.clear();
+            BlobsToReadBlobMetas.clear();
         }
     };
 
@@ -511,6 +519,7 @@ struct TTxPartition
             bool Filled = false;
             ui64 MaxCommitId = 0;
         };
+
         TVector<TBlockInfo> BlockInfos;
         ui32 FilledBlockCount = 0;
 

@@ -373,25 +373,25 @@ func TestTransferFromFilesystemToSnapshotSkipsInvalidNodeIDs(t *testing.T) {
 	}
 
 	validNode := nfs.Node{
-		NodeID:   123,
-		ParentID: nfs.RootNodeID,
-		Name:     "valid",
-		Type:     nfs.NODE_KIND_FILE,
-		Links:    1,
+		NodeID:       123,
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "valid",
+		Type:         nfs.NODE_KIND_FILE,
+		Links:        1,
 	}
 	anotherValidNode := nfs.Node{
-		NodeID:   456,
-		ParentID: nfs.RootNodeID,
-		Name:     "another-valid",
-		Type:     nfs.NODE_KIND_FILE,
-		Links:    1,
+		NodeID:       456,
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "another-valid",
+		Type:         nfs.NODE_KIND_FILE,
+		Links:        1,
 	}
 	invalidNode := nfs.Node{
-		NodeID:   nfs.InvalidNodeID,
-		ParentID: nfs.RootNodeID,
-		Name:     "invalid",
-		Type:     nfs.NODE_KIND_FILE,
-		Links:    1,
+		NodeID:       nfs.InvalidNodeID,
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "invalid",
+		Type:         nfs.NODE_KIND_FILE,
+		Links:        1,
 	}
 
 	factoryMock := nfs_mocks.NewFactoryMock()
@@ -578,10 +578,10 @@ func TestTransferFromFilesystemToSnapshotAndBackWithDeviceHardlink(t *testing.T)
 	dir2Node, err := sourceSession.GetNodeAttr(f.ctx, nfs.RootNodeID, "dir2")
 	require.NoError(t, err)
 	_, err = sourceSession.CreateNode(f.ctx, nfs.Node{
-		ParentID: dir2Node.NodeID,
-		NodeID:   deviceNode.NodeID,
-		Name:     deviceLinkName,
-		Type:     nfs.NODE_KIND_LINK,
+		ParentNodeID: dir2Node.NodeID,
+		NodeID:       deviceNode.NodeID,
+		Name:         deviceLinkName,
+		Type:         nfs.NODE_KIND_LINK,
 	})
 	require.NoError(t, err)
 

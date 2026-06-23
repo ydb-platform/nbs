@@ -449,10 +449,10 @@ func TestFilesystemSnapshotHardlinks(t *testing.T) {
 				dir.Name,
 			)
 			_, err := session.CreateNode(ctx, nfs.Node{
-				ParentID: dir.NodeID,
-				NodeID:   file.NodeID,
-				Name:     linkName,
-				Type:     nfs.NODE_KIND_LINK,
+				ParentNodeID: dir.NodeID,
+				NodeID:       file.NodeID,
+				Name:         linkName,
+				Type:         nfs.NODE_KIND_LINK,
 			})
 			require.NoError(t, err)
 		}

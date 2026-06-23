@@ -78,6 +78,7 @@ private:
     typename TMethod::TRequest::ProtoRecordType Request;
     const TBlockRange64 Range;
     const TString DiskId;
+    const TChildLogTitle LogTitle;
     const NActors::TActorId ParentActorId;
     const ui64 RequestIdentityKey;
     const bool ShouldReportBlockRangeOnFailure;
@@ -97,6 +98,7 @@ public:
         typename TMethod::TRequest::ProtoRecordType request,
         const TBlockRange64 range,
         TString diskId,
+        TChildLogTitle logTitle,
         TActorId parentActorId,
         ui64 requestIdentityKey,
         bool shouldReportBlockRangeOnFailure);
@@ -142,6 +144,7 @@ TRequestActor<TMethod>::TRequestActor(
         typename TMethod::TRequest::ProtoRecordType request,
         const TBlockRange64 range,
         TString diskId,
+        TChildLogTitle logTitle,
         TActorId parentActorId,
         ui64 requestIdentityKey,
         bool shouldReportBlockRangeOnFailure)
@@ -150,6 +153,7 @@ TRequestActor<TMethod>::TRequestActor(
     , Request(std::move(request))
     , Range(range)
     , DiskId(std::move(diskId))
+    , LogTitle(std::move(logTitle))
     , ParentActorId(parentActorId)
     , RequestIdentityKey(requestIdentityKey)
     , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
@@ -242,8 +246,8 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Read range %s: %s",
-                DiskId.c_str(),
+                "%s Read range %s: %s",
+                LogTitle.GetWithTime().c_str(),
                 DescribeRange(Range).c_str(),
                 errorMessage.c_str());
 
@@ -295,9 +299,9 @@ void TRequestActor<TMethod>::HandleChecksumUndelivery(
     Y_UNUSED(ev);
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s (ChecksumBlocks) request undelivered to some nonrepl"
+        "%s %s (ChecksumBlocks) request undelivered to some nonrepl"
         " partitions",
-        DiskId.c_str(),
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
     *Response.MutableError() = MakeError(E_REJECTED, TStringBuilder()
@@ -349,8 +353,8 @@ void TRequestActor<TMethod>::HandleUndelivery(
     Y_UNUSED(ev);
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s request undelivered to some nonrepl partitions",
-        DiskId.c_str(),
+        "%s %s request undelivered to some nonrepl partitions",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
     *Response.MutableError() = MakeError(E_REJECTED, TStringBuilder()
@@ -369,8 +373,8 @@ void TRequestActor<TMethod>::HandleResponse(
 
     if (HasError(record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s got error from nonreplicated partition: %s",
-            DiskId.c_str(),
+            "%s %s got error from nonreplicated partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(record.GetError()).c_str());
 
@@ -639,6 +643,7 @@ void TMirrorPartitionActor::ReadBlocks(
         std::move(record),
         blockRange,
         State.GetReplicaInfos()[0].Config->GetName(),
+        LogTitle.GetChild(GetCycleCount()),
         SelfId(),
         requestIdentityKey,
         shouldReportBlockRangeOnFailure);

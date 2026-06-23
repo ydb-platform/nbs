@@ -30,6 +30,18 @@ class TPartitionDatabase;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TChecksumFixup
+{
+    // Index into TRangeCompactionInfo::BlockChecksums that must be filled
+    // with the checksum from AffectedBlobs[BlobId].BlobMeta after the
+    // CompactionReadBlobInfo TX response arrives.
+    size_t ChecksumIndex = 0;
+    TPartialBlobId BlobId;
+    ui16 BlobOffset = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRangeCompactionInfo
 {
     const TBlockRange32 BlockRange;
@@ -40,7 +52,7 @@ struct TRangeCompactionInfo
     const TBlockMask ZeroBlobSkipMask;
     const ui32 BlobsSkippedByCompaction;
     const ui32 BlocksSkippedByCompaction;
-    const TVector<ui32> BlockChecksums;
+    TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
     TGuardedBuffer<TBlockBuffer> BlobContent;
@@ -48,6 +60,7 @@ struct TRangeCompactionInfo
     TAffectedBlobs AffectedBlobs;
     TAffectedBlocks AffectedBlocks;
     TVector<ui16> UnchangedBlobOffsets;
+    TVector<TChecksumFixup> ChecksumFixups;
     TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> Diffs;
     ui32 DiffCount = 0;
 
@@ -60,13 +73,16 @@ struct TRangeCompactionInfo
             TBlockMask zeroBlobSkipMask,
             ui32 blobsSkippedByCompaction,
             ui32 blocksSkippedByCompaction,
-            TVector<ui32> blockChecksums,
+            TVector<std::optional<ui32>> blockChecksums,
             EChannelDataKind channelDataKind,
             TBlockBuffer blobContent,
             TVector<ui32> zeroBlocks,
             TAffectedBlobs affectedBlobs,
-            TAffectedBlocks affectedBlocks);
+            TAffectedBlocks affectedBlocks,
+            TVector<TChecksumFixup> checksumFixups);
 };
+
+void ApplyChecksumFixups(TRangeCompactionInfo& rc);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -96,14 +112,14 @@ void PrepareRangeCompaction(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
     const ui64 commitId,
-    const NActors::TActorContext& ctx,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
-    const TString& logTitle);
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlockMasks,
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas);
 
 void CompleteRangeCompaction(
     const bool blobPatchingEnabled,

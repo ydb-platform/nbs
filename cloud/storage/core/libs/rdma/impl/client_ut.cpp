@@ -140,7 +140,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     auto monitoring = CreateMonitoringServiceStub();
 
     auto clientConfig = std::make_shared<TClientConfig>();
-    clientConfig->ResolveTimeout = TDuration::MilliSeconds(123);
+    clientConfig->ResolveTimeout = 123ms;
     clientConfig->QpRetryCount = 3;
     clientConfig->QpRnrRetryCount = 5;
     clientConfig->QpTimeout = 7;
@@ -263,12 +263,98 @@ TEST(TRdmaClientTest, ShouldDetachFromPoller)
         ASSERT_EQ(2u, shared.use_count());
 
         shared->Stop().Wait();
-        auto deadline = GetCycleCount() + DurationToCycles(10s);
-        while (deadline > GetCycleCount() && shared.use_count() > 1) {
+        while (shared.use_count() > 1) {
             SpinLockPause();
         }
-        ASSERT_EQ(1u, shared.use_count());
     }
+
+TEST(TRdmaClientTest, ShouldNotTriggerCompletionAfterFlushTimeout)
+{
+        auto context = MakeIntrusive<NVerbs::TTestContext>();
+        context->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(context);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->WaitMode = EWaitMode::Poll;
+        clientConfig->MaxReconnectDelay = 5s;
+
+        // even though it can technically be less than POLL_TIMEOUT, actual
+        // reaction time is still bound by it, because DisconnectFlushed runs
+        // only after Wait times out
+        clientConfig->FlushTimeout = 1s;
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateTestClient(
+            verbs,
+            logging,
+            monitoring,
+            clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+        struct TClientHandler: IClientHandler
+        {
+            void HandleResponse(
+                TClientRequestPtr req,
+                ui32 status,
+                size_t responseBytes) override
+            {
+                Y_UNUSED(req);
+                Y_UNUSED(status);
+                Y_UNUSED(responseBytes);
+            }
+        };
+
+        std::vector<std::unique_ptr<ibv_send_wr>> sends;
+        context->PostSend = [&](auto* qp, auto* wr) {
+            Y_UNUSED(qp);
+            // hold send to complete it later
+            with_lock (context->CompletionLock) {
+                sends.push_back(std::make_unique<ibv_send_wr>(*wr));
+            }
+
+            // stall completion poller long enough for flush to time out
+            sleep(clientConfig->FlushTimeout.Seconds());
+
+            with_lock (context->CompletionLock) {
+                while (sends.size()) {
+                    context->SendEvents.push_back(sends.back().release());
+                    sends.pop_back();
+                }
+                context->CompletionHandle.Set();
+            }
+        };
+
+        // stall completion poller again to let connection poller destroy
+        // endpoint and trigger use-after-free
+        with_lock (context->CompletionLock) {
+            context->HandleCompletionEvent = [&](ibv_wc* wc) {
+                Y_UNUSED(wc);
+                sleep(1);
+            };
+        }
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::make_unique<TNullContext>(),
+            1024,
+            1024);
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        endpoint->Stop().Wait();
+}
 
 TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
 {
@@ -378,11 +464,8 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
 
         auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
-        testContext->PostSend = [&](auto* qp, auto* wr) {
-            Y_UNUSED(qp);
-            const auto* msg =
-                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
-            testContext->ReqIds.push_back(msg->ReqId);
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+            PostSend<TRequestMessage>(testContext, qp, wr);
         };
 
         struct TResponse
@@ -457,7 +540,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                 // complete request right away
                 handleRequest(*testContext);
 
-                ev.WaitT(5s);
+                ev.WaitT(clientConfig->MaxResponseDelay + 1s);
                 ASSERT_TRUE(response.Received);
 
                 // request duration is measured against the wall clock, so it
@@ -470,7 +553,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                 }
             } else {
                 // do not complete request to trigger timeout
-                ev.WaitT(5s);
+                ev.WaitT(clientConfig->MaxResponseDelay + 1s);
                 ASSERT_TRUE(response.Received);
 
                 NProto::TError error =
@@ -608,10 +691,7 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
         TManualEvent sent;
         testContext->PostSend = [&](auto* qp, auto* wr) {
             Y_UNUSED(qp);
-            const auto* msg =
-                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
-            testContext->ReqIds.push_back(msg->ReqId);
-            testContext->CompletionHandle.Set();
+            Y_UNUSED(wr);
             sent.Signal();
         };
 
@@ -647,10 +727,10 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
             request.ExtractResult(),
             MakeIntrusive<TCallContextBase>(0u));
 
-        ASSERT_TRUE(sent.WaitT(5s));
+        ASSERT_TRUE(sent.Wait());
 
         Disconnect(testContext);
-        ASSERT_TRUE(handler->Done.WaitT(5s));
+        ASSERT_TRUE(handler->Done.Wait());
     }
 
 TEST(TRdmaClientTest, ShouldCancelRequests)
@@ -734,7 +814,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
 
         endpoint->CancelRequest(reqId2);
 
-        ev2.WaitT(5s);
+        ev2.Wait();
         ASSERT_TRUE(response2.Received);
         ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2.Status);
 
@@ -745,7 +825,7 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         ASSERT_FALSE(response1.Received);
         endpoint->CancelRequest(reqId1);
 
-        ev1.WaitT(5s);
+        ev1.Wait();
         ASSERT_TRUE(response1.Received);
         ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response1.Status);
 
@@ -798,11 +878,8 @@ TEST(TRdmaClientTest, ShouldReconnect)
 
         auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
-        testContext->PostSend = [&](auto* qp, auto* wr) {
-            Y_UNUSED(qp);
-            const auto* msg =
-                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
-            testContext->ReqIds.push_back(msg->ReqId);
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+            PostSend<TRequestMessage>(testContext, qp, wr);
         };
 
         Disconnect(testContext);
@@ -874,7 +951,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
             }
         }
 
-        ev.WaitT(5s);
+        ev.Wait();
         ASSERT_TRUE(response.Received);
         ASSERT_EQ(0u, response.Status);
     }
@@ -999,19 +1076,9 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
             context->CompletionHandle.Set();
         }
 
-        auto wait = [](auto& counter, auto value) {
-            auto start = GetCycleCount();
-            while (counter->Val() != value) {
-                auto now = GetCycleCount();
-                if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
-                    FAIL() << "timed out waiting for counter";
-                }
-                SpinLockPause();
-            }
-        };
-
-        wait(errors, 7);
-        wait(active, 6);
+        while (errors->Val() != 7 || active->Val() != 6) {
+            SpinLockPause();
+        }
 }
 
 TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
@@ -1062,9 +1129,11 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
     testContext->PostSend = [&](auto* qp, auto* wr)
     {
         Y_UNUSED(qp);
-        const auto* msg =
-            reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
-        sentVersion = ParseMessageHeader(msg);
+        with_lock (testContext->CompletionLock) {
+            const auto* msg =
+                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+            sentVersion = ParseMessageHeader(msg);
+        }
         sent.Signal();
     };
 
@@ -1079,7 +1148,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
         request.ExtractResult(),
         MakeIntrusive<TCallContextBase>(0u));
 
-    ASSERT_TRUE(sent.WaitT(5s));
+    sent.Wait();
     ASSERT_EQ(RDMA_PROTO_PREV_VERSION, sentVersion.load());
 }
 

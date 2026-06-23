@@ -60,6 +60,13 @@ public:
         return TString {};
     }
 
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        Y_UNUSED(path);
+
+        return TString{};
+    }
+
     TResultOrError<bool> IsSsd(const TString& path) override
     {
         Y_UNUSED(path);
@@ -67,7 +74,7 @@ public:
         return IsDeviceSsd;
     }
 
-    NProto::TError Sanitize(const TString& ctrlPath) override
+    NProto::TError StartSanitize(const TString& ctrlPath) override
     {
         Y_UNUSED(ctrlPath);
 

@@ -130,7 +130,6 @@ private:
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
     const ui64 VolumeTabletId;
-
     TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;

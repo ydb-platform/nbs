@@ -434,6 +434,34 @@ public:
         });
     }
 
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        return SafeExecute<TResultOrError<TString>>(
+            [&]
+            {
+                TFileHandle device(path, OpenExisting | RdOnly);
+
+                auto str = [](auto& arr)
+                {
+                    auto* model = std::bit_cast<const char*>(&arr[0]);
+                    auto end = std::find(model, model + sizeof(arr), '\0');
+
+                    return TString(model, end);
+                };
+
+                auto [isRot, error] = IsRotational(device);
+
+                if (!HasError(error) && isRot) {
+                    auto hd = HDIdentity(device);
+                    return str(hd.model);
+                }
+
+                auto ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
+
+                return str(ctrl.mn);
+            });
+    }
+
     TResultOrError<bool> IsSsd(const TString& path) override
     {
         return SafeExecute<TResultOrError<bool>>([&] {
@@ -449,7 +477,7 @@ public:
         });
     }
 
-    NProto::TError Sanitize(const TString& ctrlPath) override
+    NProto::TError StartSanitize(const TString& ctrlPath) override
     {
         return SafeExecute<NProto::TError>(
             [&]

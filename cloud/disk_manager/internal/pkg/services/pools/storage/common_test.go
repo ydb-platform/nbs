@@ -9,9 +9,14 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCommonGenerateBaseDiskForPool(t *testing.T) {
+func testCommonGenerateBaseDiskForPool(
+	t *testing.T,
+	adjustBaseDiskSizeToMinBaseDiskUnits bool,
+) {
+
 	maxActiveSlots := uint64(640)
 	maxBaseDiskUnits := uint64(640)
+	baseDiskOverSubscription := uint64(2)
 
 	check := func(
 		actual baseDisk,
@@ -36,13 +41,16 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 		}
 	}
 
-	generate := func(requiredSize uint64) baseDisk {
+	generate := func(imageSize uint64) baseDisk {
 		storage := &storageYDB{
 			maxActiveSlots:   maxActiveSlots,
 			maxBaseDiskUnits: maxBaseDiskUnits,
+
+			adjustBaseDiskSizeToMinBaseDiskUnits: adjustBaseDiskSizeToMinBaseDiskUnits,
+
+			baseDiskOverSubscription: baseDiskOverSubscription,
 		}
 
-		imageSize := requiredSize
 		var srcDisk *types.Disk
 
 		baseDisk := storage.generateBaseDisk(
@@ -70,17 +78,29 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 	require.Equal(t, uint64(640), baseDisk.units)
 
 	baseDisk = generate(1)
-	require.Equal(t, uint64(32<<30), baseDisk.size)
+	if adjustBaseDiskSizeToMinBaseDiskUnits {
+		require.Equal(t, uint64(192<<30), baseDisk.size)
+	} else {
+		require.Equal(t, uint64(32<<30), baseDisk.size)
+	}
 	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(30), baseDisk.units)
 
 	baseDisk = generate(32 << 30)
-	require.Equal(t, uint64(32<<30), baseDisk.size)
+	if adjustBaseDiskSizeToMinBaseDiskUnits {
+		require.Equal(t, uint64(192<<30), baseDisk.size)
+	} else {
+		require.Equal(t, uint64(32<<30), baseDisk.size)
+	}
 	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(30), baseDisk.units)
 
 	baseDisk = generate((32 << 30) + 1)
-	require.Equal(t, uint64(64<<30), baseDisk.size)
+	if adjustBaseDiskSizeToMinBaseDiskUnits {
+		require.Equal(t, uint64(192<<30), baseDisk.size)
+	} else {
+		require.Equal(t, uint64(64<<30), baseDisk.size)
+	}
 	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(30), baseDisk.units)
 
@@ -120,6 +140,41 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 	require.Equal(t, uint64(4096<<30), baseDisk.size)
 	require.Equal(t, uint64(1), baseDisk.maxActiveSlots)
 	require.Equal(t, uint64(1), baseDisk.units)
+
+	// Tests without base disk oversubscription.
+	maxActiveSlots = 640
+	maxBaseDiskUnits = 640
+	baseDiskOverSubscription = 1
+
+	baseDisk = generate(192 << 30)
+	require.Equal(t, uint64(192<<30), baseDisk.size)
+	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(30), baseDisk.units)
+
+	baseDisk = generate((192 << 30) + 1)
+	require.Equal(t, uint64(224<<30), baseDisk.size)
+	require.Equal(t, uint64(35), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(35), baseDisk.units)
+
+	baseDisk = generate(1024 << 30)
+	require.Equal(t, uint64(1024<<30), baseDisk.size)
+	require.Equal(t, uint64(160), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(160), baseDisk.units)
+
+	baseDisk = generate(2048 << 30)
+	require.Equal(t, uint64(2048<<30), baseDisk.size)
+	require.Equal(t, uint64(320), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(320), baseDisk.units)
+
+	baseDisk = generate(4096 << 30)
+	require.Equal(t, uint64(4096<<30), baseDisk.size)
+	require.Equal(t, uint64(640), baseDisk.maxActiveSlots)
+	require.Equal(t, uint64(640), baseDisk.units)
+}
+
+func TestCommonGenerateBaseDiskForPool(t *testing.T) {
+	testCommonGenerateBaseDiskForPool(t, false)
+	testCommonGenerateBaseDiskForPool(t, true)
 }
 
 func TestCommonFreeSlots(t *testing.T) {
@@ -178,8 +233,8 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	require.Equal(t, uint64(1), slot1.allottedSlots)
 	require.Equal(t, uint64(1), slot1.allottedUnits)
 
-	hddUnit := overlayDiskOversubscription * baseDiskUnitSize
-	ssdUnit := hddUnit / ssdUnitMultiplier
+	hddUnit := overlayDiskOverSubscription * baseDiskUnitSize
+	ssdUnit := hddUnit / regularUnitsPerSSDUnit
 
 	slot2 := &slot{}
 	slot2.overlayDiskKind = types.DiskKind_DISK_KIND_SSD
