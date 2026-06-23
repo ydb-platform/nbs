@@ -109,9 +109,9 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
             TVector<NActors::TActorId>{SrcActorId},
             std::move(msg->Record),
-            DiskId,
             SelfId(),   // parentActorId
-            WriteAndZeroRequestsInProgress.AddWriteRequest(range));
+            WriteAndZeroRequestsInProgress.AddWriteRequest(range),
+            LogTitle.GetChild(GetCycleCount()));
     } else {
         NCloud::Register<TMigrationRequestActor<TMethod>>(
             ctx,

@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/mirror_request_actor.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_common.h>
 
@@ -50,10 +51,10 @@ private:
     const TRequestInfoPtr RequestInfo;
     typename TMethod::TRequest::ProtoRecordType Request;
     const TBlockRange64 Range;
-    const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 NonreplicatedRequestCounter;
     const size_t RoundRobinSeed;
+    const TChildLogTitle LogTitle;
 
     TVector<TReplicaDiscovery> ReplicasDiscovery;
     size_t DiscoveryResponseCount = 0;
@@ -68,10 +69,10 @@ public:
         TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
         TBlockRange64 range,
-        TString diskId,
         NActors::TActorId parentActorId,
         ui64 nonreplicatedRequestCounter,
-        size_t roundRobinSeed);
+        size_t roundRobinSeed,
+        const TLogTitle& logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -125,17 +126,19 @@ TMultiAgentWriteActor<TMethod>::TMultiAgentWriteActor(
         TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
         TBlockRange64 range,
-        TString diskId,
         NActors::TActorId parentActorId,
         ui64 nonreplicatedRequestCounter,
-        size_t roundRobinSeed)
+        size_t roundRobinSeed,
+        const TLogTitle& logTitle)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , Range(range)
-    , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , RoundRobinSeed(roundRobinSeed)
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"ma", std::monostate{}}}))
 {
     Y_DEBUG_ABORT_UNLESS(!replicas.empty());
 
@@ -312,8 +315,8 @@ void TMultiAgentWriteActor<TMethod>::Fallback(const NActors::TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "Fallback to TMirrorRequestActor diskId: %s Range: %s",
-        DiskId.Quote().c_str(),
+        "%s Range: %s Fallback to TMirrorRequestActor Range",
+        LogTitle.GetWithTime().c_str(),
         Range.Print().c_str());
 
     // Delegate all work to original actor.
@@ -326,9 +329,9 @@ void TMultiAgentWriteActor<TMethod>::Fallback(const NActors::TActorContext& ctx)
         std::move(RequestInfo),
         std::move(replicas),
         std::move(Request),
-        DiskId,
         ParentActorId,
-        NonreplicatedRequestCounter);
+        NonreplicatedRequestCounter,
+        LogTitle);
     TBase::Die(ctx);
 }
 
@@ -438,8 +441,8 @@ void TMultiAgentWriteActor<TMethod>::HandleOrdinaryWriteResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s got error from nonreplicated partition: %s",
-            DiskId.c_str(),
+            "%s %s got error from nonreplicated partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }
@@ -460,9 +463,9 @@ void TMultiAgentWriteActor<TMethod>::HandleDiscoveryUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] TEvGetDeviceForRangeRequest undelivered to nonrepl "
+        "%s TEvGetDeviceForRangeRequest undelivered to nonrepl "
         "partition #%lu",
-        DiskId.c_str(),
+        LogTitle.GetWithTime().c_str(),
         ev->Cookie);
 
     UpdateResponse(
@@ -484,8 +487,8 @@ void TMultiAgentWriteActor<TMethod>::HandleMultiAgentWriteUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] TMultiAgentWriteRequest undelivered to nonrepl partition",
-        DiskId.c_str());
+        "%s TMultiAgentWriteRequest undelivered to nonrepl partition",
+        LogTitle.GetWithTime().c_str());
 
     UpdateResponse(MakeError(
         E_REJECTED,
@@ -507,8 +510,8 @@ void TMultiAgentWriteActor<TMethod>::HandleOrdinaryWriteUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s request undelivered to some nonrepl partitions",
-        DiskId.c_str(),
+        "%s %s request undelivered to some nonrepl partitions",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
     UpdateResponse(MakeError(
