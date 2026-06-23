@@ -1,25 +1,12 @@
-UNITTEST_FOR(cloud/blockstore/libs/storage/volume)
-
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
-
-SRCS(
-    volume_database_ut.cpp
-    volume_lagging_agent_ut.cpp
-    volume_state_ut.cpp
-    volume_throttling_ut.cpp
-    volume_ut.cpp
-    volume_ut_broken_devices.cpp
-    volume_ut_checkpoint.cpp
-    volume_ut_checksums.cpp
-    volume_ut_session.cpp
-    volume_ut_stats.cpp
+RECURSE_FOR_TESTS(
+    database
+    lagging_agent
+    state
+    throttling
+    main
+    broken_devices
+    checkpoint
+    checksums
+    session
+    stats
 )
-
-PEERDIR(
-    cloud/blockstore/libs/rdma_test
-    cloud/blockstore/libs/storage/disk_agent/actors
-    cloud/blockstore/libs/storage/testlib
-    cloud/blockstore/libs/storage/volume/testlib
-)
-
-END()

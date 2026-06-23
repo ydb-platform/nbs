@@ -2589,6 +2589,14 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 }   // namespace NCloud::NBlockStore::NStorage
 
 template <>
+inline void Out<NCloud::NBlockStore::NStorage::THistoryLogKey>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NStorage::THistoryLogKey& key)
+{
+    out << key.Timestamp << "/" << key.SeqNo;
+}
+
+template <>
 inline void Out<NCloud::NBlockStore::NStorage::TVolumeClientState::EPipeState>(
     IOutputStream& out,
     NCloud::NBlockStore::NStorage::TVolumeClientState::EPipeState state)

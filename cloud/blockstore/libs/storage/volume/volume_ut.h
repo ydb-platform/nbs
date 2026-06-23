@@ -6,7 +6,10 @@ namespace NCloud::NBlockStore::NStorage::NTestVolumeHelpers {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockRange64 GetBlockRangeById(ui32 blockIndex);
+inline TBlockRange64 GetBlockRangeById(ui32 blockIndex)
+{
+    return TBlockRange64::WithLength(1024 * blockIndex, 1024);
+}
 
 template <uint32_t LineNumber>
 void CheckBlockContent(

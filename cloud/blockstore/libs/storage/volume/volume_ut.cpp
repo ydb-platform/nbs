@@ -28,16 +28,6 @@ using namespace NTestVolume;
 
 using namespace NTestVolumeHelpers;
 
-namespace NTestVolumeHelpers {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TBlockRange64 GetBlockRangeById(ui32 blockIndex)
-{
-    return TBlockRange64::WithLength(1024 * blockIndex, 1024);
-}
-
-}   // namespace NTestVolumeHelpers
 
 ////////////////////////////////////////////////////////////////////////////////
 
