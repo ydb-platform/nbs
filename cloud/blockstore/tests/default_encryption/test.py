@@ -2,7 +2,6 @@ import json
 import os
 import pytest
 
-import yatest.common as yatest_common
 import cloud.blockstore.tests.python.lib.daemon as daemon
 
 from cloud.blockstore.public.api.protos.encryption_pb2 import \
@@ -85,10 +84,10 @@ def start_nbs_daemon(ydb):
 
 
 @pytest.fixture(name='disk_agent')
-def start_disk_agent(ydb, nbs, agent_id):
+def start_disk_agent(ydb, nbs, agent_id, tmp_path):
 
     data_path = get_unique_path_for_current_test(
-        output_path=yatest_common.output_path(),
+        output_path=tmp_path,
         sub_folder="data")
 
     data_path = os.path.join(data_path, "dev", "disk", "by-partlabel")
