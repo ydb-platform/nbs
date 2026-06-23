@@ -96,7 +96,7 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Node struct {
-	ParentNodeID          uint64
+	ParentNodeID      uint64
 	NodeID            uint64
 	Name              string
 	Atime             uint64
@@ -123,7 +123,7 @@ func nodeFromAttr(parentNodeID uint64, name string, attr *protos.TNodeAttr) Node
 	}
 
 	return Node{
-		ParentNodeID:          parentNodeID,
+		ParentNodeID:      parentNodeID,
 		NodeID:            attr.GetId(),
 		Name:              name,
 		Atime:             attr.GetATime(),
