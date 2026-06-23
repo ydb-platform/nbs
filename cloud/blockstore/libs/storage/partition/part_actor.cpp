@@ -1077,6 +1077,23 @@ bool TPartitionActor::IsUseRecreatedBlobMetasOnCleanupEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsDynamicGarbageCompactionThrottlingEnabled() const
+{
+    return Config->GetEnableDynamicGarbageCompactionThrottling() ||
+           Config->IsDynamicGarbageCompactionThrottlingFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
+bool TPartitionActor::IsIgnoringZeroedCompactionEnabled() const
+{
+    if (IsDynamicGarbageCompactionThrottlingEnabled()) {
+        return false;
+    }
+
+    return Config->GetIgnoringZeroedCompactionEnabled();
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)

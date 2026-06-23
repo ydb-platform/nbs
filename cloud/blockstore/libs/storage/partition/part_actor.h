@@ -488,6 +488,8 @@ private:
     [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
     [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
     [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupEnabled() const;
+    [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingEnabled() const;
+    [[nodiscard]] bool IsIgnoringZeroedCompactionEnabled() const;
 
     void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
