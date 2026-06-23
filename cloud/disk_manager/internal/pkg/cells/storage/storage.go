@@ -176,13 +176,6 @@ type Storage interface {
 		zone_id string,
 		kind types.DiskKind,
 	) ([]ClusterCapacity, error)
-
-	// Returns most recent capacities aggregated across all disk kinds per
-	// cell. For each cell, free bytes are summed over all kinds.
-	GetRecentAggregatedClusterCapacities(
-		ctx context.Context,
-		zone_id string,
-	) ([]ClusterCapacity, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

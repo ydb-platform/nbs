@@ -364,6 +364,57 @@ func (s *cellSelector) selectCellForDisk(
 	}
 }
 
+func (s *cellSelector) getRecentAggregatedClusterCapacities(
+	ctx context.Context,
+	zoneID string,
+) ([]storage.ClusterCapacity, error) {
+
+	diskKinds := []types.DiskKind{
+		types.DiskKind_DISK_KIND_SSD,
+		types.DiskKind_DISK_KIND_HDD,
+		types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		types.DiskKind_DISK_KIND_SSD_MIRROR2,
+		types.DiskKind_DISK_KIND_SSD_LOCAL,
+		types.DiskKind_DISK_KIND_SSD_MIRROR3,
+		types.DiskKind_DISK_KIND_HDD_NONREPLICATED,
+		types.DiskKind_DISK_KIND_HDD_LOCAL,
+	}
+
+	aggregated := make(map[string]*storage.ClusterCapacity)
+
+	for _, kind := range diskKinds {
+		capacities, err := s.storage.GetRecentClusterCapacities(
+			ctx,
+			zoneID,
+			kind,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, c := range capacities {
+			if agg, ok := aggregated[c.CellID]; ok {
+				agg.TotalBytes += c.TotalBytes
+				agg.FreeBytes += c.FreeBytes
+			} else {
+				aggregated[c.CellID] = &storage.ClusterCapacity{
+					ZoneID:     c.ZoneID,
+					CellID:     c.CellID,
+					TotalBytes: c.TotalBytes,
+					FreeBytes:  c.FreeBytes,
+				}
+			}
+		}
+	}
+
+	result := make([]storage.ClusterCapacity, 0, len(aggregated))
+	for _, c := range aggregated {
+		result = append(result, *c)
+	}
+
+	return result, nil
+}
+
 func (s *cellSelector) selectCellForPlacementGroup(
 	ctx context.Context,
 	zoneID string,
@@ -382,10 +433,7 @@ func (s *cellSelector) selectCellForPlacementGroup(
 	case cells_config.CellSelectionPolicy_FIRST_IN_CONFIG:
 		return cells[0], nil
 	case cells_config.CellSelectionPolicy_MAX_FREE_BYTES:
-		capacities, err := s.storage.GetRecentAggregatedClusterCapacities(
-			ctx,
-			zoneID,
-		)
+		capacities, err := s.getRecentAggregatedClusterCapacities(ctx, zoneID)
 		if err != nil {
 			return "", err
 		}

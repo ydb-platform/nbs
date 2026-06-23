@@ -406,9 +406,10 @@ func TestSelectCellForPlacementGroupMaxFreeBytes(t *testing.T) {
 	}
 
 	cellStorage.On(
-		"GetRecentAggregatedClusterCapacities",
+		"GetRecentClusterCapacities",
 		ctx,
 		shardedZoneID,
+		mock.AnythingOfType("types.DiskKind"),
 	).Return([]storage.ClusterCapacity{
 		{FreeBytes: 1024, CellID: cellID1},
 		{FreeBytes: 2048, CellID: cellID2},
@@ -442,13 +443,14 @@ func TestSelectCellForPlacementGroupMaxFreeBytesFiltersStaleCells(t *testing.T) 
 	// Stale cell "zone-a-removed" has the most free space but is no longer
 	// in the config — it must be filtered out.
 	cellStorage.On(
-		"GetRecentAggregatedClusterCapacities",
+		"GetRecentClusterCapacities",
 		ctx,
 		shardedZoneID,
+		mock.AnythingOfType("types.DiskKind"),
 	).Return([]storage.ClusterCapacity{
 		{FreeBytes: 1024, CellID: cellID1},
 		{FreeBytes: 2048, CellID: cellID2},
-		{FreeBytes: 9999, CellID: "zone-a-removed"},
+		{FreeBytes: 4096, CellID: "zone-a-removed"},
 	}, nil)
 
 	selector := cellSelector{
@@ -477,9 +479,10 @@ func TestSelectCellForPlacementGroupMaxFreeBytesNoCapacities(t *testing.T) {
 	}
 
 	cellStorage.On(
-		"GetRecentAggregatedClusterCapacities",
+		"GetRecentClusterCapacities",
 		ctx,
 		shardedZoneID,
+		mock.AnythingOfType("types.DiskKind"),
 	).Return([]storage.ClusterCapacity{}, nil)
 
 	selector := cellSelector{
