@@ -2,6 +2,7 @@ import pytest
 import subprocess
 import stat
 import os
+import tempfile
 
 from pathlib import Path
 
@@ -61,6 +62,220 @@ def test_readonly_volume(mount_path, access_type, vm_mode, gid):
         raise
     finally:
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
+
+
+def get_target_path(pod_id: str, volume_name: str, access_type: str) -> Path:
+    if access_type == "block":
+        return (
+            Path("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish")
+            / pod_id
+            / volume_name
+        )
+
+    return (
+        Path("/var/lib/kubelet/pods")
+        / pod_id
+        / "volumes/kubernetes.io~csi"
+        / volume_name
+        / "mount"
+    )
+
+
+def assert_endpoints(run, volume_name: str, total: int, read_only: int):
+    endpoints = run("listendpoints", "--proto").stdout
+    assert total == endpoints.count(f'DiskId: "{volume_name}"')
+    assert read_only == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_READ_ONLY")
+
+
+def test_publish_distinguishes_remote_mount_access_modes():
+    env, run = csi.init(vm_mode=True)
+    volume_name = "example-disk"
+    volume_size = 1024 ** 3
+    pod_name = "example-pod"
+    access_type = "mount"
+    io_dir = tempfile.TemporaryDirectory()
+    io_path = Path(io_dir.name)
+    published_pvcs = []
+    staged_pvcs = []
+
+    def run_checked(*args, **kwargs):
+        result = run(*args, **kwargs)
+        assert result.returncode == 0, (
+            f"command failed: {' '.join(args)}\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}")
+        return result
+
+    def make_pvc(
+            name: str,
+            pod_id: str,
+            access_mode: str,
+            readonly: bool = False):
+        return {
+            "name": name,
+            "pod_id": pod_id,
+            "volume_id": f"{volume_name}#{name}",
+            "instance_id": name,
+            "access_mode": access_mode,
+            "readonly": readonly,
+            "target_path": str(get_target_path(pod_id, name, access_type)),
+            "staging_target_path": str(
+                Path("/var/lib/kubelet/plugins/kubernetes.io/csi/nbs.csi.nebius.ai")
+                / name
+                / "globalmount"),
+        }
+
+    def target_path(pvc) -> Path:
+        return Path(pvc["target_path"])
+
+    def stage(pvc):
+        env.csi.stage_volume(
+            pvc["volume_id"],
+            access_type,
+            instance_id=pvc["instance_id"],
+            staging_target_path=pvc["staging_target_path"],
+            access_mode=pvc["access_mode"])
+        staged_pvcs.append(pvc)
+
+    def unstage(pvc):
+        env.csi.unstage_volume(
+            pvc["volume_id"],
+            staging_target_path=pvc["staging_target_path"])
+        staged_pvcs.remove(pvc)
+
+    def publish(pvc):
+        env.csi.publish_volume(
+            pod_id=pvc["pod_id"],
+            volume_id=pvc["volume_id"],
+            pod_name=pod_name,
+            access_type=access_type,
+            instance_id=pvc["instance_id"],
+            staging_target_path=pvc["staging_target_path"],
+            target_path=pvc["target_path"],
+            readonly=pvc["readonly"],
+            access_mode=pvc["access_mode"])
+        published_pvcs.append(pvc)
+
+    def unpublish(pvc):
+        env.csi.unpublish_volume(
+            pvc["pod_id"],
+            pvc["volume_id"],
+            access_type,
+            target_path=pvc["target_path"])
+        published_pvcs.remove(pvc)
+
+    def client_config_path(pvc) -> Path:
+        path = io_path / f"{pvc['name']}.client-config.txt"
+        client_id = f"nbs.csi.nebius.ai-localhost-{pvc['instance_id']}"
+        path.write_text(
+            "ClientConfig {\n"
+            "  Host: \"localhost\"\n"
+            f"  InsecurePort: {env.nbs_port}\n"
+            f"  InstanceId: \"{pvc['instance_id']}\"\n"
+            f"  ClientId: \"{client_id}\"\n"
+            "}\n")
+        return path
+
+    def assert_shared_disk_data_visible(writer, readers):
+        payload = b"written by single-node-writer pvc\n".ljust(4096, b"\0")
+        input_path = io_path / "writer.blocks"
+        input_path.write_bytes(payload)
+
+        # VM-mode publish exposes vhost sockets; validate shared data at the NBS disk level.
+        run_checked(
+            "writeblocks",
+            "--disk-id",
+            volume_name,
+            "--start-index",
+            "0",
+            "--input",
+            str(input_path),
+            config_path=client_config_path(writer))
+
+        for reader in readers:
+            output_path = io_path / f"{reader['name']}.blocks"
+            run_checked(
+                "readblocks",
+                "--disk-id",
+                volume_name,
+                "--start-index",
+                "0",
+                "--blocks-count",
+                "1",
+                "--output",
+                str(output_path),
+                config_path=client_config_path(reader))
+            assert payload == output_path.read_bytes()
+
+    try:
+        env.csi.create_volume(name=volume_name, size=volume_size)
+
+        single_reader = make_pvc(
+            "single-reader-pvc",
+            "single-reader",
+            "single-node-reader-only")
+        stage(single_reader)
+
+        assert_endpoints(
+            run,
+            volume_name,
+            total=1,
+            read_only=1)
+
+        publish(single_reader)
+        assert "ro" == get_access_mode(str(target_path(single_reader)))
+        unpublish(single_reader)
+        unstage(single_reader)
+
+        pvcs = [
+            make_pvc("writer-pvc", "writer", "single-node-writer"),
+            make_pvc("reader1-pvc", "reader1", "multi-node-reader-only"),
+            make_pvc("reader2-pvc", "reader2", "multi-node-reader-only"),
+        ]
+
+        for pvc in pvcs:
+            stage(pvc)
+
+        assert_endpoints(
+            run,
+            volume_name,
+            total=3,
+            read_only=2)
+
+        for pvc in pvcs:
+            publish(pvc)
+
+        assert "rw" == get_access_mode(str(target_path(pvcs[0])))
+        for pvc in pvcs[1:]:
+            assert "ro" == get_access_mode(str(target_path(pvc)))
+
+        assert_shared_disk_data_visible(pvcs[0], pvcs[1:])
+
+        for pvc in reversed(pvcs):
+            unpublish(pvc)
+        for pvc in reversed(pvcs):
+            unstage(pvc)
+
+    except subprocess.CalledProcessError as e:
+        csi.log_called_process_error(e)
+        raise
+    finally:
+        for pvc in reversed(published_pvcs):
+            with csi.called_process_error_logged():
+                env.csi.unpublish_volume(
+                    pvc["pod_id"],
+                    pvc["volume_id"],
+                    access_type,
+                    target_path=pvc["target_path"])
+        for pvc in reversed(staged_pvcs):
+            with csi.called_process_error_logged():
+                env.csi.unstage_volume(
+                    pvc["volume_id"],
+                    staging_target_path=pvc["staging_target_path"])
+        with csi.called_process_error_logged():
+            env.csi.delete_volume(volume_name)
+        env.tear_down()
+        io_dir.cleanup()
 
 
 def test_mount_volume_group():
