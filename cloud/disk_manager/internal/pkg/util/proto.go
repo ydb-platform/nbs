@@ -4,8 +4,8 @@ import (
 	"os"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"google.golang.org/protobuf/encoding/prototext"
 )
 
@@ -40,7 +40,7 @@ func ParseProto(
 }
 
 // Keep in sync with "internal/pkg/types/types.proto : enum DiskKind"
-func GetAllDiskKind() []types.DiskKind {
+func GetAllDiskKinds() []types.DiskKind {
 	return []types.DiskKind{
 		types.DiskKind_DISK_KIND_SSD,
 		types.DiskKind_DISK_KIND_HDD,

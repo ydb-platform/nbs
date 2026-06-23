@@ -54,7 +54,6 @@ func (t *createPlacementGroupTask) Run(
 			ctx,
 			t.request.ZoneId,
 		)
-
 		if err != nil {
 			return err
 		}
@@ -62,7 +61,6 @@ func (t *createPlacementGroupTask) Run(
 		t.state.SelectedCellId = client.ZoneID()
 		err = execCtx.SaveState(ctx)
 	}
-
 	if err != nil {
 		return err
 	}

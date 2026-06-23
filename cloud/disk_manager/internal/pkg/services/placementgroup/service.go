@@ -54,27 +54,27 @@ func selectClientByGroup(
 	storage resources.Storage,
 	nbsFactory nbs.Factory,
 	cellSelector cells.CellSelector,
-	groupId string,
-	reqZoneId string,
+	groupID string,
+	reqZoneID string,
 ) (nbs.Client, error) {
 
-	pgMeta, err := storage.GetPlacementGroupMeta(ctx, groupId)
+	pgMeta, err := storage.GetPlacementGroupMeta(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
 
-	zoneID := reqZoneId
+	zoneID := reqZoneID
 	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
-		zoneCells, err := cellSelector.ResolveCells(reqZoneId)
+		zoneCells, err := cellSelector.ResolveCells(reqZoneID)
 		if err != nil {
 			return nil, err
 		}
 		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
 			return nil, errors.NewNonRetriableErrorf(
 				"placement group %v is in zone %v, not in requested zone %v",
-				groupId,
+				groupID,
 				pgMeta.ZoneID,
-				reqZoneId,
+				reqZoneID,
 			)
 		}
 		zoneID = pgMeta.ZoneID
