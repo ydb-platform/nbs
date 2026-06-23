@@ -816,7 +816,8 @@ void TBootstrapYdb::InitKikimrService()
             logging,
             LocalNVMeDeviceProvider,
             NvmeManager,
-            Executor);
+            Executor,
+            BackgroundThreadPool);
     } else {
         LocalNVMeDeviceProvider = CreateLocalNVMeDeviceProviderStub();
         LocalNVMeService = CreateLocalNVMeServiceStub();

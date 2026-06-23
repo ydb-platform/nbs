@@ -9,6 +9,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -248,6 +249,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
     ILoggingServicePtr Logging;
     std::shared_ptr<TTestNVMeManager> NVMeManager;
     TExecutorPtr Executor;
+    ITaskQueuePtr BackgroundThreadPool;
     std::shared_ptr<TTestSysFs> SysFs;
 
     ILocalNVMeServicePtr Service;
@@ -265,6 +267,9 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
         NVMeManager = std::make_shared<TTestNVMeManager>();
 
+        BackgroundThreadPool = CreateLongRunningTaskExecutor("BG");
+        BackgroundThreadPool->Start();
+
         Executor = TExecutor::Create("TestExecutor");
         Executor->Start();
     }
@@ -273,6 +278,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
     {
         Service->Stop();
         Executor->Stop();
+        BackgroundThreadPool->Stop();
         Logging->Stop();
 
         if (StateCacheFile) {
@@ -280,7 +286,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
         }
     }
 
-    auto CreateService(ILocalNVMeDeviceProviderPtr deviceProvider)
+    auto CreateService(ILocalNVMeDeviceProviderPtr deviceProvider) const
         -> ILocalNVMeServicePtr
     {
         return CreateLocalNVMeService(
@@ -289,6 +295,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
             std::move(deviceProvider),
             std::static_pointer_cast<INvmeManager>(NVMeManager),
             Executor,
+            BackgroundThreadPool,
             std::static_pointer_cast<ISysFs>(SysFs));
     }
 

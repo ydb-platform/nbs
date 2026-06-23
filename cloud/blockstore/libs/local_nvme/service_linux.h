@@ -15,6 +15,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor,
+    ITaskQueuePtr backgroundExecutor,
     ISysFsPtr sysFs);
 
 }   // namespace NCloud::NBlockStore

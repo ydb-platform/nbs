@@ -137,6 +137,7 @@ private:
     const ILocalNVMeDeviceProviderPtr DeviceProvider;
     const NNvme::INvmeManagerPtr NVMeManager;
     const TExecutorPtr Executor;
+    const ITaskQueuePtr BackgroundExecutor;
     const ISysFsPtr SysFs;
 
     std::atomic<EServiceState> ServiceState = EServiceState::NotReady;
@@ -158,6 +159,7 @@ public:
         ILocalNVMeDeviceProviderPtr deviceProvider,
         NNvme::INvmeManagerPtr nvmeManager,
         TExecutorPtr executor,
+        ITaskQueuePtr backgroundExecutor,
         ISysFsPtr sysFs);
 
     // IStartable
@@ -239,12 +241,14 @@ TLocalNVMeService::TLocalNVMeService(
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor,
+    ITaskQueuePtr backgroundExecutor,
     ISysFsPtr sysFs)
     : Config(std::move(config))
     , Logging(std::move(logging))
     , DeviceProvider(std::move(deviceProvider))
     , NVMeManager(std::move(nvmeManager))
     , Executor(std::move(executor))
+    , BackgroundExecutor(std::move(backgroundExecutor))
     , SysFs(std::move(sysFs))
 {}
 
@@ -655,12 +659,11 @@ auto TLocalNVMeService::BindDeviceToDriver(
         "Bind " << device.GetSerialNumber().Quote() << " to " << driverName
                 << " driver");
 
-    return SafeExecute<NProto::TError>(
-        [&]
-        {
-            SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
-            return MakeError(S_OK);
-        });
+    auto future = BackgroundExecutor->Execute(
+        [sysfs = SysFs, pciAddr = device.GetPCIAddress(), driverName]
+        { sysfs->BindPCIDeviceToDriver(pciAddr, driverName); });
+
+    return Executor->ResultOrError(future).GetError();
 }
 
 template <typename TOpResult>
@@ -868,7 +871,7 @@ auto TLocalNVMeService::SanitizeNVMeDevice(const NProto::TNVMeDevice& device)
 try {
     STORAGE_INFO("Sanitize " << device.GetSerialNumber().Quote());
 
-    const TFsPath ctrlPath = GetNVMeCtrlPath(device);
+    const auto ctrlPath = GetNVMeCtrlPath(device);
 
     CheckError(NVMeManager->StartSanitize(ctrlPath));
 
@@ -899,6 +902,8 @@ try {
     }
 
     return {};
+} catch (const TServiceError& e) {
+    return MakeError(e.GetCode(), ToString(e.GetMessage()));
 } catch (...) {
     return MakeError(E_FAIL, CurrentExceptionMessage());
 }
@@ -910,13 +915,17 @@ auto TLocalNVMeService::ResetToSingleNamespace(
         "Reset NVMe " << device.GetSerialNumber().Quote()
                       << " to single namespace");
 
-    return SafeExecute<NProto::TError>(
-        [&]
-        {
-            const TFsPath ctrlPath = GetNVMeCtrlPath(device);
+    auto [ctrlPath, error] = SafeExecute<TResultOrError<TFsPath>>(
+        [&] { return GetNVMeCtrlPath(device); });
+    if (HasError(error)) {
+        return error;
+    }
 
-            return NVMeManager->ResetToSingleNamespace(ctrlPath);
-        });
+    auto future = BackgroundExecutor->Execute(
+        [nvme = NVMeManager, ctrlPath = std::move(ctrlPath)]
+        { return nvme->ResetToSingleNamespace(ctrlPath); });
+
+    return Executor->WaitFor(future);
 }
 
 auto TLocalNVMeService::ReleaseDevice(
@@ -983,6 +992,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor,
+    ITaskQueuePtr backgroundExecutor,
     ISysFsPtr sysFs)
 {
     return std::make_shared<TLocalNVMeService>(
@@ -991,6 +1001,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
         std::move(deviceProvider),
         std::move(nvmeManager),
         std::move(executor),
+        std::move(backgroundExecutor),
         std::move(sysFs));
 }
 
@@ -999,7 +1010,8 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TExecutorPtr executor)
+    TExecutorPtr executor,
+    ITaskQueuePtr backgroundExecutor)
 {
     return CreateLocalNVMeService(
         std::move(config),
@@ -1007,6 +1019,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
         std::move(deviceProvider),
         std::move(nvmeManager),
         std::move(executor),
+        std::move(backgroundExecutor),
         CreateSysFs("/sys"));
 }
 
