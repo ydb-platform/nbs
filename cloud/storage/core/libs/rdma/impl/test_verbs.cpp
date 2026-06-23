@@ -286,16 +286,10 @@ struct TTestVerbs
 
     void PostSend(ibv_qp* qp, ibv_send_wr* wr) override
     {
-        Y_UNUSED(qp);
-
-        auto g = Guard(TestContext->CompletionLock);
-
         if (TestContext->PostSend) {
             TestContext->PostSend(qp, wr);
+            return;
         }
-
-        TestContext->SendEvents.push_back(new ibv_send_wr(*wr));
-        TestContext->CompletionHandle.Set();
     }
 
     void PostRecv(ibv_qp* qp, ibv_recv_wr* wr) override
