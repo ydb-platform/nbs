@@ -1105,15 +1105,58 @@ STFUNC(TCompactionActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 GetExcessPercentage(ui64 enumerator, ui64 denominator)
+ui32 GetPercentage(ui64 enumerator, ui64 denominator)
 {
-    if (enumerator < denominator) {
-        return 0;
-    }
-
-    const double p = (enumerator - denominator) * 100. / Max(denominator, 1UL);
+    const double p = enumerator * 100. / Max(denominator, 1UL);
     const double MAX_P = 1'000;
     return Min(p, MAX_P);
+}
+
+ui32 GetExcessPercentage(ui64 enumerator, ui64 denominator)
+{
+    const double p = GetPercentage(enumerator, denominator);
+    return p < 100? 0 : p - 100;
+}
+
+ui64 GetDiskBlockCount(const TPartitionState& state)
+{
+    return state.GetMixedBlocksCount() + state.GetMergedBlocksCount() -
+        state.GetCleanupQueue().GetQueueBlocks();
+}
+
+ui32 GetDiskFillPercentage(const TPartitionState& state)
+{
+    const ui64 diskSizeInBlocks = state.GetBlocksCount();
+    return GetPercentage(GetDiskBlockCount(state), diskSizeInBlocks);
+}
+
+TDuration GetGarbageCompactionMaxExecTimePerSecond(
+    const TStorageConfig& config,
+    ui32 diskFillPercentage)
+{
+    const ui32 softLimit = config.GetGarbageCompactionThrottlingSoftLimit();
+    const ui32 hardLimit = config.GetGarbageCompactionThrottlingHardLimit();
+    const TDuration maxExec = config.GetMaxGarbageCompactionExecTimePerSecond();
+
+    if (diskFillPercentage <= softLimit) {
+        return maxExec;
+    }
+
+    if (diskFillPercentage >= hardLimit) {
+        // No throttling.
+        return TDuration::MilliSeconds(1000);
+    }
+
+    const i64 maxMs = maxExec.MilliSeconds();
+    if (maxMs == 0) {
+        // Zero value also means no throttling.
+        return TDuration::Zero();
+    }
+
+    const i64 execTimeMs = maxMs +
+        (1000 - maxMs) * static_cast<i64>(diskFillPercentage - softLimit) /
+        (hardLimit - softLimit);
+    return TDuration::MilliSeconds(Max<i64>(execTimeMs, 1));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1217,8 +1260,7 @@ public:
 private:
     [[nodiscard]] ui64 GetBlockCount() const
     {
-        return State.GetMixedBlocksCount() + State.GetMergedBlocksCount() -
-               State.GetCleanupQueue().GetQueueBlocks();
+        return GetDiskBlockCount(State);
     }
 
     [[nodiscard]] ui64 GetGarbagePercentage() const
@@ -1527,7 +1569,8 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     auto maxCompactionExecTimePerSecond =
         Config->GetMaxCompactionExecTimePerSecond();
-    if (Config->GetIgnoringZeroedCompactionEnabled() &&
+
+    if (IsIgnoringZeroedCompactionEnabled() &&
         info->Mode == TEvPartitionPrivate::GarbageCompaction &&
         Config->GetMaxCompactionExecTimePerSecondForZeroed())
     {
@@ -1543,7 +1586,31 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         }
     }
 
-    if (info->ThrottlingAllowed) {
+    auto throttlingAllowed = info->ThrottlingAllowed;
+
+    if (IsDynamicGarbageCompactionThrottlingEnabled() &&
+        !IsIgnoringZeroedCompactionEnabled() &&
+        info->Mode == TEvPartitionPrivate::GarbageCompaction)
+    {
+        const ui32 softLimit =
+            Config->GetGarbageCompactionThrottlingSoftLimit();
+        const ui32 hardLimit =
+            Config->GetGarbageCompactionThrottlingHardLimit();
+
+        if (softLimit && hardLimit && softLimit < hardLimit) {
+            maxCompactionExecTimePerSecond =
+                GetGarbageCompactionMaxExecTimePerSecond(
+                    *Config,
+                    GetDiskFillPercentage(*State));
+        }
+
+        PartCounters->Simple.GarbageCompactionMaxExecTimePerSecond.Set(
+            throttlingAllowed
+                ? maxCompactionExecTimePerSecond.MilliSeconds()
+                : 0);
+    }
+
+    if (throttlingAllowed) {
         State->SetCompactionDelay(CalculateBackgroundOpThrottleDelay(
             State->GetCompactionExecTimeForLastSecond(ctx.Now()),
             maxCompactionExecTimePerSecond,
