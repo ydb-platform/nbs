@@ -25,7 +25,7 @@ def tmpdir(**kwargs):
 QEMU_CONFIG = [
     '--static',
     '--prefix=/usr',
-    '--extra-cflags=-O3 -fno-semantic-interposition -falign-functions=32 -D_FORTIFY_SOURCE=2 -fPIE -Wno-maybe-uninitialized -Wno-array-bounds -Wno-deprecated-declarations',
+    '--extra-cflags=-O3 -fno-semantic-interposition -falign-functions=32 -D_FORTIFY_SOURCE=2 -fPIE -Wno-maybe-uninitialized -Wno-array-bounds -Wno-deprecated-declarations -Wno-stringop-overflow',
     '--extra-ldflags=-z noexecstack -z relro -z now',
     '--audio-drv-list=',
     '--enable-attr',
