@@ -220,7 +220,6 @@ func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
 }
 
 func (s *cellSelector) ResolveCells(zoneID string) ([]string, error) {
-
 	if s.config == nil {
 		return []string{zoneID}, nil
 	}
@@ -278,7 +277,6 @@ func (s *cellSelector) isAgentAvailable(
 }
 
 func (s *cellSelector) resolveCells(zoneID string) ([]string, error) {
-
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {

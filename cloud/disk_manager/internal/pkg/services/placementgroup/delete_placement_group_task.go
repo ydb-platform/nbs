@@ -46,6 +46,33 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	pgMeta, err := t.storage.GetPlacementGroupMeta(ctx, t.request.GroupId)
+	if err != nil {
+		return err
+	}
+
+	zoneID := t.request.ZoneId
+	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
+		zoneCells, err := t.cellSelector.ResolveCells(t.request.ZoneId)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
+			return errors.NewNonRetriableErrorf(
+				"placement group %v is in zone %v, not in requested zone %v",
+				t.request.GroupId,
+				pgMeta.ZoneID,
+				t.request.ZoneId,
+			)
+		}
+		zoneID = pgMeta.ZoneID
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+
 	selfTaskID := execCtx.GetTaskID()
 
 	placementGroup, err := t.storage.DeletePlacementGroup(
@@ -63,28 +90,6 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 			"id %v is not accepted",
 			t.request.GroupId,
 		)
-	}
-
-	zoneID := t.request.ZoneId
-	if len(placementGroup.ZoneID) > 0 {
-		zoneCells, err := t.cellSelector.ResolveCells(t.request.ZoneId)
-		if err != nil {
-			return err
-		}
-		if !slices.Contains(zoneCells, placementGroup.ZoneID) {
-			return errors.NewNonRetriableErrorf(
-				"placement group %v is in zone %v, not in requested zone %v",
-				t.request.GroupId,
-				placementGroup.ZoneID,
-				t.request.ZoneId,
-			)
-		}
-		zoneID = placementGroup.ZoneID
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, zoneID)
-	if err != nil {
-		return err
 	}
 
 	err = client.DeletePlacementGroup(ctx, t.request.GroupId)

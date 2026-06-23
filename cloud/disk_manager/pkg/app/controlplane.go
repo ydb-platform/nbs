@@ -538,7 +538,12 @@ func initControlplane(
 	facade.RegisterPlacementGroupService(
 		server,
 		taskScheduler,
-		placementgroup.NewService(taskScheduler, nbsFactory, resourceStorage, cellSelector),
+		placementgroup.NewService(
+			taskScheduler,
+			nbsFactory,
+			resourceStorage,
+			cellSelector,
+		),
 	)
 	facade.RegisterSnapshotService(
 		server,

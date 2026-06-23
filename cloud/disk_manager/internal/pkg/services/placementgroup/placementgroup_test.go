@@ -217,14 +217,21 @@ func TestDeletePlacementGroupEmptyZoneIDFallback(t *testing.T) {
 		state: &protos.DeletePlacementGroupTaskState{},
 	}
 
+	// Tombstone with empty ZoneID — should fallback to request zone.
+	storage.On("GetPlacementGroupMeta", ctx, "pg-1").Return(
+		&resources.PlacementGroupMeta{
+			ID:     "pg-1",
+			ZoneID: "",
+		}, nil,
+	)
+
+	nbsFactory.On("GetClient", ctx, "zone-a").Return(nbsClient, nil)
+
 	storage.On("DeletePlacementGroup", ctx, "pg-1", "toplevel_task_id",
 		mock.AnythingOfType("time.Time"),
 	).Return(&resources.PlacementGroupMeta{
-		ID:     "pg-1",
-		ZoneID: "",
+		ID: "pg-1",
 	}, nil)
-
-	nbsFactory.On("GetClient", ctx, "zone-a").Return(nbsClient, nil)
 
 	nbsClient.On("DeletePlacementGroup", ctx, "pg-1").Return(nil)
 
@@ -254,7 +261,7 @@ func TestDeletePlacementGroupZoneMismatch(t *testing.T) {
 		state: &protos.DeletePlacementGroupTaskState{},
 	}
 
-	storage.On("DeletePlacementGroup", ctx, "pg-1", mock.Anything, mock.Anything).Return(
+	storage.On("GetPlacementGroupMeta", ctx, "pg-1").Return(
 		&resources.PlacementGroupMeta{
 			ID:     "pg-1",
 			ZoneID: "zone-a-shard1",
@@ -272,63 +279,6 @@ func TestDeletePlacementGroupZoneMismatch(t *testing.T) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-func TestCreatePlacementGroupRetryUsesStoredCell(t *testing.T) {
-	ctx := context.Background()
-	storage := storage_mocks.NewStorageMock()
-	nbsFactory := nbs_mocks.NewFactoryMock()
-	cellSelector := cells_mocks.NewCellSelectorMock()
-	nbsClientStored := nbs_mocks.NewClientMock()
-	execCtx := newExecutionContextMock()
-
-	task := &createPlacementGroupTask{
-		storage:      storage,
-		nbsFactory:   nbsFactory,
-		cellSelector: cellSelector,
-		request: &protos.CreatePlacementGroupRequest{
-			ZoneId:            "zone-a",
-			GroupId:           "pg-1",
-			PlacementStrategy: types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
-		},
-		state: &protos.CreatePlacementGroupTaskState{},
-	}
-
-	// On retry, PG meta already exists — cell selection should be skipped.
-	storage.On("GetPlacementGroupMeta", ctx, "pg-1").Return(
-		&resources.PlacementGroupMeta{
-			ID:     "pg-1",
-			ZoneID: "zone-a-shard1",
-		}, nil,
-	)
-
-	nbsFactory.On("GetClient", ctx, "zone-a-shard1").Return(nbsClientStored, nil)
-
-	storage.On("CreatePlacementGroup", ctx, mock.Anything).Return(
-		&resources.PlacementGroupMeta{
-			ID:     "pg-1",
-			ZoneID: "zone-a-shard1",
-		}, nil,
-	)
-
-	nbsClientStored.On("ZoneID").Return("zone-a-shard1")
-
-	nbsClientStored.On(
-		"CreatePlacementGroup",
-		ctx,
-		"pg-1",
-		types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
-		uint32(0),
-	).Return(nil)
-
-	storage.On("PlacementGroupCreated", ctx, mock.Anything).Return(nil)
-
-	err := task.Run(ctx, execCtx)
-	require.NoError(t, err)
-
-	cellSelector.AssertNotCalled(t, "SelectCellForPlacementGroup",
-		mock.Anything, mock.Anything)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClientStored)
-}
 
 func TestCreatePlacementGroupFirstRun(t *testing.T) {
 	ctx := context.Background()
@@ -349,11 +299,6 @@ func TestCreatePlacementGroupFirstRun(t *testing.T) {
 		},
 		state: &protos.CreatePlacementGroupTaskState{},
 	}
-
-	// First run — no existing meta, cell selection is used.
-	storage.On("GetPlacementGroupMeta", ctx, "pg-1").Return(
-		(*resources.PlacementGroupMeta)(nil), nil,
-	)
 
 	cellSelector.On(
 		"SelectCellForPlacementGroup",

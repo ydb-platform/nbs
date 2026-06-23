@@ -45,46 +45,32 @@ func (t *createPlacementGroupTask) Run(
 ) error {
 
 	var client nbs.Client
+	var err error
 
-	// On retry, check if PG was already persisted so we use its stored cell
-	// instead of running cell selection that may fail with changed config.
-	existingMeta, err := t.storage.GetPlacementGroupMeta(
-		ctx,
-		t.request.GroupId,
-	)
-	if err != nil {
-		return err
-	}
-
-	if existingMeta != nil {
-		client, err = t.nbsFactory.GetClient(ctx, existingMeta.ZoneID)
-		if err != nil {
-			return err
-		}
-	} else if len(t.state.GetSelectedCellId()) > 0 {
+	if len(t.state.GetSelectedCellId()) > 0 {
 		client, err = t.nbsFactory.GetClient(ctx, t.state.GetSelectedCellId())
-		if err != nil {
-			return err
-		}
 	} else {
 		client, err = t.cellSelector.SelectCellForPlacementGroup(
 			ctx,
 			t.request.ZoneId,
 		)
 
-		if err == nil {
-			t.state.SelectedCellId = client.ZoneID()
-			err = execCtx.SaveState(ctx)
-		}
-
 		if err != nil {
 			return err
 		}
+
+		t.state.SelectedCellId = client.ZoneID()
+		err = execCtx.SaveState(ctx)
+	}
+
+	if err != nil {
+		return err
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 
-	placementGroupMeta, err := t.storage.CreatePlacementGroup(ctx, resources.PlacementGroupMeta{
+	var placementGroupMeta *resources.PlacementGroupMeta
+	placementGroupMeta, err = t.storage.CreatePlacementGroup(ctx, resources.PlacementGroupMeta{
 		ID:                      t.request.GroupId,
 		ZoneID:                  client.ZoneID(),
 		PlacementStrategy:       t.request.PlacementStrategy,
@@ -95,6 +81,7 @@ func (t *createPlacementGroupTask) Run(
 		CreatingAt:    time.Now(),
 		CreatedBy:     "", // TODO: Extract CreatedBy from execCtx
 	})
+
 	if err != nil {
 		return err
 	}

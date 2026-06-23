@@ -382,6 +382,7 @@ func (s *service) getPlacementGroupZoneId(
 	ctx context.Context,
 	req *disk_manager.MigrateDiskRequest,
 ) (string, error) {
+
 	pgMeta, err := s.resourceStorage.GetPlacementGroupMeta(
 		ctx,
 		req.DstPlacementGroupId,

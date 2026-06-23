@@ -54,7 +54,8 @@ type CellSelector interface {
 
 	ZoneContainsCell(zoneID string, cellID string) bool
 
-	// Returns all cell IDs that belong to the given zone. If no cells
-	// config is set, returns []string{zoneID}.
+	// Returns all cell IDs that belong to the given zone.
+	// If no cells config is set, returns []string{zoneID}.
+	// If zoneId is cell ID, returns []string{zoneID}.
 	ResolveCells(zoneID string) ([]string, error)
 }
