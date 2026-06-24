@@ -46,6 +46,30 @@ func strListValue(strings []string) persistence.Value {
 	return result
 }
 
+func durationByTaskTypeListValue(
+	valuesByTaskType map[string]time.Duration,
+) persistence.Value {
+
+	values := make([]persistence.Value, 0, len(valuesByTaskType))
+	for taskType, value := range valuesByTaskType {
+		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue("task_type", persistence.UTF8Value(taskType)),
+			persistence.StructFieldValue("timeout", persistence.IntervalValue(value)),
+		))
+	}
+
+	if len(values) == 0 {
+		return persistence.ZeroValue(persistence.List(
+			persistence.Struct(
+				persistence.StructField("task_type", persistence.TypeUTF8),
+				persistence.StructField("timeout", persistence.TypeInterval),
+			),
+		))
+	}
+
+	return persistence.ListValue(values...)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func unmarshalErrorDetails(bytes []byte) (*errors.ErrorDetails, error) {

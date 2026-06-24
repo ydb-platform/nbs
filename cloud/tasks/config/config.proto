@@ -82,4 +82,7 @@ message TasksConfig {
 
     // Overrides MaxRetriableErrorCount.
     map<string, uint64> MaxRetriableErrorCountByTaskType = 40;
+
+    // Overrides HangingTaskTimeout by task type.
+    map<string, string> HangingTasksTimeoutByType = 41;
 }
