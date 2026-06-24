@@ -117,7 +117,7 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
-          {{"mr", std::monostate{}}}))
+          {{"TMigrationRequestActor", std::monostate{}}}))
     , Request(std::move(request))
 {
     Y_DEBUG_ABORT_UNLESS(FollowerPartition);
