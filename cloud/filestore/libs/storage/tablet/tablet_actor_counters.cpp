@@ -661,6 +661,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
+            CachedAggregateStatsTs = ctx.Now();
             Store(
                 Metrics.AggregateUsedBytesCount,
                 CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
@@ -763,7 +764,11 @@ void TIndexTabletActor::HandleGetStorageStats(
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
 
-    if (req.GetAllowCache()) {
+    const bool allowCache = req.GetAllowCache() || (req.GetCacheTTL() &&
+                            ctx.Now() - CachedAggregateStatsTs <
+                                TDuration::MilliSeconds(req.GetCacheTTL()));
+
+    if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =
             Min<ui32>(shardIds.size(), CachedShardStats.size());
@@ -808,7 +813,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         out->SetGarbageBlockCount(r.Stats.GarbageBlocksCount);
     }
 
-    if (req.GetAllowCache() || shardIds.empty()) {
+    if (allowCache || shardIds.empty()) {
         Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
         Metrics.GetStorageStats.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -902,6 +907,8 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         Store(
             Metrics.AggregateUsedNodesCount,
             CachedAggregateStats.GetUsedNodesCount());
+
+        CachedAggregateStatsTs = ctx.Now();
     }
 
     WorkerActors.erase(ev->Sender);

@@ -65,12 +65,14 @@ NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
     const TString& fsId,
     const bool allowCache = false,
+    const ui32 cacheTTLMs = 0,
     const NProtoPrivate::EStatsRequestMode mode =
         NProtoPrivate::STATS_REQUEST_MODE_DEFAULT)
 {
     NProtoPrivate::TGetStorageStatsRequest request;
     request.SetFileSystemId(fsId);
     request.SetAllowCache(allowCache);
+    request.SetCacheTTL(cacheTTLMs);
     request.SetMode(mode);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
@@ -94,11 +96,13 @@ void CheckShardsSize(
         service,
         fsConfig.Shard1Id,
         false /* allowCache */,
+        0 /* cacheTTLMs */,
         NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
     const auto shard2Stats = GetStorageStats(
         service,
         fsConfig.Shard2Id,
         false /* allowCache */,
+        0 /* cacheTTLMs */,
         NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
     UNIT_ASSERT_EQUAL(blocksCount, mainStats.GetStats().GetTotalBlocksCount());
     UNIT_ASSERT_EQUAL(
@@ -2554,8 +2558,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fileStoreStats.GetUsedBlocksCount());
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2571,8 +2577,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.StatFileStore(headers, fsConfig.FsId);
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2704,6 +2712,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 service,
                 fsConfig.FsId,
                 false /* allowCache */,
+                0, /* cacheTTLMs */
                 NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
             const auto& stats = response.GetStats();
             // No blocks are used by the main filesystem itself, all blocks are
@@ -2738,6 +2747,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 service,
                 fsConfig.Shard1Id,
                 false /* allowCache */,
+                0 /* cacheTTLMs */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -2750,6 +2760,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 service,
                 fsConfig.Shard2Id,
                 false /* allowCache */,
+                0 /* cacheTTLMs */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3182,8 +3193,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.AccessRuntime().DispatchEvents(options);
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3255,8 +3268,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // stats not updated yet
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3295,8 +3310,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // stats should be up to date now
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -6654,6 +6671,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 service,
                 fsConfig.Shard1Id,
                 true /* allowCache */,
+                30000 /* cacheTTLMs */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
@@ -9516,6 +9534,83 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 GetFileSystemTopology(service, fsId + "_s2");
             UNIT_ASSERT(shard2Topology.GetCompressNodeRef());
         }
+    }
+
+    SERVICE_TEST(ShouldUseCacheInStatFileStore)
+    {
+        constexpr ui64 cacheTTLMs = 1000;
+        config.SetStatFileStoreCacheTTL(cacheTTLMs);
+
+        // Create a filesystem with 2 shards.
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto writeToFile = [&](const TString& name, const TString& data)
+        {
+            auto createNodeResponse =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(RootNodeId, name))
+                    ->Record;
+            const auto nodeId = createNodeResponse.GetNode().GetId();
+            const ui64 handle = service
+                                    .CreateHandle(
+                                        headers,
+                                        fsConfig.FsId,
+                                        nodeId,
+                                        "",
+                                        TCreateHandleArgs::RDWR)
+                                    ->Record.GetHandle();
+            service.WriteData(
+                headers,
+                headers.FileSystemId,
+                nodeId,
+                handle,
+                0,
+                data);
+        };
+
+        constexpr ui64 data1Size = 256_KB;
+        constexpr ui64 data2Size = 128_KB;
+
+        writeToFile("file1", GenerateValidateData(data1Size));
+        writeToFile("file2", GenerateValidateData(data2Size));
+
+        env.GetRuntime().AdvanceCurrentTime(
+            TDuration::MilliSeconds(cacheTTLMs * 2));
+
+        // Get the latest stats as cache is older than the cache TTL.
+        auto stats =
+            service.StatFileStore(headers, fsConfig.FsId)->Record.GetStats();
+        UNIT_ASSERT_EQUAL(2, stats.GetUsedNodesCount());
+        UNIT_ASSERT_EQUAL(
+            (data1Size + data2Size) / 4_KB,
+            stats.GetUsedBlocksCount());
+
+        writeToFile("file3", GenerateValidateData(data1Size));
+        writeToFile("file4", GenerateValidateData(data2Size));
+
+        // Get stats again, it should be the same as the cache TTL = 1s.
+        stats =
+            service.StatFileStore(headers, fsConfig.FsId)->Record.GetStats();
+        UNIT_ASSERT_EQUAL(2, stats.GetUsedNodesCount());
+        UNIT_ASSERT_EQUAL(
+            (data1Size + data2Size) / 4_KB,
+            stats.GetUsedBlocksCount());
+
+        env.GetRuntime().AdvanceCurrentTime(
+            TDuration::MilliSeconds(cacheTTLMs * 2));
+
+        // Finally get updated stats.
+        stats =
+            service.StatFileStore(headers, fsConfig.FsId)->Record.GetStats();
+        UNIT_ASSERT_EQUAL(4, stats.GetUsedNodesCount());
+        UNIT_ASSERT_EQUAL(
+            2 * (data1Size + data2Size) / 4_KB,
+            stats.GetUsedBlocksCount());
     }
 }
 }   // namespace NCloud::NFileStore::NStorage

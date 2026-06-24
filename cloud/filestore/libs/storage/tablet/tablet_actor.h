@@ -142,6 +142,7 @@ private:
     NProtoPrivate::TStorageStats CachedAggregateStats;
     TVector<TShardStats> CachedShardStats;
     TInstant CachedStatsFetchingStartTs;
+    TInstant CachedAggregateStatsTs;
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;

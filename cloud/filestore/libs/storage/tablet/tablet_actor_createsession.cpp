@@ -116,6 +116,9 @@ void FillFeatures(
 
     features->SetUseCustomReadDataResponseParser(
         config.GetUseCustomReadDataResponseParser());
+
+    features->SetStatFileStoreCacheTTL(
+        config.GetStatFileStoreCacheTTL().MilliSeconds());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

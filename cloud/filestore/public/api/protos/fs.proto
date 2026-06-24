@@ -57,6 +57,7 @@ message TFileStoreFeatures
     bool UseCustomReadDataResponseParser = 42;
     optional uint64 DirectoryHandlesPersistentHandleMaxSize = 43;
     bool ServerWriteBackCacheFlushWritesInParallelEnabled = 44;
+    uint32 StatFileStoreCacheTTL = 45; // in ms
 }
 
 message TFileStore

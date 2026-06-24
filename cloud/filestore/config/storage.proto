@@ -818,4 +818,7 @@ message TStorageConfig
     // Limit max number in-flight requests to create/configure/destroy shards.
     // Zero means unlimited.
     optional uint32 MaxShardManagementRequestsInFlight = 515;
+
+    // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
+    optional uint32 StatFileStoreCacheTTL = 516; // in ms
 }

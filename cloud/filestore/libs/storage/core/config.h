@@ -426,6 +426,8 @@ public:
     ui64 GetFlushBytesThresholdForBackpressureSoft() const;
     ui64 GetFlushBytesItemCountThresholdForBackpressureSoft() const;
     ui64 GetCollectGarbageThresholdForBackpressureSoft() const;
+
+    [[nodiscard]] TDuration GetStatFileStoreCacheTTL() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

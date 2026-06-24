@@ -369,6 +369,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushBytesItemCountThresholdForBackpressureSoft,                       \
                                                        ui64,    125'000       )\
     xxx(CollectGarbageThresholdForBackpressureSoft,    ui64,    256_GB        )\
+                                                                               \
+    xxx(StatFileStoreCacheTTL,              TDuration,  TDuration::Zero()     )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
