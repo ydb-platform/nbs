@@ -204,12 +204,15 @@ func newTestRunFromConfig(
 		return nil, fmt.Errorf("failed to create NBS testing client: %w", err)
 	}
 
+	metrics := newRemoteTestMetricsFromConfig(ctx, testConfig)
+
 	return &testRun{
 		dmClient:                  dmClient,
 		privateClient:             privateClient,
 		nbsClient:                 nbsClient,
 		testConfig:                testConfig,
 		resourceExpirationTimeout: resourceExpirationTimeout,
+		metrics:                   metrics,
 	}, nil
 }
 
@@ -1450,9 +1453,10 @@ type testCase struct {
 }
 
 type remoteTestMetrics struct {
-	cleanupErrorsCount monitoring_metrics.Counter
-	fails              monitoring_metrics.CounterVec
-	success            monitoring_metrics.Counter
+	errors      monitoring_metrics.Counter
+	fails       monitoring_metrics.CounterVec
+	success     monitoring_metrics.Counter
+	successTest monitoring_metrics.CounterVec
 }
 
 func newRemoteTestMetrics(
@@ -1464,16 +1468,19 @@ func newRemoteTestMetrics(
 	})
 
 	return &remoteTestMetrics{
-		cleanupErrorsCount: registry.Counter("cleanupErrorsCount"),
+		errors: registry.Counter("error"),
 		fails: registry.CounterVec("fails", []string{
 			"testName",
 		}),
 		success: registry.Counter("success"),
+		successTest: registry.CounterVec("successTest", []string{
+			"testName",
+		}),
 	}
 }
 
-func (m *remoteTestMetrics) reportCleanupError() {
-	m.cleanupErrorsCount.Inc()
+func (m *remoteTestMetrics) reportError() {
+	m.errors.Inc()
 }
 
 func (m *remoteTestMetrics) reportFailure(testName string) {
@@ -1486,24 +1493,26 @@ func (m *remoteTestMetrics) reportSuccess() {
 	m.success.Inc()
 }
 
-func (r *testRun) getMetrics(ctx context.Context) *remoteTestMetrics {
-	if r.metrics == nil {
-		r.metrics = newRemoteTestMetricsFromConfig(ctx, r.testConfig)
-	}
-
-	return r.metrics
+func (m *remoteTestMetrics) reportSuccessTest(testName string) {
+	m.successTest.With(map[string]string{
+		"testName": testName,
+	}).Inc()
 }
 
-func (r *testRun) reportCleanupError(ctx context.Context) {
-	r.getMetrics(ctx).reportCleanupError()
+func (r *testRun) reportError() {
+	r.metrics.reportError()
 }
 
-func (r *testRun) reportFailure(ctx context.Context, testName string) {
-	r.getMetrics(ctx).reportFailure(testName)
+func (r *testRun) reportFailure(testName string) {
+	r.metrics.reportFailure(testName)
 }
 
-func (r *testRun) reportSuccess(ctx context.Context) {
-	r.getMetrics(ctx).reportSuccess()
+func (r *testRun) reportSuccess() {
+	r.metrics.reportSuccess()
+}
+
+func (r *testRun) reportSuccessTest(testName string) {
+	r.metrics.reportSuccessTest(testName)
 }
 
 func newTestBlackList(testsBlackList []string) map[string]struct{} {
@@ -1515,24 +1524,38 @@ func newTestBlackList(testsBlackList []string) map[string]struct{} {
 	return blackList
 }
 
+func validateTestBlackList(
+	tests []testCase,
+	testsBlackList map[string]struct{},
+) error {
+
+	testNames := make(map[string]struct{}, len(tests))
+	for _, test := range tests {
+		testNames[test.Name] = struct{}{}
+	}
+
+	for testName := range testsBlackList {
+		if _, ok := testNames[testName]; !ok {
+			return fmt.Errorf(
+				"blacklisted test %q is not present in tests",
+				testName,
+			)
+		}
+	}
+
+	if len(testsBlackList) == len(testNames) {
+		return fmt.Errorf("tests blacklist should be a strict subset of tests")
+	}
+
+	return nil
+}
+
 func (r *testRun) runTests(ctx context.Context) error {
-	r.getMetrics(ctx)
 
 	r.resetLaunchID()
 
 	log.Printf("Using launch id %v", r.currentLaunchID)
 	log.Printf("Using resource expiration timeout %v", r.resourceExpirationTimeout)
-
-	err := r.cleanupResourcesFromPreviousRuns(ctx)
-	if err != nil {
-		r.reportCleanupError(ctx)
-		return fmt.Errorf(
-			"failed to cleanup resources from previous runs: %w",
-			err,
-		)
-	}
-
-	testsBlackList := newTestBlackList(r.testConfig.GetTestsBlackList())
 
 	tests := []testCase{
 		{
@@ -1586,6 +1609,21 @@ func (r *testRun) runTests(ctx context.Context) error {
 			Run:  testCreateImageFromImage,
 		},
 	}
+	testsBlackList := newTestBlackList(r.testConfig.GetTestsBlackList())
+	err := validateTestBlackList(tests, testsBlackList)
+	if err != nil {
+		r.reportError()
+		return err
+	}
+
+	err = r.cleanupResourcesFromPreviousRuns(ctx)
+	if err != nil {
+		r.reportError()
+		return fmt.Errorf(
+			"failed to cleanup resources from previous runs: %w",
+			err,
+		)
+	}
 
 	log.Printf("Starting tests")
 
@@ -1599,7 +1637,7 @@ func (r *testRun) runTests(ctx context.Context) error {
 
 		se, err := test.Run(ctx, r)
 		if err != nil {
-			r.reportFailure(ctx, test.Name)
+			r.reportFailure(test.Name)
 			return fmt.Errorf("test %v run failed: %w", test.Name, err)
 		}
 
@@ -1607,18 +1645,19 @@ func (r *testRun) runTests(ctx context.Context) error {
 
 		err = r.cleanupResources(ctx, se)
 		if err != nil {
-			r.reportCleanupError(ctx)
-			r.reportFailure(ctx, test.Name)
+			r.reportError()
 			return fmt.Errorf(
 				"test %v failed to cleanup resources from current run: %w",
 				test.Name,
 				err,
 			)
 		}
+
+		r.reportSuccessTest(test.Name)
 	}
 
 	log.Printf("All tests successfully finished")
-	r.reportSuccess(ctx)
+	r.reportSuccess()
 	return nil
 }
 
