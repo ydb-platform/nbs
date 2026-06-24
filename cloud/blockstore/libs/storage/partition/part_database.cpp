@@ -383,6 +383,53 @@ bool TPartitionDatabase::FindMixedBlocks(
     return ready;
 }
 
+bool TPartitionDatabase::FindMixedBlocks(
+    IMixedBlocksIndexVisitor& visitor,
+    const TVector<TBlock>& blocks)
+{
+    using TTable = TPartitionSchema::MixedBlocksIndex;
+
+    bool ready = true;
+    for (const auto& [blockIndex, commitId, _]: blocks) {
+        auto query = Table<TTable>().Key(blockIndex, ReverseCommitId(commitId));
+
+        auto it = query.Select();
+
+        if (!it.IsReady()) {
+            query.Precharge();
+            ready = false;
+            continue;
+        }
+
+        if (!it.IsValid()) {
+            continue;
+        }
+
+        ui64 blobCommitId = it.GetValue<TTable::BlobCommitId>();
+        auto blobId = MakePartialBlobId(
+            blobCommitId ? blobCommitId : commitId,
+            it.GetValue<TTable::BlobId>());
+
+        ui32 blobOffsetAndCompactionRangeCount =
+            it.GetValue<TTable::BlobOffsetAndCompactionRangeCount>();
+        auto [blobOffset, compactionRangeCount] =
+            SplitBlobOffsetAndCompactionRangeCount(
+                blobOffsetAndCompactionRangeCount);
+
+        if (!visitor.VisitBlock(
+                blockIndex,
+                commitId,
+                blobId,
+                blobOffset,
+                compactionRangeCount))
+        {
+            return true;   // interrupted
+        }
+    }
+
+    return ready;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionDatabase::WriteMergedBlocks(
@@ -465,15 +512,15 @@ bool TPartitionDatabase::FindMergedBlocks(
                     commitId,
                     it.GetValue<TTable::BlobId>());
 
-                if (!blobsVisitor.Visit(range, blobId)) {
-                    return true;   // interrupted
-                }
-
                 const auto holeMask = BlockMaskFromString(
                     it.GetValueOrDefault<TTable::HoleMask>());
 
                 const auto skipMask = BlockMaskFromString(
                     it.GetValueOrDefault<TTable::SkipMask>());
+
+                if (!blobsVisitor.Visit(range, blobId, skipMask.Count())) {
+                    return true;   // interrupted
+                }
 
                 ui32 skipped = 0;
                 for (ui32 blockIndex = range.Start; blockIndex < start; ++blockIndex) {
@@ -523,10 +570,12 @@ bool TPartitionDatabase::FindMergedBlocks(
     {
         bool Visit(
             TBlockRange32 blockRange,
-            const TPartialBlobId& blobId) override
+            const TPartialBlobId& blobId,
+            ui32 skippedBlocksCount) override
         {
             Y_UNUSED(blockRange);
             Y_UNUSED(blobId);
+            Y_UNUSED(skippedBlocksCount);
             return true;
         }
     };

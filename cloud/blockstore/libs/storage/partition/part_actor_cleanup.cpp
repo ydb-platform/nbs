@@ -1,5 +1,6 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -11,10 +12,186 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
 
+using namespace NProto;
+
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TVerifyBlocksMetaResult
+{
+    bool Ready = true;
+    NProto::TError Error;
+};
+
+TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
+    TPartitionDatabase& db,
+    TPartialBlobId originalBlobId,
+    const NProto::TBlobMeta::TMixedBlocks& originalMixedBlocks,
+    const NProto::TBlobMeta::TMixedBlocks& recreatedMixedBlocks)
+{
+    // Check that blocks from recreated blob meta are present in the original
+    // blob meta and that their commit ids are the same.
+    // Some blocks may be missing in recreated blob meta because we delete some
+    // blocks from mixed index on compaction.
+
+    auto getCommitId = [&](const NProto::TBlobMeta::TMixedBlocks& mixedBlocks,
+                           size_t i) -> ui64
+    {
+        return i < mixedBlocks.CommitIdsSize() ? mixedBlocks.GetCommitIds(i)
+                                               : originalBlobId.CommitId();
+    };
+
+    TVector<TBlock> originalBlocks;
+    for (size_t i = 0; i < originalMixedBlocks.BlocksSize(); ++i) {
+        originalBlocks.emplace_back(
+            originalMixedBlocks.GetBlocks(i),
+            getCommitId(originalMixedBlocks, i),
+            false);
+    }
+
+    TVector<TBlock> recreatedBlocks;
+    for (size_t i = 0; i < recreatedMixedBlocks.BlocksSize(); ++i) {
+        recreatedBlocks.emplace_back(
+            recreatedMixedBlocks.GetBlocks(i),
+            getCommitId(recreatedMixedBlocks, i),
+            false);
+    }
+
+    auto cmp = [](const TBlock& l, const TBlock& r)
+    {
+        if (l.BlockIndex == r.BlockIndex) {
+            return l.CommitId < r.CommitId;
+        }
+        return l.BlockIndex < r.BlockIndex;
+    };
+
+    Sort(originalBlocks, cmp);
+    Sort(recreatedBlocks, cmp);
+
+    TVector<TBlock> missedBlocks;
+
+    size_t recreatedIdx = 0, originalIdx = 0;
+    while (recreatedIdx < recreatedBlocks.size() &&
+           originalIdx < originalBlocks.size())
+    {
+        if (recreatedBlocks[recreatedIdx] != originalBlocks[originalIdx]) {
+            missedBlocks.emplace_back(originalBlocks[originalIdx]);
+
+            ++originalIdx;
+            continue;
+        }
+
+        ++recreatedIdx;
+        ++originalIdx;
+    }
+
+    for (; originalIdx < originalBlocks.size(); ++originalIdx) {
+        missedBlocks.emplace_back(originalBlocks[originalIdx]);
+    }
+
+    if (recreatedIdx < recreatedBlocks.size()) {
+        auto error = MakeError(
+            E_ARGUMENT,
+            "there are blocks that are not present in the original blob "
+            "meta");
+        return {.Error = std::move(error)};
+    }
+
+    struct TVisitor final: public IMixedBlocksIndexVisitor
+    {
+        TVector<TBlock> LeakedBlocks;
+
+        bool VisitBlock(
+            ui32 blockIndex,
+            ui64 commitId,
+            const TPartialBlobId& blobId,
+            ui16 blobOffset,
+            ui8 compactionRangeCount) override
+        {
+            Y_UNUSED(blobId);
+            Y_UNUSED(blobOffset);
+            Y_UNUSED(compactionRangeCount);
+
+            LeakedBlocks.emplace_back(blockIndex, commitId, false);
+
+            return true;
+        }
+    };
+
+    TVisitor visitor;
+    bool ready = db.FindMixedBlocks(visitor, missedBlocks);
+    if (!ready) {
+        return {.Ready = false};
+    }
+
+    if (visitor.LeakedBlocks) {
+        TStringBuilder sb;
+        sb << "Leaked blocks in recreated blob meta: ";
+        for (size_t i = 0; i < visitor.LeakedBlocks.size(); ++i) {
+            sb << "{ BlockIndex: " << visitor.LeakedBlocks[i].BlockIndex
+               << ", CommitId: " << visitor.LeakedBlocks[i].CommitId << " } ";
+        }
+        auto error = MakeError(E_ARGUMENT, std::move(sb));
+        return {.Error = std::move(error)};
+    }
+
+    return {};
+}
+
+TVerifyBlocksMetaResult VerifyMergedBlocksMeta(
+    const NProto::TBlobMeta::TMergedBlocks& originalMergedBlocks,
+    const NProto::TBlobMeta::TMergedBlocks& recreatedMergedBlocks)
+{
+    bool ok =
+        originalMergedBlocks.GetStart() == recreatedMergedBlocks.GetStart() &&
+        originalMergedBlocks.GetEnd() == recreatedMergedBlocks.GetEnd() &&
+        originalMergedBlocks.GetSkipped() == recreatedMergedBlocks.GetSkipped();
+
+    if (!ok) {
+        auto error = MakeError(E_ARGUMENT, "Mismatched merged blocks");
+        return {.Error = std::move(error)};
+    }
+
+    return {};
+}
+
+TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
+    TPartitionDatabase& db,
+    TPartialBlobId originalBlobId,
+    const NProto::TBlobMeta& blobMeta,
+    const NProto::TBlobMeta& recreatedBlobMeta)
+{
+    if (blobMeta.HasMixedBlocks() != recreatedBlobMeta.HasMixedBlocks() ||
+        blobMeta.HasMergedBlocks() != recreatedBlobMeta.HasMergedBlocks())
+    {
+        auto error = MakeError(E_ARGUMENT, "Mismatched blob meta types");
+        return {.Error = std::move(error)};
+    }
+
+    if (blobMeta.HasMixedBlocks()) {
+        return VerifyMixedBlocksMeta(
+            db,
+            originalBlobId,
+            blobMeta.GetMixedBlocks(),
+            recreatedBlobMeta.GetMixedBlocks());
+    }
+
+    if (blobMeta.HasMergedBlocks()) {
+        return VerifyMergedBlocksMeta(
+            blobMeta.GetMergedBlocks(),
+            recreatedBlobMeta.GetMergedBlocks());
+    }
+
+    return {};
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -190,18 +367,66 @@ bool TPartitionActor::PrepareCleanup(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
+    THashSet<TPartialBlobId, TPartialBlobIdHash> blobIdsToRemoveFromQueue;
+    THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> blobMetas;
+
     bool ready = true;
 
     for (const auto& item: args.CleanupQueue) {
+        // no need to read blob meta for blobs with already known blocks
+        const bool hasValidMetaInCleanupQueue =
+            item.BlobMeta.HasMixedBlocks() || item.BlobMeta.HasMergedBlocks();
+
         TMaybe<NProto::TBlobMeta> blobMeta;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
-            Y_ABORT_UNLESS(blobMeta.Defined(),
+            Y_ABORT_UNLESS(
+                blobMeta.Defined(),
                 "Could not read meta data for blob: %s",
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
+            auto& meta = blobMetas[item.BlobId];
+            meta = std::move(blobMeta.GetRef());
 
-            args.BlobsMeta.emplace_back(std::move(blobMeta.GetRef()));
+            const bool verifyRecreatedBlobMetasOnCleanup =
+                hasValidMetaInCleanupQueue &&
+                IsVerifyRecreatedBlobMetasOnCleanupEnabled();
+            if (!verifyRecreatedBlobMetasOnCleanup) {
+                continue;
+            }
+
+            auto verifyResult =
+                VerifyRecreatedBlobMeta(db, item.BlobId, meta, item.BlobMeta);
+            if (!verifyResult.Ready) {
+                ready = false;
+                continue;
+            }
+
+            if (HasError(verifyResult.Error)) {
+                blobIdsToRemoveFromQueue.insert(item.BlobId);
+                ReportCleanupBlobMetaBlocksMismatch(
+                    {{"diskId", PartitionConfig.GetDiskId()},
+                     {"tabletId", TabletID()},
+                     {"blobId", ToString(MakeBlobId(TabletID(), item.BlobId))},
+                     {"recreatedBlobMeta",
+                      item.BlobMeta.ShortUtf8DebugString()},
+                     {"originalBlobMeta", meta.ShortUtf8DebugString()},
+                     {"error", FormatError(verifyResult.Error)}});
+            }
         } else {
             ready = false;
+        }
+    }
+
+    if (ready) {
+        // we not cleanup blobs with mismatched blocks meta intentionally
+        // because it can help to investigate the issue
+        auto itemsToRemove = std::ranges::remove_if(
+            args.CleanupQueue,
+            [&](const auto& item) -> bool
+            { return blobIdsToRemoveFromQueue.contains(item.BlobId); });
+        args.CleanupQueue.erase(itemsToRemove.begin(), itemsToRemove.end());
+
+        for (const auto& item: args.CleanupQueue) {
+            args.BlobsMeta.push_back(std::move(blobMetas[item.BlobId]));
         }
     }
 

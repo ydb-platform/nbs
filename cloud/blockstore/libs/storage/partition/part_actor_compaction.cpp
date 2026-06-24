@@ -727,15 +727,12 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     affectedBlob.Offsets.end(),
                     blob.Offsets.begin(),
                     blob.Offsets.end());
-                affectedBlob.AffectedBlockIndices.insert(
-                    affectedBlob.AffectedBlockIndices.end(),
-                    blob.AffectedBlockIndices.begin(),
-                    blob.AffectedBlockIndices.end());
+                affectedBlob.AffectedBlocks.insert(
+                    affectedBlob.AffectedBlocks.end(),
+                    blob.AffectedBlocks.begin(),
+                    blob.AffectedBlocks.end());
                 if (affectedBlob.BlockMask) {
                     affectedBlob.BlockMask.GetRef() |= blockMask;
-                }
-                if (affectedBlob.BlobMeta && blob.BlobMeta) {
-                    affectedBlob.BlobMeta->MergeFrom(blob.BlobMeta.GetRef());
                 }
             }
         }
@@ -1998,6 +1995,7 @@ void TPartitionActor::CompleteCompaction(
             mergedBlobThreshold,
             args.CommitId,
             TabletID(),
+            IsVerifyRecreatedBlobMetasOnCleanupEnabled(),   // shouldRecreateBlobMetas
             *Info(),
             *State,
             rangeCompaction,

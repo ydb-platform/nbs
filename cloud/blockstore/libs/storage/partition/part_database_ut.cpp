@@ -31,8 +31,12 @@ struct TTestBlockVisitor final
     TStringBuilder Result;
     THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        ui32 skippedBlocksCount) override
     {
+        Y_UNUSED(skippedBlocksCount);
         BlobToRange[blobId] = blockRange;
 
         return true;

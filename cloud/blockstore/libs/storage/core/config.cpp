@@ -713,6 +713,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeBalancerGentlePreemptionEnabled,      bool,       false         )\
     xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
     xxx(SplitByCompactionRangeMaxBlobCount,         ui64,       0             )\
+    xxx(VerifyRecreatedBlobMetasOnCleanup,          bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -752,6 +753,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(FreshBlocksWriter)                                                     \
     xxx(ReadBlockMaskOnCompactionOptimization)                                 \
     xxx(SplitCompactionTx)                                                     \
+    xxx(VerifyRecreatedBlobMetasOnCleanup)                                     \
 
 // BLOCKSTORE_BINARY_FEATURES
 
