@@ -816,5 +816,5 @@ message TStorageConfig
     optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 514;
 
     // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
-    optional uint32 StatFileStoreCacheTTL = 505; // in ms
+    optional uint32 StatFileStoreCacheTTL = 515; // in ms
 }
