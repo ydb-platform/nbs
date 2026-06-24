@@ -897,7 +897,7 @@ auto TLocalNVMeService::SanitizeNVMeDevice(const NProto::TNVMeDevice& device)
 try {
     STORAGE_INFO("Sanitize " << device.GetSerialNumber().Quote());
 
-    const auto ctrlPath = GetNVMeCtrlPath(device);
+    const TFsPath ctrlPath = GetNVMeCtrlPath(device);
 
     CheckError(NVMeManager->StartSanitize(ctrlPath));
 
