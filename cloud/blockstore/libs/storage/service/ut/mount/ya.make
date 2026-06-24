@@ -2,6 +2,10 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/service)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+IF (SANITIZER_TYPE == "thread")
+    SPLIT_FACTOR(40)
+ENDIF()
+
 SRCS(
     service_ut_basic.cpp
     service_ut_mount.cpp
