@@ -164,6 +164,44 @@ def test_get_runner_token_retries_github_errors(monkeypatch, capsys):
     assert m.SENSITIVE_DATA_VALUES["runner_token"] == "runner-token"
 
 
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        m.requests.exceptions.ConnectionError,
+        m.requests.exceptions.Timeout,
+    ],
+)
+def test_get_runner_token_retries_transport_errors(monkeypatch, exception_type):
+    attempts = []
+    sleeps = []
+
+    class FakeRepo:
+        def create_self_hosted_runner_registration_token(self):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise exception_type("github transport error")
+            return SimpleNamespace(
+                token="runner-token",
+                expires_at="2026-05-04T16:00:00Z",
+            )
+
+    class FakeGithub:
+        def __init__(self, auth):
+            assert auth == ("token", "github-token")
+
+        def get_repo(self, repo):
+            assert repo == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setattr(m.GithubAuth, "Token", lambda token: ("token", token))
+    monkeypatch.setattr(m, "Github", FakeGithub)
+    monkeypatch.setattr(m.time, "sleep", sleeps.append)
+
+    assert m.get_runner_token("owner", "repo", "github-token") == "runner-token"
+    assert len(attempts) == 2
+    assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
 def test_get_runner_token_reports_missing_token_after_retries(monkeypatch):
     attempts = []
     sleeps = []
