@@ -3,6 +3,7 @@ package disks
 import (
 	"context"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
@@ -377,6 +378,43 @@ func (s *service) isOverlayDiskAllowed(
 	return !s.config.GetDisableOverlayDisks(), nil
 }
 
+func (s *service) getPlacementGroupZoneId(
+	ctx context.Context,
+	req *disk_manager.MigrateDiskRequest,
+) (string, error) {
+
+	pgMeta, err := s.resourceStorage.GetPlacementGroupMeta(
+		ctx,
+		req.DstPlacementGroupId,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if pgMeta == nil {
+		return "", common.NewInvalidArgumentError(
+			"destination placement group %v not found",
+			req.DstPlacementGroupId,
+		)
+	}
+
+	zoneCells, err := s.cellSelector.ResolveCells(req.DstZoneId)
+	if err != nil {
+		return "", err
+	}
+
+	if !slices.Contains(zoneCells, pgMeta.ZoneID) {
+		return "", common.NewInvalidArgumentError(
+			"destination placement group %v is in zone %v, not in requested destination zone %v",
+			req.DstPlacementGroupId,
+			pgMeta.ZoneID,
+			req.DstZoneId,
+		)
+	}
+
+	return pgMeta.ZoneID, nil
+}
+
 func (s *service) CreateDisk(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
@@ -728,7 +766,7 @@ func (s *service) MigrateDisk(
 			req,
 		)
 	}
-	if req.DiskId.ZoneId == req.DstZoneId {
+	if req.DiskId.ZoneId == req.DstZoneId && !req.IsMigrationBetweenCells {
 		return "", common.NewInvalidArgumentError(
 			"cannot migrate disk to the same zone, req=%v",
 			req,
@@ -740,6 +778,32 @@ func (s *service) MigrateDisk(
 		return "", err
 	}
 
+	dstZoneID := req.DstZoneId
+
+	if len(req.DstPlacementGroupId) > 0 {
+		dstZoneID, err = s.getPlacementGroupZoneId(ctx, req)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// in migration between cells DstZoneId and PG zone id must be strictly equal
+	if req.IsMigrationBetweenCells && dstZoneID != req.DstZoneId {
+		return "", common.NewInvalidArgumentError(
+			"in migration between cells, destination placement group %v is in zone %v that is not equal requested destination zone %v",
+			req.DstPlacementGroupId,
+			dstZoneID,
+			req.DstZoneId,
+		)
+	}
+
+	if zoneID == dstZoneID {
+		return "", common.NewInvalidArgumentError(
+			"cannot migrate disk to the same zone, req=%v",
+			req,
+		)
+	}
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.MigrateDisk",
@@ -749,7 +813,7 @@ func (s *service) MigrateDisk(
 				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
 			},
-			DstZoneId:                  req.DstZoneId,
+			DstZoneId:                  dstZoneID,
 			DstPlacementGroupId:        req.DstPlacementGroupId,
 			DstPlacementPartitionIndex: req.DstPlacementPartitionIndex,
 			IsMigrationBetweenCells:    req.IsMigrationBetweenCells,

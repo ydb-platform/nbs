@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
@@ -16,10 +17,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createPlacementGroupTask struct {
-	storage    resources.Storage
-	nbsFactory nbs.Factory
-	request    *protos.CreatePlacementGroupRequest
-	state      *protos.CreatePlacementGroupTaskState
+	storage      resources.Storage
+	nbsFactory   nbs.Factory
+	cellSelector cells.CellSelector
+	request      *protos.CreatePlacementGroupRequest
+	state        *protos.CreatePlacementGroupTaskState
 }
 
 func (t *createPlacementGroupTask) Save() ([]byte, error) {
@@ -42,16 +44,33 @@ func (t *createPlacementGroupTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.ZoneId)
+	var client nbs.Client
+	var err error
+
+	if len(t.state.GetSelectedCellId()) > 0 {
+		client, err = t.nbsFactory.GetClient(ctx, t.state.GetSelectedCellId())
+	} else {
+		client, err = t.cellSelector.SelectCellForPlacementGroup(
+			ctx,
+			t.request.ZoneId,
+		)
+		if err != nil {
+			return err
+		}
+
+		t.state.SelectedCellId = client.ZoneID()
+		err = execCtx.SaveState(ctx)
+	}
 	if err != nil {
 		return err
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 
-	placementGroupMeta, err := t.storage.CreatePlacementGroup(ctx, resources.PlacementGroupMeta{
+	var placementGroupMeta *resources.PlacementGroupMeta
+	placementGroupMeta, err = t.storage.CreatePlacementGroup(ctx, resources.PlacementGroupMeta{
 		ID:                      t.request.GroupId,
-		ZoneID:                  t.request.ZoneId,
+		ZoneID:                  client.ZoneID(),
 		PlacementStrategy:       t.request.PlacementStrategy,
 		PlacementPartitionCount: t.request.PlacementPartitionCount,
 
@@ -90,7 +109,14 @@ func (t *createPlacementGroupTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.ZoneId)
+	client, err := selectClientByGroup(
+		ctx,
+		t.storage,
+		t.nbsFactory,
+		t.cellSelector,
+		t.request.GroupId,
+		t.request.ZoneId,
+	)
 	if err != nil {
 		return err
 	}

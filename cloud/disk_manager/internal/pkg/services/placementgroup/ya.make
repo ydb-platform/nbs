@@ -10,6 +10,10 @@ SRCS(
     service.go
 )
 
+GO_TEST_SRCS(
+    placementgroup_test.go
+)
+
 END()
 
 RECURSE(
@@ -19,4 +23,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
+    tests
 )
