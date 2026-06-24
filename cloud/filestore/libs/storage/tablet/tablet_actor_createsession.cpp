@@ -60,6 +60,8 @@ void FillFeatures(
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
+    features->SetServerWriteBackCacheFlushWritesInParallelEnabled(
+        config.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
     features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
     features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());
@@ -188,11 +190,42 @@ void Convert(
     fileStore.SetShardNo(fileSystem.GetShardNo());
 }
 
+void ProcessAdapterModeFeatures(NProto::TFileStoreFeatures& f)
+{
+    //
+    // Adapter mode doesn't support multiple-stage IO yet. Disabling
+    // multiple-stage IO for the whole FS for simplicity if at least one shard
+    // is configured in adapter mode.
+    //
+
+    f.SetTwoStageReadEnabled(false);
+    f.SetThreeStageWriteEnabled(false);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-using TCreateShardSessionsActor = TShardRequestActor<
+using TCreateShardSessionsActorBase = TShardRequestActor<
     TEvIndexTablet::TEvCreateSessionRequest,
     TEvIndexTablet::TEvCreateSessionResponse>;
+
+class TCreateShardSessionsActor: public TCreateShardSessionsActorBase
+{
+public:
+    using TCreateShardSessionsActorBase::TCreateShardSessionsActorBase;
+
+protected:
+    void OnResponse(const NProtoPrivate::TCreateSessionResponse& record)
+        override
+    {
+        if (record.GetAdapterModeEnabled()
+                && Response
+                && Response->Record.HasFileStore())
+        {
+            auto* f = Response->Record.MutableFileStore()->MutableFeatures();
+            ProcessAdapterModeFeatures(*f);
+        }
+    }
+};
 
 }   // namespace
 
@@ -299,6 +332,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 ctx);
             args.SessionInterrupted = true;
             if (toKill != owner) {
+                const auto subSession =
+                    session->SubSessions.GetSubSessionBySeqNo(seqNo);
+                if (subSession) {
+                    args.OwnerGeneration = subSession->OwnerGeneration;
+                } else {
+                    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+                        "%s CreateSession c:%s, s:%s, seqno:%lu recovered "
+                        "by session, but subsession was not found",
+                        LogTag.c_str(),
+                        clientId.c_str(),
+                        session->GetSessionId().c_str(),
+                        seqNo);
+                }
                 LOG_INFO(ctx, TFileStoreComponents::TABLET,
                     "%s CreateSession c:%s, s:%s, seqno:%lu recovered by session",
                     LogTag.c_str(),
@@ -344,6 +390,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 readOnly,
                 owner,
                 ctx);
+            const auto subSession =
+                session->SubSessions.GetSubSessionBySeqNo(seqNo);
+            if (subSession) {
+                args.OwnerGeneration = subSession->OwnerGeneration;
+            } else {
+                LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+                    "%s CreateSession c:%s, s:%s, seqno:%lu recovered by "
+                    "client, but subsession was not found",
+                    LogTag.c_str(),
+                    clientId.c_str(),
+                    session->GetSessionId().c_str(),
+                    seqNo);
+            }
             args.SessionInterrupted = true;
 
             return;
@@ -370,7 +429,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
 
     auto sessionOptions = TSession::CreateSessionOptions(Config);
 
-    CreateSession(
+    auto* newSession = CreateSession(
         db,
         clientId,
         args.SessionId,
@@ -380,6 +439,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         readOnly,
         owner,
         sessionOptions);
+    const auto subSession =
+        newSession->SubSessions.GetSubSessionBySeqNo(seqNo);
+    if (subSession) {
+        args.OwnerGeneration = subSession->OwnerGeneration;
+    } else {
+        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession c:%s, s:%s, seqno:%lu created new session, "
+            "but subsession was not found",
+            LogTag.c_str(),
+            clientId.c_str(),
+            newSession->GetSessionId().c_str(),
+            seqNo);
+    }
 }
 
 void TIndexTabletActor::CompleteTx_CreateSession(
@@ -426,6 +498,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
     response->Record.SetSessionState(session->GetSessionState());
+    response->Record.SetOwnerGeneration(args.OwnerGeneration);
     if (!args.Request.GetNoFileStoreInfo()) {
         auto& fileStore = *response->Record.MutableFileStore();
         Convert(GetFileSystem(), fileStore);
@@ -437,6 +510,14 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             "%s New session TFileStoreFeatures '%s'",
             LogTag.c_str(),
             fileStore.GetFeatures().ShortDebugString().c_str());
+    }
+
+    if (FastShard) {
+        response->Record.SetAdapterModeEnabled(true);
+        if (!args.Request.GetNoFileStoreInfo()) {
+            auto* f = response->Record.MutableFileStore()->MutableFeatures();
+            ProcessAdapterModeFeatures(*f);
+        }
     }
 
     TVector<TString> shardIds;

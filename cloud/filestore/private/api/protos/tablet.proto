@@ -69,6 +69,13 @@ message TCreateSessionResponse
 
     // Filestore description.
     NProto.TFileStore FileStore = 4;
+
+    // Tablet generation and owner generation
+    // for the accepted subsession owner.
+    uint64 OwnerGeneration = 5;
+
+    // True if this tablet is configured to run in adapter mode.
+    bool AdapterModeEnabled = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

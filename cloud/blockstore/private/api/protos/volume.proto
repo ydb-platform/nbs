@@ -48,6 +48,28 @@ message TDescribeBlocksResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// DescribeBlob request/response.
+
+message TDescribeBlobRequest
+{
+    string DiskId = 1;
+    TLogoBlobID BlobId = 2;
+}
+
+message TBlockInBlob
+{
+    uint32 BlockIndex = 1;
+    uint64 CommitId = 2;
+    uint32 BlobOffset = 3;
+    uint32 Checksum = 4;
+}
+
+message TDescribeBlobResponse
+{
+    repeated TBlockInBlob Blocks = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // CompactRange request/response.
 
 message TCompactRangeRequest

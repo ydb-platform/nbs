@@ -1,12 +1,12 @@
 name: Nightly build (msan)
 run-name: |
   ${{ github.event_name == 'workflow_dispatch'
-      && format('Nightly build (msan) (manual)')
-      || format('Nightly build (msan) (schedule)')
+      && 'Nightly build (msan) (manual)'
+      || 'Nightly build (msan) (schedule)'
     }}
 on:
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "0 1 * * *"
   workflow_dispatch:
 
 jobs:

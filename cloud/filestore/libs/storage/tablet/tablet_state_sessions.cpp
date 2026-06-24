@@ -190,7 +190,7 @@ TSession* TIndexTabletState::CreateSession(
     const NProto::TSessionOptions& sessionOptions)
 {
     auto session = std::make_unique<TSession>(proto, sessionOptions);
-    session->UpdateSubSession(seqNo, readOnly, owner);
+    session->UpdateSubSession(seqNo, readOnly, owner, GetGeneration());
 
     Impl->Sessions.PushBack(session.get());
     Impl->SessionById.emplace(session->GetSessionId(), session.get());
@@ -214,7 +214,11 @@ NActors::TActorId TIndexTabletState::RecoverSession(
     const TActorId& owner)
 {
     auto oldOwner =
-        session->UpdateSubSession(sessionSeqNo, readOnly, owner);
+        session->UpdateSubSession(
+            sessionSeqNo,
+            readOnly,
+            owner,
+            GetGeneration());
     if (oldOwner) {
         Impl->SessionByOwner.erase(oldOwner);
 

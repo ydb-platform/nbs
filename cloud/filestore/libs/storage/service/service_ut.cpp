@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
+#include <cloud/filestore/libs/storage/tablet/subsessions.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -904,6 +905,96 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         );
         UNIT_ASSERT_VALUES_UNEQUAL(headers.SessionId, headers3.SessionId);
 
+        service.DestroySession(headers);
+    }
+
+    Y_UNIT_TEST(ShouldPropagateSessionOwnerGeneration)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        struct TSessionCreatedNotification
+        {
+            ui64 SessionSeqNo;
+            bool ReadOnly;
+            ui64 OwnerGeneration;
+        };
+
+        TVector<TSessionCreatedNotification> notifications;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() == TEvServicePrivate::EvSessionCreated)
+            {
+                const auto* msg =
+                    event->Get<TEvServicePrivate::TEvSessionCreated>();
+                if (SUCCEEDED(msg->GetStatus()) &&
+                    msg->ClientId == "client" &&
+                    msg->FileStore.GetFileSystemId() == "test")
+                {
+                    notifications.push_back({
+                        msg->SessionSeqNo,
+                        msg->ReadOnly,
+                        msg->OwnerGeneration});
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto headers = service.InitSession("test", "client");
+
+        THeaders roHeaders;
+        service.InitSession(
+            roHeaders,
+            "test",
+            "client",
+            "",     // checkpointId
+            true,   // restoreClientSession
+            1,
+            true);  // readOnly
+
+        THeaders rwHeaders;
+        service.InitSession(
+            rwHeaders,
+            "test",
+            "client",
+            "",     // checkpointId
+            true,   // restoreClientSession
+            1,
+            false);  // readOnly
+
+        UNIT_ASSERT_VALUES_EQUAL(3, notifications.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, notifications[0].SessionSeqNo);
+        UNIT_ASSERT_VALUES_EQUAL(false, notifications[0].ReadOnly);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            ExtractSubSessionOwnerGeneration(notifications[0].OwnerGeneration));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, notifications[1].SessionSeqNo);
+        UNIT_ASSERT_VALUES_EQUAL(true, notifications[1].ReadOnly);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            ExtractSubSessionOwnerGeneration(notifications[1].OwnerGeneration));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, notifications[2].SessionSeqNo);
+        UNIT_ASSERT_VALUES_EQUAL(false, notifications[2].ReadOnly);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            ExtractSubSessionOwnerGeneration(notifications[2].OwnerGeneration));
+        UNIT_ASSERT_C(
+            notifications[1].OwnerGeneration < notifications[2].OwnerGeneration,
+            "roOwnerGeneration=" << notifications[1].OwnerGeneration
+                                 << ", rwOwnerGeneration="
+                                 << notifications[2].OwnerGeneration);
+
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+        service.DestroySession(rwHeaders);
         service.DestroySession(headers);
     }
 
@@ -4817,6 +4908,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetTwoStageReadEnabled(true);
+        testReadDataRequestWithIovecs(std::move(config));
+    }
+
+    Y_UNIT_TEST(
+        ShouldUseIovecsForReadDataRequestWithTwoStageReadAndZeroCopyRead)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        config.SetZeroCopyReadEnabled(true);
         testReadDataRequestWithIovecs(std::move(config));
     }
 

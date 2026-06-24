@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
@@ -1728,6 +1729,14 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
+        if (VolumeHealthSyncActorId) {
+            DIV_CLASS ("row") {
+                DIV_CLASS ("col-md-6") {
+                    RenderAvailableAgentsStatus(out);
+                }
+            }
+        }
+
         DIV_CLASS("row") {
             DIV_CLASS("col-md-6") {
                 RenderAppliedVolumeThrottlingRule(out);
@@ -2220,6 +2229,35 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
             if (!CanExecuteWriteRequest()) {
                 SPAN_CLASS_STYLE("label label-danger", "margin-left:10px") {
                     out << "Writes blocked by checkpoint";
+                }
+            }
+        }
+    }
+}
+
+void TVolumeActor::RenderAvailableAgentsStatus(IOutputStream& out) const
+{
+    HTML (out) {
+        TAG (TH3) {
+            out << "Agent status:";
+
+            if (DeviceUUIDToBrokenAt.empty()) {
+                SPAN_CLASS_STYLE ("label label-success", "margin-left:10px") {
+                    out << "All agents available";
+                }
+                return;
+            }
+
+            TSet<TString> unavailableAgents;
+            for (const auto* dev: GetAllDevices(State->GetMeta())) {
+                if (DeviceUUIDToBrokenAt.contains(dev->GetDeviceUUID())) {
+                    unavailableAgents.insert(dev->GetAgentId());
+                }
+            }
+
+            for (const auto& host: unavailableAgents) {
+                SPAN_CLASS_STYLE ("label label-danger", "margin-left:10px") {
+                    out << host;
                 }
             }
         }

@@ -94,6 +94,11 @@ struct TTestNvmeManager
         return "SN-" + path;
     }
 
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        return "MODEL-" + path;
+    }
+
     TResultOrError<bool> IsSsd(const TString& path) override
     {
         Y_UNUSED(path);
@@ -101,7 +106,7 @@ struct TTestNvmeManager
         return true;
     }
 
-    NProto::TError Sanitize(const TString& ctrlPath) override
+    NProto::TError StartSanitize(const TString& ctrlPath) override
     {
         Y_UNUSED(ctrlPath);
 

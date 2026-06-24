@@ -75,6 +75,14 @@ constexpr TStringBuf MetricsComponent = "fs_ut";
 constexpr ui64 dotSize = sizeof(fuse_direntplus) + sizeof(ui64);
 constexpr ui64 dotDotSize = dotSize;
 
+// Small directory listings for the multi-chunk paging tests below, kept tiny
+// so sanitizer builds don't time out building multi-megabyte responses. Each
+// entry serializes to +- 200 bytes; SecondChunkReadOffset lands past the first
+// chunk (~105 KB) to page in the second.
+constexpr ui32 FirstChunkEntryCount = 600;
+constexpr ui32 SecondChunkEntryCount = 300;
+constexpr i64 SecondChunkReadOffset = 120'000;
+
 static const TString FileSystemId = "fs1";
 static const TString SessionId = CreateGuidAsString();
 
@@ -1248,7 +1256,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TListNodesResponse result;
 
             if (!request->GetCookie()) {
-                for (ui32 i = 1; i <= 20000; ++i) {
+                for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
                     result.AddNames()->assign(
                         "first_chunk_file_" + ToString(i) + ".txt");
                     auto* node = result.AddNodes();
@@ -1258,11 +1266,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 result.SetCookie("has_more_data");
             } else {
                 UNIT_ASSERT_VALUES_EQUAL("has_more_data", request->GetCookie());
-                for (ui32 i = 20001; i <= 25100; ++i) {
+                for (ui32 i = 1; i <= SecondChunkEntryCount; ++i) {
                     result.AddNames()->assign(
                         "second_chunk_file_" + ToString(i) + ".txt");
                     auto* node = result.AddNodes();
-                    node->SetId(100 + i);
+                    node->SetId(100 + FirstChunkEntryCount + i);
                     node->SetType(NProto::E_REGULAR_NODE);
                 }
             }
@@ -1343,7 +1351,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(maxOpenHandleCount);
         UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
 
-        auto largeOffset = size1 + 3700000;   // Go beyond the first chunk
+        // Go beyond chunk 1
+        auto largeOffset = size1 + SecondChunkReadOffset;
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
             handleId,
@@ -1447,7 +1456,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TListNodesResponse result;
 
             if (!request->GetCookie()) {
-                for (ui32 i = 1; i <= 20000; ++i) {
+                for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
                     result.AddNames()->assign(
                         "first_chunk_file_" + ToString(i) + ".txt");
                     auto* node = result.AddNodes();
@@ -1457,11 +1466,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 result.SetCookie("has_more_data");
             } else {
                 UNIT_ASSERT_VALUES_EQUAL("has_more_data", request->GetCookie());
-                for (ui32 i = 20001; i <= 25100; ++i) {
+                for (ui32 i = 1; i <= SecondChunkEntryCount; ++i) {
                     result.AddNames()->assign(
                         "second_chunk_file_" + ToString(i) + ".txt");
                     auto* node = result.AddNodes();
-                    node->SetId(100 + i);
+                    node->SetId(100 + FirstChunkEntryCount + i);
                     node->SetType(NProto::E_REGULAR_NODE);
                 }
             }
@@ -1513,7 +1522,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
 
-        const auto largeOffset = size1 + 3700000;
+        const auto largeOffset = size1 + SecondChunkReadOffset;
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
             handleId,
@@ -1738,7 +1747,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 NProto::TListNodesResponse result;
 
                 if (!request->GetCookie()) {
-                    for (ui32 i = 1; i <= 20000; ++i) {
+                    for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
                         result.AddNames()->assign(
                             "first_chunk_file_" + ToString(i) + ".txt");
                         auto* node = result.AddNodes();
@@ -1751,11 +1760,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         "has_more_data",
                         request->GetCookie());
-                    for (ui32 i = 20001; i <= 25100; ++i) {
+                    for (ui32 i = 1; i <= SecondChunkEntryCount; ++i) {
                         result.AddNames()->assign(
                             "second_chunk_file_" + ToString(i) + ".txt");
                         auto* node = result.AddNodes();
-                        node->SetId(100 + i);
+                        node->SetId(100 + FirstChunkEntryCount + i);
                         node->SetType(NProto::E_REGULAR_NODE);
                     }
                     ++numCalls2;
@@ -1786,7 +1795,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(numCalls1.load(), 1);
             UNIT_ASSERT_VALUES_EQUAL(numCalls2.load(), 0);
 
-            auto largeOffset = 3700000;   // Go beyond the first chunk
+            // Go beyond the first chunk
+            auto largeOffset = SecondChunkReadOffset;
             read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
                 nodeId,
                 handleId,
@@ -5387,6 +5397,89 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldHandleServerWriteBackCacheFlushWritesInParallelEnabledFeature)
+    {
+        // Sends 3 WriteData requests to WriteBackCache: [0, 3), [6, 9), [3, 6)
+        //
+        // WriteBackCache uses greedy algorithm to build WriteData requests
+        // for flush and takes requests from the unflushed queue while the
+        // condition is met.
+        //
+        // When parallel writes are disabled:
+        // - after taking [0, 3) and [6, 9) there will be 2 WriteData requests
+        //   so it will flush only [0, 3)
+        // - then it takes [6, 9) and [3, 6) then are consolidated to [3, 9)
+        //
+        // When parallel writes are enabled:
+        // - take [0, 3) and [6, 9) - 2 WriteData requests in parallel are ok
+        // - take [6, 9) - consolidate to [0, 9)
+
+        auto test = [&](bool flushWritesInParallelEnabled)
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+            features.SetServerWriteBackCacheFlushWritesInParallelEnabled(
+                flushWritesInParallelEnabled);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                 features,
+                 /* handleOpsQueueSize = */ 0,
+                 /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
+
+            const ui64 nodeId = 123;
+            const ui64 handleId = 456;
+
+            std::atomic<ui64> writeDataCalled = 0;
+
+            bootstrap.Service->WriteDataHandler = [&](auto, auto)
+            {
+                writeDataCalled++;
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            auto write1 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                nodeId,
+                handleId,
+                0,
+                "abc");
+
+            UNIT_ASSERT_NO_EXCEPTION(write1.GetValue(WaitTimeout));
+
+            auto write2 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                nodeId,
+                handleId,
+                6,
+                "ghi");
+
+            UNIT_ASSERT_NO_EXCEPTION(write2.GetValue(WaitTimeout));
+
+            auto write3 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                nodeId,
+                handleId,
+                3,
+                "def");
+
+            UNIT_ASSERT_NO_EXCEPTION(write3.GetValue(WaitTimeout));
+
+            auto flush =
+                bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+            UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+
+            return writeDataCalled.load();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, test(true));
+        UNIT_ASSERT_VALUES_EQUAL(2, test(false));
     }
 }
 

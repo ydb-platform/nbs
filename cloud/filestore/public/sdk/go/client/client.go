@@ -96,7 +96,7 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Node struct {
-	ParentID          uint64
+	ParentNodeID      uint64
 	NodeID            uint64
 	Name              string
 	Atime             uint64
@@ -114,7 +114,7 @@ type Node struct {
 	DevID             uint64
 }
 
-func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
+func nodeFromAttr(parentNodeID uint64, name string, attr *protos.TNodeAttr) Node {
 	// On the filestore side, symlinks are represented as links
 	// and links are regular files with Links >= 2.
 	nodeType := NodeType(attr.GetType())
@@ -123,7 +123,7 @@ func nodeFromAttr(parentID uint64, name string, attr *protos.TNodeAttr) Node {
 	}
 
 	return Node{
-		ParentID:          parentID,
+		ParentNodeID:      parentNodeID,
 		NodeID:            attr.GetId(),
 		Name:              name,
 		Atime:             attr.GetATime(),
@@ -441,7 +441,7 @@ func (client *Client) CreateNode(
 ) (uint64, error) {
 
 	req := &protos.TCreateNodeRequest{
-		NodeId:       node.ParentID,
+		NodeId:       node.ParentNodeID,
 		Name:         []byte(node.Name),
 		FileSystemId: session.FileSystemID,
 		Uid:          uint64(node.UID),

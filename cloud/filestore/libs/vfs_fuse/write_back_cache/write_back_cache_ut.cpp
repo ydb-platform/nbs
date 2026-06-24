@@ -169,6 +169,7 @@ struct TBootstrapArgs
     bool UseTestTimerAndScheduler = true;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
+    bool FlushWritesInParallelEnabled = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,6 +195,8 @@ struct TBootstrap
     ui32 MaxSumWriteRequestsSize = 0;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
+    bool FlushWritesInParallelEnabled = false;
+    bool DisableExpectedDataValidation = false;
 
     TCallContextPtr CallContext;
 
@@ -214,12 +217,9 @@ struct TBootstrap
 
     ui32 RecreationCount = 0;
 
-    THashMap<ui64, TInFlightRequestTracker> InFlightReadRequestTracker;
-    THashMap<ui64, TInFlightRequestTracker> InFlightWriteRequestTracker;
-
     std::atomic<int> SessionWriteDataHandlerCalled;
 
-    TBootstrap(const TBootstrapArgs& args = {})
+    explicit TBootstrap(const TBootstrapArgs& args = {})
         : CacheAutomaticFlushPeriod(args.AutomaticFlushPeriod)
         , MaxWriteRequestSize(args.MaxWriteRequestSize)
         , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
@@ -227,6 +227,7 @@ struct TBootstrap
         , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
+        , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -247,18 +248,6 @@ struct TBootstrap
 
         Session->ReadDataHandler = [&] (auto, auto request) {
             const auto nodeId = request->GetNodeId();
-            const auto offset = request->GetOffset();
-            const auto length = request->GetLength();
-
-            // Overlapping write requests are not allowed
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                InFlightWriteRequestTracker[nodeId].Count(offset, length));
-
-            InFlightReadRequestTracker[nodeId].Add(offset, length);
-            Y_DEFER {
-                InFlightReadRequestTracker[nodeId].Remove(offset, length);
-            };
 
             std::unique_lock lock(FlushedDataMutex);
 
@@ -298,21 +287,6 @@ struct TBootstrap
         Session->WriteDataHandler = [&] (auto, auto request) {
             MoveIovecsToBuffer(*request);
             const auto nodeId = request->GetNodeId();
-            const auto offset = request->GetOffset();
-            const auto length = request->GetBuffer().length();
-
-            // Overlapping read requests are not allowed
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                InFlightReadRequestTracker[nodeId].Count(offset, length));
-
-            // Overlapping write requests are not allowed
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                InFlightWriteRequestTracker[nodeId].Add(offset, length));
-            Y_DEFER {
-                InFlightWriteRequestTracker[nodeId].Remove(offset, length);
-            };
 
             std::unique_lock lock1(ExpectedDataMutex);
             std::unique_lock lock2(FlushedDataMutex);
@@ -321,28 +295,29 @@ struct TBootstrap
                 << " to @" << request->GetNodeId()
                 << " at offset " << request->GetOffset());
 
-            UNIT_ASSERT(ExpectedData.contains(nodeId));
-
-            const auto expected = ExpectedData[nodeId];
-            UNIT_ASSERT_LE(
-                request->GetOffset() + request->GetBuffer().length(),
-                expected.length());
-
             auto from = TStringBuf(request->GetBuffer());
-
-            if (!DoNotCheckWriteDataRequestBuffer) {
-                auto expectedData = TStringBuf(expected).SubString(
-                    request->GetOffset(),
-                    request->GetBuffer().length());
-                UNIT_ASSERT_VALUES_EQUAL(expectedData, from);
-            }
 
             auto& flushed = FlushedData[nodeId];
             Write(flushed, request->GetOffset(), request->GetBuffer());
             FlushedDataWritten += request->GetBuffer().length();
 
-            if (RecreationCount == 1) {
-                UNIT_ASSERT_LE(FlushedDataWritten, ExpectedDataWritten);
+            if (!DoNotCheckWriteDataRequestBuffer) {
+                UNIT_ASSERT(ExpectedData.contains(nodeId));
+
+                const auto expected = ExpectedData[nodeId];
+                UNIT_ASSERT_LE(
+                    request->GetOffset() + request->GetBuffer().length(),
+                    expected.length());
+
+                auto expectedData = TStringBuf(expected).SubString(
+                    request->GetOffset(),
+                    request->GetBuffer().length());
+
+                UNIT_ASSERT_VALUES_EQUAL(expectedData, from);
+
+                if (RecreationCount == 1) {
+                    UNIT_ASSERT_LE(FlushedDataWritten, ExpectedDataWritten);
+                }
             }
 
             SessionWriteDataHandlerCalled++;
@@ -405,7 +380,8 @@ struct TBootstrap
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
-             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled});
+             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
+             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled});
 
         ModuleStats = Cache.CreateModuleStats();
     }
@@ -1045,10 +1021,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         bool WithCacheRecreation = false;
         bool ZeroCopyWriteEnabled = false;
+        bool FlushWritesInParallelEnabled = false;
     };
 
     void TestShouldReadAfterWriteRandomized(const TTestArgs& args) {
-        TBootstrap b({.ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled});
+        TBootstrap b({
+            .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled,
+            .DoNotCheckWriteDataRequestBuffer =
+                !args.FlushWritesInParallelEnabled,
+            .FlushWritesInParallelEnabled = args.FlushWritesInParallelEnabled,
+        });
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1112,9 +1094,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 stats.GetNodeCount(),
                 b.Metrics.Nodes.Count->Get());
-            UNIT_ASSERT_VALUES_EQUAL(
-                stats.FlushCount,
-                b.Metrics.Flush.CompletedCount->Get());
+
+            if (args.FlushWritesInParallelEnabled) {
+                // If parallel writes are disabled, multiple Flush operations
+                // will be needed to flush all unflushed data - these values
+                // will be different
+                UNIT_ASSERT_VALUES_EQUAL(
+                    stats.FlushCount,
+                    b.Metrics.Flush.CompletedCount->Get());
+            }
         }
 
         if (args.WithCacheRecreation) {
@@ -1130,22 +1118,34 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReadAfterWriteRandomized)
     {
         TestShouldReadAfterWriteRandomized({});
+        TestShouldReadAfterWriteRandomized(
+            {.FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreation)
     {
         TestShouldReadAfterWriteRandomized({.WithCacheRecreation = true});
+        TestShouldReadAfterWriteRandomized(
+            {.WithCacheRecreation = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithZeroCopy)
     {
         TestShouldReadAfterWriteRandomized({.ZeroCopyWriteEnabled = true});
+        TestShouldReadAfterWriteRandomized(
+            {.ZeroCopyWriteEnabled = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreationAndZeroCopy)
     {
         TestShouldReadAfterWriteRandomized(
             {.WithCacheRecreation = true, .ZeroCopyWriteEnabled = true});
+        TestShouldReadAfterWriteRandomized(
+            {.WithCacheRecreation = true,
+             .ZeroCopyWriteEnabled = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(FullyRandomizedWithWriteFailures)
@@ -1558,21 +1558,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldTryToFlushWhenRequestSizeIsGreaterThanLimit)
     {
-        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 1});
+        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 2});
 
         TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "a");
-        // Flush will have two requests (1, 2) and (3, 2) despite the limit
-        b.WriteToCacheSync(1, 1, "bbbb");
-        b.WriteToCacheSync(1, 5, "c");
-        b.WriteToCacheSync(1, 6, "d");
+        // Flush will have three requests (1, 2), (3, 2) and (5, 1) despite the
+        // limit
+        b.WriteToCacheSync(1, 1, "bbbbb");
+        b.WriteToCacheSync(1, 6, "c");
+        b.WriteToCacheSync(1, 7, "d");
 
         b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "(0, 1), (1, 2), (3, 2), (5, 2)",
+            "(0, 1), (1, 2), (3, 2), (5, 1), (6, 2)",
             logger.RangesToString(1));
     }
 
@@ -1855,6 +1856,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(1);
         request->SetOffset(0);
+        request->SetHandle(101);
 
         auto* iovec1 = request->AddIovecs();
         iovec1->SetBase(base + 3);
@@ -1955,6 +1957,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(1);
+        request->SetHandle(101);
         request->SetOffset(0);
         auto* iovec = request->AddIovecs();
         iovec->SetBase(base);
@@ -2258,6 +2261,310 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Ensure that WriteData request is evicted
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.FlushedQueue.Count->Get());
+    }
+
+    Y_UNIT_TEST(ShouldDropCachedDataWhenThereAreNoLiveHandles)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .UseTestTimerAndScheduler = true,
+        });
+
+        TVector<TPromise<NProto::TWriteDataResponse>> writeRequests;
+        TVector<ui64> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writeRequests.push_back(promise);
+            writeHandles.push_back(request->GetHandle());
+            return promise;
+        };
+
+        auto completeNext = [&](NProto::TWriteDataResponse response)
+        {
+            UNIT_ASSERT(!writeRequests.empty());
+            auto promise = writeRequests.front();
+            writeRequests.erase(writeRequests.begin());
+            promise.SetValue(std::move(response));
+        };
+
+        b.WriteToCacheSync(1, 101, 1, "abc");
+        b.WriteToCacheSync(1, 102, 10, "123");
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 102);
+
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        NProto::TWriteDataResponse errorResponse;
+        errorResponse.MutableError()->SetCode(E_FAIL);
+        completeNext(std::move(errorResponse));
+
+        UNIT_ASSERT(releaseFuture.HasValue());
+        UNIT_ASSERT(HasError(releaseFuture.GetValue()));
+
+        // Current state: WriteBackCache contains 2 WriteData requests for
+        // handle 101 and 102 but only handle 101 is live
+
+        auto flushFuture = b.Cache.FlushNodeData(1);
+        b.RunAllScheduledTasks();
+
+        // An attempt to retry flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        completeNext({});
+
+        // After a successful flush attempt, WriteBackCache contains 1 WriteData
+        // requests for handle 102 that is already released.
+        // The next flush attempt executes immediately and fails.
+
+        UNIT_ASSERT(flushFuture.HasValue());
+        UNIT_ASSERT(HasError(flushFuture.GetValue()));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldRetryFlushWithLiveHandle)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .UseTestTimerAndScheduler = true,
+        });
+
+        TVector<ui64> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            writeHandles.push_back(request->GetHandle());
+            NProto::TWriteDataResponse errorResponse;
+            errorResponse.MutableError()->SetCode(E_FAIL);
+            return MakeFuture(std::move(errorResponse));
+        };
+
+        b.WriteToCacheSync(1, 101, 1, "abc");
+        b.WriteToCacheSync(1, 102, 10, "123");
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
+
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        // Confirm that handle 101 is released
+        UNIT_ASSERT(releaseFuture.HasValue());
+        UNIT_ASSERT(HasError(releaseFuture.GetValue()));
+
+        // Flush should be retried using handle 102
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
+    }
+
+    Y_UNIT_TEST(ShouldHandleFlushWritesInParallelEnabled)
+    {
+        auto test = [&](bool flushWritesInParallelEnabled)
+        {
+            TBootstrap b({
+                .UseTestTimerAndScheduler = true,
+                // Easier calculation of the request size
+                .ZeroCopyWriteEnabled = false,
+                .FlushWritesInParallelEnabled = flushWritesInParallelEnabled,
+            });
+
+            TStringBuilder sb;
+
+            b.Session->WriteDataHandler = [&](auto, auto request)
+            {
+                sb << "[" << request->GetOffset() << ","
+                   << request->GetOffset() + request->GetBuffer().size() << ")";
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            b.WriteToCacheSync(1, 6, "def");
+            b.WriteToCacheSync(1, 9, "ghi");
+            b.WriteToCacheSync(1, 3, "abc");
+            b.WriteToCacheSync(1, 13, "123");
+            b.WriteToCacheSync(1, 12, "jkl");
+            b.WriteToCacheSync(1, 0, "000");
+
+            auto future = b.Cache.FlushNodeData(1);
+            while (!future.HasValue()) {
+                UNIT_ASSERT(!future.HasException());
+                b.RunAllScheduledTasks();
+            }
+
+            return TString(sb);
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("[3,12)[12,16)[0,3)", test(false));
+        UNIT_ASSERT_VALUES_EQUAL("[0,16)", test(true));
+    }
+
+    Y_UNIT_TEST(ShouldNeverSplitRequestsWhenFlushWritesInParallelDisabled)
+    {
+        auto test = [&](bool flushWritesInParallelEnabled)
+        {
+            TBootstrap b({
+                .MaxWriteRequestSize = 2,
+                .UseTestTimerAndScheduler = true,
+                .FlushWritesInParallelEnabled = flushWritesInParallelEnabled,
+            });
+
+            int writeCount = 0;
+
+            TStringBuilder sb;
+
+            b.Session->WriteDataHandler = [&](auto, auto)
+            {
+                writeCount++;
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            b.WriteToCacheSync(1, 3, "abc");
+
+            auto future = b.Cache.FlushNodeData(1);
+            while (!future.HasValue()) {
+                UNIT_ASSERT(!future.HasException());
+                b.RunAllScheduledTasks();
+            }
+
+            return writeCount;
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, test(false));
+        UNIT_ASSERT_VALUES_EQUAL(2, test(true));
+    }
+
+    struct TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest
+        : TBootstrap
+    {
+        const ui64 BytesToWrite = 16 * 1024 * 1024;
+        const ui64 MaxBytesPerWrite = 256;
+        const ui64 NodeId = 1;
+
+        TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest()
+            : TBootstrap(
+                  {.AutomaticFlushPeriod = TDuration::MilliSeconds(1),
+                   .MaxWriteRequestSize = 1024,
+                   .UseTestTimerAndScheduler = false,
+                   // WriteBackCache may execute Flush before ExpectedData is
+                   // updated in WriteData future callback in a multi-threaded
+                   // environment
+                   .DoNotCheckWriteDataRequestBuffer = true,
+                   .FlushWritesInParallelEnabled = false})
+        {}
+
+        struct TReaderResult
+        {
+            ui64 FirstCharCount = 0;
+            ui64 LastCharCount = 0;
+            bool Valid = false;
+        };
+
+        TReaderResult Read(char firstChar, char lastChar)
+        {
+            auto ctx = MakeIntrusive<TCallContext>();
+            auto rq = std::make_shared<NProto::TReadDataRequest>();
+            rq->SetNodeId(NodeId);
+            rq->SetOffset(0);
+            rq->SetLength(BytesToWrite);
+
+            auto resp =
+                Session->ReadData(std::move(ctx), std::move(rq)).GetValue();
+
+            auto data =
+                TStringBuf(resp.GetBuffer()).Skip(resp.GetBufferOffset());
+
+            TReaderResult res;
+            while (res.FirstCharCount < data.size() &&
+                   data[res.FirstCharCount] == firstChar)
+            {
+                res.FirstCharCount++;
+            }
+
+            while (res.FirstCharCount + res.LastCharCount < data.size() &&
+                   data[res.FirstCharCount + res.LastCharCount] == lastChar)
+            {
+                res.LastCharCount++;
+            }
+
+            res.Valid = res.FirstCharCount + res.LastCharCount == data.size();
+
+            return res;
+        }
+
+        void Write(bool forward, char fillChar)
+        {
+            ui64 remaining = BytesToWrite;
+            while (remaining > 0) {
+                auto len = RandomNumber(Min(remaining, MaxBytesPerWrite)) + 1;
+                auto data = TString(len, fillChar);
+                if (forward) {
+                    WriteToCacheSync(NodeId, BytesToWrite - remaining, data);
+                } else {
+                    WriteToCacheSync(NodeId, remaining - len, data);
+                }
+                remaining -= len;
+            }
+        }
+    };
+
+    Y_UNIT_TEST(ShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabled)
+    {
+        TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest b;
+
+        // Test 1: write 'X' in forward order
+
+        std::thread writerThread1([&]() { b.Write(true, 'X'); });
+        ui64 prevFirstCharCount = 0;
+
+        while (true)
+        {
+            auto r = b.Read('X', '\0');
+
+            UNIT_ASSERT_LE(prevFirstCharCount, r.FirstCharCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, r.LastCharCount);
+            UNIT_ASSERT(r.Valid);
+
+            if (r.FirstCharCount == b.BytesToWrite) {
+                break;
+            }
+
+            prevFirstCharCount = r.FirstCharCount;
+        }
+
+        UNIT_ASSERT_LT_C(0, prevFirstCharCount, "Non-trivial reads expected");
+
+        writerThread1.join();
+
+        // Test 2: overwrite 'Y' in backward order
+
+        std::thread writerThread2([&]() { b.Write(false, 'Y'); });
+        ui64 prevLastCharCount = 0;
+
+        while (true)
+        {
+            auto r = b.Read('X', 'Y');
+
+            UNIT_ASSERT_LE(prevLastCharCount, r.LastCharCount);
+            UNIT_ASSERT(r.Valid);
+
+            if (r.LastCharCount == b.BytesToWrite) {
+                break;
+            }
+
+            prevLastCharCount = r.LastCharCount;
+        }
+
+        UNIT_ASSERT_LT_C(0, prevLastCharCount, "Non-trivial reads expected");
+
+        writerThread2.join();
     }
 }
 

@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
+#include <contrib/ydb/core/base/logoblob.h>
+
 #include <util/generic/guid.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -82,7 +84,7 @@ void CopySgListIntoRequestBuffers(
         record.GetDiskId(),
         TStringBuilder() << "Buffers: " << record.GetBlocks().BuffersSize());
 
-    record.CopySglistIntoBuffers();
+    record.TakeDataOwnership();
 }
 
 template <typename T>
@@ -244,6 +246,12 @@ void TVolumeActor::SendRequestToPartition(
         partActorId = State->GetDiskRegistryBasedPartitionActor();
     } else if (State->GetPartitions().size() == 1) {
         partActorId = State->GetPartitions()[0].GetTopActorId();
+    } else if constexpr (IsDescribeBlobMethod<TMethod>) {
+        const auto blobId =
+            NKikimr::LogoBlobIDFromLogoBlobID(ev->Get()->Record.GetBlobId());
+        if (auto* partition = State->GetPartition(blobId.TabletID())) {
+            partActorId = partition->GetTopActorId();
+        }
     } else {
         forkTraces = false;
         partActorId = State->GetMultiPartitionWrapperActor();
@@ -320,8 +328,10 @@ void TVolumeActor::FillResponse(
             callContext.LWOrbit,
             startTime,
             GetCycleCount());
-        response.Record.MutableDeprecatedTrace()->CopyFrom(
-            response.Record.GetHeaders().GetTrace());
+        if constexpr (requires { response.Record.MutableDeprecatedTrace(); }) {
+            response.Record.MutableDeprecatedTrace()->CopyFrom(
+                response.Record.GetHeaders().GetTrace());
+        }
     }
 
     StoreThrottlerDelay<TMethod>(
@@ -774,10 +784,10 @@ void TVolumeActor::ForwardRequest(
             case ELeadershipStatus::Follower: {
                 if (!isCopyingClient) {
                     // Any operations on the follower disk are prohibited for
-                    // an ordinary client.
+                    // an ordinary client. Reconnect to the principal disk.
                     replyError(MakeError(
-                        E_PRECONDITION_FAILED,
-                        makeMessage(NLog::PRI_ERROR)));
+                        E_BS_INVALID_SESSION,
+                        makeMessage(NLog::PRI_INFO)));
                     return;
                 }
                 break;
@@ -1051,6 +1061,57 @@ void TVolumeActor::ForwardRequest(
         blockRange,
         now,
         throttlingRequestInfo);
+}
+
+
+void TVolumeActor::HandleDescribeBlob(
+    const TEvVolume::TEvDescribeBlobRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_VOLUME_COUNTER(DescribeBlob);
+
+    auto* msg = ev->Get();
+
+    auto replyError = [&](NProto::TError error) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlobResponse>(
+            std::move(error));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    if (State->IsDiskRegistryMediaKind()) {
+        replyError(MakeError(
+            E_NOT_IMPLEMENTED,
+            "DescribeBlob is not implemented for DiskRegistry disks"));
+        return;
+    }
+
+    const auto blobId =
+        NKikimr::LogoBlobIDFromLogoBlobID(msg->Record.GetBlobId());
+    if (!blobId) {
+        replyError(
+            MakeError(E_ARGUMENT, "invalid blob id in DescribeBlob request"));
+        return;
+    }
+
+    if (State->GetPartitions().size() > 1 &&
+        !State->GetPartition(blobId.TabletID()))
+    {
+        replyError(MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "unknown partition tablet for blob id: "
+                << blobId.ToString()));
+        return;
+    }
+
+    ForwardRequest<TEvVolume::TDescribeBlobMethod>(ctx, ev);
+}
+
+void TVolumeActor::HandleDescribeBlobResponse(
+    const TEvVolume::TEvDescribeBlobResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardResponse<TEvVolume::TDescribeBlobMethod>(ctx, ev);
 }
 
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \

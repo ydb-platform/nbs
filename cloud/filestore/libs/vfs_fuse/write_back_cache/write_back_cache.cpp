@@ -81,7 +81,9 @@ public:
         , RequestBuilder(CreateWriteDataRequestBuilder(
               {.FileSystemId = args.FileSystemId,
                .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
-               .MaxWriteRequestsCount = args.FlushMaxWriteRequestsCount,
+               .MaxWriteRequestsCount = args.FlushWritesInParallelEnabled
+                                            ? args.FlushMaxWriteRequestsCount
+                                            : 1,
                .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,
                .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled}))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
@@ -237,7 +239,7 @@ public:
                          responseBuilder = std::move(responseBuilder),
                          pinId](TFuture<NProto::TReadDataResponse> future)
         {
-            auto response = future.ExtractValue();
+            auto response = UnsafeExtractValue(future);
 
             if (auto self = ptr.lock()) {
                 if (!HasError(response)) {
@@ -417,7 +419,6 @@ private:
             [&batchBuilder](const TCachedWriteDataRequest* request)
             {
                 return batchBuilder->AddRequest(
-                    request->GetHandle(),
                     request->GetOffset(),
                     request->GetBuffer());
             });
@@ -434,6 +435,34 @@ private:
 
     void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
+        auto handle = State.GetLiveHandle(flushState->GetNodeId());
+
+        if (handle == NProto::E_INVALID_HANDLE) {
+            // It is not possible to flush data when all handles are released
+            // TODO(#6201): this will not be needed after adding support for
+            // handleless IO
+            auto retryStatus = State.FlushFailed(
+                flushState->GetNodeId(),
+                MakeError(
+                    E_REJECTED,
+                    "There are no known live handles to flush data for node "
+                    "%lu",
+                    flushState->GetNodeId()));
+
+            // A live handle could appear between GetLiveHandle and FlushFailed
+            if (retryStatus == EFlushRetryStatus::ShouldNotRetry) {
+                return;
+            }
+
+            handle = State.GetLiveHandle(flushState->GetNodeId());
+
+            Y_ABORT_UNLESS(
+                handle != NProto::E_INVALID_HANDLE,
+                "There are no known live handles to flush data for node %lu, "
+                "but FlushFailed returned ShouldRetry",
+                flushState->GetNodeId());
+        }
+
         auto requests = flushState->BeginFlush();
 
         for (size_t i = 0; i < requests.size(); ++i) {
@@ -444,6 +473,8 @@ private:
             callContext->RequestSize =
                 NCloud::NFileStore::CalculateByteCount(*request) -
                 request->GetBufferOffset();
+
+            request->SetHandle(handle);
 
             auto callback = [ptr = weak_from_this(), flushState, i](
                                 const auto& future) mutable

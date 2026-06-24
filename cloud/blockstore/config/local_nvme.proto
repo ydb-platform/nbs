@@ -7,10 +7,13 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 ////////////////////////////////////////////////////////////////////////////////
 
 message TLocalNVMeConfig {
-    // Source URI for retrieving the list of NVMe devices to use (e.g. file:///etc/nbs/devices.txt)
+    // Source URI for retrieving the list of NVMe devices to use (e.g. file:///etc/nbs/devices.txt).
     optional string DevicesSourceUri = 1;
 
     // Path to the file for persisting the service state.
     // Used to restore state after restart.
     optional string StateCacheFilePath = 2;
+
+    // How often to poll the device provider while no NVMe devices are available (in milliseconds).
+    optional uint32 UpdateDevicesInterval = 3;
 }

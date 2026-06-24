@@ -12,7 +12,14 @@ from library.python.retry import retry
 import library.python.testing.recipe
 
 from .qemu import Qemu
-from .common import SshToGuest, get_mount_paths, env_with_guest_index, get_qemu_kvm, get_qemu_firmware
+from .common import (
+    SshToGuest,
+    env_with_guest_index,
+    get_mount_paths,
+    get_qemu_bios,
+    get_qemu_firmware,
+    get_qemu_kvm,
+)
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,
@@ -82,6 +89,7 @@ def start_instance(args, inst_index):
 
     qemu = Qemu(qemu_kvm=_get_qemu_kvm(args),
                 qemu_firmware=_get_qemu_firmware(args),
+                qemu_bios=get_qemu_bios(),
                 rootfs=_get_rootfs(args),
                 kernel=_get_kernel(args),
                 kcmdline=_get_kcmdline(args),
@@ -141,14 +149,34 @@ def start_instance(args, inst_index):
         open(ready_flag_path, 'a')
 
 
+@retry(max_times=100)
+def _process_instance_coredumps(user, key, port):
+
+    ssh = SshToGuest(user=user, port=port, key=key)
+    process_coredumps(ssh)
+
+
 def _process_coredumps(args):
+
     for instance in range(args.instance_count):
         try:
-            port = os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", instance), 22)
-            ssh = SshToGuest(user=_get_ssh_user(args), port=int(port), key=os.getenv("QEMU_SSH_KEY"))
-            process_coredumps(ssh)
+            qemu_fwd_port = env_with_guest_index("QEMU_FORWARDING_PORT", instance)
+            port = int(os.getenv(qemu_fwd_port, 22))
+
+            logger.info(
+                "Processing coredumps for instance #%d via SSH port %d",
+                instance,
+                port,
+            )
+
+            _process_instance_coredumps(
+                user=_get_ssh_user(args),
+                port=port,
+                key=os.getenv("QEMU_SSH_KEY"))
+
+            logger.info("Finished processing coredumps for instance #%d", instance)
         except Exception:
-            logger.exception(f"Failed to process instance #{instance} coredumps")
+            logger.exception("Failed to process coredumps for instance #%d", instance)
 
 
 def stop(argv):

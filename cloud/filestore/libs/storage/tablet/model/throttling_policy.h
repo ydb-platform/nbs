@@ -92,6 +92,7 @@ public:
     const TThrottlerConfig& GetConfig() const;
     ui32 GetVersion() const;
     ui64 CalculatePostponedWeight() const;
+    void UpdateWriteCostMultiplierDueToBackpressure(double backpressure);
     double GetWriteCostMultiplier() const;
     TDuration GetCurrentBoostBudget() const;
     double CalculateCurrentSpentBudgetShare(TInstant now) const;

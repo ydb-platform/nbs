@@ -155,7 +155,7 @@ jobs:
         continue-on-error: true
 
       - name: set up dependencies
-        run: pip install -r .github/scripts/requirements_dev.txt
+        run: pip install -r .github/packer/scripts/requirements_dev.txt
 
       - name: Prepare s3
         if: ${{ env.ACT != 'true' }}
@@ -275,7 +275,7 @@ jobs:
       - name: set up dependencies
         run: |
           pip install -r .github/scripts/requirements.txt
-          pip install -r .github/scripts/requirements_dev.txt
+          pip install -r .github/packer/scripts/requirements_dev.txt
       - name: flake8
         id: flake8
         uses: ./.github/actions/lint_report
@@ -328,8 +328,8 @@ jobs:
         if: ${{ env.ACT != 'true' && always() }}
         run: |
           set -x
-          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
-          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
+          aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
+          aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
       - name: build pytest summary table
         if: ${{ always() }}
         id: pytest-summary
@@ -449,10 +449,11 @@ jobs:
         shell: bash
         run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
-      - name: install action-validator
-        run: bash .github/packer/scripts/install-github-release-tools.sh action-validator
+      - name: install workflow linters
+        run: bash .github/packer/scripts/install-github-release-tools.sh action-validator actionlint
 
       - name: Prepare s3
+        if: ${{ env.ACT != 'true' }}
         id: s3
         uses: ./.github/actions/s3cmd
         with:
@@ -467,44 +468,81 @@ jobs:
 
       - name: check workflows syntax
         id: lint
+        continue-on-error: true
         run: |
           set -x
-          export TMP_OUT=$(mktemp)
-          {
-              find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read -r path; do
+          TMP_OUT=$(mktemp)
+          status=0
+          while read -r path; do
+              {
                   echo "Checking $path"
-                  action-validator --verbose "$path"
-              done
-          } > "$TMP_OUT"
+                  action-validator --verbose "$path" || status=1
+              } >> "$TMP_OUT"
+          done < <(find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print)
 
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)" >> "$GITHUB_OUTPUT"
           echo "S3_WEBSITE_PREFIX=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
           echo "OUTPUT_FILE=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
-          chown github:github $TMP_OUT
           chmod 644 $TMP_OUT
+          exit "$status"
       - name: upload workflow lint results
-        if: ${{ always() }}
+        if: ${{ env.ACT != 'true' && always() }}
         id: upload-workflow-lint-to-s3
         run: |
           set -x
-          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
+          aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
+
+      - name: actionlint
+        id: actionlint
+        uses: ./.github/actions/lint_report
+        with:
+          title: "GitHub Actions actionlint"
+          tool: command
+          report_name: ga-workflows-actionlint
+          command: actionlint -config-file .github/actionlint.yml -shellcheck= -pyflakes=
+
       - name: comment on issue
         uses: actions/github-script@v9
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() }}
         env:
-          STEP_OUTCOME: ${{ steps.lint.outcome }}
+          ACTION_VALIDATOR_OUTCOME: ${{ steps.lint.outcome }}
+          ACTIONLINT_EXIT_CODE: ${{ steps.actionlint.outputs.exit_code }}
         with:
           script: |
-            const outcome = process.env.STEP_OUTCOME;
-            const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
+            const actionValidatorStatus = process.env.ACTION_VALIDATOR_OUTCOME == 'success' ? ':green_circle:' : ':red_circle:';
+            const actionlintStatus = process.env.ACTIONLINT_EXIT_CODE == '0' ? ':green_circle:' : ':red_circle:';
+            const success = process.env.ACTION_VALIDATOR_OUTCOME == 'success' && process.env.ACTIONLINT_EXIT_CODE == '0';
+            const status_emoji = success ? ':green_circle:' : ':red_circle:';
+            const s3_path = process.env.S3_URL_PREFIX;
+            const comment =
+              'status: ' + status_emoji +
+              '\n\naction-validator - ' + actionValidatorStatus + ' [log](' + s3_path + '/workflow_lint/workflow-lint.txt)' +
+              '\nactionlint - ' + actionlintStatus + ' [log](' + s3_path + '/test_reports/ga-workflows-actionlint.log)';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: 'status: ' + status_emoji + ' [workflow lint result (s3)](' + process.env.S3_URL_PREFIX + '/workflow_lint/workflow-lint.txt)'
+              body: comment
             })
+
+      - name: fail on workflow checks
+        if: ${{ always() }}
+        env:
+          ACTION_VALIDATOR_OUTCOME: ${{ steps.lint.outcome }}
+          ACTIONLINT_EXIT_CODE: ${{ steps.actionlint.outputs.exit_code }}
+        run: |
+          status=0
+          if [ "${ACTION_VALIDATOR_OUTCOME}" != "success" ]; then
+              echo "::error::action-validator failed"
+              status=1
+          fi
+          if [ "${ACTIONLINT_EXIT_CODE:-1}" != "0" ]; then
+              echo "::error::actionlint failed"
+              status=1
+          fi
+          exit "$status"
   create-build-and-test-target-var:
     needs:
       - check-trigger-label

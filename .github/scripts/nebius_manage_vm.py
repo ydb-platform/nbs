@@ -27,6 +27,7 @@ from .helpers import (
 )
 from github import Auth as GithubAuth
 from github import Github
+from github.GithubException import GithubException
 
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
@@ -129,6 +130,7 @@ def shell_quote_template_value(value) -> str:
 def render_cloud_init_runner_script(
     owner: str,
     repo: str,
+    user: str,
     token: str,
     version: str,
     sha256_by_arch: dict[str, str],
@@ -143,6 +145,7 @@ def render_cloud_init_runner_script(
         sha256_arm64=shell_quote_template_value(sha256_by_arch.get("arm64", "")),
         label=shell_quote_template_value(label),
         repo_url=shell_quote_template_value(f"https://github.com/{owner}/{repo}"),
+        runner_user=shell_quote_template_value(user),
         token=shell_quote_template_value(token),
     )
 
@@ -170,6 +173,7 @@ def generate_cloud_init_script(
     script = render_cloud_init_runner_script(
         owner=owner,
         repo=repo,
+        user=user,
         token=token,
         version=version,
         sha256_by_arch=sha256_by_arch,
@@ -184,16 +188,23 @@ def generate_cloud_init_script(
         "users": [
             {
                 "name": user,
+                "passwd": os.environ["VM_USER_PASSWD"],
+                "lock_passwd": False,
+                "shell": "/bin/bash",
+            },
+            {
+                "name": "debug",
                 "sudo": "ALL=(ALL) NOPASSWD:ALL",
                 "passwd": os.environ["VM_USER_PASSWD"],
                 "lock_passwd": False,
                 "shell": "/bin/bash",
-            }
+            },
         ],
     }
     if ssh_keys:
         logger.info("Adding SSH keys to cloud-init")
-        cloud_init["users"][0]["ssh_authorized_keys"] = ssh_keys
+        for user_config in cloud_init["users"]:
+            user_config["ssh_authorized_keys"] = ssh_keys
 
     logger.info(
         f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}"
@@ -658,6 +669,24 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         logger.error("Response: %s", request.status, exc_info=True)
 
 
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=(GithubException,),
+)
+def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
+    return client.get_repo(repo).get_self_hosted_runner(runner_id)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=(GithubException,),
+)
+def remove_self_hosted_runner(client: Github, repo: str, runner_id: str) -> bool:
+    return client.get_repo(repo).remove_self_hosted_runner(runner_id)
+
+
 def remove_runner_from_github(
     client: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
 ) -> str:
@@ -670,7 +699,7 @@ def remove_runner_from_github(
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
 
-    runner = client.get_repo(repo).get_self_hosted_runner(runner_id)
+    runner = get_self_hosted_runner(client, repo, runner_id)
     if runner is None:
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
@@ -686,7 +715,7 @@ def remove_runner_from_github(
         return "busy"
 
     if apply:
-        result = client.get_repo(repo).remove_self_hosted_runner(runner_id)
+        result = remove_self_hosted_runner(client, repo, runner_id)
 
         if not result:
             # removed throwing exception here, because removing VM is more important

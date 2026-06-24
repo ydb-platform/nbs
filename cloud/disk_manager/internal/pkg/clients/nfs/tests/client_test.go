@@ -400,12 +400,12 @@ func TestCreateNodeIdempotent(t *testing.T) {
 	defer session.Close(ctx)
 
 	node := nfs.Node{
-		ParentID: nfs.RootNodeID,
-		Name:     "testfile",
-		Mode:     0644,
-		UID:      1,
-		GID:      1,
-		Type:     nfs.NODE_KIND_FILE,
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "testfile",
+		Mode:         0644,
+		UID:          1,
+		GID:          1,
+		Type:         nfs.NODE_KIND_FILE,
 	}
 
 	createdID, err := session.CreateNode(ctx, node)
@@ -581,8 +581,8 @@ func newInMemoryTestShardBackup(
 	}
 
 	for _, node := range nodes {
-		backup.nodesByParent[node.ParentID] = append(
-			backup.nodesByParent[node.ParentID],
+		backup.nodesByParent[node.ParentNodeID] = append(
+			backup.nodesByParent[node.ParentNodeID],
 			node,
 		)
 
@@ -597,7 +597,9 @@ func newInMemoryTestShardBackup(
 
 func (i inMemoryTestShardBackup) restore(ctx context.Context) {
 	for _, node := range i.nodesInShard {
-		i.restoreNode(ctx, node)
+		for attempt := 0; attempt < 2; attempt++ {
+			i.restoreNode(ctx, node)
+		}
 	}
 
 	for _, node := range i.nodesInShard {
@@ -606,7 +608,9 @@ func (i inMemoryTestShardBackup) restore(ctx context.Context) {
 		}
 
 		for _, child := range i.nodesByParent[node.NodeID] {
-			i.createChildRef(ctx, node.NodeID, child)
+			for attempt := 0; attempt < 2; attempt++ {
+				i.createChildRef(ctx, node.NodeID, child)
+			}
 		}
 	}
 }
@@ -629,7 +633,7 @@ func (i inMemoryTestShardBackup) restoreNode(ctx context.Context, node nfs.Node)
 
 func (i inMemoryTestShardBackup) createChildRef(
 	ctx context.Context,
-	parentID uint64,
+	parentNodeID uint64,
 	child nfs.Node,
 ) {
 
@@ -640,7 +644,7 @@ func (i inMemoryTestShardBackup) createChildRef(
 	err := i.client.UnsafeCreateNodeRef(
 		ctx,
 		i.shardFileSystemID,
-		parentID,
+		parentNodeID,
 		child.Name,
 		uint64(0), // childID
 		shardID,

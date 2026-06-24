@@ -368,7 +368,8 @@ void TActorSystem::Init()
     servicesMask.EnableSchedulerActor = 1;
     servicesMask.EnableProfiler = 1;
     servicesMask.EnableSelfPing = 1;
-    servicesMask.EnableRestartsCountPublisher = 1;
+    // Filestore publishes RestartsCount from InitDiagnostics().
+    servicesMask.EnableRestartsCountPublisher = 0;
     servicesMask.EnableStateStorageService = 1;
     servicesMask.EnableTabletResolver = 1;
     servicesMask.EnableTabletMonitor = 1;

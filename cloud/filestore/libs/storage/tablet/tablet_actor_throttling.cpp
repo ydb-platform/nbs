@@ -80,6 +80,9 @@ void TIndexTabletActor::HandleUpdateLeakyBucketCounters(
     const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& /*ev*/,
     const NActors::TActorContext& ctx)
 {
+    // update write cost multiplier for metrics
+    UpdateWriteCostMultiplierDueToBackpressure();
+
     const ui64 currentRate = std::ceil(
         GetThrottlingPolicy().CalculateCurrentSpentBudgetShare(ctx.Now()) * 100);
 
@@ -119,6 +122,9 @@ NProto::TError TIndexTabletActor::Throttle(
     static const auto err = MakeError(E_FS_THROTTLED, "Throttled");
 
     auto* msg = ev->Get();
+
+    // recalculate write cost multiplier before making throttling decision
+    UpdateWriteCostMultiplierDueToBackpressure();
 
     const auto requestInfo = BuildRequestInfo(
         *msg,

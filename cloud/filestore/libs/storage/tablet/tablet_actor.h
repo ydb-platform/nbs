@@ -59,6 +59,7 @@ namespace NCloud::NFileStore::NStorage {
 inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    TString fileSystemId,
     ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
@@ -73,12 +74,15 @@ inline void BuildBackendInfo(
         backendInfo->SetFastShardHost(FQDNHostName());
         backendInfo->SetFastShardPort(fastShardPort);
     }
+
+    backendInfo->SetActualFileSystemId(std::move(fileSystemId));
 }
 
 template <typename T>
 void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    TString fileSystemId,
     ui32 tabletActorCpuUsageRate,
     T& response)
 {
@@ -88,6 +92,7 @@ void BuildBackendInfo(
         BuildBackendInfo(
             config,
             systemCounters,
+            std::move(fileSystemId),
             tabletActorCpuUsageRate,
             backendInfo);
     }
@@ -177,6 +182,7 @@ private:
 
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
+    NProto::TStorageConfig BaseStorageConfig;
 
     ui32 BackpressureErrorCount = 0;
     TInstant BackpressurePeriodStart;
@@ -436,9 +442,11 @@ private:
         const NProto::TSessionEvent& event);
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
+    TBackpressureThresholds BuildBackpressureSoftThresholds() const;
     TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
+    void UpdateWriteCostMultiplierDueToBackpressure();
 
     void ExecuteTx_AddBlob_Write(
         const NActors::TActorContext& ctx,
@@ -525,6 +533,12 @@ private:
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TLoadState& args);
 
+    void ApplyStorageConfigOverrides(
+        const NActors::TActorContext& ctx,
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fileSystemId);
+
     bool IsMainTablet() const;
     bool BehaveAsShard(const NProto::THeaders& headers) const;
 
@@ -596,6 +610,14 @@ private:
     void ReplyListNodesInternal(
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TListNodes& args);
+
+    void CompleteCreateHandle(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TCreateHandle& args);
+
+    void CompleteDestroyHandle(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TDestroyHandle& args);
 
     //
     // Common event handlers.

@@ -66,6 +66,7 @@ public:
     TStorageConfig(const TStorageConfig&) = default;
 
     void Merge(const NProto::TStorageConfig& storageConfig);
+    void Reset(const NProto::TStorageConfig& storageConfig);
 
     TValueByName GetValueByName(const TString& fieldName) const;
 
@@ -270,6 +271,8 @@ public:
     bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
+    bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     void Dump(IOutputStream& out) const;
@@ -340,6 +343,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+    bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;
@@ -412,6 +416,14 @@ public:
     [[nodiscard]] ui32 GetFastShardServerPort() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
+
+    bool GetSoftBackpressureEnabled() const;
+    ui32 GetFlushThresholdForBackpressureSoft() const;
+    ui32 GetCleanupThresholdForBackpressureSoft() const;
+    ui32 GetCompactionThresholdForBackpressureSoft() const;
+    ui64 GetFlushBytesThresholdForBackpressureSoft() const;
+    ui64 GetFlushBytesItemCountThresholdForBackpressureSoft() const;
+    ui64 GetCollectGarbageThresholdForBackpressureSoft() const;
 
     [[nodiscard]] TDuration GetStatFileStoreCacheTTL() const;
 };

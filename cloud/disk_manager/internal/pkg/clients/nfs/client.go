@@ -492,6 +492,10 @@ func (c *client) UnsafeCreateNode(
 		response,
 	)
 	if err != nil {
+		if isAlreadyExistsError(err) {
+			return nil
+		}
+
 		return err
 	}
 
@@ -501,7 +505,7 @@ func (c *client) UnsafeCreateNode(
 func (c *client) UnsafeCreateNodeRef(
 	ctx context.Context,
 	filesystemID string,
-	parentID uint64,
+	parentNodeID uint64,
 	name string,
 	childID uint64,
 	shardID string,
@@ -516,7 +520,7 @@ func (c *client) UnsafeCreateNodeRef(
 		"unsafecreatenoderef",
 		&private_protos.TUnsafeCreateNodeRefRequest{
 			FileSystemId:  filesystemID,
-			ParentId:      parentID,
+			ParentId:      parentNodeID,
 			Name:          []byte(name),
 			ChildId:       childID,
 			ShardId:       shardID,
@@ -525,6 +529,10 @@ func (c *client) UnsafeCreateNodeRef(
 		response,
 	)
 	if err != nil {
+		if isAlreadyExistsError(err) {
+			return nil
+		}
+
 		return err
 	}
 

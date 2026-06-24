@@ -10,6 +10,7 @@
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 class TWriteDataRequestManager;
+struct THandleStateTag;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,6 +43,7 @@ protected:
 
 class TPendingWriteDataRequest
     : public TWriteDataRequestBase<TPendingWriteDataRequest>
+    , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>
 {
 private:
     std::shared_ptr<NProto::TWriteDataRequest> Request;
@@ -84,6 +86,7 @@ struct Y_PACKED TSerializedWriteDataRequestHeader
 
 class TCachedWriteDataRequest
     : public TWriteDataRequestBase<TCachedWriteDataRequest>
+    , public TIntrusiveListItem<TCachedWriteDataRequest, THandleStateTag>
 {
 private:
     // WriteData request header serialized to the persistent storage

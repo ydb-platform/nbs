@@ -82,6 +82,11 @@ message TBackendInfo
     // connection for latency-critical IO, bypassing the actor system.
     string FastShardHost = 2;
     uint32 FastShardPort = 3;
+
+    // The id of the filesystem shard if this response comes from the shard and
+    // the id of the filesystem itself if this response comes from the main
+    // tablet.
+    string ActualFileSystemId = 4;
 }
 
 message TResponseHeaders

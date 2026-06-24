@@ -54,6 +54,7 @@ func (t *createEmptyDiskTask) Run(
 		t.params,
 		t.cellSelector,
 		t.nbsFactory,
+		t.storage,
 	)
 	if err != nil {
 		return err

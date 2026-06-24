@@ -1598,4 +1598,20 @@ message TStorageServiceConfig
     // MaxCompactionExecTimePerSecond. Used for GarbageCompaction in case when
     // IgnoringZeroedCompactionEnabled is on.
     optional uint32 MaxCompactionExecTimePerSecondForZeroed = 502;
+
+    // Performance per allocation unit for system SSD volumes (IsSystem flag).
+    // Defaults match the corresponding SSD* parameters.
+    optional uint32 SystemSSDUnitReadBandwidth = 503;   // in MiB/s
+    optional uint32 SystemSSDUnitWriteBandwidth = 504;  // in MiB/s
+    optional uint32 SystemSSDMaxReadBandwidth = 505;    // in MiB/s
+    optional uint32 SystemSSDMaxWriteBandwidth = 506;   // in MiB/s
+    optional uint32 SystemSSDUnitReadIops = 507;
+    optional uint32 SystemSSDUnitWriteIops = 508;
+    optional uint32 SystemSSDMaxReadIops = 509;
+    optional uint32 SystemSSDMaxWriteIops = 510;
+
+    // If true, partition compaction splits the per-blob BlockMask / BlobMeta
+    // read into a separate transaction issued by TCompactionActor instead of
+    // doing it inside the main TCompaction prepare phase.
+    optional bool SplitCompactionTxEnabled = 511;
 }

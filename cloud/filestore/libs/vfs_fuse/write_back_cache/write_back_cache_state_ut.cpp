@@ -471,7 +471,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(b.Add(1, 102, 2, "123").GetValue());
 
         auto w1 = b.Add(1, 102, 4, "def");
-        auto w2 = b.Add(1, 103, 5, "456");
+        auto w2 = b.AddAndGetError(1, 103, 5, "456");
 
         UNIT_ASSERT(!w1.HasValue());
         UNIT_ASSERT(!w2.HasValue());
@@ -504,23 +504,27 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         // Nothing happens until all handles are requested to be released
         b.State->FlushFailed(1, error);
 
-        UNIT_ASSERT(!c3.HasValue());
+        // All pending WriteData requests are failed on flush failure
+        UNIT_ASSERT(w2.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, w2.GetValue());
+
+        // Failure of pending WriteData requests doesn't affect ReleaseHandle
+        UNIT_ASSERT(c3.HasValue());
+        UNIT_ASSERT(!HasError(c3.GetValue()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
 
         auto c2 = b.State->AddReleaseHandleRequest(1, 102);
 
         UNIT_ASSERT(!c2.HasValue());
 
-        // Cache should be emptied and pending requests should be failed
-        // Two requests are dropped
+        // Cache should be emptied
         b.State->FlushFailed(1, error);
-
-        UNIT_ASSERT(w2.HasValue());
-        UNIT_ASSERT(!w2.GetValue());
 
         UNIT_ASSERT(c2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(error, c2.GetValue());
-        UNIT_ASSERT(c3.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(error, c3.GetValue());
 
         b.State->SetDrainingMode();
         UNIT_ASSERT(b.State->IsDrained());
@@ -1252,6 +1256,53 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!b2.HasValue());
         UNIT_ASSERT(b3.HasValue());
         UNIT_ASSERT(!HasError(b3.GetValue().GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldChooseCorrectHandleAfterHandleReleased)
+    {
+        TBootstrap b;
+
+        b.Add(1, 101, 0, "abc");
+        b.Add(1, 102, 1, "def");
+
+        auto error = MakeError(E_FAIL, "Flush failed");
+
+        b.State->AddReleaseHandleRequest(1, 101);
+
+        // Note: the code depends on the implementation of THashMap
+        // If the implementation changes, this test may need to be updated
+        UNIT_ASSERT_VALUES_EQUAL(101, b.State->GetLiveHandle(1));
+
+        b.State->FlushFailed(1, error);
+
+        UNIT_ASSERT_VALUES_EQUAL(102, b.State->GetLiveHandle(1));
+    }
+
+    Y_UNIT_TEST(ShouldFailPendingRequestsOnFlushFailure)
+    {
+        TBootstrap b;
+
+        b.Storage->SetCapacity(2);
+
+        b.Add(1, 101, 0, "abc");
+        b.Add(2, 202, 1, "def");
+
+        auto w1 = b.AddAndGetError(1, 102, 2, "ghi");
+        auto w2 = b.AddAndGetError(2, 203, 3, "jkl");
+
+        UNIT_ASSERT(!w1.HasValue());
+        UNIT_ASSERT(!w2.HasValue());
+
+        b.State->FlushFailed(1, MakeError(E_FAIL, "Flush failed"));
+
+        UNIT_ASSERT(w1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, w1.GetValue().GetCode());
+        UNIT_ASSERT(!w2.HasValue());
+
+        b.State->FlushFailed(1, MakeError(E_FS_NOSPC, "No space left"));
+
+        UNIT_ASSERT(w2.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, w2.GetValue().GetCode());
     }
 }
 

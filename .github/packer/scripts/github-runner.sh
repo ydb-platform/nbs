@@ -27,6 +27,30 @@ function on_exit() {
 }
 trap on_exit EXIT
 
+DEBUG_USER=${DEBUG_USER:-debug}
+
+function create_password_user() {
+    local user_name=$1
+
+    adduser --gecos "" --disabled-password --shell /bin/bash "$user_name"
+    set +x
+    usermod --password "${PASSWORD_HASH//$/\\$}" "$user_name"
+    set -x
+}
+
+function install_authorized_keys() {
+    local user_name=$1
+    local user_home
+    user_home=$(getent passwd "$user_name" | cut -d: -f6)
+
+    mkdir -p "${user_home}/.ssh"
+    chown -R "${user_name}:${user_name}" "${user_home}/.ssh"
+    chmod 0700 "${user_home}/.ssh"
+    cp "${KEYS_FILE}" "${user_home}/.ssh/authorized_keys"
+    chown "${user_name}:${user_name}" "${user_home}/.ssh/authorized_keys"
+    chmod 0600 "${user_home}/.ssh/authorized_keys"
+}
+
 # Download github runner
 mkdir -p /actions-runner && cd /actions-runner || exit
 curl -fsSL -o runner.tar.gz -L "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
@@ -37,6 +61,7 @@ else
 fi
 tar xzf ./runner.tar.gz
 install -m 0755 /tmp/packer/actions-runner-job-completed-cleanup.sh /usr/local/bin/actions-runner-job-completed-cleanup.sh
+install -m 0755 /tmp/packer/actions-runner-collect-system-logs.sh /usr/local/bin/actions-runner-collect-system-logs.sh
 touch /actions-runner/.env
 grep -q '^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=' /actions-runner/.env || {
     echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/actions-runner-job-completed-cleanup.sh" >> /actions-runner/.env
@@ -66,11 +91,12 @@ echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.d
 # github cli
 wget -nv -O/etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg
 chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
 
 # nebius cli
 # nosemgrep: bash.curl.security.curl-pipe-bash.curl-pipe-bash
-curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
+curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | NEBIUS_INSTALL_FOLDER=/usr/local/bin bash
+nebius version || nebius --version
 
 apt-get update
 apt-get -y upgrade
@@ -89,13 +115,13 @@ apt-get install -y --no-install-recommends \
     ${LINUX_PKGS} \
     git wget gnupg lsb-release curl tzdata \
     libidn11-dev libaio1 libaio-dev \
-    file s3cmd qemu-kvm qemu-utils \
+    file qemu-kvm qemu-utils \
     python3-dev python3-pip \
     dpkg-dev docker-ce docker-ce-cli containerd.io \
     docker-buildx-plugin docker-compose-plugin \
     jq tree tmux atop iftop htop unzip \
     pixz pigz pbzip2 xz-utils gdb zram-tools \
-    nvme-cli
+    nvme-cli gh
 
 # remove it for now, after migration we will return it back
 #apt-get remove -y unattended-upgrades
@@ -110,39 +136,60 @@ echo "install esp6 /bin/false" > /etc/modprobe.d/disable-esp6.conf
 echo "install rxrpc /bin/false" > /etc/modprobe.d/disable-rxrpc.conf
 
 pip3 install -r /tmp/packer/requirements.txt
+pip3 install -r /tmp/packer/requirements_dev.txt
 
-bash /tmp/packer/install-github-release-tools.sh action-validator shellcheck shfmt yq
+INSTALL_DIR=/usr/local/bin bash /tmp/packer/install-github-release-tools.sh action-validator shellcheck shfmt yq
 
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
-sudo ./aws/install
+./aws/install
 rm -rf awscliv2.zip
 
-adduser --gecos "" --disabled-password --shell /bin/bash "${USER_TO_CREATE}"
-set +x
-usermod --password "${PASSWORD_HASH//$/\\$}" "${USER_TO_CREATE}"
-set -x
+# mime types for ya make logs and other outputs
+MIME_TYPES_PLAINTEXT_LINE="text/plain out err log stderr stdout trace jsonl backtrace args"
+MIME_TYPES_FILE='/etc/mime.types'
+grep -qF -- "$MIME_TYPES_PLAINTEXT_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPES_PLAINTEXT_LINE" | tee -a "$MIME_TYPES_FILE" || true
+
+create_password_user "${USER_TO_CREATE}"
+create_password_user "${DEBUG_USER}"
 sed -i -e 's/\\\$/$/g' /etc/shadow
 usermod -a -G kvm "${USER_TO_CREATE}"
 usermod -a -G docker "${USER_TO_CREATE}"
-echo "${USER_TO_CREATE} ALL=(ALL) NOPASSWD:ALL" | tee "/etc/sudoers.d/99-${USER_TO_CREATE}" > /dev/null
+usermod -a -G kvm "${DEBUG_USER}"
+usermod -a -G docker "${DEBUG_USER}"
+cat > "/etc/sudoers.d/99-${USER_TO_CREATE}" << EOF
+Cmnd_Alias GITHUB_RUNNER_LOGS = /usr/local/bin/actions-runner-collect-system-logs.sh
+${USER_TO_CREATE} ALL=(root) NOPASSWD: GITHUB_RUNNER_LOGS
+EOF
 chmod 0440 "/etc/sudoers.d/99-${USER_TO_CREATE}"
+echo "${DEBUG_USER} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-${DEBUG_USER}"
+chmod 0440 "/etc/sudoers.d/99-${DEBUG_USER}"
+chown -R "${USER_TO_CREATE}:${USER_TO_CREATE}" /actions-runner
 
 # allow coredumps
-sudo tee -a /etc/security/limits.conf << EOF
+tee -a /etc/security/limits.conf << EOF
 * soft core unlimited
 * hard core unlimited
+* soft memlock unlimited
+* hard memlock unlimited
 EOF
 
-echo "Defaults rlimit_core=default" | sudo tee /etc/sudoers.d/98-rlimit
-sudo chmod 0440 /etc/sudoers.d/98-rlimit
+echo "Defaults rlimit_core=default" | tee /etc/sudoers.d/98-rlimit
+chmod 0440 /etc/sudoers.d/98-rlimit
+mkdir -p /coredumps
+chmod 1777 /coredumps
 
 # increase the total number of aio requests to run more tests in parallel, default is 65536
-echo "fs.aio-max-nr=1048576" >> /etc/sysctl.conf
-echo "vm.swappiness=1" >> /etc/sysctl.conf
-echo "SIZE=102400" | sudo tee -a /etc/default/zramswap
-echo "PRIORITY=2" | sudo tee -a /etc/default/zramswap
-echo "ALGO=lz4" | sudo tee -a /etc/default/zramswap
+{
+    echo "fs.aio-max-nr=1048576"
+    echo "vm.swappiness=1"
+    echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t"
+    echo "kernel.core_uses_pid=1"
+    echo "fs.suid_dumpable=0"
+} >> /etc/sysctl.conf
+echo "SIZE=102400" | tee -a /etc/default/zramswap
+echo "PRIORITY=2" | tee -a /etc/default/zramswap
+echo "ALGO=lz4" | tee -a /etc/default/zramswap
 
 # Set atop logging interval to 30 seconds
 if grep -q '^LOGINTERVAL=' /etc/default/atop; then
@@ -182,12 +229,8 @@ if [ -n "$GITHUB_TOKEN" ] && [ -n "$ORG" ] && [ -n "$TEAM" ]; then
 fi
 
 if [ -f "$KEYS_FILE" ]; then
-    mkdir -p "/home/${USER_TO_CREATE}/.ssh"
-    chown -R "${USER_TO_CREATE}:${USER_TO_CREATE}" "/home/${USER_TO_CREATE}/.ssh"
-    chmod 0700 "/home/${USER_TO_CREATE}/.ssh"
-    cp "${KEYS_FILE}" "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
-    chown "${USER_TO_CREATE}:${USER_TO_CREATE}" "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
-    chmod 0600 "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
+    install_authorized_keys "${USER_TO_CREATE}"
+    install_authorized_keys "${DEBUG_USER}"
     cat "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
 fi
 
@@ -200,8 +243,12 @@ test -s "/home/${USER_TO_CREATE}/.ssh/authorized_keys" || {
     ls -lsha "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
     healthchecks_exit_code=1
 }
-grep 'github:\$' /etc/shadow > /dev/null 2> /dev/null || {
-    echo "User github either do not exist or has wrong hash"
+grep "${USER_TO_CREATE}:\\$" /etc/shadow > /dev/null 2> /dev/null || {
+    echo "User ${USER_TO_CREATE} either does not exist or has wrong hash"
+    healthchecks_exit_code=1
+}
+grep "${DEBUG_USER}:" /etc/shadow > /dev/null 2> /dev/null || {
+    echo "User ${DEBUG_USER} does not exist"
     healthchecks_exit_code=1
 }
 exit $healthchecks_exit_code

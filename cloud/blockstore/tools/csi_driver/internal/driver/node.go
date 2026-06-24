@@ -250,6 +250,45 @@ func parseVolumeId(volumeId string) (nbsId string, instanceId string) {
 	return nbsId, instanceId
 }
 
+func nbsVolumeAccessMode(
+	accessMode *csi.VolumeCapability_AccessMode,
+	readonly bool,
+) nbsapi.EVolumeAccessMode {
+	if readOnlyVolumeAccess(accessMode, readonly) {
+		return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_ONLY
+	}
+
+	return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE
+}
+
+func nbsVolumeMountMode(
+	accessMode *csi.VolumeCapability_AccessMode,
+) nbsapi.EVolumeMountMode {
+	if accessMode != nil {
+		switch accessMode.GetMode() {
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			return nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE
+		}
+	}
+
+	return nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL
+}
+
+func readOnlyVolumeAccess(
+	accessMode *csi.VolumeCapability_AccessMode,
+	readonly bool,
+) bool {
+	if accessMode != nil {
+		switch accessMode.GetMode() {
+		case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+			csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			return true
+		}
+	}
+
+	return readonly
+}
+
 func (s *nodeService) NodeStageVolume(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -343,6 +382,8 @@ func (s *nodeService) NodeStageVolume(
 						nbsId,
 						req.VolumeContext,
 						req.VolumeCapability.GetMount(),
+						req.VolumeCapability.AccessMode,
+						nbsVolumeAccessMode(req.VolumeCapability.AccessMode, false),
 						vhostSettings,
 						stageData.ClientIndex)
 				}
@@ -657,6 +698,9 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
+	volumeAccessMode := nbsVolumeAccessMode(
+		req.VolumeCapability.AccessMode,
+		req.Readonly)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -666,11 +710,11 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  nbsVolumeMountMode(req.VolumeCapability.AccessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
@@ -741,6 +785,8 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	diskId string,
 	volumeContext map[string]string,
 	volumeCapabilities *csi.VolumeCapability_MountVolume,
+	accessMode *csi.VolumeCapability_AccessMode,
+	volumeAccessMode nbsapi.EVolumeAccessMode,
 	vhostSettings vhostSettings,
 	clientIndex uint) error {
 
@@ -777,11 +823,11 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  nbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
@@ -806,7 +852,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
 	if !mounted {
 		return s.statusErrorf(codes.FailedPrecondition,
-			"Staging target path is not mounted: %w", req.VolumeId)
+			"Staging target path is not mounted: %s", req.VolumeId)
 	}
 
 	readOnly, _ := s.mounter.IsFilesystemRemountedAsReadonly(req.StagingTargetPath)
@@ -837,7 +883,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
-	if req.Readonly {
+	if readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 
@@ -925,7 +971,12 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 
 	diskId := req.VolumeId
 	instanceId := ""
-	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(
+		ctx,
+		instanceId,
+		diskId,
+		req.VolumeContext,
+		req.VolumeCapability.AccessMode)
 	if err != nil {
 		return err
 	}
@@ -946,7 +997,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	hasBlockDevice, err := s.mounter.HasBlockDevice(ctx, resp.NbdDeviceFile)
 	if !hasBlockDevice {
 		return s.statusErrorf(codes.Unavailable,
-			"Nbd device is not available: %w", err)
+			"Nbd device is not available: %v", err)
 	}
 
 	mnt := req.VolumeCapability.GetMount()
@@ -999,7 +1050,12 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 
 	diskId := req.VolumeId
 	instanceId := ""
-	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(
+		ctx,
+		instanceId,
+		diskId,
+		req.VolumeContext,
+		req.VolumeCapability.AccessMode)
 	if err != nil {
 		return err
 	}
@@ -1026,17 +1082,22 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 	mounted, _ := s.mounter.IsMountPoint(devicePath)
 	if !mounted {
 		return s.statusErrorf(codes.FailedPrecondition,
-			"Staging target path is not mounted: %w", req.VolumeId)
+			"Staging target path is not mounted: %s", req.VolumeId)
 	}
 
-	return s.mountBlockDevice(diskId, devicePath, req.TargetPath, req.Readonly)
+	return s.mountBlockDevice(
+		diskId,
+		devicePath,
+		req.TargetPath,
+		readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly))
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
 	ctx context.Context,
 	instanceId string,
 	diskId string,
-	volumeContext map[string]string) (*nbsapi.TStartEndpointResponse, error) {
+	volumeContext map[string]string,
+	accessMode *csi.VolumeCapability_AccessMode) (*nbsapi.TStartEndpointResponse, error) {
 
 	endpointDir := s.getEndpointDir(instanceId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
@@ -1058,6 +1119,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
+	volumeAccessMode := nbsVolumeAccessMode(accessMode, false)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   unixSocketPath,
@@ -1067,11 +1129,11 @@ func (s *nodeService) startNbsEndpointForNBD(
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  nbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
@@ -1116,7 +1178,7 @@ func (s *nodeService) cleanupNbsEndpoint(ctx context.Context, instanceId string,
 		UnixSocketPath: filepath.Join(s.getEndpointDir(instanceId, diskId), nbsSocketName),
 	})
 	if err != nil {
-		logVolume(diskId, "StopEndpoint failed in cleanup: %w", err)
+		logVolume(diskId, "StopEndpoint failed in cleanup: %v", err)
 	}
 }
 
@@ -1286,33 +1348,6 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 		instanceId,
 		fsConfig,
 		endpointDir)
-
-	if fsConfig.SizeGb == 0 {
-		// legacy local filestore config - passthrough StartEndpoint to nfs-local service
-		if s.nfsLocalClient == nil {
-			return fmt.Errorf("nfs local client wasn't created")
-		}
-		_, err := s.nfsLocalClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
-			Endpoint: &nfsapi.TEndpointConfig{
-				SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-				FileSystemId:     fsConfig.Id,
-				ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-				VhostQueuesCount: vhostSettings.queuesCount,
-				Persistent:       true,
-			},
-		})
-		if err != nil {
-			if s.IsGrpcTimeoutError(err) {
-				s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-					SocketPath: filepath.Join(endpointDir, nfsSocketName),
-				})
-			}
-
-			return fmt.Errorf("failed to start nfs local endpoint: %w", err)
-		}
-
-		return nil
-	}
 
 	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
 		return fmt.Errorf("nfs local clients weren't created")
@@ -1575,7 +1610,7 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	if req.Readonly {
+	if readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 
@@ -1619,22 +1654,6 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 	stageData *StageData) error {
 
 	log.Printf("csi.nodeUnstageLocalFileStoreStopEndpoint: fsConfig=%+v, stageData=%+v", fsConfig, stageData)
-
-	if fsConfig.SizeGb == 0 {
-		// legacy local filestore config - passthrough StopEndpoint to nfs-local service
-		if s.nfsLocalClient == nil {
-			return fmt.Errorf("NFS local clients wasn't created")
-		}
-
-		_, err := s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
-		})
-		if err != nil {
-			return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop local nfs endpoint (%T)", s.nfsLocalClient)
-		}
-
-		return nil
-	}
 
 	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
 		return fmt.Errorf("NFS local clients weren't created")
@@ -1926,7 +1945,7 @@ func (s *nodeService) NodeGetVolumeStats(
 
 		return nil, s.statusErrorf(
 			codes.Internal,
-			"NodeGetVolumeStats failed: %w", err)
+			"NodeGetVolumeStats failed: %v", err)
 	}
 
 	if !mounted {

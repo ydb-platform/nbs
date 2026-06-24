@@ -275,6 +275,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SSDUnitWriteIops,                   ui32,      1000                   )\
     xxx(SSDMaxReadIops,                     ui32,      20000                  )\
     xxx(SSDMaxWriteIops,                    ui32,      40000                  )\
+    xxx(SystemSSDUnitReadBandwidth,         ui32,      15                     )\
+    xxx(SystemSSDUnitWriteBandwidth,        ui32,      15                     )\
+    xxx(SystemSSDMaxReadBandwidth,          ui32,      450                    )\
+    xxx(SystemSSDMaxWriteBandwidth,         ui32,      450                    )\
+    xxx(SystemSSDUnitReadIops,              ui32,      1000                   )\
+    xxx(SystemSSDUnitWriteIops,             ui32,      1000                   )\
+    xxx(SystemSSDMaxReadIops,               ui32,      20000                  )\
+    xxx(SystemSSDMaxWriteIops,              ui32,      40000                  )\
     xxx(RealSSDUnitReadIops,                ui32,      400                    )\
     xxx(RealSSDUnitWriteIops,               ui32,      1000                   )\
     /* 16000 ReadBlob requests per sec utilize all our cpus                    \
@@ -701,10 +709,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         bool,                                                                  \
         false                                                                 )\
                                                                                \
+    xxx(SplitCompactionTxEnabled,                   bool,       false         )\
     xxx(VolumeBalancerGentlePreemptionEnabled,      bool,       false         )\
     xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
-                                                                               \
-    xxx(SplitByCompactionRangeMaxBlobCount,   ui64,        0                  )\
+    xxx(SplitByCompactionRangeMaxBlobCount,         ui64,       0             )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -743,6 +751,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(EnableVhostDiscardOnVolumeRestart)                                     \
     xxx(FreshBlocksWriter)                                                     \
     xxx(ReadBlockMaskOnCompactionOptimization)                                 \
+    xxx(SplitCompactionTx)                                                     \
 
 // BLOCKSTORE_BINARY_FEATURES
 

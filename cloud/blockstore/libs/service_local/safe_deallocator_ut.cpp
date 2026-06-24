@@ -78,7 +78,13 @@ struct TTestNvmeManager final: NNvme::INvmeManager
         return TString("serial");
     }
 
-    NProto::TError Sanitize(const TString& ctrlPath) override
+    TResultOrError<TString> GetDeviceModel(const TString& path) final
+    {
+        Y_UNUSED(path);
+        return TString("model");
+    }
+
+    NProto::TError StartSanitize(const TString& ctrlPath) override
     {
         Y_UNUSED(ctrlPath);
 

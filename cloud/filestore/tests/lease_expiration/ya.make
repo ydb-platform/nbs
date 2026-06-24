@@ -29,7 +29,7 @@ DEPENDS(
     cloud/filestore/apps/vhost
 
     cloud/storage/core/tools/testing/qemu/bin
-    cloud/storage/core/tools/testing/qemu/image
+    cloud/storage/core/tools/testing/qemu/image-noble
 
     contrib/ydb/apps/ydbd
 )

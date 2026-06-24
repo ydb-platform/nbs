@@ -548,7 +548,8 @@ public:
     bool HandleCancelRequests() noexcept;
     bool HandleCompletionEvents() noexcept;
     void AbortRequests() noexcept;
-    bool Flushed() const;
+    bool ClientRequestsFlushed() const;
+    bool WorkRequestsFlushed() const;
     bool FlushHanging() const;
 
     void SetNegotiatedProtocolVersion(int negotiatedProtocolVersion);
@@ -823,13 +824,26 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         std::move(handler),
         std::move(context));
 
-    with_lock (AllocationLock) {
-        if (requestBytes) {
-            req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
+    try {
+        with_lock (AllocationLock) {
+            if (requestBytes) {
+                req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
+            }
+            if (responseBytes) {
+                req->OutBuffer = RecvBuffers.AcquireBuffer(responseBytes);
+            }
         }
-        if (responseBytes) {
-            req->OutBuffer = RecvBuffers.AcquireBuffer(responseBytes);
-        }
+    } catch (...) {
+        RDMA_ERROR(
+            "failed to allocate request with exception: "
+            << CurrentExceptionMessage());
+        Counters->Error();
+        Disconnect();
+        return MakeError(
+            E_RDMA_UNAVAILABLE,
+            TStringBuilder()
+                << "failed to allocate request with exception: "
+                << CurrentExceptionMessage());
     }
 
     req->RequestBuffer = TStringBuf {
@@ -879,10 +893,6 @@ bool TClientEndpoint::HandleInputRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Clear();
-    }
-
-    if (!CheckState(EEndpointState::Connected)) {
-        return false;
     }
 
     auto requests = InputRequests.DequeueAll();
@@ -954,12 +964,6 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
         CancelRequestEvent.Clear();
     }
 
-    if (!CheckState(EEndpointState::Connected) &&
-        !CheckState(EEndpointState::Disconnecting))
-    {
-        return false;
-    }
-
     THashSet<ui64> clientRequestIdToCancel;
     for (auto req: CancelRequests.DequeueAll()) {
         clientRequestIdToCancel.emplace(req.ClientRequestId);
@@ -1004,10 +1008,6 @@ void TClientEndpoint::AbortRequests() noexcept
         AbortRequestsEvent.Clear();
     }
 
-    if (!CheckState(EEndpointState::Disconnecting)) {
-        return;
-    }
-
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
@@ -1044,12 +1044,6 @@ void TClientEndpoint::AbortRequest(
 
 bool TClientEndpoint::HandleCompletionEvents() noexcept
 {
-    if (!CheckState(EEndpointState::Connected) &&
-        !CheckState(EEndpointState::Disconnecting))
-    {
-        return false;
-    }
-
     try {
         ibv_cq* cq = CompletionQueue.get();
 
@@ -1364,14 +1358,18 @@ void TClientEndpoint::Disconnect() noexcept
     }
 }
 
-bool TClientEndpoint::Flushed() const
+bool TClientEndpoint::ClientRequestsFlushed() const
 {
-    return SendQueue.Size() == Config.SendQueueSize
-        && RecvQueue.Size() == Config.RecvQueueSize
-        && ActiveRequests.Empty()
+    return ActiveRequests.Empty()
         && !InputRequests
         && !QueuedRequests
         && !CancelRequests;
+}
+
+bool TClientEndpoint::WorkRequestsFlushed() const
+{
+    return SendQueue.Size() == Config.SendQueueSize
+        && RecvQueue.Size() == Config.RecvQueueSize;
 }
 
 bool TClientEndpoint::FlushHanging() const
@@ -1500,6 +1498,7 @@ public:
     void Detach(TClientEndpoint* endpoint)
     {
         PollHandle.Detach(endpoint->ReconnectTimerHandle());
+        PollHandle.Detach(endpoint->DisconnectEventHandle());
     }
 
 private:
@@ -1747,10 +1746,16 @@ private:
         auto hasWork = false;
 
         for (const auto& endpoint: *endpoints) {
-            hasWork |= endpoint->HandleCancelRequests();
-            hasWork |= endpoint->HandleInputRequests();
-            hasWork |= endpoint->HandleCompletionEvents();
-            endpoint->AbortRequests();
+            if (endpoint->CheckState(EEndpointState::Connected)) {
+                hasWork |= endpoint->HandleCancelRequests();
+                hasWork |= endpoint->HandleInputRequests();
+                hasWork |= endpoint->HandleCompletionEvents();
+            }
+            if (endpoint->CheckState(EEndpointState::Disconnecting)) {
+                hasWork |= endpoint->HandleCancelRequests();
+                hasWork |= endpoint->HandleCompletionEvents();
+                endpoint->AbortRequests();
+            }
         }
 
         return hasWork;
@@ -1791,14 +1796,23 @@ private:
                 continue;
             }
 
-            if (!endpoint->Flushed()) {
+            if (!endpoint->ClientRequestsFlushed()) {
+                continue;
+            }
+
+            if (!endpoint->WorkRequestsFlushed()) {
                 if (!endpoint->FlushHanging()) {
                     continue;
                 }
+                // either we have a bug or underlying layer didn't flush WRs in time
                 RDMA_ERROR(endpoint->Log, "flush timeout "
                     << "[send_queue.size=" << endpoint->SendQueue.Size()
                     << " recv_queue.size=" << endpoint->RecvQueue.Size() << "]");
             }
+
+            // detach immediately to prevent completions from arriving during
+            // destruction sequence
+            Detach(endpoint.get());
 
             endpoint->ChangeState(
                 EEndpointState::Disconnecting,
@@ -1891,7 +1905,7 @@ private:
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
     TCompletionPoller& PickPoller() noexcept;
-    void StopEndpoint(TClientEndpoint* endpoint) noexcept;
+    void ReleaseResources(TClientEndpoint* endpoint) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2050,14 +2064,38 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
     }
 }
 
-void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
+void TClient::ReleaseResources(TClientEndpoint* endpoint) noexcept
 {
+    switch (endpoint->State) {
+        // reconnect timer hit before disconnect event, reschedule
+        case EEndpointState::Connected:
+            endpoint->Reconnect.Schedule();
+            return;
+
+        // wait for completion poller to flush WRs
+        case EEndpointState::Disconnecting:
+            endpoint->Reconnect.Schedule();
+            return;
+
+        // QP hasn't been created yet
+        case EEndpointState::ResolvingAddress:
+        case EEndpointState::ResolvingRoute:
+            break;
+
+        // only Connected endpoints would be detached during flush
+        case EEndpointState::Connecting:
+            endpoint->Poller->Detach(endpoint);
+            endpoint->DestroyQP();
+            break;
+
+        // endpoint has been detached by the poller
+        case EEndpointState::Disconnected:
+            endpoint->DestroyQP();
+            break;
+    }
+
     RDMA_INFO(endpoint->Log, "release resources");
     ConnectionPoller->Detach(endpoint);
-    if (endpoint->CompletionChannel) {
-        endpoint->Poller->Detach(endpoint);
-    }
-    endpoint->DestroyQP();
     endpoint->Connection.reset();
     endpoint->StopResult.SetValue();
     endpoint->Poller->Release(endpoint);
@@ -2067,13 +2105,7 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 {
     if (endpoint->ShouldStop()) {
-        if (endpoint->CheckState(EEndpointState::Disconnecting)) {
-            // wait for completion poller to flush WRs
-            endpoint->Reconnect.Schedule();
-        } else {
-            // detach pollers and close connection
-            StopEndpoint(endpoint);
-        }
+        ReleaseResources(endpoint);
         return;
     }
 
@@ -2086,7 +2118,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
             startResult.SetException(std::make_exception_ptr(TServiceError(
                 MakeError(E_RDMA_UNAVAILABLE, "connection timeout"))));
 
-            StopEndpoint(endpoint);
+            ReleaseResources(endpoint);
             return;
         }
         // otherwise keep trying
@@ -2117,13 +2149,13 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 
         // create new connection and try again
         case EEndpointState::Connecting:
+            endpoint->Poller->Detach(endpoint);
             endpoint->ChangeState(
                 EEndpointState::Connecting,
                 EEndpointState::Disconnected);
             // fallthrough
 
         case EEndpointState::Disconnected:
-            endpoint->Poller->Detach(endpoint);
             endpoint->DestroyQP();
             endpoint->SetConnection(
                 ConnectionPoller->CreateConnection(Config->IpTypeOfService));

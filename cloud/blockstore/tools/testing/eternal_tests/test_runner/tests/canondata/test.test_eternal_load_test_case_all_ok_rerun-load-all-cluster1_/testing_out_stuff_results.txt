@@ -90,6 +90,12 @@ Input=
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"
 Execute command nohup sh -c "rm /root/load-config.json" &>/dev/null &Execute command nohup sh -c "systemctl start eternalload_vdb.service" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
+SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"
+Execute command nohup sh -c "/usr/bin/eternal-load --config-type generated --blocksize 32768 --file /dev/vdb --filesize 320 --iodepth 32 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
+Input=
+SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"
+Execute command nohup sh -c "/usr/bin/eternal-load --config-type generated --blocksize 32768 --file /dev/vdb --filesize 320 --iodepth 32 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
+Input=
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*test.txt"
 SSH 1:1:1:1:1:1:1:1: mkdir -p /test && { sudo umount /test || true; } && mount -t virtiofs nfs /test && touch /test/test.txt
 Execute command nohup sh -c "/usr/bin/eternal-load --config-type generated --blocksize 1048576 --file /test/test.txt --filesize 100 --iodepth 32 --dump-config-path /tmp/load-config.json --write-rate 25 --write-parts 1 >> /tmp/eternal-load.log 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder

@@ -5,6 +5,7 @@ SRCS(
     dynamic_persistent_table_counters.cpp
     file_map_memory_limiter.cpp
     file_ring_buffer.cpp
+    file_ring_buffer_format.cpp
     persistent_table.cpp
 )
 

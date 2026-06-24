@@ -15,6 +15,13 @@ namespace NCloud::NStorage::NRdma::NVerbs {
 
 struct TTestContext: TAtomicRefCount<TTestContext>
 {
+    ~TTestContext()
+    {
+        for (auto* send: SendEvents) {
+            delete send;
+        }
+    }
+
     rdma_cm_id* Connection = nullptr;
     TEventHandle ConnectionHandle;
     TVector<std::unique_ptr<rdma_cm_id>> ClientConnections;
@@ -67,6 +74,20 @@ using TTestContextPtr = TIntrusivePtr<TTestContext>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename M>
+void PostSend(TTestContextPtr context, ibv_qp* qp, ibv_send_wr* wr)
+{
+    Y_UNUSED(qp);
+    with_lock (context->CompletionLock) {
+        const auto* msg = reinterpret_cast<M*>(wr->sg_list[0].addr);
+        context->ReqIds.push_back(msg->ReqId);
+        context->SendEvents.push_back(new ibv_send_wr(*wr));
+        context->CompletionHandle.Set();
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 IVerbsPtr CreateTestVerbs(TTestContextPtr context);
 
 void CreateConnection(TTestContextPtr context);
@@ -75,6 +96,7 @@ void CreateConnection(
     ui16 sendQueueSize,
     ui16 recvQueueSize,
     ui32 maxBufferSize);
+void Flush(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
 
 // Enqueues an RDMA_CM_EVENT_ESTABLISHED for the given connection with the

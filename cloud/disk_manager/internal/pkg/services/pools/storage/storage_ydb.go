@@ -23,6 +23,10 @@ type storageYDB struct {
 	maxBaseDiskUnits                   uint64
 	takeBaseDisksToScheduleParallelism int
 	baseDiskIDPrefix                   string
+
+	adjustBaseDiskSizeToMinBaseDiskUnits bool
+
+	baseDiskOverSubscription uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -492,6 +496,10 @@ func NewStorage(
 		config.GetMaxBaseDiskUnits() != 0,
 		"MaxBaseDiskUnits should not be zero",
 	)
+	common.Assert(
+		config.GetBaseDiskOverSubscription() != 0,
+		"BaseDiskOverSubscription should not be zero",
+	)
 
 	// Default value.
 	takeBaseDisksToScheduleParallelism := 1
@@ -510,5 +518,9 @@ func NewStorage(
 		maxBaseDiskUnits:                   uint64(config.GetMaxBaseDiskUnits()),
 		takeBaseDisksToScheduleParallelism: takeBaseDisksToScheduleParallelism,
 		baseDiskIDPrefix:                   config.GetBaseDiskIdPrefix(),
+
+		adjustBaseDiskSizeToMinBaseDiskUnits: config.GetAdjustBaseDiskSizeToMinBaseDiskUnits(),
+
+		baseDiskOverSubscription: uint64(config.GetBaseDiskOverSubscription()),
 	}, nil
 }

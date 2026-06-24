@@ -22,6 +22,7 @@ type BaseDisk struct {
 	CheckpointID        string
 	CreateTaskID        string
 	Size                uint64
+	Units               uint64
 	Ready               bool
 }
 
