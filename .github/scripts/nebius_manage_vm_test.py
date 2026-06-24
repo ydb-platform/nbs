@@ -476,6 +476,96 @@ def test_find_runner_by_name_does_not_retry_missing_runner(monkeypatch):
     assert sleeps == []
 
 
+def test_remove_runner_from_github_retries_github_lookup_errors(monkeypatch):
+    list_runner_attempts = []
+    get_runner_attempts = []
+    sleeps = []
+
+    class FakeRepo:
+        def get_self_hosted_runners(self):
+            list_runner_attempts.append(1)
+            return [SimpleNamespace(name="vm-id", id="runner-id")]
+
+        def get_self_hosted_runner(self, runner_id):
+            assert runner_id == "runner-id"
+            get_runner_attempts.append(1)
+            if len(get_runner_attempts) == 1:
+                raise m.GithubException(
+                    401,
+                    {"message": "Bad credentials", "status": "401"},
+                    {},
+                )
+            return SimpleNamespace(
+                name="vm-id",
+                id="runner-id",
+                status="offline",
+                busy=False,
+            )
+
+    class FakeGithub:
+        def get_repo(self, repo_name):
+            assert repo_name == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(m.time, "sleep", sleeps.append)
+
+    assert (
+        m.remove_runner_from_github(FakeGithub(), "owner", "repo", "vm-id", False)
+        == "would_remove"
+    )
+    assert len(list_runner_attempts) == 1
+    assert len(get_runner_attempts) == 2
+    assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
+def test_remove_runner_from_github_retries_github_remove_errors(monkeypatch):
+    list_runner_attempts = []
+    remove_runner_attempts = []
+    sleeps = []
+
+    class FakeRepo:
+        def get_self_hosted_runners(self):
+            list_runner_attempts.append(1)
+            return [SimpleNamespace(name="vm-id", id="runner-id")]
+
+        def get_self_hosted_runner(self, runner_id):
+            assert runner_id == "runner-id"
+            return SimpleNamespace(
+                name="vm-id",
+                id="runner-id",
+                status="offline",
+                busy=False,
+            )
+
+        def remove_self_hosted_runner(self, runner_id):
+            assert runner_id == "runner-id"
+            remove_runner_attempts.append(1)
+            if len(remove_runner_attempts) == 1:
+                raise m.GithubException(
+                    401,
+                    {"message": "Bad credentials", "status": "401"},
+                    {},
+                )
+            return True
+
+    class FakeGithub:
+        def get_repo(self, repo_name):
+            assert repo_name == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(m.time, "sleep", sleeps.append)
+
+    assert (
+        m.remove_runner_from_github(FakeGithub(), "owner", "repo", "vm-id", True)
+        == "removed"
+    )
+    assert len(list_runner_attempts) == 1
+    assert len(remove_runner_attempts) == 2
+    assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
 def test_retry_retries_async_function_and_passes_attempt(monkeypatch):
     attempts = []
     sleeps = []
