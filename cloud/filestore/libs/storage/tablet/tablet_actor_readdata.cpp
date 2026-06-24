@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/storage/tablet/model/block_ranges.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
@@ -25,18 +26,6 @@ using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool ShouldReadBlobs(const TVector<TBlockDataRef>& blocks)
-{
-    for (const auto& block: blocks) {
-        if (block.BlobId) {
-            return true;
-        }
-    }
-    return false;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -68,34 +57,56 @@ void FillDescribeDataResponse(
     const TTabletStorageInfo& info,
     const ui64 tabletId,
     const ui32 blockSize,
-    const TByteRange& responseRange,
     const TTxIndexTablet::TReadData& args,
     NProtoPrivate::TDescribeDataResponse* record)
 {
     // metadata
-
     record->SetFileSize(args.Node->Attrs.GetSize());
 
-    // data
+    using TBlobRange = TBlockRanges::TBlobRange;
+    using TBlobRanges = TVector<TBlobRange>;
 
-    using TBlocks = TVector<TBlockDataRef>;
     // using TMap to make responses more stable and, thus, easier to test
-    TMap<TPartialBlobId, TBlocks> blobBlocks;
-    NProtoPrivate::TFreshDataRange freshRange;
-    for (ui64 i = 0; i < args.Blocks.size(); ++i) {
-        const auto& block = args.Blocks[i];
-        const ui64 curOffset = args.ActualRange().Offset + i * blockSize;
-        const TByteRange blockByteRange(curOffset, blockSize, blockSize);
-        if (!responseRange.Overlaps(blockByteRange)) {
-            continue;
+    TMap<TPartialBlobId, TBlobRanges> blobRanges;
+
+    args.BlockRanges.VisitBlobRanges(
+        [&] (const TBlockRanges::TBlobRange& range) {
+            blobRanges[range.BlobId].push_back(range);
+        });
+
+    for (const auto& [blobId, ranges]: blobRanges) {
+        auto& piece = *record->AddBlobPieces();
+
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(tabletId, blobId),
+            piece.MutableBlobId());
+
+        piece.SetBSGroupId(info.GroupFor(
+            blobId.Channel(),
+            blobId.Generation()));
+
+        for (const auto& range: ranges) {
+            auto& rangeInBlob = *piece.AddRanges();
+            rangeInBlob.SetOffset(ui64(range.BlockIndex) * blockSize);
+            rangeInBlob.SetLength(ui64(range.BlocksCount) * blockSize);
+            rangeInBlob.SetBlobOffset(ui64(range.BlobOffset) * blockSize);
         }
+    }
+
+    const ui64 actualFirstBlock = args.ActualRange().FirstBlock();
+    const ui32 actualBlockCount = args.ActualRange().BlockCount();
+
+    NProtoPrivate::TFreshDataRange freshRange;
+    for (ui32 i = 0; i < actualBlockCount; ++i) {
+        const ui64 curOffset = args.ActualRange().Offset + ui64(i) * blockSize;
 
         const auto& bytes = args.Bytes[i];
 
-        if (!block.BlobId && block.MinCommitId) {
-            // it's a fresh block
+        if (args.BlockRanges.IsFreshBlock(actualFirstBlock + i)) {
+            // it's a fresh block: accumulate it (with any newer fresh bytes
+            // applied on top) into a contiguous fresh data range
             if (freshRange.GetContent()) {
-                ui64 endOffset =
+                const ui64 endOffset =
                     freshRange.GetOffset() + freshRange.GetContent().size();
                 if (endOffset < curOffset) {
                     *record->AddFreshDataRanges() = std::move(freshRange);
@@ -107,8 +118,6 @@ void FillDescribeDataResponse(
                 freshRange.SetOffset(curOffset);
             }
 
-            // applying fresh byte ranges that intersect with our current
-            // block
             auto target = args.Buffer->GetBlock(i);
             ApplyBytes(bytes, target);
             freshRange.MutableContent()->append(target);
@@ -117,18 +126,15 @@ void FillDescribeDataResponse(
         }
 
         if (freshRange.GetContent()) {
-            // adding our current fresh range to the response
+            // the current block is not a fresh block, so flush whatever fresh
+            // block range we were accumulating
             *record->AddFreshDataRanges() = std::move(freshRange);
             freshRange.Clear();
         }
 
-        if (block.BlobId) {
-            // it's a block that should be read from a blob
-            blobBlocks[block.BlobId].push_back(block);
-        }
-
-        // adding all fresh byte ranges that intersect with our current
-        // block to the response
+        // blob-backed and empty blocks: emit each fresh byte interval that
+        // intersects this block as its own fresh data range. Blob data itself
+        // is reported via BlobPieces above.
         for (const auto& interval: bytes.Intervals) {
             auto& byteRange = *record->AddFreshDataRanges();
             byteRange.SetOffset(curOffset + interval.OffsetInBlock);
@@ -139,51 +145,6 @@ void FillDescribeDataResponse(
     if (freshRange.GetContent()) {
         *record->AddFreshDataRanges() = std::move(freshRange);
         freshRange.Clear();
-    }
-
-    for (const auto& x: blobBlocks) {
-        auto& piece = *record->AddBlobPieces();
-        LogoBlobIDFromLogoBlobID(
-            MakeBlobId(tabletId, x.first),
-            piece.MutableBlobId());
-
-        piece.SetBSGroupId(info.GroupFor(
-            x.first.Channel(),
-            x.first.Generation()));
-
-        // joining adjacent ranges from this blob
-        NProtoPrivate::TRangeInBlob rangeInBlob;
-        ui32 prevBlobOffset = 0;
-        for (const auto& b: x.second) {
-            const auto curOffset =
-                static_cast<ui64>(b.BlockIndex) * blockSize;
-            if (rangeInBlob.GetLength()) {
-                const ui64 endOffset =
-                    rangeInBlob.GetOffset() + rangeInBlob.GetLength();
-
-                // if either Offsets are not adjacent or BlobOffsets are
-                // not adjacent, we should start a new range
-                if (endOffset < curOffset
-                        || prevBlobOffset + 1 != b.BlobOffset)
-                {
-                    *piece.AddRanges() = std::move(rangeInBlob);
-                    rangeInBlob.Clear();
-                }
-            }
-
-            if (!rangeInBlob.GetLength()) {
-                rangeInBlob.SetOffset(curOffset);
-                rangeInBlob.SetBlobOffset(b.BlobOffset * blockSize);
-            }
-
-            rangeInBlob.SetLength(rangeInBlob.GetLength() + blockSize);
-            prevBlobOffset = b.BlobOffset;
-        }
-
-        if (rangeInBlob.GetLength()) {
-            *piece.AddRanges() = std::move(rangeInBlob);
-            rangeInBlob.Clear();
-        }
     }
 }
 
@@ -198,6 +159,7 @@ class TReadDataVisitor final
 private:
     const TString& LogTag;
     TTxIndexTablet::TReadData& Args;
+
     bool ApplyingByteLayer = false;
 
 public:
@@ -212,11 +174,15 @@ public:
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
-        ui32 blockOffset = block.BlockIndex - Args.ActualRange().FirstBlock();
+        const ui32 blockOffset =
+            block.BlockIndex - Args.ActualRange().FirstBlock();
         TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
-        auto& prev = Args.Blocks[blockOffset];
-        if (Update(prev, block, {}, 0)) {
+        if (Args.BlockRanges.AddFreshRange(
+                block.BlockIndex,
+                1,
+                block.MinCommitId))
+        {
             Args.Buffer->SetBlock(blockOffset, blockData);
         }
     }
@@ -226,16 +192,7 @@ public:
         const TPartialBlobId& blobId,
         ui32 blobOffset)
     {
-        TABLET_VERIFY(!ApplyingByteLayer);
-        TABLET_VERIFY(blobId);
-
-        ui32 blockOffset = block.BlockIndex - Args.ActualRange().FirstBlock();
-        TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
-
-        auto& prev = Args.Blocks[blockOffset];
-        if (Update(prev, block, blobId, blobOffset)) {
-            Args.Buffer->ClearBlock(blockOffset);
-        }
+        Accept(block, blobId, blobOffset, 1);
     }
 
     void Accept(
@@ -244,29 +201,41 @@ public:
         ui32 blobOffset,
         ui32 blocksCount) override
     {
-        Accept(block, blobId, blobOffset);
+        TABLET_VERIFY(!ApplyingByteLayer);
+        TABLET_VERIFY(blobId);
+        TABLET_VERIFY(blocksCount);
 
-        if (blocksCount > 1) {
-            auto b = block;
-            while (--blocksCount > 0) {
-                b.BlockIndex++;
-                blobOffset++;
+        const ui64 actualBeginBlock = Args.ActualRange().FirstBlock();
+        const ui64 actualEndBlock =
+            actualBeginBlock + Args.ActualRange().BlockCount();
 
-                Accept(b, blobId, blobOffset);
-            }
-        }
+        const ui64 beginBlock = block.BlockIndex;
+        const ui64 endBlock = beginBlock + blocksCount;
+
+        TABLET_VERIFY(beginBlock >= actualBeginBlock);
+        TABLET_VERIFY(endBlock <= actualEndBlock);
+
+        Args.BlockRanges.AddBlobRange(
+            block.BlockIndex,
+            blocksCount,
+            block.MinCommitId,
+            blobId,
+            blobOffset);
     }
 
     void Accept(const TBlockDeletion& deletion) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
-        ui32 blockOffset = deletion.BlockIndex - Args.ActualRange().FirstBlock();
+        const ui32 blockOffset =
+            deletion.BlockIndex - Args.ActualRange().FirstBlock();
         TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
-        auto& prev = Args.Blocks[blockOffset];
-        if (prev.MinCommitId < deletion.CommitId) {
-            prev = {};
+        if (Args.BlockRanges.AddDeletionRange(
+                deletion.BlockIndex,
+                1,
+                deletion.CommitId))
+        {
             Args.Buffer->ClearBlock(blockOffset);
         }
     }
@@ -282,19 +251,24 @@ public:
         while (i < bytes.Length) {
             auto offset = bytes.Offset + i;
             auto relOffset = offset - firstBlockOffset;
-            auto blockIndex = relOffset / Args.ActualRange().BlockSize;
+            // Offset in blocks (not bytes)
+            auto blockOffset = relOffset / Args.ActualRange().BlockSize;
             auto offsetInBlock =
-                relOffset - blockIndex * Args.ActualRange().BlockSize;
+                relOffset - blockOffset * Args.ActualRange().BlockSize;
             // FreshBytes should be organized in such a way that newer commits
             // for the same bytes will be visited later than older commits, so
             // tracking individual byte commit ids is not needed
-            auto& prev = Args.Blocks[blockIndex];
             auto next = Min<ui32>(
                 bytes.Length,
-                (blockIndex + 1) * Args.ActualRange().BlockSize
+                (blockOffset + 1) * Args.ActualRange().BlockSize
             );
-            if (prev.MinCommitId < bytes.MinCommitId) {
-                Args.Bytes[blockIndex].Intervals.push_back({
+
+            if (Args.BlockRanges.GetVisibleDataCommitId(
+                    IntegerCast<ui32>(
+                        Args.ActualRange().FirstBlock() + blockOffset))
+                < bytes.MinCommitId)
+            {
+                Args.Bytes[blockOffset].Intervals.push_back({
                     IntegerCast<ui32>(offsetInBlock),
                     TString(data.data() + i, next - i)
                 });
@@ -302,22 +276,6 @@ public:
 
             i = next;
         }
-    }
-
-private:
-    bool Update(
-        TBlockDataRef& prev,
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui32 blobOffset)
-    {
-        if (prev.MinCommitId < block.MinCommitId) {
-            memcpy(&prev, &block, sizeof(TBlock));
-            prev.BlobId = blobId;
-            prev.BlobOffset = blobOffset;
-            return true;
-        }
-        return false;
     }
 };
 
@@ -338,7 +296,7 @@ private:
     const TByteRange OriginByteRange;
     const TByteRange ActualRange;
     const ui64 TotalSize;
-    const TVector<TBlockDataRef> Blocks;
+    const TBlockRanges BlockRanges;
     TVector<TBlockBytes> Bytes;
     const IBlockBufferPtr Buffer;
     /*const*/ TSet<ui32> MixedBlocksRanges;
@@ -359,13 +317,13 @@ public:
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
-        TVector<TBlockDataRef> blocks,
+        TBlockRanges blockRanges,
         TVector<TBlockBytes> bytes,
         IBlockBufferPtr buffer,
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest);
+        NProto::TProfileLogRequestInfo profileLogRequest);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -400,13 +358,13 @@ TReadDataActor::TReadDataActor(
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
-        TVector<TBlockDataRef> blocks,
+        TBlockRanges blockRanges,
         TVector<TBlockBytes> bytes,
         IBlockBufferPtr buffer,
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest)
+        NProto::TProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
@@ -418,7 +376,7 @@ TReadDataActor::TReadDataActor(
     , OriginByteRange(originByteRange)
     , ActualRange(actualRange)
     , TotalSize(totalSize)
-    , Blocks(std::move(blocks))
+    , BlockRanges(std::move(blockRanges))
     , Bytes(std::move(bytes))
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
@@ -450,16 +408,17 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
 
     TBlocksByBlob blocksByBlob;
 
-    ui32 blockOffset = 0;
-    for (const auto& block: Blocks) {
-        ++blockOffset;
+    const ui64 actualFirstBlock = ActualRange.FirstBlock();
 
-        if (!block.BlobId) {
-            continue;
-        }
-
-        blocksByBlob[block.BlobId].emplace_back(block.BlobOffset, blockOffset - 1);
-    }
+    BlockRanges.VisitBlobRanges(
+        [&] (const TBlockRanges::TBlobRange& range) {
+            auto& blocks = blocksByBlob[range.BlobId];
+            for (ui32 i = 0; i < range.BlocksCount; ++i) {
+                const ui32 blockOffset = IntegerCast<ui32>(
+                    ui64(range.BlockIndex) + i - actualFirstBlock);
+                blocks.emplace_back(range.BlobOffset + i, blockOffset);
+            }
+        });
 
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvReadBlobRequest>(
         RequestInfo->CallContext);
@@ -876,7 +835,11 @@ bool TIndexTabletActor::ValidateTx_ReadData(
             args.AlignedByteRange);
         if (readAheadRange.Defined()) {
             args.ReadAheadRange.ConstructInPlace(*readAheadRange);
-            args.Blocks.resize(args.ActualRange().BlockCount());
+
+            args.BlockRanges = TBlockRanges(
+                IntegerCast<ui32>(args.ActualRange().FirstBlock()),
+                IntegerCast<ui32>(args.ActualRange().BlockCount()));
+
             args.Bytes.resize(args.ActualRange().BlockCount());
             args.Buffer = CreateLazyBlockBuffer(args.ActualRange());
         }
@@ -1010,7 +973,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
                 *Info(),
                 TabletID(),
                 GetBlockSize(),
-                *args.ReadAheadRange,
                 args,
                 &record);
             RegisterReadAheadResult(
@@ -1027,7 +989,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
             *Info(),
             TabletID(),
             GetBlockSize(),
-            args.AlignedByteRange,
             args,
             &record);
 
@@ -1084,7 +1045,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         return;
     }
 
-    if (!ShouldReadBlobs(args.Blocks)) {
+    if (!args.BlockRanges.HasBlobs()) {
         ApplyBytes(
             LogTag,
             args.ActualRange(),
@@ -1148,7 +1109,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         args.OriginByteRange,
         args.ActualRange(),
         args.Node->Attrs.GetSize(),
-        std::move(args.Blocks),
+        std::move(args.BlockRanges),
         std::move(args.Bytes),
         std::move(args.Buffer),
         std::move(args.MixedBlocksRanges),
