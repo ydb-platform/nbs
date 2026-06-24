@@ -806,6 +806,8 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("PartitionBudgetManager initialized")
 
     if (Configs->LocalNVMeConfig->GetDevicesSourceUri()) {
+        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
+
         LocalNVMeDeviceProvider =
             ServerModuleFactories->LocalNVMeDeviceProviderFactory(
                 logging,
@@ -817,7 +819,7 @@ void TBootstrapYdb::InitKikimrService()
             LocalNVMeDeviceProvider,
             NvmeManager,
             Executor,
-            BackgroundThreadPool);
+            LongRunningTaskExecutor);
     } else {
         LocalNVMeDeviceProvider = CreateLocalNVMeDeviceProviderStub();
         LocalNVMeService = CreateLocalNVMeServiceStub();

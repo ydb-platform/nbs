@@ -1006,6 +1006,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
+    START_COMMON_COMPONENT(LongRunningTaskExecutor);
     START_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     START_COMMON_COMPONENT(LocalNVMeService);
 
@@ -1062,6 +1063,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
+    STOP_COMMON_COMPONENT(LongRunningTaskExecutor);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
