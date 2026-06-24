@@ -149,6 +149,27 @@ void TIndexTabletActor::HandleCreateHandle(
         }
     }
 
+    // The NodeRef needs to be locked to prevent the node from being unlinked
+    // and to avoid races with other concurrent CreateHandle/CreateNode
+    // requests. It is important to lock the NodeRef even before it is created
+    // because an UnlinkNode transaction may have already deleted the NodeRef
+    // in the leader, while still holding the lock till a NodeRef is deleted
+    // in the shard.
+    if (msg->Record.GetName() &&
+        !TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()}))
+    {
+        auto error = MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "node ref " << msg->Record.GetNodeId() << " "
+                << msg->Record.GetName() << " is locked for CreateHandle");
+
+        auto response = std::make_unique<TResponse>(error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
+        return;
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -458,17 +479,6 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
         args.Response.SetShardNodeName(args.ShardNodeName);
-
-        // When the NodeRef references a node in a shard we need to lock it to
-        // prevent the node from being unlinked and to avoid races with other
-        // concurrent CreateHandle/CreateNode requests.
-        args.IsNodeRefLocked = TryLockNodeRef({args.NodeId, args.Name});
-        if (!args.IsNodeRefLocked) {
-            args.Error = MakeError(E_REJECTED, TStringBuilder()
-                << "node ref " << args.NodeId << " " << args.Name
-                << " is locked for CreateHandle");
-            return;
-        }
     }
 
     if (args.IsNewShardNode) {
@@ -572,7 +582,7 @@ void TIndexTabletActor::CompleteCreateHandle(
     // If the node is to be created in the shard the NodeRef will be unlocked in
     // TIndexTabletActor::HandleNodeCreatedInShard, otherwise it should be
     // unlocked here.
-    if (args.IsNodeRefLocked) {
+    if (args.Name) {
         UnlockNodeRef({args.NodeId, args.Name});
     }
 

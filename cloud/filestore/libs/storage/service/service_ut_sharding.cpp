@@ -9109,5 +9109,98 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(shard2Topology.GetCompressNodeRef());
         }
     }
+
+    SERVICE_TEST(ShouldNotCreateDanglingNodeRefDuringConcurrentCreateAndUnlink)
+    {
+        // The following sequence was observed:
+        // 1. TIndexTabletActor::ExecuteTx_UnlinkNode
+        // 2. TIndexTabletActor::ExecuteTx_CreateHandle
+        // 3. TIndexTabletActor::CompleteTx_UnlinkNode
+        // 4. TIndexTabletActor::CompleteTx_CreateHandle
+        // Before the fix it led to a dangling NodeRef.
+        // This test reproduces this sequence with the difference that actually
+        // TIndexTabletActor::ExecuteTx_CreateHandle is not called because
+        // TIndexTabletActor::HandleCreateHandle tries to lock the NodeRef
+        // early.
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const TString fileName = "file1";
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, fileName));
+
+        TAutoPtr<IEventHandle> event;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (!event &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvPut)
+                {
+                    event = std::move(ev);
+                    return true;
+                }
+                return false;
+            });
+        const ui64 requestId = 111;
+
+        // Send unlink node request and postpone completion of the transaction
+        // by catching TEvBlobStorage::EvPut.
+        service.SendUnlinkNodeRequest(
+            headers,
+            RootNodeId,
+            "file1",
+            false, // unlinkDirectory
+            requestId);
+
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return event != nullptr; }});
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // Send create handle request that should return E_REJECTED.
+        service.SendCreateHandleRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE_EXL);
+
+        env.GetRuntime().Send(event.Release(), nodeIdx);
+
+        auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
+        auto createHandleResponse = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            createHandleResponse->GetError().GetCode(),
+            createHandleResponse->GetError().GetMessage());
+
+        // Check that we don't have a dangling link.
+        NProtoPrivate::TUnsafeGetNodeRefRequest getNodeRefRequest;
+        getNodeRefRequest.SetFileSystemId(fsConfig.FsId);
+        getNodeRefRequest.SetParentId(RootNodeId);
+        getNodeRefRequest.SetName(fileName);
+        TString buf;
+        google::protobuf::util::MessageToJsonString(getNodeRefRequest, &buf);
+        const auto actionResponse =
+            service.SendAndRecvExecuteAction("unsafegetnoderef", buf);
+
+        UNIT_ASSERT_EQUAL_C(
+            E_FS_NOENT,
+            actionResponse->GetError().GetCode(),
+            actionResponse->GetErrorReason());
+    }
 }
 }   // namespace NCloud::NFileStore::NStorage
