@@ -15146,7 +15146,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         const auto assertUsedBlocksCountGreaterThanBlockCount = [&]
         {
-            const auto& stats = partition.StatPartition()->Record.GetStats();
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
             const ui64 blockCount =
                 stats.GetMixedBlocksCount() + stats.GetMergedBlocksCount();
             UNIT_ASSERT_C(
