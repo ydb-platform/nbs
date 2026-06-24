@@ -844,8 +844,6 @@ public:
     [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
 
     [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
-
-    [[nodiscard]] bool GetVerifyRecreatedBlobMetasOnCleanup() const;
 };
 
 ui64 GetAllocationUnit(
