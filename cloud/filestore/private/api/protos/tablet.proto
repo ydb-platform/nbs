@@ -200,7 +200,7 @@ message TGetStorageStatsRequest
     EStatsRequestMode Mode = 8;
 
     // If the cache is older than Now() - CacheTTL, it is not used.
-    uint32 CacheTTLMs = 9;
+    uint32 CacheTTL = 9; // in ms
 }
 
 message TGetStorageStatsResponse

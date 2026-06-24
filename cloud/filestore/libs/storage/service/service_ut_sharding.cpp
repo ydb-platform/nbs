@@ -72,7 +72,7 @@ NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     NProtoPrivate::TGetStorageStatsRequest request;
     request.SetFileSystemId(fsId);
     request.SetAllowCache(allowCache);
-    request.SetCacheTTLMs(cacheTTLMs);
+    request.SetCacheTTL(cacheTTLMs);
     request.SetMode(mode);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
@@ -9131,7 +9131,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(ShouldUseCacheInStatFileStore)
     {
         constexpr ui64 cacheTTLMs = 1000;
-        config.SetStatFileStoreCacheTTLMs(cacheTTLMs);
+        config.SetStatFileStoreCacheTTL(cacheTTLMs);
 
         // Create a filesystem with 2 shards.
         TShardedFileSystemConfig fsConfig;

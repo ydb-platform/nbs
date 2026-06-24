@@ -764,11 +764,11 @@ void TIndexTabletActor::HandleGetStorageStats(
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
 
-    const bool allowCache =
-        req.GetAllowCache() && (ctx.Now() - CachedAggregateStatsTs <
-                                TDuration::MilliSeconds(req.GetCacheTTLMs()));
+    const bool allowCache = req.GetAllowCache() && req.GetCacheTTL() &&
+                            ctx.Now() - CachedAggregateStatsTs <
+                                TDuration::MilliSeconds(req.GetCacheTTL());
 
-    if (allowCache) {
+    if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =
             Min<ui32>(shardIds.size(), CachedShardStats.size());

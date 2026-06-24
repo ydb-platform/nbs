@@ -27,7 +27,7 @@ class TStatFileStoreActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
-    const ui64 StatCacheTTLMs = 0;
+    const TDuration StatCacheTTL;
 
     NProto::TFileStore FileStore;
 
@@ -35,7 +35,7 @@ public:
     TStatFileStoreActor(
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
-        ui64 statCacheTTLMs);
+        TDuration statCacheTTL);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -67,13 +67,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatFileStoreActor::TStatFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId,
-        ui64 statCacheTTLMs)
+    TRequestInfoPtr requestInfo,
+    TString fileSystemId,
+    TDuration statCacheTTL)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
-    , StatCacheTTLMs(statCacheTTLMs)
-    {}
+    , StatCacheTTL(statCacheTTL)
+{}
 
 void TStatFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
@@ -108,7 +108,7 @@ void TStatFileStoreActor::HandleDescribeFileStoreResponse(
     // explicitly stating the intent
     request->Record.SetFileSystemId(FileSystemId);
     request->Record.SetAllowCache(true);
-    request->Record.SetCacheTTLMs(StatCacheTTLMs);
+    request->Record.SetCacheTTL(StatCacheTTL.MilliSeconds());
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -215,11 +215,11 @@ void TStorageServiceActor::HandleStatFileStore(
         cookie,
         msg->CallContext);
 
-
     auto actor = std::make_unique<TStatFileStoreActor>(
         std::move(requestInfo),
         msg->Record.GetFileSystemId(),
-        session->FileStore.GetFeatures().GetStatFileStoreCacheTTLMs());
+        TDuration::MilliSeconds(
+            session->FileStore.GetFeatures().GetStatFileStoreCacheTTL()));
 
     NCloud::Register(ctx, std::move(actor));
 }

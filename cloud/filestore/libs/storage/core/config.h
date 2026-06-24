@@ -413,7 +413,7 @@ public:
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
-    [[nodiscard]] ui32 GetStatFileStoreCacheTTLMs() const;
+    [[nodiscard]] TDuration GetStatFileStoreCacheTTL() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -795,5 +795,5 @@ message TStorageConfig
     optional bool EnableNodeRefCompression = 504;
 
     // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
-    optional uint32 StatFileStoreCacheTTLMs = 505;
+    optional uint32 StatFileStoreCacheTTL = 505; // in ms
 }
