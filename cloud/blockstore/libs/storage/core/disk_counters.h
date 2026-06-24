@@ -213,7 +213,7 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
-    TCounter GarbageCompactionMaxExecTimePerSecond{
+    TCounter GarbageCompactionExecTimePerSecondLimit{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -276,7 +276,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::CompactionIgnoringZeroedScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
-        MakeMeta<&TSimpleDiskCounters::GarbageCompactionMaxExecTimePerSecond>(),
+        MakeMeta<&TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),

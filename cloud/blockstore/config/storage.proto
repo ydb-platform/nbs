@@ -1625,17 +1625,18 @@ message TStorageServiceConfig
     optional bool EnableDynamicGarbageCompactionThrottling = 513;
 
     // Disk fill percentage below which garbage compaction throttling is fully
-    // enabled. Measured in percents of the disk size. Applies when
-    // EnableDynamicGarbageCompactionThrottling is on.
+    // enabled. Measured in percents of the disk size.
+    // Applies when EnableDynamicGarbageCompactionThrottling is on.
     optional uint32 GarbageCompactionThrottlingSoftLimit = 514;
 
     // Disk fill percentage above which garbage compaction throttling is
-    // disabled. Measured in percents of the disk size. Applies when
-    // EnableDynamicGarbageCompactionThrottling is on.
+    // disabled. Measured in percents of the disk size.
+    // Applies when EnableDynamicGarbageCompactionThrottling is on.
     optional uint32 GarbageCompactionThrottlingHardLimit = 515;
 
-    // Max garbage compaction exec time per second (in ms). Applies when
-    // EnableDynamicGarbageCompactionThrottling is on and disk fill is below
-    // GarbageCompactionThrottlingSoftLimit.
-    optional uint32 MaxGarbageCompactionExecTimePerSecond = 516;
+    // Max garbage compaction exec time per second (in ms) when garbage
+    // compaction throttling is as strong as possible.
+    // Applies when EnableDynamicGarbageCompactionThrottling is on and disk fill
+    // is below GarbageCompactionThrottlingSoftLimit.
+    optional uint32 MinGarbageCompactionExecTimePerSecondLimit = 516;
 }

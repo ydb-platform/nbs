@@ -1105,23 +1105,23 @@ STFUNC(TCompactionActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 GetPercentage(ui64 enumerator, ui64 denominator)
+ui32 GetPercentage(ui64 numerator, ui64 denominator)
 {
-    const double p = enumerator * 100. / Max(denominator, 1UL);
+    const double p = numerator * 100. / Max(denominator, 1UL);
     const double MAX_P = 1'000;
     return Min(p, MAX_P);
 }
 
-ui32 GetExcessPercentage(ui64 enumerator, ui64 denominator)
+ui32 GetExcessPercentage(ui64 numerator, ui64 denominator)
 {
-    const double p = GetPercentage(enumerator, denominator);
-    return p < 100? 0 : p - 100;
+    const double p = GetPercentage(numerator, denominator);
+    return p < 100 ? 0 : p - 100;
 }
 
 ui64 GetDiskBlockCount(const TPartitionState& state)
 {
     return state.GetMixedBlocksCount() + state.GetMergedBlocksCount() -
-        state.GetCleanupQueue().GetQueueBlocks();
+           state.GetCleanupQueue().GetQueueBlocks();
 }
 
 ui32 GetDiskFillPercentage(const TPartitionState& state)
@@ -1130,33 +1130,33 @@ ui32 GetDiskFillPercentage(const TPartitionState& state)
     return GetPercentage(GetDiskBlockCount(state), diskSizeInBlocks);
 }
 
-TDuration GetGarbageCompactionMaxExecTimePerSecond(
-    const TStorageConfig& config,
+TDuration GetGarbageCompactionExecTimePerSecondLimit(
+    ui32 softLimit,
+    ui32 hardLimit,
+    TDuration minGarbageCompactionExecTimePerSecondLimit,
     ui32 diskFillPercentage)
 {
-    const ui32 softLimit = config.GetGarbageCompactionThrottlingSoftLimit();
-    const ui32 hardLimit = config.GetGarbageCompactionThrottlingHardLimit();
-    const TDuration maxExec = config.GetMaxGarbageCompactionExecTimePerSecond();
+    Y_DEBUG_ABORT_UNLESS(softLimit <= hardLimit);
+    Y_DEBUG_ABORT_UNLESS(
+        minGarbageCompactionExecTimePerSecondLimit.GetValue() > 0);
 
     if (diskFillPercentage <= softLimit) {
-        return maxExec;
+        return minGarbageCompactionExecTimePerSecondLimit;
     }
 
     if (diskFillPercentage >= hardLimit) {
         // No throttling.
-        return TDuration::MilliSeconds(1000);
+        return TDuration::Seconds(1);
     }
 
-    const i64 maxMs = maxExec.MilliSeconds();
-    if (maxMs == 0) {
-        // Zero value also means no throttling.
-        return TDuration::Zero();
-    }
-
-    const i64 execTimeMs = maxMs +
-        (1000 - maxMs) * static_cast<i64>(diskFillPercentage - softLimit) /
-        (hardLimit - softLimit);
-    return TDuration::MilliSeconds(Max<i64>(execTimeMs, 1));
+    // Linear interpolation on [softLimit, hardLimit] range.
+    return minGarbageCompactionExecTimePerSecondLimit +
+           (TDuration::Seconds(1) -
+            minGarbageCompactionExecTimePerSecondLimit) *
+               (static_cast<double>(diskFillPercentage) -
+                static_cast<double>(softLimit)) /
+               (static_cast<double>(hardLimit) -
+                static_cast<double>(softLimit));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1570,7 +1570,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     auto maxCompactionExecTimePerSecond =
         Config->GetMaxCompactionExecTimePerSecond();
 
-    if (IsIgnoringZeroedCompactionEnabled() &&
+    if (Config->GetIgnoringZeroedCompactionEnabled() &&
         info->Mode == TEvPartitionPrivate::GarbageCompaction &&
         Config->GetMaxCompactionExecTimePerSecondForZeroed())
     {
@@ -1586,31 +1586,50 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         }
     }
 
-    auto throttlingAllowed = info->ThrottlingAllowed;
-
     if (IsDynamicGarbageCompactionThrottlingEnabled() &&
-        !IsIgnoringZeroedCompactionEnabled() &&
+        !Config->GetIgnoringZeroedCompactionEnabled() &&
         info->Mode == TEvPartitionPrivate::GarbageCompaction)
     {
         const ui32 softLimit =
             Config->GetGarbageCompactionThrottlingSoftLimit();
         const ui32 hardLimit =
             Config->GetGarbageCompactionThrottlingHardLimit();
+        const auto minGarbageCompactionExecTimePerSecondLimit =
+            Config->GetMinGarbageCompactionExecTimePerSecondLimit();
 
-        if (softLimit && hardLimit && softLimit < hardLimit) {
+        if (softLimit > hardLimit) {
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Invalid garbage compaction throttling config: "
+                "GarbageCompactionThrottlingSoftLimit (%u) > "
+                "GarbageCompactionThrottlingHardLimit (%u)",
+                LogTitle.GetWithTime().c_str(),
+                softLimit,
+                hardLimit);
+        } else if (minGarbageCompactionExecTimePerSecondLimit.GetValue() == 0) {
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Invalid garbage compaction throttling config: "
+                "MinGarbageCompactionExecTimePerSecondLimit is zero",
+                LogTitle.GetWithTime().c_str());
+        } else {
             maxCompactionExecTimePerSecond =
-                GetGarbageCompactionMaxExecTimePerSecond(
-                    *Config,
+                GetGarbageCompactionExecTimePerSecondLimit(
+                    softLimit,
+                    hardLimit,
+                    minGarbageCompactionExecTimePerSecondLimit,
                     GetDiskFillPercentage(*State));
         }
 
-        PartCounters->Simple.GarbageCompactionMaxExecTimePerSecond.Set(
-            throttlingAllowed
+        PartCounters->Simple.GarbageCompactionExecTimePerSecondLimit.Set(
+            info->ThrottlingAllowed
                 ? maxCompactionExecTimePerSecond.MilliSeconds()
                 : 0);
     }
 
-    if (throttlingAllowed) {
+    if (info->ThrottlingAllowed) {
         State->SetCompactionDelay(CalculateBackgroundOpThrottleDelay(
             State->GetCompactionExecTimeForLastSecond(ctx.Now()),
             maxCompactionExecTimePerSecond,

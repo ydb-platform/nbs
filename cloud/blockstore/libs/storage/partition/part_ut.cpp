@@ -3690,6 +3690,94 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoShouldAutomaticallyRunGarbageCompactionForSuperDirtyRanges(true);
     }
 
+    void CheckGarbageCompactionExecTimePerSecondLimit(
+        ui32 softLimit,
+        ui32 hardLimit,
+        ui32 fillPercentage,
+        ui32 expectedExecTimeLimit)
+    {
+        auto config = DefaultConfig();
+        config.SetV1GarbageCompactionEnabled(true);
+        config.SetEnableDynamicGarbageCompactionThrottling(true);
+        config.SetGarbageCompactionThrottlingSoftLimit(softLimit);
+        config.SetGarbageCompactionThrottlingHardLimit(hardLimit);
+        config.SetMinGarbageCompactionExecTimePerSecondLimit(200);
+        config.SetCompactionGarbageThreshold(20);
+        config.SetCompactionRangeGarbageThreshold(20);
+        config.SetMinCompactionDelay(0);
+        config.SetMaxCompactionDelay(999'999'999);
+
+        constexpr ui32 blockCount = 1000;
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool garbageCompactionRequestObserved = false;
+        ui64 garbageCompactionExecTimePerSecondLimit = 0;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvCompactionRequest>();
+                        if (msg->Mode == TEvPartitionPrivate::GarbageCompaction)
+                        {
+                            garbageCompactionRequestObserved = true;
+                        }
+                        break;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumePartCounters>();
+                        garbageCompactionExecTimePerSecondLimit =
+                            msg->DiskCounters->Simple
+                                .GarbageCompactionExecTimePerSecondLimit.Value;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // Writing blocks in such a way that
+        // `BlockCount / DiskSize` is exactly `fillPercentage` percent.
+        const ui32 writeBlockCount = blockCount * fillPercentage / 200;
+        UNIT_ASSERT(writeBlockCount < blockCount);
+        const auto blockRange = TBlockRange32::WithLength(0, writeBlockCount);
+        partition.WriteBlocks(blockRange);
+        partition.WriteBlocks(blockRange);
+        partition.Flush();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT(garbageCompactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedExecTimeLimit,
+            garbageCompactionExecTimePerSecondLimit);
+    }
+
+    Y_UNIT_TEST(ShouldCalculateGarbageCompactionExecTimePerSecondLimit)
+    {
+        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 70, 200);
+        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 90, 300);
+        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 120, 600);
+        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 180, 1000);
+        CheckGarbageCompactionExecTimePerSecondLimit(120, 120, 120, 200);
+    }
+
     Y_UNIT_TEST(CompactionShouldTakeCareOfFreshBlocks)
     {
         auto runtime = PrepareTestActorRuntime();

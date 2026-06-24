@@ -101,7 +101,7 @@ public:
     TDuration GetMinCompactionDelay() const;
     TDuration GetMaxCompactionExecTimePerSecond() const;
     TDuration GetMaxCompactionExecTimePerSecondForZeroed() const;
-    TDuration GetMaxGarbageCompactionExecTimePerSecond() const;
+    TDuration GetMinGarbageCompactionExecTimePerSecondLimit() const;
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
     bool GetEnableDynamicGarbageCompactionThrottling() const;
