@@ -456,46 +456,6 @@ using TExecutor = NStorage::NGrpc::
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError TryAdjustIovecOffsets(
-    const TLog& Log,
-    TServerState* state,
-    google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
-    ui64 regionId)
-{
-    TResultOrError<TMmapRegionMetadata> region = state->GetMmapRegion(regionId);
-    if (NCloud::HasError(region.GetError())) {
-        STORAGE_DEBUG(
-            "Failed to get mmap region " << regionId << ": "
-                                         << region.GetError().GetMessage());
-        return region.GetError();
-    }
-
-    const auto& metadata = region.GetResult();
-    STORAGE_DEBUG(
-        "Adjusting iovecs for region " << regionId
-                                       << ": address=" << metadata.Address
-                                       << " size=" << metadata.Size);
-
-    for (auto& iovec: iovecs) {
-        ui64 offset = iovec.GetBase();
-        ui64 length = iovec.GetLength();
-
-        if (offset + length > metadata.Size) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "Iovec out of bounds: offset=" << offset
-                                 << " length=" << length
-                                 << " region_size=" << metadata.Size);
-        }
-
-        iovec.SetBase(offset + reinterpret_cast<ui64>(metadata.Address));
-    }
-
-    return {};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TAppContext, typename TMethod>
 class TRequestHandler final
     : public TServerRequestHandlerBase
@@ -694,6 +654,7 @@ private:
 
         AppCtx.Stats->RequestStarted(Log, *CallContext);
         Started = true;
+        bool iovecsLocked = false;
 
         if constexpr (
             (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
@@ -701,15 +662,18 @@ private:
             std::is_same_v<TAppContext, TFileStoreContext>)
         {
             if (AppCtx.State && Request->IovecsSize() > 0) {
-                auto error = TryAdjustIovecOffsets(
-                    Log,
-                    this->AppCtx.State.get(),
-                    *Request->MutableIovecs(),
-                    Request->GetRegionId());
-                if (HasError(error)) {
+                auto adjustedIovecs = AppCtx.State->AdjustAndLockIovecs(
+                    Request->GetRegionId(),
+                    *Request->MutableIovecs());
+                if (HasError(adjustedIovecs)) {
                     TResponse response;
+                    auto error = adjustedIovecs.GetError();
                     response.MutableError()->Swap(&error);
                     Response = MakeFuture(std::move(response));
+                } else {
+                    iovecsLocked = true;
+                    auto iovecs = adjustedIovecs.ExtractResult();
+                    Request->MutableIovecs()->Swap(&iovecs);
                 }
             }
         }
@@ -721,7 +685,7 @@ private:
                 Response = TMethod::Execute(
                     *AppCtx.ServiceImpl,
                     CallContext,
-                    std::move(Request));
+                    Request);
             } catch (const TServiceError& e) {
                 STORAGE_WARN(
                     TMethod::RequestName << " #" << RequestId
@@ -748,6 +712,25 @@ private:
         Response.Subscribe(
             [=, this] (const auto& response) {
                 Y_UNUSED(response);
+
+                if constexpr (
+                    (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
+                     std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
+                    std::is_same_v<TAppContext, TFileStoreContext>)
+                {
+                    if (iovecsLocked) {
+                        auto err = AppCtx.State->UnlockIovecs(
+                            Request->GetRegionId(),
+                            Request->GetIovecs());
+                        if (HasError(err)) {
+                            STORAGE_ERROR(
+                                TMethod::RequestName
+                                << " #" << RequestId
+                                << " failed to unlock iovecs: "
+                                << FormatError(err));
+                        }
+                    }
+                }
 
                 if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
                     // will be processed on executor thread
@@ -1278,6 +1261,7 @@ public:
             regionInfo->SetSize(region.Size);
             regionInfo->SetLatestActivityTimestamp(
                 region.LatestActivityTimestamp.MicroSeconds());
+            regionInfo->SetPageSize(region.PageSize);
         }
         this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
     }
@@ -1328,7 +1312,8 @@ public:
     {
         Result = this->AppCtx.State->CreateMmapRegion(
             this->Request->GetFilePath(),
-            this->Request->GetSize());
+            this->Request->GetSize(),
+            this->Request->GetPageSize());
         NProto::TMmapResponse response;
 
         if (NCloud::HasError(Result)) {

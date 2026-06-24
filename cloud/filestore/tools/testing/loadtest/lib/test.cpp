@@ -570,10 +570,12 @@ private:
                         spec.GetSharedMemorySizeBytes(),
                         Max(static_cast<ui64>(spec.GetReadBytes()),
                             static_cast<ui64>(spec.GetWriteBytes())),
+                        spec.GetSharedMemoryPageSize(),
                         ClientFactory->CreateShmControl(),
                         Scheduler,
                         Timer,
-                        Logging);
+                        Logging,
+                        spec.GetAllowOverlappingSharedMemoryPages());
                     ShmClient->Start();
                 }
                 RequestGenerator = CreateDatashardLikeRequestGenerator(
@@ -677,7 +679,7 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                if (RequestGenerator->ShouldFailOnError()) {
+                if (RequestGenerator->ShouldFailOnError(request->Error)) {
                     STORAGE_ERROR(
                         "%s failing test %s due to: %s",
                         MakeTestTag().c_str(),
