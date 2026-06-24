@@ -138,7 +138,7 @@ TMultiAgentWriteActor<TMethod>::TMultiAgentWriteActor(
     , RoundRobinSeed(roundRobinSeed)
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
-          {{"ma", std::monostate{}}}))
+          {{"TMultiAgentWriteActor", std::monostate{}}}))
 {
     Y_DEBUG_ABORT_UNLESS(!replicas.empty());
 

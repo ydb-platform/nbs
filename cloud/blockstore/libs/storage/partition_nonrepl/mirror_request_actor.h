@@ -97,7 +97,7 @@ TMirrorRequestActor<TMethod>::TMirrorRequestActor(
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
-          {{"mrr", std::monostate{}}}))
+          {{"TMirrorRequestActor", std::monostate{}}}))
 {
     Y_DEBUG_ABORT_UNLESS(!Replicas.empty());
 }
