@@ -27,6 +27,7 @@ from .helpers import (
 )
 from github import Auth as GithubAuth
 from github import Github
+from github.GithubException import GithubException
 
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
@@ -668,6 +669,24 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         logger.error("Response: %s", request.status, exc_info=True)
 
 
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=(GithubException,),
+)
+def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
+    return client.get_repo(repo).get_self_hosted_runner(runner_id)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=(GithubException,),
+)
+def remove_self_hosted_runner(client: Github, repo: str, runner_id: str) -> bool:
+    return client.get_repo(repo).remove_self_hosted_runner(runner_id)
+
+
 def remove_runner_from_github(
     client: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
 ) -> str:
@@ -680,7 +699,7 @@ def remove_runner_from_github(
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
 
-    runner = client.get_repo(repo).get_self_hosted_runner(runner_id)
+    runner = get_self_hosted_runner(client, repo, runner_id)
     if runner is None:
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
@@ -696,7 +715,7 @@ def remove_runner_from_github(
         return "busy"
 
     if apply:
-        result = client.get_repo(repo).remove_self_hosted_runner(runner_id)
+        result = remove_self_hosted_runner(client, repo, runner_id)
 
         if not result:
             # removed throwing exception here, because removing VM is more important
