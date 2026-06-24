@@ -58,6 +58,10 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
 TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     const TActorContext& ctx)
 {
+    PartCounters->Simple.HasDiskSizeAnomaly.Set(
+        static_cast<ui64>(
+            State->HasDiskSizeAnomaly(Config->GetDiskSizeAnomalyThreshold())));
+
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlocksCount() * State->GetBlockSize());
 

@@ -61,6 +61,7 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(PartitionCount,                __VA_ARGS__)                            \
     xxx(CompactionRangeCountPerRun,    __VA_ARGS__)                            \
     xxx(NewlyZeroedBlocks,             __VA_ARGS__)                            \
+    xxx(HasDiskSizeAnomaly,            __VA_ARGS__)                            \
 // YDB_SIMPLE_UINT64_COUNTERS
 
 #define YDB_CUMULATIVE_COUNTERS(xxx, ...)                                      \

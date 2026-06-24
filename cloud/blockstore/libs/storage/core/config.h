@@ -846,6 +846,8 @@ public:
     [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
 
     [[nodiscard]] bool GetVerifyRecreatedBlobMetasOnCleanup() const;
+
+    [[nodiscard]] double GetDiskSizeAnomalyThreshold() const;
 };
 
 ui64 GetAllocationUnit(

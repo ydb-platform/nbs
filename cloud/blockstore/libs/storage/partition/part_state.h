@@ -1221,6 +1221,19 @@ public:
         auto statsToAdd = stats.Swap({});
         UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
     }
+
+    bool HasDiskSizeAnomaly(double diskSizeAnomalyThreshold) const
+    {
+        const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
+        const auto freshBytesCount =
+            GetUnflushedFreshBlocksCount() * GetBlockSize();
+        const auto mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
+        const auto bytesCount = GetBlocksCount() * GetBlockSize();
+
+        return static_cast<double>(
+                   mixedBytesCount + freshBytesCount + mergedBytesCount) >=
+               diskSizeAnomalyThreshold * static_cast<double>(bytesCount);
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

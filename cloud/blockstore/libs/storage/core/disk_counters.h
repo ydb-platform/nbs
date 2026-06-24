@@ -229,6 +229,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter HasDiskSizeAnomaly{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter HasBrokenDevice{
@@ -276,6 +280,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),
         MakeMeta<&TSimpleDiskCounters::NewlyZeroedBlocks>(),
+        MakeMeta<&TSimpleDiskCounters::HasDiskSizeAnomaly>(),
 
         MakeMeta<&TSimpleDiskCounters::HasBrokenDevice>(),
         MakeMeta<&TSimpleDiskCounters::HasBrokenDeviceSilent>(),
