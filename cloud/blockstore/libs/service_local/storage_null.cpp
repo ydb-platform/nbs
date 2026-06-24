@@ -4,6 +4,9 @@
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/sglist.h>
+
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NThreading;
@@ -31,7 +34,31 @@ public:
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
         Y_UNUSED(callContext);
-        Y_UNUSED(request);
+
+        const auto blockSize = request->GetBlockSize();
+        const auto blocksCount = request->GetBlocksCount();
+        size_t responseSize = blockSize * blocksCount;
+
+        auto guard = request->Sglist.Acquire();
+        if (!guard) {
+            NProto::TReadBlocksLocalResponse response = TErrorResponse(
+                E_CANCELLED,
+                "failed to acquire sglist in NullStorage");
+            return MakeFuture(std::move(response));
+        }
+
+        // simulate zero response
+        for (const auto& buf : guard.Get()) {
+            if (responseSize == 0) {
+                break;
+            }
+
+            const auto size = std::min(buf.Size(), responseSize);
+            if (buf.Data()) {
+                memset(const_cast<char*>(buf.Data()), 0, size);
+            }
+            responseSize -= size;
+        }
 
         return MakeFuture(NProto::TReadBlocksLocalResponse());
     }
