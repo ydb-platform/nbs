@@ -309,6 +309,45 @@ func TestCheckFilesystemSnapshotAlive(t *testing.T) {
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 }
 
+func TestCheckFilesystemSnapshotReady(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	err := f.storage.CheckFilesystemSnapshotReady(f.ctx, "nonexisting")
+	require.Error(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+
+	_, err = f.storage.CreateFilesystemSnapshot(
+		f.ctx,
+		FilesystemSnapshotMeta{
+			ID:           "snapshot",
+			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	err = f.storage.CheckFilesystemSnapshotReady(f.ctx, "snapshot")
+	require.Error(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+
+	err = f.storage.FilesystemSnapshotCreated(f.ctx, "snapshot", 100, 200, 5)
+	require.NoError(t, err)
+
+	err = f.storage.CheckFilesystemSnapshotReady(f.ctx, "snapshot")
+	require.NoError(t, err)
+
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot", "delete")
+	require.NoError(t, err)
+
+	err = f.storage.CheckFilesystemSnapshotReady(f.ctx, "snapshot")
+	require.Error(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+}
+
 func TestLockUnlockFilesystemSnapshot(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()

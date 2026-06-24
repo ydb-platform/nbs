@@ -95,6 +95,7 @@ func RegisterForExecution(
 			return &transferFromSnapshotToFilesystemTask{
 				config:           config,
 				factory:          factory,
+				storage:          storage,
 				traversalStorage: traversalStorage,
 				nodesStorage:     nodesStorage,
 			}

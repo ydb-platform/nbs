@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
@@ -239,6 +241,7 @@ func (f *fixture) newTransferFromSnapshotToFilesystemTask(
 	return &transferFromSnapshotToFilesystemTask{
 		config:           config,
 		factory:          f.factory,
+		storage:          f.snapshotStorage,
 		traversalStorage: f.traversalStorage,
 		nodesStorage:     f.nodesStorage,
 		request: &snapshot_protos.TransferFromSnapshotToFilesystemRequest{
@@ -259,26 +262,93 @@ type cancelOnListNodesStorage struct {
 	calls    int
 }
 
-type onSaveNodesStorage struct {
+////////////////////////////////////////////////////////////////////////////////
+// TODO (jkuradobery): regroup classes and methods.
+
+type withDeletionNodeStorage struct {
 	nodes_storage.Storage
-	onSaveNodes func(ctx context.Context, snapshotID string, nodes []nfs.Node) error
+	snapshotStorage snapshot_storage.Storage
+	deleteTaskID    string
+	deleteOnce      sync.Once
+	deleteResult    chan error
 }
 
-func (s *onSaveNodesStorage) SaveNodes(
+func newWithDeletionNodeStorage(
+	storage nodes_storage.Storage,
+	snapshotStorage snapshot_storage.Storage,
+) *withDeletionNodeStorage {
+
+	return &withDeletionNodeStorage{
+		Storage:         storage,
+		snapshotStorage: snapshotStorage,
+		deleteTaskID:    "delete-task",
+		deleteResult:    make(chan error, 1),
+	}
+}
+
+func (s *withDeletionNodeStorage) deleteSnapshot(
+	ctx context.Context,
+	snapshotID string,
+) {
+
+	s.deleteOnce.Do(func() {
+		_, err := s.snapshotStorage.DeletingFilesystemSnapshot(
+			ctx,
+			snapshotID,
+			s.deleteTaskID,
+		)
+		s.deleteResult <- err
+	})
+}
+
+func (s *withDeletionNodeStorage) requireDeletion(t *testing.T) {
+	t.Helper()
+
+	select {
+	case err := <-s.deleteResult:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.Fail(t, "delete was not attempted")
+	}
+}
+
+func (s *withDeletionNodeStorage) SaveNodes(
 	ctx context.Context,
 	snapshotID string,
 	nodes []nfs.Node,
 ) error {
 
-	if s.onSaveNodes != nil {
-		err := s.onSaveNodes(ctx, snapshotID, nodes)
-		if err != nil {
-			return err
-		}
+	err := s.Storage.SaveNodes(ctx, snapshotID, nodes)
+	if err != nil {
+		return err
 	}
 
-	return s.Storage.SaveNodes(ctx, snapshotID, nodes)
+	s.deleteSnapshot(ctx, snapshotID)
+	return nil
 }
+
+func (s *withDeletionNodeStorage) UpdateRestorationNodeIDMapping(
+	ctx context.Context,
+	snapshotID string,
+	filesystemID string,
+	mappings map[uint64]uint64,
+) error {
+
+	err := s.Storage.UpdateRestorationNodeIDMapping(
+		ctx,
+		snapshotID,
+		filesystemID,
+		mappings,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.deleteSnapshot(ctx, snapshotID)
+	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func (s *cancelOnListNodesStorage) ListNodes(
 	ctx context.Context,
@@ -921,7 +991,6 @@ func TestCreateSnapshotFromFilesystemStopsWhenDeletedDuringTransfer(t *testing.T
 
 	config := f.newConfig()
 	snapshotID := "snapshot-delete-during-transfer"
-	deleteErrCh := make(chan error, 1)
 
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	execCtx.On("GetTaskID").Return("create-snapshot-task")
@@ -932,35 +1001,12 @@ func TestCreateSnapshotFromFilesystemStopsWhenDeletedDuringTransfer(t *testing.T
 		filesystemID,
 		snapshotID,
 	)
-	task.nodesStorage = &onSaveNodesStorage{
-		Storage: f.nodesStorage,
-		onSaveNodes: func(ctx context.Context, snapshotID string, nodes []nfs.Node) error {
-			_, err := f.snapshotStorage.DeletingFilesystemSnapshot(
-				ctx,
-				snapshotID,
-				"delete-task",
-			)
-
-			select {
-			case deleteErrCh <- err:
-			default:
-			}
-
-			return nil
-		},
-	}
+	storage := newWithDeletionNodeStorage(f.nodesStorage, f.snapshotStorage)
+	task.nodesStorage = storage
 
 	err := task.Run(f.ctx, execCtx)
 	require.Error(t, err)
-
-	var deleteErr error
-	select {
-	case deleteErr = <-deleteErrCh:
-	default:
-		require.Fail(t, "delete was not attempted during transfer")
-	}
-
-	require.NoError(t, deleteErr)
+	storage.requireDeletion(t)
 
 	meta, err := f.snapshotStorage.GetFilesystemSnapshotMeta(f.ctx, snapshotID)
 	require.NoError(t, err)
@@ -969,6 +1015,103 @@ func TestCreateSnapshotFromFilesystemStopsWhenDeletedDuringTransfer(t *testing.T
 
 	err = f.snapshotStorage.CheckFilesystemSnapshotAlive(f.ctx, snapshotID)
 	require.Error(t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestRestoreFromSnapshotNotReady(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	snapshotID := "snapshot-not-ready"
+
+	_, err := f.snapshotStorage.CreateFilesystemSnapshot(
+		f.ctx,
+		snapshot_storage.FilesystemSnapshotMeta{
+			ID:           snapshotID,
+			CreateTaskID: "create-snapshot",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "source-filesystem",
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	task := f.newTransferFromSnapshotToFilesystemTask(
+		f.newConfig(),
+		filesystemID,
+		snapshotID,
+	)
+
+	err = task.Run(f.ctx, execCtx)
+	require.Error(t, err)
+	require.ErrorIs(t, err, task_errors.NewEmptyNonRetriableError())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestRestoreFromSnapshotDeleted(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	root := nfs_testing.Root(
+		nfs_testing.Dir("dir",
+			nfs_testing.File("file"),
+		),
+	)
+	fsModel := f.fillFilesystem(t, filesystemID, root)
+	defer fsModel.Close()
+
+	config := f.newConfig()
+	snapshotID := "snapshot-delete-during-restore"
+
+	toSnapshotExecCtx := tasks_mocks.NewExecutionContextMock()
+	toSnapshotExecCtx.On("GetTaskID").Return("setup-to-snapshot")
+	toSnapshotExecCtx.On("SaveState", mock.Anything).Return(nil)
+
+	toSnapshotTask := f.newCreateSnapshotFromFilesystemTask(
+		config,
+		filesystemID,
+		snapshotID,
+	)
+
+	err := toSnapshotTask.Run(f.ctx, toSnapshotExecCtx)
+	require.NoError(t, err)
+
+	dstFilesystemID := filesystemID + "_restored"
+	f.prepareFilesystem(t, dstFilesystemID)
+	defer f.cleanupFilesystem(t, dstFilesystemID)
+
+	restoreExecCtx := tasks_mocks.NewExecutionContextMock()
+	restoreExecCtx.On("GetTaskID").Return("delete-during-restore")
+	restoreExecCtx.On("SaveState", mock.Anything).Return(nil)
+
+	fromSnapshotTask := f.newTransferFromSnapshotToFilesystemTask(
+		config,
+		dstFilesystemID,
+		snapshotID,
+	)
+	storage := newWithDeletionNodeStorage(f.nodesStorage, f.snapshotStorage)
+	fromSnapshotTask.nodesStorage = storage
+
+	err = fromSnapshotTask.Run(f.ctx, restoreExecCtx)
+	require.Error(t, err)
+	require.ErrorIs(t, err, task_errors.NewEmptyNonRetriableError())
+	storage.requireDeletion(t)
+
+	err = f.snapshotStorage.CheckFilesystemSnapshotAlive(f.ctx, snapshotID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, task_errors.NewEmptyNonRetriableError())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
