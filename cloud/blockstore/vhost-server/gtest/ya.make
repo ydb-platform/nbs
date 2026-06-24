@@ -2,6 +2,10 @@ GTEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+IF (SANITIZER_TYPE == "thread")
+    SPLIT_FACTOR(40)
+ENDIF()
+
 SRCS(
     ../backend.cpp
     ../backend_aio.cpp
