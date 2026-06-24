@@ -491,11 +491,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         TVector<TRangeCompactionInfo> rangeCompactionInfos;
 
         CompleteRangeCompaction(
-            false,  // blobPatchingEnabled
-            0,      // mergedBlobThreshold
+            false,   // blobPatchingEnabled
+            0,       // mergedBlobThreshold
             compactionCommitId,
             TTestExecutor::TabletId,
-            false,  // recreateBlobMetasEnabled
+            false,   // shouldRecreateBlobMetas
             storageInfo,
             state,
             args,
@@ -543,7 +543,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             0,
             compactionCommitId,
             TTestExecutor::TabletId,
-            false,  // recreateBlobMetasEnabled
+            false,   // shouldRecreateBlobMetas
             storageInfo,
             state,
             args,

@@ -1614,4 +1614,8 @@ message TStorageServiceConfig
     // read into a separate transaction issued by TCompactionActor instead of
     // doing it inside the main TCompaction prepare phase.
     optional bool SplitCompactionTxEnabled = 511;
+
+    // If true, the recreated blob metas are verified on cleanup.
+    // We check that there is no leaked blocks in the mixed index.
+    optional bool VerifyRecreatedBlobMetasOnCleanup = 512;
 }
