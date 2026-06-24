@@ -195,24 +195,27 @@ def test_get_runner_token_reports_response_debug_after_retries(monkeypatch):
 
 
 def test_get_latest_github_runner_version_strips_tag_prefix(monkeypatch):
-    class FakeResponse:
-        status_code = 200
-        reason = "OK"
-        headers = {"content-type": "application/json"}
-        text = "{}"
-        ok = True
+    class FakeRepo:
+        def get_latest_release(self):
+            payload = make_runner_release_payload("2.332.0")
+            return SimpleNamespace(
+                tag_name=payload["tag_name"],
+                body=payload["body"],
+                get_assets=lambda: [
+                    SimpleNamespace(name=asset["name"]) for asset in payload["assets"]
+                ],
+            )
 
-        def json(self):
-            return make_runner_release_payload("2.332.0")
+    class FakeGithub:
+        def get_repo(self, repo):
+            assert repo == "actions/runner"
+            return FakeRepo()
 
-    def fake_get(url, headers, timeout):
-        assert url == h.GITHUB_RUNNER_LATEST_RELEASE_URL
-        assert headers["Authorization"] == "Bearer github-token"
-        assert headers["Accept"] == "application/vnd.github+json"
-        assert timeout == h.GITHUB_API_TIMEOUT_SEC
-        return FakeResponse()
+    def fake_github_client(token):
+        assert token == "github-token"
+        return FakeGithub()
 
-    monkeypatch.setattr(h.requests, "get", fake_get)
+    monkeypatch.setattr(h, "github_client", fake_github_client)
 
     assert h.get_latest_github_runner_version("github-token") == "2.332.0"
 
@@ -250,23 +253,28 @@ def test_extract_github_runner_release_returns_arch_sha_from_body():
 
 
 def test_get_github_runner_release_fetches_tag_and_sha(monkeypatch):
-    class FakeResponse:
-        status_code = 200
-        reason = "OK"
-        headers = {"content-type": "application/json"}
-        text = "{}"
-        ok = True
+    class FakeRepo:
+        def get_release(self, tag):
+            assert tag == "v2.331.0"
+            payload = make_runner_release_payload("2.331.0")
+            return SimpleNamespace(
+                tag_name=payload["tag_name"],
+                body=payload["body"],
+                get_assets=lambda: [
+                    SimpleNamespace(name=asset["name"]) for asset in payload["assets"]
+                ],
+            )
 
-        def json(self):
-            return make_runner_release_payload("2.331.0")
+    class FakeGithub:
+        def get_repo(self, repo):
+            assert repo == "actions/runner"
+            return FakeRepo()
 
-    def fake_get(url, headers, timeout):
-        assert url.endswith("/repos/actions/runner/releases/tags/v2.331.0")
-        assert headers["Authorization"] == "Bearer github-token"
-        assert timeout == h.GITHUB_API_TIMEOUT_SEC
-        return FakeResponse()
+    def fake_github_client(token):
+        assert token == "github-token"
+        return FakeGithub()
 
-    monkeypatch.setattr(h.requests, "get", fake_get)
+    monkeypatch.setattr(h, "github_client", fake_github_client)
 
     release = h.get_github_runner_release("v2.331.0", "github-token")
 

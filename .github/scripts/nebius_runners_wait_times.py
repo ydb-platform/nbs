@@ -9,8 +9,7 @@ from tabulate import tabulate
 from collections import defaultdict
 from dateutil import parser as dateparser
 from dateutil.relativedelta import relativedelta
-from .helpers import setup_logger, get_jobs_raw, Job
-from typing import List
+from .helpers import setup_logger, get_jobs_raw, classify_runner
 
 logger = setup_logger()
 
@@ -32,22 +31,23 @@ def parse_datetime(value, now=None):
         )
 
 
-def output_results(all_jobs: List[Job], summary, threshold: int):
+def output_results(all_jobs: list[dict], summary, threshold: int):
     print("=== Job Wait Times ===")
     print(
         tabulate(
             [
                 [
-                    f"{job.run_id}:{job.id}",
-                    job.workflow.replace(".yaml", "").replace(".yml", ""),
-                    job.name,
-                    job.runner_type,
-                    job.created_at.isoformat() if job.created_at else "N/A",
-                    job.started_at.isoformat() if job.started_at else "N/A",
-                    (job.started_at - job.created_at).total_seconds(),
+                    f"{job['run_id']}:{job['id']}",
+                    job["workflow"].replace(".yaml", "").replace(".yml", ""),
+                    job["name"],
+                    job["runner_type"],
+                    job["created_at"].isoformat() if job["created_at"] else "N/A",
+                    job["started_at"].isoformat() if job["started_at"] else "N/A",
+                    (job["started_at"] - job["created_at"]).total_seconds(),
                 ]
                 for job in all_jobs
-                if (job.started_at - job.created_at).total_seconds() >= threshold
+                if (job["started_at"] - job["created_at"]).total_seconds()
+                >= threshold
             ],
             headers=[
                 "Id",
@@ -126,6 +126,7 @@ def main(start, end, threshold):
             conclusion = job.conclusion
             wait_sec = (job.started_at - job.created_at).total_seconds()
             labels = job.labels
+            runner_type = classify_runner(labels)
 
             if conclusion == "skipped":
                 logger.debug(f"Job {name} was skipped; skipping.")
@@ -139,25 +140,21 @@ def main(start, end, threshold):
             # remove anything inside [] brackets
             name_string = name_string.split("[")[0].strip()
             all_jobs.append(
-                Job(
-                    workflow=run.path.split("/")[-1],
-                    id=job.id,
-                    run_id=run.id,
-                    runner_name=job.runner_name,
-                    completed_at=job.completed_at,
-                    name=name_string,
-                    status=job.status,
-                    conclusion=job.conclusion,
-                    runner_type=job.runner_type,
-                    created_at=created_at,
-                    started_at=started_at,
-                )
+                {
+                    "workflow": run.path.split("/")[-1],
+                    "id": job.id,
+                    "run_id": run.id,
+                    "name": name_string,
+                    "runner_type": runner_type,
+                    "created_at": created_at,
+                    "started_at": started_at,
+                }
             )
 
             if wait_sec is not None:
-                summary[job.runner_type]["total_wait"] += wait_sec
-                summary[job.runner_type]["count"] += 1
-                summary[job.runner_type]["waits"].append(wait_sec)
+                summary[runner_type]["total_wait"] += wait_sec
+                summary[runner_type]["count"] += 1
+                summary[runner_type]["waits"].append(wait_sec)
 
     output_results(all_jobs, summary, threshold)
 
