@@ -1592,9 +1592,19 @@ func runTests(
 		},
 	}
 
+	skipTests := make(map[string]bool)
+	for _, name := range testConfig.GetSkipTests() {
+		skipTests[name] = true
+	}
+
 	log.Printf("Starting tests")
 
 	for _, test := range tests {
+		if skipTests[test.Name] {
+			log.Printf("Skipping test %v", test.Name)
+			continue
+		}
+
 		log.Printf("Starting test %v", test.Name)
 
 		se, err := test.Run(ctx, client, privateClient, testConfig, nbsConfig)

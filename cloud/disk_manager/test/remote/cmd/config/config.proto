@@ -11,4 +11,5 @@ message TestConfig {
     required string ImageURL = 2;
     required uint64 ImageSize = 3;
     required uint32 ImageCrc32 = 4;
+    repeated string SkipTests = 5;
 }
