@@ -1905,7 +1905,7 @@ private:
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
     TCompletionPoller& PickPoller() noexcept;
-    void StopEndpoint(TClientEndpoint* endpoint) noexcept;
+    void ReleaseResources(TClientEndpoint* endpoint) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2064,11 +2064,38 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
     }
 }
 
-void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
+void TClient::ReleaseResources(TClientEndpoint* endpoint) noexcept
 {
+    switch (endpoint->State) {
+        // reconnect timer hit before disconnect event, reschedule
+        case EEndpointState::Connected:
+            endpoint->Reconnect.Schedule();
+            return;
+
+        // wait for completion poller to flush WRs
+        case EEndpointState::Disconnecting:
+            endpoint->Reconnect.Schedule();
+            return;
+
+        // QP hasn't been created yet
+        case EEndpointState::ResolvingAddress:
+        case EEndpointState::ResolvingRoute:
+            break;
+
+        // only Connected endpoints would be detached during flush
+        case EEndpointState::Connecting:
+            endpoint->Poller->Detach(endpoint);
+            endpoint->DestroyQP();
+            break;
+
+        // endpoint has been detached by the poller
+        case EEndpointState::Disconnected:
+            endpoint->DestroyQP();
+            break;
+    }
+
     RDMA_INFO(endpoint->Log, "release resources");
     ConnectionPoller->Detach(endpoint);
-    endpoint->DestroyQP();
     endpoint->Connection.reset();
     endpoint->StopResult.SetValue();
     endpoint->Poller->Release(endpoint);
@@ -2078,13 +2105,7 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 {
     if (endpoint->ShouldStop()) {
-        if (endpoint->CheckState(EEndpointState::Disconnecting)) {
-            // wait for completion poller to flush WRs
-            endpoint->Reconnect.Schedule();
-        } else {
-            // detach pollers and close connection
-            StopEndpoint(endpoint);
-        }
+        ReleaseResources(endpoint);
         return;
     }
 
@@ -2097,7 +2118,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
             startResult.SetException(std::make_exception_ptr(TServiceError(
                 MakeError(E_RDMA_UNAVAILABLE, "connection timeout"))));
 
-            StopEndpoint(endpoint);
+            ReleaseResources(endpoint);
             return;
         }
         // otherwise keep trying
