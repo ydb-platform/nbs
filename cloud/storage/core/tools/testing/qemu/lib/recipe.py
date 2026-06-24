@@ -149,7 +149,7 @@ def start_instance(args, inst_index):
         open(ready_flag_path, 'a')
 
 
-@retry(max_times=100)
+@retry(max_times=32)
 def _process_instance_coredumps(user, key, port):
 
     ssh = SshToGuest(user=user, port=port, key=key)
