@@ -46,8 +46,7 @@ def output_results(all_jobs: list[dict], summary, threshold: int):
                     (job["started_at"] - job["created_at"]).total_seconds(),
                 ]
                 for job in all_jobs
-                if (job["started_at"] - job["created_at"]).total_seconds()
-                >= threshold
+                if (job["started_at"] - job["created_at"]).total_seconds() >= threshold
             ],
             headers=[
                 "Id",
