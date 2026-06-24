@@ -1463,9 +1463,7 @@ func newRemoteTestMetrics(
 	registry monitoring_metrics.Registry,
 ) *remoteTestMetrics {
 
-	_ = registry.FuncGauge("remoteTestRunning", func() float64 {
-		return 1
-	})
+	registry.Gauge("remoteTestRunning").Set(1)
 
 	return &remoteTestMetrics{
 		errors: registry.Counter("error"),
@@ -1515,18 +1513,18 @@ func (r *testRun) reportSuccessTest(testName string) {
 	r.metrics.reportSuccessTest(testName)
 }
 
-func newTestBlackList(testsBlackList []string) map[string]struct{} {
-	blackList := make(map[string]struct{}, len(testsBlackList))
-	for _, testName := range testsBlackList {
-		blackList[testName] = struct{}{}
+func newTestDenyList(testsDenyList []string) map[string]struct{} {
+	denyList := make(map[string]struct{}, len(testsDenyList))
+	for _, testName := range testsDenyList {
+		denyList[testName] = struct{}{}
 	}
 
-	return blackList
+	return denyList
 }
 
-func validateTestBlackList(
+func validateTestDenyList(
 	tests []testCase,
-	testsBlackList map[string]struct{},
+	testsDenyList map[string]struct{},
 ) error {
 
 	testNames := make(map[string]struct{}, len(tests))
@@ -1534,17 +1532,17 @@ func validateTestBlackList(
 		testNames[test.Name] = struct{}{}
 	}
 
-	for testName := range testsBlackList {
+	for testName := range testsDenyList {
 		if _, ok := testNames[testName]; !ok {
 			return fmt.Errorf(
-				"blacklisted test %q is not present in tests",
+				"denied test %q is not present in tests",
 				testName,
 			)
 		}
 	}
 
-	if len(testsBlackList) == len(testNames) {
-		return fmt.Errorf("tests blacklist should be a strict subset of tests")
+	if len(testsDenyList) == len(testNames) {
+		return fmt.Errorf("tests deny list should be a strict subset of tests")
 	}
 
 	return nil
@@ -1609,8 +1607,8 @@ func (r *testRun) runTests(ctx context.Context) error {
 			Run:  testCreateImageFromImage,
 		},
 	}
-	testsBlackList := newTestBlackList(r.testConfig.GetTestsBlackList())
-	err := validateTestBlackList(tests, testsBlackList)
+	testsDenyList := newTestDenyList(r.testConfig.GetTestsBlackList())
+	err := validateTestDenyList(tests, testsDenyList)
 	if err != nil {
 		r.reportError()
 		return err
@@ -1628,8 +1626,8 @@ func (r *testRun) runTests(ctx context.Context) error {
 	log.Printf("Starting tests")
 
 	for _, test := range tests {
-		if _, ok := testsBlackList[test.Name]; ok {
-			log.Printf("Skipping blacklisted test %v", test.Name)
+		if _, ok := testsDenyList[test.Name]; ok {
+			log.Printf("Skipping denied test %v", test.Name)
 			continue
 		}
 
