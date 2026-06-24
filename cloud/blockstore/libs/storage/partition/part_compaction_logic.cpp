@@ -739,6 +739,7 @@ void CompleteRangeCompaction(
     const ui32 mergedBlobThreshold,
     const ui64 commitId,
     const ui64 tabletId,
+    const bool recreateBlobMetasEnabled,
     TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
@@ -786,7 +787,9 @@ void CompleteRangeCompaction(
             state);
     }
 
-    RecreateBlobMetas(args, commitId);
+    if (recreateBlobMetasEnabled) {
+        RecreateBlobMetas(args, commitId);
+    }
 
     rangeCompactionInfos.emplace_back(
         args.BlockRange,

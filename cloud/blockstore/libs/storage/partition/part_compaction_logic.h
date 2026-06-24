@@ -130,6 +130,7 @@ void CompleteRangeCompaction(
     const ui32 mergedBlobThreshold,
     const ui64 commitId,
     const ui64 tabletId,
+    const bool recreateBlobMetasEnabled,
     NKikimr::TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,

@@ -23,12 +23,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVerifyResult {
+struct TVerifyBlocksMetaResult
+{
     bool Ready = true;
     NProto::TError Error;
 };
 
-TVerifyResult VerifyMixedBlocksMeta(
+TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
     const NProto::TBlobMeta::TMixedBlocks& originalMixedBlocks,
@@ -143,7 +144,7 @@ TVerifyResult VerifyMixedBlocksMeta(
     return {};
 }
 
-TVerifyResult VerifyMergedBlocksMeta(
+TVerifyBlocksMetaResult VerifyMergedBlocksMeta(
     const NProto::TBlobMeta::TMergedBlocks& originalMergedBlocks,
     const NProto::TBlobMeta::TMergedBlocks& recreatedMergedBlocks)
 {
@@ -160,7 +161,7 @@ TVerifyResult VerifyMergedBlocksMeta(
     return {};
 }
 
-TVerifyResult VerifyRecreatedBlobMeta(
+TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
     const NProto::TBlobMeta& blobMeta,
@@ -387,19 +388,19 @@ bool TPartitionActor::PrepareCleanup(
 
             const bool verifyRecreatedBlobMetasOnCleanup =
                 hasValidMetaInCleanupQueue &&
-                Config->GetVerifyRecreatedBlobMetasOnCleanup();
+                IsVerifyRecreatedBlobMetasOnCleanupEnabled();
             if (!verifyRecreatedBlobMetasOnCleanup) {
                 continue;
             }
 
-            auto [ready, error] =
+            auto verifyResult =
                 VerifyRecreatedBlobMeta(db, item.BlobId, meta, item.BlobMeta);
-            if (!ready) {
+            if (!verifyResult.Ready) {
                 ready = false;
                 continue;
             }
 
-            if (HasError(error)) {
+            if (HasError(verifyResult.Error)) {
                 blobIdsToRemoveFromQueue.insert(item.BlobId);
                 ReportCleanupBlobMetaBlocksMismatch(
                     {{"diskId", PartitionConfig.GetDiskId()},
@@ -408,7 +409,7 @@ bool TPartitionActor::PrepareCleanup(
                      {"recreatedBlobMeta",
                       item.BlobMeta.ShortUtf8DebugString()},
                      {"originalBlobMeta", meta.ShortUtf8DebugString()},
-                     {"error", FormatError(error)}});
+                     {"error", FormatError(verifyResult.Error)}});
             }
         } else {
             ready = false;
@@ -416,6 +417,8 @@ bool TPartitionActor::PrepareCleanup(
     }
 
     if (ready) {
+        // we not cleanup blobs with mismatched blocks meta intentionally
+        // because it can help to investigate the issue
         auto itemsToRemove = std::ranges::remove_if(
             args.CleanupQueue,
             [&](const auto& item) -> bool

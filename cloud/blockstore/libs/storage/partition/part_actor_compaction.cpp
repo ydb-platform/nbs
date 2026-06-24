@@ -2001,6 +2001,8 @@ void TPartitionActor::CompleteCompaction(
             mergedBlobThreshold,
             args.CommitId,
             TabletID(),
+            IsVerifyRecreatedBlobMetasOnCleanupEnabled(),   // recreate blob
+                                                            // metas enabled
             *Info(),
             *State,
             rangeCompaction,

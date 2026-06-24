@@ -597,11 +597,10 @@ private:
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
                 NProto::TBlobMeta blobMeta;
-                if (kv.second.RecreatedBlobMeta) {
-                    blobMeta = kv.second.RecreatedBlobMeta.GetRef();
-                }
                 if (kv.second.BlobMeta) {
                     blobMeta = kv.second.BlobMeta.GetRef();
+                } else if (kv.second.RecreatedBlobMeta) {
+                    blobMeta = kv.second.RecreatedBlobMeta.GetRef();
                 }
 
                 bool inserted = State.GetCleanupQueue().Add(

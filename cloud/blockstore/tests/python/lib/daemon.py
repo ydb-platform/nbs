@@ -1,5 +1,4 @@
 import json
-import re
 import requests
 import subprocess
 import socket
@@ -26,17 +25,12 @@ from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_
 def _match(labels, query):
     for name, value in query.items():
         v = labels.get(name)
-        if v is None:
-            return False
-        if isinstance(value, re.Pattern):
-            if not value.search(v):
-                return False
-        elif v != value:
+        if v is None or v != value:
             return False
     return True
 
 
-class Counters:
+class _Counters:
 
     def __init__(self, data):
         self.__data = data
@@ -65,12 +59,12 @@ class Counters:
         return json.dumps(self.__data, indent=4)
 
 
-def get_counters(mon_port):
+def _get_counters(mon_port):
     url = f"http://localhost:{mon_port}/counters/counters=blockstore/json"
     r = requests.get(url, timeout=10)
     r.raise_for_status()
 
-    return Counters(r.json())
+    return _Counters(r.json())
 
 
 class Nbs(Daemon):

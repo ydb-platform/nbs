@@ -125,6 +125,67 @@ TAffectedBlob MakeFullyAvailableMixedBlob(
     return ab;
 }
 
+struct TPrepareCompleteResult
+{
+    bool Ready = false;
+    TVector<TRangeCompactionInfo> RangeCompactionInfos;
+    TVector<TBlobCompactionRequest> Requests;
+};
+
+TPrepareCompleteResult RunPrepareAndComplete(
+    TPartitionState& state,
+    TTestExecutor& executor,
+    ui32 rangeIdx,
+    ui64 compactionCommitId,
+    bool recreateBlobMetasEnabled)
+{
+    const auto compactionRange =
+        state.GetCompactionMap().GetBlockRange(rangeIdx);
+
+    TTxPartition::TRangeCompaction args(rangeIdx, compactionRange);
+    THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
+    THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+    bool ready = true;
+
+    executor.ReadTx([&](TPartitionDatabase db) {
+        PrepareRangeCompaction(
+            *MakeStorageConfig(),
+            0,
+            compactionCommitId,
+            TTestExecutor::TabletId,
+            true,
+            ready,
+            db,
+            state,
+            args,
+            blobsToReadBlockMasks,
+            blobsToReadBlobMetas);
+    });
+
+    TVector<TBlobCompactionRequest> requests;
+    TVector<TRangeCompactionInfo> rangeCompactionInfos;
+    auto storageInfo = MakeStorageInfo(1);
+
+    CompleteRangeCompaction(
+        false,
+        0,
+        compactionCommitId,
+        TTestExecutor::TabletId,
+        recreateBlobMetasEnabled,
+        storageInfo,
+        state,
+        args,
+        requests,
+        rangeCompactionInfos,
+        0);
+
+    return {
+        ready,
+        std::move(rangeCompactionInfos),
+        std::move(requests),
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace
@@ -434,6 +495,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             0,      // mergedBlobThreshold
             compactionCommitId,
             TTestExecutor::TabletId,
+            false,  // recreateBlobMetasEnabled
             storageInfo,
             state,
             args,
@@ -481,6 +543,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             0,
             compactionCommitId,
             TTestExecutor::TabletId,
+            false,  // recreateBlobMetasEnabled
             storageInfo,
             state,
             args,
@@ -490,6 +553,183 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, rangeCompactionInfos.size());
         UNIT_ASSERT(rangeCompactionInfos[0].ChecksumFixups.empty());
+    }
+
+    // PrepareRangeCompaction + CompleteRangeCompaction: merged blobs get
+    // RecreatedBlobMeta with MergedBlocks populated from the index.
+    Y_UNIT_TEST(CompleteRecreatesMergedBlobMetaAfterPrepare)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const auto blockRange = TBlockRange32::MakeClosedInterval(0, 3);
+        TBlockMask skipMask;
+        skipMask.Set(1);
+
+        TPartialBlobId blobId;
+        executor.WriteTx([&](TPartitionDatabase db) {
+            blobId = executor.MakeBlobId(4);
+            db.WriteMergedBlocks(blobId, blockRange, skipMask);
+        });
+
+        const auto compactionCommitId = MakeCommitId(0, 100);
+        const auto result = RunPrepareAndComplete(
+            state,
+            executor,
+            0,
+            compactionCommitId,
+            true);
+
+        UNIT_ASSERT(result.Ready);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.RangeCompactionInfos.size());
+
+        const auto& affectedBlobs =
+            result.RangeCompactionInfos[0].AffectedBlobs;
+        UNIT_ASSERT(affectedBlobs.contains(blobId));
+
+        const auto& recreatedMeta =
+            affectedBlobs.at(blobId).RecreatedBlobMeta;
+        UNIT_ASSERT(recreatedMeta);
+        UNIT_ASSERT(recreatedMeta->HasMergedBlocks());
+        UNIT_ASSERT(!recreatedMeta->HasMixedBlocks());
+
+        const auto& mergedBlocks = recreatedMeta->GetMergedBlocks();
+        UNIT_ASSERT_VALUES_EQUAL(blockRange.Start, mergedBlocks.GetStart());
+        UNIT_ASSERT_VALUES_EQUAL(blockRange.End, mergedBlocks.GetEnd());
+        UNIT_ASSERT_VALUES_EQUAL(skipMask.Count(), mergedBlocks.GetSkipped());
+    }
+
+    // PrepareRangeCompaction + CompleteRangeCompaction: fully-available mixed
+    // blobs (CompactionRangeCount == 1) get RecreatedBlobMeta with MixedBlocks.
+    Y_UNIT_TEST(CompleteRecreatesMixedBlobMetaWhenFullyAvailable)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        TPartialBlobId blobId;
+        const TVector<ui32> blockIndices = {0, 1, 2};
+        executor.WriteTx([&](TPartitionDatabase db) {
+            blobId = executor.MakeBlobId(blockIndices.size());
+            db.WriteMixedBlocks(blobId, blockIndices, 1);
+        });
+
+        const auto compactionCommitId = MakeCommitId(0, 100);
+        const auto result = RunPrepareAndComplete(
+            state,
+            executor,
+            0,
+            compactionCommitId,
+            true);
+
+        UNIT_ASSERT(result.Ready);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.RangeCompactionInfos.size());
+
+        const auto& affectedBlobs =
+            result.RangeCompactionInfos[0].AffectedBlobs;
+        UNIT_ASSERT(affectedBlobs.contains(blobId));
+
+        const auto& ab = affectedBlobs.at(blobId);
+        UNIT_ASSERT_VALUES_EQUAL(1, ab.CompactionRangeCount);
+
+        const auto& recreatedMeta = ab.RecreatedBlobMeta;
+        UNIT_ASSERT(recreatedMeta);
+        UNIT_ASSERT(recreatedMeta->HasMixedBlocks());
+        UNIT_ASSERT(!recreatedMeta->HasMergedBlocks());
+
+        const auto& mixedBlocks = recreatedMeta->GetMixedBlocks();
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockIndices.size(),
+            mixedBlocks.BlocksSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockIndices.size(),
+            mixedBlocks.CommitIdsSize());
+
+        for (size_t i = 0; i < blockIndices.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockIndices[i],
+                mixedBlocks.GetBlocks(i));
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobId.CommitId(),
+                mixedBlocks.GetCommitIds(i));
+        }
+    }
+
+    // PrepareRangeCompaction + CompleteRangeCompaction: mixed blobs that span
+    // multiple compaction ranges do not get RecreatedBlobMeta.
+    Y_UNIT_TEST(CompleteSkipsMixedBlobMetaWhenNotFullyAvailable)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        TPartialBlobId blobId;
+        executor.WriteTx([&](TPartitionDatabase db) {
+            blobId = executor.MakeBlobId(3);
+            db.WriteMixedBlocks(blobId, {0, 1, 2}, 2);
+        });
+
+        const auto compactionCommitId = MakeCommitId(0, 100);
+        const auto result = RunPrepareAndComplete(
+            state,
+            executor,
+            0,
+            compactionCommitId,
+            true);
+
+        UNIT_ASSERT(result.Ready);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.RangeCompactionInfos.size());
+
+        const auto& affectedBlobs =
+            result.RangeCompactionInfos[0].AffectedBlobs;
+        UNIT_ASSERT(affectedBlobs.contains(blobId));
+        UNIT_ASSERT_VALUES_EQUAL(2, affectedBlobs.at(blobId).CompactionRangeCount);
+        UNIT_ASSERT(!affectedBlobs.at(blobId).RecreatedBlobMeta);
+    }
+
+    // PrepareRangeCompaction + CompleteRangeCompaction: mixed blobs that have
+    // at least one block with commit id above the compaction commit id do not
+    // get RecreatedBlobMeta, even if other blocks are visible to compaction.
+    Y_UNIT_TEST(CompleteSkipsMixedBlobMetaWhenBlockCommitIdExceedsCompactionCommitId)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const ui64 lowCommitId = MakeCommitId(0, 50);
+        const ui64 highCommitId = MakeCommitId(0, 150);
+        const auto compactionCommitId = MakeCommitId(0, 100);
+
+        TPartialBlobId blobId;
+        executor.WriteTx([&](TPartitionDatabase db) {
+            blobId = executor.MakeBlobId(2);
+            state.WriteMixedBlock(
+                db,
+                TMixedBlock(blobId, lowCommitId, 0, 0, 1));
+            state.WriteMixedBlock(
+                db,
+                TMixedBlock(blobId, highCommitId, 1, 1, 1));
+        });
+
+        const auto result = RunPrepareAndComplete(
+            state,
+            executor,
+            0,
+            compactionCommitId,
+            true);
+
+        UNIT_ASSERT(result.Ready);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.RangeCompactionInfos.size());
+
+        const auto& affectedBlobs =
+            result.RangeCompactionInfos[0].AffectedBlobs;
+        UNIT_ASSERT(affectedBlobs.contains(blobId));
+
+        const auto& ab = affectedBlobs.at(blobId);
+        UNIT_ASSERT_VALUES_EQUAL(1, ab.CompactionRangeCount);
+        UNIT_ASSERT(ab.MaxCommitIdInCompactionRange > compactionCommitId);
+        UNIT_ASSERT(!ab.RecreatedBlobMeta);
     }
 }
 
