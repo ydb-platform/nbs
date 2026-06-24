@@ -145,7 +145,9 @@ class TShardRequestCounter
 {
 private:
     TTestActorRuntimeBase& Runtime;
+    const TString ShardIdPrefix;
     TTestActorRuntimeBase::TEventFilter PrevFilter;
+    THashMap<ui64, TActorId> DescribeRequestSenders;
     THashMap<ui64, TActorId> ConfigureRequestSenders;
 
 public:
@@ -165,8 +167,9 @@ public:
     ui32 DestroyResponses = 0;
     ui32 DestroyMaxInFlight = 0;
 
-    TShardRequestCounter(TTestActorRuntimeBase& runtime)
+    TShardRequestCounter(TTestActorRuntimeBase& runtime, const TString& fsId)
         : Runtime(runtime)
+        , ShardIdPrefix(TStringBuilder() << fsId << ShardNumPrefix)
     {
         PrevFilter = Runtime.SetEventFilter(
             [this](auto& runtime, TAutoPtr<IEventHandle>& event)
@@ -225,6 +228,14 @@ private:
             }
 
             case TEvSSProxy::EvDescribeFileStoreRequest: {
+                using TRequest = TEvSSProxy::TEvDescribeFileStoreRequest;
+                const auto* msg = ev->Get<TRequest>();
+                if (ev->Cookie == Max<ui64>() ||
+                    !msg->FileSystemId.StartsWith(ShardIdPrefix))
+                {
+                    return;
+                }
+                DescribeRequestSenders[ev->Cookie] = ev->Sender;
                 if (++DescribeRequests > DescribeResponses) {
                     DescribeMaxInFlight = std::max(
                         DescribeMaxInFlight,
@@ -234,11 +245,23 @@ private:
             }
 
             case TEvSSProxy::EvDescribeFileStoreResponse: {
+                if (ev->Cookie == Max<ui64>()) {
+                    return;
+                }
+                auto it = DescribeRequestSenders.find(ev->Cookie);
+                if (it == DescribeRequestSenders.end() ||
+                    ev->Recipient != it->second)
+                {
+                    return;
+                }
                 ++DescribeResponses;
                 break;
             }
 
             case TEvSSProxy::EvAlterFileStoreRequest: {
+                if (ev->Cookie == Max<ui64>()) {
+                    return;
+                }
                 if (++AlterRequests > AlterResponses) {
                     AlterMaxInFlight = std::max(
                         AlterMaxInFlight,
@@ -248,6 +271,9 @@ private:
             }
 
             case TEvSSProxy::EvAlterFileStoreResponse: {
+                if (ev->Cookie == Max<ui64>()) {
+                    return;
+                }
                 ++AlterResponses;
                 break;
             }
@@ -3023,7 +3049,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const ui64 fsSize = 1000;
         const ui64 shardsCount = 2;
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
 
             service.CreateFileStore(fsId, fsSize);
 
@@ -3034,7 +3060,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     << counters.CreateResponses);
         }
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
 
             service.ResizeFileStore(fsId, fsSize, false /* force */, shardsCount);
 
@@ -4357,7 +4383,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
 
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId2);
             service.DestroyFileStore(fsId2);
             UNIT_ASSERT_VALUES_EQUAL(5, counters.DestroyRequests);
             UNIT_ASSERT_VALUES_EQUAL(5, counters.DestroyResponses);
@@ -4414,7 +4440,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
 
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId2);
             service.DestroyFileStore(fsId2);
             UNIT_ASSERT_VALUES_EQUAL(4, counters.DestroyMaxInFlight);
         }
@@ -4573,6 +4599,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         config.SetMaxShardManagementRequestsInFlight(1);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -4581,7 +4608,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
 
             service.CreateFileStore(fsId, 2_GB / 4_KB);
 
@@ -4592,6 +4619,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureRequests);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureResponses);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.AlterRequests);
         }
 
         TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
@@ -4602,7 +4631,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
 
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
 
             service.ResizeFileStore(fsId, 6_GB / 4_KB);
 
@@ -4617,6 +4646,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureRequests);
             UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureResponses);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.AlterRequests);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.AlterResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.AlterMaxInFlight);
         }
 
         expected = TVector<TString>{
@@ -8040,7 +8073,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
 
             service.CreateFileStore(fsId, fsSize);
 
@@ -8144,7 +8177,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         {
-            TShardRequestCounter counters(env.GetRuntime());
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
 
             service.CreateFileStore(fsId, fsSize);
 
