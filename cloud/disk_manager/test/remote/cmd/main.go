@@ -1607,7 +1607,7 @@ func (r *testRun) runTests(ctx context.Context) error {
 			Run:  testCreateImageFromImage,
 		},
 	}
-	testsDenyList := newTestDenyList(r.testConfig.GetTestsBlackList())
+	testsDenyList := newTestDenyList(r.testConfig.GetTestsDenyList())
 	err := validateTestDenyList(tests, testsDenyList)
 	if err != nil {
 		r.reportError()
