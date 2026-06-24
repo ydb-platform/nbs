@@ -15173,9 +15173,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(512, stats.GetUsedBlocksCount());
         }
 
         partition.WriteBlocks(TBlockRange32::WithLength(1024, 512));
@@ -15193,9 +15193,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128 + 768);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512 + 512);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128 + 768, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(512 + 512, stats.GetUsedBlocksCount());
         }
 
         runtime->Send(compactionRequest.Release());
@@ -15206,21 +15206,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128 + 512);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512 + 512);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(512 + 512, stats.GetUsedBlocksCount());
         }
 
         partition.Flush();
-        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 128 + 512);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 128 + 512);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetUsedBlocksCount());
         }
     }
 
