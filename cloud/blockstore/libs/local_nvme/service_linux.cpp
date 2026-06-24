@@ -137,6 +137,7 @@ private:
     const ILocalNVMeDeviceProviderPtr DeviceProvider;
     const NNvme::INvmeManagerPtr NVMeManager;
     const TExecutorPtr Executor;
+    const ITaskQueuePtr BackgroundExecutor;
     const ISysFsPtr SysFs;
 
     std::atomic<EServiceState> ServiceState = EServiceState::NotReady;
@@ -158,6 +159,7 @@ public:
         ILocalNVMeDeviceProviderPtr deviceProvider,
         NNvme::INvmeManagerPtr nvmeManager,
         TExecutorPtr executor,
+        ITaskQueuePtr backgroundExecutor,
         ISysFsPtr sysFs);
 
     // IStartable
@@ -226,6 +228,7 @@ private:
 
     template <typename TOpResult, typename TFnResult, typename TFn>
     auto StartOperation(
+        TString opName,
         TFn fn,
         const TSerialNumber& serialNumber,
         const TString& idempotenceId) -> TFuture<TFnResult>;
@@ -239,12 +242,14 @@ TLocalNVMeService::TLocalNVMeService(
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor,
+    ITaskQueuePtr backgroundExecutor,
     ISysFsPtr sysFs)
     : Config(std::move(config))
     , Logging(std::move(logging))
     , DeviceProvider(std::move(deviceProvider))
     , NVMeManager(std::move(nvmeManager))
     , Executor(std::move(executor))
+    , BackgroundExecutor(std::move(backgroundExecutor))
     , SysFs(std::move(sysFs))
 {}
 
@@ -655,12 +660,11 @@ auto TLocalNVMeService::BindDeviceToDriver(
         "Bind " << device.GetSerialNumber().Quote() << " to " << driverName
                 << " driver");
 
-    return SafeExecute<NProto::TError>(
-        [&]
-        {
-            SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
-            return MakeError(S_OK);
-        });
+    auto future = BackgroundExecutor->Execute(
+        [sysfs = SysFs, pciAddr = device.GetPCIAddress(), driverName]
+        { sysfs->BindPCIDeviceToDriver(pciAddr, driverName); });
+
+    return Executor->ResultOrError(future).GetError();
 }
 
 template <typename TOpResult>
@@ -714,6 +718,7 @@ auto TLocalNVMeService::GetOperationResult(
 
 template <typename TOpResult, typename TFnResult, typename TFn>
 auto TLocalNVMeService::StartOperation(
+    TString opName,
     TFn fn,
     const TSerialNumber& serialNumber,
     const TString& idempotenceId) -> TFuture<TFnResult>
@@ -730,11 +735,22 @@ auto TLocalNVMeService::StartOperation(
     if (auto opResult =
             GetOperationResult<TOpResult>(serialNumber, idempotenceId))
     {
+        STORAGE_INFO(
+            "Idempotent " << opName
+                          << " NVMe device operation already completed for "
+                          << serialNumber.Quote()
+                          << ", idempotenceId: " << idempotenceId);
+
         return *opResult;
     }
 
+    STORAGE_INFO(
+        "Starting " << opName << " NVMe device operation for "
+                    << serialNumber.Quote()
+                    << ", idempotenceId: " << idempotenceId);
+
     auto op = std::make_shared<TOperation>();
-    op->Name = TypeName<TOpResult>();
+    op->Name = std::move(opName);
     op->IdempotenceId = idempotenceId;
     op->StartTime = Now();
 
@@ -765,14 +781,27 @@ auto TLocalNVMeService::AcquireDevice(
     const TString& idempotenceId) -> TFuture<TAcquireResult>
 {
     auto future = StartOperation<TAcquireOperationResult, TAcquireResult>(
+        "Acquire",
         &TLocalNVMeService::AcquireDeviceImpl,
         serialNumber,
         idempotenceId);
 
-    // If idempotenceId isn't provided - wait operation synchronously
-    if (!idempotenceId || future.IsReady()) {
+    if (future.IsReady()) {
         return future;
     }
+
+    // If idempotenceId isn't provided, wait for the operation synchronously.
+    if (!idempotenceId) {
+        STORAGE_INFO(
+            "Waiting for Acquire NVMe device operation to complete "
+            "synchronously for "
+            << serialNumber.Quote() << ": idempotenceId is not provided");
+        return future;
+    }
+
+    STORAGE_DEBUG(
+        "Acquire NVMe device operation is still in progress for "
+        << serialNumber.Quote() << ", idempotenceId: " << idempotenceId);
 
     return MakeFuture<TAcquireResult>(
         MakeError(E_TRY_AGAIN, "Acquire in progress"));
@@ -899,6 +928,8 @@ try {
     }
 
     return {};
+} catch (const TServiceError& e) {
+    return MakeError(e.GetCode(), ToString(e.GetMessage()));
 } catch (...) {
     return MakeError(E_FAIL, CurrentExceptionMessage());
 }
@@ -910,13 +941,17 @@ auto TLocalNVMeService::ResetToSingleNamespace(
         "Reset NVMe " << device.GetSerialNumber().Quote()
                       << " to single namespace");
 
-    return SafeExecute<NProto::TError>(
-        [&]
-        {
-            const TFsPath ctrlPath = GetNVMeCtrlPath(device);
+    auto [ctrlPath, error] = SafeExecute<TResultOrError<TFsPath>>(
+        [&] { return GetNVMeCtrlPath(device); });
+    if (HasError(error)) {
+        return error;
+    }
 
-            return NVMeManager->ResetToSingleNamespace(ctrlPath);
-        });
+    auto future = BackgroundExecutor->Execute(
+        [nvme = NVMeManager, ctrlPath = std::move(ctrlPath)]
+        { return nvme->ResetToSingleNamespace(ctrlPath); });
+
+    return Executor->WaitFor(future);
 }
 
 auto TLocalNVMeService::ReleaseDevice(
@@ -924,14 +959,27 @@ auto TLocalNVMeService::ReleaseDevice(
     const TString& idempotenceId) -> TFuture<NProto::TError>
 {
     auto future = StartOperation<TReleaseOperationResult, NProto::TError>(
+        "Release",
         &TLocalNVMeService::ReleaseDeviceImpl,
         serialNumber,
         idempotenceId);
 
-    // If idempotenceId isn't provided - wait operation synchronously
-    if (!idempotenceId || future.IsReady()) {
+    if (future.IsReady()) {
         return future;
     }
+
+    // If idempotenceId isn't provided, wait for the operation synchronously.
+    if (!idempotenceId) {
+        STORAGE_INFO(
+            "Waiting for Release NVMe device operation to complete "
+            "synchronously for "
+            << serialNumber.Quote() << ": idempotenceId is not provided");
+        return future;
+    }
+
+    STORAGE_DEBUG(
+        "Release NVMe device operation is still in progress for "
+        << serialNumber.Quote() << ", idempotenceId: " << idempotenceId);
 
     return MakeFuture<NProto::TError>(
         MakeError(E_TRY_AGAIN, "Release in progress"));
@@ -983,6 +1031,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor,
+    ITaskQueuePtr backgroundExecutor,
     ISysFsPtr sysFs)
 {
     return std::make_shared<TLocalNVMeService>(
@@ -991,6 +1040,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
         std::move(deviceProvider),
         std::move(nvmeManager),
         std::move(executor),
+        std::move(backgroundExecutor),
         std::move(sysFs));
 }
 
@@ -999,7 +1049,8 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TExecutorPtr executor)
+    TExecutorPtr executor,
+    ITaskQueuePtr backgroundExecutor)
 {
     return CreateLocalNVMeService(
         std::move(config),
@@ -1007,6 +1058,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
         std::move(deviceProvider),
         std::move(nvmeManager),
         std::move(executor),
+        std::move(backgroundExecutor),
         CreateSysFs("/sys"));
 }
 

@@ -414,7 +414,7 @@ struct TTxPartition
             ab.Offsets.push_back(blobOffset);
 
             if (keepTrackOfAffectedBlocks) {
-                ab.AffectedBlockIndices.push_back(blockIndex);
+                ab.AffectedBlocks.push_back({ blockIndex, commitId });
                 AffectedBlocks.push_back({ blockIndex, commitId });
             }
         }
@@ -626,7 +626,7 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
 
         const ui64 CommitId;
-        const TVector<TCleanupQueueItem> CleanupQueue;
+        TVector<TCleanupQueueItem> CleanupQueue;
 
         TVector<NProto::TBlobMeta> BlobsMeta;
 

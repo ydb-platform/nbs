@@ -1059,6 +1059,15 @@ bool TPartitionActor::IsReadBlockMaskOnCompactionOptimizationEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsVerifyRecreatedBlobMetasOnCleanupEnabled() const
+{
+    return Config->GetVerifyRecreatedBlobMetasOnCleanup() ||
+           Config->IsVerifyRecreatedBlobMetasOnCleanupFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)

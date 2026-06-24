@@ -427,6 +427,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -839,6 +844,8 @@ public:
     [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
 
     [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
+
+    [[nodiscard]] bool GetVerifyRecreatedBlobMetasOnCleanup() const;
 };
 
 ui64 GetAllocationUnit(

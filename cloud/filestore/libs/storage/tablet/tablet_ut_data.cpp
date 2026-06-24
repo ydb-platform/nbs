@@ -6061,7 +6061,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         using TLabel = TTestRegistryVisitor::TLabel;
         auto makeLabels = [] (const TString& request, const TString& sensor) {
             return TVector<TLabel>({
-                {"sensor", request + "." + sensor},
+                {"sensor", sensor},
+                {"request", request},
                 {"filesystem", "test"},
             });
         };
@@ -6361,16 +6362,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             registry->Visit(TInstant::Zero(), visitor);
             visitor.ValidateExpectedCounters({
                 {{
-                    {"sensor", "FlushBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 1_KB},
                 {{
-                    {"sensor", "FlushBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 1},
                 {{
-                    {"sensor", "TrimBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, static_cast<i64>(block + 1_KB)},
                 {{
-                    {"sensor", "TrimBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, 2},
             });
         }
@@ -6433,16 +6438,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             registry->Visit(TInstant::Zero(), visitor);
             visitor.ValidateExpectedCounters({
                 {{
-                    {"sensor", "FlushBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 0_KB},
                 {{
-                    {"sensor", "FlushBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 0},
                 {{
-                    {"sensor", "TrimBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, 100_GB},
                 {{
-                    {"sensor", "TrimBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, 1},
             });
         }
@@ -6483,13 +6492,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{
-                {"sensor", "Compaction.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "Compaction"},
                 {"filesystem", "test"}}, 0},
             {{
-                {"sensor", "Compaction.Count"},
+                {"sensor", "Count"},
+                {"request", "Compaction"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "Compaction.DudCount"},
+                {"sensor", "DudCount"},
+                {"request", "Compaction"},
                 {"filesystem", "test"}}, 1},
         });
     }

@@ -815,6 +815,10 @@ message TStorageConfig
     // With parallel writes off, only sequential writes will be optimized.
     optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 514;
 
+    // Limit max number in-flight requests to create/configure/destroy shards.
+    // Zero means unlimited.
+    optional uint32 MaxShardManagementRequestsInFlight = 515;
+
     // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
-    optional uint32 StatFileStoreCacheTTL = 515; // in ms
+    optional uint32 StatFileStoreCacheTTL = 516; // in ms
 }

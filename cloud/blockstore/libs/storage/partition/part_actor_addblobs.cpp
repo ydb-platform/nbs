@@ -370,7 +370,8 @@ private:
             // blob already could be garbage, but we should keep it
             // as there could be active readers (or even checkpoint)
             db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
-            State.GetCleanupQueue().Add({ blob.BlobId, DeletionCommitId });
+            State.GetCleanupQueue().Add(
+                {blob.BlobId, DeletionCommitId, blobMeta});
         }
 
         // move blocks from FreshBlocks to MixedBlocks
@@ -595,8 +596,15 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                bool inserted =
-                    State.GetCleanupQueue().Add({kv.first, DeletionCommitId});
+                NProto::TBlobMeta blobMeta;
+                if (kv.second.BlobMeta) {
+                    blobMeta = kv.second.BlobMeta.GetRef();
+                } else if (kv.second.RecreatedBlobMeta) {
+                    blobMeta = kv.second.RecreatedBlobMeta.GetRef();
+                }
+
+                bool inserted = State.GetCleanupQueue().Add(
+                    {kv.first, DeletionCommitId, std::move(blobMeta)});
 
                 STORAGE_VERIFY_DEBUG_C(
                     inserted,
