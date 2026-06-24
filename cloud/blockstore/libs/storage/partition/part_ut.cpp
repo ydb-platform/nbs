@@ -4629,6 +4629,276 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSetUsedBlocksOnCompactionWithBlocksInFreshChannel)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        config.SetWriteBlobThresholdSSD(2_MB);
+        // In this test we want compaction and cleanup to be triggered only
+        // manually.
+        config.SetCleanupThreshold(1000);
+        config.SetSSDMaxBlobsPerRange(1000);
+        config.SetFlushThreshold(1000_MB);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto rangeLarge = TBlockRange32::WithLength(0, 512);
+        partition.WriteBlocks(rangeLarge);
+        const auto rangeSmall = TBlockRange32::WithLength(512, 1);
+        partition.WriteBlocks(rangeSmall);
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 512);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        TCompactionOptions options;
+        options.set(ToBit(ECompactionOption::Full));
+        options.set(ToBit(ECompactionOption::Forced));
+        partition.Compaction(0 /* range */, options);
+        partition.Cleanup();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 513);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 513);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        partition.Flush();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 513);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 513);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        partition.Compaction(0 /* range */, options);
+        partition.Cleanup();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 513);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 513);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUnsetUsedBlocksOnCompactionWithZeroBlocksInFreshChannel)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        config.SetWriteBlobThresholdSSD(2_MB);
+        // In this test we want compaction and cleanup to be triggered only
+        // manually.
+        config.SetCleanupThreshold(1000);
+        config.SetSSDMaxBlobsPerRange(1000);
+        config.SetFlushThreshold(1000_MB);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto rangeLarge = TBlockRange32::WithLength(0, 512);
+        partition.WriteBlocks(rangeLarge);
+        const auto rangeSmall = TBlockRange32::WithLength(0, 1);
+        partition.ZeroBlocks(rangeSmall);
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 512);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 512);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        TCompactionOptions options;
+        options.set(ToBit(ECompactionOption::Full));
+        options.set(ToBit(ECompactionOption::Forced));
+        partition.Compaction(0 /* range */, options);
+        partition.Cleanup();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 511);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 511);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        partition.Flush();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 511);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 511);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        partition.Compaction(0 /* range */, options);
+        partition.Cleanup();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 511);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 511);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTrackUsedBlocksOnCompactionWhenMergedBlobsHaveSkipMask)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        config.SetWriteBlobThresholdSSD(2_MB);
+        // In this test we want compaction and cleanup to be triggered only
+        // manually.
+        config.SetCleanupThreshold(1000);
+        config.SetSSDMaxBlobsPerRange(1000);
+        config.SetFlushThreshold(1000_MB);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range1 = TBlockRange32::MakeClosedInterval(0, 4 - 1);
+        const auto range2 = TBlockRange32::MakeClosedInterval(4, 16 - 1);
+        const auto range3 = TBlockRange32::MakeClosedInterval(16, 64 - 1);
+        const auto range4 = TBlockRange32::MakeClosedInterval(64, 256 - 1);
+
+        partition.WriteBlocks(range1);
+        partition.WriteBlocks(range3);
+        partition.Flush();
+
+        partition.Compaction();
+        TCompactionOptions options;
+        options.set(ToBit(ECompactionOption::Full));
+        options.set(ToBit(ECompactionOption::Forced));
+        partition.Compaction(0 /* range */, options);
+        partition.Cleanup();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMergedBlocksCount(),
+                range1.Size() + range3.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetUsedBlocksCount(),
+                range1.Size() + range3.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        partition.ZeroBlocks(range1);
+        partition.WriteBlocks(range2);
+        partition.ZeroBlocks(range3);
+        partition.WriteBlocks(range4);
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetFreshBlocksCount(),
+                range1.Size() + range2.Size() + range3.Size() + range4.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMergedBlocksCount(),
+                range1.Size() + range3.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetUsedBlocksCount(),
+                range1.Size() + range3.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+
+        partition.Compaction(0 /* range */, options);
+        partition.Cleanup();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetFreshBlocksCount(),
+                range1.Size() + range2.Size() + range3.Size() + range4.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlobsCount(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMergedBlocksCount(),
+                range2.Size() + range4.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlobsCount(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetUsedBlocksCount(),
+                range2.Size() + range4.Size());
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCleanupQueueBytes(), 0);
+        }
+    }
+
     Y_UNIT_TEST(ShouldWriteBlobIfCompactionUsesOnlyFreshBlocks)
     {
         auto config = DefaultConfig();

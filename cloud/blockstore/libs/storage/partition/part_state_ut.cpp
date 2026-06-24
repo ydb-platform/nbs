@@ -238,8 +238,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             [&](TPartitionDatabase db) {
                 state.SetUsedBlocks(
                     db,
-                    TBlockRange32::MakeClosedInterval(100, 110),
-                    0);
+                    TBlockRange32::MakeClosedInterval(100, 110));
             });
         UNIT_ASSERT_EQUAL(11, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(21, state.GetLogicalUsedBlocksCount());
@@ -248,8 +247,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             [&](TPartitionDatabase db) {
                 state.SetUsedBlocks(
                     db,
-                    TBlockRange32::MakeClosedInterval(105, 130),
-                    0);
+                    TBlockRange32::MakeClosedInterval(105, 130));
             });
         UNIT_ASSERT_EQUAL(31, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(41, state.GetLogicalUsedBlocksCount());

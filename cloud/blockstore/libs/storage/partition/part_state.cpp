@@ -536,14 +536,13 @@ TOperationState& TPartitionState::GetCompactionState(ECompactionType type)
 
 void TPartitionState::SetUsedBlocks(
     TPartitionDatabase& db,
-    const TBlockRange32& range,
-    ui32 skipCount)
+    const TBlockRange32& range)
 {
-    auto blockCount = GetUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
+    auto blockCount = GetUsedBlocks().Set(range.Start, range.End + 1);
     ui32 logicalBlockCount = 0;
 
     if (GetBaseDiskId()) {
-        logicalBlockCount = GetLogicalUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
+        logicalBlockCount = GetLogicalUsedBlocks().Set(range.Start, range.End + 1);
     } else {
         logicalBlockCount = blockCount;
     }
