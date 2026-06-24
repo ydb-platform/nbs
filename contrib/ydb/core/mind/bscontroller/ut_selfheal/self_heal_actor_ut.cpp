@@ -1,5 +1,5 @@
 #include <library/cpp/testing/unittest/registar.h>
-#include <contrib/ydb/core/util/testactorsys.h>
+#include <contrib/ydb/core/util/actorsys_test/testactorsys.h>
 #include <contrib/ydb/core/mind/bscontroller/self_heal.h>
 #include <contrib/ydb/core/base/blobstorage_common.h>
 #include <contrib/ydb/core/mind/bscontroller/impl.h>

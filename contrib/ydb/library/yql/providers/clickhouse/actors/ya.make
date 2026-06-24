@@ -6,9 +6,9 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/minikql/computation
+    yql/essentials/minikql/computation
     contrib/ydb/library/yql/providers/common/token_accessor/client
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/types
     contrib/ydb/library/yql/dq/actors/compute
     contrib/ydb/library/yql/providers/clickhouse/proto
     contrib/ydb/library/yql/providers/common/http_gateway

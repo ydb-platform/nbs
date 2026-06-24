@@ -52,7 +52,7 @@ def wait_for_dr_metrics(nbs_mon_port):
 def setup_kikimr(paths):
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=paths.kikimr_binary_path,
+        binary_paths=[paths.kikimr_binary_path],
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),

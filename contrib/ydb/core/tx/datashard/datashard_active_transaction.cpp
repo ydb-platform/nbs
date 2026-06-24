@@ -18,7 +18,8 @@ TValidatedDataTx::TValidatedDataTx(TDataShard *self,
                                    const TStepOrder &stepTxId,
                                    TInstant receivedAt,
                                    const TString &txBody,
-                                   bool usesMvccSnapshot)
+                                   bool usesMvccSnapshot,
+                                   bool isPropose)
     : StepTxId_(stepTxId)
     , TxBody(txBody)
     , EngineBay(self, txc, ctx, stepTxId)
@@ -161,7 +162,7 @@ TValidatedDataTx::TValidatedDataTx(TDataShard *self,
 
             auto& tasksRunner = GetKqpTasksRunner(); // create tasks runner, can throw TMemoryLimitExceededException
 
-            auto allocGuard = tasksRunner.BindAllocator(100_MB); // set big enough limit, decrease/correct later
+            auto allocGuard = tasksRunner.BindAllocator(isPropose ? 100_MB : 1_GB); // set big enough limit, decrease/correct later
 
             auto execCtx = DefaultKqpExecutionContext();
             tasksRunner.Prepare(DefaultKqpDataReqMemoryLimits(), *execCtx);
@@ -283,7 +284,7 @@ bool TValidatedDataTx::CheckCancelled(ui64 tabletId) {
     Cancelled = Cancelled || gCancelTxFailPoint.Check(tabletId, GetTxId());
 
     if (Cancelled) {
-        LOG_NOTICE_S(*TlsActivationContext->ExecutorThread.ActorSystem, NKikimrServices::TX_DATASHARD, "CANCELLED TxId " << GetTxId() << " at " << tabletId);
+        LOG_NOTICE_S(*TActivationContext::ActorSystem(), NKikimrServices::TX_DATASHARD, "CANCELLED TxId " << GetTxId() << " at " << tabletId);
     }
     return Cancelled;
 }
@@ -404,13 +405,14 @@ void TActiveTransaction::FillVolatileTxData(TDataShard *self,
 
 TValidatedDataTx::TPtr TActiveTransaction::BuildDataTx(TDataShard *self,
                                                        TTransactionContext &txc,
-                                                       const TActorContext &ctx)
+                                                       const TActorContext &ctx,
+                                                       bool isPropose)
 {
     Y_ABORT_UNLESS(IsDataTx() || IsReadTable());
     if (!DataTx) {
         Y_ABORT_UNLESS(TxBody);
         DataTx = std::make_shared<TValidatedDataTx>(self, txc, ctx, GetStepOrder(),
-                                                    GetReceivedAt(), TxBody, IsMvccSnapshotRead());
+                                                    GetReceivedAt(), TxBody, IsMvccSnapshotRead(), isPropose);
         if (DataTx->HasStreamResponse())
             SetStreamSink(DataTx->GetSink());
     }
@@ -440,7 +442,10 @@ bool TActiveTransaction::BuildSchemeTx()
         + (ui32)SchemeTx->HasCreateCdcStreamNotice()
         + (ui32)SchemeTx->HasAlterCdcStreamNotice()
         + (ui32)SchemeTx->HasDropCdcStreamNotice()
-        + (ui32)SchemeTx->HasMoveIndex();
+        + (ui32)SchemeTx->HasMoveIndex()
+        + (ui32)SchemeTx->HasCreateIncrementalRestoreSrc()
+        + (ui32)SchemeTx->HasCreateIncrementalBackupSrc()
+        ;
     if (count != 1)
         return false;
 
@@ -476,6 +481,10 @@ bool TActiveTransaction::BuildSchemeTx()
         SchemeTxType = TSchemaOperation::ETypeDropCdcStream;
     else if (SchemeTx->HasMoveIndex())
         SchemeTxType = TSchemaOperation::ETypeMoveIndex;
+    else if (SchemeTx->HasCreateIncrementalRestoreSrc())
+        SchemeTxType = TSchemaOperation::ETypeCreateIncrementalRestoreSrc;
+    else if (SchemeTx->HasCreateIncrementalBackupSrc())
+        SchemeTxType = TSchemaOperation::ETypeCreateIncrementalBackupSrc;
     else
         SchemeTxType = TSchemaOperation::ETypeUnknown;
 
@@ -536,7 +545,7 @@ void TActiveTransaction::ReleaseTxData(NTabletFlatExecutor::TTxMemoryProviderBas
                                        const TActorContext &ctx) {
     ReleasedTxDataSize = provider.GetMemoryLimit() + provider.GetRequestedMemory();
 
-    if (!DataTx || DataTx->IsTxDataReleased())
+    if (!DataTx || DataTx->GetIsReleased())
         return;
 
     DataTx->ReleaseTxData();
@@ -858,6 +867,7 @@ void TActiveTransaction::BuildExecutionPlan(bool loaded)
         plan.push_back(EExecutionUnitKind::CreateCdcStream);
         plan.push_back(EExecutionUnitKind::AlterCdcStream);
         plan.push_back(EExecutionUnitKind::DropCdcStream);
+        plan.push_back(EExecutionUnitKind::CreateIncrementalRestoreSrc);
         plan.push_back(EExecutionUnitKind::CompleteOperation);
         plan.push_back(EExecutionUnitKind::CompletedOperations);
     } else {

@@ -3,7 +3,7 @@ import os
 import string
 
 from hamcrest import assert_that, raises
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_runner import KiKiMR
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.util import LogLevels
 from contrib.ydb.tests.library.common.types import Erasure
@@ -15,7 +15,7 @@ class Base(object):
 
     @classmethod
     def setup_class(cls):
-        cls.cluster = kikimr_cluster_factory(
+        cls.cluster = KiKiMR(
             KikimrConfigGenerator(
                 erasure=cls.erasure,
                 additional_log_configs={

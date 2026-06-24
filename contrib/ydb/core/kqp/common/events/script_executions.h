@@ -3,11 +3,11 @@
 #include <contrib/ydb/core/protos/kqp.pb.h>
 #include <contrib/ydb/core/protos/kqp_stats.pb.h>
 #include <contrib/ydb/core/protos/kqp_physical.pb.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 #include <contrib/ydb/public/api/protos/ydb_operation.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_query.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
+#include <ydb-cpp-sdk/library/operation_id/operation_id.h>
 
 #include <contrib/ydb/library/actors/core/event_local.h>
 

@@ -104,6 +104,7 @@ struct TStats {
     ui64 RowCount = 0;
     TChanneledDataSize DataSize = { };
     TChanneledDataSize IndexSize = { };
+    ui64 ByKeyFilterSize = 0;
     THistogram RowCountHistogram;
     THistogram DataSizeHistogram;
 
@@ -111,6 +112,7 @@ struct TStats {
         RowCount = 0;
         DataSize = { };
         IndexSize = { };
+        ByKeyFilterSize = 0;
         RowCountHistogram.clear();
         DataSizeHistogram.clear();
     }
@@ -119,6 +121,7 @@ struct TStats {
         std::swap(RowCount, other.RowCount);
         std::swap(DataSize, other.DataSize);
         std::swap(IndexSize, other.IndexSize);
+        std::swap(ByKeyFilterSize, other.ByKeyFilterSize);
         RowCountHistogram.swap(other.RowCountHistogram);
         DataSizeHistogram.swap(other.DataSizeHistogram);
     }
@@ -128,6 +131,7 @@ struct TStats {
             << "RowCount: " << RowCount
             << " DataSize: " << DataSize.Size
             << " IndexSize: " << IndexSize.Size
+            << " ByKeyFilterSize: " << ByKeyFilterSize
             << " RowCountHistogram: " << RowCountHistogram.size()
             << " DataSizeHistogram: " << DataSizeHistogram.size();
     }

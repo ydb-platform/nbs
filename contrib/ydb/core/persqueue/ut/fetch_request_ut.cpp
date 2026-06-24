@@ -1,5 +1,5 @@
 #include <library/cpp/testing/unittest/registar.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/ut_utils.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils/ut_utils.h>
 #include <contrib/ydb/core/persqueue/events/internal.h>
 #include <contrib/ydb/core/persqueue/fetch_request_actor.h>
 #include <contrib/ydb/core/tx/scheme_board/cache.h>

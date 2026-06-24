@@ -21,7 +21,6 @@ PEERDIR(
     contrib/ydb/core/fq/libs/compute/common
     contrib/ydb/core/fq/libs/config
     contrib/ydb/core/fq/libs/control_plane_storage/proto
-    contrib/ydb/core/fq/libs/exceptions
     contrib/ydb/core/fq/libs/metrics
     contrib/ydb/core/fq/libs/quota_manager
     contrib/ydb/core/fq/libs/quota_manager/events
@@ -30,10 +29,11 @@ PEERDIR(
     contrib/ydb/core/mon
     contrib/ydb/library/protobuf_printer
     contrib/ydb/library/security
-    contrib/ydb/library/yql/public/issue
+    yql/essentials/public/issue
+    yql/essentials/utils
     contrib/ydb/public/lib/fq
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_value
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/value
 )
 
 YQL_LAST_ABI_VERSION()

@@ -1,9 +1,6 @@
 PY3TEST()
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
-ENV(SQS_CLIENT_BINARY="contrib/ydb/core/ymq/client/bin/sqs")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
 ENV(YDB_USE_IN_MEMORY_PDISKS=true)
-
-TAG(ya:manual)
 
 TEST_SRCS(
     test_account_actions.py
@@ -20,26 +17,15 @@ TEST_SRCS(
     test_queue_tags.py
 )
 
-IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(2400)
+IF (SANITIZER_TYPE)
     SIZE(LARGE)
-    TAG(ya:fat)
-    REQUIREMENTS(
-        cpu:4
-        ram:32
-    )
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+    REQUIREMENTS(ram:32 cpu:2)
 ELSE()
-    REQUIREMENTS(
-        cpu:4
-        ram:32
-    )
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
-    contrib/ydb/core/ymq/client/bin
 )
 
 PEERDIR(

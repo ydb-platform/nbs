@@ -5,9 +5,9 @@
 
 #include <util/generic/cast.h>
 #include <contrib/ydb/core/tablet/tablet_exception.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
-#include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_node_cast.h>
+#include <yql/essentials/minikql/mkql_program_builder.h>
 #include <contrib/ydb/core/engine/mkql_engine_flat_host.h>
 
 namespace NKikimr {

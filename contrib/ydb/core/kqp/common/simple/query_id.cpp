@@ -81,6 +81,7 @@ TString TKqpQueryId::SerializeToString() const {
     TStringBuilder result = TStringBuilder() << "{"
         << "Cluster: " << Cluster << ", "
         << "Database: " << Database << ", "
+        << "DatabaseId: " << DatabaseId << ", "
         << "UserSid: " << UserSid << ", "
         << "Text: " << EscapeC(Text) << ", "
         << "Settings: " << Settings.SerializeToString() << ", ";

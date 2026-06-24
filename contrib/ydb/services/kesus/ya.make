@@ -13,7 +13,7 @@ PEERDIR(
     contrib/ydb/core/kesus/tablet
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/grpc/draft
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
 )
 
 END()

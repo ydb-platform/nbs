@@ -2,7 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/tx/schemeshard)
 
 FORK_SUBTESTS()
 
-TIMEOUT(600)
 SIZE(MEDIUM)
 
 PEERDIR(

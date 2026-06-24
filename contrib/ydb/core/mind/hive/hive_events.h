@@ -34,9 +34,11 @@ struct TEvPrivate {
         EvStorageBalancerOut,
         EvDeleteNode,
         EvCanMoveTablets,
-        EvRefreshScaleRecommendation,
         EvUpdateDataCenterFollowers,
+        EvGenerateTestData,
+        EvRefreshScaleRecommendation,
         EvUpdateFollowers,
+        EvProcessTabletMetrics,
         EvEnd
     };
 
@@ -50,7 +52,9 @@ struct TEvPrivate {
         {}
     };
 
-    struct TEvProcessBootQueue : TEventLocal<TEvProcessBootQueue, EvProcessBootQueue> {};
+    struct TEvProcessBootQueue : TEventLocal<TEvProcessBootQueue, EvProcessBootQueue> {
+        bool ProcessWaitQueue = false; // Only for use in tests
+    };
 
     struct TEvPostponeProcessBootQueue : TEventLocal<TEvPostponeProcessBootQueue, EvPostponeProcessBootQueue> {};
 
@@ -127,16 +131,20 @@ struct TEvPrivate {
 
     struct TEvCanMoveTablets : TEventLocal<TEvCanMoveTablets, EvCanMoveTablets> {};
 
-    struct TEvRefreshScaleRecommendation : TEventLocal<TEvRefreshScaleRecommendation, EvRefreshScaleRecommendation> {};
-
     struct TEvUpdateDataCenterFollowers : TEventLocal<TEvUpdateDataCenterFollowers, EvUpdateDataCenterFollowers> {
         TDataCenterId DataCenter;
 
         TEvUpdateDataCenterFollowers(TDataCenterId dataCenter) : DataCenter(dataCenter) {};
     };
 
+    struct TEvGenerateTestData : TEventLocal<TEvGenerateTestData, EvGenerateTestData> {};
+  
+    struct TEvRefreshScaleRecommendation : TEventLocal<TEvRefreshScaleRecommendation, EvRefreshScaleRecommendation> {};
+
     struct TEvUpdateFollowers : TEventLocal<TEvUpdateFollowers, EvUpdateFollowers> {
     };
+
+    struct TEvProcessTabletMetrics : TEventLocal<TEvProcessTabletMetrics, EvProcessTabletMetrics> {};
 };
 
 } // NHive

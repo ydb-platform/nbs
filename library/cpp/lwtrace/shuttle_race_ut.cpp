@@ -280,6 +280,7 @@ Y_UNIT_TEST_SUITE(TOrbitMultithreadedUsage)
             numThreads * operationsPerThread,
             totalOperations.load());
     }
+<<<<<<< HEAD
 
     Y_UNIT_TEST(ForEachShuttleAndReuseShuttle)
     {
@@ -340,4 +341,6 @@ Y_UNIT_TEST_SUITE(TOrbitMultithreadedUsage)
         t1.Join();
         t2.Join();
     }
+=======
+>>>>>>> 029d9dd1a2 (Copy lwtrace from nbs main)
 }

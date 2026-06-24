@@ -1,13 +1,13 @@
 #include "kqp_column_statistics_requester.h"
 
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
 #include <contrib/ydb/core/statistics/service/service.h>
 #include <contrib/ydb/core/statistics/events.h>
 #include <contrib/ydb/core/kqp/gateway/actors/kqp_ic_gateway_actors.h>
-#include <contrib/ydb/library/yql/core/yql_statistics.h>
+#include <yql/essentials/core/yql_statistics.h>
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_stat.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <yql/essentials/utils/log/log.h>
 
 namespace NKikimr::NKqp {
 
@@ -193,6 +193,22 @@ bool TKqpColumnStatisticsRequester::BeforeLambdasUnmatched(const TExprNode::TPtr
     return true;
 }
 
+TMaybe<std::pair<TString, TString>> TKqpColumnStatisticsRequester::GetTableAndColumnNames(const TCoMember& member) {
+    auto exprNode = TExprBase(member).Ptr(); 
+    if (!KqpTableByExprNode.contains(exprNode) || KqpTableByExprNode[exprNode] == nullptr) {
+        return {};
+    }
+
+    auto table = TExprBase(KqpTableByExprNode[exprNode]).Cast<TKqpTable>().Path().StringValue();
+    auto column = member.Name().StringValue();
+    size_t pointPos = column.find('.'); // table.column
+    if (pointPos != TString::npos) {
+        column = column.substr(pointPos + 1);
+    }
+
+    return std::pair{std::move(table), std::move(column)};
+}
+
 bool TKqpColumnStatisticsRequester::AfterLambdas(const TExprNode::TPtr& input) {
     bool matched = true;
 
@@ -213,19 +229,26 @@ bool TKqpColumnStatisticsRequester::AfterLambdas(const TExprNode::TPtr& input) {
 
         auto columnStatsUsedMembers = computer.GetColumnStatsUsedMembers();
         for (const auto& item: columnStatsUsedMembers.Data) {
-            auto exprNode = TExprBase(item.Member).Ptr();
-            if (!KqpTableByExprNode.contains(exprNode) || KqpTableByExprNode[exprNode] == nullptr) {
+            if (auto maybeTableAndColumn = GetTableAndColumnNames(item.Member)) {
+                const auto& [table, column] = *maybeTableAndColumn;
+                ColumnsByTableName[table].insert(std::move(column));
+            }
+        }
+
+        auto memberEqualities = computer.GetMemberEqualities();
+        for (const auto& [lhs, rhs]: memberEqualities.Data) {
+            auto maybeLhsTableAndColumn = GetTableAndColumnNames(lhs);
+            if (!maybeLhsTableAndColumn) {
                 continue;
             }
 
-            auto table = TExprBase(KqpTableByExprNode[exprNode]).Cast<TKqpTable>().Path().StringValue();
-            auto column = item.Member.Name().StringValue();
-            size_t pointPos = column.find('.'); // table.column
-            if (pointPos != TString::npos) {
-                column = column.substr(pointPos + 1);
+            auto maybeRhsTableAndColumn = GetTableAndColumnNames(rhs);
+            if (!maybeRhsTableAndColumn) {
+                continue;
             }
 
-            ColumnsByTableName[table].insert(std::move(column));
+            // const auto& [lhsTable, lhsColumn] = *maybeLhsTableAndColumn;
+            // const auto& [rhsTable, rhsColumn] = *maybeRhsTableAndColumn;
         }
     } else {
         matched = false;

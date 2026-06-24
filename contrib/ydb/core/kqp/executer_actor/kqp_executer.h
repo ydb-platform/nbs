@@ -1,9 +1,11 @@
 #pragma once
 
 #include <library/cpp/lwtrace/shuttle.h>
+#include <contrib/ydb/core/kqp/common/kqp_batch_operations.h>
 #include <contrib/ydb/core/kqp/common/kqp_tx.h>
 #include <contrib/ydb/core/kqp/common/kqp_event_ids.h>
 #include <contrib/ydb/core/kqp/common/kqp_user_request_context.h>
+#include <contrib/ydb/core/kqp/executer_actor/kqp_partition_helper.h>
 #include <contrib/ydb/core/kqp/executer_actor/shards_resolver/kqp_shards_resolver_events.h>
 #include <contrib/ydb/core/kqp/query_data/kqp_query_data.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
@@ -33,6 +35,12 @@ struct TEvKqpExecuter {
 
         ui64 ResultRowsCount = 0;
         ui64 ResultRowsBytes = 0;
+
+        THashSet<ui32> ParticipantNodes;
+
+        // For BATCH operations only
+        TVector<TSerializedCellVec> BatchOperationMaxKeys;
+        TVector<ui32> BatchOperationKeyIds;
 
         enum class EExecutionType {
             Data,
@@ -67,8 +75,15 @@ struct TEvKqpExecuter {
         }
     };
 
-    struct TEvStreamData : public TEventPB<TEvStreamData, NKikimrKqp::TEvExecuterStreamData,
-        TKqpExecuterEvents::EvStreamData> {};
+    struct TEvStreamData : public TEventPBWithArena<TEvStreamData, NKikimrKqp::TEvExecuterStreamData, TKqpExecuterEvents::EvStreamData> {
+        using TBaseEv = TEventPBWithArena<TEvStreamData, NKikimrKqp::TEvExecuterStreamData, TKqpExecuterEvents::EvStreamData>;
+        using TBaseEv::TEventPBBase;
+
+        TEvStreamData() = default;
+        explicit TEvStreamData(TIntrusivePtr<NActors::TProtoArenaHolder> arena)
+            : TEventPBBase(std::move(arena))
+        {}
+    };
 
     struct TEvStreamDataAck : public TEventPB<TEvStreamDataAck, NKikimrKqp::TEvExecuterStreamDataAck,
         TKqpExecuterEvents::EvStreamDataAck>
@@ -85,9 +100,6 @@ struct TEvKqpExecuter {
         TEvStreamDataAck() = default;
     };
 
-    struct TEvStreamProfile : public TEventPB<TEvStreamProfile, NKikimrKqp::TEvExecuterStreamProfile,
-        TKqpExecuterEvents::EvStreamProfile> {};
-
     // deprecated event, remove in the future releases.
     struct TEvExecuterProgress : public TEventPB<TEvExecuterProgress, NKikimrKqp::TEvExecuterProgress,
             TKqpExecuterEvents::EvProgress> {};
@@ -99,17 +111,29 @@ struct TEvKqpExecuter {
         NYql::TIssues Issues;
         TDuration CpuTime;
     };
+
+    struct TEvTxDelayedExecution : public TEventLocal<TEvTxDelayedExecution,
+        TKqpExecuterEvents::EvDelayedExecution>
+    {
+        TEvTxDelayedExecution(size_t partitionIdx)
+            : PartitionIdx(partitionIdx)
+        {}
+
+        size_t PartitionIdx;
+    };
 };
 
 struct TKqpFederatedQuerySetup;
 
 IActor* CreateKqpExecuter(IKqpGateway::TExecPhysicalRequest&& request, const TString& database,
     const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, TKqpRequestCounters::TPtr counters,
-    const NKikimrConfig::TTableServiceConfig& tableServiceConfig,
-    NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory, TPreparedQueryHolder::TConstPtr preparedQuery,
-    const TActorId& creator, const TIntrusivePtr<TUserRequestContext>& userRequestContext, ui32 statementResultIndex,
+    const NKikimrConfig::TTableServiceConfig tableServiceConfig,
+    NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory, TPreparedQueryHolder::TConstPtr preparedQuery, const TActorId& creator,
+    const TIntrusivePtr<TUserRequestContext>& userRequestContext, ui32 statementResultIndex,
     const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup, const TGUCSettings::TPtr& GUCSettings,
-    const TShardIdToTableInfoPtr& shardIdToTableInfo);
+    TPartitionPruner::TConfig partitionPrunerConfig, const TShardIdToTableInfoPtr& shardIdToTableInfo,
+    const IKqpTransactionManagerPtr& txManager, const TActorId bufferActorId,
+    TMaybe<NBatchOperations::TSettings> batchOperationSettings = Nothing());
 
 IActor* CreateKqpSchemeExecuter(
     TKqpPhyTxHolder::TConstPtr phyTx, NKikimrKqp::EQueryType queryType, const TActorId& target,

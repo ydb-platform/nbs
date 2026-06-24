@@ -29,11 +29,11 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/fq/libs/events
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/minikql/computation
+    yql/essentials/minikql/computation
     contrib/ydb/library/yql/providers/common/arrow
     contrib/ydb/library/yql/providers/common/arrow/interface
     contrib/ydb/library/yql/providers/common/http_gateway
-    contrib/ydb/library/yql/providers/common/schema/mkql
+    yql/essentials/providers/common/schema/mkql
     contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/providers/generic/pushdown
     contrib/ydb/library/yql/providers/s3/actors_factory
@@ -44,15 +44,17 @@ PEERDIR(
     contrib/ydb/library/yql/providers/s3/object_listers
     contrib/ydb/library/yql/providers/s3/proto
     contrib/ydb/library/yql/providers/s3/range_helpers
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/issue
+    yql/essentials/public/types
     contrib/ydb/library/yql/udfs/common/clickhouse/client
+    yql/essentials/utils
 )
 
 IF (CLANG AND NOT WITH_VALGRIND)
 
     SRCS(
         yql_arrow_column_converters.cpp
+        yql_s3_decompressor_actor.cpp
         yql_s3_read_actor.cpp
         yql_s3_source_queue.cpp
     )

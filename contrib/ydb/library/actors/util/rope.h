@@ -310,14 +310,6 @@ private:
             return !(*this == other);
         }
 
-    private:
-        friend class TRope;
-
-        typename TTraits::TListIterator operator ->() const {
-            CheckValid();
-            return Iter;
-        }
-
         const TRcBuf& GetChunk() const {
             CheckValid();
             return *Iter;
@@ -327,6 +319,14 @@ private:
         TRcBuf& GetChunk() {
             CheckValid();
             return *Iter;
+        }
+
+    private:
+        friend class TRope;
+
+        typename TTraits::TListIterator operator ->() const {
+            CheckValid();
+            return Iter;
         }
 
         typename TTraits::TListIterator GetChainBegin() const {
@@ -378,7 +378,7 @@ public:
         Chain.PutToEnd(std::move(data));
     }
 
-    TRope(TRope&& rope)
+    TRope(TRope&& rope) noexcept
         : Chain(std::move(rope.Chain))
         , Size(std::exchange(rope.Size, 0))
     {
@@ -438,7 +438,7 @@ public:
         return *this;
     }
 
-    TRope& operator=(TRope&& other) {
+    TRope& operator=(TRope&& other) noexcept {
         Chain = std::move(other.Chain);
         Size = std::exchange(other.Size, 0);
         InvalidateIterators();

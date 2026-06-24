@@ -130,7 +130,7 @@ NYdb::TValue CreateValue(const TColumn& column, const TRandomValueProvider& rvp)
     return value.Build();
 }
 
-NYdb::TValue CreateRow(const TVector<TColumn>& columns, const TRandomValueProvider& rvp) {
+NYdb::TValue CreateRow(const std::vector<TColumn>& columns, const TRandomValueProvider& rvp) {
     NYdb::TValueBuilder value;
     value.BeginStruct();
     for (const NYdb::TColumn& col : columns) {
@@ -177,6 +177,13 @@ NYdb::TValue CreateRow(const TVector<TColumn>& columns, const TRandomValueProvid
             case EPrimitiveType::Utf8:
                 value.AddMember(col.Name).Utf8(Base64Encode(rvp.RandomString()));
                 break;
+            case EPrimitiveType::Uuid:
+                {
+                    ui64 hi = rvp.RandomUi64();
+                    ui64 lo = rvp.RandomUi64();
+                    value.AddMember(col.Name).Uuid(TUuidValue(lo, hi));
+                }
+            break;
             case EPrimitiveType::Json:
                 {
                     auto sb = TStringBuilder() << "[\"" << Base64Encode(rvp.RandomString()) << "\"]";

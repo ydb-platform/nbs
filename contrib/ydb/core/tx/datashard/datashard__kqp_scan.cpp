@@ -6,6 +6,7 @@
 #include <contrib/ydb/core/formats/arrow/arrow_batch_builder.h>
 #include <contrib/ydb/core/formats/arrow/size_calcer.h>
 #include <contrib/ydb/core/kqp/compute_actor/kqp_compute_events.h>
+#include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_celled.h>
 
 #include <contrib/ydb/library/chunks_limiter/chunks_limiter.h>
@@ -617,8 +618,8 @@ void TDataShard::HandleSafe(TEvDataShard::TEvKqpScan::TPtr& ev, const TActorCont
             return;
         }
 
-        // TODO: support pg types
-        if (column->Type.GetTypeId() != request.GetColumnTypes(i)) {
+        const auto& typeInfoMod = NScheme::TypeInfoModFromProtoColumnType(request.GetColumnTypes(i), &request.GetColumnTypeInfos(i));
+        if (column->Type != typeInfoMod.TypeInfo || column->TypeMod != typeInfoMod.TypeMod) {
             reportError(request.GetTablePath(), TStringBuilder() << "TxId: " << request.GetTxId() << "."
                 << " Table '" << request.GetTablePath() << "'"
                 << " column " << request.GetColumnTags(i)  << " type mismatch at " << TabletID());

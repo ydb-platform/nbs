@@ -25,13 +25,14 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/util
     contrib/ydb/library/db_pool/protos
-    contrib/ydb/library/yql/core/expr_nodes
+    yql/essentials/core/expr_nodes
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/minikql/arrow
+    yql/essentials/minikql/arrow
     contrib/ydb/library/yql/providers/dq/api/protos
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/grpc/draft
-    contrib/ydb/public/lib/operation_id/protos
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
 )
 
 YQL_LAST_ABI_VERSION()

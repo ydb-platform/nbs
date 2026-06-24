@@ -6,7 +6,7 @@
 
 #include <contrib/ydb/library/aclib/aclib.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 

@@ -3,6 +3,7 @@
 #include "jwt_token_source.h"
 
 #include <library/cpp/json/json_reader.h>
+#include <library/cpp/string_utils/base64/base64.h>
 
 #include <util/generic/map.h>
 #include <util/stream/file.h>
@@ -11,7 +12,7 @@
 
 #include <jwt-cpp/jwt.h>
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 namespace {
 
@@ -32,10 +33,42 @@ void ApplyAsymmetricAlg(TJwtTokenSourceParams* params, const TString& privateKey
     params->SigningAlgorithm<TAlg>(std::string{}, privateKey);
 }
 
+size_t Base64OutputLen(TStringBuf input) {
+    while (input && (input.back() == '=' || input.back() == ',')) { // padding
+        input.remove_suffix(1);
+    }
+    const size_t inputLen = input.size();
+    const size_t tailEncoded = inputLen % 4;
+    if (tailEncoded == 1) {
+        throw std::runtime_error(TStringBuilder() << "invalid Base64 encoded data size: " << input.size());
+    }
+    const size_t mainSize = (inputLen / 4) * 3;
+    size_t tailSize = 0;
+    switch (tailEncoded) {
+        case 2: // 12 bit => 1 byte
+            tailSize = 1;
+            break;
+        case 3: // 18 bits -> 2 bytes
+            tailSize = 2;
+            break;
+    }
+    return mainSize + tailSize;
+}
+
 template <class TAlg>
 void ApplyHmacAlg(TJwtTokenSourceParams* params, const TString& key) {
+    // HMAC keys are encoded in base64 encoding
+    const size_t base64OutputSize = Base64OutputLen(key); // throws
+    TString binaryKey;
+    binaryKey.ReserveAndResize(Base64DecodeBufSize(key.size()));
+    // allows strings without padding
+    const size_t decodedBytes = Base64DecodeUneven(const_cast<char*>(binaryKey.data()), key);
+    if (decodedBytes != base64OutputSize) {
+        throw std::runtime_error("failed to decode HMAC secret from Base64");
+    }
+    binaryKey.resize(decodedBytes);
     // Alg with first param as key
-    params->SigningAlgorithm<TAlg>(key);
+    params->SigningAlgorithm<TAlg>(binaryKey);
 }
 
 const TMap<TString, void(*)(TJwtTokenSourceParams*, const TString& privateKey), TLessNoCase> JwtAlgorithmsFactory = {
@@ -114,15 +147,15 @@ bool IsAsciiEqualUpper(const TString& jsonParam, const TStringBuf& constantInUpp
 struct TFixedTokenSourceParamsForParsing {
     using TSelf = TFixedTokenSourceParamsForParsing;
 
-    FLUENT_SETTING(TString, Token);
-    FLUENT_SETTING(TString, TokenType);
+    FLUENT_SETTING_DEPRECATED(TString, Token);
+    FLUENT_SETTING_DEPRECATED(TString, TokenType);
 };
 
 // special struct to apply macros
 struct TJwtTokenSourceParamsForParsing : public TJwtTokenSourceParams {
-    FLUENT_SETTING(TString, AlgStr);
-    FLUENT_SETTING(TString, PrivateKeyStr);
-    FLUENT_SETTING(TString, TtlStr);
+    FLUENT_SETTING_DEPRECATED(TString, AlgStr);
+    FLUENT_SETTING_DEPRECATED(TString, PrivateKeyStr);
+    FLUENT_SETTING_DEPRECATED(TString, TtlStr);
 };
 
 std::shared_ptr<ITokenSource> ParseFixedTokenSource(const NJson::TJsonValue& cfg) {
@@ -203,7 +236,7 @@ TOauth2TokenExchangeParams ReadOauth2ConfigJson(const TString& configJson, const
         }
 
         PROCESS_JSON_STRING_PARAM("grant-type", GrantType, false);
-        PROCESS_JSON_STRING_PARAM("res", Resource, false);
+        PROCESS_JSON_ARRAY_PARAM("res", Resource);
         PROCESS_JSON_STRING_PARAM("requested-token-type", RequestedTokenType, false);
         PROCESS_JSON_ARRAY_PARAM("aud", Audience);
         PROCESS_JSON_ARRAY_PARAM("scope", Scope);

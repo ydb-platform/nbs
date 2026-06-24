@@ -4,6 +4,7 @@
 
 #include <contrib/ydb/core/tx/columnshard/columnshard_impl.h>
 #include <contrib/ydb/core/tx/columnshard/transactions/transactions/tx_add_sharding_info.h>
+#include <contrib/ydb/core/tx/columnshard/common/path_id.h>
 
 namespace NKikimr::NColumnShard {
 
@@ -16,17 +17,19 @@ private:
     std::unique_ptr<NTabletFlatExecutor::ITransaction> TxAddSharding;
     NKikimrTxColumnShard::TSchemaTxBody SchemaTxBody;
     THashSet<TActorId> NotifySubscribers;
-    THashSet<ui64> WaitPathIdsToErase;
+    std::shared_ptr<NSubscriber::ISubscriber> WaitOnPropose;
 
     virtual void DoOnTabletInit(TColumnShard& owner) override;
 
     template <class TInfoProto>
-    THashSet<ui64> GetNotErasedTableIds(const TColumnShard& owner, const TInfoProto& tables) const {
-        THashSet<ui64> result;
+    THashSet<TInternalPathId> GetNotErasedTableIds(const TColumnShard& owner, const TInfoProto& tables) const {
+        THashSet<TInternalPathId> result;
         for (auto&& i : tables) {
-            AFL_VERIFY(!owner.TablesManager.HasTable(i.GetPathId()));
-            if (owner.TablesManager.HasTable(i.GetPathId(), true)) {
-                result.emplace(i.GetPathId());
+            const auto& schemeShardLocalPathId = TSchemeShardLocalPathId::FromProto(i);
+            if (const auto internalPathId = owner.TablesManager.ResolveInternalPathId(schemeShardLocalPathId, false)) {
+                if (owner.TablesManager.HasTable(*internalPathId, true)) {
+                    result.emplace(*internalPathId);
+                }
             }
         }
         if (result.size()) {
@@ -55,12 +58,14 @@ private:
                 return "Scheme:AlterStore";
             case NKikimrTxColumnShard::TSchemaTxBody::kDropTable:
                 return "Scheme:DropTable";
+            case NKikimrTxColumnShard::TSchemaTxBody::kMoveTable:
+                return "Scheme:MoveTable";
             case NKikimrTxColumnShard::TSchemaTxBody::TXBODY_NOT_SET:
                 return "Scheme:TXBODY_NOT_SET";
         }
     }
     virtual bool DoIsAsync() const override {
-        return WaitPathIdsToErase.size();
+        return !!WaitOnPropose;
     }
     virtual bool DoParse(TColumnShard& owner, const TString& data) override {
         if (!SchemaTxBody.ParseFromString(data)) {
@@ -73,7 +78,7 @@ private:
                 return false;
             }
             TxAddSharding = owner.TablesManager.CreateAddShardingInfoTx(
-                owner, SchemaTxBody.GetGranuleShardingInfo().GetPathId(), SchemaTxBody.GetGranuleShardingInfo().GetVersionId(), infoContainer);
+                owner, TSchemeShardLocalPathId::FromProto(SchemaTxBody.GetGranuleShardingInfo()), SchemaTxBody.GetGranuleShardingInfo().GetVersionId(), infoContainer);
         }
         return true;
     }
@@ -105,9 +110,6 @@ public:
             ctx.Send(subscriber, event.Release(), 0, 0);
         }
 
-        auto result = std::make_unique<TEvColumnShard::TEvProposeTransactionResult>(owner.TabletID(), TxInfo.TxKind, TxInfo.TxId, NKikimrTxColumnShard::SUCCESS);
-        result->Record.SetStep(TxInfo.PlanStep);
-        ctx.Send(TxInfo.Source, result.release(), 0, TxInfo.Cookie);
         return true;
     }
 

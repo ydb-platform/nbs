@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/utils/log
 )
 
 NO_COMPILER_WARNINGS()

@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/blobstorage/crypto/crypto.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 #include <contrib/ydb/core/base/blobstorage_common.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/event_filter.h>
@@ -106,6 +106,15 @@ public:
         EEM_ENC_V1 = 1 // Encryption at proxy level, no MAC, no CRC
     };
 
+    static TString PrintEncryptionMode(EEncryptionMode mode) {
+        switch (mode) {
+        case EEncryptionMode::EEM_NONE:
+            return "NONE";
+        case EEncryptionMode::EEM_ENC_V1:
+            return "ENC_V1";
+        }
+    }
+
     // INITIAL upon group creation in base and in memory
     // PROPOSE comes from the node warden when it proposes after getting INITIAL
     // INITIAL -> IN_TRANSITION in memory state from transaction start to transaction end
@@ -120,6 +129,27 @@ public:
         ELCP_KEY_ID_ERROR = 702,
         ELCP_KEY_NOT_LOADED = 703,
     };
+
+    static TString PrintLifeCyclePhase(ELifeCyclePhase phase) {
+        switch (phase) {
+        case ELifeCyclePhase::ELCP_INITIAL:
+            return "INITIAL";
+        case ELifeCyclePhase::ELCP_PROPOSE:
+            return "PROPOSE";
+        case ELifeCyclePhase::ELCP_IN_TRANSITION:
+            return "IN_TRANSITION";
+        case ELifeCyclePhase::ELCP_IN_USE:
+            return "IN_USE";
+        case ELifeCyclePhase::ELCP_KEY_CRC_ERROR:
+            return "KEY_CRC_ERROR";
+        case ELifeCyclePhase::ELCP_KEY_VERSION_ERROR:
+            return "KEY_VERSION_ERROR";
+        case ELifeCyclePhase::ELCP_KEY_ID_ERROR:
+            return "KEY_ID_ERROR";
+        case ELifeCyclePhase::ELCP_KEY_NOT_LOADED:
+            return "KEY_NOT_LOADED";
+        }
+    }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SUBSET HELPER CLASSES
@@ -146,9 +176,33 @@ public:
 
         virtual EBlobState GetBlobState(const TSubgroupPartLayout& parts, const TSubgroupVDisks& failedDisks) const = 0;
 
+        // check recoverability of the blob based only on presense of different parts without checking the layout
+        virtual EBlobState GetBlobStateWithoutLayoutCheck(const TSubgroupPartLayout& parts,
+                const TSubgroupVDisks& failedDisks) const = 0;
+
         // check if we need to resurrect something; returns bit mask of parts needed for specified disk in group,
         // nth bit represents nth part; all returned parts are suitable for this particular disk
         virtual ui32 GetPartsToResurrect(const TSubgroupPartLayout& parts, ui32 idxInSubgroup) const = 0;
+    };
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // BLOB PART DATA INTEGRITY CHECKER
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    struct IDataIntegrityChecker {
+        virtual ~IDataIntegrityChecker() = default;
+
+        using TPart = std::pair<ui32, TRope>;
+
+        struct TPartsData {
+            std::vector<std::vector<TPart>> Parts; // partId - 1 -> [ {diskIdx; data} ]
+        };
+
+        struct TPartsState {
+            bool IsOk = true;
+            TString DataInfo;
+        };
+
+        virtual TPartsState GetDataState(const TLogoBlobID& id, const TPartsData& partsData, char separator) const = 0;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,6 +248,8 @@ public:
         std::unique_ptr<IQuorumChecker> QuorumChecker;
         // map to quickly get (Short)VDisk id from its order number inside the group
         TVector<TVDiskIdShort> VDiskIdForOrderNumber;
+        // data integrity checker
+        std::unique_ptr<IDataIntegrityChecker> DataIntegrityChecker;
 
         TTopology(TBlobStorageGroupType gtype);
         TTopology(TBlobStorageGroupType gtype, ui32 numFailRealms, ui32 numFailDomainsPerFailRealm, ui32 numVDisksPerFailDomain,
@@ -232,6 +288,8 @@ public:
         ui32 GetNumFailDomainsPerFailRealm() const { return FailRealms[0].FailDomains.size(); }
         // get quorum checker
         const IQuorumChecker& GetQuorumChecker() const { return *QuorumChecker; }
+        // get data integrity checker
+        const IDataIntegrityChecker& GetDataIntegrityChecker() const { return *DataIntegrityChecker; }
 
         //////////////////////////////////////////////////////////////////////////////////////
         // IBlobToDiskMapper interface
@@ -273,6 +331,7 @@ public:
     private:
         static IBlobToDiskMapper *CreateMapper(TBlobStorageGroupType gtype, const TTopology *topology);
         static IQuorumChecker *CreateQuorumChecker(const TTopology *topology);
+        static IDataIntegrityChecker *CreateDataIntegrityChecker(const TTopology *topology);
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

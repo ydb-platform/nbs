@@ -6,11 +6,11 @@
 #include <contrib/ydb/core/formats/arrow/accessor/plain/accessor.h>
 #include <contrib/ydb/core/formats/arrow/size_calcer.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/pack.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
-#include <contrib/ydb/library/yql/public/udf/arrow/util.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <yql/essentials/minikql/mkql_string_util.h>
+#include <yql/essentials/parser/pg_wrapper/interface/pack.h>
+#include <yql/essentials/parser/pg_wrapper/interface/type_desc.h>
+#include <yql/essentials/public/udf/arrow/util.h>
+#include <yql/essentials/utils/yql_panic.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/compute/cast.h>
 #include <contrib/libs/apache/arrow/cpp/src/arrow/compute/api_scalar.h>
@@ -255,6 +255,28 @@ public:
 };
 
 template <>
+class TElementAccessor<arrow::FixedSizeBinaryArray, NYql::NDecimal::TInt128> {
+public:
+    using TArrayType = arrow::FixedSizeBinaryArray;
+    static void Validate(const arrow::FixedSizeBinaryArray& array) {
+        YQL_ENSURE(
+            array.byte_width() == static_cast<i32>(sizeof(NYql::NDecimal::TInt128)),
+            "Wrong Decimal byte width in FixedSizeBinaryArray: " << array.byte_width());
+    }
+
+    static NYql::NUdf::TUnboxedValue ExtractValue(const arrow::FixedSizeBinaryArray& array, const ui32 rowIndex) {
+        auto data = array.GetView(rowIndex);
+        YQL_ENSURE(data.size() == sizeof(NYql::NDecimal::TInt128), "Wrong data size");
+        NYql::NDecimal::TInt128 val;
+        std::memcpy(reinterpret_cast<char*>(&val), data.data(), data.size());
+        return NUdf::TUnboxedValuePod(val);
+    }
+    static TFixedWidthStatAccumulator BuildStatAccumulator(const NScheme::TTypeInfo& typeInfo) {
+        return TFixedWidthStatAccumulator(typeInfo);
+    }
+};
+
+template <>
 class TElementAccessor<arrow::BinaryArray, NUdf::TStringRef> {
 public:
     using TArrayType = arrow::BinaryArray;
@@ -428,7 +450,15 @@ TBytesStatistics WriteColumnValuesFromArrowImpl(TAccessor editAccessor,
         }
         case NTypeIds::Decimal:
         {
-            return WriteColumnValuesFromArrowSpecImpl<TElementAccessor<arrow::Decimal128Array, NYql::NDecimal::TInt128>>(editAccessor, batch, columnIndex, columnPtr, columnType);
+            switch (columnPtr->type()->id()) {
+                case arrow::Type::DECIMAL:
+                    return WriteColumnValuesFromArrowSpecImpl<TElementAccessor<arrow::Decimal128Array, NYql::NDecimal::TInt128>>(editAccessor, batch, columnIndex, columnPtr, columnType);
+                case arrow::Type::FIXED_SIZE_BINARY:
+                    return WriteColumnValuesFromArrowSpecImpl<TElementAccessor<arrow::FixedSizeBinaryArray, NYql::NDecimal::TInt128>>(editAccessor, batch, columnIndex, columnPtr, columnType);
+                default:
+                    YQL_ENSURE(false, "Unsupported Arrow type for Decimal column: " << columnPtr->type()->ToString());
+                    return {};
+            }
         }
         case NTypeIds::PairUi64Ui64:
         case NTypeIds::ActorId:
@@ -588,17 +618,32 @@ TBytesStatistics TKqpScanComputeContext::TScanData::TBlockBatchReader::AddData(c
     return TBytesStatistics();
 }
 
+void TKqpScanComputeContext::TScanData::UpdateStats(size_t rows, size_t bytes, TMaybe<ui64> shardId) {
+    if (BasicStats) {
+        ui64 nowMs = Now().MilliSeconds();
+        if (shardId) {
+            const auto& [it, inserted] = BasicStats->ExternalStats.emplace(*shardId, TExternalStats(rows, bytes, nowMs, nowMs));
+            if (!inserted) {
+                it->second.ExternalRows += rows;
+                it->second.ExternalBytes += bytes;
+                it->second.LastMessageMs = nowMs;
+            }
+        }
+        BasicStats->Rows += rows;
+        BasicStats->Bytes += bytes;
+        if (!BasicStats->FirstMessageMs) {
+            BasicStats->FirstMessageMs = nowMs;
+        }
+        BasicStats->LastMessageMs = nowMs;
+    }
+}
+
 ui64 TKqpScanComputeContext::TScanData::AddData(const TVector<TOwnedCellVec>& batch, TMaybe<ui64> shardId, const THolderFactory& holderFactory) {
     if (Finished || batch.empty()) {
         return 0;
     }
-
     TBytesStatistics stats = BatchReader->AddData(batch, shardId, holderFactory);
-    if (BasicStats) {
-        BasicStats->Rows += batch.size();
-        BasicStats->Bytes += stats.DataBytes;
-    }
-
+    UpdateStats(batch.size(), stats.DataBytes, shardId);
     return stats.AllocatedBytes;
 }
 
@@ -705,11 +750,7 @@ ui64 TKqpScanComputeContext::TScanData::AddData(const TBatchDataAccessor& batch,
     }
 
     TBytesStatistics stats = BatchReader->AddData(batch, shardId, holderFactory);
-    if (BasicStats) {
-        BasicStats->Rows += batch.GetRecordsCount();
-        BasicStats->Bytes += stats.DataBytes;
-    }
-
+    UpdateStats(batch.GetRecordsCount(), stats.DataBytes, shardId);
     return stats.AllocatedBytes;
 }
 

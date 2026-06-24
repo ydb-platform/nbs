@@ -6,8 +6,8 @@
 #include <contrib/ydb/core/protos/grpc_pq_old.pb.h>
 #include <contrib/ydb/core/protos/msgbus_pq.pb.h>
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
-#include <contrib/ydb/library/binary_json/read.h>
-#include <contrib/ydb/library/uuid/uuid.h>
+#include <yql/essentials/types/binary_json/read.h>
+#include <yql/essentials/types/uuid/uuid.h>
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 #include <contrib/ydb/public/api/protos/ydb_topic.pb.h>
 
@@ -62,6 +62,7 @@ public:
         case TChangeRecord::EKind::CdcHeartbeat:
             return SerializeHeartbeat(cmd, record);
         case TChangeRecord::EKind::AsyncIndex:
+        case TChangeRecord::EKind::IncrementalRestore:
             Y_ABORT("Unexpected");
         }
     }
@@ -191,8 +192,7 @@ protected:
         case NScheme::NTypeIds::Yson:
             return YsonToJson(cell.AsBuf());
         case NScheme::NTypeIds::Pg:
-            // TODO: support pg types
-            Y_ABORT("pg types are not supported");
+            return NJson::TJsonValue(PgToString(cell.AsBuf(), type));
         case NScheme::NTypeIds::Uuid:
             return UuidToJson(cell);
         default:
@@ -386,6 +386,9 @@ class TDynamoDBStreamsJsonSerializer: public TJsonSerializer {
             } else if (name.StartsWith("__Hash_")) {
                 bool indexed = false;
                 for (const auto& [_, index] : schema->Indexes) {
+                    if (index.Type != TUserTable::TTableIndex::EType::EIndexTypeGlobalAsync) {
+                        continue;
+                    }
                     Y_ABORT_UNLESS(index.KeyColumnIds.size() >= 1);
                     if (index.KeyColumnIds.at(0) == tag) {
                         indexed = true;

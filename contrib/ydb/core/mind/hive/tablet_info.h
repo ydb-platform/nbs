@@ -150,7 +150,7 @@ public:
     TString GetLogPrefix() const;
 
 protected:
-    NKikimrTabletBase::TMetrics ResourceValues; // current values of various metrics
+    TMetrics ResourceValues; // current values of various metrics
     TTabletMetricsAggregates ResourceMetricsAggregates;
     TResourceNormalizedValues ResourceNormalizedValues;
 
@@ -162,9 +162,10 @@ public:
     TInstant PostponedStart;
     EBalancerPolicy BalancerPolicy;
     TNodeId FailedNodeId = 0; // last time we tried to start the tablet, we failed on this node
-    bool InWaitQueue = false;
     TInstant BootTime;
     TNodeFilter NodeFilter;
+    bool InWaitQueue = false;
+    bool UpdateMetricsEnqueued = false;
 
     TTabletInfo(ETabletRole role, THive& hive);
     TTabletInfo(const TTabletInfo&) = delete;
@@ -280,7 +281,7 @@ public:
     const TNodeFilter& GetNodeFilter() const;
     bool InitiateStart(TNodeInfo* node);
 
-    const NKikimrTabletBase::TMetrics& GetResourceValues() const {
+    const TMetrics& GetResourceValues() const {
         return ResourceValues;
     }
 
@@ -297,7 +298,7 @@ public:
     }
 
     // ONLY for use in unit tests
-    NKikimrTabletBase::TMetrics& GetMutableResourceValues() {
+    TMetrics& GetMutableResourceValues() {
         return ResourceValues;
     }
 

@@ -164,11 +164,6 @@ def wrap_parse_dict(dictionary, proto):
             'Vdisk': 'VDisk',
             'NtoSelect': 'NToSelect',
             'Ssid': 'SSId',
-            'Sids': 'SIDs',
-            'GroupId': 'GroupID',
-            'NodeId': 'NodeID',
-            'DiskId': 'DiskID',
-            'SlotId': 'SlotID',
         }
         for k, v in abbreviations.items():
             camelCased = camelCased.replace(k, v)
@@ -183,13 +178,3 @@ def wrap_parse_dict(dictionary, proto):
             return data
 
     json_format.ParseDict(convert_keys(dictionary), proto)
-
-
-def need_generate_bs_config(template_bs_config):
-    # We need to generate blob_storage_config if template file does not contain static group:
-    # blob_storage_config.service_set.groups
-    if template_bs_config is None:
-
-        return True
-
-    return template_bs_config.get("service_set", {}).get("groups") is None

@@ -2,7 +2,7 @@ package NTestRpc;
 
 import "yt_proto/yt/core/misc/proto/guid.proto";
 
-option go_package = "a.yandex-team.ru/yt/go/proto/core/rpc/unittests;testservice";
+option go_package = "github.com/ydb-platform/nbs/yt/go/proto/core/rpc/unittests;testservice";
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,6 +36,7 @@ message TRspPassCall
 message TReqAllocationCall
 {
     required int64 size = 1;
+    optional bool wait_on_latch = 2 [default = true];
 }
 
 message TRspAllocationCall
@@ -125,6 +126,17 @@ message TReqSlowCanceledCall
 }
 
 message TRspSlowCanceledCall
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TReqLatchedCall
+{
+    optional bool wait_on_latch = 1 [default = true];
+}
+
+message TRspLatchedCall
 {
 }
 

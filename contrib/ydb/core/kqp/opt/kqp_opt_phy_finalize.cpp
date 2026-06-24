@@ -1,6 +1,6 @@
 #include "kqp_opt_impl.h"
 
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy_finalizing.h>
 
@@ -342,7 +342,7 @@ TExprBase ReplicatePrecompute(TDqStageBase stage, TExprContext& ctx, const TPare
 
 NYql::IGraphTransformer::TStatus ReplicatePrecomputeRule(const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
     TParentsMap parents;
-    GatherParents(*input, parents, true);
+    GatherParents(*input, parents);
     auto stages = CollectNodes<TDqStageBase>(input);
     for (auto& stage : stages) {
         auto applied = ReplicatePrecompute(stage, ctx, parents);

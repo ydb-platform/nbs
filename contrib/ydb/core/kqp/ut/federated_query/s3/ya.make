@@ -1,11 +1,9 @@
 UNITTEST_FOR(contrib/ydb/core/kqp)
 
 IF (WITH_VALGRIND OR SANITIZER_TYPE)
-    TIMEOUT(3600)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -21,9 +19,9 @@ PEERDIR(
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/kqp/ut/federated_query/common
     contrib/ydb/library/yql/providers/s3/actors
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/sql/pg_dummy
     contrib/ydb/library/testlib/s3_recipe_helper
-    contrib/ydb/public/sdk/cpp/client/ydb_types/operation
+    contrib/ydb/public/sdk/cpp/src/client/types/operation
 )
 
 YQL_LAST_ABI_VERSION()

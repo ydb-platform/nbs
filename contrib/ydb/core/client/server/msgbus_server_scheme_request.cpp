@@ -1,9 +1,11 @@
-#include <contrib/ydb/core/base/ticket_parser.h>
 #include "msgbus_server.h"
 #include "msgbus_server_request.h"
 #include "msgbus_server_proxy.h"
 #include "msgbus_server_persqueue.h"
 #include "msgbus_securereq.h"
+
+#include <contrib/ydb/core/base/ticket_parser.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 namespace NKikimr {
 namespace NMsgBusProxy {

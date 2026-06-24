@@ -4,8 +4,8 @@
 #include <contrib/ydb/library/yql/dq/actors/protos/dq_events.pb.h>
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
 
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node_holders.h>
+#include <yql/essentials/utils/yql_panic.h>
 
 #include <type_traits>
 

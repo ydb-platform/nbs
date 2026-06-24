@@ -1,16 +1,11 @@
 #pragma once
-#include "json_handlers.h"
 #include "json_pipe_req.h"
-#include "log.h"
 #include "viewer.h"
 #include "viewer_helper.h"
-#include "viewer_tabletinfo.h"
 #include "wb_group.h"
-#include <library/cpp/protobuf/json/proto2json.h>
 
 namespace NKikimr::NViewer {
 
-using namespace NProtobufJson;
 using namespace NActors;
 using namespace NNodeWhiteboard;
 
@@ -30,6 +25,7 @@ enum class ENodeFields : ui8 {
     Version,
     Uptime,
     Memory,
+    MemoryDetailed,
     CPU,
     LoadAverage,
     Missing,
@@ -52,7 +48,7 @@ constexpr ui8 operator +(ENodeFields e) {
     return static_cast<ui8>(e);
 }
 
-bool operator ==(const NActorsInterconnect::TScopeId& x, const NActorsInterconnect::TScopeId& y) {
+inline bool operator ==(const NActorsInterconnect::TScopeId& x, const NActorsInterconnect::TScopeId& y) {
     return x.GetX1() == y.GetX1() && x.GetX2() == y.GetX2();
 }
 
@@ -76,13 +72,17 @@ class TJsonNodes : public TViewerPipeClient {
 
     std::optional<TRequestResponse<TEvInterconnect::TEvNodesInfo>> NodesInfoResponse;
     std::optional<TRequestResponse<TEvWhiteboard::TEvNodeStateResponse>> NodeStateResponse;
-    std::optional<TRequestResponse<TEvStateStorage::TEvBoardInfo>> DatabaseBoardInfoResponse;
-    std::optional<TRequestResponse<TEvStateStorage::TEvBoardInfo>> ResourceBoardInfoResponse;
     std::optional<TRequestResponse<TEvTxProxySchemeCache::TEvNavigateKeySetResult>> PathNavigateResponse;
     std::unordered_map<TTabletId, TRequestResponse<TEvHive::TEvResponseHiveNodeStats>> HiveNodeStats;
     bool HiveNodeStatsProcessed = false;
     std::vector<TTabletId> HivesToAsk;
     bool AskHiveAboutPaths = false;
+    bool DatabaseNavigateProcessed = false;
+    bool ResourceNavigateProcessed = false;
+    bool PathNavigateProcessed = false;
+    bool DatabaseBoardInfoProcessed = false;
+    bool ResourceBoardInfoProcessed = false;
+    bool PDisksProcessed = false;
 
     std::optional<TRequestResponse<NSysView::TEvSysView::TEvGetStoragePoolsResponse>> StoragePoolsResponse;
     std::optional<TRequestResponse<NSysView::TEvSysView::TEvGetGroupsResponse>> GroupsResponse;
@@ -116,6 +116,7 @@ class TJsonNodes : public TViewerPipeClient {
     TString SharedDatabase;
     bool FilterDatabase = false;
     bool HasDatabaseNodes = false;
+    bool HasSharedNodes = false;
     TPathId FilterPathId;
     TSubDomainKey SubDomainKey;
     TSubDomainKey SharedSubDomainKey;
@@ -155,6 +156,24 @@ class TJsonNodes : public TViewerPipeClient {
         VSlots,
     };
 
+    enum class EPeerRole {
+        Any,
+        Database,
+        Static,
+        Other,
+    };
+
+    EPeerRole FilterPeerRole = EPeerRole::Any;
+    TScopeId FilterPeerScopeId;
+
+    static TScopeId GetScopeId(const NActorsInterconnect::TScopeId& scopeId) {
+        return TScopeId(scopeId.GetX1(), scopeId.GetX2());
+    }
+
+    static TScopeId GetScopeId(const TPathId& pathId) {
+        return TScopeId(pathId.OwnerId, pathId.LocalPathId);
+    }
+
     EFilterStorageStage FilterStorageStage = EFilterStorageStage::None;
     TNodeId MinAllowedNodeId = std::numeric_limits<TNodeId>::min();
     TNodeId MaxAllowedNodeId = std::numeric_limits<TNodeId>::max();
@@ -163,6 +182,7 @@ class TJsonNodes : public TViewerPipeClient {
     ui32 SpaceUsageProblem = 90; // %
     bool OffloadMerge = true;
     size_t OffloadMergeAttempts = 2;
+    size_t OffloadMergeBatchSize = 200;
 
     using TGroupSortKey = std::variant<TString, ui64, float, int>;
 
@@ -188,7 +208,7 @@ class TJsonNodes : public TViewerPipeClient {
         bool HasDisks = false;
         bool GotDatabaseFromDatabaseBoardInfo = false;
         bool GotDatabaseFromResourceBoardInfo = false;
-        int UptimeSeconds = 0;
+        std::optional<int> UptimeSeconds = 0;
         ui32 Connections = 0;
         ui64 SendThroughput = 0;
         ui64 ReceiveThroughput = 0;
@@ -227,17 +247,17 @@ class TJsonNodes : public TViewerPipeClient {
         }
 
         TString GetDataCenter() const {
-            if (NodeInfo.Location.GetDataCenterId()) {
-                return NodeInfo.Location.GetDataCenterId();
-            }
             return SystemState.GetLocation().GetDataCenter();
         }
 
         TString GetRack() const {
-            if (NodeInfo.Location.GetRackId()) {
-                return NodeInfo.Location.GetRackId();
-            }
             return SystemState.GetLocation().GetRack();
+        }
+
+        void MergeInterconnectLocation() {
+            NActorsInterconnect::TNodeLocation location;
+            NodeInfo.Location.Serialize(&location, false);
+            SystemState.MutableLocation()->MergeFrom(location);
         }
 
         void Cleanup() {
@@ -442,11 +462,19 @@ class TJsonNodes : public TViewerPipeClient {
             return TInstant::MilliSeconds(SystemState.GetDisconnectTime());
         }
 
-        int GetUptimeSeconds(TInstant now) const {
+        std::optional<int> GetUptimeSeconds(TInstant now) const {
             if (Disconnected) {
-                return static_cast<int>(GetDisconnectTime().Seconds()) - static_cast<int>(now.Seconds()); // negative for disconnected nodes
+                if (SystemState.HasDisconnectTime()) {
+                    return static_cast<int>(GetDisconnectTime().Seconds()) - static_cast<int>(now.Seconds()); // negative for disconnected nodes
+                } else {
+                    return std::nullopt;
+                }
             } else {
-                return static_cast<int>(now.Seconds()) - static_cast<int>(GetStartTime().Seconds());
+                if (SystemState.HasStartTime()) {
+                    return static_cast<int>(now.Seconds()) - static_cast<int>(GetStartTime().Seconds());
+                } else {
+                    return std::nullopt;
+                }
             }
         }
 
@@ -487,8 +515,12 @@ class TJsonNodes : public TViewerPipeClient {
                 NetworkUtilizationMin = std::min(NetworkUtilizationMin, peer.GetUtilization());
                 NetworkUtilizationMax = std::max(NetworkUtilizationMax, peer.GetUtilization());
                 ClockSkewUs += peer.GetClockSkewUs();
-                ClockSkewMinUs = std::min(ClockSkewMinUs, peer.GetClockSkewUs());
-                ClockSkewMaxUs = std::max(ClockSkewMaxUs, peer.GetClockSkewUs());
+                if (abs(peer.GetClockSkewUs()) < abs(ClockSkewMinUs)) {
+                    ClockSkewMinUs = peer.GetClockSkewUs();
+                }
+                if (abs(peer.GetClockSkewUs()) > abs(ClockSkewMaxUs)) {
+                    ClockSkewMaxUs = peer.GetClockSkewUs();
+                }
                 PingTimeUs += peer.GetPingTimeUs();
                 PingTimeMinUs = std::min(PingTimeMinUs, peer.GetPingTimeUs());
                 PingTimeMaxUs = std::max(PingTimeMaxUs, peer.GetPingTimeUs());
@@ -516,38 +548,41 @@ class TJsonNodes : public TViewerPipeClient {
         }
 
         TString GetUptimeForGroup() const {
-            if (!Disconnected && UptimeSeconds >= 0) {
-                if (UptimeSeconds < 60 * 10) {
-                    return "up <10m";
-                }
-                if (UptimeSeconds < 60 * 60) {
-                    return "up <1h";
-                }
-                if (UptimeSeconds < 60 * 60 * 24) {
-                    return "up <24h";
-                }
-                if (UptimeSeconds < 60 * 60 * 24 * 7) {
-                    return "up 24h+";
-                }
-                return "up 1 week+";
-            } else {
-                if (SystemState.HasDisconnectTime()) {
-                    if (UptimeSeconds > -60 * 10) {
+            if (UptimeSeconds) {
+                if (*UptimeSeconds >= 0) {
+                    if (*UptimeSeconds < 60 * 10) {
+                        return "up <10m";
+                    }
+                    if (*UptimeSeconds < 60 * 60) {
+                        return "up <1h";
+                    }
+                    if (*UptimeSeconds < 60 * 60 * 24) {
+                        return "up <24h";
+                    }
+                    if (*UptimeSeconds < 60 * 60 * 24 * 7) {
+                        return "up 24h+";
+                    }
+                    return "up 1 week+";
+                } else {
+                    if (*UptimeSeconds > -60 * 10) {
                         return "down <10m";
                     }
-                    if (UptimeSeconds > -60 * 60) {
+                    if (*UptimeSeconds > -60 * 60) {
                         return "down <1h";
                     }
-                    if (UptimeSeconds > -60 * 60 * 24) {
+                    if (*UptimeSeconds > -60 * 60 * 24) {
                         return "down <24h";
                     }
-                    if (UptimeSeconds > -60 * 60 * 24 * 7) {
+                    if (*UptimeSeconds > -60 * 60 * 24 * 7) {
                         return "down 24h+";
                     }
                     return "down 1 week+";
-                } else {
-                    return "disconnected";
                 }
+            }
+            if (Disconnected) {
+                return "disconnected";
+            } else {
+                return "unknown";
             }
         }
 
@@ -660,7 +695,7 @@ class TJsonNodes : public TViewerPipeClient {
                 case ENodeFields::Missing:
                     return MissingDisks;
                 case ENodeFields::Uptime:
-                    return UptimeSeconds;
+                    return UptimeSeconds.value_or(0);
                 case ENodeFields::SystemState:
                     return static_cast<int>(GetOverall());
                 case ENodeFields::ConnectStatus:
@@ -691,6 +726,7 @@ class TJsonNodes : public TViewerPipeClient {
         std::vector<TNode*> NodesToAskAbout;
         size_t Offset = 0;
         bool HasStaticNodes = false;
+        TFieldsType FieldsRequested = TFieldsType().set();
 
         TNodeId ChooseNodeId() {
             if (Offset >= NodesToAskFor.size()) {
@@ -714,8 +750,11 @@ class TJsonNodes : public TViewerPipeClient {
     std::vector<TNodeGroup> NodeGroups;
     std::unordered_map<TNodeId, TNode*> NodesByNodeId;
     std::unordered_map<TNodeId, TNodeBatch> NodeBatches;
+    std::vector<TNodeBatch> OriginalNodeBatches;
+    bool DumpOriginalNodeBatches = false;
 
-    TFieldsType FieldsRequired;
+    TFieldsType FieldsRequested; // fields that were requested by user
+    TFieldsType FieldsRequired; // fields that are required to calculate the response
     TFieldsType FieldsAvailable;
     const TFieldsType FieldsAll = TFieldsType().set();
     const TFieldsType FieldsNodeInfo = TFieldsType().set(+ENodeFields::NodeInfo)
@@ -761,6 +800,7 @@ class TJsonNodes : public TViewerPipeClient {
         { ENodeFields::LoadAverage, TFieldsType().set(+ENodeFields::SystemState) },
         { ENodeFields::Database, TFieldsType().set(+ENodeFields::SystemState) },
         { ENodeFields::Missing, TFieldsType().set(+ENodeFields::PDisks) },
+        { ENodeFields::MemoryDetailed, TFieldsType().set(+ENodeFields::SystemState) },
         { ENodeFields::SendThroughput, TFieldsType().set(+ENodeFields::Peers) },
         { ENodeFields::ReceiveThroughput, TFieldsType().set(+ENodeFields::ReversePeers) },
         { ENodeFields::ReversePeers, TFieldsType().set(+ENodeFields::Peers) },
@@ -817,6 +857,8 @@ class TJsonNodes : public TViewerPipeClient {
             result = ENodeFields::Uptime;
         } else if (field == "Memory") {
             result = ENodeFields::Memory;
+        } else if (field == "MemoryDetailed") {
+            result = ENodeFields::MemoryDetailed;
         } else if (field == "CPU") {
             result = ENodeFields::CPU;
         } else if (field == "LoadAverage") {
@@ -861,6 +903,26 @@ class TJsonNodes : public TViewerPipeClient {
         return result;
     }
 
+    static bool IsStaticNode(const NKikimrWhiteboard::TNodeStateInfo& nodeStateInfo) {
+        ui32 maxStaticNodeId = AppData()->DynamicNameserviceConfig ? AppData()->DynamicNameserviceConfig->MaxStaticNodeId : 1000;
+        return nodeStateInfo.GetPeerNodeId() <= maxStaticNodeId;
+    }
+
+    bool IsMatchesPeerFilter(const NKikimrWhiteboard::TNodeStateInfo& nodeStateInfo) const {
+        switch (FilterPeerRole) {
+            case EPeerRole::Any:
+                return true;
+            case EPeerRole::Database:
+                return GetScopeId(nodeStateInfo.GetScopeId()) == FilterPeerScopeId;
+            case EPeerRole::Static:
+                return IsStaticNode(nodeStateInfo);
+            case EPeerRole::Other:
+                return GetScopeId(nodeStateInfo.GetScopeId()) != FilterPeerScopeId && !IsStaticNode(nodeStateInfo);
+            default:
+                return false;
+        }
+    }
+
 public:
     TJsonNodes(IViewer* viewer, NMon::TEvHttpInfo::TPtr& ev)
         : TBase(viewer, ev, "/viewer/nodes")
@@ -891,10 +953,15 @@ public:
             FilterGroup = params.Get("filter_group");
             FilterGroupBy = ParseENodeFields(params.Get("filter_group_by"));
             FieldsRequired.set(+FilterGroupBy);
+            if (FilterGroupBy == ENodeFields::Uptime) {
+                FieldsRequired.set(+ENodeFields::DisconnectTime);
+            }
         }
 
-        OffloadMerge = FromStringWithDefault<bool>(params.Get("offload_merge"), OffloadMerge);
-        OffloadMergeAttempts = FromStringWithDefault<bool>(params.Get("offload_merge_attempts"), OffloadMergeAttempts);
+        OffloadMerge = FromStringWithDefault(params.Get("offload_merge"), OffloadMerge);
+        OffloadMergeAttempts = FromStringWithDefault(params.Get("offload_merge_attempts"), OffloadMergeAttempts);
+        OffloadMergeBatchSize = FromStringWithDefault(params.Get("offload_merge_batch_size"), OffloadMergeBatchSize);
+        DumpOriginalNodeBatches = FromStringWithDefault(params.Get("dump_original_node_batches"), DumpOriginalNodeBatches);
         Direct = FromStringWithDefault<bool>(params.Get("direct"), Direct);
         TString filterStoragePool = params.Get("pool");
         if (filterStoragePool.empty()) {
@@ -930,6 +997,16 @@ public:
             FieldsRequired.set(+ENodeFields::NodeInfo);
         } else if (params.Get("type") == "any") {
             Type = EType::Any;
+        }
+        if (params.Get("filter_peer_role") == "any") {
+            FilterPeerRole = EPeerRole::Any;
+            FilterDatabase = false;
+        } else if (params.Get("filter_peer_role") == "database") {
+            FilterPeerRole = EPeerRole::Database;
+        } else if (params.Get("filter_peer_role") == "static") {
+            FilterPeerRole = EPeerRole::Static;
+        } else if (params.Get("filter_peer_role") == "other") {
+            FilterPeerRole = EPeerRole::Other;
         }
         NeedFilter = (With != EWith::Everything) || (Type != EType::Any) || !Filter.empty() || !FilterNodeIds.empty() || ProblemNodesOnly || UptimeSeconds > 0 || !FilterGroup.empty();
         if (params.Has("offset")) {
@@ -978,9 +1055,13 @@ public:
             NeedGroup = true;
             GroupBy = ParseENodeFields(group);
             FieldsRequired.set(+GroupBy);
+            if (GroupBy == ENodeFields::Uptime) {
+                FieldsRequired.set(+ENodeFields::DisconnectTime);
+            }
             NeedSort = false;
             NeedLimit = false;
         }
+        FieldsRequested = FieldsRequired; // no dependent fields
         for (auto field = +ENodeFields::NodeId; field != +ENodeFields::COUNT; ++field) {
             if (FieldsRequired.test(field)) {
                 auto itDependentFields = DependentFields.find(static_cast<ENodeFields>(field));
@@ -1005,6 +1086,9 @@ public:
             request->Record.AddFieldsRequired(-1);
             NodeStateResponse = MakeWhiteboardRequest(TActivationContext::ActorSystem()->NodeId, request.release());
         }
+        if (!FilterDatabase && OffloadMerge && FieldsNeeded(FieldsSystemState)) {
+            FieldsRequired.set(+ENodeFields::SubDomainKey);
+        }
         if (!FilterStoragePools.empty() || !FilterGroupIds.empty()) {
             FilterDatabase = false; // we disable database filter if we're filtering by pool or group
         }
@@ -1012,7 +1096,7 @@ public:
             if (!DatabaseNavigateResponse) {
                 DatabaseNavigateResponse = MakeRequestSchemeCacheNavigate(Database, ENavigateRequestDatabase);
             }
-            if (!FieldsNeeded(FieldsHiveNodeStat) && !(FilterPath && FieldsNeeded(FieldsTablets))) {
+            if (!DatabaseBoardInfoResponse && !FieldsNeeded(FieldsHiveNodeStat) && !(FilterPath && FieldsNeeded(FieldsTablets))) {
                 DatabaseBoardInfoResponse = MakeRequestStateStorageEndpointsLookup(Database, EBoardInfoRequestDatabase);
             }
             if ((Type == EType::Storage || Type == EType::Static) && FilterStoragePools.empty() && FilterGroupIds.empty()) {
@@ -1024,36 +1108,32 @@ public:
             PathNavigateResponse = MakeRequestSchemeCacheNavigate(FilterPath, ENavigateRequestPath);
         }
         if (!FilterStoragePools.empty()) {
-            StoragePoolsResponse = RequestBSControllerPools();
-            GroupsResponse = RequestBSControllerGroups();
-            VSlotsResponse = RequestBSControllerVSlots();
+            StoragePoolsResponse = MakeCachedRequestBSControllerPools();
+            GroupsResponse = MakeCachedRequestBSControllerGroups();
+            VSlotsResponse = MakeCachedRequestBSControllerVSlots();
             FilterStorageStage = EFilterStorageStage::Pools;
-        } else if (!FilterGroupIds.empty()) {
-            VSlotsResponse = RequestBSControllerVSlots();
+        } else if (!FilterGroupIds.empty() || FieldsRequired.test(+ENodeFields::VDisks)) {
+            VSlotsResponse = MakeCachedRequestBSControllerVSlots();
             FilterStorageStage = EFilterStorageStage::VSlots;
         }
+
         if (With != EWith::Everything) {
-            PDisksResponse = RequestBSControllerPDisks();
+            PDisksResponse = MakeCachedRequestBSControllerPDisks();
         }
         TIntrusivePtr<TDomainsInfo> domains = AppData()->DomainsInfo;
         auto* domain = domains->GetDomain();
         DomainPath = "/" + domain->Name;
-        if (ProblemNodesOnly || GroupBy == ENodeFields::Uptime) {
+        if (ProblemNodesOnly || FieldsRequired.test(+ENodeFields::Uptime) || FieldsRequired.test(+ENodeFields::DisconnectTime)) {
             FieldsRequired.set(+ENodeFields::SystemState);
             TTabletId rootHiveId = domains->GetHive();
             HivesToAsk.push_back(rootHiveId);
             if (!PDisksResponse) {
-                PDisksResponse = RequestBSControllerPDisks();
+                PDisksResponse = MakeCachedRequestBSControllerPDisks();
             }
         }
         if (FieldsRequired.test(+ENodeFields::PDisks)) {
             if (!PDisksResponse) {
-                PDisksResponse = RequestBSControllerPDisks();
-            }
-        }
-        if (FieldsRequired.test(+ENodeFields::VDisks)) {
-            if (!VSlotsResponse) {
-                VSlotsResponse = RequestBSControllerVSlots();
+                PDisksResponse = MakeCachedRequestBSControllerPDisks();
             }
         }
         if (FieldsNeeded(FieldsHiveNodeStat) && !FilterDatabase && !FilterPath) {
@@ -1087,11 +1167,11 @@ public:
     }
 
     bool PreFilterDone() const {
-        return !FilterDatabase && FilterStorageStage == EFilterStorageStage::None;
+        return (!PDisksResponse || PDisksProcessed) && !FilterDatabase && FilterPeerRole != EPeerRole::Static && FilterPeerRole != EPeerRole::Other;
     }
 
     bool FilterDone() const {
-        return PreFilterDone() && !NeedFilter;
+        return PreFilterDone() && FilterStorageStage == EFilterStorageStage::None && !NeedFilter;
     }
 
     void ApplyFilter() {
@@ -1099,13 +1179,13 @@ public:
         if (FilterDatabase) {
             if (FilterSubDomainKey && FieldsAvailable.test(+ENodeFields::SubDomainKey)) {
                 TNodeView nodeView;
-                if (HasDatabaseNodes) {
+                if (HasDatabaseNodes || !HasSharedNodes) {
                     for (TNode* node : NodeView) {
                         if (node->HasSubDomainKey(SubDomainKey)) {
                             nodeView.push_back(node);
                         }
                     }
-                } else {
+                } else if (HasSharedNodes) {
                     for (TNode* node : NodeView) {
                         if (node->HasSubDomainKey(SharedSubDomainKey)) {
                             nodeView.push_back(node);
@@ -1116,16 +1196,16 @@ public:
                 FoundNodes = TotalNodes = NodeView.size();
                 InvalidateNodes();
                 FilterDatabase = false;
-                AddEvent("PreFilter Applied");
+                AddEvent("PreFilter SubDomain Applied");
             } else if (FieldsAvailable.test(+ENodeFields::Database)) {
                 TNodeView nodeView;
-                if (HasDatabaseNodes) {
+                if (HasDatabaseNodes || !HasSharedNodes) {
                     for (TNode* node : NodeView) {
                         if (node->HasDatabase(Database)) {
                             nodeView.push_back(node);
                         }
                     }
-                } else {
+                } else if (HasSharedNodes) {
                     for (TNode* node : NodeView) {
                         if (node->HasDatabase(SharedDatabase)) {
                             nodeView.push_back(node);
@@ -1136,13 +1216,19 @@ public:
                 FoundNodes = TotalNodes = NodeView.size();
                 InvalidateNodes();
                 FilterDatabase = false;
-                AddEvent("PreFilter Applied");
+                AddEvent("PreFilter Database Applied");
             } else {
                 return;
             }
         }
         // storage/nodes pre-filter, affects TotalNodes count
         if (FilterStorageStage != EFilterStorageStage::None) {
+            return;
+        }
+        if (PDisksResponse && !PDisksProcessed) {
+            return;
+        }
+        if (FilterPeerRole == EPeerRole::Static || FilterPeerRole == EPeerRole::Other) {
             return;
         }
         if (((Type == EType::Static || Type == EType::Dynamic) && FieldsAvailable.test(+ENodeFields::NodeInfo)) || (Type == EType::Storage && FieldsAvailable.test(+ENodeFields::HasDisks))) {
@@ -1235,7 +1321,7 @@ public:
             if (UptimeSeconds > 0 && FieldsAvailable.test(+ENodeFields::SystemState)) {
                 TNodeView nodeView;
                 for (TNode* node : NodeView) {
-                    if (node->UptimeSeconds < UptimeSeconds) {
+                    if (node->UptimeSeconds.value_or(0) < UptimeSeconds) {
                         nodeView.push_back(node);
                     }
                 }
@@ -1344,6 +1430,7 @@ public:
                 case ENodeFields::SubDomainKey:
                 case ENodeFields::COUNT:
                 case ENodeFields::Memory:
+                case ENodeFields::MemoryDetailed:
                 case ENodeFields::CPU:
                 case ENodeFields::LoadAverage:
                 case ENodeFields::DisconnectTime:
@@ -1386,10 +1473,11 @@ public:
                     NeedSort = false;
                     break;
                 case ENodeFields::Uptime:
-                    SortCollection(NodeView, [](const TNode* node) { return node->UptimeSeconds; }, ReverseSort);
+                    SortCollection(NodeView, [](const TNode* node) { return node->UptimeSeconds.value_or(0); }, ReverseSort);
                     NeedSort = false;
                     break;
                 case ENodeFields::Memory:
+                case ENodeFields::MemoryDetailed:
                     SortCollection(NodeView, [](const TNode* node) { return node->SystemState.GetMemoryUsed(); }, ReverseSort);
                     NeedSort = false;
                     break;
@@ -1493,8 +1581,6 @@ public:
         ApplyLimit();
     }
 
-    static constexpr size_t BATCH_SIZE = 200;
-
     void BuildCandidates(TNodeBatch& batch, std::vector<TNode*>& candidates) {
         auto itCandidate = candidates.begin();
         for (; itCandidate != candidates.end() && batch.NodesToAskFor.size() < OffloadMergeAttempts; ++itCandidate) {
@@ -1513,9 +1599,9 @@ public:
         std::sort(candidates.begin(), candidates.end(), [](TNode* a, TNode* b) {
             return a->GetCandidateScore() > b->GetCandidateScore();
         });
-        while (nodeBatch.NodesToAskAbout.size() > BATCH_SIZE) {
+        while (nodeBatch.NodesToAskAbout.size() > OffloadMergeBatchSize) {
             TNodeBatch newBatch;
-            size_t splitSize = std::min(BATCH_SIZE, nodeBatch.NodesToAskAbout.size() / 2);
+            size_t splitSize = std::min(OffloadMergeBatchSize, nodeBatch.NodesToAskAbout.size() / 2);
             newBatch.NodesToAskAbout.reserve(splitSize);
             for (size_t i = 0; i < splitSize; ++i) {
                 newBatch.NodesToAskAbout.push_back(nodeBatch.NodesToAskAbout.back());
@@ -1585,7 +1671,7 @@ public:
         if (PathNavigateResponse && !PathNavigateResponse->IsDone()) {
             return false;
         }
-        return CurrentTimeoutState < TimeoutTablets;
+        return true;
     }
 
     bool TimeToAskWhiteboard() {
@@ -1650,13 +1736,13 @@ public:
                 }
                 if (!FilterStoragePools.empty()) {
                     if (!StoragePoolsResponse) {
-                        StoragePoolsResponse = RequestBSControllerPools();
+                        StoragePoolsResponse = MakeCachedRequestBSControllerPools();
                     }
                     if (!GroupsResponse) {
-                        GroupsResponse = RequestBSControllerGroups();
+                        GroupsResponse = MakeCachedRequestBSControllerGroups();
                     }
                     if (!VSlotsResponse) {
-                        VSlotsResponse = RequestBSControllerVSlots();
+                        VSlotsResponse = MakeCachedRequestBSControllerVSlots();
                     }
                 }
             }
@@ -1674,6 +1760,8 @@ public:
                     for (const auto& ni : NodesInfoResponse->Get()->Nodes) {
                         TNode& node = NodeData.emplace_back();
                         node.NodeInfo = ni;
+                        node.MergeInterconnectLocation();
+
                         if (ni.Host && !node.SystemState.GetHost()) {
                             node.SystemState.SetHost(ni.Host);
                         }
@@ -1726,7 +1814,7 @@ public:
             NodeStateResponse.reset();
         }
 
-        if (DatabaseNavigateResponse && DatabaseNavigateResponse->IsDone()) { // database hive and subdomain key
+        if (DatabaseNavigateResponse && DatabaseNavigateResponse->IsDone() && !DatabaseNavigateProcessed) { // database hive and subdomain key
             if (DatabaseNavigateResponse->IsOk()) {
                 auto* ev = DatabaseNavigateResponse->Get();
                 TSchemeCacheNavigate::TEntry& entry(ev->Request->ResultSet.front());
@@ -1734,8 +1822,10 @@ public:
                     if (entry.DomainInfo->ResourcesDomainKey && entry.DomainInfo->DomainKey != entry.DomainInfo->ResourcesDomainKey) {
                         TPathId resourceDomainKey(entry.DomainInfo->ResourcesDomainKey);
                         ResourceNavigateResponse = MakeRequestSchemeCacheNavigate(resourceDomainKey, ENavigateRequestResource);
+                        FilterPeerScopeId = GetScopeId(entry.DomainInfo->ResourcesDomainKey);
                     } else {
                         CheckAndFillStoragePoolFilter(entry);
+                        FilterPeerScopeId = GetScopeId(entry.DomainInfo->DomainKey);
                     }
                     if (FieldsNeeded(FieldsHiveNodeStat) || (FilterPath && FieldsNeeded(FieldsTablets))) {
                         const auto ownerId = entry.DomainInfo->DomainKey.OwnerId;
@@ -1744,17 +1834,9 @@ public:
                         if (FilterDatabase) {
                             FilterSubDomainKey = true;
                         }
-                        if (FieldsNeeded(FieldsHiveNodeStat) || (FilterPath && FieldsNeeded(FieldsTablets))) {
-                            const auto ownerId = entry.DomainInfo->DomainKey.OwnerId;
-                            const auto localPathId = entry.DomainInfo->DomainKey.LocalPathId;
-                            SubDomainKey = TSubDomainKey(ownerId, localPathId);
-                            if (FilterDatabase) {
-                                FilterSubDomainKey = true;
-                            }
-                            HivesToAsk.push_back(AppData()->DomainsInfo->GetHive());
-                            if (entry.DomainInfo->Params.HasHive()) {
-                                HivesToAsk.push_back(entry.DomainInfo->Params.GetHive());
-                            }
+                        HivesToAsk.push_back(AppData()->DomainsInfo->GetHive());
+                        if (entry.DomainInfo->Params.HasHive()) {
+                            HivesToAsk.push_back(entry.DomainInfo->Params.GetHive());
                         }
                     }
                 }
@@ -1762,10 +1844,10 @@ public:
                 NodeView.clear();
                 AddProblem("no-database-info");
             }
-            DatabaseNavigateResponse.reset();
+            DatabaseNavigateProcessed = true;
         }
 
-        if (ResourceNavigateResponse && ResourceNavigateResponse->IsDone()) { // database hive and subdomain key
+        if (ResourceNavigateResponse && ResourceNavigateResponse->IsDone() && !ResourceNavigateProcessed) { // database hive and subdomain key
             if (ResourceNavigateResponse->IsOk()) {
                 auto* ev = ResourceNavigateResponse->Get();
                 if (ev->Request->ResultSet.size() == 1 && ev->Request->ResultSet.begin()->Status == NSchemeCache::TSchemeCacheNavigate::EStatus::Ok) {
@@ -1787,17 +1869,19 @@ public:
                             }
                         }
                     } else {
-                        ResourceBoardInfoResponse = MakeRequestStateStorageEndpointsLookup(path, EBoardInfoRequestResource);
+                        if (!ResourceBoardInfoResponse) {
+                            ResourceBoardInfoResponse = MakeRequestStateStorageEndpointsLookup(path, EBoardInfoRequestResource);
+                        }
                     }
                 }
             } else {
                 NodeView.clear();
                 AddProblem("no-shared-database-info");
             }
-            ResourceNavigateResponse.reset();
+            ResourceNavigateProcessed = true;
         }
 
-        if (PathNavigateResponse && PathNavigateResponse->IsDone()) { // filter path id
+        if (PathNavigateResponse && PathNavigateResponse->IsDone() && !PathNavigateProcessed) { // filter path id
             if (PathNavigateResponse->IsOk()) {
                 auto* ev = PathNavigateResponse->Get();
                 if (ev->Request->ResultSet.size() == 1 && ev->Request->ResultSet.begin()->Status == NSchemeCache::TSchemeCacheNavigate::EStatus::Ok) {
@@ -1817,15 +1901,19 @@ public:
                                 HivesToAsk.push_back(entry.DomainInfo->Params.GetHive());
                             }
                         }
+                    } else {
+                        FilterPathId = TPathId(InvalidOwnerId - 1, InvalidLocalPathId - 1); // invalid path id for sys view tables
+                        AskHiveAboutPaths = true;
+                        HivesToAsk.push_back(AppData()->DomainsInfo->GetHive());
                     }
                 }
             } else {
                 AddProblem("no-path-info");
             }
-            PathNavigateResponse.reset();
+            PathNavigateProcessed = true;
         }
 
-        if (DatabaseBoardInfoResponse && DatabaseBoardInfoResponse->IsDone() && TotalNodes > 0) {
+        if (DatabaseBoardInfoResponse && DatabaseBoardInfoResponse->IsDone() && TotalNodes > 0 && !DatabaseBoardInfoProcessed) {
             if (DatabaseBoardInfoResponse->IsOk() && DatabaseBoardInfoResponse->Get()->Status == TEvStateStorage::TEvBoardInfo::EStatus::Ok) {
                 TString database = GetDatabaseFromEndpointsBoardPath(DatabaseBoardInfoResponse->Get()->Path);
                 for (const auto& entry : DatabaseBoardInfoResponse->Get()->InfoEntries) {
@@ -1842,10 +1930,10 @@ public:
             } else {
                 AddProblem("no-database-board-info");
             }
-            DatabaseBoardInfoResponse.reset();
+            DatabaseBoardInfoProcessed = true;
         }
 
-        if (ResourceBoardInfoResponse && ResourceBoardInfoResponse->IsDone() && TotalNodes > 0) {
+        if (ResourceBoardInfoResponse && ResourceBoardInfoResponse->IsDone() && TotalNodes > 0 && !ResourceBoardInfoProcessed) {
             if (ResourceBoardInfoResponse->IsOk() && ResourceBoardInfoResponse->Get()->Status == TEvStateStorage::TEvBoardInfo::EStatus::Ok) {
                 TString database = GetDatabaseFromEndpointsBoardPath(ResourceBoardInfoResponse->Get()->Path);
                 for (const auto& entry : ResourceBoardInfoResponse->Get()->InfoEntries) {
@@ -1854,6 +1942,7 @@ public:
                         if (node) {
                             node->Database = database;
                             node->GotDatabaseFromResourceBoardInfo = true;
+                            HasSharedNodes = true;
                         }
                     }
                 }
@@ -1861,7 +1950,7 @@ public:
             } else {
                 AddProblem("no-shared-database-board-info");
             }
-            ResourceBoardInfoResponse.reset();
+            ResourceBoardInfoProcessed = true;
         }
 
         if (!TimeToAskHive()) {
@@ -1870,8 +1959,8 @@ public:
 
         AddEvent("TimeToAskHive");
 
-        if (!HivesToAsk.empty()) {
-            AddEvent("HivesTokHive");
+        if (!HivesToAsk.empty() && CurrentTimeoutState < TimeoutTablets) {
+            AddEvent("HivesToAsk");
             std::sort(HivesToAsk.begin(), HivesToAsk.end());
             HivesToAsk.erase(std::unique(HivesToAsk.begin(), HivesToAsk.end()), HivesToAsk.end());
             for (TTabletId hiveId : HivesToAsk) {
@@ -1883,6 +1972,8 @@ public:
                 if (AskHiveAboutPaths) {
                     request->Record.SetFilterTabletsBySchemeShardId(FilterPathId.OwnerId);
                     request->Record.SetFilterTabletsByPathId(FilterPathId.LocalPathId);
+                } else if (FilterSubDomainKey) {
+                    request->Record.MutableFilterTabletsByObjectDomain()->CopyFrom(SubDomainKey);
                 }
                 HiveNodeStats.emplace(hiveId, MakeRequestHiveNodeStats(hiveId, request.release()));
             }
@@ -1905,8 +1996,8 @@ public:
                                         viewerTablet.SetType(NKikimrTabletBase::TTabletTypes::EType_Name(stateStats.GetTabletType()));
                                         viewerTablet.SetCount(stateStats.GetCount());
                                         viewerTablet.SetState(GetFlagFromTabletState(stateStats.GetVolatileState()));
-                                        FieldsAvailable.set(+ENodeFields::Tablets);
                                     }
+                                    FieldsAvailable.set(+ENodeFields::Tablets);
                                 }
                                 if (nodeStats.HasLastAliveTimestamp()) {
                                     node->SystemState.SetDisconnectTime(std::max(node->SystemState.GetDisconnectTime(), nodeStats.GetLastAliveTimestamp())); // milliseconds
@@ -1918,6 +2009,9 @@ public:
                                     FieldsAvailable.set(+ENodeFields::SubDomainKey);
                                     if (node->SubDomainKey == SubDomainKey) {
                                         HasDatabaseNodes = true;
+                                    }
+                                    if (node->SubDomainKey == SharedSubDomainKey) {
+                                        HasSharedNodes = true;
                                     }
                                 }
                             }
@@ -1945,6 +2039,7 @@ public:
                 FilterStorageStage = EFilterStorageStage::Groups;
             } else {
                 AddProblem("bsc-storage-pools-no-data");
+                FilterStorageStage = EFilterStorageStage::None;
             }
             StoragePoolsResponse.reset();
         }
@@ -1961,10 +2056,10 @@ public:
                 FilterStorageStage = EFilterStorageStage::VSlots;
             } else {
                 AddProblem("bsc-storage-groups-no-data");
+                FilterStorageStage = EFilterStorageStage::None;
             }
-            GroupsResponse.reset();
         }
-        if ((FilterStorageStage == EFilterStorageStage::VSlots || FilterStorageStage == EFilterStorageStage::None) && VSlotsResponse && VSlotsResponse->IsDone()) {
+        if (FilterStorageStage == EFilterStorageStage::VSlots && VSlotsResponse && VSlotsResponse->IsDone()) {
             if (VSlotsResponse->IsOk()) {
                 std::unordered_set<TNodeId> prevFilterNodeIds = std::move(FilterNodeIds);
                 std::unordered_map<std::pair<TNodeId, ui32>, std::size_t> slotsPerDisk;
@@ -1973,30 +2068,24 @@ public:
                         if (prevFilterNodeIds.empty() || prevFilterNodeIds.count(slotEntry.GetKey().GetNodeId()) > 0) {
                             FilterNodeIds.insert(slotEntry.GetKey().GetNodeId());
                         }
-                        TNode* node = FindNode(slotEntry.GetKey().GetNodeId());
-                        if (node) {
-                            node->SysViewVDisks.emplace_back(slotEntry);
-                            node->HasDisks = true;
-                        }
-                    } else {
-                        TNode* node = FindNode(slotEntry.GetKey().GetNodeId());
-                        if (node) {
-                            node->HasDisks = true;
-                        }
+                    }
+                    TNode* node = FindNode(slotEntry.GetKey().GetNodeId());
+                    if (node) {
+                        node->SysViewVDisks.emplace_back(slotEntry);
+                        node->HasDisks = true;
                     }
                     auto& slots = slotsPerDisk[{slotEntry.GetKey().GetNodeId(), slotEntry.GetKey().GetPDiskId()}];
                     ++slots;
                     MaximumSlotsPerDisk = std::max(MaximumSlotsPerDisk.value_or(0), slots);
                 }
                 FieldsAvailable.set(+ENodeFields::HasDisks);
-                FilterStorageStage = EFilterStorageStage::None;
-                ApplyEverything();
             } else {
                 AddProblem("bsc-storage-slots-no-data");
             }
-            VSlotsResponse.reset();
+            FilterStorageStage = EFilterStorageStage::None;
+            ApplyEverything();
         }
-        if (PDisksResponse && PDisksResponse->IsDone()) {
+        if (PDisksResponse && PDisksResponse->IsDone() && !PDisksProcessed) {
             if (PDisksResponse->IsOk()) {
                 std::unordered_map<TNodeId, std::size_t> disksPerNode;
                 for (const auto& pdiskEntry : PDisksResponse->Get()->Record.GetEntries()) {
@@ -2018,7 +2107,8 @@ public:
             } else {
                 AddProblem("bsc-pdisks-no-data");
             }
-            PDisksResponse.reset();
+            PDisksProcessed = true;
+            ApplyEverything();
         }
 
         if (!TimeToAskWhiteboard()) {
@@ -2033,6 +2123,14 @@ public:
                 FieldsRequired.set(+ENodeFields::SystemState);
             }
             std::vector<TNodeBatch> batches = BatchNodes(NodeView);
+            if (DumpOriginalNodeBatches) {
+                OriginalNodeBatches = batches;
+            }
+            if (FilterPeerRole == EPeerRole::Static || FilterPeerRole == EPeerRole::Other) {
+                for (TNodeBatch& batch : batches) {
+                    batch.FieldsRequested.set(+ENodeFields::Peers);
+                }
+            }
             SendWhiteboardRequests(batches);
         }
     }
@@ -2052,6 +2150,10 @@ public:
             request->MutableFieldsRequired()->CopyFrom(GetDefaultWhiteboardFields<NKikimrWhiteboard::TSystemStateInfo>());
             request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kCoresUsedFieldNumber);
             request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kCoresTotalFieldNumber);
+            request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kRealNumberOfCpusFieldNumber);
+            if (FieldsRequired.test(+ENodeFields::MemoryDetailed)) {
+                request->AddFieldsRequired(NKikimrWhiteboard::TSystemStateInfo::kMemoryStatsFieldNumber);
+            }
         }
     }
 
@@ -2061,6 +2163,9 @@ public:
             request->AddFieldsRequired(-1);
         }
         request->SetGroupBy("Type,State");
+        if (FilterSubDomainKey) {
+            request->MutableFilterTenantId()->CopyFrom(SubDomainKey);
+        }
     }
 
     template<>
@@ -2082,7 +2187,7 @@ public:
     void SendWhiteboardRequest(TNodeBatch& batch) {
         TNodeId nodeId = OffloadMerge ? batch.ChooseNodeId() : 0;
         if (nodeId) {
-            if (FieldsNeeded(FieldsSystemState) && SystemViewerResponse.count(nodeId) == 0) {
+            if (batch.FieldsRequested.test(+ENodeFields::SystemState) && FieldsNeeded(FieldsSystemState) && SystemViewerResponse.count(nodeId) == 0) {
                 auto viewerRequest = std::make_unique<TEvViewer::TEvViewerRequest>();
                 InitWhiteboardRequest(viewerRequest->Record.MutableSystemRequest());
                 viewerRequest->Record.SetTimeout(Timeout / 2);
@@ -2096,7 +2201,7 @@ public:
                 NodeBatches.emplace(nodeId, batch);
                 ++WhiteboardStateRequestsInFlight;
             }
-            if (FieldsNeeded(FieldsTablets) && TabletViewerResponse.count(nodeId) == 0) {
+            if (batch.FieldsRequested.test(+ENodeFields::Tablets) && FieldsNeeded(FieldsTablets) && TabletViewerResponse.count(nodeId) == 0) {
                 auto viewerRequest = std::make_unique<TEvViewer::TEvViewerRequest>();
                 InitWhiteboardRequest(viewerRequest->Record.MutableTabletRequest());
                 viewerRequest->Record.SetTimeout(Timeout / 2);
@@ -2108,7 +2213,7 @@ public:
                 ++WhiteboardStateRequestsInFlight;
             }
             if (batch.HasStaticNodes) {
-                if (FieldsNeeded(FieldsPDisks) && PDiskViewerResponse.count(nodeId) == 0) {
+                if (batch.FieldsRequested.test(+ENodeFields::PDisks) && FieldsNeeded(FieldsPDisks) && PDiskViewerResponse.count(nodeId) == 0) {
                     auto viewerRequest = std::make_unique<TEvViewer::TEvViewerRequest>();
                     InitWhiteboardRequest(viewerRequest->Record.MutablePDiskRequest());
                     viewerRequest->Record.SetTimeout(Timeout / 2);
@@ -2121,7 +2226,7 @@ public:
                     NodeBatches.emplace(nodeId, batch); // ignore second insert because they are the same
                     ++WhiteboardStateRequestsInFlight;
                 }
-                if (FieldsNeeded(FieldsVDisks) && VDiskViewerResponse.count(nodeId) == 0) {
+                if (batch.FieldsRequested.test(+ENodeFields::VDisks) && FieldsNeeded(FieldsVDisks) && VDiskViewerResponse.count(nodeId) == 0) {
                     auto viewerRequest = std::make_unique<TEvViewer::TEvViewerRequest>();
                     InitWhiteboardRequest(viewerRequest->Record.MutableVDiskRequest());
                     viewerRequest->Record.SetTimeout(Timeout / 2);
@@ -2135,7 +2240,7 @@ public:
                     ++WhiteboardStateRequestsInFlight;
                 }
             }
-            if (FieldsNeeded(FieldsPeers) && PeersViewerResponse.count(nodeId) == 0) {
+            if (batch.FieldsRequested.test(+ENodeFields::Peers) && FieldsNeeded(FieldsPeers) && PeersViewerResponse.count(nodeId) == 0) {
                 auto viewerRequest = std::make_unique<TEvViewer::TEvViewerRequest>();
                 InitWhiteboardRequest(viewerRequest->Record.MutableNodeRequest());
                 viewerRequest->Record.SetTimeout(Timeout / 2);
@@ -2152,7 +2257,7 @@ public:
                     continue;
                 }
                 TNodeId nodeId = node->GetNodeId();
-                if (FieldsNeeded(FieldsSystemState)) {
+                if (batch.FieldsRequested.test(+ENodeFields::SystemState) && FieldsNeeded(FieldsSystemState)) {
                     if (SystemStateResponse.count(nodeId) == 0) {
                         auto request = new TEvWhiteboard::TEvSystemStateRequest();
                         InitWhiteboardRequest(&request->Record);
@@ -2160,7 +2265,7 @@ public:
                         ++WhiteboardStateRequestsInFlight;
                     }
                 }
-                if (FieldsNeeded(FieldsTablets)) {
+                if (batch.FieldsRequested.test(+ENodeFields::Tablets) && FieldsNeeded(FieldsTablets)) {
                     if (TabletStateResponse.count(nodeId) == 0) {
                         auto request = std::make_unique<TEvWhiteboard::TEvTabletStateRequest>();
                         InitWhiteboardRequest(&request->Record);
@@ -2168,7 +2273,7 @@ public:
                         ++WhiteboardStateRequestsInFlight;
                     }
                 }
-                if (FieldsNeeded(FieldsPeers)) {
+                if (batch.FieldsRequested.test(+ENodeFields::Peers) && FieldsNeeded(FieldsPeers)) {
                     if (PeersStateResponse.count(nodeId) == 0) {
                         auto request = std::make_unique<TEvWhiteboard::TEvNodeStateRequest>();
                         InitWhiteboardRequest(&request->Record);
@@ -2177,7 +2282,7 @@ public:
                     }
                 }
                 if (node->IsStatic()) {
-                    if (FieldsNeeded(FieldsVDisks)) {
+                    if (batch.FieldsRequested.test(+ENodeFields::VDisks) && FieldsNeeded(FieldsVDisks)) {
                         if (VDiskStateResponse.count(nodeId) == 0) {
                             auto request = new TEvWhiteboard::TEvVDiskStateRequest();
                             InitWhiteboardRequest(&request->Record);
@@ -2185,7 +2290,7 @@ public:
                             ++WhiteboardStateRequestsInFlight;
                         }
                     }
-                    if (FieldsNeeded(FieldsPDisks)) {
+                    if (batch.FieldsRequested.test(+ENodeFields::PDisks) && FieldsNeeded(FieldsPDisks)) {
                         if (PDiskStateResponse.count(nodeId) == 0) {
                             auto request = new TEvWhiteboard::TEvPDiskStateRequest();
                             InitWhiteboardRequest(&request->Record);
@@ -2208,7 +2313,7 @@ public:
 
     void ProcessWhiteboard() {
         AddEvent("ProcessWhiteboard");
-        if (FieldsNeeded(FieldsReversePeers) && WhiteboardRequestRound++ == 1) {
+        if ((FieldsNeeded(FieldsReversePeers) || FilterPeerRole == EPeerRole::Static || FilterPeerRole == EPeerRole::Other) && WhiteboardRequestRound++ == 1) {
             std::unordered_set<TNodeId> nodeIds;
             std::unordered_set<TNodeId> reverseNodeIds;
             for (auto& [nodeId, response] : PeersViewerResponse) {
@@ -2218,7 +2323,7 @@ public:
                         if (nodeState.GetNodeId()) {
                             nodeIds.insert(nodeState.GetNodeId());
                         }
-                        if (nodeState.GetConnected() && nodeState.GetPeerNodeId()) {
+                        if (nodeState.GetConnected() && nodeState.GetPeerNodeId() && IsMatchesPeerFilter(nodeState)) {
                             reverseNodeIds.insert(nodeState.GetPeerNodeId());
                         }
                     }
@@ -2229,14 +2334,16 @@ public:
                     nodeIds.insert(nodeId);
                     const auto& nodeState(response.Get()->Record);
                     for (const auto& nodeStateInfo : nodeState.GetNodeStateInfo()) {
-                        if (nodeStateInfo.GetConnected() && nodeStateInfo.GetPeerNodeId()) {
+                        if (nodeStateInfo.GetConnected() && nodeStateInfo.GetPeerNodeId() && IsMatchesPeerFilter(nodeStateInfo)) {
                             reverseNodeIds.insert(nodeStateInfo.GetPeerNodeId());
                         }
                     }
                 }
             }
-            for (auto nodeId : nodeIds) {
-                reverseNodeIds.erase(nodeId);
+            if (FilterPeerRole != EPeerRole::Static && FilterPeerRole != EPeerRole::Other) {
+                for (auto nodeId : nodeIds) {
+                    reverseNodeIds.erase(nodeId);
+                }
             }
             if (!reverseNodeIds.empty()) {
                 std::unordered_map<TNodeId, TNode*> reverseNodesByNodeId;
@@ -2252,6 +2359,23 @@ public:
                 }
                 AddEvent("ReversePeers");
                 std::vector<TNodeBatch> batches = BatchNodes(reverseNodeView);
+                if (FilterPeerRole == EPeerRole::Static || FilterPeerRole == EPeerRole::Other) {
+                    NodeView = reverseNodeView;
+                    FoundNodes = TotalNodes = NodeView.size();
+                    FilterPeerRole = EPeerRole::Database;
+                    if (DatabaseNavigateResponse && DatabaseNavigateResponse->IsOk()) {
+                        const auto& entry(DatabaseNavigateResponse->Get()->Request->ResultSet.front());
+                        if (entry.DomainInfo->ResourcesDomainKey) {
+                            FilterPeerScopeId = GetScopeId(entry.DomainInfo->ResourcesDomainKey);
+                        } else {
+                            FilterPeerScopeId = GetScopeId(entry.DomainInfo->DomainKey);
+                        }
+                    }
+                } else {
+                    for (TNodeBatch& batch : batches) {
+                        batch.FieldsRequested = FieldsPeers;
+                    }
+                }
                 SendWhiteboardRequests(batches);
                 if (WhiteboardStateRequestsInFlight > 0) {
                     return;
@@ -2260,6 +2384,7 @@ public:
         }
         if (FieldsNeeded(FieldsSystemState)) {
             TInstant now = TInstant::Now();
+            bool hasMemoryDetailed = false;
             std::unordered_set<TNodeId> removeNodes;
             for (const auto& [responseNodeId, response] : SystemViewerResponse) {
                 if (response.IsOk()) {
@@ -2280,6 +2405,7 @@ public:
                                 }
                             }
                         }
+                        hasMemoryDetailed |= systemInfo.HasMemoryStats();
                     }
                     for (auto nodeId : nodesWithoutData) {
                         TNode* node = FindNode(nodeId);
@@ -2310,6 +2436,7 @@ public:
                                 }
                             }
                         }
+                        hasMemoryDetailed |= systemState.GetSystemStateInfo(0).HasMemoryStats();
                     }
                 } else {
                     TNode* node = FindNode(nodeId);
@@ -2324,7 +2451,9 @@ public:
                 InvalidateNodes();
             }
             FieldsAvailable |= FieldsSystemState;
-            FieldsAvailable.set(+ENodeFields::Database);
+            if (hasMemoryDetailed) {
+                FieldsAvailable.set(+ENodeFields::MemoryDetailed);
+            }
         }
         if (FieldsNeeded(FieldsTablets)) {
             for (auto& [nodeId, response] : TabletViewerResponse) {
@@ -2424,9 +2553,11 @@ public:
                 if (response.IsOk()) {
                     auto& nodeResponse(*(response.Get()->Record.MutableNodeResponse()));
                     for (const auto& nodeState : nodeResponse.GetNodeStateInfo()) {
-                        TNode* node = FindNode(nodeState.GetNodeId());
-                        if (node) {
-                            node->Peers.emplace_back(nodeState);
+                        if (IsMatchesPeerFilter(nodeState)) {
+                            TNode* node = FindNode(nodeState.GetNodeId());
+                            if (node) {
+                                node->Peers.emplace_back(nodeState);
+                            }
                         }
                     }
                 }
@@ -2437,7 +2568,9 @@ public:
                     TNode* node = FindNode(nodeId);
                     if (node) {
                         for (const auto& protoNodeState : nodeState.GetNodeStateInfo()) {
-                            node->Peers.emplace_back(protoNodeState).SetNodeId(nodeId);
+                            if (IsMatchesPeerFilter(protoNodeState)) {
+                                node->Peers.emplace_back(protoNodeState).SetNodeId(nodeId);
+                            }
                         }
                     }
                 }
@@ -2450,7 +2583,7 @@ public:
                 if (response.IsOk()) {
                     auto& nodeResponse(*(response.Get()->Record.MutableNodeResponse()));
                     for (const auto& nodeState : nodeResponse.GetNodeStateInfo()) {
-                        if (nodeState.GetPeerNodeId()) {
+                        if (IsMatchesPeerFilter(nodeState)) {
                             TNode* reverseNode = FindNode(nodeState.GetPeerNodeId());
                             if (reverseNode) {
                                 reverseNode->ReversePeers.emplace_back(nodeState);
@@ -2463,9 +2596,11 @@ public:
                 if (response.IsOk()) {
                     const auto& nodeState(response.Get()->Record);
                     for (const auto& protoNodeState : nodeState.GetNodeStateInfo()) {
-                        TNode* reverseNode = FindNode(protoNodeState.GetPeerNodeId());
-                        if (reverseNode) {
-                            reverseNode->ReversePeers.emplace_back(protoNodeState).SetNodeId(nodeId);
+                        if (IsMatchesPeerFilter(protoNodeState)) {
+                            TNode* reverseNode = FindNode(protoNodeState.GetPeerNodeId());
+                            if (reverseNode) {
+                                reverseNode->ReversePeers.emplace_back(protoNodeState).SetNodeId(nodeId);
+                            }
                         }
                     }
                 }
@@ -2951,6 +3086,7 @@ public:
                 }
             }
             if (WaitingForResponse()) {
+                AddEvent("WaitingForSomethingOnTimeout");
                 ReplyAndPassAway();
             }
         }
@@ -2991,6 +3127,16 @@ public:
         AddEvent("ReplyAndPassAway");
         ApplyEverything();
         NKikimrViewer::TNodesInfo json;
+        for (const auto& batch : OriginalNodeBatches) {
+            auto* jsonBatch = json.AddOriginalNodeBatches();
+            for (const auto& node : batch.NodesToAskFor) {
+                jsonBatch->AddNodesToAskFor(node->GetNodeId());
+            }
+            for (const auto& node : batch.NodesToAskAbout) {
+                jsonBatch->AddNodesToAskAbout(node->GetNodeId());
+            }
+            jsonBatch->SetHasStaticNodes(batch.HasStaticNodes);
+        }
         json.SetVersion(Viewer->GetCapabilityVersion("/viewer/nodes"));
         json.SetFieldsAvailable(FieldsAvailable.to_string());
         json.SetFieldsRequired(FieldsRequired.to_string());
@@ -3023,39 +3169,42 @@ public:
         for (auto problem : Problems) {
             json.AddProblems(problem);
         }
+        if (CachedDataMaxAge) {
+            json.SetCachedDataMaxAge(CachedDataMaxAge.MilliSeconds());
+        }
         if (NodeGroups.empty()) {
             for (TNode* node : NodeView) {
                 NKikimrViewer::TNodeInfo& jsonNode = *json.AddNodes();
                 if (FieldsAvailable.test(+ENodeFields::NodeInfo)) {
                     jsonNode.SetNodeId(node->GetNodeId());
                 }
-                if (node->Database) {
+                if (node->Database && FieldsRequested.test(+ENodeFields::Database)) {
                     jsonNode.SetDatabase(node->Database);
                 }
-                if (node->UptimeSeconds) {
-                    jsonNode.SetUptimeSeconds(node->UptimeSeconds);
+                if (node->UptimeSeconds && FieldsRequested.test(+ENodeFields::Uptime)) {
+                    jsonNode.SetUptimeSeconds(*(node->UptimeSeconds));
                 }
                 if (node->Disconnected) {
                     jsonNode.SetDisconnected(node->Disconnected);
                 }
-                if (node->CpuUsage) {
+                if (node->CpuUsage && FieldsRequested.test(+ENodeFields::CPU)) {
                     jsonNode.SetCpuUsage(node->CpuUsage);
                 }
-                if (node->DiskSpaceUsage) {
+                if (node->DiskSpaceUsage && FieldsRequested.test(+ENodeFields::DiskSpaceUsage)) {
                     jsonNode.SetDiskSpaceUsage(node->DiskSpaceUsage);
                 }
-                if (FieldsAvailable.test(+ENodeFields::Connections)) {
+                if (FieldsAvailable.test(+ENodeFields::Connections) && FieldsRequested.test(+ENodeFields::Connections)) {
                     jsonNode.SetConnections(node->Connections);
                 }
-                if (FieldsAvailable.test(+ENodeFields::ConnectStatus)) {
+                if (FieldsAvailable.test(+ENodeFields::ConnectStatus) && FieldsRequested.test(+ENodeFields::ConnectStatus)) {
                     jsonNode.SetConnectStatus(GetViewerFlag(node->ConnectStatus));
                 }
-                if (FieldsAvailable.test(+ENodeFields::NetworkUtilization)) {
+                if (FieldsAvailable.test(+ENodeFields::NetworkUtilization) && FieldsRequested.test(+ENodeFields::NetworkUtilization)) {
                     jsonNode.SetNetworkUtilization(node->NetworkUtilization);
                     jsonNode.SetNetworkUtilizationMin(node->NetworkUtilizationMin);
                     jsonNode.SetNetworkUtilizationMax(node->NetworkUtilizationMax);
                 }
-                if (FieldsAvailable.test(+ENodeFields::ClockSkew)) {
+                if (FieldsAvailable.test(+ENodeFields::ClockSkew) && FieldsRequested.test(+ENodeFields::ClockSkew)) {
                     jsonNode.SetClockSkewUs(node->ClockSkewUs);
                     jsonNode.SetClockSkewMinUs(node->ClockSkewMinUs);
                     jsonNode.SetClockSkewMaxUs(node->ClockSkewMaxUs);
@@ -3063,7 +3212,7 @@ public:
                         jsonNode.SetReverseClockSkewUs(node->ReverseClockSkewUs);
                     }
                 }
-                if (FieldsAvailable.test(+ENodeFields::PingTime)) {
+                if (FieldsAvailable.test(+ENodeFields::PingTime) && FieldsRequested.test(+ENodeFields::PingTime)) {
                     jsonNode.SetPingTimeUs(node->PingTimeUs);
                     jsonNode.SetPingTimeMinUs(node->PingTimeMinUs);
                     jsonNode.SetPingTimeMaxUs(node->PingTimeMaxUs);
@@ -3071,16 +3220,16 @@ public:
                         jsonNode.SetReversePingTimeUs(node->ReversePingTimeUs);
                     }
                 }
-                if (FieldsAvailable.test(+ENodeFields::SendThroughput)) {
+                if (FieldsAvailable.test(+ENodeFields::SendThroughput) && FieldsRequested.test(+ENodeFields::SendThroughput)) {
                     jsonNode.SetSendThroughput(node->SendThroughput);
                 }
-                if (FieldsAvailable.test(+ENodeFields::ReceiveThroughput)) {
+                if (FieldsAvailable.test(+ENodeFields::ReceiveThroughput) && FieldsRequested.test(+ENodeFields::ReceiveThroughput)) {
                     jsonNode.SetReceiveThroughput(node->ReceiveThroughput);
                 }
-                if (FieldsAvailable.test(+ENodeFields::NodeInfo) || FieldsAvailable.test(+ENodeFields::SystemState)) {
+                if ((FieldsAvailable.test(+ENodeFields::NodeInfo) || FieldsAvailable.test(+ENodeFields::SystemState)) && (FieldsRequested & FieldsSystemState).any()) {
                     *jsonNode.MutableSystemState() = std::move(node->SystemState);
                 }
-                if (FieldsAvailable.test(+ENodeFields::PDisks)) {
+                if (FieldsAvailable.test(+ENodeFields::PDisks) && FieldsRequested.test(+ENodeFields::PDisks)) {
                     std::sort(node->PDisks.begin(), node->PDisks.end(), [](const NKikimrWhiteboard::TPDiskStateInfo& a, const NKikimrWhiteboard::TPDiskStateInfo& b) {
                         return a.path() < b.path();
                     });
@@ -3088,7 +3237,7 @@ public:
                         (*jsonNode.AddPDisks()) = std::move(pDisk);
                     }
                 }
-                if (FieldsAvailable.test(+ENodeFields::VDisks)) {
+                if (FieldsAvailable.test(+ENodeFields::VDisks) && FieldsRequested.test(+ENodeFields::VDisks)) {
                     std::sort(node->VDisks.begin(), node->VDisks.end(), [](const NKikimrWhiteboard::TVDiskStateInfo& a, const NKikimrWhiteboard::TVDiskStateInfo& b) {
                         return VDiskIDFromVDiskID(a.vdiskid()) < VDiskIDFromVDiskID(b.vdiskid());
                     });
@@ -3096,7 +3245,7 @@ public:
                         (*jsonNode.AddVDisks()) = std::move(vDisk);
                     }
                 }
-                if (FieldsAvailable.test(+ENodeFields::Tablets)) {
+                if (FieldsAvailable.test(+ENodeFields::Tablets) && FieldsRequested.test(+ENodeFields::Tablets)) {
                     std::sort(node->Tablets.begin(), node->Tablets.end(), [](const NKikimrViewer::TTabletStateInfo& a, const NKikimrViewer::TTabletStateInfo& b) {
                         return a.type() < b.type();
                     });
@@ -3104,13 +3253,7 @@ public:
                         (*jsonNode.AddTablets()) = std::move(tablet);
                     }
                 }
-                if (FieldsAvailable.test(+ENodeFields::SendThroughput)) {
-                    jsonNode.SetSendThroughput(node->SendThroughput);
-                }
-                if (FieldsAvailable.test(+ENodeFields::ReceiveThroughput)) {
-                    jsonNode.SetReceiveThroughput(node->ReceiveThroughput);
-                }
-                if (FieldsRequired.test(+ENodeFields::Peers)) {
+                if (FieldsRequested.test(+ENodeFields::Peers)) {
                     std::sort(node->Peers.begin(), node->Peers.end(), [](const NKikimrWhiteboard::TNodeStateInfo& a, const NKikimrWhiteboard::TNodeStateInfo& b) {
                         return a.peernodeid() < b.peernodeid();
                     });
@@ -3118,7 +3261,7 @@ public:
                         (*jsonNode.AddPeers()) = std::move(peer);
                     }
                 }
-                if (FieldsRequired.test(+ENodeFields::ReversePeers)) {
+                if (FieldsRequested.test(+ENodeFields::ReversePeers)) {
                     std::sort(node->ReversePeers.begin(), node->ReversePeers.end(), [](const NKikimrWhiteboard::TNodeStateInfo& a, const NKikimrWhiteboard::TNodeStateInfo& b) {
                         return a.nodeid() < b.nodeid();
                     });
@@ -3135,15 +3278,13 @@ public:
             }
         }
         AddEvent("RenderingResult");
-        TStringStream out;
-        Proto2Json(json, out, {
-            .EnumMode = TProto2JsonConfig::EnumValueMode::EnumName,
-            .MapAsObject = true,
-            .StringifyNumbers = TProto2JsonConfig::EStringifyNumbersMode::StringifyInt64Always,
-            .WriteNanAsString = true,
-        });
-        AddEvent("ResultReady");
-        TBase::ReplyAndPassAway(GetHTTPOKJSON(out.Str()));
+        TStringStream jsonBody;
+        Proto2Json(json, jsonBody);
+        AddEvent("ResultRendered");
+        if (Span) {
+            Span.Attribute("result_size", TStringBuilder() << jsonBody.Size());
+        }
+        TBase::ReplyAndPassAway(GetHTTPOKJSON(jsonBody.Str()));
     }
 
     static YAML::Node GetSwagger() {
@@ -3151,7 +3292,7 @@ public:
             get:
                 tags:
                   - viewer
-                summary: Nodes info
+                summary: To get information about nodes
                 description: Information about nodes
                 parameters:
                   - name: database
@@ -3187,12 +3328,6 @@ public:
                           * `dynamic`
                           * `storage`
                           * `any`
-                  - name: with
-                    in: query
-                    description: >
-                        filter groups by missing or space:
-                          * `missing`
-                          * `space`
                   - name: storage
                     in: query
                     description: return storage info
@@ -3229,7 +3364,7 @@ public:
                           * `Rack`
                           * `Version`
                           * `Uptime`
-                          * `Memory`
+                          * `Memory` / `MemoryDetailed`
                           * `CPU`
                           * `LoadAverage`
                           * `Missing`
@@ -3292,6 +3427,16 @@ public:
                     description: content for filter group by
                     required: false
                     type: string
+                  - name: filter_peer_role
+                    in: query
+                    description: >
+                        filter peers by:
+                          * `database`
+                          * `static`
+                          * `other`
+                          * `any`
+                    required: false
+                    type: string
                   - name: fields_required
                     in: query
                     description: >
@@ -3309,6 +3454,7 @@ public:
                           * `Version`
                           * `Uptime`
                           * `Memory`
+                          * `MemoryDetailed`
                           * `CPU`
                           * `LoadAverage`
                           * `Missing`

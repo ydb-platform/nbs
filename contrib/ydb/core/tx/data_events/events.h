@@ -2,14 +2,18 @@
 
 #include <library/cpp/lwtrace/shuttle.h>
 
-#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
-#include <contrib/ydb/core/protos/data_events.pb.h>
 #include <contrib/ydb/core/base/events.h>
+#include <contrib/ydb/core/protos/data_events.pb.h>
+#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
+#include <contrib/ydb/core/tx/data_events/common/error_codes.h>
 #include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
 
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <yql/essentials/core/issue/yql_issue.h>
+
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 namespace NKikimr::NEvents {
 
@@ -62,7 +66,8 @@ struct TDataEvents {
             return *this;
         }
 
-        void AddOperation(NKikimrDataEvents::TEvWrite_TOperation::EOperationType operationType, const TTableId& tableId, const std::vector<ui32>& columnIds,
+        NKikimrDataEvents::TEvWrite::TOperation& AddOperation(NKikimrDataEvents::TEvWrite_TOperation::EOperationType operationType,
+            const TTableId& tableId, const std::vector<ui32>& columnIds,
             ui64 payloadIndex, NKikimrDataEvents::EDataFormat payloadFormat) {
             Y_ABORT_UNLESS(operationType != NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UNSPECIFIED);
             Y_ABORT_UNLESS(payloadFormat != NKikimrDataEvents::FORMAT_UNSPECIFIED);
@@ -75,6 +80,7 @@ struct TDataEvents {
             operation->MutableTableId()->SetTableId(tableId.PathId.LocalPathId);
             operation->MutableTableId()->SetSchemaVersion(tableId.SchemaVersion);
             operation->MutableColumnIds()->Assign(columnIds.begin(), columnIds.end());
+            return *operation;
         }
 
         ui64 GetTxId() const {
@@ -94,12 +100,15 @@ struct TDataEvents {
 
         static std::unique_ptr<TEvWriteResult> BuildError(const ui64 origin, const ui64 txId, const NKikimrDataEvents::TEvWriteResult::EStatus& status, const TString& errorMsg) {
             auto result = std::make_unique<TEvWriteResult>();
-            ACFL_ERROR("event", "ev_write_error")("status", NKikimrDataEvents::TEvWriteResult::EStatus_Name(status))("details", errorMsg)("tx_id", txId);
+            ACFL_WARN("event", "ev_write_error")("status", NKikimrDataEvents::TEvWriteResult::EStatus_Name(status))("details", errorMsg)("tx_id", txId);
             result->Record.SetOrigin(origin);
             result->Record.SetTxId(txId);
             result->Record.SetStatus(status);
-            auto issue = result->Record.AddIssues();
-            issue->set_message(errorMsg);
+            NYql::TIssue issue(errorMsg);
+            if (const auto statusConclusion = NKikimr::NEvWrite::NErrorCodes::TOperator::GetStatusInfo(status); statusConclusion.IsSuccess()) {
+                NYql::SetIssueCode(statusConclusion->GetIssueCode(), issue);
+            }
+            NYql::IssueToMessage(issue, result->Record.AddIssues());
             return result;
         }
 

@@ -6,13 +6,14 @@
 #include <contrib/ydb/core/kqp/opt/physical/kqp_opt_phy_rules.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider_impl.h>
 
-#include <contrib/ydb/library/yql/core/yql_opt_match_recognize.h>
-#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
+#include <yql/essentials/core/yql_opt_match_recognize.h>
+#include <yql/essentials/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_join.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_log.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_hopping.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
+#include <contrib/ydb/library/yql/dq/opt/dq_opt_join_cost_based.h>
+#include <yql/essentials/utils/log/log.h>
+#include <yql/essentials/providers/common/transform/yql_optimize.h>
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
 
 namespace NKikimr::NKqp::NOpt {
@@ -32,7 +33,6 @@ public:
         , Config(config)
     {
 #define HNDL(name) "KqpLogical-"#name, Hndl(&TKqpLogicalOptTransformer::name)
-        AddHandler(0, &TCoFlatMapBase::Match, HNDL(PushPredicateToReadTable));
         AddHandler(0, &TCoFlatMapBase::Match, HNDL(PushExtractedPredicateToReadTable));
         AddHandler(0, &TCoAggregate::Match, HNDL(RewriteAggregate));
         AddHandler(0, &TCoAggregateCombine::Match, HNDL(PushdownOlapGroupByKeys));
@@ -65,7 +65,6 @@ public:
         AddHandler(0, &TCoWideMap::Match, HNDL(DqReadWideWrapFieldSubset));
         AddHandler(0, &TCoMatchRecognize::Match, HNDL(MatchRecognize));
 
-        AddHandler(1, &TCoFlatMap::Match, HNDL(LatePushExtractedPredicateToReadTable));
         AddHandler(1, &TCoTop::Match, HNDL(RewriteTopSortOverIndexRead));
         AddHandler(1, &TCoTopSort::Match, HNDL(RewriteTopSortOverIndexRead));
         AddHandler(1, &TCoTake::Match, HNDL(RewriteTakeOverIndexRead));
@@ -93,7 +92,7 @@ public:
 public:
     TStatus DoTransform(TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx) override {
         auto status = TOptimizeTransformerBase::DoTransform(input, output, ctx);
-        
+
         if (status == TStatus::Ok) {
             for (const auto& hint: KqpCtx.GetOptimizerHints().GetUnappliedString()) {
                 ctx.AddWarning(YqlIssue({}, TIssuesIds::YQL_UNUSED_HINT, "Unapplied hint: " + hint));
@@ -104,28 +103,7 @@ public:
     }
 
 protected:
-    TMaybeNode<TExprBase> PushPredicateToReadTable(TExprBase node, TExprContext& ctx) {
-        if (KqpCtx.Config->PredicateExtract20) {
-            return node;
-        }
-        TExprBase output = KqpPushPredicateToReadTable(node, ctx, KqpCtx);
-        DumpAppliedRule("PushPredicateToReadTable", node.Ptr(), output.Ptr(), ctx);
-        return output;
-    }
-
     TMaybeNode<TExprBase> PushExtractedPredicateToReadTable(TExprBase node, TExprContext& ctx, const TGetParents& getParents) {
-        if (!KqpCtx.Config->PredicateExtract20) {
-            return node;
-        }
-        TExprBase output = KqpPushExtractedPredicateToReadTable(node, ctx, KqpCtx, TypesCtx, *getParents());
-        DumpAppliedRule("PushExtractedPredicateToReadTable", node.Ptr(), output.Ptr(), ctx);
-        return output;
-    }
-
-    TMaybeNode<TExprBase> LatePushExtractedPredicateToReadTable(TExprBase node, TExprContext& ctx, const TGetParents& getParents) {
-        if (KqpCtx.Config->PredicateExtract20) {
-            return node;
-        }
         TExprBase output = KqpPushExtractedPredicateToReadTable(node, ctx, KqpCtx, TypesCtx, *getParents());
         DumpAppliedRule("PushExtractedPredicateToReadTable", node.Ptr(), output.Ptr(), ctx);
         return output;
@@ -140,7 +118,7 @@ protected:
     TMaybeNode<TExprBase> RewriteAggregate(TExprBase node, TExprContext& ctx) {
         TMaybeNode<TExprBase> output;
         auto aggregate = node.Cast<TCoAggregateBase>();
-        auto hopSetting = GetSetting(aggregate.Settings().Ref(), "hopping");        
+        auto hopSetting = GetSetting(aggregate.Settings().Ref(), "hopping");
         if (hopSetting) {
             auto input = aggregate.Input().Maybe<TDqConnection>();
             if (!input) {
@@ -183,13 +161,14 @@ protected:
     }
 
     TMaybeNode<TExprBase> OptimizeEquiJoinWithCosts(TExprBase node, TExprContext& ctx) {
-        auto maxDPccpDPTableSize = Config->MaxDPccpDPTableSize.Get().GetOrElse(TDqSettings::TDefault::MaxDPccpDPTableSize);
+        auto maxDPhypDPTableSize = Config->MaxDPHypDPTableSize.Get().GetOrElse(TDqSettings::TDefault::MaxDPHypDPTableSize);
         auto optLevel = Config->CostBasedOptimizationLevel.Get().GetOrElse(Config->DefaultCostBasedOptimizationLevel);
+        bool enableShuffleElimination = KqpCtx.Config->OptShuffleElimination.Get().GetOrElse(KqpCtx.Config->DefaultEnableShuffleElimination);
         auto providerCtx = TKqpProviderContext(KqpCtx, optLevel);
-        auto opt = std::unique_ptr<IOptimizerNew>(MakeNativeOptimizerNew(providerCtx, maxDPccpDPTableSize));
+        auto opt = std::unique_ptr<IOptimizerNew>(MakeNativeOptimizerNew(providerCtx, maxDPhypDPTableSize, ctx, enableShuffleElimination));
         TExprBase output = DqOptimizeEquiJoinWithCosts(node, ctx, TypesCtx, optLevel,
             *opt, [](auto& rels, auto label, auto node, auto stat) {
-                rels.emplace_back(std::make_shared<TKqpRelOptimizerNode>(TString(label), stat, node));
+                rels.emplace_back(std::make_shared<TKqpRelOptimizerNode>(TString(label), *stat, node));
             },
             KqpCtx.EquiJoinsCount,
             KqpCtx.GetOptimizerHints()

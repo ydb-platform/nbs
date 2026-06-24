@@ -2,6 +2,7 @@
 #include "guid_recovery.h"
 #include "syncer_job_task.h"
 #include "blobstorage_syncer_dataserdes.h"
+#include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/blobstorage/base/utility.h>
 
 using namespace NKikimrServices;

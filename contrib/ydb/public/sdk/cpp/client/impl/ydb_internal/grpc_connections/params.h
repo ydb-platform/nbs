@@ -3,7 +3,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/internal_header.h>
 #include <contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/common/ssl_credentials.h>
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 class IConnectionsParams {
 public:

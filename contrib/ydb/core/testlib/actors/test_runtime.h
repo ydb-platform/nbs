@@ -2,7 +2,8 @@
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/core/base/memobserver.h>
+#include <contrib/ydb/core/base/memory_controller_iface.h>
+#include <contrib/ydb/core/memory_controller/memory_controller.h>
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/protos/shared_cache.pb.h>
 
@@ -36,7 +37,6 @@ namespace NActors {
             ~TNodeData();
             ui64 GetLoggerPoolId() const override;
             THolder<NActors::TMon> Mon;
-            TIntrusivePtr<NKikimr::TMemObserver> MemObserver = new NKikimr::TMemObserver;
         };
 
         struct TNodeFactory: public INodeFactory {
@@ -53,8 +53,22 @@ namespace NActors {
             std::vector<TIntrusivePtr<NKikimr::TControlBoard>> Icb;
         };
 
+        struct TActorSystemSetupConfig {
+            TCpuManagerConfig CpuManagerConfig;
+            TSchedulerConfig SchedulerConfig;
+            bool MonitorStuckActors = false;
+        };
+
+        struct TActorSystemPools {
+            ui32 SystemPoolId = 0;
+            ui32 UserPoolId = 1;
+            ui32 IOPoolId = 2;
+            ui32 BatchPoolId = 3;
+            TMap<TString, ui32> ServicePools = {};
+        };
+
         TTestActorRuntime(THeSingleSystemEnv d);
-        TTestActorRuntime(ui32 nodeCount, ui32 dataCenterCount, bool UseRealThreads);
+        TTestActorRuntime(ui32 nodeCount, ui32 dataCenterCount, bool UseRealThreads, bool useRdmaAllocator=false);
         TTestActorRuntime(ui32 nodeCount, ui32 dataCenterCount);
         TTestActorRuntime(ui32 nodeCount = 1, bool useRealThreads = false);
 
@@ -62,6 +76,8 @@ namespace NActors {
 
         void AddAppDataInit(std::function<void(ui32, NKikimr::TAppData&)> callback);
         virtual void Initialize(TEgg);
+        void SetupStatsCollectors();
+        void SetupActorSystemConfig(const TActorSystemSetupConfig& config, const TActorSystemPools& pools);
 
         ui16 GetMonPort(ui32 nodeIndex = 0) const;
 
@@ -107,12 +123,6 @@ namespace NActors {
             }
         }
 
-        TIntrusivePtr<NKikimr::TMemObserver> GetMemObserver(ui32 nodeIndex = 0) {
-            TGuard<TMutex> guard(Mutex);
-            auto node = GetNodeById(GetNodeId(nodeIndex));
-            return node->MemObserver;
-        }
-
         void SendToPipe(ui64 tabletId, const TActorId& sender, IEventBase* payload, ui32 nodeIndex = 0,
             const NKikimr::NTabletPipe::TClientConfig& pipeConfig = NKikimr::NTabletPipe::TClientConfig(), TActorId clientId = TActorId(), ui64 cookie = 0, NWilson::TTraceId traceId = {});
         void SendToPipe(TActorId clientId, const TActorId& sender, IEventBase* payload,
@@ -132,7 +142,7 @@ namespace NActors {
     private:
         void Initialize() override;
         TIntrusivePtr<::NMonitoring::TDynamicCounters> GetCountersForComponent(TIntrusivePtr<::NMonitoring::TDynamicCounters> counters, const char* component) override;
-        void InitActorSystemSetup(TActorSystemSetup& setup) override;
+        void InitActorSystemSetup(TActorSystemSetup& setup, TNodeDataBase* node) override;
 
         TNodeData* GetNodeById(size_t idx) override {
             return static_cast<TNodeData*>(TTestActorRuntimeBase::GetNodeById(idx));
@@ -150,5 +160,8 @@ namespace NActors {
         TVector<ui16> MonPorts;
         TActorId SleepEdgeActor;
         TVector<std::function<void(ui32, NKikimr::TAppData&)>> AppDataInit_;
+        bool NeedStatsCollectors = false;
+        std::optional<TActorSystemSetupConfig> ActorSystemSetupConfig;
+        TActorSystemPools ActorSystemPools;
     };
 } // namespace NActors

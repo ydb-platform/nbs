@@ -1,10 +1,10 @@
 #include "dq_function_provider_impl.h"
 
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
+#include <yql/essentials/providers/common/transform/yql_optimize.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
 #include <contrib/ydb/library/yql/providers/function/expr_nodes/dq_function_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
+#include <yql/essentials/providers/common/provider/yql_provider_names.h>
 
 namespace NYql::NDqFunction {
 namespace {
