@@ -912,6 +912,22 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
             return TErrorResponse(error);
         }
 
+        // update in‑memory cached request parameters for the endpoint
+        endpoint.Request->SetVolumeAccessMode(request->GetVolumeAccessMode());
+        endpoint.Request->SetVolumeMountMode(request->GetVolumeMountMode());
+        endpoint.Request->SetMountSeqNumber(request->GetMountSeqNumber());
+
+        // Try to persist the updated request parameters for the endpoint.
+        // If persistence fails, do not report an error: AlterEndpoint was
+        // executed successfully.
+        if (auto storageError = AddEndpointToStorage(*endpoint.Request);
+            HasError(storageError))
+        {
+            STORAGE_ERROR(
+                "Failed to update endpoint in storage: "
+                << FormatError(storageError));
+        }
+
         NProto::TStartEndpointResponse response;
         response.MutableError()->CopyFrom(error);
         response.MutableVolume()->CopyFrom(endpoint.Volume);
