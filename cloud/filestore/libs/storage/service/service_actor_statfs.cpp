@@ -107,7 +107,6 @@ void TStatFileStoreActor::HandleDescribeFileStoreResponse(
     auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
     // explicitly stating the intent
     request->Record.SetFileSystemId(FileSystemId);
-    request->Record.SetAllowCache(true);
     request->Record.SetCacheTTL(StatCacheTTL.MilliSeconds());
 
     // forward request through tablet proxy

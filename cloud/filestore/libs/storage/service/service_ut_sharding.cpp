@@ -2433,8 +2433,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */,
-                30000 /* cacheTTLMs */);
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2453,8 +2452,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */,
-                30000 /* cacheTTLMs */);
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3049,8 +3047,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */,
-                30000 /* cacheTTLMs */);
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3125,8 +3122,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */,
-                16 * 60 * 1000 /* cacheTTLMs */);
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3168,8 +3164,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */,
-                30000 /* cacheTTLMs */);
+                true /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
