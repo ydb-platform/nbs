@@ -2,7 +2,7 @@ GTEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
-IF (SANITIZER_TYPE == "thread")
+IF (SANITIZER_TYPE == "thread" OR SANITIZER_TYPE == "memory")
     SPLIT_FACTOR(40)
 ENDIF()
 
