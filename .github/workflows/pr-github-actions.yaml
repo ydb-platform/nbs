@@ -267,7 +267,7 @@ jobs:
           install: false
 
       - name: set up python environment
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v6.3.0
         with:
           # used in ubuntu 22.04
           python-version: "3.10"
