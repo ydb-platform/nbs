@@ -1226,7 +1226,7 @@ public:
     {
         const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
         const auto freshBytesCount =
-            GetUnflushedFreshBlocksCount() * GetBlockSize();
+            static_cast<ui64>(GetUnflushedFreshBlocksCount()) * GetBlockSize();
         const auto mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
         const auto bytesCount = GetBlocksCount() * GetBlockSize();
 
