@@ -10857,17 +10857,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         // real blocks per disk: 1024 * 10 = 10240
         // total blocks per disk: = 1024 * 3 = 3072
-        // garbage percentage: 100 * (10 - 3) * 1024 / 3072 = 233
-        // percentage more threshold: 100 * (233 - 203) / 203 = 9
+        // garbage percentage: 100 * (10 - 3) * 1024 / 3072 ~ 233
+        // percentage more threshold: 100 * (233 - 203) / 203 ~ 15
 
 
-        // 9 > 8, so should increment and compact 2 ranges
+        // 15 > 14, so should increment and compact 2 ranges
         CheckIncrementAndDecrementCompactionPerRun(
-                1, 1000, 99999, 203, 99999, 5, 8, 5, 2);
+                1, 1000, 99999, 203, 99999, 5, 14, 5, 2);
 
-        // 9 < 15, so should decrement and compact only 1 range
+        // 15 < 16, so should decrement and compact only 1 range
         CheckIncrementAndDecrementCompactionPerRun(
-                2, 1000, 99999, 203, 99999, 7, 30, 15, 1);
+                2, 1000, 99999, 203, 99999, 7, 30, 16, 1);
     }
 
     Y_UNIT_TEST(ShouldChangeBatchSizeDueToBlocksPerRangeCount)
