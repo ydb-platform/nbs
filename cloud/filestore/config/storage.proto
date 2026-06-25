@@ -821,4 +821,10 @@ message TStorageConfig
 
     // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
     optional uint32 StatFileStoreCacheTTL = 516; // in ms
+
+    // Enables reading data when a small regular file is opened in read-only,
+    // non-direct mode. The service attaches the file contents to the
+    // create-handle response for clients that can consume it.
+    optional bool ReadDataOnReadOnlyCreateHandleEnabled = 517;
+    optional uint64 ReadDataOnReadOnlyCreateHandleMaxFileSize = 518;
 }

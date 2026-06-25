@@ -90,6 +90,9 @@ message TCreateHandleResponse
     // kernel this refers to the page cache
     bool GuestKeepCache = 6;
 
+    // Optional full file contents for small read-only non-direct opens.
+    bytes Buffer = 7;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }

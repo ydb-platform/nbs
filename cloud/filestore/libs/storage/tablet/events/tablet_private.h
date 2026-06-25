@@ -360,6 +360,8 @@ struct TEvIndexTabletPrivate
     struct TReadWriteCompleted: TOperationCompleted
     {
         const bool IsOverloaded;
+        const TString CreateHandleSessionId;
+        const ui64 CreateHandleRequestId;
 
         TReadWriteCompleted(
                 TSet<ui32> mixedBlocksRanges,
@@ -367,7 +369,9 @@ struct TEvIndexTabletPrivate
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
-                bool isOverloaded)
+                bool isOverloaded,
+                TString createHandleSessionId,
+                ui64 createHandleRequestId)
             : TOperationCompleted(
                 std::move(mixedBlocksRanges),
                 commitId,
@@ -375,6 +379,8 @@ struct TEvIndexTabletPrivate
                 requestBytes,
                 d)
             , IsOverloaded(isOverloaded)
+            , CreateHandleSessionId(std::move(createHandleSessionId))
+            , CreateHandleRequestId(createHandleRequestId)
         {
         }
     };

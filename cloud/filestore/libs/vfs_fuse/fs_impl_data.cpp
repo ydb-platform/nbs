@@ -119,6 +119,50 @@ void FillWriteDataIovecs(
 ////////////////////////////////////////////////////////////////////////////////
 // read & write files
 
+void TFileSystem::StoreReadData(
+    ui64 handle,
+    TString data)
+{
+    if (!handle || data.empty()) {
+        return;
+    }
+
+    with_lock (ReadDataLock) {
+        ReadDataByHandle[handle] = std::move(data);
+    }
+}
+
+bool TFileSystem::TryGetReadData(
+    ui64 handle,
+    ui64 offset,
+    ui32 length,
+    TString* data)
+{
+    with_lock (ReadDataLock) {
+        auto it = ReadDataByHandle.find(handle);
+        if (it == ReadDataByHandle.end()) {
+            return false;
+        }
+
+        const auto& buffer = it->second;
+        if (offset >= buffer.size()) {
+            data->clear();
+            return true;
+        }
+
+        const ui64 size = Min<ui64>(length, buffer.size() - offset);
+        *data = buffer.substr(offset, size);
+        return true;
+    }
+}
+
+void TFileSystem::DropReadData(ui64 handle)
+{
+    with_lock (ReadDataLock) {
+        ReadDataByHandle.erase(handle);
+    }
+}
+
 void TFileSystem::Create(
     TCallContextPtr callContext,
     fuse_req_t req,
@@ -170,6 +214,11 @@ void TFileSystem::Create(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                if (!response.GetBuffer().empty()) {
+                    self->StoreReadData(
+                        response.GetHandle(),
+                        response.GetBuffer());
+                }
                 self->ReplyCreateWithCache(
                     *callContext,
                     error,
@@ -222,7 +271,11 @@ void TFileSystem::Open(
                 {
                     fi.keep_cache = 1;
                 }
-
+                if (!response.GetBuffer().empty()) {
+                    self->StoreReadData(
+                        response.GetHandle(),
+                        response.GetBuffer());
+                }
                 self->ReplyOpen(*callContext, response.GetError(), req, &fi);
             }
         });
@@ -272,6 +325,8 @@ void TFileSystem::ReleaseImpl(
     ui64 handle,
     const NCloud::NProto::TError& writeBackCacheError)
 {
+    DropReadData(handle);
+
     // If WriteBackCache was used, Release() previously asked it to flush the
     // data related to this handle and release the references to it. It could
     // return an error if data has been lost due to flush failure.
@@ -387,6 +442,20 @@ void TFileSystem::Read(
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(size, Config->GetBlockSize());
 
+    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
+    if (strategy == EWriteBackCacheRequestStrategy::DoNotUse) {
+        TString data;
+        if (TryGetReadData(fi->fh, offset, size, &data)) {
+            ReplyBuf(
+                *callContext,
+                {},
+                req,
+                data.empty() ? nullptr : data.data(),
+                data.size());
+            return;
+        }
+    }
+
     auto request = StartRequest<NProto::TReadDataRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
@@ -435,8 +504,6 @@ void TFileSystem::Read(
             }
         }
     };
-
-    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
 
     switch (strategy) {
         case EWriteBackCacheRequestStrategy::DoNotUse: {

@@ -140,7 +140,9 @@ void TWriteDataActor::ReplyAndDie(
             1,
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,
-            BackendInfo.GetIsOverloaded());
+            BackendInfo.GetIsOverloaded(),
+            TString() /* createHandleSessionId */,
+            0 /* createHandleRequestId */);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 

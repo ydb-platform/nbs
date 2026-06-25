@@ -612,6 +612,10 @@ private:
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TListNodes& args);
 
+    void StartReadDataForCreateHandle(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TCreateHandle& args);
+
     void CompleteCreateHandle(
         const NActors::TActorContext& ctx,
         TTxIndexTablet::TCreateHandle& args);

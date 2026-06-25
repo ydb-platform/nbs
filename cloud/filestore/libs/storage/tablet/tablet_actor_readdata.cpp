@@ -345,6 +345,9 @@ private:
     IProfileLogPtr ProfileLog;
     NProto::TBackendInfo BackendInfo;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
+    TMaybe<NProto::TCreateHandleResponse> CreateHandleResponse;
+    TString CreateHandleSessionId;
+    ui64 CreateHandleRequestId = 0;
 
 public:
     TReadDataActor(
@@ -365,7 +368,10 @@ public:
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest);
+        NProto::TProfileLogRequestInfo profileLogRequest,
+        TMaybe<NProto::TCreateHandleResponse> createHandleResponse,
+        TString createHandleSessionId,
+        ui64 createHandleRequestId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -406,7 +412,10 @@ TReadDataActor::TReadDataActor(
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest)
+        NProto::TProfileLogRequestInfo profileLogRequest,
+        TMaybe<NProto::TCreateHandleResponse> createHandleResponse,
+        TString createHandleSessionId,
+        ui64 createHandleRequestId)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
@@ -425,6 +434,9 @@ TReadDataActor::TReadDataActor(
     , ProfileLog(std::move(profileLog))
     , BackendInfo(std::move(backendInfo))
     , ProfileLogRequest(std::move(profileLogRequest))
+    , CreateHandleResponse(std::move(createHandleResponse))
+    , CreateHandleSessionId(std::move(createHandleSessionId))
+    , CreateHandleRequestId(createHandleRequestId)
 {
     TABLET_VERIFY(ActualRange.IsAligned());
 }
@@ -508,7 +520,9 @@ void TReadDataActor::ReplyAndDie(
             1,
             OriginByteRange.Length,
             ctx.Now() - RequestInfo->StartedTs,
-            BackendInfo.GetIsOverloaded());
+            BackendInfo.GetIsOverloaded(),
+            CreateHandleSessionId,
+            CreateHandleRequestId);
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -519,18 +533,50 @@ void TReadDataActor::ReplyAndDie(
         "ReadData");
 
     if (RequestInfo->Sender != Tablet) {
-        // reply to caller
-        auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
-        if (SUCCEEDED(error.GetCode())) {
-            CopyFileData(
-                LogTag,
-                OriginByteRange,
-                ActualRange,
-                TotalSize,
-                *Buffer,
-                response->Record.MutableBuffer());
+        auto copyData = [&] (auto& record) {
+            if (SUCCEEDED(error.GetCode())) {
+                CopyFileData(
+                    LogTag,
+                    OriginByteRange,
+                    ActualRange,
+                    TotalSize,
+                    *Buffer,
+                    record.MutableBuffer());
+            }
+        };
 
-            if (ShouldCalculateChecksums) {
+        auto completeResponse = [&] (auto& record, const char* requestName) {
+            const bool builtTraceInfo = BuildTraceInfo(
+                TraceSerializer,
+                RequestInfo->CallContext,
+                record);
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+                "%s %s: #%lu completed (%s), trace-info: %d",
+                LogTag.c_str(),
+                requestName,
+                RequestInfo->CallContext->RequestId,
+                FormatError(record.GetError()).c_str(),
+                builtTraceInfo);
+            BuildThrottlerInfo(*RequestInfo->CallContext, record);
+            *record.MutableHeaders()->MutableBackendInfo() =
+                std::move(BackendInfo);
+        };
+
+        if (CreateHandleResponse) {
+            auto response =
+                std::make_unique<TEvService::TEvCreateHandleResponse>();
+            response->Record = std::move(CreateHandleResponse.GetRef());
+
+            copyData(response->Record);
+            completeResponse(response->Record, "CreateHandle read-ahead");
+
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        } else {
+            auto response =
+                std::make_unique<TEvService::TEvReadDataResponse>(error);
+            copyData(response->Record);
+
+            if (SUCCEEDED(error.GetCode()) && ShouldCalculateChecksums) {
                 CalculateChecksums(
                     response->Record.GetBuffer(),
                     BlockSize,
@@ -538,23 +584,11 @@ void TReadDataActor::ReplyAndDie(
                     FileSystemId,
                     ProfileLogRequest);
             }
+
+            completeResponse(response->Record, "ReadData");
+
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
         }
-
-        const bool builtTraceInfo = BuildTraceInfo(
-            TraceSerializer,
-            RequestInfo->CallContext,
-            response->Record);
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
-            "%s ReadData: #%lu completed (%s), trace-info: %d",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str(),
-            builtTraceInfo);
-        BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
-        *response->Record.MutableHeaders()->MutableBackendInfo() =
-            std::move(BackendInfo);
-
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
     FinalizeProfileLogRequestInfo(
@@ -675,6 +709,7 @@ void TIndexTabletActor::HandleReadData(
         alignedByteRange,
         std::move(blockBuffer),
         false /* describeOnly */,
+        TMaybe<NProto::TCreateHandleResponse>(),
         std::move(profileLogRequest));
 }
 
@@ -691,6 +726,12 @@ void TIndexTabletActor::HandleReadDataCompleted(
     Metrics.ReadData.Update(msg->Count, msg->Size, msg->Time);
     if (msg->IsOverloaded) {
         Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    if (msg->CreateHandleRequestId) {
+        CommitDupCacheEntry(
+            msg->CreateHandleSessionId,
+            msg->CreateHandleRequestId);
     }
 }
 
@@ -813,6 +854,7 @@ void TIndexTabletActor::HandleDescribeData(
         alignedByteRange,
         std::move(blockBuffer),
         true /* describeOnly */,
+        TMaybe<NProto::TCreateHandleResponse>(),
         std::move(profileLogRequest));
 }
 
@@ -1003,6 +1045,52 @@ void TIndexTabletActor::CompleteTx_ReadData(
         ReleaseMixedBlocks(args.MixedBlocksRanges);
     };
 
+    if (args.CreateHandleResponse &&
+        (HasError(args.Error) || !ShouldReadBlobs(args.Blocks)))
+    {
+        auto response = std::make_unique<TEvService::TEvCreateHandleResponse>();
+        response->Record = std::move(args.CreateHandleResponse.GetRef());
+
+        if (!HasError(args.Error)) {
+            ApplyBytes(
+                LogTag,
+                args.ActualRange(),
+                std::move(args.Bytes),
+                *args.Buffer);
+
+            CopyFileData(
+                LogTag,
+                args.OriginByteRange,
+                args.ActualRange(),
+                args.Node->Attrs.GetSize(),
+                *args.Buffer,
+                response->Record.MutableBuffer());
+        }
+
+        CommitDupCacheEntry(args.SessionId, args.RequestId);
+
+        auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
+            ? Metrics.CreateHandleInShard
+            : Metrics.CreateHandle;
+        requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
+
+        CompleteResponse<TEvService::TCreateHandleMethod>(
+            response->Record,
+            args.RequestInfo->CallContext,
+            ctx);
+
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(S_OK),
+            ProfileLog);
+
+        return;
+    }
+
     if (args.DescribeOnly && !HasError(args.Error)) {
         if (args.ReadAheadRange) {
             NProtoPrivate::TDescribeDataResponse record;
@@ -1154,7 +1242,10 @@ void TIndexTabletActor::CompleteTx_ReadData(
         std::move(args.MixedBlocksRanges),
         ProfileLog,
         std::move(backendInfo),
-        std::move(args.ProfileLogRequest));
+        std::move(args.ProfileLogRequest),
+        std::move(args.CreateHandleResponse),
+        args.SessionId,
+        args.RequestId);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

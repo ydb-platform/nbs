@@ -2069,6 +2069,7 @@ struct TTxIndexTablet
         const TByteRange AlignedByteRange;
         /*const*/ IBlockBufferPtr Buffer;
         const bool DescribeOnly;
+        TMaybe<NProto::TCreateHandleResponse> CreateHandleResponse;
         // Used when we want to read data from a specific node, not the node
         // inferred from the handle.
         const ui64 ExplicitNodeId = InvalidNodeId;
@@ -2091,6 +2092,7 @@ struct TTxIndexTablet
                 TByteRange alignedByteRange,
                 IBlockBufferPtr buffer,
                 bool describeOnly,
+                TMaybe<NProto::TCreateHandleResponse> createHandleResponse,
                 NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
@@ -2100,6 +2102,7 @@ struct TTxIndexTablet
             , AlignedByteRange(alignedByteRange)
             , Buffer(std::move(buffer))
             , DescribeOnly(describeOnly)
+            , CreateHandleResponse(std::move(createHandleResponse))
             , ExplicitNodeId(request.GetNodeId())
             , Blocks(AlignedByteRange.BlockCount())
             , Bytes(AlignedByteRange.BlockCount())

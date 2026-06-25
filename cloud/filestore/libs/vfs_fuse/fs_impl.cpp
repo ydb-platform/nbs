@@ -85,6 +85,9 @@ void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
     DirectoryHandleCache->Reset();
+    with_lock (ReadDataLock) {
+        ReadDataByHandle.clear();
+    }
 }
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
