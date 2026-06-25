@@ -121,7 +121,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
             std::move(msg->Record),
             DiskId,
             SelfId(),   // parentActorId
-            WriteAndZeroRequestsInProgress.AddWriteRequest(range));
+            WriteAndZeroRequestsInProgress.AddWriteRequest(range),
+            LogTitle.GetChild(GetCycleCount()));
     }
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
