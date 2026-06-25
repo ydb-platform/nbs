@@ -167,6 +167,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeUpdateNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeCreateHandle,                 __VA_ARGS__)                       \
     xxx(UnsafeChangeTabletState,            __VA_ARGS__)                       \
+                                                                               \
+    xxx(GetFileSystemResizeState,           __VA_ARGS__)                       \
+    xxx(SetFileSystemResizeState,           __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
@@ -499,6 +502,55 @@ struct TTxIndexTablet
         void Clear() override
         {
             // nothing to do
+        }
+    };
+
+    //
+    // GetFileSystemResizeState
+    //
+
+    struct TGetFileSystemResizeState
+        : TTxIndexTabletBase
+        , TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        TMaybe<NProtoPrivate::TFileSystemResizeState> State;
+
+        explicit TGetFileSystemResizeState(TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            State.Clear();
+        }
+    };
+
+    //
+    // SetFileSystemResizeState
+    //
+
+    struct TSetFileSystemResizeState
+        : TTxIndexTabletBase
+        , TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TSetFileSystemResizeStateRequest Request;
+        TMaybe<NProtoPrivate::TFileSystemResizeState> State;
+
+        TSetFileSystemResizeState(
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TSetFileSystemResizeStateRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            Request.Clear();
+            State.Clear();
         }
     };
 

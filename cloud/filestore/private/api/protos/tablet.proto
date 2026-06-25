@@ -1251,3 +1251,79 @@ message TListNodesInternalResponse
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// FileSystemResizeState request/response
+
+message TFileSystemResizeState
+{
+    enum EStatus
+    {
+        RESIZE_STATUS_UNSPECIFIED = 0;
+        RESIZE_IN_PROGRESS = 1;
+        RESIZE_FINISHED = 2;
+    }
+
+    string OperationId = 1;
+    EStatus Status = 2;
+
+    uint64 StartedTs = 3;
+    uint64 UpdatedTs = 4;
+    uint64 FinishedTs = 5;
+
+    uint64 TargetBlocksCount = 6;
+    uint32 InitialShardCount = 7;
+    uint32 TargetShardCount = 8;
+
+    bool StrictFileSystemSizeEnforcementEnabled = 9;
+    bool DirectoryCreationInShardsEnabled = 10;
+    bool ForceDirectoryCreationInShards = 11;
+
+    bytes RequestFingerprint = 12;
+    bytes PlanFingerprint = 13;
+
+    bool MainFileStoreAltered = 14;
+    bool MainFileStoreConfigured = 15;
+
+    bytes AlteredShardBitmap = 16;
+    bytes CreatedShardBitmap = 17;
+    bytes ConfiguredShardBitmap = 18;
+
+    uint64 StateGeneration = 19;
+}
+
+message TGetFileSystemResizeStateRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+}
+
+message TGetFileSystemResizeStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Absent if resize state has never been written or was cleared.
+    optional TFileSystemResizeState State = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SetFileSystemResizeState request/response
+
+message TSetFileSystemResizeStateRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // New resize state.
+    TFileSystemResizeState State = 2;
+}
+
+message TSetFileSystemResizeStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // State after applying the request.
+    optional TFileSystemResizeState State = 2;
+}

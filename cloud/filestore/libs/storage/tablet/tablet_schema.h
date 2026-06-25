@@ -596,6 +596,21 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    struct FileSystemResizeState: TTableSchema<30>
+    {
+        struct Id    : Column<1, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct Proto : ProtoColumn<2, NProtoPrivate::TFileSystemResizeState> {};
+
+        using TKey = TableKey<Id>;
+
+        using TColumns = TableColumns<
+            Id,
+            Proto
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -625,7 +640,8 @@ struct TIndexTabletSchema
         LargeDeletionMarkers,
         OrphanNodes,
         ResponseLog,
-        UnconfirmedData
+        UnconfirmedData,
+        FileSystemResizeState
     >;
 
     using TSettings = SchemaSettings<

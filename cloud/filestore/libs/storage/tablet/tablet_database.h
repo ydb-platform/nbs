@@ -576,6 +576,15 @@ public:
     void DeleteUnconfirmedData(ui64 commitId);
 
     bool ReadUnconfirmedData(TVector<TUnconfirmedDataEntry>& entries);
+
+    //
+    // FileSystemResizeState
+    //
+
+    bool ReadFileSystemResizeState(
+        TMaybe<NProtoPrivate::TFileSystemResizeState>& state);
+    void WriteFileSystemResizeState(
+        const NProtoPrivate::TFileSystemResizeState& state);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

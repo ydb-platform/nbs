@@ -64,6 +64,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
+    xxx(GetFileSystemResizeState,   __VA_ARGS__)                               \
+    xxx(SetFileSystemResizeState,   __VA_ARGS__)                               \
                                                                                \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
@@ -225,6 +227,12 @@ struct TEvIndexTablet
 
         EvListNodesInternalRequest = EvBegin + 83,
         EvListNodesInternalResponse,
+
+        EvGetFileSystemResizeStateRequest = EvBegin + 85,
+        EvGetFileSystemResizeStateResponse,
+
+        EvSetFileSystemResizeStateRequest = EvBegin + 87,
+        EvSetFileSystemResizeStateResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out
