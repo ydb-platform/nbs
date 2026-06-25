@@ -3,6 +3,7 @@
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -14,6 +15,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/random/fast.h>
+#include <util/random/random.h>
 
 #include <algorithm>
 #include <initializer_list>
@@ -23,6 +25,27 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NKikimr;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Reschedules transactions with probability 1/Ratio, to exercise the recovery
+// confirmation path under transaction restarts/reorderings.
+class TRandomTxRescheduler final
+    : public ITxRescheduler
+{
+private:
+    const ui32 Ratio;
+
+public:
+    explicit TRandomTxRescheduler(ui32 ratio)
+        : Ratio(ratio)
+    {}
+
+    bool ShouldReschedule() override
+    {
+        return Ratio > 0 && RandomNumber<ui32>(Ratio) == 0;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1355,46 +1378,54 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
     Y_UNIT_TEST(ShouldConfirmOverlappingUnconfirmedWritesInOrderAfterRestart)
     {
         const ui32 block = 4_KB;
+        const ui32 cycleCount = 15;
 
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetWriteBlobThreshold(1);
-        storageConfig.SetAddingUnconfirmedDataEnabled(true);
-        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        for (ui32 cycle = 0; cycle < cycleCount; ++cycle) {
+            NProto::TStorageConfig storageConfig;
+            storageConfig.SetWriteBlobThreshold(1);
+            storageConfig.SetAddingUnconfirmedDataEnabled(true);
+            storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
-        TTestEnv env({}, std::move(storageConfig));
-        ui32 nodeIdx = env.AddDynamicNode();
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+            TTestEnv env({}, std::move(storageConfig));
+            // Inject a rescheduler so recovery confirmation is exercised under
+            // transaction restarts/reorderings.
+            env.SetTxRescheduler(std::make_shared<TRandomTxRescheduler>(3));
+            ui32 nodeIdx = env.AddDynamicNode();
+            ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.InitSession("client", "session");
+            TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+            tablet.InitSession("client", "session");
 
-        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        ui64 handle = CreateHandle(tablet, id);
-        AssertStorageStats(tablet, 0, 0);
+            auto id =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            ui64 handle = CreateHandle(tablet, id);
+            AssertStorageStats(tablet, 0, 0);
 
-        // Three overlapping writes to block 0 (oldest -> newest)
-        ui64 prevCommitId = 0;
-        for (char fill: {'a', 'b', 'c'}) {
-            const ui64 commitId = GenerateBlobIdsAndPutBlob(
-                env,
-                tablet,
-                id,
-                handle,
-                0,
-                block,
-                fill);
-            WaitForTabletCommit(env);
-            UNIT_ASSERT_GT(commitId, prevCommitId);
-            prevCommitId = commitId;
+            // Three overlapping writes to block 0 (oldest -> newest)
+            ui64 prevCommitId = 0;
+            for (char fill: {'a', 'b', 'c'}) {
+                const ui64 commitId = GenerateBlobIdsAndPutBlob(
+                    env,
+                    tablet,
+                    id,
+                    handle,
+                    0,
+                    block,
+                    fill);
+                WaitForTabletCommit(env);
+                UNIT_ASSERT_GT(commitId, prevCommitId);
+                prevCommitId = commitId;
+            }
+            AssertStorageStats(tablet, 3, 0);
+
+            handle = RebootTabletAndCreateHandle(tablet, id);
+            AssertStorageStats(tablet, 0, 0);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                BuildExpectedData({{block, 'c'}}),
+                ReadData(tablet, handle, block, 0),
+                "cycle=" << cycle);
         }
-        AssertStorageStats(tablet, 3, 0);
-
-        handle = RebootTabletAndCreateHandle(tablet, id);
-        AssertStorageStats(tablet, 0, 0);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            BuildExpectedData({{block, 'c'}}),
-            ReadData(tablet, handle, block, 0));
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInAddDataUnconfirmed)

@@ -11,6 +11,7 @@ SRCS(
     tablet.cpp
     tablet_counters.cpp
     tablet_schema.cpp
+    tablet_tx_rescheduler.cpp
 )
 
 PEERDIR(

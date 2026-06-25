@@ -205,7 +205,8 @@ public:
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
-        NFastShard::IServerPtr fastShardServer);
+        NFastShard::IServerPtr fastShardServer,
+        ITxReschedulerPtr txRescheduler);
     ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;

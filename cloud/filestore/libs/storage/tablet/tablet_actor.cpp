@@ -68,9 +68,10 @@ TIndexTabletActor::TIndexTabletActor(
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
-        NFastShard::IServerPtr fastShardServer)
+        NFastShard::IServerPtr fastShardServer,
+        ITxReschedulerPtr txRescheduler)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), std::move(txRescheduler))
     , Metrics{std::move(metricsRegistry)}
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
