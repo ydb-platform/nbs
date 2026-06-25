@@ -55,7 +55,7 @@ private:
     const IThrottlerProviderPtr ThrottlerProvider;
     const TString ClientId;
     const TString DiskId;
-    const NProto::TStartEndpointRequest StartRequest;
+    NProto::TStartEndpointRequest StartRequest;
 
     std::weak_ptr<TSessionSwitchingGuard> SwitchingGuard;
     TString SessionId;
@@ -124,6 +124,13 @@ public:
             std::move(callContext),
             headers);
         const auto& response = Executor.WaitFor(future);
+
+        if (!HasError(response)) {
+            StartRequest.SetVolumeAccessMode(accessMode);
+            StartRequest.SetVolumeMountMode(mountMode);
+            StartRequest.SetMountSeqNumber(mountSeqNumber);
+        }
+
         return response.GetError();
     }
 
