@@ -683,6 +683,12 @@ public:
         return std::make_unique<TRequestEvent>(entryId);
     }
 
+    auto CreateListOpLogEntriesRequest()
+    {
+        using TRequestEvent = TEvIndexTabletPrivate::TEvListOpLogEntriesRequest;
+        return std::make_unique<TRequestEvent>();
+    }
+
     auto CreateWriteOpLogEntryRequest(NProto::TOpLogEntry entry)
     {
         using TRequestEvent = TEvIndexTabletPrivate::TEvWriteOpLogEntryRequest;

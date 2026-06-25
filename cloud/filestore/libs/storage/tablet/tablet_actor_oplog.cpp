@@ -85,12 +85,16 @@ void TIndexTabletActor::ReplayOpLog(
                 false   // shouldUnlockUponCompletion
             );
         } else if (op.HasUnlinkNodeInShardRequest()) {
-            bool shouldUnlockUponCompletion =
-                GetFileSystem().GetDirectoryCreationInShardsEnabled();
+            const auto& request = op.GetUnlinkNodeInShardRequest();
+            // UnlinkNodeInShardRequests originating from
+            // RenameNode[InDestination] ops don't have OriginalRequest and
+            // don't require any post-unlink NodeRef deletion.
+            bool hasOriginalRequest = request.HasOriginalRequest();
+            bool shouldUnlockUponCompletion = hasOriginalRequest
+                && GetFileSystem().GetDirectoryCreationInShardsEnabled();
             if (shouldUnlockUponCompletion) {
                 // There is a need to unlock the node ref after the operation is
                 // completed, because the node ref should have been locked
-                const auto& request = op.GetUnlinkNodeInShardRequest();
                 const auto& originalRequest = request.GetOriginalRequest();
                 const bool locked = TryLockNodeRef(
                     {originalRequest.GetNodeId(), originalRequest.GetName()});
@@ -307,6 +311,65 @@ void TIndexTabletActor::CompleteTx_GetOpLogEntry(
     auto response =
         std::make_unique<TEvIndexTabletPrivate::TEvGetOpLogEntryResponse>();
     response->OpLogEntry = std::move(args.Entry);
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleListOpLogEntries(
+    const TEvIndexTabletPrivate::TEvListOpLogEntriesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddInFlightRequest<TEvIndexTabletPrivate::TListOpLogEntriesMethod>(
+        *requestInfo);
+
+    ExecuteTx<TListOpLogEntries>(ctx, std::move(requestInfo));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_ListOpLogEntries(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TListOpLogEntries& args)
+{
+    Y_UNUSED(ctx);
+
+    TIndexTabletDatabase db(tx.DB);
+    return db.ReadOpLog(args.Entries);
+}
+
+void TIndexTabletActor::ExecuteTx_ListOpLogEntries(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TListOpLogEntries& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+}
+
+void TIndexTabletActor::CompleteTx_ListOpLogEntries(
+    const TActorContext& ctx,
+    TTxIndexTablet::TListOpLogEntries& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s ListOpLogEntries completed: %lu",
+        LogTag.c_str(),
+        args.Entries.size());
+
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvListOpLogEntriesResponse>();
+    response->OpLogEntries = std::move(args.Entries);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
