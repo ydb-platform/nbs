@@ -480,6 +480,14 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             EFileStoreSystemRequest::AddDataUnconfirmed,
             ctx.Now());
 
+        AddRange(
+            msg->Record.GetNodeId(),
+            msg->Record.GetHandle(),
+            msg->Record.GetOffset(),
+            msg->Record.GetLength(),
+            profileLogRequest);
+        profileLogRequest.SetCommitId(commitId);
+
         auto requestInfo = CreateRequestInfo(
             SelfId(),
             commitId,
