@@ -11,9 +11,13 @@
 
 #include <util/generic/algorithm.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
     TPartitionDatabase& db,
@@ -149,6 +153,8 @@ TVerifyBlocksMetaResult VerifyMergedBlocksMeta(
 
 }   // namespace
 
+////////////////////////////////////////////////////////////////////////////////
+
 TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
@@ -263,7 +269,6 @@ void ExecuteCleanupTransaction(
     size_t mixedBlobsCount = 0;
     size_t mergedBlobsCount = 0;
 
-
     Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
         const auto& item = args.CleanupQueue[i];
@@ -329,7 +334,5 @@ void ExecuteCleanupTransaction(
 
     db.WriteMeta(state.GetMeta());
 }
-
-
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

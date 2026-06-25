@@ -6,6 +6,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TVerifyBlocksMetaResult
 {
     bool Ready = true;
