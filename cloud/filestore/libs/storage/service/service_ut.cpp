@@ -4928,7 +4928,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         testReadDataRequestWithIovecs(std::move(config));
     }
 
-
     Y_UNIT_TEST(ShouldUseExternalPayloadForReadDataRequest)
     {
         NProto::TStorageConfig config;

@@ -740,14 +740,15 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
                 << bufferSize << " Actual size: " << payload.size());
     }
 
-    ui64 remainingBufferSize = bufferSize;
-    auto it = payload.begin();
+    auto it = payload.begin() + readDataResponse.GetBufferOffset();
     if (!ReadRequest.GetIovecs().empty()) {
+        ui64 remainingBufferSize =
+            bufferSize - readDataResponse.GetBufferOffset();
         for (auto& iovec: ReadRequest.GetIovecs()) {
-            ui64 currentOffset = 0;
-            while (iovec.GetLength() > currentOffset) {
+            ui64 iovecOffset = 0;
+            while (iovec.GetLength() > iovecOffset) {
                 ui64 dataToWrite =
-                    Min(iovec.GetLength() - currentOffset, remainingBufferSize);
+                    Min(iovec.GetLength() - iovecOffset, remainingBufferSize);
                 if (dataToWrite == 0) {
                     break;
                 }
@@ -756,25 +757,24 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
                     it,
                     dataToWrite);
                 remainingBufferSize -= dataToWrite;
-                currentOffset += dataToWrite;
+                iovecOffset += dataToWrite;
                 it += dataToWrite;
             }
+        }
+
+        if (remainingBufferSize != 0) {
+            return MakeError(
+                E_BADMSG,
+                TStringBuilder()
+                    << "Failed to read buffer from payload. "
+                       " Expected buffer size: "
+                    << bufferSize << " Actual bytes copied from payload: "
+                    << bufferSize - remainingBufferSize);
         }
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
         buffer.ReserveAndResize(bufferSize);
         TRopeUtils::Memcpy(buffer.begin(), it, payload.size());
-        remainingBufferSize -= payload.size();
-    }
-
-    if (remainingBufferSize != 0) {
-        return MakeError(
-            E_BADMSG,
-            TStringBuilder()
-                << "Failed to read buffer from payload. "
-                   " Expected buffer size: "
-                << bufferSize << " Actual bytes copied from payload: "
-                << bufferSize - remainingBufferSize);
     }
 
     return {};
