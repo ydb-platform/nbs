@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <util/generic/algorithm.h>
@@ -260,6 +261,9 @@ bool PrepareCleanupTransaction(
 }
 
 void ExecuteCleanupTransaction(
+    const NActors::TActorSystem* actorSystem,
+    const TLogTitle& logTitle,
+    const ui64 tabletId,
     TPartitionDatabase& db,
     TTxPartition::TCleanup& args,
     TPartitionState& state)
@@ -317,6 +321,13 @@ void ExecuteCleanupTransaction(
                     Min(delta, state.GetMergedBlocksCount()));
             }
         }
+
+        LOG_DEBUG(
+           *actorSystem,
+            TBlockStoreComponents::PARTITION,
+            "%s Delete blob: %s",
+            logTitle.GetWithTime().c_str(),
+            ToString(MakeBlobId(tabletId, item.BlobId)).Quote().c_str());
 
         state.RemoveCleanupQueueItem(item);
 

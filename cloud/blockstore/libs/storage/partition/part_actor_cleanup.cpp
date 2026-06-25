@@ -204,16 +204,16 @@ void TPartitionActor::ExecuteCleanup(
     TTransactionContext& tx,
     TTxPartition::TCleanup& args)
 {
+    Y_UNUSED(ctx);
+
     TPartitionDatabase db(tx.DB);
-    ExecuteCleanupTransaction(db, args, *State);
-    for (const auto& item: args.CleanupQueue) {
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Delete blob: %s",
-            LogTitle.GetWithTime().c_str(),
-            ToString(MakeBlobId(TabletID(), item.BlobId)).Quote().c_str());
-    }
+    ExecuteCleanupTransaction(
+        TActorContext::ActorSystem(),
+        LogTitle,
+        TabletID(),
+        db,
+        args,
+        *State);
 }
 
 void TPartitionActor::CompleteCleanup(

@@ -1,8 +1,10 @@
 #pragma once
 
-#include "part_state.h"
 #include "part_database.h"
+#include "part_state.h"
 #include "part_tx.h"
+
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -28,6 +30,9 @@ bool PrepareCleanupTransaction(
     TTxPartition::TCleanup& args);
 
 void ExecuteCleanupTransaction(
+    const NActors::TActorSystem* actorSystem,
+    const TLogTitle& logTitle,
+    const ui64 tabletId,
     TPartitionDatabase& db,
     TTxPartition::TCleanup& args,
     TPartitionState& state);

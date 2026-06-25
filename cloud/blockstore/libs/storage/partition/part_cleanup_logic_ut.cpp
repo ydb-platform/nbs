@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
+#include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
@@ -65,21 +66,21 @@ TPartitionState MakeState(size_t blockCount = 2048)
     return TPartitionState(
         DefaultConfig(1, blockCount),
         BuildDefaultCompactionPolicy(5),
-        0,      // compactionScoreHistorySize
-        0,      // cleanupScoreHistorySize
+        0,   // compactionScoreHistorySize
+        0,   // cleanupScoreHistorySize
         DefaultBPConfig(),
         DefaultFreeSpaceConfig(),
-        Max<ui32>(),    // maxIORequestsInFlight
-        0,      // reassignChannelsPercentageThreshold
-        100,    // reassignFreshChannelsPercentageThreshold
-        100,    // reassignMixedChannelsPercentageThreshold
-        false,  // reassignSystemChannelsImmediately
-        5,      // channelCount (System + Log + Index + 1 Merged + Fresh)
-        0,      // mixedIndexCacheSize
-        10000,  // allocationUnit
-        100,    // maxBlobsPerUnit
-        10,     // maxBlobsPerRange
-        1,      // compactionRangeCountPerRun
+        Max<ui32>(),   // maxIORequestsInFlight
+        0,             // reassignChannelsPercentageThreshold
+        100,           // reassignFreshChannelsPercentageThreshold
+        100,           // reassignMixedChannelsPercentageThreshold
+        false,         // reassignSystemChannelsImmediately
+        5,             // channelCount (System + Log + Index + 1 Merged + Fresh)
+        0,             // mixedIndexCacheSize
+        10000,         // allocationUnit
+        100,           // maxBlobsPerUnit
+        10,            // maxBlobsPerRange
+        1,             // compactionRangeCountPerRun
         std::move(threadSafeState));
 }
 
@@ -127,25 +128,25 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
     setup.MixedBlobMeta = MakeMixedBlobMeta({0, 1, 2});
     setup.MergedBlobMeta = MakeMergedBlobMeta(10, 13);
 
-    executor.WriteTx([&](TPartitionDatabase db) {
-        setup.MixedBlobId = executor.MakeBlobId(3);
-        state.WriteMixedBlocks(db, setup.MixedBlobId, {0, 1, 2}, 1);
-        db.WriteBlobMeta(setup.MixedBlobId, setup.MixedBlobMeta);
-        db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
+    executor.WriteTx(
+        [&](TPartitionDatabase db)
+        {
+            setup.MixedBlobId = executor.MakeBlobId(3);
+            state.WriteMixedBlocks(db, setup.MixedBlobId, {0, 1, 2}, 1);
+            db.WriteBlobMeta(setup.MixedBlobId, setup.MixedBlobMeta);
+            db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
 
-        setup.MergedBlobId = executor.MakeBlobId(4);
-        db.WriteMergedBlocks(
-            setup.MergedBlobId,
-            TBlockRange32::MakeClosedInterval(10, 13),
-            TBlockMask{});
-        db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
-        db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
-    });
+            setup.MergedBlobId = executor.MakeBlobId(4);
+            db.WriteMergedBlocks(
+                setup.MergedBlobId,
+                TBlockRange32::MakeClosedInterval(10, 13),
+                TBlockMask{});
+            db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
+            db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
+        });
 
-    state.GetCleanupQueue().Add(
-        {setup.MixedBlobId, deletionCommitId, {}});
-    state.GetCleanupQueue().Add(
-        {setup.MergedBlobId, deletionCommitId, {}});
+    state.GetCleanupQueue().Add({setup.MixedBlobId, deletionCommitId, {}});
+    state.GetCleanupQueue().Add({setup.MergedBlobId, deletionCommitId, {}});
 
     state.IncrementMixedBlocksCount(3);
     state.IncrementMixedBlobsCount(1);
@@ -214,10 +215,7 @@ struct TMixedBlockVisitor final: public IMixedBlocksIndexVisitor
     }
 };
 
-bool HasMixedBlock(
-    TPartitionDatabase& db,
-    ui32 blockIndex,
-    ui64 commitId)
+bool HasMixedBlock(TPartitionDatabase& db, ui32 blockIndex, ui64 commitId)
 {
     TMixedBlockVisitor visitor;
     const TVector<TBlock> blocks = {{blockIndex, commitId, false}};
@@ -266,23 +264,41 @@ TTxPartition::TCleanup MakeCleanupArgs(
 
 void RunPrepareAndExecute(
     TTestExecutor& executor,
+    TTestEnv& env,
     TPartitionState& state,
     TTxPartition::TCleanup& args,
     bool verifyRecreatedBlobMetasOnCleanup)
 {
-    executor.ReadTx([&](TPartitionDatabase db) {
-        const bool ready = PrepareCleanupTransaction(
-            verifyRecreatedBlobMetasOnCleanup,
-            TTestExecutor::TabletId,
-            "test-disk",
-            db,
-            args);
-        UNIT_ASSERT(ready);
-    });
+    executor.ReadTx(
+        [&](TPartitionDatabase db)
+        {
+            const bool ready = PrepareCleanupTransaction(
+                verifyRecreatedBlobMetasOnCleanup,
+                TTestExecutor::TabletId,
+                "test-disk",
+                db,
+                args);
+            UNIT_ASSERT(ready);
+        });
 
-    executor.WriteTx([&](TPartitionDatabase db) {
-        ExecuteCleanupTransaction(db, args, state);
-    });
+    executor.WriteTx(
+        [&](TPartitionDatabase db)
+        {
+            ExecuteCleanupTransaction(
+                env.GetRuntime().GetActorSystem(0),
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TPartition{
+                        TTestExecutor::TabletId,
+                        "test",
+                        0,
+                        1,
+                        0}),
+                TTestExecutor::TabletId,
+                db,
+                args,
+                state);
+        });
 }
 
 }   // namespace
@@ -300,19 +316,21 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         const auto recreatedBlobMeta = MakeMergedBlobMeta(0, 3);
         const auto blobId = TPartialBlobId(1, 0);
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(HasError(result.Error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                result.Error.GetMessage(),
-                "Mismatched blob meta types");
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(HasError(result.Error));
+                UNIT_ASSERT_STRING_CONTAINS(
+                    result.Error.GetMessage(),
+                    "Mismatched blob meta types");
+            });
     }
 
     Y_UNIT_TEST(ShouldAcceptMatchingMergedBlocks)
@@ -324,16 +342,18 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         const auto recreatedBlobMeta = MakeMergedBlobMeta(10, 20, 2);
         const auto blobId = TPartialBlobId(1, 0);
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(!HasError(result.Error));
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(!HasError(result.Error));
+            });
     }
 
     Y_UNIT_TEST(ShouldRejectMismatchedMergedBlocks)
@@ -345,19 +365,21 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         const auto recreatedBlobMeta = MakeMergedBlobMeta(10, 21, 2);
         const auto blobId = TPartialBlobId(1, 0);
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(HasError(result.Error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                result.Error.GetMessage(),
-                "Mismatched merged blocks");
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(HasError(result.Error));
+                UNIT_ASSERT_STRING_CONTAINS(
+                    result.Error.GetMessage(),
+                    "Mismatched merged blocks");
+            });
     }
 
     Y_UNIT_TEST(ShouldAcceptMatchingMixedBlocks)
@@ -366,24 +388,29 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId blobId;
-        executor.WriteTx([&](TPartitionDatabase db) {
-            blobId = executor.MakeBlobId(3);
-            db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(3);
+                db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
+            });
 
         const auto blobMeta = MakeMixedBlobMeta({0, 1, 2}, {50, 60, 70});
-        const auto recreatedBlobMeta = MakeMixedBlobMeta({0, 1, 2}, {50, 60, 70});
+        const auto recreatedBlobMeta =
+            MakeMixedBlobMeta({0, 1, 2}, {50, 60, 70});
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(!HasError(result.Error));
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(!HasError(result.Error));
+            });
     }
 
     Y_UNIT_TEST(ShouldUseBlobCommitIdWhenMixedCommitIdsAbsent)
@@ -392,24 +419,28 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId blobId;
-        executor.WriteTx([&](TPartitionDatabase db) {
-            blobId = executor.MakeBlobId(2);
-            db.WriteMixedBlocks(blobId, {5, 7}, 1);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(2);
+                db.WriteMixedBlocks(blobId, {5, 7}, 1);
+            });
 
         const auto blobMeta = MakeMixedBlobMeta({5, 7});
         const auto recreatedBlobMeta = MakeMixedBlobMeta({5, 7});
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(!HasError(result.Error));
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(!HasError(result.Error));
+            });
     }
 
     Y_UNIT_TEST(ShouldAcceptMixedBlocksSubsetWhenMissingBlocksNotInIndex)
@@ -418,25 +449,29 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId blobId;
-        executor.WriteTx([&](TPartitionDatabase db) {
-            blobId = executor.MakeBlobId(3);
-            db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
-            db.DeleteMixedBlock(1, blobId.CommitId());
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(3);
+                db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
+                db.DeleteMixedBlock(1, blobId.CommitId());
+            });
 
         const auto blobMeta = MakeMixedBlobMeta({0, 1, 2});
         const auto recreatedBlobMeta = MakeMixedBlobMeta({0, 2});
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(!HasError(result.Error));
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(!HasError(result.Error));
+            });
     }
 
     Y_UNIT_TEST(ShouldRejectLeakedBlocksInRecreatedMixedMeta)
@@ -445,28 +480,34 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId blobId;
-        executor.WriteTx([&](TPartitionDatabase db) {
-            blobId = executor.MakeBlobId(3);
-            db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(3);
+                db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
+            });
 
         const auto blobMeta = MakeMixedBlobMeta({0, 1, 2});
         const auto recreatedBlobMeta = MakeMixedBlobMeta({0, 2});
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(HasError(result.Error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                result.Error.GetMessage(),
-                "Leaked blocks in recreated blob meta");
-            UNIT_ASSERT_STRING_CONTAINS(result.Error.GetMessage(), "BlockIndex: 1");
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(HasError(result.Error));
+                UNIT_ASSERT_STRING_CONTAINS(
+                    result.Error.GetMessage(),
+                    "Leaked blocks in recreated blob meta");
+                UNIT_ASSERT_STRING_CONTAINS(
+                    result.Error.GetMessage(),
+                    "BlockIndex: 1");
+            });
     }
 
     Y_UNIT_TEST(ShouldRejectExtraBlocksInRecreatedMixedMeta)
@@ -475,28 +516,33 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId blobId;
-        executor.WriteTx([&](TPartitionDatabase db) {
-            blobId = executor.MakeBlobId(3);
-            db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(3);
+                db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
+            });
 
         const auto blobMeta = MakeMixedBlobMeta({0, 1});
         const auto recreatedBlobMeta = MakeMixedBlobMeta({0, 1, 2});
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            const auto result = VerifyRecreatedBlobMeta(
-                db,
-                blobId,
-                blobMeta,
-                recreatedBlobMeta);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
 
-            UNIT_ASSERT(result.Ready);
-            UNIT_ASSERT(HasError(result.Error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                result.Error.GetMessage(),
-                "there are blocks that are not present in the original blob "
-                "meta");
-        });
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(HasError(result.Error));
+                UNIT_ASSERT_STRING_CONTAINS(
+                    result.Error.GetMessage(),
+                    "there are blocks that are not present in the original "
+                    "blob "
+                    "meta");
+            });
     }
 }
 
@@ -506,6 +552,8 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
     {
         auto state = MakeState();
         TTestExecutor executor;
+        TTestEnv env;
+
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         const ui64 deletionCommitId = MakeCommitId(0, 50);
@@ -517,46 +565,55 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             state.GetCleanupQueue().GetItems(cleanupCommitId),
             cleanupCommitId);
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            UNIT_ASSERT(HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
-            UNIT_ASSERT(HasMixedBlock(db, 1, setup.MixedBlobId.CommitId()));
-            UNIT_ASSERT(HasMixedBlock(db, 2, setup.MixedBlobId.CommitId()));
-            UNIT_ASSERT(HasMergedBlob(db, setup.MergedBlobId, 10, 13));
-        });
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(HasMixedBlock(db, 1, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(HasMixedBlock(db, 2, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(HasMergedBlob(db, setup.MergedBlobId, 10, 13));
+            });
 
-        RunPrepareAndExecute(executor, state, args, false);
+        RunPrepareAndExecute(executor, env, state, args, false);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            UNIT_ASSERT(!HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
-            UNIT_ASSERT(!HasMixedBlock(db, 1, setup.MixedBlobId.CommitId()));
-            UNIT_ASSERT(!HasMixedBlock(db, 2, setup.MixedBlobId.CommitId()));
-            UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(
+                    !HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(
+                    !HasMixedBlock(db, 1, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(
+                    !HasMixedBlock(db, 2, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
 
-            TMaybe<NProto::TBlobMeta> mixedBlobMeta;
-            UNIT_ASSERT(db.ReadBlobMeta(setup.MixedBlobId, mixedBlobMeta));
-            UNIT_ASSERT(!mixedBlobMeta.Defined());
+                TMaybe<NProto::TBlobMeta> mixedBlobMeta;
+                UNIT_ASSERT(db.ReadBlobMeta(setup.MixedBlobId, mixedBlobMeta));
+                UNIT_ASSERT(!mixedBlobMeta.Defined());
 
-            TMaybe<NProto::TBlobMeta> mergedBlobMeta;
-            UNIT_ASSERT(db.ReadBlobMeta(setup.MergedBlobId, mergedBlobMeta));
-            UNIT_ASSERT(!mergedBlobMeta.Defined());
+                TMaybe<NProto::TBlobMeta> mergedBlobMeta;
+                UNIT_ASSERT(
+                    db.ReadBlobMeta(setup.MergedBlobId, mergedBlobMeta));
+                UNIT_ASSERT(!mergedBlobMeta.Defined());
 
-            UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
-            UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
 
-            TVector<TCleanupQueueItem> cleanupQueueItems;
-            UNIT_ASSERT(db.ReadCleanupQueue(cleanupQueueItems));
-            UNIT_ASSERT(cleanupQueueItems.empty());
-        });
+                TVector<TCleanupQueueItem> cleanupQueueItems;
+                UNIT_ASSERT(db.ReadCleanupQueue(cleanupQueueItems));
+                UNIT_ASSERT(cleanupQueueItems.empty());
+            });
     }
 
     Y_UNIT_TEST(ShouldCleanupMixedAndMergedBlobsWhenVerifySucceeds)
     {
         auto state = MakeState();
         TTestExecutor executor;
+        TTestEnv env;
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         const ui64 deletionCommitId = MakeCommitId(0, 50);
@@ -575,18 +632,21 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             setup.MergedBlobMeta);
 
         auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
-        RunPrepareAndExecute(executor, state, args, true);
+        RunPrepareAndExecute(executor, env, state, args, true);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            UNIT_ASSERT(!HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
-            UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
-            UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
-            UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
-        });
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(
+                    !HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
+            });
     }
 }
 
