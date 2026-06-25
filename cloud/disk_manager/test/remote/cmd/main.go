@@ -1513,18 +1513,18 @@ func (r *testRun) reportSuccessTest(testName string) {
 	r.metrics.reportSuccessTest(testName)
 }
 
-func newTestDenyList(testsDenyList []string) map[string]struct{} {
-	denyList := make(map[string]struct{}, len(testsDenyList))
-	for _, testName := range testsDenyList {
-		denyList[testName] = struct{}{}
+func newSkippedTests(skippedTests []string) map[string]struct{} {
+	skipped := make(map[string]struct{}, len(skippedTests))
+	for _, testName := range skippedTests {
+		skipped[testName] = struct{}{}
 	}
 
-	return denyList
+	return skipped
 }
 
-func validateTestDenyList(
+func validateSkippedTests(
 	tests []testCase,
-	testsDenyList map[string]struct{},
+	skippedTests map[string]struct{},
 ) error {
 
 	testNames := make(map[string]struct{}, len(tests))
@@ -1532,17 +1532,17 @@ func validateTestDenyList(
 		testNames[test.Name] = struct{}{}
 	}
 
-	for testName := range testsDenyList {
+	for testName := range skippedTests {
 		if _, ok := testNames[testName]; !ok {
 			return fmt.Errorf(
-				"denied test %q is not present in tests",
+				"skipped test %q is not present in tests",
 				testName,
 			)
 		}
 	}
 
-	if len(testsDenyList) == len(testNames) {
-		return fmt.Errorf("tests deny list should be a strict subset of tests")
+	if len(skippedTests) == len(testNames) {
+		return fmt.Errorf("skipped tests should be a strict subset of tests")
 	}
 
 	return nil
@@ -1607,8 +1607,8 @@ func (r *testRun) runTests(ctx context.Context) error {
 			Run:  testCreateImageFromImage,
 		},
 	}
-	testsDenyList := newTestDenyList(r.testConfig.GetTestsDenyList())
-	err := validateTestDenyList(tests, testsDenyList)
+	skippedTests := newSkippedTests(r.testConfig.GetSkippedTests())
+	err := validateSkippedTests(tests, skippedTests)
 	if err != nil {
 		r.reportError()
 		return err
@@ -1626,8 +1626,8 @@ func (r *testRun) runTests(ctx context.Context) error {
 	log.Printf("Starting tests")
 
 	for _, test := range tests {
-		if _, ok := testsDenyList[test.Name]; ok {
-			log.Printf("Skipping denied test %v", test.Name)
+		if _, ok := skippedTests[test.Name]; ok {
+			log.Printf("Skipping test %v", test.Name)
 			continue
 		}
 
