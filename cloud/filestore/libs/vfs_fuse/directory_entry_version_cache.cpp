@@ -2,6 +2,8 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TDirectoryEntryVersionCacheShard::~TDirectoryEntryVersionCacheShard()
 {
     i64 removedCount = 0;

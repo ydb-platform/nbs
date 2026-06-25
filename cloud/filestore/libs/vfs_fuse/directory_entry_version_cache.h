@@ -16,6 +16,8 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+////////////////////////////////////////////////////////////////////////////////
+
 // Tracks per-name changes while a directory handle is open.
 // ReadDir uses these versions to avoid returning cacheable entries when
 // a listing races with unlink or rename of the same child.
