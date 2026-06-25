@@ -100,6 +100,9 @@ private:
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
+    THashMap<ui64, TString> ReadDataByHandle;
+    TMutex ReadDataLock;
+
     TWriteBackCache WriteBackCache;
 
     std::atomic<ui64> GlobalAttrVersion = 1;
@@ -465,6 +468,15 @@ private:
         fuse_ino_t ino,
         ui64 handle,
         const NCloud::NProto::TError& writeBackCacheError);
+    void StoreReadData(
+        ui64 handle,
+        TString data);
+    bool TryGetReadData(
+        ui64 handle,
+        ui64 offset,
+        ui32 length,
+        TString* data);
+    void DropReadData(ui64 handle);
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,
         const NProto::TDestroyHandleResponse& response);
