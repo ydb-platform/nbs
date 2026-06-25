@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config"
 	snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
+	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
 	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
@@ -19,44 +20,60 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type transferFromFilesystemToSnapshotTask struct {
+type createSnapshotFromFilesystemTask struct {
 	config           *snapshot_config.FilesystemSnapshotConfig
 	factory          nfs.Factory
+	storage          snapshot_storage.Storage
 	traversalStorage traversal_storage.Storage
 	nodesStorage     nodes_storage.Storage
 	request          *snapshot_protos.CreateFilesystemSnapshotRequest
-	state            *snapshot_protos.TransferFromFilesystemToSnapshotTaskState
+	state            *snapshot_protos.CreateSnapshotFromFilesystemTaskState
 }
 
-func (t *transferFromFilesystemToSnapshotTask) Save() ([]byte, error) {
+func (t *createSnapshotFromFilesystemTask) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *transferFromFilesystemToSnapshotTask) Load(request, state []byte) error {
+func (t *createSnapshotFromFilesystemTask) Load(request, state []byte) error {
 	t.request = &snapshot_protos.CreateFilesystemSnapshotRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	t.state = &snapshot_protos.TransferFromFilesystemToSnapshotTaskState{}
+	t.state = &snapshot_protos.CreateSnapshotFromFilesystemTaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *transferFromFilesystemToSnapshotTask) Run(
+func (t *createSnapshotFromFilesystemTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
 
 	filesystem := t.request.GetFilesystem()
+	snapshotID := t.request.GetSnapshotId()
+
+	snapshotMeta, err := t.storage.CreateFilesystemSnapshot(
+		ctx,
+		snapshot_storage.FilesystemSnapshotMeta{
+			ID:           snapshotID,
+			Filesystem:   filesystem,
+			CreateTaskID: execCtx.GetTaskID(),
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	if snapshotMeta.Ready {
+		return nil
+	}
 
 	client, err := t.factory.NewClient(ctx, filesystem.GetZoneId())
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-
-	snapshotID := t.request.GetSnapshotId()
 
 	filesystemListerFactory := listers.NewFilestoreListerFactory(
 		client,
@@ -127,7 +144,9 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 			return execCtx.SaveState(ctx)
 		},
 		onListedNodes,
-		nil,
+		func(ctx context.Context) error {
+			return t.storage.CheckFilesystemSnapshotAlive(ctx, snapshotID)
+		},
 		t.config.GetTraversalConfig(),
 		t.state.GetRootNodeScheduled(),
 		nfs.RootNodeID,
@@ -136,34 +155,46 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 		return err
 	}
 
-	return traverser.Traverse(ctx)
-}
+	err = traverser.Traverse(ctx)
+	if err != nil {
+		return err
+	}
 
-func (t *transferFromFilesystemToSnapshotTask) Cancel(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	snapshotID := t.request.GetSnapshotId()
-
-	err := t.traversalStorage.ClearDirectoryListingQueue(
+	err = t.storage.FilesystemSnapshotCreated(
 		ctx,
 		snapshotID,
+		0,
+		0,
+		0,
 	)
 	if err != nil {
 		return err
 	}
 
-	return t.nodesStorage.DeleteSnapshotData(ctx, snapshotID)
+	return nil
 }
 
-func (t *transferFromFilesystemToSnapshotTask) GetMetadata(
+func (t *createSnapshotFromFilesystemTask) Cancel(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	// TODO (jkuradobery): Clean up directory listing queue on snapshot data deletion
+	_, err := t.storage.DeletingFilesystemSnapshot(
+		ctx,
+		t.request.GetSnapshotId(),
+		execCtx.GetTaskID(),
+	)
+	return err
+}
+
+func (t *createSnapshotFromFilesystemTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (t *transferFromFilesystemToSnapshotTask) GetResponse() proto.Message {
+func (t *createSnapshotFromFilesystemTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }

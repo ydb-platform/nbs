@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config"
 	snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
+	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
 	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
@@ -24,6 +25,7 @@ import (
 type transferFromSnapshotToFilesystemTask struct {
 	config           *snapshot_config.FilesystemSnapshotConfig
 	factory          nfs.Factory
+	storage          snapshot_storage.Storage
 	traversalStorage traversal_storage.Storage
 	nodesStorage     nodes_storage.Storage
 	request          *snapshot_protos.TransferFromSnapshotToFilesystemRequest
@@ -36,6 +38,13 @@ func (t *transferFromSnapshotToFilesystemTask) snapshotID() string {
 
 func (t *transferFromSnapshotToFilesystemTask) filesystemID() string {
 	return t.request.GetFilesystem().GetFilesystemId()
+}
+
+func (t *transferFromSnapshotToFilesystemTask) checkSourceSnapshotReady(
+	ctx context.Context,
+) error {
+
+	return t.storage.CheckFilesystemSnapshotReady(ctx, t.snapshotID())
 }
 
 func (t *transferFromSnapshotToFilesystemTask) traversalID(
@@ -106,6 +115,11 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 	session nfs.Session,
 	offset int,
 ) (bool, error) {
+
+	err := t.checkSourceSnapshotReady(ctx)
+	if err != nil {
+		return false, err
+	}
 
 	limit := int(t.config.GetRestoreHardlinksBatchSize())
 
@@ -206,6 +220,11 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 		}
 	}
 
+	err = t.checkSourceSnapshotReady(ctx)
+	if err != nil {
+		return false, err
+	}
+
 	return len(batch) == limit, nil
 }
 
@@ -264,6 +283,11 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 ) error {
 
 	filesystem := t.request.GetFilesystem()
+
+	err := t.checkSourceSnapshotReady(ctx)
+	if err != nil {
+		return err
+	}
 
 	client, err := t.factory.NewClient(ctx, filesystem.GetZoneId())
 	if err != nil {
@@ -373,7 +397,7 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 			return execCtx.SaveState(ctx)
 		},
 		onListedNodes,
-		nil,
+		t.checkSourceSnapshotReady,
 		t.config.GetTraversalConfig(),
 		t.state.GetRootNodeScheduled(),
 		nfs.RootNodeID,
