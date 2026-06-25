@@ -301,6 +301,8 @@ struct TDirtyDeviceEntry
     TString Uuid;
     TInstant StateTs;
     TString AgentId;
+    TString PoolName;
+    TString StateMessage;
 };
 
 }   // namespace
@@ -2263,6 +2265,7 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
     IOutputStream& out) const
 {
     auto dirtyDevices = State->GetDirtyDevices();
+    TVector<TDirtyDeviceEntry> erasing;
     TVector<TDirtyDeviceEntry> cleaning;
     TVector<TDirtyDeviceEntry> waiting;
     TVector<TDirtyDeviceEntry> agentDown;
@@ -2272,6 +2275,8 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
         TDirtyDeviceEntry entry{
             .Uuid = device.GetDeviceUUID(),
             .StateTs = TInstant::MicroSeconds(device.GetStateTs()),
+            .PoolName = device.GetPoolName(),
+            .StateMessage = device.GetStateMessage(),
         };
 
         if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
@@ -2294,7 +2299,11 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
             agentDown.push_back(std::move(entry));
         } else if (State->CanSecureErase(device)) {
             entry.AgentId = agent->GetAgentId();
-            cleaning.push_back(std::move(entry));
+            if (SecureEraseInProgressPerPool.contains(device.GetPoolName())) {
+                erasing.push_back(std::move(entry));
+            } else {
+                cleaning.push_back(std::move(entry));
+            }
         } else {
             entry.AgentId = agent->GetAgentId();
             blocked.push_back(std::move(entry));
@@ -2304,7 +2313,6 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
     HTML (out) {
         auto renderTable = [&](const TString& title,
                                const TVector<TDirtyDeviceEntry>& rows,
-                               bool showAgent,
                                bool agentRed)
         {
             TAG (TH3) {
@@ -2321,22 +2329,40 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
                             out << "UUID";
                         }
                         TABLEH () {
+                            out << "Agent";
+                        }
+                        TABLEH () {
+                            out << "Pool";
+                        }
+                        TABLEH () {
+                            out << "State message";
+                        }
+                        TABLEH () {
                             out << "In state since";
                         }
                         TABLEH () {
                             out << "Time in state";
-                        }
-                        if (showAgent) {
-                            TABLEH () {
-                                out << "Agent";
-                            }
                         }
                     }
                 }
                 for (const auto& e: rows) {
                     TABLER () {
                         TABLED () {
-                            out << e.Uuid;
+                            DumpDeviceLink(out, TabletID(), e.Uuid);
+                        }
+                        TABLED () {
+                            if (agentRed) {
+                                out << "<font color='red'>" << e.AgentId
+                                    << "</font>";
+                            } else {
+                                out << e.AgentId;
+                            }
+                        }
+                        TABLED () {
+                            out << e.PoolName;
+                        }
+                        TABLED () {
+                            out << e.StateMessage;
                         }
                         TABLED () {
                             out << e.StateTs.FormatGmTime(
@@ -2345,26 +2371,17 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
                         TABLED () {
                             out << FormatDuration(TInstant::Now() - e.StateTs);
                         }
-                        if (showAgent) {
-                            TABLED () {
-                                if (agentRed) {
-                                    out << "<font color='red'>" << e.AgentId
-                                        << "</font>";
-                                } else {
-                                    out << e.AgentId;
-                                }
-                            }
-                        }
                     }
                 }
             }
         };
 
-        renderTable("Device being cleaned", cleaning, true, false);
-        renderTable("Waiting for cleanup", waiting, false, false);
-        renderTable("Agent unavailable", agentDown, true, true);
-        renderTable("Cleanup blocked", blocked, true, false);
-        renderTable("Device broken", broken, false, false);
+        renderTable("Erasing now", erasing, false);
+        renderTable("Ready for cleanup", cleaning, false);
+        renderTable("Waiting for cleanup", waiting, false);
+        renderTable("Agent unavailable", agentDown, true);
+        renderTable("Cleanup blocked", blocked, false);
+        renderTable("Device broken", broken, false);
     }
 }
 
