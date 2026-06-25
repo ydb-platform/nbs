@@ -2241,7 +2241,9 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceList(IOutputStream& out) const
     auto dirtyDevices = State->GetDirtyDevices();
     size_t onlineCount = 0;
     for (const auto& device: dirtyDevices) {
-        if (device.GetState() == NProto::DEVICE_STATE_ONLINE) {
+        if (device.GetState() == NProto::DEVICE_STATE_ONLINE ||
+            device.GetState() == NProto::   )
+        {
             ++onlineCount;
         }
     }
@@ -2264,6 +2266,7 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
     TVector<TDirtyDeviceEntry> waiting;
     TVector<TDirtyDeviceEntry> agentDown;
     TVector<TDirtyDeviceEntry> broken;
+    TVector<TDirtyDeviceEntry> blocked;
     for (const auto& device: dirtyDevices) {
         TDirtyDeviceEntry entry{
             .Uuid = device.GetDeviceUUID(),
@@ -2275,7 +2278,9 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
             continue;
         }
 
-        if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
+        if (device.GetState() != NProto::DEVICE_STATE_ONLINE &&
+            device.GetState() != NProto::DEVICE_STATE_WARNING)
+        {
             continue;
         }
 
@@ -2286,9 +2291,12 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
         } else if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
             entry.AgentId = agent->GetAgentId();
             agentDown.push_back(std::move(entry));
-        } else {
+        } else if (State->CanSecureErase(device)) {
             entry.AgentId = agent->GetAgentId();
             cleaning.push_back(std::move(entry));
+        } else {
+            entry.AgentId = agent->GetAgentId();
+            blocked.push_back(std::move(entry));
         }
     }
 
@@ -2312,10 +2320,10 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
                             out << "UUID";
                         }
                         TABLEH () {
-                            out << "Repair started";
+                            out << "In state since";
                         }
                         TABLEH () {
-                            out << "Duration";
+                            out << "Time in state";
                         }
                         if (showAgent) {
                             TABLEH () {
@@ -2354,6 +2362,7 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
         renderTable("Device being cleaned", cleaning, true, false);
         renderTable("Waiting for cleanup", waiting, false, false);
         renderTable("Agent unavailable", agentDown, true, true);
+        renderTable("Cleanup blocked", blocked, true, false);
         renderTable("Device broken", broken, false, false);
     }
 }
