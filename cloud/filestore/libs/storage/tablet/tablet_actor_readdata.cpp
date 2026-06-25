@@ -189,6 +189,15 @@ void FillDescribeDataResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void MoveBufferToPayload(TEvService::TEvReadDataResponse& response)
+{
+    response.Record.SetLength(response.Record.GetBuffer().size());
+    response.AddPayload(TRope(std::move(*response.Record.MutableBuffer())));
+    response.Record.MutableBuffer()->clear();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadDataVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
@@ -345,6 +354,7 @@ private:
     IProfileLogPtr ProfileLog;
     NProto::TBackendInfo BackendInfo;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
+    const bool ExternalReadDataPayload;
 
 public:
     TReadDataActor(
@@ -365,7 +375,8 @@ public:
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest);
+        NProto::TTProfileLogRequestInfo profileLogRequest,
+        bool externalReadDataPayload);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -406,7 +417,8 @@ TReadDataActor::TReadDataActor(
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest)
+        NProto::TTProfileLogRequestInfo profileLogRequest,
+        bool externalReadDataPayload)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
@@ -425,6 +437,7 @@ TReadDataActor::TReadDataActor(
     , ProfileLog(std::move(profileLog))
     , BackendInfo(std::move(backendInfo))
     , ProfileLogRequest(std::move(profileLogRequest))
+    , ExternalReadDataPayload(externalReadDataPayload)
 {
     TABLET_VERIFY(ActualRange.IsAligned());
 }
@@ -537,6 +550,10 @@ void TReadDataActor::ReplyAndDie(
                     true /* ignoreBufferOverflow */,
                     FileSystemId,
                     ProfileLogRequest);
+            }
+
+            if (ExternalReadDataPayload) {
+                MoveBufferToPayload(*response);
             }
         }
 
@@ -1109,6 +1126,10 @@ void TIndexTabletActor::CompleteTx_ReadData(
                 args.ProfileLogRequest);
         }
 
+        if (Config->GetExternalReadDataPayload()) {
+            MoveBufferToPayload(*response);
+        }
+
         CompleteResponse<TEvService::TReadDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
@@ -1154,7 +1175,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
         std::move(args.MixedBlocksRanges),
         ProfileLog,
         std::move(backendInfo),
-        std::move(args.ProfileLogRequest));
+        std::move(args.ProfileLogRequest),
+        Config->GetExternalReadDataPayload());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

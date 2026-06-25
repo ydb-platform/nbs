@@ -371,6 +371,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CollectGarbageThresholdForBackpressureSoft,    ui64,    256_GB        )\
                                                                                \
     xxx(StatFileStoreCacheTTL,              TDuration,  TDuration::Zero()     )\
+                                                                               \
+    xxx(ExternalReadDataPayload,                bool,   false                 )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

@@ -119,6 +119,8 @@ void FillFeatures(
 
     features->SetStatFileStoreCacheTTL(
         config.GetStatFileStoreCacheTTL().MilliSeconds());
+
+    features->SetExternalReadDataPayload(config.GetExternalReadDataPayload());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
