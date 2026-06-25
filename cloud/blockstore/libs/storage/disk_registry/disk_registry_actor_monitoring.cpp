@@ -2241,8 +2241,9 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceList(IOutputStream& out) const
     auto dirtyDevices = State->GetDirtyDevices();
     size_t onlineCount = 0;
     for (const auto& device: dirtyDevices) {
-        if (device.GetState() == NProto::DEVICE_STATE_ONLINE ||
-            device.GetState() == NProto::   )
+        const auto state = device.GetState();
+        if (state == NProto::DEVICE_STATE_ONLINE ||
+            state == NProto::DEVICE_STATE_WARNING)
         {
             ++onlineCount;
         }
