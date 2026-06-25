@@ -259,6 +259,11 @@ protected:
     // Data confirmed but not yet added to index
     THashMap<ui64, TTrackedUnconfirmedData> ConfirmedData;
 
+    // CommitIds of writes still to confirm during startup recovery, in commitId
+    // order. They are confirmed one at a time, so a single AddBlob
+    // is ever in flight up to SafePoint and page faults cannot reorder TXes
+    TDeque<ui64> RecoveredDataToConfirm;
+
     // CommitIds scheduled for unconfirmed-data deletion and waiting for
     // completion.
     THashSet<ui64> DeletionQueue;

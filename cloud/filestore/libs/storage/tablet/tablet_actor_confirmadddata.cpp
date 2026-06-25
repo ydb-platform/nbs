@@ -86,8 +86,8 @@ void TIndexTabletActor::UnconfirmedAddBlobSafePointReached(
 
     if (UnconfirmedRecoveryReady) {
         SendPendingConfirmAddDataResponse(ctx, commitId, error);
-    } else if (ConfirmedData.empty()) {
-        BlobsConfirmed(ctx);
+    } else {
+        ConfirmNextRecoveredData(ctx);
     }
 }
 
@@ -400,9 +400,20 @@ void TIndexTabletActor::ConfirmData(ui64 commitId, const TActorContext& ctx)
 
     const auto& entry = pos->second;
 
-    // Submit AddBlob tx immediately to keep confirmation ordering in tx queue
-    // (assuming no page-fault/restart).
     AddBlobForUnconfirmedData(ctx, commitId, entry.Data);
+}
+
+void TIndexTabletActor::ConfirmNextRecoveredData(const TActorContext& ctx)
+{
+    if (RecoveredDataToConfirm.empty()) {
+        BlobsConfirmed(ctx);
+        return;
+    }
+
+    const ui64 commitId = RecoveredDataToConfirm.front();
+    RecoveredDataToConfirm.pop_front();
+
+    ConfirmData(commitId, ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

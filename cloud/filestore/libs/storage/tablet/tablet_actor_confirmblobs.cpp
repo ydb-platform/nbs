@@ -317,14 +317,16 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     }
 
     // Recovery must replay confirmations in commitId order to preserve write
-    // order for overlapping ranges.
+    // order for overlapping ranges. Confirm them one at a time, advancing on
+    // each write's safe point. A single AddBlob is ever
+    // in flight, so page faults cannot reorder
     Sort(recoverableCommitIds);
 
-    for (ui64 commitId: recoverableCommitIds) {
-        // TODO(#5353) Support out of order insertion to unblock here
-        // immediately
-        ConfirmData(commitId, ctx);
-    }
+    RecoveredDataToConfirm.assign(
+        recoverableCommitIds.begin(),
+        recoverableCommitIds.end());
+
+    ConfirmNextRecoveredData(ctx);
 }
 
 void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
