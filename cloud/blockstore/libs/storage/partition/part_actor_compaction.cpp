@@ -1196,7 +1196,7 @@ ui32 GetPercentage(ui64 numerator, ui64 denominator)
 {
     const double p = numerator * 100. / Max(denominator, 1UL);
     const double MAX_P = 1'000;
-    return Min(p, MAX_P);
+    return Min(std::round(p), MAX_P);
 }
 
 ui32 GetExcessPercentage(ui64 numerator, ui64 denominator)
@@ -1240,10 +1240,8 @@ TDuration GetGarbageCompactionExecTimePerSecondLimit(
     return minGarbageCompactionExecTimePerSecondLimit +
            (TDuration::Seconds(1) -
             minGarbageCompactionExecTimePerSecondLimit) *
-               (static_cast<double>(diskFillPercentage) -
-                static_cast<double>(softLimit)) /
-               (static_cast<double>(hardLimit) -
-                static_cast<double>(softLimit));
+               (static_cast<double>(diskFillPercentage) - softLimit) /
+               (hardLimit - softLimit);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
