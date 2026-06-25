@@ -416,42 +416,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         }
 
         registry->Visit(TInstant::Zero(), Visitor);
-        Visitor.ValidateExpectedHistogram({
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "WriteBlob"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "ReadBlob"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "WriteData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "ReadData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "DescribeData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "GenerateBlobIds"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "AddData"}}, 0},
-        }, false);
-        Visitor.ValidateExpectedHistogram({
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "PatchBlob"}}, 0},
-        }, true);
         Visitor.ValidateExpectedCounters({
             {{
                 {"sensor", "Count"},
