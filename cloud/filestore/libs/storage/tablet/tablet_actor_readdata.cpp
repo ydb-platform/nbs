@@ -189,6 +189,15 @@ void FillDescribeDataResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void MoveBufferToPayload(TEvService::TEvReadDataResponse& response)
+{
+    response.Record.SetLength(response.Record.GetBuffer().size());
+    response.AddPayload(TRope(std::move(*response.Record.MutableBuffer())));
+    response.Record.MutableBuffer()->clear();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadDataVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
@@ -544,9 +553,7 @@ void TReadDataActor::ReplyAndDie(
             }
 
             if (ExternalReadDataPayload) {
-                response->Record.SetLength(response->Record.GetBuffer().size());
-                response->AddPayload(
-                    TRope(std::move(*response->Record.MutableBuffer())));
+                MoveBufferToPayload(*response);
             }
         }
 
@@ -1120,9 +1127,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         }
 
         if (Config->GetExternalReadDataPayload()) {
-            response->Record.SetLength(response->Record.GetBuffer().size());
-            response->AddPayload(
-                TRope(std::move(*response->Record.MutableBuffer())));
+            MoveBufferToPayload(*response);
         }
 
         CompleteResponse<TEvService::TReadDataMethod>(

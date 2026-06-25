@@ -734,7 +734,7 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
     ui64 bufferSize = readDataResponse.GetLength();
     if (payload.size() != bufferSize) {
         return MakeError(
-            E_ARGUMENT,
+            E_BADMSG,
             TStringBuilder()
                 << "Payload has an incorrect size. Expected size: "
                 << bufferSize << " Actual size: " << payload.size());
@@ -763,13 +763,13 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
         buffer.ReserveAndResize(bufferSize);
-        TRopeUtils::Memcpy(&buffer[0], it, payload.size());
+        TRopeUtils::Memcpy(buffer.begin(), it, payload.size());
         remainingBufferSize -= payload.size();
     }
 
     if (remainingBufferSize != 0) {
         return MakeError(
-            E_ARGUMENT,
+            E_BADMSG,
             TStringBuilder()
                 << "Failed to read buffer from payload. "
                    " Expected buffer size: "
@@ -818,7 +818,7 @@ void TReadDataActor::HandleReadDataResponse(
                 HandleError(
                     ctx,
                     MakeError(
-                        E_ARGUMENT,
+                        E_BADMSG,
                         "Payload is unavailable or has an incorrect size"));
                 return;
             }
