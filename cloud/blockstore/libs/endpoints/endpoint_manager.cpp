@@ -179,6 +179,15 @@ bool CompareRequests(
     return left.GetUnixSocketPath() == right.GetUnixSocketPath();
 }
 
+void UpdateRequest(
+    NProto::TStartEndpointRequest& dstReq,
+    const NProto::TStartEndpointRequest& srcReq)
+{
+    dstReq.SetVolumeAccessMode(srcReq.GetVolumeAccessMode());
+    dstReq.SetVolumeMountMode(srcReq.GetVolumeMountMode());
+    dstReq.SetMountSeqNumber(srcReq.GetMountSeqNumber());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDeviceManager
@@ -913,9 +922,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         }
 
         // update in‑memory cached request parameters for the endpoint
-        endpoint.Request->SetVolumeAccessMode(request->GetVolumeAccessMode());
-        endpoint.Request->SetVolumeMountMode(request->GetVolumeMountMode());
-        endpoint.Request->SetMountSeqNumber(request->GetMountSeqNumber());
+        UpdateRequest(*endpoint.Request, *request);
 
         // Try to persist the updated request parameters for the endpoint.
         // If persistence fails, do not report an error: AlterEndpoint was
@@ -1036,9 +1043,7 @@ NProto::TError TEndpointManager::AlterEndpoint(
             << " has already been started");
     }
 
-    oldReq.SetVolumeAccessMode(newReq.GetVolumeAccessMode());
-    oldReq.SetVolumeMountMode(newReq.GetVolumeMountMode());
-    oldReq.SetMountSeqNumber(newReq.GetMountSeqNumber());
+    UpdateRequest(oldReq, newReq);
 
     if (!CompareRequests(newReq, oldReq)) {
         return MakeError(E_INVALID_STATE, TStringBuilder()
