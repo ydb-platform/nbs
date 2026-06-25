@@ -27,6 +27,7 @@ RECURSE_FOR_TESTS(
     lease_expiration
     loadtest
     profile_log
+    read_ahead
     registration
     scheme_cache
     service

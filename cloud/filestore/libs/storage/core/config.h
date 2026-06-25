@@ -242,6 +242,8 @@ public:
     ui32 GetReadAheadCacheRangeSize() const;
     ui32 GetReadAheadMaxGapPercentage() const;
     ui32 GetReadAheadCacheMaxHandlesPerNode() const;
+    bool GetReadDataOnReadOnlyCreateHandleEnabled() const;
+    ui64 GetReadDataOnReadOnlyCreateHandleMaxFileSize() const;
 
     ui32 GetNodeIndexCacheMaxNodes() const;
 

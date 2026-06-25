@@ -205,6 +205,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
     xxx(ReadAheadMaxGapPercentage,              ui32,       20                )\
     xxx(ReadAheadCacheMaxHandlesPerNode,        ui32,      128                )\
+    xxx(ReadDataOnReadOnlyCreateHandleEnabled, bool,       false              )\
+    xxx(ReadDataOnReadOnlyCreateHandleMaxFileSize, ui64,   128_KB             )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(RegularFileEntryTimeout,         TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\

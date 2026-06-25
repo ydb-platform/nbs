@@ -1,0 +1,2 @@
+ReadDataOnReadOnlyCreateHandleEnabled: false
+ReadDataOnReadOnlyCreateHandleMaxFileSize: 4096
