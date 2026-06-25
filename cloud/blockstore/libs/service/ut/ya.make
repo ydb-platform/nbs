@@ -2,6 +2,11 @@ UNITTEST_FOR(cloud/blockstore/libs/service)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
+IF (SANITIZER_TYPE == "memory")
+    SIZE(MEDIUM)
+    TIMEOUT(300)
+ENDIF()
+
 SRCS(
     blocks_info_ut.cpp
     context_ut.cpp
