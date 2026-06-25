@@ -1648,10 +1648,10 @@ private:
             CALL(Lookup, EFileStoreRequest::GetNodeAttr, 0, req, parent, name);
         };
         ops.forget = [] (fuse_req_t req, fuse_ino_t ino, unsigned long nlookup) {
-            CALL(Forget, EFileStoreRequest::MAX, 0, req, ino, nlookup);
+            CALL(Forget, EFileStoreRequest::Forget, 0, req, ino, nlookup);
         };
         ops.forget_multi = [] (fuse_req_t req, size_t count, fuse_forget_data* forgets) {
-            CALL(ForgetMulti, EFileStoreRequest::MAX, 0, req, count, forgets);
+            CALL(ForgetMulti, EFileStoreRequest::ForgetMulti, 0, req, count, forgets);
         };
         ops.mkdir = [] (fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode) {
             CALL(MkDir, EFileStoreRequest::CreateNode, 0, req, parent, name, mode);
@@ -1720,7 +1720,7 @@ private:
         //
 
         ops.opendir = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(OpenDir, EFileStoreRequest::MAX, 0, req, ino, fi);
+            CALL(OpenDir, EFileStoreRequest::OpenDir, 0, req, ino, fi);
         };
 #if defined(FUSE_VIRTIO)
         ops.readdirplus = [] (fuse_req_t req, fuse_ino_t ino, size_t size, off_t offset, fuse_file_info* fi) {
@@ -1732,7 +1732,7 @@ private:
         };
 #endif
         ops.releasedir = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(ReleaseDir, EFileStoreRequest::MAX, 0, req, ino, fi);
+            CALL(ReleaseDir, EFileStoreRequest::ReleaseDir, 0, req, ino, fi);
         };
 
         //
@@ -1758,13 +1758,13 @@ private:
             CALL(FAllocate, EFileStoreRequest::AllocateData, length, req, ino, mode, offset, length, fi);
         };
         ops.flush = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(Flush, EFileStoreRequest::MAX, 0, req, ino, fi);
+            CALL(Flush, EFileStoreRequest::Flush, 0, req, ino, fi);
         };
         ops.fsync = [] (fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi) {
-            CALL(FSync, EFileStoreRequest::MAX, 0, req, ino, datasync, fi);
+            CALL(FSync, EFileStoreRequest::Fsync, 0, req, ino, datasync, fi);
         };
         ops.fsyncdir = [] (fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi) {
-            CALL(FSyncDir, EFileStoreRequest::MAX, 0, req, ino, datasync, fi);
+            CALL(FSyncDir, EFileStoreRequest::FsyncDir, 0, req, ino, datasync, fi);
         };
         ops.release = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
             CALL(Release, EFileStoreRequest::DestroyHandle, 0, req, ino, fi);

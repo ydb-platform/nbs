@@ -97,6 +97,21 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::ListEndpoints:
             return CreatePermissionList({EPermission::List});
 
+        case EFileStoreRequest::Forget:
+            Y_ABORT("Forget must have been handled separately");
+
+        case EFileStoreRequest::ForgetMulti:
+            Y_ABORT("ForgetMulti must have been handled separately");
+
+        case EFileStoreRequest::OpenDir:
+            Y_ABORT("OpenDir must have been handled separately");
+
+        case EFileStoreRequest::ReleaseDir:
+            Y_ABORT("ReleaseDir must have been handled separately");
+
+        case EFileStoreRequest::Flush:
+            Y_ABORT("Flush must have been handled separately");
+
         case EFileStoreRequest::MAX:
             Y_ABORT("EFileStoreRequest::MAX is not valid");
     }
