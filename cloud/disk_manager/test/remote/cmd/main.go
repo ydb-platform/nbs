@@ -1683,7 +1683,6 @@ func newRemoteTestMetricsFromConfig(
 }
 
 func (r *testRun) runTestsPeriodically(ctx context.Context) error {
-
 	for {
 		err := r.runTests(ctx)
 		if err != nil {
