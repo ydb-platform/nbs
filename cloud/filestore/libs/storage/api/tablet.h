@@ -66,6 +66,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
+    xxx(GetFileSystemResizeState,   __VA_ARGS__)                               \
+    xxx(SetFileSystemResizeState,   __VA_ARGS__)                               \
                                                                                \
     xxx(SetQuota,                   __VA_ARGS__)                               \
     xxx(DeleteQuota,                __VA_ARGS__)                               \

@@ -2628,4 +2628,16 @@ bool TIndexTabletDatabase::ReadUnconfirmedData(
     return true;
 }
 
+bool TIndexTabletDatabase::ReadFileSystemResizeState(
+    [[maybe_unused]] TMaybe<NProtoPrivate::TFileSystemResizeState>& state)
+{
+    return false;
+}
+
+void TIndexTabletDatabase::WriteFileSystemResizeState(
+    [[maybe_unused]] const NProtoPrivate::TFileSystemResizeState& state)
+{
+    // return;
+}
+
 }   // namespace NCloud::NFileStore::NStorage
