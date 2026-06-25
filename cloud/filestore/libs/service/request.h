@@ -158,6 +158,12 @@ enum class EFileStoreRequest
     WriteBlob,
     ConfirmAddData,
     CancelAddData,
+    // These are auxiliary requests. They are here for observability.
+    Forget,
+    ForgetMulti,
+    OpenDir,
+    ReleaseDir,
+    Flush,
     MAX
 };
 
