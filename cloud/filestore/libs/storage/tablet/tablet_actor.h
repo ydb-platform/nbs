@@ -790,6 +790,7 @@ private:
         ui64 commitId,
         const NProto::TUnconfirmedData& entry);
     void ConfirmData(ui64 commitId, const NActors::TActorContext& ctx);
+    void ConfirmNextRecoveredData(const NActors::TActorContext& ctx);
     void SendDeferredConfirmAddDataResponse(
         const NActors::TActorContext& ctx,
         TPendingConfirmAddData pending,

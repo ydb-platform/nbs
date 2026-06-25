@@ -1352,6 +1352,51 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             ReadData(tablet, handle, expected.size(), 0));
     }
 
+    Y_UNIT_TEST(ShouldConfirmOverlappingUnconfirmedWritesInOrderAfterRestart)
+    {
+        const ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+        AssertStorageStats(tablet, 0, 0);
+
+        // Three overlapping writes to block 0 (oldest -> newest)
+        ui64 prevCommitId = 0;
+        for (char fill: {'a', 'b', 'c'}) {
+            const ui64 commitId = GenerateBlobIdsAndPutBlob(
+                env,
+                tablet,
+                id,
+                handle,
+                0,
+                block,
+                fill);
+            WaitForTabletCommit(env);
+            UNIT_ASSERT_GT(commitId, prevCommitId);
+            prevCommitId = commitId;
+        }
+        AssertStorageStats(tablet, 3, 0);
+
+        handle = RebootTabletAndCreateHandle(tablet, id);
+        AssertStorageStats(tablet, 0, 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            BuildExpectedData({{block, 'c'}}),
+            ReadData(tablet, handle, block, 0));
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInAddDataUnconfirmed)
     {
         const ui32 block = 4_KB;
