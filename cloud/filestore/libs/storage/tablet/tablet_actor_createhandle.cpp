@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
 
 #include <util/generic/guid.h>
 
@@ -39,6 +40,48 @@ NProto::TError ValidateRequest(const NProto::TCreateHandleRequest& request)
     }
 
     return {};
+}
+
+bool IsReadOnlyNonDirect(ui32 flags)
+{
+    constexpr ui32 incompatibleFlags =
+        ProtoFlag(NProto::TCreateHandleRequest::E_CREATE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_APPEND) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
+
+    return HasFlag(flags, NProto::TCreateHandleRequest::E_READ) &&
+        (flags & incompatibleFlags) == 0;
+}
+
+bool ShouldReadDataOnCreateHandle(
+    const TStorageConfig& config,
+    const TTxIndexTablet::TCreateHandle& args)
+{
+    if (!config.GetReadDataOnReadOnlyCreateHandleEnabled() ||
+        config.GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() ||
+        config.GetFakeDescribeDataEnabled() ||
+        !IsReadOnlyNonDirect(args.Flags))
+    {
+        return false;
+    }
+
+    const ui64 handle = args.Response.GetHandle();
+    if (!handle) {
+        return false;
+    }
+
+    const auto& node = args.Response.GetNodeAttr();
+    if (node.GetType() != NProto::E_REGULAR_NODE) {
+        return false;
+    }
+
+    const ui64 fileSize = node.GetSize();
+    const ui64 maxFileSize =
+        config.GetReadDataOnReadOnlyCreateHandleMaxFileSize();
+
+    return fileSize && maxFileSize && fileSize <= maxFileSize;
 }
 
 }   // namespace
@@ -526,6 +569,42 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     }
 }
 
+void TIndexTabletActor::StartReadDataForCreateHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TCreateHandle& args)
+{
+    const auto& node = args.Response.GetNodeAttr();
+
+    NProto::TReadDataRequest request;
+    request.MutableHeaders()->CopyFrom(args.Request.GetHeaders());
+    request.SetFileSystemId(args.Request.GetFileSystemId());
+    request.SetNodeId(node.GetId());
+    request.SetHandle(args.Response.GetHandle());
+    request.SetOffset(0);
+    request.SetLength(node.GetSize());
+
+    const TByteRange byteRange(
+        request.GetOffset(),
+        request.GetLength(),
+        GetBlockSize());
+    const TByteRange alignedByteRange = byteRange.AlignedSuperRange();
+    auto blockBuffer = CreateBlockBuffer(alignedByteRange);
+
+    TMaybe<NProto::TCreateHandleResponse> response;
+    response.ConstructInPlace(std::move(args.Response));
+
+    ExecuteTx<TReadData>(
+        ctx,
+        args.RequestInfo,
+        request,
+        byteRange,
+        alignedByteRange,
+        std::move(blockBuffer),
+        false /* describeOnly */,
+        std::move(response),
+        std::move(args.ProfileLogRequest));
+}
+
 void TIndexTabletActor::CompleteCreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
@@ -564,6 +643,11 @@ void TIndexTabletActor::CompleteCreateHandle(
             args.OpLogEntry.GetEntryId(),
             std::move(args.Response));
 
+        return;
+    }
+
+    if (ShouldReadDataOnCreateHandle(*Config, args)) {
+        StartReadDataForCreateHandle(ctx, args);
         return;
     }
 
