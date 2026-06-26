@@ -292,7 +292,7 @@ void TIndexTabletState::SetResizeState(
 {
     auto& newState = *FileSystem.MutableResizeState();
 
-    newState.SetVersion(newState.GetVersion() + 1);
+    newState.SetVersion(newState.GetVersion());
 
     newState.SetAlteredShardBitmap(resizeState.GetAlteredShardBitmap());
     newState.SetCreatedShardBitmap(resizeState.GetCreatedShardBitmap());
