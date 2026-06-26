@@ -47,16 +47,35 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
     auto counters = AppData(ctx)->Counters;
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     auto totalCounters = rootGroup->GetSubgroup("component", "service");
-    auto hddCounters = totalCounters->GetSubgroup("type", "hdd");
-    auto ssdCounters = totalCounters->GetSubgroup("type", "ssd");
-    auto ssdNonreplCounters = totalCounters->GetSubgroup("type", "ssd_nonrepl");
-    auto hddNonreplCounters = totalCounters->GetSubgroup("type", "hdd_nonrepl");
-    auto ssdMirror2Counters = totalCounters->GetSubgroup("type", "ssd_mirror2");
-    auto ssdMirror3Counters = totalCounters->GetSubgroup("type", "ssd_mirror3");
+    auto hddCounters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_HDD)); // hybrid disks also fall
+                                                       // into this category
+    auto ssdCounters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_SSD));
+    auto ssdNonreplCounters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_SSD_NONREPLICATED));
+    auto hddNonreplCounters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_HDD_NONREPLICATED));
+    auto ssdMirror2Counters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_SSD_MIRROR2));
+    auto ssdMirror3Counters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_SSD_MIRROR3));
+    auto hddLocalCounters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_HDD_LOCAL));
+    auto ssdLocalCounters = totalCounters->GetSubgroup(
+        "type",
+        MediaKindToString(NProto::STORAGE_MEDIA_SSD_LOCAL));
+    // System disk counters are special - we don't have separate media kinds for
+    // them.
     auto ssdSystemCounters = totalCounters->GetSubgroup("type", "ssd_system");
     auto hddSystemCounters = totalCounters->GetSubgroup("type", "hdd_system");
-    auto hddLocalCounters = totalCounters->GetSubgroup("type", "hdd_local");
-    auto ssdLocalCounters = totalCounters->GetSubgroup("type", "sdd_local");
     auto localCounters = totalCounters->GetSubgroup("binding", "local");
     auto nonlocalCounters = totalCounters->GetSubgroup("binding", "remote");
 
