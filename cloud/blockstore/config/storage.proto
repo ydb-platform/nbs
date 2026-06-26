@@ -1618,4 +1618,25 @@ message TStorageServiceConfig
     // If true, the recreated blob metas are verified on cleanup.
     // We check that there is no leaked blocks in the mixed index.
     optional bool VerifyRecreatedBlobMetasOnCleanup = 512;
+
+    // Enables dynamic garbage compaction throttling based on disk fill
+    // percentage. Should not be used together with
+    // IgnoringZeroedCompactionEnabled.
+    optional bool EnableDynamicGarbageCompactionThrottling = 513;
+
+    // Disk fill percentage below which garbage compaction throttling is fully
+    // enabled. Measured in percents of the disk size.
+    // Applies when EnableDynamicGarbageCompactionThrottling is on.
+    optional uint32 GarbageCompactionThrottlingSoftLimit = 514;
+
+    // Disk fill percentage above which garbage compaction throttling is
+    // disabled. Measured in percents of the disk size.
+    // Applies when EnableDynamicGarbageCompactionThrottling is on.
+    optional uint32 GarbageCompactionThrottlingHardLimit = 515;
+
+    // Max garbage compaction exec time per second (in ms) when garbage
+    // compaction throttling is as strong as possible.
+    // Applies when EnableDynamicGarbageCompactionThrottling is on and disk fill
+    // is below GarbageCompactionThrottlingSoftLimit.
+    optional uint32 MinGarbageCompactionExecTimePerSecondLimit = 516;
 }

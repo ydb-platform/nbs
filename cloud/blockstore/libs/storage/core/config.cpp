@@ -205,14 +205,20 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
-    xxx(MaxCompactionExecTimePerSecond,          TDuration, TDuration::Zero() )\
+    xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
+    xxx(MinGarbageCompactionExecTimePerSecondLimit,                            \
+            TDuration,                                                         \
+            TDuration::Seconds(1)                                             )\
     xxx(MaxCompactionExecTimePerSecondForZeroed, TDuration, TDuration::Zero() )\
-    xxx(CompactionScoreHistorySize,             ui32,   10                    )\
-    xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
-    xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
-    xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
-    xxx(MaxSkippedBlobsDuringCompactionHDD,     ui32,   3                     )\
-    xxx(IncrementalCompactionEnabled,           bool,   false                 )\
+    xxx(CompactionScoreHistorySize,               ui32, 10                    )\
+    xxx(CompactionScoreLimitForThrottling,        ui32, 300                   )\
+    xxx(EnableDynamicGarbageCompactionThrottling, bool, false                 )\
+    xxx(GarbageCompactionThrottlingSoftLimit,     ui32, 120                   )\
+    xxx(GarbageCompactionThrottlingHardLimit,     ui32, 200                   )\
+    xxx(TargetCompactionBytesPerOp,               ui64, 64_KB                 )\
+    xxx(MaxSkippedBlobsDuringCompaction,          ui32, 3                     )\
+    xxx(MaxSkippedBlobsDuringCompactionHDD,       ui32, 3                     )\
+    xxx(IncrementalCompactionEnabled,             bool, false                 )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
     xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
@@ -754,6 +760,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ReadBlockMaskOnCompactionOptimization)                                 \
     xxx(SplitCompactionTx)                                                     \
     xxx(VerifyRecreatedBlobMetasOnCleanup)                                     \
+    xxx(DynamicGarbageCompactionThrottling)                                    \
 
 // BLOCKSTORE_BINARY_FEATURES
 

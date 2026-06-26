@@ -1068,6 +1068,15 @@ bool TPartitionActor::IsVerifyRecreatedBlobMetasOnCleanupEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsDynamicGarbageCompactionThrottlingEnabled() const
+{
+    return Config->GetEnableDynamicGarbageCompactionThrottling() ||
+           Config->IsDynamicGarbageCompactionThrottlingFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)

@@ -101,8 +101,12 @@ public:
     TDuration GetMinCompactionDelay() const;
     TDuration GetMaxCompactionExecTimePerSecond() const;
     TDuration GetMaxCompactionExecTimePerSecondForZeroed() const;
+    TDuration GetMinGarbageCompactionExecTimePerSecondLimit() const;
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
+    bool GetEnableDynamicGarbageCompactionThrottling() const;
+    ui32 GetGarbageCompactionThrottlingSoftLimit() const;
+    ui32 GetGarbageCompactionThrottlingHardLimit() const;
     ui64 GetTargetCompactionBytesPerOp() const;
     [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
     [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompactionHDD() const;
@@ -428,6 +432,11 @@ public:
         const TString& diskId) const;
 
     [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
