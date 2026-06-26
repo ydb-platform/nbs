@@ -15234,10 +15234,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(true);
     }
 
-    Y_UNIT_TEST(ShouldFillHasDiskSizeAnomalyCounter)
+    Y_UNIT_TEST(ShouldFillDiskSizeRatioCounter)
     {
         auto config = DefaultConfig();
-        config.SetDiskSizeAnomalyThreshold(3);
         config.SetSSDMaxBlobsPerRange(Max<ui32>());
         config.SetHDDMaxBlobsPerRange(Max<ui32>());
         config.SetCompactionGarbageThreshold(Max<ui32>());
@@ -15245,7 +15244,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto runtime = PrepareTestActorRuntime(config);
 
-        bool hasDiskSizeAnomaly = false;
+        ui64 diskSizeRatio = false;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -15256,7 +15255,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             event
                                 ->Get<TEvStatsService::TEvVolumePartCounters>();
                         const auto& sc = msg->DiskCounters->Simple;
-                        hasDiskSizeAnomaly = sc.HasDiskSizeAnomaly.Value;
+                        diskSizeRatio = sc.DiskSizeRatio.Value;
                         break;
                     }
                 }
@@ -15282,25 +15281,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         updateCounters();
 
-        UNIT_ASSERT(!hasDiskSizeAnomaly);
+        UNIT_ASSERT_VALUES_EQUAL(100, diskSizeRatio);
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '1');
         updateCounters();
-        UNIT_ASSERT(!hasDiskSizeAnomaly);
+        UNIT_ASSERT_VALUES_EQUAL(200, diskSizeRatio);
 
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '2');
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), '2');
         updateCounters();
-        UNIT_ASSERT(hasDiskSizeAnomaly);
+        UNIT_ASSERT_VALUES_EQUAL(250, diskSizeRatio);
 
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '3');
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 256), '3');
         updateCounters();
-        UNIT_ASSERT(hasDiskSizeAnomaly);
+        UNIT_ASSERT_VALUES_EQUAL(275, diskSizeRatio);
 
         partition.Compaction();
         partition.Cleanup();
 
         updateCounters();
-        UNIT_ASSERT(!hasDiskSizeAnomaly);
+        UNIT_ASSERT_VALUES_EQUAL(100, diskSizeRatio);
     }
 }
 

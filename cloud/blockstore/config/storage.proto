@@ -1618,8 +1618,4 @@ message TStorageServiceConfig
     // If true, the recreated blob metas are verified on cleanup.
     // We check that there is no leaked blocks in the mixed index.
     optional bool VerifyRecreatedBlobMetasOnCleanup = 512;
-
-    // If MixedBytesCount + FreshBytesCount + MergedBytesCount >= DiskSizeAnomalyThreshold * BytesCount,
-    // we will report HasDiskSizeAnomaly=1 counter
-    optional double DiskSizeAnomalyThreshold = 513;
 }

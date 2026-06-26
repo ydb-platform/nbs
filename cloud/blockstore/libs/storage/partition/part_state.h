@@ -1222,7 +1222,7 @@ public:
         UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
     }
 
-    bool HasDiskSizeAnomaly(double diskSizeAnomalyThreshold) const
+    double GetDiskSizeRatio() const
     {
         const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
         const auto freshBytesCount =
@@ -1230,9 +1230,15 @@ public:
         const auto mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
         const auto bytesCount = GetBlocksCount() * GetBlockSize();
 
+        STORAGE_VERIFY_C(
+            bytesCount != 0,
+            TWellKnownEntityTypes::DISK,
+            Config.GetDiskId(),
+            "bytesCount is zero");
+
         return static_cast<double>(
-                   mixedBytesCount + freshBytesCount + mergedBytesCount) >=
-               diskSizeAnomalyThreshold * static_cast<double>(bytesCount);
+                   mixedBytesCount + freshBytesCount + mergedBytesCount) /
+               static_cast<double>(bytesCount);
     }
 };
 

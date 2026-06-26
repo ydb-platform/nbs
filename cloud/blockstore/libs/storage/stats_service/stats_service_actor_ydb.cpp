@@ -101,7 +101,7 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
     BLOCKSTORE_SIMPLE_COUNTER(CleanupQueueBytes);
     BLOCKSTORE_SIMPLE_COUNTER(GarbageQueueBytes);
     BLOCKSTORE_SIMPLE_COUNTER(NewlyZeroedBlocks);
-    BLOCKSTORE_SIMPLE_COUNTER(HasDiskSizeAnomaly);
+    BLOCKSTORE_SIMPLE_COUNTER(DiskSizeRatio);
 #undef BLOCKSTORE_SIMPLE_COUNTER
 
 
