@@ -49,6 +49,7 @@ type MonitoringConfig struct {
 	Path                             string
 	Component                        string
 	RetriableErrorsDurationThreshold time.Duration
+	FilesystemPrefix                 string
 }
 
 type Monitoring struct {
@@ -58,8 +59,8 @@ type Monitoring struct {
 	retriableErrorTimestampsByVolume map[string]time.Time
 }
 
-func getService(volumeId string) string {
-	if strings.Contains(volumeId, "computefilesystem") {
+func (m *Monitoring) getService(volumeId string) string {
+	if len(m.cfg.FilesystemPrefix) != 0 && strings.Contains(volumeId, m.cfg.FilesystemPrefix) {
 		return "filestore"
 	}
 	return "nbs"
@@ -102,7 +103,7 @@ func (m *Monitoring) ReportExternalFsMountExpirationTimes(fsMountExpTimes map[st
 func (m *Monitoring) ReportRequestReceived(volumeId string, method string) {
 	subregistry := m.registry.WithTags(map[string]string{
 		"method":  method,
-		"service": getService(volumeId),
+		"service": m.getService(volumeId),
 	})
 	subregistry.Counter("Count").Inc()
 	subregistry.IntGauge("InflightCount").Add(1)
@@ -120,7 +121,7 @@ func (m *Monitoring) ReportRequestCompleted(
 ) {
 	subregistry := m.registry.WithTags(map[string]string{
 		"method":  method,
-		"service": getService(volumeId),
+		"service": m.getService(volumeId),
 	})
 
 	if elapsedTime > 0 {

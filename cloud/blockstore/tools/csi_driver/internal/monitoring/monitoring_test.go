@@ -20,7 +20,7 @@ const defaultRetriableErrorsThreshold = 10 * time.Minute
 
 const volumeId1 = "disk-123"
 const volumeId2 = "disk-456"
-const filesystemId1 = "computefilesystem-123"
+const filesystemId1 = "filesystem-123"
 
 func trimTrailingWhitespace(input string) string {
 	lines := strings.Split(input, "\n")
@@ -46,6 +46,7 @@ func NewTestMonitoring(retriableErrorsDurationThreshold time.Duration) *Monitori
 		Path:                             "/metrics",
 		Component:                        "server",
 		RetriableErrorsDurationThreshold: retriableErrorsDurationThreshold,
+		FilesystemPrefix:                 "filesystem",
 	}
 	mon := NewMonitoring(&monintoringCfg)
 	return mon
