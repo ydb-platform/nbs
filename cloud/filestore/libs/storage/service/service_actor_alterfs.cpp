@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
+#include <cloud/filestore/libs/storage/service/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -81,6 +82,9 @@ private:
     ui32 MaxShardCount = 0;
     ui64 SevenBytesHandlesCount = 0;
 
+    // Persistent state of resize operaion.
+    NProtoPrivate::TFileSystemResizeState FileSystemResizeState;
+
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
     bool DirectoryCreationInShardsForced = false;
@@ -116,12 +120,16 @@ private:
     void GetFileSystemTopology(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
     void CreateShard(const TActorContext& ctx, const ui32 shardIndex);
+    void ContinueCreateShards(const TActorContext& ctx, const ui32 limit);
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureShard(const TActorContext& ctx, const ui32 shardIndex);
     void ConfigureMainFileStore(const TActorContext& ctx);
 
     void PatchStorageConfig();
     void FillMultiShardFileStoreConfig(const TActorContext& ctx);
+
+    void GetResizeState(const TActorContext& ctx);
+    void UpdateShardCreatedState(const TActorContext& ctx, const ui32 shardIndex);
 
     void HandleDescribeFileStoreForAlterResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -163,6 +171,10 @@ private:
         const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleUnsafeChangeTabletStateResponse(
+        const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
@@ -195,6 +207,12 @@ private:
         }
 
         return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
+    }
+
+    bool IsShardCreated(const ui32 shardIndex) const
+    {
+        return TInplaceBitmap(FileSystemResizeState.GetCreatedShardBitmap())
+            .Get(shardIndex);
     }
 };
 
@@ -358,7 +376,76 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
     MainFileStoreOriginalConfig = currentConfig;
 
-    GetStorageStats(ctx);
+    if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+        GetResizeState(ctx);
+    } else {
+        GetStorageStats(ctx);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TAlterFileStoreActor::GetResizeState(const TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+
+    request->Record.SetFileSystemId(FileSystemId);
+    // Zero-ed Version means just return current state.
+    request->Record.MutableResizeState()->SetVersion(0);
+
+    NCloud::Send(
+        ctx,
+        MakeIndexTabletProxyServiceId(),
+        std::move(request),
+        MainFileStoreCookie);
+}
+
+void TAlterFileStoreActor::UpdateShardCreatedState(
+    const TActorContext& ctx,
+    const ui32 shardIndex)
+{
+    TMutableInplaceBitmap(*FileSystemResizeState.MutableCreatedShardBitmap())
+        .Set(shardIndex);
+
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+    *request->Record.MutableResizeState() = FileSystemResizeState;
+
+    NCloud::Send(
+        ctx,
+        MakeIndexTabletProxyServiceId(),
+        std::move(request),
+        shardIndex);
+}
+
+void TAlterFileStoreActor::HandleUnsafeChangeTabletStateResponse(
+    const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    if (!msg->Record.HasResizeState()) {
+        ReplyAndDie(ctx, MakeError(E_INVALID_STATE, "missing resize state"));
+        return;
+    }
+
+    if (!IsCookieValid(ev->Cookie)) {
+        ReportInvalidCookieAndDie(ctx, ev->Cookie);
+        return;
+    }
+
+    FileSystemResizeState = msg->Record.GetResizeState();
+
+    if (ev->Cookie == MainFileStoreCookie) {
+        GetStorageStats(ctx);
+        return;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -724,18 +811,38 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
 {
     if (ShardsToCreate == 0) {
         ConfigureShards(ctx);
+        return;
     }
 
     NextShardToCreate = ExistingShardIds.size();
-    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex = (limit == 0)
-                                   ? FileStoreConfig.ShardConfigs.size()
-                                   : std::min<ui32>(
-                                         NextShardToCreate + limit,
-                                         FileStoreConfig.ShardConfigs.size());
-    for (ui32 i = NextShardToCreate; i < endShardIndex; ++i) {
-        CreateShard(ctx, i);
-        NextShardToCreate = i + 1;
+    ContinueCreateShards(
+        ctx,
+        StorageConfig->GetMaxShardManagementRequestsInFlight());
+}
+
+void TAlterFileStoreActor::ContinueCreateShards(
+    const TActorContext& ctx,
+    const ui32 limit)
+{
+    ui32 requests = 0;
+    while (NextShardToCreate < FileStoreConfig.ShardConfigs.size() &&
+           (limit == 0 || requests < limit))
+    {
+        // When MaxShardManagementRequestsInFlight is Zero we do not use
+        // persistent storage for resize state and do not limit in-flight
+        // shard requests.
+        if (limit != 0) {
+            if (IsShardCreated(NextShardToCreate)) {
+                ++NextShardToCreate;
+                Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
+                --ShardsToCreate;
+                continue;
+            }
+        }
+
+        CreateShard(ctx, NextShardToCreate);
+        ++NextShardToCreate;
+        ++requests;
     }
 }
 
@@ -789,13 +896,21 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
         GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str());
 
     Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
-    if (--ShardsToCreate == 0) {
-        ConfigureShards(ctx);
-    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        if (NextShardToCreate < FileStoreConfig.ShardConfigs.size()) {
-            CreateShard(ctx, NextShardToCreate);
-            ++NextShardToCreate;
+    --ShardsToCreate;
+
+    if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+        UpdateShardCreatedState(ctx, ev->Cookie);
+
+        if (ShardsToCreate > 0 &&
+            NextShardToCreate < FileStoreConfig.ShardConfigs.size())
+        {
+            // Set limit to 1 as only one response was received now.
+            ContinueCreateShards(ctx, 1);
         }
+    }
+
+    if (ShardsToCreate == 0) {
+        ConfigureShards(ctx);
     }
 }
 
@@ -1112,6 +1227,9 @@ STFUNC(TAlterFileStoreActor::ResizeStateWork)
         HFunc(
             TEvIndexTablet::TEvConfigureShardsResponse,
             HandleConfigureMainFileStoreResponse);
+        HFunc(
+            TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
+            HandleUnsafeChangeTabletStateResponse);
 
         default:
             HandleUnexpectedEvent(

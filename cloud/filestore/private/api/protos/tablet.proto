@@ -853,9 +853,7 @@ message TFileSystemResizeState
     // the Request the TFileSystem.ResizeState and just return current state.
     optional uint32 Version = 1;
 
-    bytes AlteredShardBitmap = 2;
-    bytes CreatedShardBitmap = 3;
-    bytes ConfiguredShardBitmap = 4;
+    bytes CreatedShardBitmap = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
