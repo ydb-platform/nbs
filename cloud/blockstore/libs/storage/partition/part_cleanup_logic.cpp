@@ -211,7 +211,7 @@ bool PrepareCleanupTransaction(
         }
 
         TMaybe<NProto::TBlobMeta> blobMeta;
-        ++args.ReadedBlobMetasCount;
+        ++args.ReadBlobMetasCount;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
             Y_ABORT_UNLESS(
                 blobMeta.Defined(),
@@ -315,6 +315,7 @@ void ExecuteCleanupTransaction(
 
             ++mixedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {
+                ui64 blockCountInBlob = 0;
                 if (useRecreatedBlobMeta) {
                     STORAGE_VERIFY_C(
                         item.BlobId.BlobSize() % state.GetBlockSize() == 0,
@@ -322,17 +323,16 @@ void ExecuteCleanupTransaction(
                         state.GetConfig().GetDiskId(),
                         "Blob size is not divisible by block size, blob: "
                             << ToString(MakeBlobId(tabletId, item.BlobId)));
-                    ui64 blockCountInBlob =
+                    blockCountInBlob =
                         item.BlobId.BlobSize() / state.GetBlockSize();
-                    state.DecrementMixedBlocksCount(blockCountInBlob);
                 } else {
-                    // Mins for block counts are needed due to some
-                    // inconsistencies
-                    // caused by NBS-1422
-                    state.DecrementMixedBlocksCount(
-                        Min(mixedBlocks.BlocksSize(),
-                            state.GetMixedBlocksCount()));
+                    blockCountInBlob = mixedBlocks.BlocksSize();
                 }
+                // Mins for block counts are needed due to some
+                // inconsistencies
+                // caused by NBS-1422
+                state.DecrementMixedBlocksCount(
+                    Min(blockCountInBlob, state.GetMixedBlocksCount()));
             }
         } else if (blobMeta.HasMergedBlocks()) {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();

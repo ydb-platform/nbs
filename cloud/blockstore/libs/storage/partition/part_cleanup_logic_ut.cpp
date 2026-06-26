@@ -645,7 +645,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
 
         RunPrepareAndExecute(
             executor,
-            env
+            env,
             state,
             args,
             true,   // verifyRecreatedBlobMetasOnCleanup
@@ -671,6 +671,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
     {
         auto state = MakeState();
         TTestExecutor executor;
+        TTestEnv env;
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         const ui64 deletionCommitId = MakeCommitId(0, 50);
@@ -691,6 +692,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
         RunPrepareAndExecute(
             executor,
+            env,
             state,
             args,
             false,   // verifyRecreatedBlobMetasOnCleanup
@@ -702,7 +704,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
 
         // No blob metas were read from the database
-        UNIT_ASSERT_VALUES_EQUAL(0, args.ReadedBlobMetasCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, args.ReadBlobMetasCount);
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
@@ -719,6 +721,8 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
     {
         auto state = MakeState();
         TTestExecutor executor;
+        TTestEnv env;
+
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         const ui64 deletionCommitId = MakeCommitId(0, 50);
@@ -743,6 +747,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
         RunPrepareAndExecute(
             executor,
+            env,
             state,
             args,
             false,   // verifyRecreatedBlobMetasOnCleanup
@@ -755,7 +760,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
 
         // No blob metas were read from the database
-        UNIT_ASSERT_VALUES_EQUAL(0, args.ReadedBlobMetasCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, args.ReadBlobMetasCount);
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
