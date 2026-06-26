@@ -55,10 +55,6 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
     TVector<TCertificateFiles> certificates,
     TDuration refreshInterval);
 
-// Convenience wrapper: uses CreateStaticCertificateProvider when
-// refreshInterval is zero, CreateCertificateProviderStub when no
-// certificates pass validation, and CreatePeriodicCertificateProvider
-// otherwise.
 ICertificateProviderPtr CreateCertificateProvider(
     ILoggingServicePtr logging,
     TString logComponent,

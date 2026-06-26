@@ -190,7 +190,6 @@ void TBootstrapCommon::Init()
     FileIOService = CreateAIOService();
 
     InitDiagnostics();
-
     InitComponents();
 
     STORAGE_INFO("Init completed");

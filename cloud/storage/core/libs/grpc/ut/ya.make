@@ -18,6 +18,8 @@ RESOURCE(
     certs/server1.key   grpc/ut/certs/server1.key
     certs/server2.crt   grpc/ut/certs/server2.crt
     certs/server2.key   grpc/ut/certs/server2.key
+    certs/server3.crt   grpc/ut/certs/server3.crt
+    certs/server3.key   grpc/ut/certs/server3.key
 )
 
 PEERDIR(

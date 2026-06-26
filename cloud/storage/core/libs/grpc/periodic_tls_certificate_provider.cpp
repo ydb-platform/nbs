@@ -74,7 +74,7 @@ public:
 
     int CompareImpl(const grpc_tls_certificate_provider* other) const override
     {
-        // This a GRPC way to compare grpc_tls_certificate_provider instances.
+        // This is a GRPC way to compare grpc_tls_certificate_provider instances.
         // grpc_tls_certificate_provider instances are concidered distinct if
         // their addresses are disctinct. Internaly GRPC uses three-way compare
         // intead of < to sort and search grpc_tls_certificate_provider instances
@@ -185,7 +185,7 @@ public:
             future = PendingUpdate.GetFuture();
         }
         if (needUpdate) {
-            ScheduleUpdateAt(TInstant::Now());
+            ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
         }
         return future;
     }
@@ -215,14 +215,18 @@ public:
         return grpc::experimental::TlsServerCredentials(tlsOptions);
     }
 
-    // IStartable
-
     void Start() override
     {
-        if (Started) {
-            return;
+        {
+            TGuard<TMutex> lock(UpdateMutex);
+            if (Started) {
+                return;
+            }
+            Started = true;
+            // Claim the update slot so a concurrent UpdateCertificates()
+            // cannot race with the initial refresh below.
+            UpdateInProgress = true;
         }
-        Started = true;
 
         Log = Logging->CreateLog(LogComponent);
 
@@ -243,21 +247,32 @@ public:
         }
 
         RefreshCertificates(true);
-        ScheduleUpdateAt(TInstant::Now() + RefreshInterval);
+
+        NThreading::TPromise<void> pending;
+        {
+            TGuard<TMutex> lock(UpdateMutex);
+            UpdateInProgress = false;
+            // Satisfy any request that arrived while we were starting up.
+            pending = std::exchange(PendingUpdate, {});
+        }
+        if (pending.Initialized()) {
+            pending.SetValue();
+        }
+
+        ScheduleUpdateAt(TInstant::Now() + RefreshInterval, /*periodic=*/true);
     }
 
     void Stop() override
     {
-        if (!Started) {
-            return;
-        }
-
         NThreading::TPromise<void> promise;
         {
             TGuard<TMutex> lock(UpdateMutex);
+            if (!Started) {
+                return;
+            }
             Started = false;
-            // If no update is running, the scheduled callback will see !Started
-            // and bail without completing PendingUpdate — do it here.
+            // If no update is running, no scheduled callback will complete
+            // PendingUpdate, so do it here.
             if (!UpdateInProgress) {
                 promise = std::exchange(PendingUpdate, {});
             }
@@ -269,50 +284,67 @@ public:
     }
 
 private:
-    void ScheduleUpdateAt(TInstant deadline)
+    void ScheduleUpdateAt(TInstant deadline, bool periodic)
     {
-        Scheduler->Schedule(deadline, [weak = weak_from_this()] {
+        Scheduler->Schedule(deadline, [weak = weak_from_this(), periodic] {
             if (auto self = weak.lock()) {
-                self->RunPeriodicUpdate();
+                self->RunPeriodicUpdate(periodic);
             }
         });
     }
 
-    // Body of the periodic scheduler callback. Runs on the scheduler's thread.
-    // The caller holds a strong ref (shared_ptr) so `this` is guaranteed valid.
-    void RunPeriodicUpdate()
+    void RunPeriodicUpdate(bool periodic)
     {
-        // Enter the update only if started and no concurrent update is running.
-        // Both checks are atomic under UpdateMutex with Stop()'s Started=false write.
-        // PendingUpdate is always created here so that UpdateCertificates() callers
-        // that arrive mid-refresh attach to the same promise and are notified by
-        // this run, not the next one.
+        bool run = false;
+        NThreading::TPromise<void> stalePending;
         {
             TGuard<TMutex> lock(UpdateMutex);
-            if (!Started || UpdateInProgress) {
-                return;
+            if (!Started) {
+                // Stopped (or not started yet): don't touch the certificates,
+                // but resolve any pending request so its future doesn't hang.
+                stalePending = std::exchange(PendingUpdate, {});
+            } else if (!UpdateInProgress) {
+                UpdateInProgress = true;
+                if (!PendingUpdate.Initialized()) {
+                    PendingUpdate = NThreading::NewPromise<void>();
+                }
+                run = true;
             }
-            UpdateInProgress = true;
-            if (!PendingUpdate.Initialized()) {
-                PendingUpdate = NThreading::NewPromise<void>();
+            // else: an update is already running; it completes the shared
+            // PendingUpdate, so this trigger is coalesced.
+        }
+
+        if (stalePending.Initialized()) {
+            stalePending.SetValue();
+        }
+
+        if (run) {
+            RefreshCertificates(false);
+
+            NThreading::TPromise<void> promise;
+            {
+                TGuard<TMutex> lock(UpdateMutex);
+                promise = std::exchange(PendingUpdate, {});
+                UpdateInProgress = false;
+            }
+            if (promise.Initialized()) {
+                promise.SetValue();
             }
         }
 
-        RefreshCertificates(false);
-
-        NThreading::TPromise<void> promise;
-        bool shouldReschedule = false;
-        {
-            TGuard<TMutex> lock(UpdateMutex);
-            promise = std::exchange(PendingUpdate, {});
-            shouldReschedule = Started;
-            UpdateInProgress = false;
-        }
-
-        promise.SetValue();
-
-        if (shouldReschedule) {
-            ScheduleUpdateAt(TInstant::Now() + RefreshInterval);
+        // Only the periodic chain reschedules itself; on-demand triggers must
+        // not spawn extra self-perpetuating timers.
+        if (periodic) {
+            bool alive = false;
+            {
+                TGuard<TMutex> lock(UpdateMutex);
+                alive = Started;
+            }
+            if (alive) {
+                ScheduleUpdateAt(
+                    TInstant::Now() + RefreshInterval,
+                    /*periodic=*/true);
+            }
         }
     }
 
@@ -337,11 +369,10 @@ private:
             const auto& newCert = result.Certificates[i];
 
             if (!newCert.Defined()) {
-                if (!state.Pair.PrivateKey.empty()) {
-                    identityPairs.emplace_back(
-                        state.Pair.PrivateKey,
-                        state.Pair.CertChain);
-                }
+                // The read failed and there is no usable fallback:
+                // UpdateCertificates() already substitutes the previously
+                // known material whenever it exists, so a missing result here
+                // means we never had this certificate to begin with.
                 continue;
             }
 
