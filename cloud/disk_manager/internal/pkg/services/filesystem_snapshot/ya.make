@@ -17,5 +17,4 @@ RECURSE_FOR_TESTS(
 
 RECURSE(
     config
-    protos
 )

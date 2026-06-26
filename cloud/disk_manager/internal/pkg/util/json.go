@@ -12,7 +12,6 @@ import (
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	disk_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	filesystem_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
-	service_filesystem_snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot/protos"
 	images_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	placementgroup_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
@@ -75,7 +74,6 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"pools.RetireBaseDisks":                         func() proto.Message { return &pools_protos.RetireBaseDisksRequest{} },
 	"snapshots.CreateSnapshotFromDisk":              func() proto.Message { return &snapshot_protos.CreateSnapshotFromDiskRequest{} },
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotRequest{} },
-	"filesystem_snapshot.DeleteFilesystemSnapshot":  func() proto.Message { return &service_filesystem_snapshot_protos.DeleteFilesystemSnapshotRequest{} },
 	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemRequest{} },
 }
 
@@ -136,7 +134,6 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"pools.RetireBaseDisks":                         func() proto.Message { return &pools_protos.RetireBaseDisksTaskState{} },
 	"snapshots.CreateSnapshotFromDisk":              func() proto.Message { return &snapshot_protos.CreateSnapshotFromDiskTaskState{} },
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotTaskState{} },
-	"filesystem_snapshot.DeleteFilesystemSnapshot":  func() proto.Message { return &service_filesystem_snapshot_protos.DeleteFilesystemSnapshotTaskState{} },
 	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemTaskState{} },
 	"dataplane.RegularScrubFilesystems":             func() proto.Message { return &filesystem_scrubbing_protos.RegularScrubFilesystemsTaskState{} },
 }

@@ -53,7 +53,6 @@ func RegisterForExecution(
 		func() tasks.Task {
 			return &deleteFilesystemSnapshotTask{
 				scheduler: taskScheduler,
-				storage:   storage,
 			}
 		})
 	if err != nil {
