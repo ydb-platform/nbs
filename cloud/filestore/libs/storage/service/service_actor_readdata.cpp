@@ -753,7 +753,7 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
                     break;
                 }
                 TRopeUtils::Memcpy(
-                    reinterpret_cast<char*>(iovec.GetBase()),
+                    reinterpret_cast<char*>(iovec.GetBase()) + iovecOffset,
                     it,
                     dataToWrite);
                 remainingBufferSize -= dataToWrite;
