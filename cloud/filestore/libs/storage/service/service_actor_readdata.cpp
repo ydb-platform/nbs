@@ -722,6 +722,8 @@ void TReadDataActor::ReadData(
     // Original iovecs should be preserved in this request and pruned during
     // this forwarding on the tablet side
     ReadRequest.MutableIovecs()->Swap(request->Record.MutableIovecs());
+    // Length should be preserved to validate payload size
+    ReadRequest.SetLength(request->Record.GetLength());
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -740,8 +742,27 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
                 << bufferSize << " Actual size: " << payload.size());
     }
 
+    if (readDataResponse.GetBufferOffset() >= bufferSize) {
+        return MakeError(
+            E_BADMSG,
+            TStringBuilder() << "Incorrect buffer offset. Buffer offset: "
+                             << readDataResponse.GetBufferOffset()
+                             << " Buffer size : " << bufferSize);
+    }
+
     auto it = payload.begin() + readDataResponse.GetBufferOffset();
     if (!ReadRequest.GetIovecs().empty()) {
+        if (bufferSize - readDataResponse.GetBufferOffset() >
+            ReadRequest.GetLength())
+        {
+            return MakeError(
+                E_BADMSG,
+                TStringBuilder()
+                    << "Payload size is more than iovecs size. Expected size: "
+                    << ReadRequest.GetLength() << " Actual size: "
+                    << bufferSize - readDataResponse.GetBufferOffset());
+        }
+
         ui64 remainingBufferSize =
             bufferSize - readDataResponse.GetBufferOffset();
         for (auto& iovec: ReadRequest.GetIovecs()) {
@@ -807,19 +828,19 @@ void TReadDataActor::HandleReadDataResponse(
 
         ui64 bufferSize = response->Record.GetLength();
         if (response->Record.GetBuffer().empty() && bufferSize != 0) {
-            if (msg->GetPayloadCount() != 1 ||
-                msg->GetTotalPayloadSize() != bufferSize)
-            {
+            if (msg->GetPayloadCount() != 1) {
                 HandleError(
                     ctx,
                     MakeError(
                         E_BADMSG,
-                        "Payload is unavailable or has an incorrect size"));
+                        TStringBuilder()
+                            << "Payload is unavailable or message has more "
+                               "than one payload. Payload count"
+                            << msg->GetPayloadCount()));
                 return;
             }
-            auto err = ProcessExternalPayload(
-                msg->GetPayload(0),
-                response->Record);
+            auto err =
+                ProcessExternalPayload(msg->GetPayload(0), response->Record);
             if (HasError(err)) {
                 HandleError(ctx, err);
                 return;
