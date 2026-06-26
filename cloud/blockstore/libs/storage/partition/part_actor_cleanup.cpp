@@ -192,6 +192,7 @@ bool TPartitionActor::PrepareCleanup(
 
     TPartitionDatabase db(tx.DB);
     return PrepareCleanupTransaction(
+        IsUseRecreatedBlobMetasOnCleanupEnabled(),
         IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
         TabletID(),
         PartitionConfig.GetDiskId(),
@@ -211,6 +212,7 @@ void TPartitionActor::ExecuteCleanup(
         TActorContext::ActorSystem(),
         LogTitle,
         TabletID(),
+        IsUseRecreatedBlobMetasOnCleanupEnabled(),
         db,
         args,
         *State);

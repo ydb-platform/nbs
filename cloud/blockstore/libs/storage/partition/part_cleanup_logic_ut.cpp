@@ -267,12 +267,14 @@ void RunPrepareAndExecute(
     TTestEnv& env,
     TPartitionState& state,
     TTxPartition::TCleanup& args,
-    bool verifyRecreatedBlobMetasOnCleanup)
+    bool verifyRecreatedBlobMetasOnCleanup,
+    bool useRecreatedBlobMeta)
 {
     executor.ReadTx(
         [&](TPartitionDatabase db)
         {
             const bool ready = PrepareCleanupTransaction(
+                useRecreatedBlobMeta,
                 verifyRecreatedBlobMetasOnCleanup,
                 TTestExecutor::TabletId,
                 "test-disk",
@@ -295,6 +297,7 @@ void RunPrepareAndExecute(
                         1,
                         0}),
                 TTestExecutor::TabletId,
+                useRecreatedBlobMeta,
                 db,
                 args,
                 state);
@@ -574,7 +577,14 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 UNIT_ASSERT(HasMergedBlob(db, setup.MergedBlobId, 10, 13));
             });
 
-        RunPrepareAndExecute(executor, env, state, args, false);
+        RunPrepareAndExecute(
+            executor,
+            env,
+            state,
+            args,
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            false    // useRecreatedBlobMeta
+        );
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
@@ -632,7 +642,15 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             setup.MergedBlobMeta);
 
         auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
-        RunPrepareAndExecute(executor, env, state, args, true);
+
+        RunPrepareAndExecute(
+            executor,
+            env
+            state,
+            args,
+            true,   // verifyRecreatedBlobMetasOnCleanup
+            false   // useRecreatedBlobMeta
+        );
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
@@ -648,6 +666,108 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
             });
     }
+
+    Y_UNIT_TEST(ShouldCleanupMixedAndMergedBlobsWhenUseRecreatedBlobMeta)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const ui64 deletionCommitId = MakeCommitId(0, 50);
+        const ui64 cleanupCommitId = MakeCommitId(0, 100);
+        const auto setup =
+            SetupMixedAndMergedBlobs(executor, state, deletionCommitId);
+
+        TVector<TCleanupQueueItem> cleanupQueue;
+        cleanupQueue.emplace_back(
+            setup.MixedBlobId,
+            deletionCommitId,
+            setup.MixedBlobMeta);
+        cleanupQueue.emplace_back(
+            setup.MergedBlobId,
+            deletionCommitId,
+            setup.MergedBlobMeta);
+
+        auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
+        RunPrepareAndExecute(
+            executor,
+            state,
+            args,
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            true     // useRecreatedBlobMeta
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+
+        // No blob metas were read from the database
+        UNIT_ASSERT_VALUES_EQUAL(0, args.ReadedBlobMetasCount);
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(
+                    !HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyDecrementMixedAndMergedBytesCountWhenUseRecreatedBlobMeta)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const ui64 deletionCommitId = MakeCommitId(0, 50);
+        const ui64 cleanupCommitId = MakeCommitId(0, 100);
+        const auto setup =
+            SetupMixedAndMergedBlobs(executor, state, deletionCommitId);
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { db.DeleteMixedBlock(2, setup.MixedBlobId.CommitId()); });
+
+        TVector<TCleanupQueueItem> cleanupQueue;
+        cleanupQueue.emplace_back(
+            setup.MixedBlobId,
+            deletionCommitId,
+            MakeMixedBlobMeta({0, 1}));
+        cleanupQueue.emplace_back(
+            setup.MergedBlobId,
+            deletionCommitId,
+            setup.MergedBlobMeta);
+
+        auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
+        RunPrepareAndExecute(
+            executor,
+            state,
+            args,
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            true     // useRecreatedBlobMeta
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
+
+        // No blob metas were read from the database
+        UNIT_ASSERT_VALUES_EQUAL(0, args.ReadedBlobMetasCount);
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(
+                    !HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
+            });
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

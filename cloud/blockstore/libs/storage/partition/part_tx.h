@@ -630,6 +630,8 @@ struct TTxPartition
 
         TVector<NProto::TBlobMeta> BlobsMeta;
 
+        ui64 ReadedBlobMetasCount = 0;
+
         TCleanup(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
@@ -641,6 +643,7 @@ struct TTxPartition
 
         void Clear()
         {
+            ReadedBlobMetasCount = 0;
             BlobsMeta.clear();
         }
     };

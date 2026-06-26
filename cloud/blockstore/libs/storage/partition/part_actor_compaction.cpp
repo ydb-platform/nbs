@@ -1995,7 +1995,8 @@ void TPartitionActor::CompleteCompaction(
             mergedBlobThreshold,
             args.CommitId,
             TabletID(),
-            IsVerifyRecreatedBlobMetasOnCleanupEnabled(),   // shouldRecreateBlobMetas
+            IsVerifyRecreatedBlobMetasOnCleanupEnabled() ||
+                IsUseRecreatedBlobMetasOnCleanupEnabled(),   // shouldRecreateBlobMetas
             *Info(),
             *State,
             rangeCompaction,
