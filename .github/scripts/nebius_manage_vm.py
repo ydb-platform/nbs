@@ -9,7 +9,6 @@ import time
 import grpc
 from typing import Optional
 import asyncio
-import requests
 import yaml
 from .helpers import (
     setup_logger,
@@ -27,7 +26,6 @@ from .helpers import (
 )
 from github import Auth as GithubAuth
 from github import Github
-from github.GithubException import GithubException
 from github.Repository import Repository
 from github.SelfHostedActionsRunnerToken import SelfHostedActionsRunnerToken
 
@@ -234,12 +232,7 @@ if not hasattr(Repository, "create_self_hosted_runner_registration_token"):
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(
-        GithubException,
-        requests.exceptions.ConnectionError,
-        requests.exceptions.Timeout,
-        ValueError,
-    ),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS + (ValueError,),
 )
 def get_runner_token(
     github_repo_owner: str, github_repo: str, github_token: str
