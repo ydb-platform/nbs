@@ -483,8 +483,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         AddRange(
             msg->Record.GetNodeId(),
             msg->Record.GetHandle(),
-            msg->Record.GetOffset(),
-            msg->Record.GetLength(),
+            byteRange.Offset,
+            byteRange.Length,
             profileLogRequest);
         profileLogRequest.SetCommitId(commitId);
 

@@ -316,7 +316,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         storageConfig.SetAddingUnconfirmedDataEnabled(true);
         storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
-        TTestEnv env({}, std::move(storageConfig));
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -360,6 +362,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         UNIT_ASSERT_VALUES_EQUAL(1, gbi->Record.BlobsSize());
 
         GenerateBlobIdsPutBlobAndConfirm(env, tablet, *gbi, alignedData);
+
+        const auto& addData = profileLog->Requests[static_cast<ui32>(
+            EFileStoreSystemRequest::AddDataUnconfirmed)];
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.size());
+        const auto& loggedRange = addData[0].Request.GetRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(id, loggedRange.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, loggedRange.GetHandle());
+        UNIT_ASSERT_VALUES_EQUAL(writeOffset, loggedRange.GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(writeLength, loggedRange.GetBytes());
 
         TString expected = headData + alignedData + tailData;
 
