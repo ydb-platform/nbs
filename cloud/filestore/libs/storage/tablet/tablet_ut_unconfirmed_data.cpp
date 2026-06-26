@@ -1,3 +1,4 @@
+#include "model/profile_log_events.h"
 #include "tablet_schema.h"
 #include "tablet_tx.h"
 
@@ -315,7 +316,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         storageConfig.SetAddingUnconfirmedDataEnabled(true);
         storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
-        TTestEnv env({}, std::move(storageConfig));
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -359,6 +362,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         UNIT_ASSERT_VALUES_EQUAL(1, gbi->Record.BlobsSize());
 
         GenerateBlobIdsPutBlobAndConfirm(env, tablet, *gbi, alignedData);
+
+        const auto& addData = profileLog->Requests[static_cast<ui32>(
+            EFileStoreSystemRequest::AddDataUnconfirmed)];
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.size());
+        const auto& loggedRange = addData[0].Request.GetRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(id, loggedRange.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, loggedRange.GetHandle());
+        UNIT_ASSERT_VALUES_EQUAL(writeOffset, loggedRange.GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(writeLength, loggedRange.GetBytes());
 
         TString expected = headData + alignedData + tailData;
 
@@ -1225,11 +1237,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             response->GetErrorReason().find("unconfirmed data not found") !=
                 TString::npos,
             response->GetErrorReason());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
+        const auto& cancel =
             profileLog
-                ->Requests[static_cast<ui32>(EFileStoreRequest::CancelAddData)]
-                .size());
+                ->Requests[static_cast<ui32>(EFileStoreRequest::CancelAddData)];
+        UNIT_ASSERT_VALUES_EQUAL(1, cancel.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            unknownCommitId,
+            cancel[0].Request.GetCommitId());
     }
 
     Y_UNIT_TEST(ShouldReplyToRepeatedCancelAddDataWhileDeleteInProgress)
@@ -1426,6 +1440,95 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
                 ReadData(tablet, handle, block, 0),
                 "cycle=" << cycle);
         }
+    }
+
+    Y_UNIT_TEST(ShouldLogRecoveryAddBlobsToProfileLog)
+    {
+        const ui32 block = 4_KB;
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 commitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        const auto recoverType =
+            static_cast<ui32>(EFileStoreSystemRequest::RecoverUnconfirmedData);
+        UNIT_ASSERT(profileLog->Requests[recoverType].empty());
+
+        RebootTabletAndCreateHandle(tablet, id);
+
+        const auto& recovered = profileLog->Requests[recoverType];
+        UNIT_ASSERT_VALUES_EQUAL(1, recovered.size());
+
+        const auto& request = recovered[0].Request;
+        UNIT_ASSERT_VALUES_EQUAL(commitId, request.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(1, request.RangesSize());
+
+        const auto& range = request.GetRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(id, range.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(0, range.GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(block, range.GetBytes());
+    }
+
+    Y_UNIT_TEST(ShouldLogAddDataUnconfirmedAndConfirmAddDataDetails)
+    {
+        const ui32 block = 4_KB;
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 commitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataResponse(S_OK);
+
+        const auto& addData = profileLog->Requests[static_cast<ui32>(
+            EFileStoreSystemRequest::AddDataUnconfirmed)];
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.size());
+        const auto& addReq = addData[0].Request;
+        UNIT_ASSERT_VALUES_EQUAL(commitId, addReq.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(1, addReq.RangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(id, addReq.GetRanges(0).GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, addReq.GetRanges(0).GetHandle());
+        UNIT_ASSERT_VALUES_EQUAL(0, addReq.GetRanges(0).GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(block, addReq.GetRanges(0).GetBytes());
+
+        const auto& confirm = profileLog->Requests[static_cast<ui32>(
+            EFileStoreRequest::ConfirmAddData)];
+        UNIT_ASSERT_VALUES_EQUAL(1, confirm.size());
+        UNIT_ASSERT_VALUES_EQUAL(commitId, confirm[0].Request.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0, confirm[0].Request.RangesSize());
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInAddDataUnconfirmed)
