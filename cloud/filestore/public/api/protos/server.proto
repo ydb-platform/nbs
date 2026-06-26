@@ -66,6 +66,9 @@ message TMmapRequest
     // will be rejected.
     // If PageSize is 0, these constraints are disabled.
     optional uint32 PageSize = 4;
+
+    // Populate page tables for a mapping
+    optional bool MapPopulate = 5;
 }
 
 message TMmapResponse

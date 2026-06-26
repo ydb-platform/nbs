@@ -1313,7 +1313,8 @@ public:
         Result = this->AppCtx.State->CreateMmapRegion(
             this->Request->GetFilePath(),
             this->Request->GetSize(),
-            this->Request->GetPageSize());
+            this->Request->GetPageSize(),
+            this->Request->GetMapPopulate());
         NProto::TMmapResponse response;
 
         if (NCloud::HasError(Result)) {

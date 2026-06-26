@@ -41,7 +41,8 @@ TServerState::~TServerState()
 TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
     const TString& filePath,
     size_t size,
-    ui32 pageSize)
+    ui32 pageSize,
+    bool mapPopulate)
 {
     if (size < MinPageSize) {
         return MakeError(E_ARGUMENT, "Size must be greater or equal to 4 KB");
@@ -89,11 +90,16 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
                 fullPath.c_str()));
     }
 
+    int flags = MAP_SHARED;
+    if (mapPopulate) {
+        flags |= MAP_POPULATE;
+    }
+
     void* addr = mmap(
         nullptr,
         size,
         PROT_READ | PROT_WRITE,
-        MAP_SHARED,
+        flags,
         file,
         0 /* offset */);
     if (addr == MAP_FAILED) {
