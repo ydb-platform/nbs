@@ -21,6 +21,7 @@ from .helpers import (
     GITHUB_API_RETRY_ATTEMPTS,
     GITHUB_API_RETRY_INTERVAL_SEC,
     GITHUB_RUNNER_LATEST_VERSION,
+    fetch_github_team_public_keys,
     resolve_github_runner_release,
 )
 from github import Auth as GithubAuth
@@ -96,29 +97,6 @@ def generate_github_label():
     )
     logger.info("Generated label: %s", generated_string)
     return generated_string
-
-
-def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):
-    org = gh.get_organization(github_org)
-    team = org.get_team_by_slug(team_slug)
-    members = [member for member in team.get_members()]
-
-    ssh_keys = []
-    logger.info(
-        "Fetching SSH keys for members: %s",
-        ", ".join([member.login for member in members]),
-    )
-    member_keys_count = 0
-    for member in members:
-
-        for key in member.get_keys():
-            member_keys_count += 1
-            ssh_keys.append(key.key)
-
-        logger.debug("Fetched %d SSH keys for %s", member_keys_count, member.login)
-
-    logger.debug(f"Fetched SSH keys: {ssh_keys}")
-    return ssh_keys
 
 
 def shell_quote_template_value(value) -> str:

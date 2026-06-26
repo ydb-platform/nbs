@@ -167,8 +167,8 @@ def test_get_runner_token_retries_github_errors(monkeypatch, capsys):
 @pytest.mark.parametrize(
     "exception_type",
     [
-        m.requests.exceptions.ConnectionError,
-        m.requests.exceptions.Timeout,
+        h.requests.exceptions.ConnectionError,
+        h.requests.exceptions.Timeout,
     ],
 )
 def test_get_runner_token_retries_transport_errors(monkeypatch, exception_type):
