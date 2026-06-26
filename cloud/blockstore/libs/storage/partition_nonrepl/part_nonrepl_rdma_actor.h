@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
@@ -70,6 +71,7 @@ private:
     const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
+    const TLogTitle LogTitle;
 
     // TODO implement DeviceStats and similar stuff
 

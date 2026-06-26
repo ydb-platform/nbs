@@ -59,6 +59,11 @@ public:
         TString DiskId;
     };
 
+    struct TPartitionNonreplRdma
+    {
+        TString DiskId;
+    };
+
     struct TSession
     {
         TString SessionId;
@@ -109,6 +114,7 @@ private:
         TDiskRegistry,
         TPartitionMirror,
         TPartitionMigration,
+        TPartitionNonreplRdma,
         TFreshBlocksWriter,
         TAgentAvailabilityMonitoringActor>;
 
