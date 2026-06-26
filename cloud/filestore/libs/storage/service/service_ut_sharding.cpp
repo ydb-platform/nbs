@@ -141,6 +141,10 @@ NProtoPrivate::TUnsafeChangeTabletStateResponse SetCompressNodeRef(
     return response;
 }
 
+// Helper class to count Describe/Create/Alter/Destroy/Configure
+// shard requests. We intentionally skip Main FS requests and requests
+// made by proxies. That's because we want to process only original shard
+// requests to check max in-flight and request/response counters.
 class TShardRequestCounter
 {
 private:
@@ -203,6 +207,7 @@ private:
             }
 
             case TEvIndexTablet::EvConfigureAsShardRequest: {
+                // Skipping calls made by Proxies.
                 if (ev->Recipient != MakeIndexTabletProxyServiceId()) {
                     return;
                 }
@@ -216,6 +221,7 @@ private:
             }
 
             case TEvIndexTablet::EvConfigureAsShardResponse: {
+                // We count only calls made by original actor.
                 auto it = ConfigureRequestSenders.find(ev->Cookie);
                 if (it == ConfigureRequestSenders.end() ||
                     ev->Recipient != it->second)
@@ -230,6 +236,12 @@ private:
             case TEvSSProxy::EvDescribeFileStoreRequest: {
                 using TRequest = TEvSSProxy::TEvDescribeFileStoreRequest;
                 const auto* msg = ev->Get<TRequest>();
+                // We need to count only DescribeShard operations, so excluding:
+                // 1. Cookie == Max<ui64>(): this is MainFileStoreCookie called
+                // from TAlterFileStoreActor::DescribeMainFileStore.
+                // 2. ShardIdPrefix we also need to check, as there is a call
+                // TIndexTabletProxyActor::DescribeFileStore with Cookie
+                // set to conn.Id.
                 if (ev->Cookie == Max<ui64>() ||
                     !msg->FileSystemId.StartsWith(ShardIdPrefix))
                 {
@@ -245,9 +257,12 @@ private:
             }
 
             case TEvSSProxy::EvDescribeFileStoreResponse: {
+                // Skipping this Cookie, it's MainFileStoreCookie called from
+                // TAlterFileStoreActor::DescribeMainFileStore.
                 if (ev->Cookie == Max<ui64>()) {
                     return;
                 }
+                // Skipping calls made by TIndexTabletProxyActor.
                 auto it = DescribeRequestSenders.find(ev->Cookie);
                 if (it == DescribeRequestSenders.end() ||
                     ev->Recipient != it->second)
@@ -259,6 +274,7 @@ private:
             }
 
             case TEvSSProxy::EvAlterFileStoreRequest: {
+                // Skipping MainFileStoreCookie.
                 if (ev->Cookie == Max<ui64>()) {
                     return;
                 }
@@ -271,6 +287,7 @@ private:
             }
 
             case TEvSSProxy::EvAlterFileStoreResponse: {
+                // Skipping MainFileStoreCookie.
                 if (ev->Cookie == Max<ui64>()) {
                     return;
                 }
