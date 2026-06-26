@@ -790,8 +790,15 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
         buffer.ReserveAndResize(bufferSize);
-        TRopeUtils::Memcpy(buffer.begin(), it, payload.size());
+        TRopeUtils::Memcpy(
+            buffer.begin(),
+            it,
+            payload.size() - readDataResponse.GetBufferOffset());
     }
+
+    // Set the buffer offset to 0 because the response buffer/iovecs do not
+    // contain data before the offset anymore
+    readDataResponse.SetBufferOffset(0);
 
     return {};
 }
@@ -835,7 +842,7 @@ void TReadDataActor::HandleReadDataResponse(
                         E_BADMSG,
                         TStringBuilder()
                             << "Payload is unavailable or message has more "
-                               "than one payload. Payload count"
+                               "than one payload. Payload count: "
                             << msg->GetPayloadCount()));
                 return;
             }

@@ -4916,10 +4916,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetTwoStageReadEnabled(true);
-
-        for(auto iovecSize : std::vector<size_t>{124, 4_KB, 256_KB}) {
-            testReadDataRequestWithIovecs(std::move(config), iovecSize);
-        }
+        testReadDataRequestWithIovecs(std::move(config));
     }
 
     Y_UNIT_TEST(
@@ -4943,7 +4940,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetExternalReadDataPayload(true);
-        testReadDataRequestWithIovecs(std::move(config));
+        for (auto iovecSize: std::vector<size_t>{124, 4_KB, 256_KB}) {
+            testReadDataRequestWithIovecs(config, iovecSize);
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleToggleServiceState)
