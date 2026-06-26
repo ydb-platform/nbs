@@ -4945,6 +4945,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldUseExternalPayloadWithIovecsForReadDataRequest)
+    {
+        NProto::TStorageConfig config;
+        config.SetExternalReadDataPayload(true);
+        config.SetZeroCopyReadEnabled(true);
+        for (auto iovecSize: std::vector<size_t>{124, 4_KB, 256_KB}) {
+            testReadDataRequestWithIovecs(config, iovecSize);
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleToggleServiceState)
     {
         TTestEnv env;
