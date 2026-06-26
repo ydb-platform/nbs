@@ -15,6 +15,7 @@ from .helpers import (
     setup_logger,
     github_output,
     KeyValueAction,
+    PYGITHUB_RETRY_EXCEPTIONS,
     SENSITIVE_DATA_VALUES,
     truthy,
     retry,
@@ -643,7 +644,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
     return client.get_repo(repo).get_self_hosted_runner(runner_id)
@@ -652,7 +653,7 @@ def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def remove_self_hosted_runner(client: Github, repo: str, runner_id: str) -> bool:
     return client.get_repo(repo).remove_self_hosted_runner(runner_id)

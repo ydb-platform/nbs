@@ -180,6 +180,11 @@ GITHUB_API_RETRY_ATTEMPTS = 3
 GITHUB_API_RETRY_INTERVAL_SEC = 5
 GITHUB_API_TIMEOUT_SEC = 30
 GITHUB_RUNNER_LATEST_VERSION = "latest"
+PYGITHUB_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    GithubException,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+)
 
 
 @dataclass(frozen=True)
@@ -334,7 +339,7 @@ def fetch_repo_variable(github_client, github_repository: str, variable_name: st
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def fetch_github_team(gh: Github, github_org: str, team_slug: str) -> Team:
     org = gh.get_organization(github_org)
@@ -344,7 +349,7 @@ def fetch_github_team(gh: Github, github_org: str, team_slug: str) -> Team:
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def fetch_github_team_members(team: Team) -> list[NamedUser]:
     return [member for member in team.get_members()]
@@ -353,7 +358,7 @@ def fetch_github_team_members(team: Team) -> list[NamedUser]:
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def fetch_github_member_public_keys(member: NamedUser) -> list[str]:
     return [key.key for key in member.get_keys()]
@@ -460,7 +465,7 @@ def git_release_payload(release: GitRelease) -> dict:
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_github_runner_release(
     version: str, github_token: str | None = None
@@ -474,7 +479,7 @@ def get_github_runner_release(
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_latest_github_runner_release(
     github_token: str | None = None,

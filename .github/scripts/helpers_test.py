@@ -129,6 +129,56 @@ def test_fetch_github_team_public_keys_retries_member_fetch(monkeypatch):
     assert sleeps == [h.GITHUB_API_RETRY_INTERVAL_SEC]
 
 
+def test_fetch_github_team_public_keys_retries_member_fetch_connection_error(
+    monkeypatch,
+):
+    sleeps = []
+
+    class FakeKey:
+        key = "ssh-rsa alice-1"
+
+    class FakeMember:
+        login = "alice"
+
+        def get_keys(self):
+            return [FakeKey()]
+
+    class FakeTeam:
+        def __init__(self):
+            self.calls = 0
+
+        def get_members(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise h.requests.exceptions.ConnectionError("dns failure")
+            return [FakeMember()]
+
+    class FakeOrg:
+        def __init__(self, team):
+            self.team = team
+
+        def get_team_by_slug(self, slug):
+            assert slug == "team"
+            return self.team
+
+    class FakeGithub:
+        def __init__(self, team):
+            self.team = team
+
+        def get_organization(self, org):
+            assert org == "org"
+            return FakeOrg(self.team)
+
+    team = FakeTeam()
+    monkeypatch.setattr(h.time, "sleep", sleeps.append)
+
+    assert h.fetch_github_team_public_keys(FakeGithub(team), "org", "team") == [
+        "ssh-rsa alice-1"
+    ]
+    assert team.calls == 2
+    assert sleeps == [h.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
 def test_fetch_github_team_public_keys_retries_member_key_fetch(monkeypatch):
     sleeps = []
 
@@ -145,6 +195,59 @@ def test_fetch_github_team_public_keys_retries_member_key_fetch(monkeypatch):
             self.calls += 1
             if self.calls == 1:
                 raise h.GithubException(502, {"message": "bad gateway"})
+            return [FakeKey()]
+
+    class FakeTeam:
+        def __init__(self, member):
+            self.member = member
+
+        def get_members(self):
+            return [self.member]
+
+    class FakeOrg:
+        def __init__(self, team):
+            self.team = team
+
+        def get_team_by_slug(self, slug):
+            assert slug == "team"
+            return self.team
+
+    class FakeGithub:
+        def __init__(self, team):
+            self.team = team
+
+        def get_organization(self, org):
+            assert org == "org"
+            return FakeOrg(self.team)
+
+    member = FakeMember()
+    monkeypatch.setattr(h.time, "sleep", sleeps.append)
+
+    assert h.fetch_github_team_public_keys(
+        FakeGithub(FakeTeam(member)), "org", "team"
+    ) == ["ssh-rsa alice-1"]
+    assert member.calls == 2
+    assert sleeps == [h.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
+def test_fetch_github_team_public_keys_retries_member_key_fetch_timeout(
+    monkeypatch,
+):
+    sleeps = []
+
+    class FakeKey:
+        key = "ssh-rsa alice-1"
+
+    class FakeMember:
+        login = "alice"
+
+        def __init__(self):
+            self.calls = 0
+
+        def get_keys(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise h.requests.exceptions.Timeout("read timed out")
             return [FakeKey()]
 
     class FakeTeam:
