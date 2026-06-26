@@ -47,11 +47,11 @@ func strListValue(strings []string) persistence.Value {
 }
 
 func durationByTaskTypeListValue(
-	valuesByTaskType map[string]time.Duration,
+	valueByTaskType map[string]time.Duration,
 ) persistence.Value {
 
-	values := make([]persistence.Value, 0, len(valuesByTaskType))
-	for taskType, value := range valuesByTaskType {
+	values := make([]persistence.Value, 0, len(valueByTaskType))
+	for taskType, value := range valueByTaskType {
 		values = append(values, persistence.StructValue(
 			persistence.StructFieldValue("task_type", persistence.UTF8Value(taskType)),
 			persistence.StructFieldValue("timeout", persistence.IntervalValue(value)),

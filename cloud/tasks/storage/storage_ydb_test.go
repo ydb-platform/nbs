@@ -1344,7 +1344,7 @@ func TestStorageYDBListHangingTasksWithTimeoutByType(t *testing.T) {
 	fastHangingTaskTimeout := time.Hour
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
 		HangingTaskTimeout: &hangingTaskTimeoutString,
-		HangingTasksTimeoutByType: map[string]string{
+		HangingTaskTimeoutByType: map[string]string{
 			"fast": fastHangingTaskTimeout.String(),
 		},
 	})

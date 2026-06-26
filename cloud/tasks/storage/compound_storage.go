@@ -490,7 +490,7 @@ func NewStorage(
 	}
 
 	hangingTaskTimeoutByType, err := parseDurationByTaskType(
-		config.GetHangingTasksTimeoutByType(),
+		config.GetHangingTaskTimeoutByType(),
 	)
 	if err != nil {
 		return nil, err
