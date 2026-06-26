@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
@@ -44,6 +45,7 @@ private:
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
     const NActors::TActorId VolumeActorId;
+    const TLogTitle LogTitle;
     TString RWClientId;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;

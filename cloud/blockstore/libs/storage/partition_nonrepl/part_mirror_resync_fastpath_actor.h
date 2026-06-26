@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -32,7 +33,7 @@ class TMirrorPartitionResyncFastPathActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TString DiskId;
+    const TChildLogTitle LogTitle;
     const ui32 BlockSize;
     const TBlockRange64 Range;
     const TVector<TReplicaDescriptor> Replicas;
@@ -47,7 +48,7 @@ private:
 public:
     TMirrorPartitionResyncFastPathActor(
         TRequestInfoPtr requestInfo,
-        TString diskId,
+        const TChildLogTitle& logTitle,
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,
