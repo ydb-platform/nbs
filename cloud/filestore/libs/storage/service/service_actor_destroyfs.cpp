@@ -178,7 +178,7 @@ void TDestroyFileStoreActor::GetStorageStats(const TActorContext& ctx)
 {
     auto request =
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
-    request->Record.SetAllowCache(true);
+    request->Record.SetCacheTTL(Max<ui32>());
     request->Record.SetFileSystemId(FileSystemId);
     request->Record.SetMode(NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
 

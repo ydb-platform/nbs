@@ -198,8 +198,9 @@ message TGetStorageStatsRequest
     // The same but for garbage score.
     uint32 CompactionRangeCountByGarbageScore = 5;
 
-    // Use cached data, don't require up-to-date stats.
-    bool AllowCache = 6;
+    // AllowCache used to take this place.
+    reserved 6;
+    reserved "AllowCache";
 
     // Statitics fetching mode: DEFAULT/FORCE_FETCH_SHARDS/GET_ONLY_SELF.
     // By default requests to shards do not fetch other shards, requests

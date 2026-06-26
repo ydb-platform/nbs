@@ -64,15 +64,13 @@ NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
 NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
     const TString& fsId,
-    const bool allowCache = false,
-    const ui32 cacheTTLMs = 0,
+    const ui32 cacheTTL = 0,
     const NProtoPrivate::EStatsRequestMode mode =
         NProtoPrivate::STATS_REQUEST_MODE_DEFAULT)
 {
     NProtoPrivate::TGetStorageStatsRequest request;
     request.SetFileSystemId(fsId);
-    request.SetAllowCache(allowCache);
-    request.SetCacheTTL(cacheTTLMs);
+    request.SetCacheTTL(cacheTTL);
     request.SetMode(mode);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
@@ -91,18 +89,16 @@ void CheckShardsSize(
     const ui64 blocksCount)
 {
     const auto mainStats =
-        GetStorageStats(service, fsConfig.FsId, false /* allowCache */);
+        GetStorageStats(service, fsConfig.FsId);
     const auto shard1Stats = GetStorageStats(
         service,
         fsConfig.Shard1Id,
-        false /* allowCache */,
-        0 /* cacheTTLMs */,
+        0 /* cacheTTL */,
         NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
     const auto shard2Stats = GetStorageStats(
         service,
         fsConfig.Shard2Id,
-        false /* allowCache */,
-        0 /* cacheTTLMs */,
+        0 /* cacheTTL */,
         NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
     UNIT_ASSERT_EQUAL(blocksCount, mainStats.GetStats().GetTotalBlocksCount());
     UNIT_ASSERT_EQUAL(
@@ -2561,7 +2557,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */);
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2580,7 +2576,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */);
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2711,8 +2707,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                false /* allowCache */,
-                0, /* cacheTTLMs */
+                0, /* cacheTTL */
                 NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
             const auto& stats = response.GetStats();
             // No blocks are used by the main filesystem itself, all blocks are
@@ -2732,8 +2727,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             const auto response = GetStorageStats(
                 service,
-                fsConfig.Shard2Id,
-                false /* allowCache */);
+                fsConfig.Shard2Id);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 data2.size() / 4_KB,
@@ -2746,8 +2740,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.Shard1Id,
-                false /* allowCache */,
-                0 /* cacheTTLMs */,
+                0 /* cacheTTL */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -2759,8 +2752,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.Shard2Id,
-                false /* allowCache */,
-                0 /* cacheTTLMs */,
+                0 /* cacheTTL */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3196,7 +3188,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */);
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3271,7 +3263,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */);
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3313,7 +3305,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                true /* allowCache */);
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -6670,8 +6662,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             response = GetStorageStats(
                 service,
                 fsConfig.Shard1Id,
-                true /* allowCache */,
-                30000 /* cacheTTLMs */,
+                Max<ui32>() /* cacheTTL */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
