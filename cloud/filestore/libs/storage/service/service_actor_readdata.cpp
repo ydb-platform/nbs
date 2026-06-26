@@ -745,21 +745,16 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
         ui64 remainingBufferSize =
             bufferSize - readDataResponse.GetBufferOffset();
         for (auto& iovec: ReadRequest.GetIovecs()) {
-            ui64 iovecOffset = 0;
-            while (iovec.GetLength() > iovecOffset) {
-                ui64 dataToWrite =
-                    Min(iovec.GetLength() - iovecOffset, remainingBufferSize);
-                if (dataToWrite == 0) {
-                    break;
-                }
-                TRopeUtils::Memcpy(
-                    reinterpret_cast<char*>(iovec.GetBase()) + iovecOffset,
-                    it,
-                    dataToWrite);
-                remainingBufferSize -= dataToWrite;
-                iovecOffset += dataToWrite;
-                it += dataToWrite;
+            ui64 dataToWrite = Min(iovec.GetLength(), remainingBufferSize);
+            if (dataToWrite == 0) {
+                break;
             }
+            TRopeUtils::Memcpy(
+                reinterpret_cast<char*>(iovec.GetBase()),
+                it,
+                dataToWrite);
+            remainingBufferSize -= dataToWrite;
+            it += dataToWrite;
         }
 
         if (remainingBufferSize != 0) {
