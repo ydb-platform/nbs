@@ -751,20 +751,17 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
     }
 
     auto it = payload.begin() + readDataResponse.GetBufferOffset();
+    ui64 remainingBufferSize = bufferSize - readDataResponse.GetBufferOffset();
     if (!ReadRequest.GetIovecs().empty()) {
-        if (bufferSize - readDataResponse.GetBufferOffset() >
-            ReadRequest.GetLength())
-        {
+        if (remainingBufferSize > ReadRequest.GetLength()) {
             return MakeError(
                 E_BADMSG,
                 TStringBuilder()
                     << "Payload size is more than iovecs size. Expected size: "
-                    << ReadRequest.GetLength() << " Actual size: "
-                    << bufferSize - readDataResponse.GetBufferOffset());
+                    << ReadRequest.GetLength()
+                    << " Actual size: " << remainingBufferSize);
         }
 
-        ui64 remainingBufferSize =
-            bufferSize - readDataResponse.GetBufferOffset();
         for (auto& iovec: ReadRequest.GetIovecs()) {
             ui64 dataToWrite = Min(iovec.GetLength(), remainingBufferSize);
             if (dataToWrite == 0) {
@@ -789,12 +786,8 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
         }
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
-        buffer.ReserveAndResize(
-            bufferSize - readDataResponse.GetBufferOffset());
-        TRopeUtils::Memcpy(
-            buffer.begin(),
-            it,
-            bufferSize - readDataResponse.GetBufferOffset());
+        buffer.ReserveAndResize(remainingBufferSize);
+        TRopeUtils::Memcpy(buffer.begin(), it, remainingBufferSize);
     }
 
     // Set the buffer offset to 0 because the response buffer/iovecs do not
