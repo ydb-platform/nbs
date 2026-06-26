@@ -447,6 +447,7 @@ private:
     TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
+    double CalculateWriteCostMultiplierBackpressure() const;
     void UpdateWriteCostMultiplierDueToBackpressure();
 
     void ExecuteTx_AddBlob_Write(

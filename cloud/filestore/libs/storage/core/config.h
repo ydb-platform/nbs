@@ -430,6 +430,10 @@ public:
     [[nodiscard]] TDuration GetStatFileStoreCacheTTL() const;
 
     [[nodiscard]] bool GetExternalReadDataPayload() const;
+    ui32 GetSoftBackpressureMaxWriteBandwidth() const;
+    ui32 GetSoftBackpressureMaxReadBandwidth() const;
+    ui32 GetSoftBackpressureMaxWriteIops() const;
+    ui32 GetSoftBackpressureMaxReadIops() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
