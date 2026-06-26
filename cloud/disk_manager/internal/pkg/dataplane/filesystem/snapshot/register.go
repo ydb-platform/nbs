@@ -138,7 +138,8 @@ func RegisterForExecution(
 		"dataplane.DeleteFilesystemSnapshotData",
 		func() tasks.Task {
 			return &deleteFilesystemSnapshotDataTask{
-				nodesStorage: nodesStorage,
+				nodesStorage:     nodesStorage,
+				traversalStorage: traversalStorage,
 			}
 		},
 	)

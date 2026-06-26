@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
 	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
+	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
@@ -14,9 +15,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteFilesystemSnapshotDataTask struct {
-	nodesStorage nodes_storage.Storage
-	request      *snapshot_protos.DeleteFilesystemSnapshotDataRequest
-	state        *snapshot_protos.DeleteFilesystemSnapshotDataTaskState
+	nodesStorage     nodes_storage.Storage
+	traversalStorage traversal_storage.Storage
+	request          *snapshot_protos.DeleteFilesystemSnapshotDataRequest
+	state            *snapshot_protos.DeleteFilesystemSnapshotDataTaskState
 }
 
 func (t *deleteFilesystemSnapshotDataTask) Save() ([]byte, error) {
@@ -37,6 +39,11 @@ func (t *deleteFilesystemSnapshotDataTask) Load(request, state []byte) error {
 func (t *deleteFilesystemSnapshotDataTask) deleteFilesystemSnapshotData(
 	ctx context.Context,
 ) error {
+
+	err := t.traversalStorage.ClearDirectoryListingQueue(ctx, t.request.SnapshotId)
+	if err != nil {
+		return err
+	}
 
 	return t.nodesStorage.DeleteSnapshotData(ctx, t.request.SnapshotId)
 }

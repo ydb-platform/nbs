@@ -255,6 +255,19 @@ func (f *fixture) newTransferFromSnapshotToFilesystemTask(
 	}
 }
 
+func (f *fixture) newDeleteFilesystemSnapshotTask(
+	snapshotID string,
+) *deleteFilesystemSnapshotTask {
+
+	return &deleteFilesystemSnapshotTask{
+		storage: f.snapshotStorage,
+		request: &snapshot_protos.DeleteFilesystemSnapshotRequest{
+			SnapshotId: snapshotID,
+		},
+		state: &snapshot_protos.DeleteFilesystemSnapshotTaskState{},
+	}
+}
+
 type cancelOnListNodesStorage struct {
 	nodes_storage.Storage
 	cancelAt int
@@ -267,37 +280,30 @@ type cancelOnListNodesStorage struct {
 
 type withDeletionNodeStorage struct {
 	nodes_storage.Storage
-	snapshotStorage snapshot_storage.Storage
-	deleteTaskID    string
-	deleteOnce      sync.Once
-	deleteResult    chan error
+	deleteSnapshotFunc func(context.Context, string) error
+	deleteOnce         sync.Once
+	deleteResult       chan error
 }
 
 func newWithDeletionNodeStorage(
 	storage nodes_storage.Storage,
-	snapshotStorage snapshot_storage.Storage,
+	deleteSnapshot func(context.Context, string) error,
 ) *withDeletionNodeStorage {
 
 	return &withDeletionNodeStorage{
-		Storage:         storage,
-		snapshotStorage: snapshotStorage,
-		deleteTaskID:    "delete-task",
-		deleteResult:    make(chan error, 1),
+		Storage:            storage,
+		deleteSnapshotFunc: deleteSnapshot,
+		deleteResult:       make(chan error, 1),
 	}
 }
 
-func (s *withDeletionNodeStorage) deleteSnapshot(
+func (s *withDeletionNodeStorage) deleteSnapshotOnce(
 	ctx context.Context,
 	snapshotID string,
 ) {
 
 	s.deleteOnce.Do(func() {
-		_, err := s.snapshotStorage.DeletingFilesystemSnapshot(
-			ctx,
-			snapshotID,
-			s.deleteTaskID,
-		)
-		s.deleteResult <- err
+		s.deleteResult <- s.deleteSnapshotFunc(ctx, snapshotID)
 	})
 }
 
@@ -323,7 +329,7 @@ func (s *withDeletionNodeStorage) SaveNodes(
 		return err
 	}
 
-	s.deleteSnapshot(ctx, snapshotID)
+	s.deleteSnapshotOnce(ctx, snapshotID)
 	return nil
 }
 
@@ -344,7 +350,7 @@ func (s *withDeletionNodeStorage) UpdateRestorationNodeIDMapping(
 		return err
 	}
 
-	s.deleteSnapshot(ctx, snapshotID)
+	s.deleteSnapshotOnce(ctx, snapshotID)
 	return nil
 }
 
@@ -1001,7 +1007,17 @@ func TestCreateSnapshotFromFilesystemStopsWhenDeletedDuringTransfer(t *testing.T
 		filesystemID,
 		snapshotID,
 	)
-	storage := newWithDeletionNodeStorage(f.nodesStorage, f.snapshotStorage)
+	storage := newWithDeletionNodeStorage(
+		f.nodesStorage,
+		func(ctx context.Context, snapshotID string) error {
+			_, err := f.snapshotStorage.DeletingFilesystemSnapshot(
+				ctx,
+				snapshotID,
+				"delete-task",
+			)
+			return err
+		},
+	)
 	task.nodesStorage = storage
 
 	err := task.Run(f.ctx, execCtx)
@@ -1101,7 +1117,16 @@ func TestRestoreFromSnapshotDeleted(t *testing.T) {
 		dstFilesystemID,
 		snapshotID,
 	)
-	storage := newWithDeletionNodeStorage(f.nodesStorage, f.snapshotStorage)
+	storage := newWithDeletionNodeStorage(
+		f.nodesStorage,
+		func(ctx context.Context, snapshotID string) error {
+			deleteExecCtx := tasks_mocks.NewExecutionContextMock()
+			deleteExecCtx.On("GetTaskID").Return("delete-snapshot")
+
+			deleteTask := f.newDeleteFilesystemSnapshotTask(snapshotID)
+			return deleteTask.Run(ctx, deleteExecCtx)
+		},
+	)
 	fromSnapshotTask.nodesStorage = storage
 
 	err = fromSnapshotTask.Run(f.ctx, restoreExecCtx)
@@ -1116,7 +1141,7 @@ func TestRestoreFromSnapshotDeleted(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
+func TestCreateFsFromSnapshotCancelCleansRestoreState(t *testing.T) {
 	f := newFixture(t)
 	defer f.close(t)
 
