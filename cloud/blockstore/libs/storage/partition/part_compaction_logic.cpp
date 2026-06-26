@@ -428,7 +428,7 @@ void FillBlobsInfoToRead(
 {
     for (auto& kv: args.AffectedBlobs) {
         if (state.GetCleanupQueue().HasBlob(kv.first)) {
-            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
+            kv.second.BlockMask = TAffectedBlob::TAlreadyGarbageBlob{};
             continue;
         }
 
@@ -436,6 +436,8 @@ void FillBlobsInfoToRead(
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             blobsToReadBlockMasks.emplace(kv.first);
+        } else {
+            kv.second.BlockMask = TAffectedBlob::TFullBlockMask{};
         }
     }
 

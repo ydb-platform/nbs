@@ -147,7 +147,21 @@ struct TAffectedBlob
     TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
 
     TVector<ui16> Offsets;
-    TMaybe<TBlockMask> BlockMask;
+
+    // Marker that the mask is should be full after compaction.
+    struct TFullBlockMask
+    {
+    };
+
+    // Marker that the blob is already compacted.
+    struct TAlreadyGarbageBlob
+    {
+    };
+
+    std::
+        variant<std::monostate, TAlreadyGarbageBlob, TFullBlockMask, TBlockMask>
+            BlockMask = std::monostate();
+
     TAffectedBlocks AffectedBlocks;
 
     // Filled only if a flag is set. BlobMeta is needed only to do some extra

@@ -703,21 +703,33 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         }
 
         for (auto& [blobId, blob]: rc.AffectedBlobs) {
-            if (auto* blockMask = blob.BlockMask.Get()) {
-                // could already be full
-                if (IsBlockMaskFull(*blockMask, MaxBlocksInBlob)) {
-                    continue;
-                }
-
-                // mask overwritten blocks
-                for (ui16 blobOffset: blob.Offsets) {
-                    blockMask->Set(blobOffset);
-                }
-            } else {
-                blob.BlockMask = GetFullBlockMask(MaxBlocksInBlob);
+            if (std::holds_alternative<TAffectedBlob::TAlreadyGarbageBlob>(
+                    blob.BlockMask))
+            {
+                continue;
             }
 
-            auto& blockMask = blob.BlockMask.GetRef();
+            if (std::holds_alternative<TBlockMask>(blob.BlockMask)) {
+                auto& blockMask = std::get<TBlockMask>(blob.BlockMask);
+                // mask overwritten blocks
+                for (ui16 blobOffset: blob.Offsets) {
+                    blockMask.Set(blobOffset);
+                }
+            } else if (
+                std::holds_alternative<TAffectedBlob::TFullBlockMask>(
+                    blob.BlockMask))
+            {
+                blob.BlockMask = GetFullBlockMask(MaxBlocksInBlob);
+            } else {
+                STORAGE_VERIFY_C(
+                    false,
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId,
+                    "unknown block mask for blob "
+                        << MakeBlobId(TabletId, blobId));
+            }
+
+            auto& blockMask = std::get<TBlockMask>(blob.BlockMask);
 
             auto [blobIt, inserted] =
                 affectedBlobs.try_emplace(blobId, std::move(blob));
@@ -731,9 +743,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     affectedBlob.AffectedBlocks.end(),
                     blob.AffectedBlocks.begin(),
                     blob.AffectedBlocks.end());
-                if (affectedBlob.BlockMask) {
-                    affectedBlob.BlockMask.GetRef() |= blockMask;
-                }
+
+                std::get<TBlockMask>(affectedBlob.BlockMask) |= blockMask;
             }
         }
 

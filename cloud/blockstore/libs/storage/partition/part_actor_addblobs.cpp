@@ -592,7 +592,13 @@ private:
     void ProcessAffectedBlobs(TPartitionDatabase& db)
     {
         for (const auto& kv: Args.AffectedBlobs) {
-            const auto& blockMask = kv.second.BlockMask.GetRef();
+            STORAGE_VERIFY_C(
+                std::holds_alternative<TBlockMask>(kv.second.BlockMask),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "block mask is not a TBlockMask blobId: "
+                    << MakeBlobId(TabletId, kv.first));
+            const auto& blockMask = std::get<TBlockMask>(kv.second.BlockMask);
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
