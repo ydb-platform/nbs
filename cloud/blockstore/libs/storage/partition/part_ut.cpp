@@ -15233,6 +15233,75 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(true);
     }
+
+    Y_UNIT_TEST(ShouldFillStoredBytesCountToDiskSizeRatioCounter)
+    {
+        auto config = DefaultConfig();
+        config.SetSSDMaxBlobsPerRange(Max<ui32>());
+        config.SetHDDMaxBlobsPerRange(Max<ui32>());
+        config.SetCompactionGarbageThreshold(Max<ui32>());
+        config.SetCompactionRangeGarbageThreshold(Max<ui32>());
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        ui64 storedBytesCountToDiskSizeRatio = false;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& sc = msg->DiskCounters->Simple;
+                        storedBytesCountToDiskSizeRatio =
+                            sc.StoredBytesCountToDiskSizeRatio.Value;
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '0');
+
+        auto updateCounters = [&]()
+        {
+            partition.SendToPipe(
+                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+            {
+                TDispatchOptions options;
+                options.FinalEvents.emplace_back(
+                    TEvStatsService::EvVolumePartCounters);
+                runtime->DispatchEvents(options);
+            }
+        };
+
+        updateCounters();
+
+        UNIT_ASSERT_VALUES_EQUAL(100, storedBytesCountToDiskSizeRatio);
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '1');
+        updateCounters();
+        UNIT_ASSERT_VALUES_EQUAL(200, storedBytesCountToDiskSizeRatio);
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), '2');
+        updateCounters();
+        UNIT_ASSERT_VALUES_EQUAL(250, storedBytesCountToDiskSizeRatio);
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 256), '3');
+        updateCounters();
+        UNIT_ASSERT_VALUES_EQUAL(275, storedBytesCountToDiskSizeRatio);
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        updateCounters();
+        UNIT_ASSERT_VALUES_EQUAL(100, storedBytesCountToDiskSizeRatio);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
