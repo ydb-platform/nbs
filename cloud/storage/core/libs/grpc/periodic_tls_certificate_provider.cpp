@@ -144,11 +144,11 @@ public:
     TPeriodicCertificateProvider(
             ILoggingServicePtr logging,
             TString logComponent,
+            ISchedulerPtr scheduler,
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
-            TDuration refreshInterval,
-            ISchedulerPtr scheduler)
+            TDuration refreshInterval)
         : Logging(std::move(logging))
         , LogComponent(std::move(logComponent))
         , ServerGroup(std::move(serverGroup))
@@ -380,22 +380,22 @@ private:
 ICertificateProviderPtr CreatePeriodicCertificateProvider(
     ILoggingServicePtr logging,
     TString logComponent,
+    ISchedulerPtr scheduler,
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval,
-    ISchedulerPtr scheduler)
+    TDuration refreshInterval)
 {
     Y_ENSURE(refreshInterval, "refreshInterval should not be zero");
 
     return std::make_shared<TPeriodicCertificateProvider>(
         std::move(logging),
         std::move(logComponent),
+        std::move(scheduler),
         std::move(serverGroup),
         std::move(rootCertPath),
         std::move(certificates),
-        refreshInterval,
-        std::move(scheduler));
+        refreshInterval);
 }
 
 }   // namespace NCloud

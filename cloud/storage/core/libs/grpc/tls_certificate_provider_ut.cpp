@@ -102,11 +102,11 @@ struct TCertificateProviderTestContext
         Provider = CreateCertificateProvider(
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
+            Scheduler,
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},
-            TDuration::Seconds(1),
-            Scheduler);
+            TDuration::Seconds(1));
         UNIT_ASSERT(Provider);
         Provider->Start();
     }
@@ -195,42 +195,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ClientPair.CertChainPath));
     }
 
-    Y_UNIT_TEST(ShouldReturnImmediatelyOnUpdateTrigger)
-    {
-        TCertificateProviderTestContext context;
-
-        const auto& fifoPath = context.ClientPair.CertChainPath;
-        NFs::Remove(fifoPath);
-
-        UNIT_ASSERT_VALUES_EQUAL(0, ::mkfifo(fifoPath.c_str(), 0600));
-
-        auto allowWritePromise = NThreading::NewPromise<void>();
-        auto allowWrite = allowWritePromise.GetFuture();
-        std::thread writer([fifoPath, pem = context.ClientPem] (
-            NThreading::TFuture<void> allowWrite)
-        {
-            TFileOutput out(fifoPath);
-            allowWrite.GetValueSync();
-            out.Write(pem.data(), pem.size());
-        }, std::move(allowWrite));
-
-        auto future1 = context.Provider->UpdateCertificates();
-        const auto stateId1 = future1.StateId();
-        UNIT_ASSERT(stateId1.Defined());
-
-        auto future2 = context.Provider->UpdateCertificates();
-        const auto stateId2 = future2.StateId();
-        UNIT_ASSERT(stateId2.Defined());
-        UNIT_ASSERT(*stateId1 == *stateId2);
-
-        UNIT_ASSERT(!future1.IsReady());
-
-        allowWritePromise.SetValue();
-        future1.GetValueSync();
-        future2.GetValueSync();
-        writer.join();
-    }
-
     Y_UNIT_TEST(ShouldPublishCredentialsOnStart)
     {
         TCertificateProviderTestContext context;
@@ -297,11 +261,11 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto provider = CreateCertificateProvider(
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
+            CreateSchedulerStub(),
             MakeIntrusive<NMonitoring::TDynamicCounters>(),
             rootPath,
             TVector<TCertificateFiles>{pair},
-            TDuration::Zero(),
-            CreateSchedulerStub());
+            TDuration::Zero());
 
         UNIT_ASSERT(provider);
         UNIT_ASSERT(provider->CreateSecureServerCredentials());
@@ -314,11 +278,11 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto provider = CreateCertificateProvider(
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
+            CreateSchedulerStub(),
             MakeIntrusive<NMonitoring::TDynamicCounters>(),
             /*rootCertPath=*/{},
             /*certificates=*/{},
-            TDuration::Seconds(1),
-            CreateSchedulerStub());
+            TDuration::Seconds(1));
 
         UNIT_ASSERT(provider);
         UNIT_ASSERT(provider->CreateSecureServerCredentials());

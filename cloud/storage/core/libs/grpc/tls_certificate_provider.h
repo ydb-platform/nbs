@@ -49,11 +49,11 @@ ICertificateProviderPtr CreateCertificateProviderStub();
 ICertificateProviderPtr CreatePeriodicCertificateProvider(
     ILoggingServicePtr logging,
     TString logComponent,
+    ISchedulerPtr scheduler,
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval,
-    ISchedulerPtr scheduler);
+    TDuration refreshInterval);
 
 // Convenience wrapper: uses CreateStaticCertificateProvider when
 // refreshInterval is zero, CreateCertificateProviderStub when no
@@ -62,10 +62,10 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
 ICertificateProviderPtr CreateCertificateProvider(
     ILoggingServicePtr logging,
     TString logComponent,
+    ISchedulerPtr scheduler,
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval,
-    ISchedulerPtr scheduler);
+    TDuration refreshInterval);
 
 }   // namespace NCloud

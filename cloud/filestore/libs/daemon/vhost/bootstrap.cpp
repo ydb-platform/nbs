@@ -385,20 +385,6 @@ void TBootstrapVhost::InitComponents()
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
 
-    TVector<TCertificateFiles> certPathList;
-    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
-        certPathList.push_back({
-            cert.CertPrivateKeyFile,
-            cert.CertFile
-        });
-    }
-
-    if (!certPathList.empty()) {
-        CertificateProvider = CreateStaticCertificateProvider(
-            Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList));
-    }
-
     Server = CreateServer(
         Configs->ServerConfig,
         Logging,
