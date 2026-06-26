@@ -913,6 +913,18 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
     if (args.Request.HasFrozen()) {
         SetFrozen(db, args.Request.GetFrozen());
     }
+
+    if (args.Request.HasResizeState()) {
+        const auto& requested = args.Request.GetResizeState();
+        const auto& current = GetFileSystem().GetResizeState();
+
+        if (requested.HasVersion() &&
+            requested.GetVersion() == current.GetVersion())
+        {
+            SetResizeState(db, requested);
+        }
+        *args.Response.MutableResizeState() = GetFileSystem().GetResizeState();
+    }
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(

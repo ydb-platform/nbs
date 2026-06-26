@@ -286,6 +286,21 @@ void TIndexTabletState::SetCompressNodeRef(
     db.WriteFileSystem(FileSystem);
 }
 
+void TIndexTabletState::SetResizeState(
+    TIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemResizeState& resizeState)
+{
+    auto& newState = *FileSystem.MutableResizeState();
+
+    newState.SetVersion(newState.GetVersion() + 1);
+
+    newState.SetAlteredShardBitmap(resizeState.GetAlteredShardBitmap());
+    newState.SetCreatedShardBitmap(resizeState.GetCreatedShardBitmap());
+    newState.SetConfiguredShardBitmap(resizeState.GetConfiguredShardBitmap());
+
+    db.WriteFileSystem(FileSystem);
+}
+
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&

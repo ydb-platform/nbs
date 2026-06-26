@@ -67,7 +67,6 @@ SRCS(
     tablet_actor_renamenode_source.cpp
     tablet_actor_request.cpp
     tablet_actor_resetsession.cpp
-    tablet_actor_resize_state.cpp
     tablet_actor_resolvepath.cpp
     tablet_actor_responselog.cpp
     tablet_actor_restart_tablet.cpp
