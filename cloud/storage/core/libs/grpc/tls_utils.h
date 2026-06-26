@@ -64,13 +64,9 @@ TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
 TVector<TCertificateFiles> PrepareAndValidateCertificates(
     TVector<TCertificateFiles> certificates);
 
-// Reads certificate files at startup. Throws yexception on any read error.
-// Skips pairs where both paths are empty; throws if only one path is empty.
 TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificateFiles> certificates);
 
-// Reads the root CA file. Throws yexception on read error.
-// Returns an empty TRootCaPair if rootCaPath is empty.
 TRootCaPair LoadRootCaPair(TString rootCaPath);
 
 TCertificatesUpdateResult UpdateCertificates(

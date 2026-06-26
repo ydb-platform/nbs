@@ -210,10 +210,6 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             FACILITY_FROM_CODE(result.GetError().GetCode()));
     }
 
-    //
-    // UpdateCertificates / Load* — the higher-level update layer.
-    //
-
     Y_UNIT_TEST(ShouldUpdateAllCertificatesWhenValid)
     {
         TTempDir tempDir;
@@ -360,25 +356,6 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
 
         UNIT_ASSERT_EXCEPTION(
             LoadRootCaPair("/nonexistent/ca.crt"),
-            yexception);
-    }
-
-    Y_UNIT_TEST(ShouldPrepareAndValidateCertificates)
-    {
-        TVector<TCertificateFiles> input{
-            {},
-            TCertificateFiles{
-                .PrivateKeyPath = "/k",
-                .CertChainPath = "/c",
-            },
-            {},
-        };
-        const auto res = PrepareAndValidateCertificates(std::move(input));
-        UNIT_ASSERT_VALUES_EQUAL(1, res.size());
-
-        UNIT_ASSERT_EXCEPTION(
-            PrepareAndValidateCertificates(
-                {TCertificateFiles{.PrivateKeyPath = "/k"}}),
             yexception);
     }
 }

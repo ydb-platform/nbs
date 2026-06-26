@@ -168,8 +168,6 @@ public:
         Stop();
     }
 
-    // ICertificateProvider
-
     NThreading::TFuture<void> UpdateCertificates() override
     {
         NThreading::TFuture<void> future;
@@ -223,8 +221,6 @@ public:
                 return;
             }
             Started = true;
-            // Claim the update slot so a concurrent UpdateCertificates()
-            // cannot race with the initial refresh below.
             UpdateInProgress = true;
         }
 
@@ -271,8 +267,6 @@ public:
                 return;
             }
             Started = false;
-            // If no update is running, no scheduled callback will complete
-            // PendingUpdate, so do it here.
             if (!UpdateInProgress) {
                 promise = std::exchange(PendingUpdate, {});
             }
@@ -300,8 +294,6 @@ private:
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (!Started) {
-                // Stopped (or not started yet): don't touch the certificates,
-                // but resolve any pending request so its future doesn't hang.
                 stalePending = std::exchange(PendingUpdate, {});
             } else if (!UpdateInProgress) {
                 UpdateInProgress = true;
@@ -310,8 +302,6 @@ private:
                 }
                 run = true;
             }
-            // else: an update is already running; it completes the shared
-            // PendingUpdate, so this trigger is coalesced.
         }
 
         if (stalePending.Initialized()) {
@@ -332,8 +322,6 @@ private:
             }
         }
 
-        // Only the periodic chain reschedules itself; on-demand triggers must
-        // not spawn extra self-perpetuating timers.
         if (periodic) {
             bool alive = false;
             {
@@ -369,10 +357,6 @@ private:
             const auto& newCert = result.Certificates[i];
 
             if (!newCert.Defined()) {
-                // The read failed and there is no usable fallback:
-                // UpdateCertificates() already substitutes the previously
-                // known material whenever it exists, so a missing result here
-                // means we never had this certificate to begin with.
                 continue;
             }
 

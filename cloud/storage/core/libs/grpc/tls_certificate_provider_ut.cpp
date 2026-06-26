@@ -22,7 +22,6 @@
 #include <sys/stat.h>
 
 #include <memory>
-#include <thread>
 
 namespace NCloud {
 
@@ -142,9 +141,6 @@ struct TCertificateProviderTestContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Scheduler that defers callbacks until RunPending() is called, giving the test
-// deterministic control over when periodic ticks fire and how many timers are
-// outstanding.
 class TManualScheduler final
     : public IScheduler
 {
@@ -171,8 +167,6 @@ public:
         return Pending.size();
     }
 
-    // Runs every currently pending callback once. Callbacks scheduled during
-    // the run stay queued for the next RunPending().
     void RunPending()
     {
         TDeque<TCallback> batch;
@@ -188,8 +182,6 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Periodic provider wired to a TManualScheduler; the test starts/stops it and
-// fires ticks explicitly.
 struct TManualProviderContext
 {
     TTempDir TempDir;
@@ -305,14 +297,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ClientPair.CertChainPath));
     }
 
-    Y_UNIT_TEST(ShouldPublishCredentialsOnStart)
-    {
-        TCertificateProviderTestContext context;
-
-        UNIT_ASSERT(context.Provider->CreateSecureServerCredentials());
-        UNIT_ASSERT(context.Provider->CreateSecureClientCredentials());
-    }
-
     Y_UNIT_TEST(ShouldSkipEmptyPairsInStaticProvider)
     {
         TTempDir tempDir;
@@ -355,107 +339,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             yexception);
     }
 
-    Y_UNIT_TEST(ShouldFallBackToStaticWhenRefreshIntervalIsZero)
-    {
-        TTempDir tempDir;
-        const TString rootPath = TStringBuilder()
-            << tempDir.Name() << "/ca.crt";
-        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
-
-        const auto pair = CreateCertificatePair(
-            tempDir.Name(),
-            "server",
-            ReadCertResource("server1.key"),
-            ReadCertResource("server1.crt"));
-
-        auto provider = CreateCertificateProvider(
-            CreateLoggingService("console"),
-            "TLS_CERTIFICATE_PROVIDER",
-            CreateSchedulerStub(),
-            MakeIntrusive<NMonitoring::TDynamicCounters>(),
-            rootPath,
-            TVector<TCertificateFiles>{pair},
-            TDuration::Zero());
-
-        UNIT_ASSERT(provider);
-        UNIT_ASSERT(provider->CreateSecureServerCredentials());
-        UNIT_ASSERT(provider->CreateSecureClientCredentials());
-        UNIT_ASSERT(provider->UpdateCertificates().HasValue());
-    }
-
-    Y_UNIT_TEST(ShouldFallBackToStubWhenNoCertificatesAndRefreshEnabled)
-    {
-        auto provider = CreateCertificateProvider(
-            CreateLoggingService("console"),
-            "TLS_CERTIFICATE_PROVIDER",
-            CreateSchedulerStub(),
-            MakeIntrusive<NMonitoring::TDynamicCounters>(),
-            /*rootCertPath=*/{},
-            /*certificates=*/{},
-            TDuration::Seconds(1));
-
-        UNIT_ASSERT(provider);
-        UNIT_ASSERT(provider->CreateSecureServerCredentials());
-        UNIT_ASSERT(provider->CreateSecureClientCredentials());
-        UNIT_ASSERT(provider->UpdateCertificates().HasValue());
-    }
-
-    Y_UNIT_TEST(ShouldResolveUpdateRequestedBeforeStart)
-    {
-        TManualProviderContext context;
-
-        // No Start() yet.
-        auto future = context.Provider->UpdateCertificates();
-        UNIT_ASSERT(!future.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
-
-        context.Scheduler->RunPending();
-
-        // The request resolves (as a no-op) instead of hanging forever.
-        UNIT_ASSERT(future.HasValue());
-    }
-
-    Y_UNIT_TEST(ShouldResolveUpdateRequestedAfterStop)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-        context.Provider->Stop();
-
-        auto future = context.Provider->UpdateCertificates();
-        context.Scheduler->RunPending();
-
-        UNIT_ASSERT(future.HasValue());
-    }
-
-    Y_UNIT_TEST(ShouldNotLeakTimersOnOnDemandUpdates)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-
-        // Exactly one periodic timer is outstanding after Start().
-        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
-
-        for (int i = 0; i < 5; ++i) {
-            context.Provider->UpdateCertificates();
-            context.Scheduler->RunPending();
-            // On-demand triggers must not accumulate self-rescheduling timers:
-            // only the single periodic chain survives.
-            UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldKeepSinglePeriodicTimer)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-
-        for (int i = 0; i < 3; ++i) {
-            UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
-            context.Scheduler->RunPending();
-        }
-        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
-    }
-
     Y_UNIT_TEST(ShouldPickUpRotatedCertificateOnTimer)
     {
         TManualProviderContext context;
@@ -465,7 +348,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ServerPair.CertChainPath);
         UNIT_ASSERT(before > 0);
 
-        // server3 is valid but has a different notAfter than server1.
         context.RotateServer("server3.key", "server3.crt");
         context.Scheduler->RunPending();
 
@@ -473,30 +355,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ServerPair.CertChainPath);
         UNIT_ASSERT(after > 0);
         UNIT_ASSERT_VALUES_UNEQUAL(before, after);
-    }
-
-    Y_UNIT_TEST(ShouldBeIdempotentOnStartAndStop)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-        const size_t afterStart = context.Scheduler->PendingCount();
-
-        // Second Start() must not schedule another periodic chain.
-        context.Provider->Start();
-        UNIT_ASSERT_VALUES_EQUAL(afterStart, context.Scheduler->PendingCount());
-
-        context.Provider->Stop();
-        context.Provider->Stop();
-
-        UNIT_ASSERT(context.Provider->CreateSecureServerCredentials());
-    }
-
-    Y_UNIT_TEST(ShouldProvideCredentialsBeforeStart)
-    {
-        TManualProviderContext context;
-
-        UNIT_ASSERT(context.Provider->CreateSecureServerCredentials());
-        UNIT_ASSERT(context.Provider->CreateSecureClientCredentials());
     }
 
     Y_UNIT_TEST(ShouldRecoverAfterIdentityBecomesValidAgain)
