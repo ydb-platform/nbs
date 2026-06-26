@@ -58,8 +58,8 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
 TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     const TActorContext& ctx)
 {
-    PartCounters->Simple.DiskSizeRatio.Set(
-        std::round(State->GetDiskSizeRatio() * 100.0));
+    PartCounters->Simple.StoredBytesCountToDiskSizeRatio.Set(
+        std::round(State->GetStoredBytesCountToDiskSizeRatio() * 100.0));
 
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlocksCount() * State->GetBlockSize());

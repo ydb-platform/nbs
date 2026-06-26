@@ -229,7 +229,7 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter DiskSizeRatio{
+    TCounter StoredBytesCountToDiskSizeRatio{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
@@ -280,7 +280,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),
         MakeMeta<&TSimpleDiskCounters::NewlyZeroedBlocks>(),
-        MakeMeta<&TSimpleDiskCounters::DiskSizeRatio>(),
+        MakeMeta<&TSimpleDiskCounters::StoredBytesCountToDiskSizeRatio>(),
 
         MakeMeta<&TSimpleDiskCounters::HasBrokenDevice>(),
         MakeMeta<&TSimpleDiskCounters::HasBrokenDeviceSilent>(),

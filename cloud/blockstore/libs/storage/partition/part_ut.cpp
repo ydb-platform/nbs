@@ -15234,7 +15234,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(true);
     }
 
-    Y_UNIT_TEST(ShouldFillDiskSizeRatioCounter)
+    Y_UNIT_TEST(ShouldFillStoredBytesCountToDiskSizeRatioCounter)
     {
         auto config = DefaultConfig();
         config.SetSSDMaxBlobsPerRange(Max<ui32>());
@@ -15244,7 +15244,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto runtime = PrepareTestActorRuntime(config);
 
-        ui64 diskSizeRatio = false;
+        ui64 storedBytesCountToDiskSizeRatio = false;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -15255,7 +15255,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             event
                                 ->Get<TEvStatsService::TEvVolumePartCounters>();
                         const auto& sc = msg->DiskCounters->Simple;
-                        diskSizeRatio = sc.DiskSizeRatio.Value;
+                        storedBytesCountToDiskSizeRatio =
+                            sc.StoredBytesCountToDiskSizeRatio.Value;
                         break;
                     }
                 }
@@ -15281,25 +15282,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         updateCounters();
 
-        UNIT_ASSERT_VALUES_EQUAL(100, diskSizeRatio);
+        UNIT_ASSERT_VALUES_EQUAL(100, storedBytesCountToDiskSizeRatio);
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '1');
         updateCounters();
-        UNIT_ASSERT_VALUES_EQUAL(200, diskSizeRatio);
+        UNIT_ASSERT_VALUES_EQUAL(200, storedBytesCountToDiskSizeRatio);
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 512), '2');
         updateCounters();
-        UNIT_ASSERT_VALUES_EQUAL(250, diskSizeRatio);
+        UNIT_ASSERT_VALUES_EQUAL(250, storedBytesCountToDiskSizeRatio);
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 256), '3');
         updateCounters();
-        UNIT_ASSERT_VALUES_EQUAL(275, diskSizeRatio);
+        UNIT_ASSERT_VALUES_EQUAL(275, storedBytesCountToDiskSizeRatio);
 
         partition.Compaction();
         partition.Cleanup();
 
         updateCounters();
-        UNIT_ASSERT_VALUES_EQUAL(100, diskSizeRatio);
+        UNIT_ASSERT_VALUES_EQUAL(100, storedBytesCountToDiskSizeRatio);
     }
 }
 

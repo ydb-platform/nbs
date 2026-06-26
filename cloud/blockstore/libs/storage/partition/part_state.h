@@ -1222,7 +1222,7 @@ public:
         UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
     }
 
-    double GetDiskSizeRatio() const
+    double GetStoredBytesCountToDiskSizeRatio() const
     {
         const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
         const auto freshBytesCount =
