@@ -60,7 +60,7 @@ type Monitoring struct {
 }
 
 func (m *Monitoring) getService(volumeId string) string {
-	if len(m.cfg.FilesystemPrefix) != 0 && strings.Contains(volumeId, m.cfg.FilesystemPrefix) {
+	if m.cfg.FilesystemPrefix != "" && strings.HasPrefix(volumeId, m.cfg.FilesystemPrefix) {
 		return "filestore"
 	}
 	return "nbs"
