@@ -136,6 +136,11 @@ func (s *StorageMock) ListFilesystemSnapshots(
 	return args.Get(0).(tasks_common.StringSet), args.Error(1)
 }
 
+func (s *StorageMock) TablesEmpty(ctx context.Context) (bool, error) {
+	args := s.Called(ctx)
+	return args.Bool(0), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {
