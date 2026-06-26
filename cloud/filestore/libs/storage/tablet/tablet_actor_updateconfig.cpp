@@ -225,6 +225,10 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetStrictFileSystemSizeEnforcementEnabled(
         oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
 
+    if (oldConfig.HasResizeState()) {
+        *newConfig.MutableResizeState() = oldConfig.GetResizeState();
+    }
+
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
         LOG_ERROR(ctx, TFileStoreComponents::TABLET,

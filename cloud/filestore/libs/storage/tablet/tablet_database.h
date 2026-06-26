@@ -562,15 +562,6 @@ public:
     void DeleteUnconfirmedData(ui64 commitId) override;
 
     bool ReadUnconfirmedData(TVector<TUnconfirmedDataEntry>& entries) override;
-
-    //
-    // FileSystemResizeState
-    //
-
-    bool ReadFileSystemResizeState(
-        TMaybe<NProtoPrivate::TFileSystemResizeState>& state);
-    void WriteFileSystemResizeState(
-        const NProtoPrivate::TFileSystemResizeState& state);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -918,6 +918,84 @@ message TUnsafeCreateHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FileSystem Resize State.
+
+message TFileSystemResizeState
+{
+    // Protecting from races. When unset in Request, we do not modify during
+    // the Request the TFileSystem.ResizeState and just return current state.
+    optional uint32 Version = 1;
+
+    bytes AlteredShardBitmap = 2;
+    bytes CreatedShardBitmap = 3;
+    bytes ConfiguredShardBitmap = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnsafeChangeTabletState request/response.
+
+message TUnsafeChangeTabletStateRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // If set, only unsafe ops will be allowed.
+    optional bool Frozen = 2;
+
+    // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
+    optional bool CompressNodeRef = 3;
+
+    // Update resize state during large operations.
+    TFileSystemResizeState ResizeState = 4;
+}
+
+message TUnsafeChangeTabletStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Returns current resize state.
+    TFileSystemResizeState ResizeState = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetFileSystemTopology request/response.
+
+message TGetFileSystemTopologyRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier to query its topology.
+    string FileSystemId = 2;
+}
+
+message TGetFileSystemTopologyResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Shard FileSystem identifiers.
+    repeated string ShardFileSystemIds = 2;
+
+    // Shard no (if this fs is a shard itself).
+    uint32 ShardNo = 3;
+
+    bool DirectoryCreationInShardsEnabled = 4;
+
+    bool StrictFileSystemSizeEnforcementEnabled = 5;
+
+    uint32 MaxShardCount = 6;
+
+    bool ForceDirectoryCreationInShards = 7;
+
+    // Shard FileSystem identifiers for regular files.
+    repeated string FileShardFileSystemIds = 8;
+
+    bool CompressNodeRef = 9;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // RestartTablet request/response.
 
 message TRestartTabletRequest
@@ -1375,80 +1453,4 @@ message TListQuotasResponse
 
     // Usage of each quota that has any recorded usage on this filesystem.
     repeated TQuotaUsage Usages = 3;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// FileSystemResizeState request/response
-
-message TFileSystemResizeState
-{
-    enum EStatus
-    {
-        RESIZE_STATUS_UNSPECIFIED = 0;
-        RESIZE_IN_PROGRESS = 1;
-        RESIZE_FINISHED = 2;
-    }
-
-    string OperationId = 1;
-    EStatus Status = 2;
-
-    uint64 StartedTs = 3;
-    uint64 UpdatedTs = 4;
-    uint64 FinishedTs = 5;
-
-    uint64 TargetBlocksCount = 6;
-    uint32 InitialShardCount = 7;
-    uint32 TargetShardCount = 8;
-
-    bool StrictFileSystemSizeEnforcementEnabled = 9;
-    bool DirectoryCreationInShardsEnabled = 10;
-    bool ForceDirectoryCreationInShards = 11;
-
-    bytes RequestFingerprint = 12;
-    bytes PlanFingerprint = 13;
-
-    bool MainFileStoreAltered = 14;
-    bool MainFileStoreConfigured = 15;
-
-    bytes AlteredShardBitmap = 16;
-    bytes CreatedShardBitmap = 17;
-    bytes ConfiguredShardBitmap = 18;
-
-    uint64 StateGeneration = 19;
-}
-
-message TGetFileSystemResizeStateRequest
-{
-    // FileSystem identifier.
-    string FileSystemId = 1;
-}
-
-message TGetFileSystemResizeStateResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Absent if resize state has never been written or was cleared.
-    optional TFileSystemResizeState State = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// SetFileSystemResizeState request/response
-
-message TSetFileSystemResizeStateRequest
-{
-    // FileSystem identifier.
-    string FileSystemId = 1;
-
-    // New resize state.
-    TFileSystemResizeState State = 2;
-}
-
-message TSetFileSystemResizeStateResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // State after applying the request.
-    optional TFileSystemResizeState State = 2;
 }
