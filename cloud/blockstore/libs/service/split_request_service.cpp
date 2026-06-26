@@ -245,19 +245,21 @@ private:
         }
         // Reply to client without lock.
 
+        if constexpr (TBlockStoreMethodTraits<TRequest>::IsLocalRequest()) {
+            if (hasError) {
+                // Cancel all sub requests before completing the parent request.
+                // SetValue() invokes future callbacks synchronously and those
+                // callbacks may move the original request.
+                Request->Sglist.Close();
+            }
+        }
+
         if constexpr (TBlockStoreMethodTraits<TRequest>::IsReadRequest()) {
             promise.SetValue(
                 hasError ? std::move(response)
                          : MergeReadResponses(SubResponses));
         } else {
             promise.SetValue(std::move(response));
-        }
-
-        if constexpr (TBlockStoreMethodTraits<TRequest>::IsLocalRequest()) {
-            if (hasError) {
-                // Cancel all sub requests in case of error.
-                Request->Sglist.Close();
-            }
         }
     }
 };
