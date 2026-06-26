@@ -916,13 +916,16 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
 
     if (args.Request.HasResizeState()) {
         const auto& requested = args.Request.GetResizeState();
-        const auto& current = GetFileSystem().GetResizeState();
 
         if (requested.HasVersion() &&
-            requested.GetVersion() == current.GetVersion())
+            requested.GetVersion() ==
+                GetFileSystem().GetResizeState().GetVersion())
         {
-            SetResizeState(db, requested);
+            auto newState = requested;
+            newState.SetVersion(requested.GetVersion() + 1);
+            SetResizeState(db, newState);
         }
+
         *args.Response.MutableResizeState() = GetFileSystem().GetResizeState();
     }
 }
