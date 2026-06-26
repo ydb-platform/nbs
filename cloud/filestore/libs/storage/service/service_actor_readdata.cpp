@@ -789,11 +789,12 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
         }
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
-        buffer.ReserveAndResize(bufferSize);
+        buffer.ReserveAndResize(
+            bufferSize - readDataResponse.GetBufferOffset());
         TRopeUtils::Memcpy(
             buffer.begin(),
             it,
-            payload.size() - readDataResponse.GetBufferOffset());
+            bufferSize - readDataResponse.GetBufferOffset());
     }
 
     // Set the buffer offset to 0 because the response buffer/iovecs do not
