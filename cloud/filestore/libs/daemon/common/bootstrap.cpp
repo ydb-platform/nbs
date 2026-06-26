@@ -191,31 +191,6 @@ void TBootstrapCommon::Init()
 
     InitDiagnostics();
 
-    auto serverCounters =
-        FilestoreCounters->GetSubgroup("component", "server");
-
-    TVector<TCertificateFiles> certPathList;
-    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
-        certPathList.push_back({
-            cert.CertPrivateKeyFile,
-            cert.CertFile
-        });
-    }
-
-    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
-        ythrow yexception()
-            << "Secure port is configured without certificates";
-    }
-
-    CertificateProvider = CreateCertificateProvider(
-        Logging,
-        GetComponentName(TLS_CERTIFICATE_PROVIDER),
-        Scheduler,
-        serverCounters,
-        Configs->ServerConfig->GetRootCertsFile(),
-        std::move(certPathList),
-        Configs->ServerConfig->GetRefreshCertsPeriod());
-
     InitComponents();
 
     STORAGE_INFO("Init completed");
