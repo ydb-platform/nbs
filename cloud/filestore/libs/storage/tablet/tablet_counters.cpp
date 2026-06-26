@@ -347,16 +347,22 @@ void TTabletMetrics::Register(
         EMetricType::MT_DERIVATIVE);
 
 #define FILESTORE_TABLET_METRICS_REGISTER_REQUEST(name, ...)                   \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
+    AggregatableFsRegistry->Register(                                          \
+        {CreateLabel("request", #name), CreateSensor("Count")},                \
         name.Count,                                                            \
+        EAggregationType::AT_SUM,                                              \
         EMetricType::MT_DERIVATIVE);                                           \
                                                                                \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
+    AggregatableFsRegistry->Register(                                          \
+        {CreateLabel("request", #name), CreateSensor("RequestBytes")},         \
         name.RequestBytes,                                                     \
+        EAggregationType::AT_SUM,                                              \
         EMetricType::MT_DERIVATIVE);                                           \
                                                                                \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
+    AggregatableFsRegistry->Register(                                          \
+        {CreateLabel("request", #name), CreateSensor("TimeSumUs")},            \
         name.TimeSumUs,                                                        \
+        EAggregationType::AT_SUM,                                              \
         EMetricType::MT_DERIVATIVE);                                           \
                                                                                \
     name.Time.Register(                                                        \
@@ -368,32 +374,38 @@ void TTabletMetrics::Register(
 
 #undef FILESTORE_TABLET_METRICS_REGISTER_REQUEST
 
-    REGISTER_AGGREGATABLE_SUM_EXT(
+    AggregatableFsRegistry->Register(
+        {CreateLabel("request", "ListNodes"), CreateSensor("RequestedBytesPrecharge")},
         ListNodesExtra.RequestedBytesPrecharge,
-        "ListNodes.RequestedBytesPrecharge",
+        EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM_EXT(
+    AggregatableFsRegistry->Register(
+        {CreateLabel("request", "ListNodes"), CreateSensor("PrepareAttempts")},
         ListNodesExtra.PrepareAttempts,
-        "ListNodes.PrepareAttempts",
+        EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM_EXT(
+    AggregatableFsRegistry->Register(
+        {CreateLabel("request", "ListNodes"), CreateSensor("ResponseNodeRefs")},
         ListNodesExtra.ResponseNodeRefs,
-        "ListNodes.ResponseNodeRefs",
+        EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
 
-    REGISTER_AGGREGATABLE_SUM_EXT(
+    AggregatableFsRegistry->Register(
+        {CreateLabel("request", "CreateHandle"), CreateSensor("GuestKeepCacheSet")},
         CreateHandleExtra.GuestKeepCacheSet,
-        "CreateHandle.GuestKeepCacheSet",
+        EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
 
-    REGISTER_AGGREGATABLE_SUM_EXT(
+    AggregatableFsRegistry->Register(
+        {CreateLabel("request", "Compaction"), CreateSensor("DudCount")},
         CompactionExtra.DudCount,
-        "Compaction.DudCount",
+        EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
 
-    REGISTER_AGGREGATABLE_SUM_EXT(
+    AggregatableFsRegistry->Register(
+        {CreateLabel("request", "ConfirmAddData"), CreateSensor("DeferredCount")},
         ConfirmAddDataExtra.DeferredCount,
-        "ConfirmAddData.DeferredCount",
+        EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
 
     REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);

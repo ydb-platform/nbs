@@ -245,7 +245,8 @@ public:
                     traceSerializer,
                     systemCounters,
                     metricsRegistry,
-                    fastShardServer);
+                    fastShardServer,
+                    CreateNoOpTxRescheduler());
                 return actor.release();
             };
 

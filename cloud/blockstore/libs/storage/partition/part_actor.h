@@ -130,7 +130,6 @@ private:
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
     const ui64 VolumeTabletId;
-
     TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;
@@ -487,6 +486,7 @@ private:
 
     [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
     [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
+    [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
 
     void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,

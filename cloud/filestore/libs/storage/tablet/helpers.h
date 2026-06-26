@@ -24,6 +24,10 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TStorageConfig;
+
+////////////////////////////////////////////////////////////////////////////////
+
 [[nodiscard]] inline ui64 SafeIncrement(ui64 value, size_t delta)
 {
     Y_ABORT_UNLESS(value <= Max<ui64>() - delta, "v: %lu, d: %lu", value, Max<ui64>() - delta);
@@ -155,6 +159,17 @@ void Convert(
 void Convert(
     const NProto::TFileStorePerformanceProfile& src,
     TThrottlerConfig& dst);
+
+bool IsValidPerformanceProfile(
+    const NProto::TFileStorePerformanceProfile& profile);
+
+TThrottlerConfig BuildThrottlerConfig(
+    const TStorageConfig& storageConfig,
+    const NProto::TFileStorePerformanceProfile& performanceProfile);
+
+void ApplySoftBackpressureParameters(
+    const TStorageConfig& storageConfig,
+    TDefaultParameters& parameters);
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -245,8 +245,9 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         WaitReadyRequests.pop_front();
     }
 
-    TThrottlerConfig config;
-    Convert(args.FileSystem.GetPerformanceProfile(), config);
+    const auto config = BuildThrottlerConfig(
+        *Config,
+        args.FileSystem.GetPerformanceProfile());
 
     LoadState(
         Executor()->Generation(),
@@ -365,8 +366,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
         WaitReadyRequests.pop_front();
     }
 
-    TThrottlerConfig config;
-    Convert(args.FileSystem.GetPerformanceProfile(), config);
+    const auto config = BuildThrottlerConfig(
+        *Config,
+        args.FileSystem.GetPerformanceProfile());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Initializing tablet state");

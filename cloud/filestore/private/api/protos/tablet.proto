@@ -73,6 +73,9 @@ message TCreateSessionResponse
     // Tablet generation and owner generation
     // for the accepted subsession owner.
     uint64 OwnerGeneration = 5;
+
+    // True if this tablet is configured to run in adapter mode.
+    bool AdapterModeEnabled = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -202,6 +205,9 @@ message TGetStorageStatsRequest
     // By default requests to shards do not fetch other shards, requests
     // to the main tablet fetch all the shards.
     EStatsRequestMode Mode = 8;
+
+    // If the cache is older than Now() - CacheTTL, it is not used.
+    uint32 CacheTTL = 9; // in ms
 }
 
 message TGetStorageStatsResponse

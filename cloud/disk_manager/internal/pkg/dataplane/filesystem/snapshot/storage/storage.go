@@ -57,6 +57,11 @@ type Storage interface {
 		keys []*protos.DeletingFilesystemSnapshotKey,
 	) error
 
+	CheckFilesystemSnapshotReady(
+		ctx context.Context,
+		snapshotID string,
+	) error
+
 	CheckFilesystemSnapshotAlive(
 		ctx context.Context,
 		snapshotID string,

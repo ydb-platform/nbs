@@ -108,30 +108,30 @@ func sortNodes(nodes []nfs.Node) {
 }
 
 func makeNode(
-	parentID uint64,
+	parentNodeID uint64,
 	nodeID uint64,
 	name string,
 	nodeType nfs_client.NodeType,
 ) nfs.Node {
 
 	return nfs.Node(nfs_client.Node{
-		ParentID: parentID,
-		NodeID:   nodeID,
-		Name:     name,
-		Type:     nodeType,
-		Mode:     0o755,
-		UID:      1000,
-		GID:      1000,
-		Atime:    100,
-		Mtime:    200,
-		Ctime:    300,
-		Size:     4096,
-		Links:    1,
+		ParentNodeID: parentNodeID,
+		NodeID:       nodeID,
+		Name:         name,
+		Type:         nodeType,
+		Mode:         0o755,
+		UID:          1000,
+		GID:          1000,
+		Atime:        100,
+		Mtime:        200,
+		Ctime:        300,
+		Size:         4096,
+		Links:        1,
 	})
 }
 
 func makeNodeWithShard(
-	parentID uint64,
+	parentNodeID uint64,
 	nodeID uint64,
 	name string,
 	nodeType nfs_client.NodeType,
@@ -140,7 +140,7 @@ func makeNodeWithShard(
 ) nfs.Node {
 
 	return nfs.Node(nfs_client.Node{
-		ParentID:          parentID,
+		ParentNodeID:      parentNodeID,
 		NodeID:            nodeID,
 		Name:              name,
 		Type:              nodeType,
@@ -162,7 +162,7 @@ func makeNodeWithShard(
 }
 
 func makeNodeRestoredAsRef(
-	parentID uint64,
+	parentNodeID uint64,
 	nodeID uint64,
 	name string,
 	nodeType nfs_client.NodeType,
@@ -171,7 +171,7 @@ func makeNodeRestoredAsRef(
 ) nfs.Node {
 
 	result := makeNodeWithShard(
-		parentID,
+		parentNodeID,
 		nodeID,
 		name,
 		nodeType,
@@ -793,25 +793,25 @@ func TestCleanupRestorationNodeIDsMapping(t *testing.T) {
 }
 
 func makeHardlinkNode(
-	parentID uint64,
+	parentNodeID uint64,
 	nodeID uint64,
 	name string,
 	links uint32,
 ) nfs.Node {
 
 	return nfs.Node(nfs_client.Node{
-		ParentID: parentID,
-		NodeID:   nodeID,
-		Name:     name,
-		Type:     nfs_client.NODE_KIND_FILE,
-		Mode:     0o755,
-		UID:      1000,
-		GID:      1000,
-		Atime:    100,
-		Mtime:    200,
-		Ctime:    300,
-		Size:     4096,
-		Links:    links,
+		ParentNodeID: parentNodeID,
+		NodeID:       nodeID,
+		Name:         name,
+		Type:         nfs_client.NODE_KIND_FILE,
+		Mode:         0o755,
+		UID:          1000,
+		GID:          1000,
+		Atime:        100,
+		Mtime:        200,
+		Ctime:        300,
+		Size:         4096,
+		Links:        links,
 	})
 }
 

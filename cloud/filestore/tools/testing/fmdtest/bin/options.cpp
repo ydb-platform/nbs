@@ -74,7 +74,7 @@ void TOptions::Parse(int argc, char** argv)
             "stealer sleep duration between iterations")
         .RequiredArgument("DURATION")
         .DefaultValue(TDuration::MilliSeconds(10))
-        .StoreResult(&ProducerSleepDuration);
+        .StoreResult(&StealerSleepDuration);
 
     //
     // Lister settings.
@@ -90,7 +90,7 @@ void TOptions::Parse(int argc, char** argv)
             "lister sleep duration between iterations")
         .RequiredArgument("DURATION")
         .DefaultValue(TDuration::MilliSeconds(10))
-        .StoreResult(&ProducerSleepDuration);
+        .StoreResult(&ListerSleepDuration);
 
     //
     // Common settings.

@@ -74,7 +74,7 @@ def setup_test_filestore(nfs_client, fs_name, shard_count=None):
     return session_id, node
 
 
-def create_mmap_region(nfs_client, filename, size) -> (int, str):
+def create_mmap_region(nfs_client, filename, size, page_size=0) -> (int, str):
     """Create a file and mmap it, returning the region ID and file path."""
     base_path = os.path.join(common.output_path(), "shm")
     file_path = os.path.join(base_path, filename)
@@ -82,7 +82,7 @@ def create_mmap_region(nfs_client, filename, size) -> (int, str):
     with open(file_path, "wb") as f:
         f.truncate(size)
 
-    response = nfs_client.mmap(file_path=filename, size=size)
+    response = nfs_client.mmap(file_path=filename, size=size, page_size=page_size)
     return response.Id, file_path
 
 
@@ -91,7 +91,7 @@ def test_mmap_unmmap():
     port = os.getenv("NFS_SERVER_PORT")
 
     with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
-        region_id, file_path = create_mmap_region(nfs_client, "testfile", 4096)
+        region_id, file_path = create_mmap_region(nfs_client, "testfile", 4096, 1024)
         logger.info(f"Successfully mmaped file with region ID: {region_id}")
 
         regions = nfs_client.list_mmap_regions()
@@ -100,6 +100,7 @@ def test_mmap_unmmap():
         assert regions.Regions[0].Size == 4096
         assert regions.Regions[0].FilePath == file_path
         assert regions.Regions[0].LatestActivityTimestamp > 0
+        assert regions.Regions[0].PageSize == 1024
 
         with pytest.raises(ClientError, match="Mmap region not found"):
             nfs_client.munmap(mmap_id=region_id + 1)
@@ -140,13 +141,14 @@ SHARED_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 @pytest.mark.parametrize("shard_count", [None, 10])
-def test_memory_mapped_io(shard_count):
+@pytest.mark.parametrize("page_size", [0, 1024, 1024*1024])
+def test_memory_mapped_io(shard_count, page_size):
     logger = logging.getLogger("test")
     port = os.getenv("NFS_SERVER_PORT")
 
     with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
         region_id, file_path = create_mmap_region(
-            nfs_client, "testfile", SHARED_MEMORY_SIZE
+            nfs_client, "testfile", SHARED_MEMORY_SIZE, page_size
         )
         logger.info(f"Created mmap region with ID: {region_id}")
 
@@ -162,6 +164,23 @@ def test_memory_mapped_io(shard_count):
             with open(file_path, "r+b") as f:
                 f.seek(offset)
                 f.write(data)
+
+        def generate_io_vecs(length, page_size):
+            io_vecs = []
+
+            if page_size == 0:
+                io_vecs.append((random.randint(0, SHARED_MEMORY_SIZE - length), length))
+            else:
+                offset = 0
+                while True:
+                    io_vec_len = min(length, page_size)
+                    io_vecs.append((offset, io_vec_len))
+                    offset += page_size
+                    length -= io_vec_len
+                    if length == 0:
+                        break
+
+            return io_vecs
 
         seed = int(time.time())
         logger.info(f"Seeding random with: {seed}")
@@ -198,11 +217,8 @@ def test_memory_mapped_io(shard_count):
         ops = list(itertools.product(LENGTHS, OFFSETS, OPERATIONS))
         random.shuffle(ops)
         for length, offset, operation in ops:
+            io_vecs = generate_io_vecs(length, page_size)
             if operation == Operation.READ:
-                io_vecs = [
-                    (random.randint(0, SHARED_MEMORY_SIZE - length), length)
-                ]
-
                 read_data_size = nfs_client.read_data(
                     "fs",
                     session_id,
@@ -236,9 +252,6 @@ def test_memory_mapped_io(shard_count):
                 data = "".join(
                     random.choices(string.ascii_letters, k=length)
                 ).encode("utf-8")
-                io_vecs = [
-                    (random.randint(0, SHARED_MEMORY_SIZE - length), length)
-                ]
                 write_to_shared_memory(io_vecs[0][0], data)
                 nfs_client.write_data(
                     "fs",

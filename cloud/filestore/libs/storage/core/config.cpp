@@ -78,6 +78,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
                                                                                \
+    xxx(MaxShardManagementRequestsInFlight,                     ui32,   0     )\
+                                                                               \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
     xxx(LargeDeletionMarkerBlocks,                      ui64,   1_GB / 4_KB   )\
@@ -367,6 +369,14 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushBytesItemCountThresholdForBackpressureSoft,                       \
                                                        ui64,    125'000       )\
     xxx(CollectGarbageThresholdForBackpressureSoft,    ui64,    256_GB        )\
+                                                                               \
+    xxx(StatFileStoreCacheTTL,              TDuration,  TDuration::Zero()     )\
+                                                                               \
+    xxx(ExternalReadDataPayload,                bool,   false                 )\
+    xxx(SoftBackpressureMaxWriteBandwidth,             ui32,    10 * 1024     )\
+    xxx(SoftBackpressureMaxReadBandwidth,              ui32,    30 * 1024     )\
+    xxx(SoftBackpressureMaxWriteIops,                  ui32,    10'000        )\
+    xxx(SoftBackpressureMaxReadIops,                   ui32,    100'000       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

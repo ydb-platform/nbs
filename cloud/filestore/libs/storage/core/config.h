@@ -334,6 +334,8 @@ public:
 
     bool GetDirectoryCreationInShardsEnabled() const;
 
+    ui32 GetMaxShardManagementRequestsInFlight() const;
+
     bool GetGuestWriteBackCacheEnabled() const;
     ui64 GetMixedBlocksOffloadedRangesCapacity() const;
 
@@ -424,6 +426,14 @@ public:
     ui64 GetFlushBytesThresholdForBackpressureSoft() const;
     ui64 GetFlushBytesItemCountThresholdForBackpressureSoft() const;
     ui64 GetCollectGarbageThresholdForBackpressureSoft() const;
+
+    [[nodiscard]] TDuration GetStatFileStoreCacheTTL() const;
+
+    [[nodiscard]] bool GetExternalReadDataPayload() const;
+    ui32 GetSoftBackpressureMaxWriteBandwidth() const;
+    ui32 GetSoftBackpressureMaxReadBandwidth() const;
+    ui32 GetSoftBackpressureMaxWriteIops() const;
+    ui32 GetSoftBackpressureMaxReadIops() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

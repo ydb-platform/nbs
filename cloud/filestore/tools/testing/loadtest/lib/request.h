@@ -51,8 +51,9 @@ struct IRequestGenerator
         return false;
     }
 
-    virtual bool ShouldFailOnError()
+    virtual bool ShouldFailOnError(const NProto::TError& error)
     {
+        Y_UNUSED(error);
         return true;
     }
 };

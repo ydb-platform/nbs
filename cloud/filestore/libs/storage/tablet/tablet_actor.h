@@ -142,6 +142,7 @@ private:
     NProtoPrivate::TStorageStats CachedAggregateStats;
     TVector<TShardStats> CachedShardStats;
     TInstant CachedStatsFetchingStartTs;
+    TInstant CachedAggregateStatsTs;
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
@@ -205,7 +206,8 @@ public:
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
-        NFastShard::IServerPtr fastShardServer);
+        NFastShard::IServerPtr fastShardServer,
+        ITxReschedulerPtr txRescheduler);
     ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;
@@ -445,6 +447,7 @@ private:
     TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
+    double CalculateWriteCostMultiplierBackpressure() const;
     void UpdateWriteCostMultiplierDueToBackpressure();
 
     void ExecuteTx_AddBlob_Write(
@@ -790,6 +793,7 @@ private:
         ui64 commitId,
         const NProto::TUnconfirmedData& entry);
     void ConfirmData(ui64 commitId, const NActors::TActorContext& ctx);
+    void ConfirmNextRecoveredData(const NActors::TActorContext& ctx);
     void SendDeferredConfirmAddDataResponse(
         const NActors::TActorContext& ctx,
         TPendingConfirmAddData pending,

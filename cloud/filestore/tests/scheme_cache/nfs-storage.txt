@@ -3,3 +3,4 @@ ShardAllocationUnit: 1073741824
 AutomaticallyCreatedShardSize: 1073741824
 DirectoryCreationInShardsEnabled: true
 UseSchemeCache: true
+MaxShardManagementRequestsInFlight: 3

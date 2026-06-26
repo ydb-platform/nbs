@@ -9,6 +9,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -104,7 +105,7 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
-    auto Sanitize(const TString& ctrlPath) -> NProto::TError final
+    auto StartSanitize(const TString& ctrlPath) -> NProto::TError final
     {
         std::unique_lock lock{Mutex};
 
@@ -140,6 +141,13 @@ public:
     }
 
     auto GetSerialNumber(const TString& path) -> TResultOrError<TString> final
+    {
+        Y_UNUSED(path);
+
+        return TString();
+    }
+
+    auto GetDeviceModel(const TString& path) -> TResultOrError<TString> final
     {
         Y_UNUSED(path);
 
@@ -241,6 +249,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
     ILoggingServicePtr Logging;
     std::shared_ptr<TTestNVMeManager> NVMeManager;
     TExecutorPtr Executor;
+    ITaskQueuePtr BackgroundThreadPool;
     std::shared_ptr<TTestSysFs> SysFs;
 
     ILocalNVMeServicePtr Service;
@@ -258,6 +267,9 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
         NVMeManager = std::make_shared<TTestNVMeManager>();
 
+        BackgroundThreadPool = CreateLongRunningTaskExecutor("BG");
+        BackgroundThreadPool->Start();
+
         Executor = TExecutor::Create("TestExecutor");
         Executor->Start();
     }
@@ -266,6 +278,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
     {
         Service->Stop();
         Executor->Stop();
+        BackgroundThreadPool->Stop();
         Logging->Stop();
 
         if (StateCacheFile) {
@@ -273,7 +286,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
         }
     }
 
-    auto CreateService(ILocalNVMeDeviceProviderPtr deviceProvider)
+    auto CreateService(ILocalNVMeDeviceProviderPtr deviceProvider) const
         -> ILocalNVMeServicePtr
     {
         return CreateLocalNVMeService(
@@ -282,6 +295,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
             std::move(deviceProvider),
             std::static_pointer_cast<INvmeManager>(NVMeManager),
             Executor,
+            BackgroundThreadPool,
             std::static_pointer_cast<ISysFs>(SysFs));
     }
 

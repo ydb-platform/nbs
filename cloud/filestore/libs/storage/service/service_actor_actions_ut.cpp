@@ -1147,6 +1147,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             NProtoPrivate::TGetStorageStatsRequest request;
             request.SetFileSystemId(fsId);
             request.SetAllowCache(true);
+            request.SetCacheTTL(30000); // in ms
 
             NProtoPrivate::TGetStorageStatsResponse response =
                 GetStorageStats(service, request);
@@ -1293,6 +1294,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         NProtoPrivate::TGetStorageStatsRequest request;
         request.SetFileSystemId(fsId);
         request.SetAllowCache(true);
+        request.SetCacheTTL(30000); // in ms
 
         NProtoPrivate::TGetStorageStatsResponse response =
             GetStorageStats(service, request);
@@ -1489,7 +1491,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         UNIT_ASSERT(subgroup);
         UNIT_ASSERT_VALUES_EQUAL(
             4,
-            subgroup->GetCounter("Compaction.Count")->GetAtomic());
+            subgroup->FindSubgroup("request", "Compaction")
+                ->GetCounter("Count")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldMarkNodeRefsExhaustive)

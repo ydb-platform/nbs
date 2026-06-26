@@ -698,6 +698,7 @@ class Client(object):
         self,
         file_path: str,
         size: int,
+        page_size: Optional[int] = 0,
         idempotence_id: Optional[str] = None,
         timestamp: Optional[int] = None,
         trace_id: Optional[str] = None,
@@ -705,7 +706,8 @@ class Client(object):
     ) -> protos.TMmapResponse:
         request = protos.TMmapRequest(
             FilePath=file_path,
-            Size=size
+            Size=size,
+            PageSize=page_size
         )
         return self.__impl.mmap(
             request, idempotence_id, timestamp, trace_id, request_timeout)

@@ -127,6 +127,7 @@ func (d *baseDisk) toBaseDisk() BaseDisk {
 		CheckpointID:        d.checkpointID,
 		CreateTaskID:        d.createTaskID,
 		Size:                d.size,
+		Units:               d.units,
 		Ready:               d.status == baseDiskStatusReady,
 	}
 }
@@ -674,10 +675,10 @@ const (
 	// 32 GB.
 	baseDiskUnitSize            = uint64(32 << 30)
 	minBaseDiskUnits            = 30
-	baseDiskOverSubscription    = 2
-	overlayDiskOversubscription = 30
-	// SSD units should be more valuable than HDD.
-	ssdUnitMultiplier = 5
+	overlayDiskOverSubscription = 30
+	// Represents how many regular (HDD-equivalent) performance units one SSD
+	// allocation unit is worth.
+	regularUnitsPerSSDUnit = 5
 )
 
 func (s *storageYDB) generateBaseDisk(
@@ -694,18 +695,32 @@ func (s *storageYDB) generateBaseDisk(
 		units = s.maxBaseDiskUnits
 		maxActiveSlots = s.maxActiveSlots
 	} else {
-		// Base disks are using SSD.
-		ssdUnits := divideWithRoundingUp(
-			imageSize,
-			baseDiskUnitSize,
-		)
+		// Base disks use SSD. Compute the number of SSD allocation units
+		// needed to hold the image.
+		ssdUnits := divideWithRoundingUp(imageSize, baseDiskUnitSize)
 		size = ssdUnits * baseDiskUnitSize
 
-		units = ssdUnitMultiplier * ssdUnits
-		units = baseDiskOverSubscription * units
-		units = max(units, minBaseDiskUnits)
+		// Regular (HDD-equivalent) units with oversubscription.
+		units = s.baseDiskOverSubscription * regularUnitsPerSSDUnit * ssdUnits
+		// A base disk must provide at least minBaseDiskUnits of performance,
+		// otherwise the overlay disks sharing it get underperformed (#6257).
+		if units < minBaseDiskUnits {
+			units = minBaseDiskUnits
+
+			if s.adjustBaseDiskSizeToMinBaseDiskUnits {
+				// Grow the disk so that it physically contains enough SSD units
+				// to provide the required performance. The larger the disk, the
+				// higher the performance.
+				ssdUnits = units / regularUnitsPerSSDUnit
+				// Never shrink the base disk below the image size (for safety).
+				size = max(size, ssdUnits*baseDiskUnitSize)
+			}
+		}
+
 		units = min(units, s.maxBaseDiskUnits)
 
+		// There cannot be more slots than units because each overlay disk
+		// consumes at least one unit.
 		maxActiveSlots = min(units, s.maxActiveSlots)
 	}
 
@@ -743,13 +758,13 @@ func computeAllottedUnits(s *slot) uint64 {
 	switch s.overlayDiskKind {
 	case types.DiskKind_DISK_KIND_SSD:
 		res = divideWithRoundingUp(
-			ssdUnitMultiplier*overlayDiskUnits,
-			overlayDiskOversubscription,
+			regularUnitsPerSSDUnit*overlayDiskUnits,
+			overlayDiskOverSubscription,
 		)
 	case types.DiskKind_DISK_KIND_HDD:
 		res = divideWithRoundingUp(
 			overlayDiskUnits,
-			overlayDiskOversubscription,
+			overlayDiskOverSubscription,
 		)
 	}
 

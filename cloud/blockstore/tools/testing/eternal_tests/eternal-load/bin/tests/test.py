@@ -1,5 +1,4 @@
 import os
-import subprocess
 import pytest
 import tempfile
 import time
@@ -87,60 +86,6 @@ def test_load_works(scenario, engine, direct):
         pass
     else:
         pytest.fail(f"Eternal load should not have finished within {timeout} seconds")
-
-
-@pytest.fixture
-def fixture_mount_very_small_tmpfs(request):
-    loopback_path = "/tmp/fs.img"
-    mount_dir = "/tmp/testfs"
-
-    os.makedirs(mount_dir, exist_ok=True)
-
-    subprocess.run(
-        ["dd", "if=/dev/zero", f"of={loopback_path}", "bs=1M", "count=64"],
-        check=True,
-    )
-
-    subprocess.run(
-        ["mkfs.ext4", "-q", "-O", "^has_journal", loopback_path],
-        check=True,
-    )
-
-    subprocess.run(
-        ["sudo", "mount", "-o", "loop", loopback_path, mount_dir],
-        check=True,
-    )
-
-    subprocess.run(
-        ["sudo", "chown", f"{os.getuid()}:{os.getgid()}", mount_dir],
-        check=True,
-    )
-
-    def fin():
-        subprocess.run(["sudo", "umount", "-l", mount_dir], check=False)
-        subprocess.run(["rm", loopback_path], check=False)
-
-    request.addfinalizer(fin)
-    return mount_dir
-
-
-def test_load_async_io_fails(fixture_mount_very_small_tmpfs):
-    mount_dir = fixture_mount_very_small_tmpfs
-
-    # Run async-io eternal-load on a small tmpfs to raise ENOSPC error
-    with (
-        ThreadPoolExecutor(max_workers=1) as executor,
-        tempfile.NamedTemporaryFile(suffix='.test', dir=mount_dir) as tmp_file
-    ):
-        future = executor.submit(
-            __run_load_test, tmp_file.name, 'aligned', 'asyncio', True)
-
-        result = future.result()
-
-        assert result.returncode == 1
-        msg = 'Can\'t write to file: (yexception) (No space left on device) ' \
-            'async IO operation failed'
-        assert result.stderr.find(msg) != -1
 
 
 def test_multiple_files():

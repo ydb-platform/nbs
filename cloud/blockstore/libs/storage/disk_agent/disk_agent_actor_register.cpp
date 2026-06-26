@@ -101,7 +101,8 @@ void TRegisterActor::Bootstrap(const TActorContext& ctx)
                     << config.GetBlocksCount() << " x "
                     << config.GetBlockSize() << ", Rack="
                     << config.GetRack() << ", SN="
-                    << config.GetSerialNumber()
+                    << config.GetSerialNumber() << ", Model="
+                    << config.GetDeviceModel()
                     << "); ";
             }
             return out.Str();

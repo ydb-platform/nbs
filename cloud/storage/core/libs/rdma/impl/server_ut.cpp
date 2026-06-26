@@ -114,14 +114,6 @@ struct TDelayedServerHandler final
     }
 };
 
-template <typename TPredicate>
-void WaitUntil(TPredicate predicate)
-{
-    while (!predicate()) {
-        SpinLockPause();
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST(TRdmaServerTest, ShouldStartEndpoint)
@@ -243,11 +235,7 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
 
     NVerbs::CreateConnection(testContext);
 
-    auto start = GetCycleCount();
-    while ((!acceptCalled.load() || !modifyCalled.load()) &&
-           CyclesToDurationSafe(GetCycleCount() - start) <
-               TDuration::Seconds(5))
-    {
+    while (!acceptCalled.load() || !modifyCalled.load()) {
         SpinLockPause();
     }
 
@@ -403,31 +391,24 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
             10020,
             std::make_shared<TServerHandler>());
 
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TResponseMessage>(context, qp, wr);
+    };
+
     // emulate client connection
 
     NVerbs::CreateConnection(context);
 
-    // wait for client session
-
-    auto wait = [](auto& counter, auto value) {
-        auto start = GetCycleCount();
-        while (counter->Val() != value) {
-            auto now = GetCycleCount();
-            if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
-                ASSERT_EQ(value, counter->Val());
-            }
-            SpinLockPause();
-        }
-    };
-
     auto counters = GetServerCounters(monitoring);
-
     auto activeRecv = counters->GetCounter("ActiveRecv");
     auto abortedRequests = counters->GetCounter("AbortedRequests");
     auto activeRequests = counters->GetCounter("ActiveRequests");
     auto errors = counters->GetCounter("Errors");
 
-    wait(activeRecv, serverConfig->QueueSize);
+    // wait for session to initialize
+    while (activeRecv->Val() != serverConfig->QueueSize) {
+        SpinLockPause();
+    }
 
     // emulate exchange with the client
 
@@ -477,10 +458,13 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
         context->CompletionHandle.Set();
     }
 
-    wait(errors, 5);
-    wait(activeRecv, 8);
-    wait(abortedRequests, 1);
-    wait(activeRequests, 0);
+    // wait for values reflecting specific code paths that should be taken
+    // to handle completions above
+    while (errors->Val() != 5 || activeRecv->Val() != 8 ||
+           abortedRequests->Val() != 1 || activeRequests->Val() != 0)
+    {
+        SpinLockPause();
+    }
 }
 
 TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
@@ -558,7 +542,7 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize + 1);
 
-    ASSERT_TRUE(done.GetFuture().Wait(TDuration::Seconds(5)));
+    done.GetFuture().Wait();
     EXPECT_EQ(3, rejectCount.load());
     EXPECT_FALSE(createQpCalled.load());
 }
@@ -580,6 +564,10 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
             flushTriggered.TrySetValue();
             return;
         }
+    };
+
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TResponseMessage>(context, qp, wr);
     };
 
     std::atomic<rdma_cm_id*> sessionId{nullptr};
@@ -620,13 +608,16 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
-    WaitUntil(
-        [&]
-        {
-            return sessionId.load() != nullptr &&
-                   GetServerCounters(monitoring)->GetCounter("ActiveRecv")->Val() >=
-                       static_cast<i64>(serverConfig->RecvQueueSize);
-        });
+    auto counters = GetServerCounters(monitoring);
+    auto activeRecv = counters->GetCounter("ActiveRecv");
+    auto activeSend = counters->GetCounter("ActiveSend");
+    auto activeRead = counters->GetCounter("ActiveRead");
+    auto activeWrite = counters->GetCounter("ActiveWrite");
+
+    // wait for session to initialize
+    while (!sessionId || activeRecv->Val() != serverConfig->RecvQueueSize) {
+        SpinLockPause();
+    }
 
     with_lock (context->CompletionLock) {
         ASSERT_FALSE(context->RecvEvents.empty());
@@ -661,14 +652,12 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
     // fired), guaranteeing it is now blocked on IsFlushed().
     flushTriggered.GetFuture().GetValueSync();
 
-    WaitUntil(
-        [c = GetServerCounters(monitoring)]
-        {
-            return c->GetCounter("ActiveRecv")->Val() == 0 &&
-                   c->GetCounter("ActiveSend")->Val() == 0 &&
-                   c->GetCounter("ActiveWrite")->Val() == 0 &&
-                   c->GetCounter("ActiveRead")->Val() == 0;
-        });
+    // wait for WRs to flush
+    while (activeRecv->Val() || activeSend->Val() || activeRead->Val() ||
+           activeWrite->Val())
+    {
+        SpinLockPause();
+    }
 
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 
@@ -689,6 +678,10 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
             return;
         }
         NVerbs::Flush(context);
+    };
+
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TResponseMessage>(context, qp, wr);
     };
 
     std::atomic<rdma_cm_id*> sessionId{nullptr};
@@ -733,13 +726,16 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
         static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
-    WaitUntil(
-        [&]
-        {
-            return sessionId.load() != nullptr &&
-                   GetServerCounters(monitoring)->GetCounter("ActiveRecv")->Val() >=
-                       static_cast<i64>(serverConfig->RecvQueueSize);
-        });
+    auto counters = GetServerCounters(monitoring);
+    auto activeRecv = counters->GetCounter("ActiveRecv");
+    auto activeSend = counters->GetCounter("ActiveSend");
+    auto activeRead = counters->GetCounter("ActiveRead");
+    auto activeWrite = counters->GetCounter("ActiveWrite");
+
+    // wait for session to initialize
+    while (!sessionId || activeRecv->Val() != serverConfig->RecvQueueSize) {
+        SpinLockPause();
+    }
 
     with_lock (context->CompletionLock) {
         ASSERT_FALSE(context->RecvEvents.empty());
@@ -762,14 +758,12 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
     verbs->Disconnect(sessionId.load());
 
-    WaitUntil(
-        [c = GetServerCounters(monitoring)]
-        {
-            return c->GetCounter("ActiveRecv")->Val() == 0 &&
-                   c->GetCounter("ActiveSend")->Val() == 0 &&
-                   c->GetCounter("ActiveWrite")->Val() == 0 &&
-                   c->GetCounter("ActiveRead")->Val() == 0;
-        });
+    // wait for WRs to flush
+    while (activeRecv->Val() || activeSend->Val() || activeRead->Val() ||
+           activeWrite->Val())
+    {
+        SpinLockPause();
+    }
 
     ASSERT_FALSE(sessionDestroyed.GetFuture().HasValue());
 

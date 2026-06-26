@@ -1609,4 +1609,13 @@ message TStorageServiceConfig
     optional uint32 SystemSSDUnitWriteIops = 508;
     optional uint32 SystemSSDMaxReadIops = 509;
     optional uint32 SystemSSDMaxWriteIops = 510;
+
+    // If true, partition compaction splits the per-blob BlockMask / BlobMeta
+    // read into a separate transaction issued by TCompactionActor instead of
+    // doing it inside the main TCompaction prepare phase.
+    optional bool SplitCompactionTxEnabled = 511;
+
+    // If true, the recreated blob metas are verified on cleanup.
+    // We check that there is no leaked blocks in the mixed index.
+    optional bool VerifyRecreatedBlobMetasOnCleanup = 512;
 }

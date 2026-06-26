@@ -54,9 +54,11 @@ message TFileStoreFeatures
     bool UnconfirmedFlowEnabled = 39;
     bool GuestPosixAclEnabled = 40;
     bool UseListNodesInternal = 41;
-    bool UseCustomReadDataResponseParser = 42;
+    bool UseCustomReadDataResponseParser = 42 [deprecated = true];
     optional uint64 DirectoryHandlesPersistentHandleMaxSize = 43;
     bool ServerWriteBackCacheFlushWritesInParallelEnabled = 44;
+    uint32 StatFileStoreCacheTTL = 45; // in ms
+    bool ExternalReadDataPayload = 46;
 }
 
 message TFileStore

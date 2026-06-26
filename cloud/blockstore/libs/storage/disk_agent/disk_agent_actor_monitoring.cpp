@@ -157,6 +157,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                 TABLER() {
                     TABLEH() { out << "UUID"; }
                     TABLEH() { out << "S/N"; }
+                    TABLEH() { out << "Model"; }
                     TABLEH() { out << "Name"; }
                     TABLEH() { out << "State"; }
                     TABLEH() { out << "State Timestamp"; }
@@ -177,6 +178,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                 TABLER() {
                     TABLED() { out << uuid; }
                     TABLED() { out << config.GetSerialNumber(); }
+                    TABLED() { out << config.GetDeviceModel(); }
                     TABLED() { out << config.GetDeviceName(); }
                     TABLED() {
                         DumpDeviceState(

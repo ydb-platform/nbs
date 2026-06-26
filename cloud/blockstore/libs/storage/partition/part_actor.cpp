@@ -1059,6 +1059,15 @@ bool TPartitionActor::IsReadBlockMaskOnCompactionOptimizationEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsVerifyRecreatedBlobMetasOnCleanupEnabled() const
+{
+    return Config->GetVerifyRecreatedBlobMetasOnCleanup() ||
+           Config->IsVerifyRecreatedBlobMetasOnCleanupFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -1219,6 +1228,7 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvCompactionReadBlobInfoResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
@@ -1288,6 +1298,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvCompactionReadBlobInfoResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);

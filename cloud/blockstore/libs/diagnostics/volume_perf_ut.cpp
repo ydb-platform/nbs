@@ -544,7 +544,7 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
     {
         TestSufferCount(
             calc,
-            TDuration::Seconds(15),
+            TDuration::Seconds(14),
             slow,
             expected,
             expectedSmooth,
@@ -694,6 +694,104 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             ->FindSubgroup("volume", "test1")
             ->GetCounter("Suffer", false);
         UNIT_ASSERT_VALUES_EQUAL(0, sufferCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldUse15SecondWindowForSmoothSuffer)
+    {
+        constexpr ui32 RequestBytes = 1024 * 1024;
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters();
+
+        auto config = CreatePerformanceSettings(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            1,          // readIops
+            128_KB,     // readBandwidth
+            1,          // writeIops
+            128_KB,     // writeBandwidth
+            0,          // minReadIops
+            0,          // minReadBandwidth
+            0,          // minWriteIops
+            0           // minWriteBandwidth
+        );
+        config.SetExpectedIoParallelism(1);
+        config.MutableSsdPerfSettings()->SetCriticalFactor(100);
+
+        auto volume = CreateVolumeWithDiagnosticsProfile(
+            "test_window_critical",
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            config
+        );
+
+        auto volumeCounters = CreateVolumeCounters(counters, volume.GetDiskId());
+        TVolumePerformanceCalculator calc(
+            volume,
+            std::make_shared<TDiagnosticsConfig>(std::move(config)));
+        calc.Register(*volumeCounters, volume);
+
+        const auto expectedCost = calc.GetExpectedWriteCost(RequestBytes);
+        UNIT_ASSERT(expectedCost > TDuration::Seconds(8));
+        UNIT_ASSERT(expectedCost < TDuration::Seconds(15));
+
+        const auto requestTime = expectedCost + TDuration::Seconds(1);
+        // expectedCost > 1s => per-second Suffer must stay off,
+        // but for the 15s window SmoothSuffer should still be set.
+        TestSufferCount(
+            calc,
+            requestTime,
+            TDuration::Seconds(1),
+            0,      // expected Suffer
+            1,      // expected SmoothSuffer
+            0);     // expected CriticalSuffer
+    }
+
+    Y_UNIT_TEST(ShouldUse15SecondWindowForCriticalSuffer)
+    {
+        constexpr ui32 RequestBytes = 1024 * 1024;
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters();
+
+        auto config = CreatePerformanceSettings(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            1,          // readIops
+            512_KB,     // readBandwidth
+            1,          // writeIops
+            512_KB,     // writeBandwidth
+            0,          // minReadIops
+            0,          // minReadBandwidth
+            0,          // minWriteIops
+            0           // minWriteBandwidth
+        );
+        config.SetExpectedIoParallelism(1);
+        config.MutableSsdPerfSettings()->SetCriticalFactor(2);
+
+        auto volume = CreateVolumeWithDiagnosticsProfile(
+            "test_window_critical",
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            config
+        );
+
+        auto volumeCounters = CreateVolumeCounters(counters, volume.GetDiskId());
+        TVolumePerformanceCalculator calc(
+            volume,
+            std::make_shared<TDiagnosticsConfig>(std::move(config)));
+        calc.Register(*volumeCounters, volume);
+
+        const auto expectedCost = calc.GetExpectedWriteCost(RequestBytes);
+        UNIT_ASSERT(expectedCost > TDuration::Seconds(1));
+        UNIT_ASSERT(expectedCost < TDuration::Seconds(7));
+
+        const auto requestTime =
+            expectedCost + expectedCost + TDuration::Seconds(1);
+
+        TestSufferCount(
+            calc,
+            requestTime,
+            TDuration::Seconds(1),
+            0,  // expected Suffer
+            1,  // expected SmoothSuffer
+            1); // expected CriticalSuffer
     }
 
     Y_UNIT_TEST(ShouldSetUnsetSufferForSsd)
@@ -1147,7 +1245,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
         calc.Register(*volumeCounters, volume);
 
-        TestSufferCountPostponed(calc, TDuration::Seconds(15), 0, 0, 0);
+        TestSufferCountPostponed(calc, TDuration::Seconds(1), 0, 0, 0);
 
         UNIT_ASSERT_VALUES_EQUAL(false, calc.IsSuffering());
     }

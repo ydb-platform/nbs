@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "cpu_timer.h"
+#include "tablet_tx_rescheduler.h"
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
@@ -95,12 +96,17 @@ class TTabletBase
     : public NKikimr::NTabletFlatExecutor::TTabletExecutedFlat
 {
 public:
-    TTabletBase(const NActors::TActorId& owner,
-                NKikimr::TTabletStorageInfoPtr storage)
+    TTabletBase(
+            const NActors::TActorId& owner,
+            NKikimr::TTabletStorageInfoPtr storage,
+            ITxReschedulerPtr txRescheduler)
         : TTabletExecutedFlat(storage.Get(), owner, NewMiniKQLFactory())
+        , TxRescheduler(std::move(txRescheduler))
     {}
 
 protected:
+    ITxReschedulerPtr TxRescheduler;
+
     template <typename TTx>
     class TTransaction final
         : public ITransactionBase
@@ -136,6 +142,26 @@ protected:
         {
             Generation = tx.Generation;
             Step = tx.Step;
+
+            // Reschedule (restart) the transaction from PrepareTx when the
+            // injected rescheduler asks for it. In production this is a no-op
+            // stub; tests inject an implementation to make the transaction
+            // restart/reorder path.
+            if (Self->TxRescheduler->ShouldReschedule()) {
+                LOG_INFO(
+                    ctx,
+                    T::LogComponent,
+                    "[%lu] Forced reschedule of %s (gen: %u, step: %u)",
+                    Self->TabletID(),
+                    TTx::Name,
+                    Generation,
+                    Step);
+
+                Args.Clear();
+                Args.OnRestart();
+                tx.Reschedule();
+                return false;
+            }
 
             TX_TRACK(TxPrepare);
             LOG_TRACE(ctx, T::LogComponent,

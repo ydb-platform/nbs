@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
+#include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -89,6 +90,7 @@ private:
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
     TSystemCountersPtr SystemCounters;
+    ITxReschedulerPtr TxRescheduler = CreateNoOpTxRescheduler();
 
     NKikimr::TTestBasicRuntime Runtime;
     TVector<ui32> GroupIds;
@@ -116,6 +118,14 @@ public:
     NActors::TTestActorRuntime& GetRuntime()
     {
         return Runtime;
+    }
+
+    // Inject a transaction rescheduler.
+    // Defaults to a no-op stub; tests set a custom one to exercise the
+    // transaction restart/reorder path. Must be set before BootIndexTablet.
+    void SetTxRescheduler(ITxReschedulerPtr txRescheduler)
+    {
+        TxRescheduler = std::move(txRescheduler);
     }
 
     TStorageConfigPtr GetStorageConfig() const

@@ -422,6 +422,16 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsSplitCompactionTxFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -827,11 +837,15 @@ public:
 
     [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
 
+    [[nodiscard]] bool GetSplitCompactionTxEnabled() const;
+
     [[nodiscard]] bool GetVolumeBalancerGentlePreemptionEnabled() const;
 
     [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
 
     [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
+
+    [[nodiscard]] bool GetVerifyRecreatedBlobMetasOnCleanup() const;
 };
 
 ui64 GetAllocationUnit(

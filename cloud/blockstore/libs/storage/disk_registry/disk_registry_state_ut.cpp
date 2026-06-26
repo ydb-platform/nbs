@@ -12757,6 +12757,33 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 UNIT_ASSERT(!canAllocateLater(1));
             });
     }
+
+    Y_UNIT_TEST(ShouldPreserveDeviceModelAfterRegisterAgent)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        TDeviceConfig dev = Device("dev-1", "uuid-1", "rack-1");
+        dev.SetSerialNumber("SN-001");
+        dev.SetDeviceModel("SAMSUNG-980PRO");
+
+        const auto agentConfig = AgentConfig(1, {dev});
+
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UpdateConfig(state, db, {agentConfig});
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agentConfig));
+        });
+
+        const auto* device = state.FindDevice("uuid-1");
+        UNIT_ASSERT(device);
+        UNIT_ASSERT_VALUES_EQUAL("SAMSUNG-980PRO", device->GetDeviceModel());
+        UNIT_ASSERT_VALUES_EQUAL("SN-001", device->GetSerialNumber());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

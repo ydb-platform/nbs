@@ -32,6 +32,7 @@ def default_storage_config():
     storage.V1GarbageCompactionEnabled = True
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30
     storage.CheckBlockChecksumsInBlobsUponRead = True
+    storage.VerifyRecreatedBlobMetasOnCleanup = True
 
     return storage
 
@@ -129,6 +130,7 @@ def storage_config_with_fresh_blocks_writer_enabled(enabled):
 
 def storage_config_with_read_block_mask_on_compaction_optimization_enabled(enabled):
     storage = default_storage_config()
+    storage.SplitCompactionTxEnabled = enabled
     storage.ReadBlockMaskOnCompactionOptimizationEnabled = enabled
 
     return storage
@@ -158,6 +160,7 @@ def ordinary_prod_storage_config():
     storage.FreshChannelWriteRequestsEnabled = True
     storage.BatchCompactionEnabled = True
     storage.HDDMaxBlobsPerRange = 5
+    storage.VerifyRecreatedBlobMetasOnCleanup = True
 
     return storage
 
@@ -551,6 +554,7 @@ def __run_test(test_case):
             endpoint_storage_dir=endpoint_storage_dir,
             env_processes=[env.nbs],
         )
+
         if test_case.check_disk_size:
             compact_full_disk(nbs_client, test_case.disk_id)
             check_channel_bytes_invariant(nbs_client, test_case.disk_id)

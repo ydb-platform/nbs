@@ -18,7 +18,7 @@ grep localhost /etc/hosts
 
 mkdir -p /coredumps
 chmod 1777 /coredumps
-grep -qF "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" /etc/sysctl.conf || echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" >> /etc/sysctl.conf
+grep -qF "kernel.core_pattern=/coredumps/%e.%p.%s" /etc/sysctl.conf || echo "kernel.core_pattern=/coredumps/%e.%p.%s" >> /etc/sysctl.conf
 grep -qF "kernel.core_uses_pid=1" /etc/sysctl.conf || echo "kernel.core_uses_pid=1" >> /etc/sysctl.conf
 grep -qF "fs.suid_dumpable=0" /etc/sysctl.conf || echo "fs.suid_dumpable=0" >> /etc/sysctl.conf
 grep -qF "* soft memlock unlimited" /etc/security/limits.conf || echo "* soft memlock unlimited" >> /etc/security/limits.conf

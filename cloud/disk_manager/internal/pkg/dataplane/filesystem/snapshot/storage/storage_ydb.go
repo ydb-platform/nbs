@@ -705,6 +705,33 @@ func (s *storageYDB) CheckFilesystemSnapshotAlive(
 	return nil
 }
 
+func (s *storageYDB) CheckFilesystemSnapshotReady(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	state, err := s.getFilesystemSnapshot(ctx, snapshotID)
+	if err != nil {
+		return err
+	}
+
+	if state == nil {
+		return task_errors.NewSilentNonRetriableErrorf(
+			"filesystem snapshot with id %v is not found",
+			snapshotID,
+		)
+	}
+
+	if state.status != filesystemSnapshotStatusReady {
+		return task_errors.NewSilentNonRetriableErrorf(
+			"filesystem snapshot with id %v is not ready",
+			snapshotID,
+		)
+	}
+
+	return nil
+}
+
 func (s *storageYDB) LockFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,

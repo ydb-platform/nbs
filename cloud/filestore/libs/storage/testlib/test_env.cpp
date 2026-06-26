@@ -474,7 +474,8 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             TraceSerializer,
             SystemCounters,
             Registry,
-            nullptr /* fastShardServer */);
+            nullptr /* fastShardServer */,
+            TxRescheduler);
         return actor.release();
     };
 
@@ -606,7 +607,8 @@ void TTestEnv::SetupLocalServiceConfig(
             TraceSerializer,
             SystemCounters,
             Registry,
-            nullptr /* fastShardServer */);
+            nullptr /* fastShardServer */,
+            TxRescheduler);
         return actor.release();
     };
 

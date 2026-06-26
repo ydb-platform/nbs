@@ -23,6 +23,7 @@ Tests {
             SharedMemoryBaseDir: "{output_path}/shm"
             SharedMemoryFilePath: "shm-loadtest.bin"
             SharedMemorySizeBytes: 33554432
+            SharedMemoryPageSize: 0
         }
         IODepth: 4
         TestDuration: 30

@@ -11,6 +11,8 @@
 #include <util/system/file.h>
 #include <util/system/spinlock.h>
 
+#include <cloud/filestore/public/api/protos/data.pb.h>
+
 #include <tuple>
 #include <unordered_map>
 
@@ -22,9 +24,10 @@ struct TMmapRegionMetadata
 {
     TString FilePath;
     void* Address = nullptr;
-    size_t Size = 0; // in bytes
+    ui64 Size = 0;   // in bytes
     ui64 Id = 0;
     TInstant LatestActivityTimestamp;
+    ui32 PageSize = 0;   // in bytes
 
     bool operator<(const TMmapRegionMetadata& other) const
     {
@@ -40,16 +43,20 @@ public:
     TMmapRegion(
             TString filePath,
             void* address,
-            size_t size,
-            ui64 id)
+            ui64 size,
+            ui64 id,
+            ui32 pageSize)
         : Metadata{
             .FilePath = std::move(filePath),
             .Address = address,
             .Size = size,
             .Id = id,
-            .LatestActivityTimestamp = TInstant::Now()
+            .LatestActivityTimestamp = TInstant::Now(),
+            .PageSize = pageSize
         }
-    {}
+        , PageLocks(pageSize != 0 ? size / pageSize : 0)
+    {
+    }
 
     [[nodiscard]] TMmapRegionMetadata ToMetadata() const
     {
@@ -66,8 +73,52 @@ public:
         return Metadata.LatestActivityTimestamp;
     }
 
+    const TMmapRegionMetadata& GetMapRegionMetadata() const
+    {
+        return Metadata;
+    }
+
+    bool LockPage(ui64 index)
+    {
+        if (index >= PageLocks.size()) {
+            return false;
+        }
+
+        if (PageLocks[index].exchange(true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool UnlockPage(ui64 index)
+    {
+        if (index >= PageLocks.size()) {
+            return false;
+        }
+
+        PageLocks[index].store(false);
+        return true;
+    }
+
+    ui32 GetPageSize() const
+    {
+        return Metadata.PageSize;
+    }
+
+    ui64 GetAddress() const
+    {
+        return reinterpret_cast<ui64>(Metadata.Address);
+    }
+
+    ui64 GetSize() const
+    {
+        return Metadata.Size;
+    }
+
 private:
     TMmapRegionMetadata Metadata;
+    TVector<std::atomic<bool>> PageLocks;
 };
 
 struct TServerStateStats
@@ -87,7 +138,8 @@ public:
 
     TResultOrError<TMmapRegionMetadata> CreateMmapRegion(
         const TString& filePath,
-        size_t size /* in bytes */);
+        size_t size /* in bytes */,
+        ui32 pageSize /* in bytes */);
 
     NProto::TError DestroyMmapRegion(ui64 mmapId);
 
@@ -100,6 +152,15 @@ public:
     [[nodiscard]] TServerStateStats GetStateStats() const;
 
     NProto::TError InvalidateTimedOutRegions();
+
+    TResultOrError<google::protobuf::RepeatedPtrField<NProto::TIovec>>
+    AdjustAndLockIovecs(
+        ui64 mmapId,
+        const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs);
+
+    NProto::TError UnlockIovecs(
+        ui64 mmapId,
+        const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs);
 
 private:
     TLightRWLock StateLock;

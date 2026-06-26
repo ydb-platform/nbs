@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/iterator/enumerate.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -2672,6 +2673,82 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    void DoTestSoftBackpressureThrottlingDefaults(
+        const TFileSystemConfig& tabletConfig,
+        bool throttlingEnabled,
+        ui32 expectedError,
+        bool enableSoftBackpressureViaFeaturesConfig)
+    {
+        const ui32 block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(throttlingEnabled);
+        storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
+        if (!enableSoftBackpressureViaFeaturesConfig) {
+            storageConfig.SetSoftBackpressureEnabled(true);
+        }
+        storageConfig.SetSoftBackpressureMaxWriteBandwidth(1);
+        storageConfig.SetSoftBackpressureMaxWriteIops(1);
+        storageConfig.SetFlushThresholdForBackpressureSoft(block);
+        storageConfig.SetFlushThresholdForBackpressure(3 * block);
+
+        TTestEnv env({}, storageConfig);
+
+        if (enableSoftBackpressureViaFeaturesConfig) {
+            NCloud::NProto::TFeaturesConfig featuresConfigProto;
+            auto* feature = featuresConfigProto.AddFeatures();
+            feature->SetName("SoftBackpressureEnabled");
+            feature->MutableWhitelist()->AddCloudIds("test_cloud");
+            env.GetStorageConfig()->SetFeaturesConfig(
+                NFeatures::TFeaturesConfig(featuresConfigProto));
+        }
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig,
+            !enableSoftBackpressureViaFeaturesConfig);
+        tablet.InitSession("client", "session");
+
+        TFileSystemConfig config = tabletConfig;
+        config.PerformanceProfile.ThrottlingEnabled = throttlingEnabled;
+        config.PerformanceProfile.MaxReadIops = 1'000;
+        config.PerformanceProfile.MaxWriteIops = 1'000;
+        config.PerformanceProfile.MaxReadBandwidth = 64_MB;
+        config.PerformanceProfile.MaxWriteBandwidth = 64_MB;
+        config.PerformanceProfile.MaxPostponedWeight = 1; // reject delayed writes
+        config.PerformanceProfile.MaxWriteCostMultiplier = 5;
+        config.PerformanceProfile.MaxPostponedTime =
+            TDuration::Seconds(25).MilliSeconds();
+        config.PerformanceProfile.MaxPostponedCount = 64;
+        config.PerformanceProfile.BurstPercentage = 300;
+        config.PerformanceProfile.DefaultPostponedRequestWeight = 1_KB;
+        tablet.UpdateConfig(config);
+
+        auto id = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        tablet.SendWriteDataRequest(handle, 0, block, 'a');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+
+        tablet.SendWriteDataRequest(handle, block, block, 'b');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+
+        // soft limit: 1 block, hard limit: 3 blocks,
+        // we added 2 blocks
+        // with backpressure our multiplier will increase to 3
+        tablet.SendWriteDataRequest(handle, 2 * block, block, 'c');
+        tablet.AssertWriteDataQuickResponse(expectedError);
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST_16K(ShouldNotThrottleWritesDueToSoftBackpressureIfDisabled)
     {
         DoTestSoftBackpressureWriteThrottling(tabletConfig, false);
@@ -2680,6 +2757,120 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST_16K(ShouldThrottleWritesDueToSoftBackpressureIfEnabled)
     {
         DoTestSoftBackpressureWriteThrottling(tabletConfig, true);
+    }
+
+    TABLET_TEST_16K(ShouldThrottleWritesDueToSoftBackpressureIfThrottlingDisabled)
+    {
+        DoTestSoftBackpressureThrottlingDefaults(
+            tabletConfig,
+            false,
+            E_FS_THROTTLED,
+            false);
+    }
+
+    TABLET_TEST_16K(ShouldNotApplySoftBackpressureDefaultsToEnabledThrottling)
+    {
+        DoTestSoftBackpressureThrottlingDefaults(
+            tabletConfig,
+            true,
+            S_OK,
+            false);
+    }
+
+    TABLET_TEST_16K(ShouldRebuildSoftBackpressureThrottlingAfterUpdateConfig)
+    {
+        DoTestSoftBackpressureThrottlingDefaults(
+            tabletConfig,
+            false,
+            E_FS_THROTTLED,
+            true);
+    }
+
+    TABLET_TEST_16K(
+        ShouldPreserveSoftBackpressureAccountingUntilPostponedQueueIsDrained)
+    {
+        const ui32 block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(true);
+        storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
+        storageConfig.SetSoftBackpressureEnabled(true);
+        storageConfig.SetWriteBlobThreshold(1_GB);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThresholdForBackpressureSoft(block);
+        storageConfig.SetFlushThresholdForBackpressure(4 * block);
+        storageConfig.SetSoftBackpressureMaxWriteBandwidth(1);
+        storageConfig.SetSoftBackpressureMaxWriteIops(1);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TFileSystemConfig config = tabletConfig;
+        config.PerformanceProfile.ThrottlingEnabled = false;
+        config.PerformanceProfile.MaxReadIops = 1'000;
+        config.PerformanceProfile.MaxWriteIops = 1'000;
+        config.PerformanceProfile.MaxReadBandwidth = 64_MB;
+        config.PerformanceProfile.MaxWriteBandwidth = 64_MB;
+        config.PerformanceProfile.MaxPostponedWeight = block;
+        config.PerformanceProfile.MaxWriteCostMultiplier = 5;
+        config.PerformanceProfile.MaxPostponedTime =
+            TDuration::Seconds(25).MilliSeconds();
+        config.PerformanceProfile.MaxPostponedCount = 64;
+        config.PerformanceProfile.BurstPercentage = 100;
+        config.PerformanceProfile.DefaultPostponedRequestWeight = 1_KB;
+        tablet.UpdateConfig(config);
+
+        auto id = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto writeDataThrottlingDisabled = [&](
+            ui64 offset,
+            ui32 len,
+            char fill)
+        {
+            auto request = tablet.CreateWriteDataRequest(
+                handle,
+                offset,
+                len,
+                fill);
+            request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+            tablet.SendRequest(std::move(request));
+        };
+
+        writeDataThrottlingDisabled(0, block, 'a');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+        writeDataThrottlingDisabled(block, block, 'b');
+        tablet.AssertWriteDataQuickResponse(S_OK);
+
+        tablet.SendWriteDataRequest(handle, 2 * block, block, 'c');
+        // postponed write fills the soft-mode queue budget
+        tablet.AssertWriteDataNoResponse();
+
+        tablet.Flush();
+
+        tablet.SendWriteDataRequest(handle, 3 * block, block, 'd');
+        // flushing backpressure must not reset queued weight
+        tablet.AssertWriteDataQuickResponse(E_FS_THROTTLED);
+
+        tablet.AdvanceTime(TDuration::Hours(1));
+        // the original postponed write still completes
+        tablet.AssertWriteDataResponse(S_OK);
+
+        tablet.DestroyHandle(handle);
     }
 
     TABLET_TEST_16K(ShouldRejectWritesDueToBackpressure)
@@ -6061,7 +6252,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         using TLabel = TTestRegistryVisitor::TLabel;
         auto makeLabels = [] (const TString& request, const TString& sensor) {
             return TVector<TLabel>({
-                {"sensor", request + "." + sensor},
+                {"sensor", sensor},
+                {"request", request},
                 {"filesystem", "test"},
             });
         };
@@ -6361,16 +6553,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             registry->Visit(TInstant::Zero(), visitor);
             visitor.ValidateExpectedCounters({
                 {{
-                    {"sensor", "FlushBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 1_KB},
                 {{
-                    {"sensor", "FlushBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 1},
                 {{
-                    {"sensor", "TrimBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, static_cast<i64>(block + 1_KB)},
                 {{
-                    {"sensor", "TrimBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, 2},
             });
         }
@@ -6433,16 +6629,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             registry->Visit(TInstant::Zero(), visitor);
             visitor.ValidateExpectedCounters({
                 {{
-                    {"sensor", "FlushBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 0_KB},
                 {{
-                    {"sensor", "FlushBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "FlushBytes"},
                     {"filesystem", "test"}}, 0},
                 {{
-                    {"sensor", "TrimBytes.RequestBytes"},
+                    {"sensor", "RequestBytes"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, 100_GB},
                 {{
-                    {"sensor", "TrimBytes.Count"},
+                    {"sensor", "Count"},
+                    {"request", "TrimBytes"},
                     {"filesystem", "test"}}, 1},
             });
         }
@@ -6483,13 +6683,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{
-                {"sensor", "Compaction.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "Compaction"},
                 {"filesystem", "test"}}, 0},
             {{
-                {"sensor", "Compaction.Count"},
+                {"sensor", "Count"},
+                {"request", "Compaction"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "Compaction.DudCount"},
+                {"sensor", "DudCount"},
+                {"request", "Compaction"},
                 {"filesystem", "test"}}, 1},
         });
     }
@@ -8604,6 +8807,41 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             "Expected at least 2 different generations due to tablet reboot, "
             "got "
                 << rebootTracker.GetGenerationCount());
+    }
+
+    TABLET_TEST(ShouldPassReadDataAsPayload)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetExternalReadDataPayload(true);
+
+        TTestEnv env({} /* config */, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto data = GenerateValidateData(1_KB);
+        tablet.WriteData(handle, 0, data.size(), data.c_str());
+        tablet.Flush();
+
+        auto response = tablet.ReadData(handle, 0, 1_KB);
+        const auto& buffer = response->Record.GetBuffer();
+        UNIT_ASSERT(buffer.empty());
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(1, response->GetPayloadCount());
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->GetTotalPayloadSize());
+        auto& payload = response->GetPayload(0);
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), payload.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, payload.ConvertToString());
     }
 }
 

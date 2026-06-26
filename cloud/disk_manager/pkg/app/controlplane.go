@@ -361,6 +361,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		resourceStorage,
 		nbsFactory,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register placementgroup tasks: %v", err)
@@ -537,7 +538,12 @@ func initControlplane(
 	facade.RegisterPlacementGroupService(
 		server,
 		taskScheduler,
-		placementgroup.NewService(taskScheduler, nbsFactory),
+		placementgroup.NewService(
+			taskScheduler,
+			nbsFactory,
+			resourceStorage,
+			cellSelector,
+		),
 	)
 	facade.RegisterSnapshotService(
 		server,
