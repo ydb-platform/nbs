@@ -522,88 +522,46 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(10, stats.GetFreshBytesCount());
         }
 
-        struct TObservedFlushBytesPut
-        {
-            TActorId WriteBlobActor;
-            ui64 Cookie = 0;
-            TLogoBlobID BlobId;
-        };
-
-        bool rewriteFlushBytesPutResults = true;
-
-        TVector<TObservedFlushBytesPut> observedFlushBytesPuts;
-        THashSet<TActorId> failedFlushBytesWriteBlobActors;
-
-        ui32 rewrittenPutResults = 0;
+        ui32 rejectedPutResults = 0;
         ui32 droppedFailedWriteBlobCompleted = 0;
 
         env.GetRuntime().SetEventFilter(
             [&] (auto& runtime, auto& event) {
-                Y_UNUSED(runtime);
-
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPut: {
-                        auto* msg =
-                            event->template Get<TEvBlobStorage::TEvPut>();
+                        auto* msg = event->template Get<TEvBlobStorage::TEvPut>();
 
-                        // FlushBytes writes its destination blob via async
-                        // WriteBlob.
-                        //
-                        // The filter is installed only after the setup writes,
-                        // so this should target the FlushBytes destination
-                        // blob rather than the initial 128 KiB base-data
-                        // write.
-                        if (rewriteFlushBytesPutResults &&
-                            msg->HandleClass == NKikimrBlobStorage::AsyncBlob &&
-                            msg->Id.TabletID() == tabletId &&
-                            msg->Id.BlobSize() == block)
+                        // FlushBytes writes its destination blob through async
+                        // blob
+                        if (msg->HandleClass != NKikimrBlobStorage::AsyncBlob ||
+                            msg->Id.TabletID() != tabletId ||
+                            msg->Id.BlobSize() != block)
                         {
-                            observedFlushBytesPuts.push_back({
-                                event->Sender,  // TWriteBlobActor
-                                event->Cookie,
-                                msg->Id,
-                            });
-                        }
-
-                        break;
-                    }
-
-                    case TEvBlobStorage::EvPutResult: {
-                        if (!rewriteFlushBytesPutResults) {
                             break;
                         }
 
-                        auto* msg = event->template Get<
-                            TEvBlobStorage::TEvPutResult>();
+                        auto response = std::make_unique<TEvBlobStorage::TEvPutResult>(
+                            NKikimrProto::ERROR,
+                            msg->Id,
+                            NKikimr::TStorageStatusFlags(),
+                            NKikimr::GroupIDFromBlobStorageProxyID(event->Recipient),
+                            0.0f);
 
-                        bool isFlushBytesPutResult = false;
+                        response->ErrorReason =
+                            "injected FlushBytes TEvPut failure";
 
-                        for (const auto& put: observedFlushBytesPuts) {
-                            if (event->Recipient == put.WriteBlobActor &&
-                                event->Cookie == put.Cookie &&
-                                msg->Id == put.BlobId)
-                            {
-                                isFlushBytesPutResult = true;
-                                break;
-                            }
-                        }
+                        runtime.Schedule(new IEventHandle(
+                            event->Sender,      // recipient: TWriteBlobActor
+                            event->Recipient,   // sender: BS proxy
+                            response.release(),
+                            0,
+                            event->Cookie
+                        ), TDuration::Zero(), nodeIdx);
 
-                        if (!isFlushBytesPutResult) {
-                            break;
-                        }
+                        ++rejectedPutResults;
 
-                        // Rewrite the real BlobStorage response into a failed
-                        // write.  TWriteBlobActor will naturally convert this
-                        // into TEvWriteBlobResponse(E_REJECTED) for
-                        // TFlushBytesActor.
-                        msg->Status = NKikimrProto::ERROR;
-                        msg->ErrorReason =
-                            "injected FlushBytes TEvPutResult failure";
-
-                        failedFlushBytesWriteBlobActors.insert(event->Recipient);
-                        ++rewrittenPutResults;
-
-                        break;
+                        // Consume the original TEvPut. BlobStorage never sees it.
+                        return true;
                     }
 
                     case TEvIndexTabletPrivate::EvWriteBlobCompleted: {
@@ -618,9 +576,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                         // By dropping this notification, we emulate the case
                         // where it was reordered with TEvWriteBlobResponse,
                         // which reached the tablet before it suicided.
-                        if (failedFlushBytesWriteBlobActors.contains(event->Sender) &&
-                            FAILED(msg->GetStatus()))
-                        {
+                        if (FAILED(msg->GetStatus())) {
                             ++droppedFailedWriteBlobCompleted;
                             return true;
                         }
@@ -635,19 +591,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto flushBytesResponse = tablet.AssertFlushBytesFailed();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, flushBytesResponse->GetStatus());
 
-        UNIT_ASSERT(!observedFlushBytesPuts.empty());
-        UNIT_ASSERT(rewrittenPutResults);
+        UNIT_ASSERT(rejectedPutResults);
 
         // Let TEvFlushBytesCompleted(error) be processed by the tablet.
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
 
         UNIT_ASSERT(droppedFailedWriteBlobCompleted);
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
 
         {
             auto response = tablet.ReadData(handle, 0, block);
             const auto& actual = response->Record.GetBuffer();
-
-            UNIT_ASSERT_VALUES_EQUAL(block, actual.size());
 
             // Data loss. On the buggy code this range becomes
             // "0000000000" because the fresh-byte overlay was trimmed even
@@ -680,6 +635,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             // On buggy code this becomes 0 because failed FlushBytes still
             // trims the source fresh bytes.
             UNIT_ASSERT_VALUES_EQUAL(10, stats.GetFreshBytesCount());
+        }
+
+        tablet.FlushBytes();
+
+        // Check again, just in case.
+        {
+            auto response = tablet.ReadData(handle, 0, block);
+            const auto& actual = response->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(expected, actual);
         }
 
         tablet.DestroyHandle(handle);
@@ -739,61 +703,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(10, stats.GetFreshBytesCount());
         }
 
-        bool rewriteFlushBytesGetResults = true;
-        TActorId flushBytesReadBlobActor;
-        ui64 flushBytesReadBlobCookie = 0;
-
-        ui32 observedFlushBytesGets = 0;
         ui32 rewrittenGetResults = 0;
 
         env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, auto& event) {
-                Y_UNUSED(runtime);
-
+            [&] (auto&, auto& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvBlobStorage::EvGet: {
-                        auto* msg = event->template Get<TEvBlobStorage::TEvGet>();
-
-                        if (!rewriteFlushBytesGetResults ||
-                            msg->GetHandleClass != NKikimrBlobStorage::AsyncRead)
-                        {
-                            break;
-                        }
-
-                        bool isFlushBytesRead = false;
-
-                        for (ui32 i = 0; i < msg->QuerySize; ++i) {
-                            const auto& query = msg->Queries[i];
-
-                            if (query.Id.TabletID() == tabletId &&
-                                query.Id.BlobSize() == rangeSize)
-                            {
-                                isFlushBytesRead = true;
-                                break;
-                            }
-                        }
-
-                        if (isFlushBytesRead) {
-                            // This is the real TEvGet issued by TReadBlobActor for
-                            // FlushBytes. Let it go to BlobStorage, but remember who
-                            // should receive the real TEvGetResult.
-                            flushBytesReadBlobActor = event->Sender;
-                            flushBytesReadBlobCookie = event->Cookie;
-                            ++observedFlushBytesGets;
-                        }
-
-                        break;
-                    }
-
                     case TEvBlobStorage::EvGetResult: {
-                        if (!rewriteFlushBytesGetResults ||
-                            !observedFlushBytesGets ||
-                            event->Recipient != flushBytesReadBlobActor ||
-                            event->Cookie != flushBytesReadBlobCookie)
-                        {
-                            break;
-                        }
-
                         auto* msg = event->template Get<
                             TEvBlobStorage::TEvGetResult>();
 
@@ -815,21 +730,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto flushBytesResponse = tablet.AssertFlushBytesFailed();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, flushBytesResponse->GetStatus());
 
-        UNIT_ASSERT(observedFlushBytesGets);
         UNIT_ASSERT(rewrittenGetResults);
 
         // Let TEvReadBlobCompleted and TEvFlushBytesCompleted(error) be processed.
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
 
-        rewriteFlushBytesGetResults = false;
         env.GetRuntime().SetEventFilter(
             TTestActorRuntimeBase::DefaultFilterFunc);
 
         {
             auto response = tablet.ReadData(handle, 0, rangeSize);
             const auto& actual = response->Record.GetBuffer();
-
-            UNIT_ASSERT_VALUES_EQUAL(rangeSize, actual.size());
 
             // Data loss. On buggy code this becomes "0000000000",
             // because the fresh byte overlay was trimmed after failed FlushBytes.
@@ -863,6 +774,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             // Buggy code trims these bytes even though FlushBytes failed at
             // ReadBlob.
             UNIT_ASSERT_VALUES_EQUAL(10, stats.GetFreshBytesCount());
+        }
+
+        tablet.FlushBytes();
+
+        // Check again, just in case.
+        {
+            auto response = tablet.ReadData(handle, 0, rangeSize);
+            const auto& actual = response->Record.GetBuffer();
+
+            UNIT_ASSERT_VALUES_EQUAL(expected, actual);
         }
 
         tablet.DestroyHandle(handle);

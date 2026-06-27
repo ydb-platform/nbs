@@ -902,7 +902,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
     const auto error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
             "%s FlushBytes failed (%s)",
             LogTag.c_str(),
             FormatError(error).c_str());
