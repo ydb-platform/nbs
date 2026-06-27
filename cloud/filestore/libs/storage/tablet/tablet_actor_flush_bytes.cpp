@@ -895,14 +895,28 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 {
     const auto* msg = ev->Get();
 
+    ReleaseMixedBlocks(msg->MixedBlocksRanges);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
+    WorkerActors.erase(ev->Sender);
+
+    const auto error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s FlushBytes failed (%s)",
+            LogTag.c_str(),
+            FormatError(error).c_str());
+
+        CompleteBlobIndexOp();
+        FlushState.Complete();
+        EnqueueBlobIndexOpIfNeeded(ctx);
+        return;
+    }
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s FlushBytes completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
-
-    ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
-    WorkerActors.erase(ev->Sender);
 
     Metrics.FlushBytes.Update(1, msg->Size, msg->Time);
 
@@ -917,7 +931,6 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         msg->CallContext,
         "TrimBytes");
 
-    // FIXME: validate for errors
     ExecuteTx<TTrimBytes>(ctx, std::move(requestInfo), msg->ChunkId);
 }
 
