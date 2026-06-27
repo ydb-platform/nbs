@@ -79,25 +79,43 @@ ui64 CopyBufferFromRope(
 }
 
 /**
- * @brief Copies a slice of data from the iovecs in the request into the buffer
- *        in the same request and cleanup iovecs.
+ * @brief Prepares a WriteData request to be sent to the tablet.
  *
- * @param request The write request containing iovecs as the source of data
+ * If the request payload is represented by iovecs, this function copies the
+ * required data slice from the iovecs into the request buffer, or into the
+ * request payload when @p externalPayload is set. The iovecs are then cleared
+ * from the request.
+ *
+ * @param request The write request containing iovecs used as the data source.
+ * @param externalPayload If true, stores the copied data as an external payload;
+ *                        otherwise, stores it in the request buffer.
  */
-void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
+void PrepareWriteDataRequestPayload(auto* msg, bool externalPayload)
 {
+    auto& request = msg->Record;
     if (request.GetIovecs().empty()) {
+        if (externalPayload) {
+            auto& buffer = *request.MutableBuffer();
+            msg->AddPayload(TRope(std::move(buffer)));
+            buffer.clear();
+        }
         return;
     }
 
     auto rope = CreateRope(request.GetIovecs());
-    auto* buffer = request.MutableBuffer();
+    TString buffer;
     const auto bytesToCopy = NFileStore::CalculateByteCount(request);
-    buffer->ReserveAndResize(bytesToCopy);
+    buffer.ReserveAndResize(bytesToCopy);
     auto bytesCopied =
-        TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
+        TRopeUtils::SafeMemcpy(buffer.begin(), rope.Begin(), bytesToCopy);
     request.MutableIovecs()->Clear();
     Y_ABORT_UNLESS(bytesCopied == bytesToCopy);
+
+    if (externalPayload) {
+        msg->AddPayload(TRope(std::move(buffer)));
+    } else {
+        request.SetBuffer(std::move(buffer));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,6 +171,7 @@ private:
     TRope Rope;
 
     const bool UseThreeStageWrite = false;
+    const bool ExternalWriteDataPayload = false;
 
 public:
     TWriteDataActor(
@@ -166,7 +185,8 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useThreeStageWrite)
+        bool useThreeStageWrite,
+        bool externalWriteDataPayload)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -179,6 +199,7 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
         , UseThreeStageWrite(useThreeStageWrite)
+        , ExternalWriteDataPayload(externalWriteDataPayload)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -850,9 +871,9 @@ private:
             RequestInfo->CallContext,
             "WriteData");
 
-        MoveIovecsToBuffer(WriteRequest);
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
+        PrepareWriteDataRequestPayload(request.get(), ExternalWriteDataPayload);
         if (isFallback) {
             request->Record.MutableHeaders()->SetThrottlingDisabled(true);
         }
@@ -1024,7 +1045,6 @@ void TStorageServiceActor::HandleWriteData(
     }
 
     const auto threeStageWriteAllowed = IsThreeStageWriteEnabled(filestore);
-
     ui32 blockSize = filestore.GetBlockSize();
 
     const auto bytesCount = NFileStore::CalculateByteCount(msg->Record);
@@ -1068,7 +1088,8 @@ void TStorageServiceActor::HandleWriteData(
         ProfileLog,
         TraceSerializer,
         session->MediaKind,
-        threeStageWriteEnabled);
+        threeStageWriteEnabled,
+        filestore.GetFeatures().GetExternalWriteDataPayload());
     NCloud::Register(ctx, std::move(actor));
 }
 

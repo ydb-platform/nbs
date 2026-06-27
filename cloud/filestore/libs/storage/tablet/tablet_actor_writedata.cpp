@@ -26,6 +26,17 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    if (msg->Record.GetBuffer().empty() && msg->GetPayloadCount() > 0 &&
+        msg->GetPayload(0).size() != 0)
+    {
+        auto& payload = msg->GetPayload(0);
+        msg->Record.MutableBuffer()->ReserveAndResize(payload.size());
+        TRopeUtils::Memcpy(
+            msg->Record.MutableBuffer()->begin(),
+            payload.begin(),
+            payload.size());
+    }
+
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
         profileLogRequest,

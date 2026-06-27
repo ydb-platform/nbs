@@ -2,3 +2,4 @@ ZeroCopyWriteEnabled: true
 ZeroCopyReadEnabled: true
 UseCustomReadDataResponseParser: true
 ExternalReadDataPayload: true
+ExternalWriteDataPayload: true
