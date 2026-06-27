@@ -22,6 +22,7 @@ ui32 ComputeShardCount(
     const ui64 blocksCount,
     const ui32 blockSize,
     const ui64 shardAllocationUnit,
+    const ui32 minShardCount,
     const ui32 maxShardCount);
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(

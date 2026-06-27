@@ -383,6 +383,7 @@ public:
 
     [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
 
+    ui32 GetMinShardCount() const;
     ui32 GetMaxShardCount() const;
 
     bool GetReadBlobDisabled() const;

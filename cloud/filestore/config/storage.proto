@@ -830,4 +830,8 @@ message TStorageConfig
     optional uint32 SoftBackpressureMaxReadBandwidth = 519;    // in MiB/s
     optional uint32 SoftBackpressureMaxWriteIops = 520;
     optional uint32 SoftBackpressureMaxReadIops = 521;
+
+    // Sets the minimum shard count that each filesystem would have regardless
+    // of its size.
+    optional uint32 MinShardCount = 522;
 }

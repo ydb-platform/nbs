@@ -441,7 +441,7 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
-    ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
+    ui64 CalculateMinExpectedShardCount(ui32 maxShardCount) const;
 
     void InitInMemoryIndexState(const TStorageConfig& config);
 
