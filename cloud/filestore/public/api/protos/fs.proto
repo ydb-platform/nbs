@@ -59,6 +59,7 @@ message TFileStoreFeatures
     bool ServerWriteBackCacheFlushWritesInParallelEnabled = 44;
     uint32 StatFileStoreCacheTTL = 45; // in ms
     bool ExternalReadDataPayload = 46;
+    bool ExternalWriteDataPayload = 47;
 }
 
 message TFileStore

@@ -4830,6 +4830,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TestZeroCopyWrite(config, 0, iovecSizes);
     }
 
+    Y_UNIT_TEST(TestAlignedZeroCopyWriteFallbackWithExternalPayload)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        config.SetExternalWriteDataPayload(true);
+        config.SetExternalReadDataPayload(true);
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+    }
+
+    Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallbackWithExternalPayload)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        config.SetExternalWriteDataPayload(true);
+        config.SetExternalReadDataPayload(true);
+        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+    }
+
     Y_UNIT_TEST(TestZeroCopyWriteWithEmptyIovecs)
     {
         NProto::TStorageConfig config;
@@ -5178,6 +5200,48 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         DoShouldHitNodesCountLimit(false);
         DoShouldHitNodesCountLimit(true);
+    }
+
+    Y_UNIT_TEST(TestWriteWithExternalPayload)
+    {
+        NProto::TStorageConfig config;
+        config.SetExternalWriteDataPayload(true);
+        TTestEnv env({}, std::move(config));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto data = GenerateValidateData(64_KB);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        auto readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            data.size(),
+            readDataResult->Record.GetBuffer().size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
     }
 }
 
