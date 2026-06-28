@@ -2061,16 +2061,58 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto id = CreateFile(bootstrap, RootNodeId, "file");
         auto nonexistent = id + 100500;
 
-        bootstrap.AssertListNodeXAttrFailed(nonexistent);
+        {
+            auto response = bootstrap.AssertListNodeXAttrFailed(nonexistent);
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
 
-        bootstrap.AssertSetNodeXAttrFailed(id, "invalid", "value");
-        bootstrap.AssertSetNodeXAttrFailed(nonexistent, "user.xattr", "value");
+        {
+            auto response =
+                bootstrap.AssertSetNodeXAttrFailed(id, "invalid", "value");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOTSUPP),
+                response.GetError().GetCode());
+        }
+        {
+            auto response = bootstrap.AssertSetNodeXAttrFailed(
+                nonexistent,
+                "user.xattr",
+                "value");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
 
-        bootstrap.AssertGetNodeXAttrFailed(id, "user.xattr");
-        bootstrap.AssertGetNodeXAttrFailed(nonexistent, "user.xattr");
+        {
+            auto response = bootstrap.AssertGetNodeXAttrFailed(id, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR),
+                response.GetError().GetCode());
+        }
+        {
+            auto response =
+                bootstrap.AssertGetNodeXAttrFailed(nonexistent, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
 
-        bootstrap.AssertRemoveNodeXAttrFailed(nonexistent, "user.xattr");
-        bootstrap.AssertRemoveNodeXAttrFailed(id, "user.xattr");
+        {
+            auto response =
+                bootstrap.AssertRemoveNodeXAttrFailed(nonexistent, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
+        {
+            auto response =
+                bootstrap.AssertRemoveNodeXAttrFailed(id, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR),
+                response.GetError().GetCode());
+        }
     }
 
     Y_UNIT_TEST(ShouldResetSessionStateAndRestoreByClient)

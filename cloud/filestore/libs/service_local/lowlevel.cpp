@@ -500,7 +500,9 @@ TString GetXAttr(const TFileHandle& handle, const TString& name)
             0);
 
         if (res < 0) {
-            STORAGE_THROW_SERVICE_ERROR(ErrorAttributeDoesNotExist(name));
+            STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
+                << "failed to get attribute (" << name.Quote() << "): "
+                << LastSystemErrorText();
         }
 
         buf.resize(res + 1);
@@ -516,7 +518,7 @@ TString GetXAttr(const TFileHandle& handle, const TString& name)
                 continue;
             }
 
-            STORAGE_THROW_SERVICE_ERROR(E_IO)
+            STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
                 << "failed to get attribute (" << name.Quote() << "): "
                 << LastSystemErrorText();
         }
@@ -542,7 +544,7 @@ void SetXAttr(
         0 /*create or replace*/);
 
     if (res != 0) {
-        STORAGE_THROW_SERVICE_ERROR(E_IO)
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "failed to set attribute (" << name.Quote() << ", " << value.Quote() << "): "
             << LastSystemErrorText();
     }
@@ -555,7 +557,7 @@ void RemoveXAttr(const TFileHandle& handle, const TString& name)
 
     int res = removexattr(path, name.c_str());
     if (res != 0) {
-        STORAGE_THROW_SERVICE_ERROR(E_IO)
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "failed to remove attribute (" << name.Quote() << "): "
             << LastSystemErrorText();
     }
@@ -575,7 +577,7 @@ TVector<TString> ListXAttrs(const TFileHandle& handle)
             0);
 
         if (res < 0) {
-            STORAGE_THROW_SERVICE_ERROR(E_IO)
+            STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
                 << "failed to list attributes: "
                 << LastSystemErrorText();
         }
@@ -592,7 +594,7 @@ TVector<TString> ListXAttrs(const TFileHandle& handle)
                 continue;
             }
 
-            STORAGE_THROW_SERVICE_ERROR(E_IO)
+            STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
                 << "failed to list attributes: "
                 << LastSystemErrorText();
         }
