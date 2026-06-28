@@ -22,7 +22,8 @@ from cloud.storage.core.tools.testing.qemu.lib.common import (
 
 RETRY_COUNT = 3
 WAIT_TIMEOUT_MS = 1000
-MAX_DIRS = 25000
+MAX_DIRS = 2500
+DIR_NAME_LEN = 250
 WAIT_FILE_TIMEOUT_MS = 15000
 WAIT_FILE_RETRY_COUNT = 10
 
@@ -47,9 +48,12 @@ def wait_for_filestore_vhost(port, port_type="endpoint"):
 
 @retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT_MS)
 def create_dirs_bulk(ssh: SshToGuest, parent_dir: str):
+    # Long unique names ("dir" + zero-padded index) so few entries still page
+    # across several ListNodes chunks
+    pad = DIR_NAME_LEN - len("dir")
     command = (
         f"for i in {{1..{MAX_DIRS}}}; do sudo mkdir -p "
-        f"{parent_dir}/dirname$(printf \"%03d\" $i); done"
+        f"{parent_dir}/dir$(printf \"%0{pad}d\" $i); done"
     )
     return ssh(command)
 
