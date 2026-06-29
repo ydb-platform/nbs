@@ -348,7 +348,7 @@ void TIndexTabletState::SetCompressNodeRef(
 }
 
 void TIndexTabletState::SetResizeState(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const NProtoPrivate::TFileSystemResizeState& resizeState)
 {
     *FileSystem.MutableResizeState() = resizeState;

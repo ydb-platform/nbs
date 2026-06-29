@@ -923,7 +923,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
         {
             auto newState = requested;
             newState.SetVersion(requested.GetVersion() + 1);
-            SetResizeState(db, newState);
+            SetResizeState(*db, newState);
         }
     }
 }

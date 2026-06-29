@@ -347,7 +347,7 @@ public:
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
 
     void SetResizeState(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const NProtoPrivate::TFileSystemResizeState& resizeState);
 
     //
