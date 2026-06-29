@@ -167,7 +167,7 @@ TString ToString(const TLogTitle::TPartitionMigration& data)
 
 TString ToString(const TLogTitle::TPartitionNonreplRdma& data)
 {
-    return TStringBuilder() << "[migrdma:" << data.DiskId;
+    return TStringBuilder() << "[pnr:" << data.DiskId;
 }
 
 TString ToString(const TLogTitle::TDiskRegistry& data)
