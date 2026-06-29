@@ -431,7 +431,12 @@ void TAlterFileStoreActor::HandleUnsafeChangeTabletStateResponse(
     }
 
     if (!msg->Record.HasResizeState()) {
-        ReplyAndDie(ctx, MakeError(E_INVALID_STATE, "missing resize state"));
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Missing resize state: cookie=" << ev->Cookie));
         return;
     }
 

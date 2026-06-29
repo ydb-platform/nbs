@@ -290,12 +290,7 @@ void TIndexTabletState::SetResizeState(
     TIndexTabletDatabase& db,
     const NProtoPrivate::TFileSystemResizeState& resizeState)
 {
-    auto& newState = *FileSystem.MutableResizeState();
-
-    newState.SetVersion(newState.GetVersion());
-
-    newState.SetCreatedShardBitmap(resizeState.GetCreatedShardBitmap());
-
+    *FileSystem.MutableResizeState() = resizeState;
     db.WriteFileSystem(FileSystem);
 }
 
