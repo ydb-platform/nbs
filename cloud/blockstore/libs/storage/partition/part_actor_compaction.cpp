@@ -94,7 +94,6 @@ private:
     const TString DiskId;
     const TActorId Tablet;
     const ui32 BlockSize;
-    const ui32 MaxBlocksInBlob;
     const ui32 MaxAffectedBlocksPerCompaction;
     const bool ForceChecksumsCalculation;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -149,7 +148,6 @@ public:
         TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
-        ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
         bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -224,7 +222,6 @@ TCompactionActor::TCompactionActor(
         TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
-        ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
         bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -243,7 +240,6 @@ TCompactionActor::TCompactionActor(
     , DiskId(std::move(diskId))
     , Tablet(tablet)
     , BlockSize(blockSize)
-    , MaxBlocksInBlob(maxBlocksInBlob)
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
     , ForceChecksumsCalculation(forceChecksumsCalculation)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -2025,7 +2021,6 @@ void TPartitionActor::CompleteCompaction(
         PartitionConfig.GetDiskId(),
         SelfId(),
         State->GetBlockSize(),
-        State->GetMaxBlocksInBlob(),
         Config->GetMaxAffectedBlocksPerCompaction(),
         Config->GetComputeDigestForEveryBlockOnCompaction(),
         BlockDigestGenerator,
