@@ -148,11 +148,6 @@ struct TAffectedBlob
 
     TVector<ui16> Offsets;
 
-    // Already in the cleanup queue.
-    struct TAlreadyGarbageBlob
-    {
-    };
-
     TMaybe<TBlockMask> BlockMask;
 
     bool BlobAlreadyInCleanupQueue = false;
