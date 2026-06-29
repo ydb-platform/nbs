@@ -2237,7 +2237,7 @@ void TDiskRegistryActor::RenderDirtyDeviceListDetailed(IOutputStream& out) const
         additionalColumns);
 }
 
-void TDiskRegistryActor::HandleHttpInfo_RenderDirtyOnlineDeviceList(
+void TDiskRegistryActor::HandleHttpInfo_RenderDirtyDevicesCleanupOverview(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
@@ -2245,11 +2245,11 @@ void TDiskRegistryActor::HandleHttpInfo_RenderDirtyOnlineDeviceList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderDirtyOnlineDeviceListDetailed(out);
+    RenderDirtyDevicesCleanupOverviewDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderDirtyOnlineDeviceList(IOutputStream& out) const
+void TDiskRegistryActor::RenderDirtyDevicesCleanupOverview(IOutputStream& out) const
 {
     auto dirtyDevices = State->GetDirtyDevices();
     if (dirtyDevices.empty()) {
@@ -2258,16 +2258,16 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceList(IOutputStream& out) const
     DumpActionLink(
         out,
         TabletID(),
-        "RenderDirtyOnlineDeviceList",
-        "Dirty online devices",
+        "RenderDirtyDevicesCleanupOverview",
+        "Dirty devices cleanup overview",
         dirtyDevices.size());
 }
 
-void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
+void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
     IOutputStream& out) const
 {
     auto dirtyDevices = State->GetDirtyDevices();
-    TVector<TDirtyDeviceEntry> erasing;
+    TVector<TDirtyDeviceEntry> processing;
     TVector<TDirtyDeviceEntry> cleaning;
     TVector<TDirtyDeviceEntry> waiting;
     TVector<TDirtyDeviceEntry> agentDown;
@@ -2302,7 +2302,7 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
         } else if (State->CanSecureErase(device)) {
             entry.AgentId = agent->GetAgentId();
             if (SecureEraseInProgressPerPool.contains(device.GetPoolName())) {
-                erasing.push_back(std::move(entry));
+                processing.push_back(std::move(entry));
             } else {
                 cleaning.push_back(std::move(entry));
             }
@@ -2381,7 +2381,7 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
             }
         };
 
-        renderTable("Clean up in progress", erasing, false);
+        renderTable("Clean up in progress", processing, false);
         renderTable("Ready for cleanup", cleaning, false);
         renderTable("Waiting for cleanup", waiting, false);
         renderTable("Agent unavailable", agentDown, true);
@@ -2559,7 +2559,7 @@ void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
 
             RenderDirtyDeviceList(out);
 
-            RenderDirtyOnlineDeviceList(out);
+            RenderDirtyDevicesCleanupOverview(out);
 
             RenderBrokenDeviceList(out);
 
@@ -2644,8 +2644,8 @@ void TDiskRegistryActor::HandleHttpInfo(
         {"RenderConfig", &TDiskRegistryActor::HandleHttpInfo_RenderConfig},
         {"RenderDirtyDeviceList",
          &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDeviceList},
-        {"RenderDirtyOnlineDeviceList",
-         &TDiskRegistryActor::HandleHttpInfo_RenderDirtyOnlineDeviceList},
+        {"RenderDirtyDevicesCleanupOverview",
+         &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDevicesCleanupOverview},
         {"RenderSuspendedDeviceList",
          &TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList},
         {"RenderTransactionsLatency",
