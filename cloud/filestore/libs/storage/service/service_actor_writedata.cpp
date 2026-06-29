@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/client/config.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -20,6 +21,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <library/cpp/iterator/enumerate.h>
+
 
 #include <utility>
 
@@ -151,6 +153,10 @@ private:
     TVector<double> ApproximateFreeSpaceShares;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     TRope Rope;
+    NClient::ISessionPtr Session;
+    NLoadTest::IShmDataClientPtr ShmClient;
+    NThreading::TFuture<NProto::TWriteDataResponse> Future;
+    TString FsId;
 
 public:
     TWriteDataActor(
@@ -163,7 +169,10 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        NClient::ISessionPtr session,
+        NLoadTest::IShmDataClientPtr shmClient,
+        TString fsId)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -175,6 +184,9 @@ public:
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
+        , Session(session)
+        , ShmClient(shmClient)
+        , FsId(fsId)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -183,6 +195,64 @@ public:
             RequestReceived_ServiceWorker,
             RequestInfo->CallContext,
             "GenerateBlobIds");
+
+        try {
+            if (Session && ShmClient) {
+
+                std::cerr << "MYAGKOV: entry write data via shm " << std::endl;
+                auto request =
+                    std::make_shared<NProto::TWriteDataRequest>(WriteRequest);
+                request->SetHandle(InvalidHandle);
+
+                ui64 shmOffset = 0;
+                shmOffset = ShmClient->PrepareWrite(*request);
+
+                Future =
+                    Session->WriteData(RequestInfo->CallContext, request)
+                        .Subscribe(
+                            [=, this](
+                                const NThreading::TFuture<
+                                    NProto::TWriteDataResponse>& future)
+                            {
+                                auto response =
+                                    future.GetValue();
+
+                                ShmClient->FreeOffset(shmOffset);
+
+                                if (HasError(response)) {
+                                    LOG_ERROR(
+                                        ctx,
+                                        TFileStoreComponents::SERVICE,
+                                        "MYAGKOV: failed to handle write data "
+                                        "request "
+                                        "via shm: %s",
+                                        FormatError(response.GetError())
+                                            .c_str());
+                                }
+
+                                std::cerr << "MYAGKOV: success write data via shm " << std::endl;
+                                auto resp = std::make_unique<
+                                    TEvService::TEvWriteDataResponse>();
+                                resp->Record = std::move(response);
+                                ctx.Send(ctx.SelfID, std::move(resp));
+                                return;
+                            });
+
+                Become(&TThis::StateWork);
+                return;
+            }
+        } catch (std::exception& e) {
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "MYAGKOV: failed to handle write data request via shm. "
+                "Exception: %s",
+                e.what());
+        }
+
+        if (FsId) {
+            WriteRequest.SetFileSystemId(FsId);
+        }
 
         Rope = CreateRope(WriteRequest.GetIovecs());
 
@@ -934,6 +1004,9 @@ void TStorageServiceActor::HandleWriteData(
     const TEvService::TEvWriteDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    static ui64 sRequestCounter = 0;
+    sRequestCounter++;
+
     TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
 
@@ -976,10 +1049,6 @@ void TStorageServiceActor::HandleWriteData(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    if (fsId) {
-        msg->Record.SetFileSystemId(fsId);
-    }
-
     if (!msg->Record.GetIovecs().empty() && msg->Record.GetBufferOffset() != 0)
     {
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
@@ -993,6 +1062,10 @@ void TStorageServiceActor::HandleWriteData(
     if (!threeStageWriteAllowed) {
         // If three-stage write is disabled, forward the request to the tablet
         // in the same way as all other requests.
+        if (fsId) {
+            msg->Record.SetFileSystemId(fsId);
+        }
+
         MoveIovecsToBuffer(msg->Record);
         ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
         return;
@@ -1041,6 +1114,33 @@ void TStorageServiceActor::HandleWriteData(
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
+        size_t shmClientIndex = sRequestCounter % 2;
+        if (Clients[shmClientIndex]) {
+            if (!Sessions[shmClientIndex]) {
+                NProto::TSessionConfig proto;
+                proto.SetFileSystemId(filestore.filesystemid());
+
+                Sessions[shmClientIndex] = NClient::CreateSession(
+                    Logging,
+                    Timer,
+                    Scheduler,
+                    Clients[shmClientIndex],
+                    std::make_shared<NClient::TSessionConfig>(proto));
+
+                auto response =
+                    Sessions[shmClientIndex]->CreateSession().GetValue(TDuration::Seconds(10));
+                if (HasError(response)) {
+                    Sessions[shmClientIndex].reset();
+                }
+
+                std::cerr << "MYAGKOV: Shm session is created: " << shmClientIndex << std::endl;
+            }
+        }
+
+        bool sendRequestToLocalServer =
+            bytesCount == 1_MB &&
+            (msg->Record.GetOffset() % filestore.GetBlockSize() == 0);
+
         auto actor = std::make_unique<TWriteDataActor>(
             std::move(msg->Record),
             range,
@@ -1051,13 +1151,19 @@ void TStorageServiceActor::HandleWriteData(
             session->RequestStats,
             ProfileLog,
             TraceSerializer,
-            session->MediaKind);
+            session->MediaKind,
+            sendRequestToLocalServer ? Sessions[shmClientIndex] : nullptr,
+            ShmClients[shmClientIndex],
+            std::move(fsId));
         NCloud::Register(ctx, std::move(actor));
     } else {
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
             "Forwarding WriteData request to tablet");
+        if (fsId) {
+            msg->Record.SetFileSystemId(fsId);
+        }
         MoveIovecsToBuffer(msg->Record);
         ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
     }

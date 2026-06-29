@@ -45,7 +45,7 @@ def start(argv):
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--server-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
-    parser.add_argument("--use-unix-socket", action="store_true", default=False)
+    parser.add_argument("--use-unix-socket", action="store_true", default=True)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
     parser.add_argument("--use-fast-shard-port", action="store_true", default=False)
     args = parser.parse_args(argv)
@@ -95,8 +95,7 @@ def start(argv):
                 TStorageConfig())
     if args.use_unix_socket:
         # Create in temp directory because we would like a shorter path
-        server_unix_socket_path = str(
-            pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "filestore.sock")
+        server_unix_socket_path = str("/tmp/nfs.sock")
         set_env("NFS_SERVER_UNIX_SOCKET_PATH", server_unix_socket_path)
         server_config.ServerConfig.UnixSocketPath = server_unix_socket_path
     if args.server_config_patch:

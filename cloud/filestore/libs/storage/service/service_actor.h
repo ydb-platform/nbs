@@ -22,6 +22,10 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <cloud/filestore/libs/client/session.h>
+#include <cloud/filestore/libs/service/public.h>
+#include <cloud/filestore/tools/testing/loadtest/lib/shm_client.h>
+
 #include <util/datetime/base.h>
 
 namespace NCloud::NFileStore::NProto {
@@ -78,6 +82,13 @@ private:
     NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
 
     TMonotonic LastCpuWaitTs;
+
+    ITimerPtr Timer;
+    ISchedulerPtr Scheduler;
+    ILoggingServicePtr Logging;
+    std::vector<IFileStoreServicePtr> Clients;
+    std::vector<NLoadTest::IShmDataClientPtr> ShmClients;
+    std::vector<NClient::ISessionPtr> Sessions;
 
 public:
     TStorageServiceActor(

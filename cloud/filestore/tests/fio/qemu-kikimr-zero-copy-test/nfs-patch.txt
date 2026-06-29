@@ -4,3 +4,4 @@ UnalignedThreeStageWriteEnabled: true
 
 ZeroCopyReadEnabled: true
 TwoStageReadEnabled: true
+AllowHandlelessIO: true

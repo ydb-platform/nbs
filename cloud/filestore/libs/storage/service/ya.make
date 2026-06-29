@@ -54,6 +54,9 @@ PEERDIR(
     cloud/filestore/libs/storage/model
     cloud/filestore/private/api/unsafe_protos
 
+    cloud/filestore/libs/client
+    cloud/filestore/tools/testing/loadtest/lib
+
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 

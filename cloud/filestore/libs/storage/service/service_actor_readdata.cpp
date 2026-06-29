@@ -22,6 +22,8 @@
 
 #include <contrib/libs/protobuf/src/google/protobuf/io/coded_stream.h>
 
+#include <cloud/filestore/libs/client/config.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage {
@@ -91,6 +93,10 @@ private:
     const bool UseCustomReadDataResponseParser;
     const bool ZeroCopyReadEnabled;
 
+    NClient::ISessionPtr Session;
+    NLoadTest::IShmDataClientPtr ShmClient;
+    TString FsId;
+
 public:
     TReadDataActor(
         NProto::TReadDataRequest readRequest,
@@ -112,7 +118,10 @@ public:
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead,
         bool useCustomReadDataResponseParser,
-        bool zeroCopyReadEnabled);
+        bool zeroCopyReadEnabled,
+        NClient::ISessionPtr session,
+        NLoadTest::IShmDataClientPtr shmClient,
+        TString fsId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -149,6 +158,11 @@ private:
         const TActorContext& ctx,
         NProto::TReadDataResponse& response);
 
+    void MoveShmToIovecs(
+        const TActorContext& ctx,
+        NProto::TReadDataResponse& response,
+        const char* shmPtr);
+
     void SendResponseAndDie(
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvReadDataResponse> response);
@@ -178,7 +192,10 @@ TReadDataActor::TReadDataActor(
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead,
         bool useCustomReadDataResponseParser,
-        bool zeroCopyReadEnabled)
+        bool zeroCopyReadEnabled,
+        NClient::ISessionPtr session,
+        NLoadTest::IShmDataClientPtr shmClient,
+        TString fsId)
     : ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
@@ -210,11 +227,85 @@ TReadDataActor::TReadDataActor(
           !ReadRequest.GetIovecs()
                .empty())   // Zero-copy read optimization is only applicable
                            // when iovecs are provided
+    , Session(std::move(session))
+    , ShmClient(std::move(shmClient))
+    , FsId(fsId)
 {
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
+    // Registering InFlightRequest here for the same reason - it's quite
+    // expensive so we don't want to do it in TStorageServiceActor
+    MainInFlightRequest = InFlightRequests->Register(
+        Sender,
+        Cookie,
+        CallContext,
+        MediaKind,
+        std::move(ChecksumCalcInfo),
+        RequestStats,
+        StartTime,
+        RequestCookie);
+
+    InitProfileLogRequestInfo(
+        MainInFlightRequest->AccessProfileLogRequest(),
+        ReadRequest);
+    MainInFlightRequest->AccessProfileLogRequest().SetClientId(
+        std::move(ClientId));
+
+    if (Session && ShmClient) {
+        auto request = std::make_shared<NProto::TReadDataRequest>(ReadRequest);
+        request->ClearIovecs();
+        //request->SetHandle(InvalidHandle);
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "MYAGKOV: TReadDataActor::Bootstrap: ReadRequest fs id: %s request fs id: %s" ,
+            ReadRequest.GetFileSystemId().c_str(),
+            request->GetFileSystemId().c_str());
+
+        ui64 outOffset = 0;
+        char* shmPtr = ShmClient->PrepareRead(*request, outOffset);
+        if (shmPtr) {
+            auto resp = Session->ReadData(CallContext, std::move(request))
+                            .GetValue(TDuration::Seconds(10));
+            if (HasError(resp)) {
+                ShmClient->FreeOffset(outOffset);
+                LOG_ERROR(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "MYAGKOV: Read requests via shm failed(fs: %s): %s",
+                    request->GetFileSystemId().c_str(),
+                    FormatError(resp.GetError()).c_str());
+                HandleError(ctx, resp.GetError());
+                return;
+            } else {
+                auto response =
+                    std::make_unique<TEvService::TEvReadDataResponse>();
+                response->Record = std::move(resp);
+
+                MoveShmToIovecs(ctx, response->Record, shmPtr);
+                ShmClient->FreeOffset(outOffset);
+
+                LOG_ERROR(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "MYAGKOV: Read requests handled via shm(fs: %s)",
+                    request->GetFileSystemId().c_str());
+
+                SendResponseAndDie(ctx, std::move(response));
+                return;
+            }
+        } else {
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "MYAGKOV: no available shm slots(fs: %s)",
+                request->GetFileSystemId().c_str());
+        }
+    }
+
     if (UseTwoStageRead) {
         if (!ZeroCopyReadEnabled) {
             // BlockBuffer should not be initialized in constructor, because
@@ -229,23 +320,9 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
         }
     }
 
-    // Registering InFlightRequest here for the same reason - it's quite
-    // expensive so we don't want to do it in TStorageServiceActor
-    MainInFlightRequest = InFlightRequests->Register(
-        Sender,
-        Cookie,
-        std::move(CallContext),
-        MediaKind,
-        std::move(ChecksumCalcInfo),
-        RequestStats,
-        StartTime,
-        RequestCookie);
-
-    InitProfileLogRequestInfo(
-        MainInFlightRequest->AccessProfileLogRequest(),
-        ReadRequest);
-    MainInFlightRequest->AccessProfileLogRequest().SetClientId(
-        std::move(ClientId));
+    if (!FsId.empty()) {
+        ReadRequest.SetFileSystemId(FsId);
+    }
 
     if (UseTwoStageRead) {
         DescribeData(ctx);
@@ -917,6 +994,49 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
     response.SetBufferOffset(0);
 }
 
+void TReadDataActor::MoveShmToIovecs(
+    const TActorContext& ctx,
+    NProto::TReadDataResponse& response,
+    const char* shmPtr)
+{
+    if (ReadRequest.GetIovecs().empty()) {
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "%s copying data from shared memory to target iovecs: response length: "
+        "%lu",
+        LogTag.c_str(),
+        response.GetLength());
+    size_t currentOffset = 0;
+
+    for (const auto& iovec: ReadRequest.GetIovecs()) {
+        if (currentOffset >= response.GetLength()) {
+            break;
+        }
+        auto dataToWrite =
+            Min(iovec.GetLength(), response.GetLength() - currentOffset);
+        if (dataToWrite > 0) {
+            char* targetData = reinterpret_cast<char*>(iovec.GetBase());
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s copying %lu bytes from shared memory to iovec at "
+                "offset %lu to the target "
+                "address "
+                "%p",
+                LogTag.c_str(),
+                dataToWrite,
+                currentOffset,
+                targetData);
+            memcpy(targetData, shmPtr + currentOffset, dataToWrite);
+            currentOffset += dataToWrite;
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
@@ -1036,6 +1156,9 @@ void TStorageServiceActor::HandleReadData(
     const TEvService::TEvReadDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    static ui64 sRequestCounter = 0;
+    sRequestCounter++;
+
     TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
 
@@ -1076,10 +1199,6 @@ void TStorageServiceActor::HandleReadData(
         auto response = std::make_unique<TEvService::TEvReadDataResponse>(
             std::move(error));
         return NCloud::Reply(ctx, *ev, std::move(response));
-    }
-
-    if (fsId) {
-        msg->Record.SetFileSystemId(fsId);
     }
 
     if (msg->Record.IovecsSize() > 0) {
@@ -1138,6 +1257,32 @@ void TStorageServiceActor::HandleReadData(
             msg->Record.GetIovecs());
     }
 
+    size_t shmClientIndex = sRequestCounter % 2;
+    // if (Clients[shmClientIndex]) {
+    //     if (!Sessions[shmClientIndex]) {
+    //         NProto::TSessionConfig proto;
+    //         proto.SetFileSystemId(filestore.filesystemid());
+
+    //         Sessions[shmClientIndex] = NClient::CreateSession(
+    //             Logging,
+    //             Timer,
+    //             Scheduler,
+    //             Clients[shmClientIndex],
+    //             std::make_shared<NClient::TSessionConfig>(proto));
+
+
+    //         auto response = Sessions[shmClientIndex]->CreateSession().GetValue(TDuration::Seconds(10));
+    //         if (HasError(response)) {
+    //             Sessions[shmClientIndex].reset();
+    //         }
+    //     }
+    // }
+
+    // bool sendRequestToLocalServer =
+    //     msg->Record.GetLength() == 1_MB &&
+    //     (msg->Record.GetOffset() % filestore.GetBlockSize() == 0);
+    bool sendRequestToLocalServer = false;
+
     auto actor = std::make_unique<TReadDataActor>(
         std::move(msg->Record),
         filestore.GetFileSystemId(),
@@ -1161,7 +1306,10 @@ void TStorageServiceActor::HandleReadData(
         // ExternalReadDataPayload
         filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
             !filestore.GetFeatures().GetExternalReadDataPayload(),
-        filestore.GetFeatures().GetZeroCopyReadEnabled());
+        filestore.GetFeatures().GetZeroCopyReadEnabled(),
+        sendRequestToLocalServer ? Sessions[shmClientIndex] : nullptr,
+        ShmClients[shmClientIndex],
+        std::move(fsId));
 
     NCloud::Register(ctx, std::move(actor));
 }
