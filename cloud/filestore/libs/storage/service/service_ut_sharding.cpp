@@ -4738,6 +4738,138 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
     }
 
+    SERVICE_TEST(ShouldSkipCreatedShardsUponResizeRetry)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(1);
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        const ui64 initBlockCount = 2_GB / 4_KB;
+        const ui64 newBlockCount = 6_GB / 4_KB;
+
+        // Shard indexes are zero-based in resize actor cookies:
+        // _s3 -> 2, _s4 -> 3, _s5 -> 4.
+        const ui64 failedShardCookie = 4;
+        const TString failedShardId = TStringBuilder()
+                                      << fsId + "_s" << (failedShardCookie + 1);
+        const auto createShardError = MakeError(
+            E_REJECTED,
+            TStringBuilder() << "failed to create " << failedShardId);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initBlockCount);
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        auto topology = GetFileSystemTopology(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(2, topology.ShardFileSystemIdsSize());
+
+        // Inject create shard failure for _s5.
+        TAutoPtr<IEventHandle> failedShardCreateResponse;
+        auto prevFilter = env.GetRuntime().SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvSSProxy::EvCreateFileStoreRequest: {
+                        using TRequest = TEvSSProxy::TEvCreateFileStoreRequest;
+                        using TResponse =
+                            TEvSSProxy::TEvCreateFileStoreResponse;
+
+                        const auto* msg = ev->Get<TRequest>();
+                        if (msg->Config.GetFileSystemId() != failedShardId) {
+                            return false;
+                        }
+
+                        failedShardCreateResponse = new IEventHandle(
+                            ev->Sender,
+                            ev->Recipient,
+                            new TResponse(createShardError),
+                            0,   // flags
+                            ev->Cookie);
+
+                        return true;
+                    }
+
+                    case TEvIndexTablet::EvUnsafeChangeTabletStateResponse: {
+                        if (ev->Cookie == failedShardCookie - 1 &&
+                            failedShardCreateResponse)
+                        {
+                            runtime.Send(
+                                failedShardCreateResponse.Release(),
+                                nodeIdx);
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        service.SendResizeFileStoreRequest(fsId, newBlockCount);
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(createShardError),
+                FormatError(response->GetError()));
+        }
+
+        // Revert error injection.
+        env.GetRuntime().SetEventFilter(prevFilter);
+
+        // Shards _s3 & _s4 were created, but filesystem topology not updated.
+        expected =
+            {fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3", fsId + "_s4"};
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+        // Topology still has 2 shards.
+        topology = GetFileSystemTopology(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(2, topology.ShardFileSystemIdsSize());
+
+        // Now ResizeFileStore should resume shard creation, _s5 & _s6 to go.
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.ResizeFileStore(fsId, newBlockCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.CreateMaxInFlight);
+        }
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        expected = {
+            fsId,
+            fsId + "_s1",
+            fsId + "_s2",
+            fsId + "_s3",
+            fsId + "_s4",
+            fsId + "_s5",
+            fsId + "_s6"};
+        DoTestShardedFileSystemConfigured(fsId, service, expected);
+
+        topology = GetFileSystemTopology(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(6, topology.ShardFileSystemIdsSize());
+    }
+
     SERVICE_TEST(ShouldHandleErrorsDuringShardedFileSystemResize)
     {
         config.SetAutomaticShardCreationEnabled(true);
