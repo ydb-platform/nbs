@@ -167,7 +167,7 @@ TString ToString(const TLogTitle::TPartitionMigration& data)
 
 TString ToString(const TLogTitle::TMirrorPartitionResync& data)
 {
-    return TStringBuilder() << "[mpr:" << data.DiskId;
+    return TStringBuilder() << "[MirrorPartitionResync:" << data.DiskId;
 }
 
 TString ToString(const TLogTitle::TDiskRegistry& data)
