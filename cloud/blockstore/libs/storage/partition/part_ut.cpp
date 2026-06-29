@@ -15302,6 +15302,32 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         updateCounters();
         UNIT_ASSERT_VALUES_EQUAL(100, storedBytesCountToDiskSizeRatio);
     }
+
+    Y_UNIT_TEST(ShouldDrainWhenFreshByteCountHardLimitExceeded)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshByteCountHardLimit(8_KB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(0, 1);
+        partition.WriteBlocks(0, 1);
+
+        partition.SendWriteBlocksRequest(0, 1);
+        auto response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
+
+        partition.Drain();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

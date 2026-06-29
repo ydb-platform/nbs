@@ -631,8 +631,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                     UNIT_ASSERT(addFreshBlocksRequestObserved);
                 }
 
-                return event->GetTypeRewrite() ==
-                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+                return false;
             });
 
         auto partition = testEnv.GetPartitionClient();
@@ -651,19 +650,15 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         InitTestActorRuntime(testEnv);
         auto& runtime = testEnv.GetRuntime();
 
-        // TODO(issue-4875): remove trim events dropping after adding trim
-        // synchronization
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
                     UNIT_ASSERT_VALUES_UNEQUAL(testEnv.PartitionActorId, event->GetRecipientRewrite());
-
-                    return false;
                 }
-                return event->GetTypeRewrite() ==
-                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+
+                return false;
             });
 
         auto partition = testEnv.GetPartitionClient();
@@ -706,8 +701,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         InitTestActorRuntime(testEnv, config);
         auto& runtime = testEnv.GetRuntime();
 
-        // TODO(issue-4875): remove trim events dropping after adding trim
-        // synchronization
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
@@ -718,11 +711,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                     UNIT_ASSERT_VALUES_UNEQUAL(
                         testEnv.FreshBlocksWriterActorId,
                         event->GetRecipientRewrite());
-
-                    return false;
                 }
-                return event->GetTypeRewrite() ==
-                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+                return false;
             });
 
         auto partition = testEnv.GetPartitionClient();
@@ -750,17 +740,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     {
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, DefaultConfig(), 2048);
-        auto& runtime = testEnv.GetRuntime();
-
-        // TODO(issue-4875): remove trim events dropping after adding trim
-        // synchronization
-        runtime.SetEventFilter(
-            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
-            {
-                Y_UNUSED(runtime);
-                return event->GetTypeRewrite() ==
-                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
-            });
 
         auto partition = testEnv.GetPartitionClient();
         partition.WaitReady();
@@ -930,8 +909,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         InitTestActorRuntime(testEnv);
         auto& runtime = testEnv.GetRuntime();
 
-        // TODO(issue-4875): remove trim events dropping after adding trim
-        // synchronization
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
@@ -941,11 +918,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                     UNIT_ASSERT_VALUES_UNEQUAL(
                         testEnv.PartitionActorId,
                         event->GetRecipientRewrite());
-
-                    return false;
                 }
-                return event->GetTypeRewrite() ==
-                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+                return false;
             });
 
         auto partition = testEnv.GetPartitionClient();
@@ -1004,8 +978,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
         ui64 addFreshBlocksCount = 0;
 
-        // TODO(issue-4875): remove trim events dropping after adding trim
-        // synchronization
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
@@ -1016,8 +988,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                 {
                     ++addFreshBlocksCount;
                 }
-                return event->GetTypeRewrite() ==
-                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+                return false;
             });
 
         auto partition = testEnv.GetPartitionClient();
@@ -1165,11 +1136,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                     !stolenPutRequest && stealPutRequest)
                 {
                     stolenPutRequest.reset(event.Release());
-                    return TTestActorRuntime::EEventAction::DROP;
-                }
-
-                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvTrimFreshLogRequest)
-                {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
@@ -1661,6 +1627,87 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
         doTest(true);
         doTest(false);
+    }
+
+    Y_UNIT_TEST(ShouldDrainWhenFreshByteCountHardLimitExceeded)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlocksWriterEnabled(true);
+        config.SetFreshByteCountHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+
+        fbwClient.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0), 1);
+        auto response = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
+
+        fbwClient.Drain();
+    }
+
+    Y_UNIT_TEST(ShouldDrainWhenHasZeroBlocksRequestsInProgress)
+    {
+        auto config = DefaultConfig();
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        auto& runtime = testEnv.GetRuntime();
+
+        bool interceptZeroBlocksCompleted = false;
+        std::unique_ptr<IEventHandle> zeroBlocksCompletedEvent;
+        bool drainResponseObserved = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvZeroFreshBlocksCompleted &&
+                    interceptZeroBlocksCompleted)
+                {
+                    zeroBlocksCompletedEvent.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                drainResponseObserved |=
+                    event->GetTypeRewrite() == TEvPartition::EvDrainResponse;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        interceptZeroBlocksCompleted = true;
+        fbwClient.ZeroBlocks(0);
+        interceptZeroBlocksCompleted = false;
+
+        fbwClient.SendDrainRequest();
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT(zeroBlocksCompletedEvent);
+        UNIT_ASSERT(!drainResponseObserved);
+
+        runtime.SendAsync(zeroBlocksCompletedEvent.release());
+
+        fbwClient.RecvDrainResponse();
     }
 }
 
