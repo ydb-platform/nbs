@@ -62,8 +62,6 @@ public:
     TString GetSharedMemoryBasePath() const;
     TDuration GetSharedMemoryRegionTimeout() const;
 
-    TDuration GetRefreshCertsPeriod() const;
-
     const NProto::TServerConfig& GetProto() const
     {
         return ProtoConfig;

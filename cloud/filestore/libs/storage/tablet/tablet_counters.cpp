@@ -365,6 +365,9 @@ void TTabletMetrics::Register(
         EAggregationType::AT_SUM,                                              \
         EMetricType::MT_DERIVATIVE);                                           \
                                                                                \
+    name.Time.Register(                                                        \
+        AggregatableFsRegistry,                                                \
+        {CreateLabel("request", #name), CreateLabel("histogram", "Time")});    \
 // FILESTORE_TABLET_METRICS_REGISTER_REQUEST
 
     FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_METRICS_REGISTER_REQUEST)

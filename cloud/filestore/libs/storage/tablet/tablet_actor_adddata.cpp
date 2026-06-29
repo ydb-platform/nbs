@@ -302,7 +302,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     const TEvIndexTablet::TEvGenerateBlobIdsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto startedTs = ctx.Now();
+    auto startedTs = ctx.Now();
 
     auto* msg = ev->Get();
 
@@ -446,16 +446,17 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             response->Record);
     }
 
+    Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);
     ui64 generateBlobIdsBytes = msg->Record.GetLength();
     if (canUseUnconfirmed) {
         for (const auto& part: msg->Record.GetUnalignedDataRanges()) {
             generateBlobIdsBytes += part.GetContent().size();
         }
     }
-    Metrics.GenerateBlobIds.Update(
-        1,
+    Metrics.GenerateBlobIds.RequestBytes.fetch_add(
         generateBlobIdsBytes,
-        ctx.Now() - startedTs);
+        std::memory_order_relaxed);
+    Metrics.GenerateBlobIds.Time.Record(ctx.Now() - startedTs);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 
@@ -478,14 +479,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             profileLogRequest,
             EFileStoreSystemRequest::AddDataUnconfirmed,
             ctx.Now());
-
-        AddRange(
-            msg->Record.GetNodeId(),
-            msg->Record.GetHandle(),
-            byteRange.Offset,
-            byteRange.Length,
-            profileLogRequest);
-        profileLogRequest.SetCommitId(commitId);
 
         auto requestInfo = CreateRequestInfo(
             SelfId(),
