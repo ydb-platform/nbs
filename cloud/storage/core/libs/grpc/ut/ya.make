@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/storage/core/libs/grpc)
 SRCS(
     executor_ut.cpp
     init_ut.cpp
+    tls_certificate_provider_ut.cpp
     tls_utils_ut.cpp
     utils_ut.cpp
 )
@@ -17,6 +18,8 @@ RESOURCE(
     certs/server1.key   grpc/ut/certs/server1.key
     certs/server2.crt   grpc/ut/certs/server2.crt
     certs/server2.key   grpc/ut/certs/server2.key
+    certs/server3.crt   grpc/ut/certs/server3.crt
+    certs/server3.key   grpc/ut/certs/server3.key
 )
 
 PEERDIR(

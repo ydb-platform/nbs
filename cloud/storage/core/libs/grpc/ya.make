@@ -9,6 +9,7 @@ SRCS(
     credentials.cpp
     init.cpp
     keepalive.cpp
+    periodic_tls_certificate_provider.cpp
     request.cpp
     threadpool.cpp
     time_point_specialization.cpp
