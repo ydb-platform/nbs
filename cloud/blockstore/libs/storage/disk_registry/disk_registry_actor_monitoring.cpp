@@ -256,6 +256,17 @@ void DumpDeviceLink(IOutputStream& out, ui64 tabletId, TStringBuf uuid)
         << "</a>";
 }
 
+void DumpAgentLink(IOutputStream& out, ui64 tabletId, const TString& agentId)
+{
+    out << "<a href='?action=agent&TabletID="
+        << tabletId
+        << "&AgentID="
+        << agentId
+        << "'>"
+        << agentId
+        << "</a>";
+}
+
 void DumpSquare(IOutputStream& out, const TStringBuf& color)
 {
     const char* utfBlackSquare = "&#9632";
@@ -2351,11 +2362,14 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
                             DumpDeviceLink(out, TabletID(), e.Uuid);
                         }
                         TABLED () {
-                            if (agentRed) {
-                                out << "<font color='red'>" << e.AgentId
-                                    << "</font>";
-                            } else {
-                                out << e.AgentId;
+                            if (e.AgentId) {
+                                if (agentRed) {
+                                    out << "<font color='red'>";
+                                    DumpAgentLink(out, TabletID(), e.AgentId);
+                                    out << "</font>";
+                                } else {
+                                    DumpAgentLink(out, TabletID(), e.AgentId);
+                                }
                             }
                         }
                         TABLED () {
@@ -2376,7 +2390,7 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
             }
         };
 
-        renderTable("Erasing now", erasing, false);
+        renderTable("Clean up in progress", erasing, false);
         renderTable("Ready for cleanup", cleaning, false);
         renderTable("Waiting for cleanup", waiting, false);
         renderTable("Agent unavailable", agentDown, true);
