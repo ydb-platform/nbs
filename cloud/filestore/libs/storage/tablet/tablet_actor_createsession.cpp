@@ -48,6 +48,8 @@ void FillFeatures(
     }
     features->SetAsyncDestroyHandleEnabled(
         config.GetAsyncDestroyHandleEnabled());
+    features->SetAsyncDestroyReadOnlyHandleEnabled(
+        config.GetAsyncDestroyReadOnlyHandleEnabled());
     features->SetAsyncHandleOperationPeriod(
         config.GetAsyncHandleOperationPeriod().MilliSeconds());
 

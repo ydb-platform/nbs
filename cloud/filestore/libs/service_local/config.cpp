@@ -28,6 +28,7 @@ namespace {
     xxx(DirectIoAlign,               ui32,          4_KB                      )\
     xxx(GuestWriteBackCacheEnabled,  bool,          false                     )\
     xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled, bool,    false                     )\
     xxx(AsyncHandleOperationPeriod,  TDuration,     50ms                      )\
     xxx(OpenNodeByHandleEnabled,     bool,          false                     )\
     xxx(NodeCleanupBatchSize,        ui32,          1000                      )\

@@ -992,7 +992,9 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             THandleOpsQueuePtr handleOpsQueue;
-            if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
+            if (FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
+                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled())
+            {
                 if (Config->GetHandleOpsQueuePath()) {
                     auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
                         FileSystemConfig->GetFileSystemId() /
@@ -1281,6 +1283,8 @@ private:
             features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(
             features.GetAsyncDestroyHandleEnabled());
+        config.SetAsyncDestroyReadOnlyHandleEnabled(
+            features.GetAsyncDestroyReadOnlyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
 

@@ -29,7 +29,8 @@ namespace {
                                                                                \
     xxx(PreferredBlockSize,     ui32,           0                             )\
                                                                                \
-    xxx(AsyncDestroyHandleEnabled,  bool,       false                         )\
+    xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
     xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\
