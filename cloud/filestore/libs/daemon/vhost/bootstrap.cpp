@@ -115,6 +115,7 @@ struct TClientCertificateProviderFactory
             Logging,
             LogComponent,
             Scheduler,
+            CreateLongRunningTaskExecutor("CertRefresh"),
             ServerGroup,
             std::move(rootCertPath),
             std::move(certificates),
@@ -453,6 +454,7 @@ void TBootstrapVhost::InitComponents()
         GetComponentName(
             NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
         Scheduler,
+        CreateLongRunningTaskExecutor("CertRefresh"),
         serverCounters,
         Configs->ServerConfig->GetRootCertsFile(),
         std::move(certPathList),

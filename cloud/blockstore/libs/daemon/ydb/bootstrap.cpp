@@ -995,6 +995,7 @@ void TBootstrapYdb::SetupCellManager()
             GetComponentName(
                 TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
             Scheduler,
+            CreateLongRunningTaskExecutor("CertRefresh"),
             Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "server"),

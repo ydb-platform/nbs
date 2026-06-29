@@ -308,7 +308,8 @@ void TBootstrapBase::Init()
     InitCriticalEventsCounter(serverGroup);
 
     TVector<TCertificateFiles> certPathList;
-    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+    for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
+    {
         certPathList.push_back({
             cert.CertPrivateKeyFile,
             cert.CertFile
@@ -325,6 +326,7 @@ void TBootstrapBase::Init()
         GetComponentName(
             TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
         Scheduler,
+        CreateLongRunningTaskExecutor("CertRefresh"),
         serverGroup,
         Configs->ServerConfig->GetRootCertsFile(),
         std::move(certPathList),

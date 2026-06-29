@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/logger/log.h>
@@ -105,6 +106,7 @@ struct TCertificateProviderTestContext
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
             Scheduler,
+            CreateTaskQueueStub(),
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},
@@ -217,6 +219,7 @@ struct TManualProviderContext
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
             Scheduler,
+            CreateTaskQueueStub(),
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},
@@ -366,15 +369,12 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ServerPair.CertChainPath);
         UNIT_ASSERT(initial > 0);
 
-        // Break the identity certificate: the periodic refresh skips it and
-        // keeps the previously published expiry.
         WriteTextFile(context.ServerPair.CertChainPath, "broken");
         context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_EQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
 
-        // Restore a valid (but different) certificate: it is picked up again.
         context.RotateServer("server3.key", "server3.crt");
         context.Scheduler->RunPending();
 

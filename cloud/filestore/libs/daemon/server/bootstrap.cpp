@@ -150,6 +150,7 @@ void TBootstrapServer::InitComponents()
         GetComponentName(
             NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
         Scheduler,
+        CreateLongRunningTaskExecutor("CertRefresh"),
         serverCounters,
         Configs->ServerConfig->GetRootCertsFile(),
         std::move(certPathList),

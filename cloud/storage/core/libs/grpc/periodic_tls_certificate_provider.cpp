@@ -3,6 +3,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -125,6 +126,7 @@ class TPeriodicCertificateProvider final
     const NMonitoring::TDynamicCountersPtr ServerGroup;
     const TDuration RefreshInterval;
     const ISchedulerPtr Scheduler;
+    const ITaskQueuePtr TaskQueue;
 
     grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider> TlsProvider;
     std::shared_ptr<grpc::experimental::CertificateProviderInterface>
@@ -134,7 +136,7 @@ class TPeriodicCertificateProvider final
     TVector<TCertificateState> Certificates;
 
     mutable TMutex UpdateMutex;
-    bool Started = false;
+    std::atomic<bool> Started = false;
     bool UpdateInProgress = false;
     NThreading::TPromise<void> PendingUpdate;
 
@@ -145,6 +147,7 @@ public:
             ILoggingServicePtr logging,
             TString logComponent,
             ISchedulerPtr scheduler,
+            ITaskQueuePtr taskQueue,
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
@@ -154,6 +157,7 @@ public:
         , ServerGroup(std::move(serverGroup))
         , RefreshInterval(refreshInterval)
         , Scheduler(std::move(scheduler))
+        , TaskQueue(std::move(taskQueue))
         , TlsProvider(grpc_core::MakeRefCounted<TGrpcTlsCertificateProvider>())
         , GrpcProvider(std::make_shared<TGrpcCertificateProvider>(TlsProvider))
         , RootCaPair(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)))
@@ -165,24 +169,27 @@ public:
 
     ~TPeriodicCertificateProvider() override
     {
-        Stop();
+        STORAGE_VERIFY(
+            Started.store(false),
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request->GetDiskId()));
     }
 
     NThreading::TFuture<void> UpdateCertificates() override
     {
         NThreading::TFuture<void> future;
-        bool needUpdate = false;
+        bool scheduleUpdate = false;
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (!PendingUpdate.Initialized()) {
                 PendingUpdate = NThreading::NewPromise<void>();
                 if (!UpdateInProgress) {
-                    needUpdate = true;
+                    scheduleUpdate = true;
                 }
             }
             future = PendingUpdate.GetFuture();
         }
-        if (needUpdate) {
+        if (scheduleUpdate) {
             ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
         }
         return future;
@@ -217,11 +224,10 @@ public:
     {
         {
             TGuard<TMutex> lock(UpdateMutex);
-            if (Started) {
+            if (Started.load()) {
                 return;
             }
-            Started = true;
-            UpdateInProgress = true;
+            Started.store(true);
         }
 
         Log = Logging->CreateLog(LogComponent);
@@ -244,30 +250,22 @@ public:
 
         RefreshCertificates(true);
 
-        NThreading::TPromise<void> pending;
-        {
-            TGuard<TMutex> lock(UpdateMutex);
-            UpdateInProgress = false;
-            // Satisfy any request that arrived while we were starting up.
-            pending = std::exchange(PendingUpdate, {});
-        }
-        if (pending.Initialized()) {
-            pending.SetValue();
-        }
-
-        ScheduleUpdateAt(TInstant::Now() + RefreshInterval, /*periodic=*/true);
+        ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
     }
 
     void Stop() override
     {
         NThreading::TPromise<void> promise;
+        NThreading::TFuture<void> waitUpdate;
         {
             TGuard<TMutex> lock(UpdateMutex);
-            if (!Started) {
+            if (!Started.load()) {
                 return;
             }
-            Started = false;
-            if (!UpdateInProgress) {
+            Started.store(false);
+            if (UpdateInProgress) {
+                waitUpdate = PendingUpdate.GetFuture();
+            } else {
                 promise = std::exchange(PendingUpdate, {});
             }
         }
@@ -275,37 +273,41 @@ public:
         if (promise.Initialized()) {
             promise.SetValue();
         }
+        if (waitUpdate.Initialized()) {
+            waitUpdate.Wait();
+        }
     }
 
 private:
     void ScheduleUpdateAt(TInstant deadline, bool periodic)
     {
         Scheduler->Schedule(deadline, [weak = weak_from_this(), periodic] {
-            if (auto self = weak.lock()) {
-                self->RunPeriodicUpdate(periodic);
+            auto self = weak.lock();
+            if (!self) {
+                return;
             }
+            self->TaskQueue->ExecuteSimple([weak = weak, periodic] {
+                auto self = weak.lock();
+                if (!self) {
+                    return;
+                }
+                self->RunPeriodicUpdate(periodic);
+            });
         });
     }
 
     void RunPeriodicUpdate(bool periodic)
     {
         bool run = false;
-        NThreading::TPromise<void> stalePending;
         {
             TGuard<TMutex> lock(UpdateMutex);
-            if (!Started) {
-                stalePending = std::exchange(PendingUpdate, {});
-            } else if (!UpdateInProgress) {
+            if (Started && !UpdateInProgress) {
                 UpdateInProgress = true;
                 if (!PendingUpdate.Initialized()) {
                     PendingUpdate = NThreading::NewPromise<void>();
                 }
                 run = true;
             }
-        }
-
-        if (stalePending.Initialized()) {
-            stalePending.SetValue();
         }
 
         if (run) {
@@ -331,7 +333,7 @@ private:
             if (alive) {
                 ScheduleUpdateAt(
                     TInstant::Now() + RefreshInterval,
-                    /*periodic=*/true);
+                    true);
             }
         }
     }
@@ -396,6 +398,7 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
     ILoggingServicePtr logging,
     TString logComponent,
     ISchedulerPtr scheduler,
+    ITaskQueuePtr taskQueue,
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
@@ -407,6 +410,7 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
         std::move(logging),
         std::move(logComponent),
         std::move(scheduler),
+        std::move(taskQueue),
         std::move(serverGroup),
         std::move(rootCertPath),
         std::move(certificates),
