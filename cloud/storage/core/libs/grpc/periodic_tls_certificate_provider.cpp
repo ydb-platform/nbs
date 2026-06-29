@@ -115,12 +115,6 @@ class TPeriodicCertificateProvider final
     : public ICertificateProvider
     , public std::enable_shared_from_this<TPeriodicCertificateProvider>
 {
-    struct TCertificateState
-    {
-        NTlsUtils::TCertificatePair Pair;
-        NMonitoring::TDynamicCountersPtr Metrics;
-    };
-
     const ILoggingServicePtr Logging;
     const TString LogComponent;
     const NMonitoring::TDynamicCountersPtr ServerGroup;
@@ -133,7 +127,8 @@ class TPeriodicCertificateProvider final
         GrpcProvider;
 
     NTlsUtils::TRootCaPair RootCaPair;
-    TVector<TCertificateState> Certificates;
+    TVector<NTlsUtils::TCertificatePair> Certificates;
+    TVector<NMonitoring::TDynamicCountersPtr> CertificateMetrics;
 
     mutable TMutex UpdateMutex;
     std::atomic<bool> Started = false;
@@ -161,10 +156,9 @@ public:
         , TlsProvider(grpc_core::MakeRefCounted<TGrpcTlsCertificateProvider>())
         , GrpcProvider(std::make_shared<TGrpcCertificateProvider>(TlsProvider))
         , RootCaPair(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)))
+        , Certificates(NTlsUtils::LoadCertificatePairs(std::move(certificates)))
+        , CertificateMetrics(Certificates.size())
     {
-        for (auto& pair: NTlsUtils::LoadCertificatePairs(std::move(certificates))) {
-            Certificates.push_back({.Pair = std::move(pair)});
-        }
     }
 
     ~TPeriodicCertificateProvider() override
@@ -178,7 +172,7 @@ public:
         bool scheduleUpdate = false;
         {
             TGuard<TMutex> lock(UpdateMutex);
-            if (!PendingUpdate.Initialized()) {
+\            if (!PendingUpdate.Initialized()) {
                 PendingUpdate = NThreading::NewPromise<void>();
                 if (!UpdateInProgress) {
                     scheduleUpdate = true;
@@ -235,14 +229,15 @@ public:
                 ServerGroup->GetSubgroup("subsystem", "certificates");
         }
 
-        for (auto& certificate: Certificates) {
+        for (size_t i = 0; i < Certificates.size(); ++i) {
+            const auto& certificate = Certificates[i];
             NMonitoring::TDynamicCountersPtr certMetrics;
             if (tlsMetricsGroup) {
                 certMetrics = tlsMetricsGroup->GetSubgroup(
                     "cert",
-                    GetBaseName(certificate.Pair.Files.CertChainPath));
+                    GetBaseName(certificate.Files.CertChainPath));
             }
-            certificate.Metrics = std::move(certMetrics);
+            CertificateMetrics[i] = std::move(certMetrics);
         }
 
         RefreshCertificates(true);
@@ -337,11 +332,7 @@ private:
 
     void RefreshCertificates(bool initial)
     {
-        TVector<NTlsUtils::TCertificatePair> certPairs;
-        certPairs.reserve(Certificates.size());
-        for (const auto& state: Certificates) {
-            certPairs.push_back(state.Pair);
-        }
+        auto certPairs = Certificates;
 
         const TString oldRootCa = RootCaPair.RootCa;
         auto result = NTlsUtils::UpdateCertificates(certPairs, RootCaPair, Log);
@@ -352,26 +343,26 @@ private:
 
         PemKeyCertPairList identityPairs;
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            auto& state = Certificates[i];
+            auto& certificate = Certificates[i];
             const auto& newCert = result.Certificates[i];
 
             if (!newCert.Defined()) {
                 continue;
             }
 
-            if (state.Metrics && newCert->NotValidAfter) {
-                *state.Metrics->GetCounter("ExpireTs", false) =
+            if (CertificateMetrics[i] && newCert->NotValidAfter) {
+                *CertificateMetrics[i]->GetCounter("ExpireTs", false) =
                     newCert->NotValidAfter.Seconds();
             }
 
             const auto& chain = newCert->CertificatesChain;
             const bool identityChanged =
-                chain.front().private_key() != state.Pair.PrivateKey ||
-                chain.front().cert_chain() != state.Pair.CertChain;
+                chain.front().private_key() != certificate.PrivateKey ||
+                chain.front().cert_chain() != certificate.CertChain;
 
             if (identityChanged || rootChanged) {
-                state.Pair.PrivateKey = TString(chain.front().private_key());
-                state.Pair.CertChain = TString(chain.front().cert_chain());
+                certificate.PrivateKey = TString(chain.front().private_key());
+                certificate.CertChain = TString(chain.front().cert_chain());
                 hasUpdates = true;
             }
 
