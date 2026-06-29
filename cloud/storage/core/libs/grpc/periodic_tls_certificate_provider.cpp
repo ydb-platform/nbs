@@ -163,7 +163,7 @@ public:
 
     ~TPeriodicCertificateProvider() override
     {
-        Y_VERIFY_DEBUG(Started.store(false));
+        Y_ABORT_UNLESS(Started.load() == false);
     }
 
     NThreading::TFuture<void> UpdateCertificates() override
@@ -172,7 +172,7 @@ public:
         bool scheduleUpdate = false;
         {
             TGuard<TMutex> lock(UpdateMutex);
-\            if (!PendingUpdate.Initialized()) {
+            if (!PendingUpdate.Initialized()) {
                 PendingUpdate = NThreading::NewPromise<void>();
                 if (!UpdateInProgress) {
                     scheduleUpdate = true;

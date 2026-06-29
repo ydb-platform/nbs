@@ -321,10 +321,13 @@ void TBootstrapBase::Init()
             << "Secure port is configured without certificates";
     }
 
+    // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
+    // because overwise it would break server_lightweight build.
+    // GetComponentName() depend on kikimr which is present in server_lightweight.
+
     CertificateProvider = CreateCertificateProvider(
         Logging,
-        GetComponentName(
-            TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
+        "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
         Scheduler,
         CreateLongRunningTaskExecutor("CertRefresh"),
         serverGroup,
