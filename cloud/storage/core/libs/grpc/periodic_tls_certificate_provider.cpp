@@ -169,10 +169,7 @@ public:
 
     ~TPeriodicCertificateProvider() override
     {
-        STORAGE_VERIFY(
-            Started.store(false),
-            TWellKnownEntityTypes::DISK,
-            GetDiskId(Request->GetDiskId()));
+        Y_VERIFY_DEBUG(Started.store(false));
     }
 
     NThreading::TFuture<void> UpdateCertificates() override
