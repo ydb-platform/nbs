@@ -925,8 +925,6 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
             newState.SetVersion(requested.GetVersion() + 1);
             SetResizeState(db, newState);
         }
-
-        *args.Response.MutableResizeState() = GetFileSystem().GetResizeState();
     }
 }
 
@@ -938,6 +936,10 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+    if (args.Request.HasResizeState()) {
+        *response->Record.MutableResizeState() =
+            GetFileSystem().GetResizeState();
+    }
 
     LOG_INFO(
         ctx,
