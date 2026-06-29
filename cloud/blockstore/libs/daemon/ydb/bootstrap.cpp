@@ -999,7 +999,7 @@ void TBootstrapYdb::SetupCellManager()
             Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "server"),
-                grpcConfig.GetRootCertsFile(),
+            grpcConfig.GetRootCertsFile(),
             std::move(certList),
             Configs->ServerConfig->GetRefreshCertsPeriod());
 
