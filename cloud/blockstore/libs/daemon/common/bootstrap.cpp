@@ -44,7 +44,6 @@
 #include <cloud/blockstore/libs/local_nvme/device_provider.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/local_nvme/service_proxy.h>
-#include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
@@ -127,7 +126,6 @@ namespace NCloud::NBlockStore::NServer {
 using namespace NMonitoring;
 using namespace NNvme;
 
-using namespace NCloud::NBlockStore;
 using namespace NCloud::NBlockStore::NDiscovery;
 using namespace NCloud::NBlockStore::NStorage;
 
