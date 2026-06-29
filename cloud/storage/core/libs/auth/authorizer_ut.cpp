@@ -242,6 +242,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         UNIT_ASSERT_EQUAL(event.Entries[0].Permissions.size(), 2);
         UNIT_ASSERT_EQUAL(event.Entries[0].Permissions[0].Permission, "nbsInternal.disks.read");
         UNIT_ASSERT_EQUAL(event.Entries[0].Permissions[1].Permission, "nbsInternal.disks.write");
+        UNIT_ASSERT_EQUAL(event.PeerName, "192.168.0.101");
     }
 
     Y_UNIT_TEST(AuthorizeWithAuthorizerDisabledWhenIgnoring)
@@ -611,6 +612,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -657,6 +659,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -703,6 +706,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -747,6 +751,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -793,6 +798,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -839,6 +845,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -888,6 +895,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -932,6 +940,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -976,6 +985,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -1022,6 +1032,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -1069,6 +1080,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -1117,6 +1129,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -1231,6 +1244,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
