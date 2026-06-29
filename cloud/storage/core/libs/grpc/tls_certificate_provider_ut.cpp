@@ -346,6 +346,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
     {
         TManualProviderContext context;
         context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
 
         const ui64 before =
             context.GetExpireTs(context.ServerPair.CertChainPath);
@@ -364,6 +367,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
     {
         TManualProviderContext context;
         context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
 
         const ui64 initial =
             context.GetExpireTs(context.ServerPair.CertChainPath);
