@@ -323,7 +323,8 @@ void TBootstrapBase::Init()
 
     // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
     // because overwise it would break server_lightweight build.
-    // GetComponentName() depend on kikimr which is present in server_lightweight.
+    // GetComponentName() depend on kikimr which is prohibited in
+    // server_lightweight.
 
     CertificateProvider = CreateCertificateProvider(
         Logging,
