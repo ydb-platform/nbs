@@ -50,8 +50,8 @@ on:
           - unittest
           - unittest,clang_tidy,gtest
           - py3test,py2test,pytest,flake8,black,py2_flake8
-          - go_test,gofmt
-          - unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt
+          - go_test,gofmt,govet
+          - unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet
       sleep_after_tests:
         type: string
         default: "0"
@@ -88,7 +88,7 @@ on:
         default: "small,medium,large"
       test_type:
         type: string
-        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
       sleep_after_tests:
         type: string
         default: "0"
