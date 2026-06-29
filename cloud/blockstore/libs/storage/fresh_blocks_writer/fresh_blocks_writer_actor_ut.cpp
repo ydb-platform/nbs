@@ -650,17 +650,14 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         InitTestActorRuntime(testEnv);
         auto& runtime = testEnv.GetRuntime();
 
-        // TODO(issue-4875): remove trim events dropping after adding trim
-        // synchronization
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
                     UNIT_ASSERT_VALUES_UNEQUAL(testEnv.PartitionActorId, event->GetRecipientRewrite());
-
-                    return false;
                 }
+
                 return false;
             });
 
@@ -921,8 +918,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                     UNIT_ASSERT_VALUES_UNEQUAL(
                         testEnv.PartitionActorId,
                         event->GetRecipientRewrite());
-
-                    return false;
                 }
                 return false;
             });
@@ -983,8 +978,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
         ui64 addFreshBlocksCount = 0;
 
-        // TODO(issue-4875): remove trim events dropping after adding trim
-        // synchronization
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
