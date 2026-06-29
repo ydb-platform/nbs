@@ -2252,16 +2252,7 @@ void TDiskRegistryActor::HandleHttpInfo_RenderDirtyOnlineDeviceList(
 void TDiskRegistryActor::RenderDirtyOnlineDeviceList(IOutputStream& out) const
 {
     auto dirtyDevices = State->GetDirtyDevices();
-    size_t onlineCount = 0;
-    for (const auto& device: dirtyDevices) {
-        const auto state = device.GetState();
-        if (state == NProto::DEVICE_STATE_ONLINE ||
-            state == NProto::DEVICE_STATE_WARNING)
-        {
-            ++onlineCount;
-        }
-    }
-    if (onlineCount == 0) {
+    if (dirtyDevices.empty()) {
         return;
     }
     DumpActionLink(
@@ -2269,7 +2260,7 @@ void TDiskRegistryActor::RenderDirtyOnlineDeviceList(IOutputStream& out) const
         TabletID(),
         "RenderDirtyOnlineDeviceList",
         "Dirty online devices",
-        onlineCount);
+        dirtyDevices.size());
 }
 
 void TDiskRegistryActor::RenderDirtyOnlineDeviceListDetailed(
