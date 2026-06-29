@@ -50,9 +50,6 @@ public:
         const TMaybe<TString>& rootCertificate,
         PemKeyCertPairList identityPairs)
     {
-        if (identityPairs.empty()) {
-            return;
-        }
         Distributor->SetKeyMaterials(
             "",
             rootCertificate.Defined()
@@ -191,7 +188,9 @@ public:
     {
         grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
         tlsOptions.set_certificate_provider(GrpcProvider);
-        tlsOptions.watch_identity_key_cert_pairs();
+        if (!Certificates.empty()) {
+            tlsOptions.watch_identity_key_cert_pairs();
+        }
         if (RootCaPair.RootCaPath) {
             tlsOptions.watch_root_certs();
         }
@@ -204,7 +203,9 @@ public:
         grpc::experimental::TlsServerCredentialsOptions tlsOptions(GrpcProvider);
         tlsOptions.set_cert_request_type(
             GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
-        tlsOptions.watch_identity_key_cert_pairs();
+        if (!Certificates.empty()) {
+            tlsOptions.watch_identity_key_cert_pairs();
+        }
         if (RootCaPair.RootCaPath) {
             tlsOptions.watch_root_certs();
         }
@@ -218,6 +219,7 @@ public:
             if (Started.load()) {
                 return;
             }
+            ValidateInitialCertificates();
             Started.store(true);
         }
 
@@ -240,7 +242,7 @@ public:
             CertificateMetrics[i] = std::move(certMetrics);
         }
 
-        RefreshCertificates(true);
+        RefreshCertificates();
 
         ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
     }
@@ -267,6 +269,31 @@ public:
         }
         if (waitUpdate.Initialized()) {
             waitUpdate.Wait();
+        }
+    }
+
+private:
+    void ValidateInitialCertificates() const
+    {
+        if (RootCaPair.RootCaPath) {
+            auto root =
+                NTlsUtils::ReadAndValidateRootCertificate(RootCaPair.RootCaPath);
+            if (HasError(root.GetError())) {
+                ythrow yexception()
+                    << "Invalid initial root certificate: "
+                    << FormatError(root.GetError());
+            }
+        }
+
+        for (const auto& certificate: Certificates) {
+            auto identity =
+                NTlsUtils::ReadAndValidateIdentityPair(certificate.Files);
+            if (HasError(identity.GetError())) {
+                ythrow yexception()
+                    << "Invalid initial identity certificate "
+                    << certificate.Files.CertChainPath.Quote() << ": "
+                    << FormatError(identity.GetError());
+            }
         }
     }
 
@@ -303,7 +330,7 @@ private:
         }
 
         if (run) {
-            RefreshCertificates(false);
+            RefreshCertificates();
 
             NThreading::TPromise<void> promise;
             {
@@ -330,7 +357,7 @@ private:
         }
     }
 
-    void RefreshCertificates(bool initial)
+    void RefreshCertificates()
     {
         auto certPairs = Certificates;
 
@@ -339,7 +366,6 @@ private:
         RootCaPair.RootCa = result.RootCa.GetOrElse(oldRootCa);
 
         const bool rootChanged = oldRootCa != RootCaPair.RootCa;
-        bool hasUpdates = rootChanged;
 
         PemKeyCertPairList identityPairs;
         for (size_t i = 0; i < Certificates.size(); ++i) {
@@ -363,16 +389,17 @@ private:
             if (identityChanged || rootChanged) {
                 certificate.PrivateKey = TString(chain.front().private_key());
                 certificate.CertChain = TString(chain.front().cert_chain());
-                hasUpdates = true;
             }
 
             identityPairs.insert(identityPairs.end(), chain.begin(), chain.end());
         }
 
-        if (hasUpdates || initial) {
-            TMaybe<TString> rootCert = RootCaPair.RootCa.empty()
-                ? Nothing()
-                : TMaybe<TString>(RootCaPair.RootCa);
+        TMaybe<TString> rootCert = RootCaPair.RootCa.empty()
+            ? Nothing()
+            : TMaybe<TString>(RootCaPair.RootCa);
+        const bool hasMaterialsToPublish =
+            rootCert.Defined() || !identityPairs.empty();
+        if (hasMaterialsToPublish) {
             TlsProvider->PublishCerts(rootCert, std::move(identityPairs));
         }
     }

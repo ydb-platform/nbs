@@ -320,12 +320,13 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         const auto pairs = LoadCertificatePairs(std::move(input));
 
         UNIT_ASSERT_VALUES_EQUAL(1, pairs.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            ReadCertResource("server1.crt"),
-            pairs[0].CertChain);
+        UNIT_ASSERT_VALUES_EQUAL(files.PrivateKeyPath, pairs[0].Files.PrivateKeyPath);
+        UNIT_ASSERT_VALUES_EQUAL(files.CertChainPath, pairs[0].Files.CertChainPath);
+        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].PrivateKey);
+        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].CertChain);
     }
 
-    Y_UNIT_TEST(ShouldThrowOnIncompleteOrUnreadablePairs)
+    Y_UNIT_TEST(ShouldThrowOnIncompletePairs)
     {
         UNIT_ASSERT_EXCEPTION(
             LoadCertificatePairs({TCertificateFiles{.PrivateKeyPath = "/k"}}),
@@ -333,12 +334,17 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT_EXCEPTION(
             LoadCertificatePairs({TCertificateFiles{.CertChainPath = "/c"}}),
             yexception);
-        UNIT_ASSERT_EXCEPTION(
-            LoadCertificatePairs({TCertificateFiles{
-                .PrivateKeyPath = "/nonexistent/k",
-                .CertChainPath = "/nonexistent/c",
-            }}),
-            yexception);
+    }
+
+    Y_UNIT_TEST(ShouldNotReadFilesWhileLoadingPairs)
+    {
+        const auto pairs = LoadCertificatePairs({TCertificateFiles{
+            .PrivateKeyPath = "/nonexistent/k",
+            .CertChainPath = "/nonexistent/c",
+        }});
+        UNIT_ASSERT_VALUES_EQUAL(1, pairs.size());
+        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].PrivateKey);
+        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].CertChain);
     }
 
     Y_UNIT_TEST(ShouldLoadRootCaPair)
@@ -352,11 +358,14 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
 
         const auto pair = LoadRootCaPair(rootPath);
         UNIT_ASSERT_VALUES_EQUAL(rootPath, pair.RootCaPath);
-        UNIT_ASSERT_VALUES_EQUAL(ReadCertResource("ca.crt"), pair.RootCa);
+        UNIT_ASSERT_VALUES_EQUAL("", pair.RootCa);
+    }
 
-        UNIT_ASSERT_EXCEPTION(
-            LoadRootCaPair("/nonexistent/ca.crt"),
-            yexception);
+    Y_UNIT_TEST(ShouldNotReadRootFileWhileLoadingPair)
+    {
+        const auto pair = LoadRootCaPair("/nonexistent/ca.crt");
+        UNIT_ASSERT_VALUES_EQUAL("/nonexistent/ca.crt", pair.RootCaPath);
+        UNIT_ASSERT_VALUES_EQUAL("", pair.RootCa);
     }
 }
 

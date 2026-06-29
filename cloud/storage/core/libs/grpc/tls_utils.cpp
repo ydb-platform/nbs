@@ -405,18 +405,8 @@ TVector<TCertificatePair> LoadCertificatePairs(
             ythrow yexception()
                 << "Empty CertChainPath for certificate #" << i;
         }
-        auto privateKey = TryReadFile(cert.PrivateKeyPath);
-        if (HasError(privateKey.GetError())) {
-            ythrow yexception() << privateKey.GetError().GetMessage();
-        }
-        auto certChain = TryReadFile(cert.CertChainPath);
-        if (HasError(certChain.GetError())) {
-            ythrow yexception() << certChain.GetError().GetMessage();
-        }
         result.push_back({
             .Files = std::move(cert),
-            .PrivateKey = privateKey.ExtractResult(),
-            .CertChain = certChain.ExtractResult(),
         });
     }
     return result;
@@ -427,13 +417,8 @@ TRootCaPair LoadRootCaPair(TString rootCaPath)
     if (!rootCaPath) {
         return {};
     }
-    auto content = TryReadFile(rootCaPath);
-    if (HasError(content.GetError())) {
-        ythrow yexception() << content.GetError().GetMessage();
-    }
     return {
         .RootCaPath = std::move(rootCaPath),
-        .RootCa = content.ExtractResult(),
     };
 }
 

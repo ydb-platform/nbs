@@ -300,6 +300,37 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ClientPair.CertChainPath));
     }
 
+    Y_UNIT_TEST(ShouldFailStartWithInvalidInitialCertificates)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        const auto pair = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            "broken certificate");
+        WriteTextFile(rootPath, "broken root");
+
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER {
+            scheduler->Stop();
+        };
+
+        auto provider = CreatePeriodicCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            scheduler,
+            CreateTaskQueueStub(),
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            rootPath,
+            TVector<TCertificateFiles>{pair},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_EXCEPTION(provider->Start(), yexception);
+    }
+
     Y_UNIT_TEST(ShouldSkipEmptyPairsInStaticProvider)
     {
         TTempDir tempDir;
@@ -388,6 +419,60 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ServerPair.CertChainPath);
         UNIT_ASSERT(recovered > 0);
         UNIT_ASSERT_VALUES_UNEQUAL(initial, recovered);
+    }
+
+    Y_UNIT_TEST(ShouldUsePeriodicProviderForRootOnlyTlsConfig)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        auto scheduler = std::make_shared<TManualScheduler>();
+        auto provider = CreateCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            scheduler,
+            CreateTaskQueueStub(),
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            rootPath,
+            TVector<TCertificateFiles>{{}},
+            TDuration::Seconds(1));
+
+        provider->Start();
+        Y_DEFER {
+            provider->Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, scheduler->PendingCount());
+    }
+
+    Y_UNIT_TEST(ShouldRefreshRootOnlyTlsConfigOnDemand)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        auto scheduler = std::make_shared<TManualScheduler>();
+        auto provider = CreateCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            scheduler,
+            CreateTaskQueueStub(),
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            rootPath,
+            TVector<TCertificateFiles>{},
+            TDuration::Seconds(1));
+
+        provider->Start();
+        Y_DEFER {
+            provider->Stop();
+        };
+
+        const auto initialPending = scheduler->PendingCount();
+        provider->UpdateCertificates();
+        UNIT_ASSERT_VALUES_EQUAL(initialPending + 1, scheduler->PendingCount());
     }
 }
 
