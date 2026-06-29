@@ -722,8 +722,6 @@ void TReadDataActor::ReadData(
     // Original iovecs should be preserved in this request and pruned during
     // this forwarding on the tablet side
     ReadRequest.MutableIovecs()->Swap(request->Record.MutableIovecs());
-    // Length should be preserved to validate payload size
-    ReadRequest.SetLength(request->Record.GetLength());
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -742,57 +740,42 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
                 << bufferSize << " Actual size: " << payload.size());
     }
 
-    if (readDataResponse.GetBufferOffset() >= bufferSize) {
-        return MakeError(
-            E_BADMSG,
-            TStringBuilder() << "Incorrect buffer offset. Buffer offset: "
-                             << readDataResponse.GetBufferOffset()
-                             << " Buffer size : " << bufferSize);
-    }
-
-    auto it = payload.begin() + readDataResponse.GetBufferOffset();
-    ui64 remainingBufferSize = bufferSize - readDataResponse.GetBufferOffset();
+    ui64 remainingBufferSize = bufferSize;
+    auto it = payload.begin();
     if (!ReadRequest.GetIovecs().empty()) {
-        if (remainingBufferSize > ReadRequest.GetLength()) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder()
-                    << "Payload size is more than iovecs size. Expected size: "
-                    << ReadRequest.GetLength()
-                    << " Actual size: " << remainingBufferSize);
-        }
-
         for (auto& iovec: ReadRequest.GetIovecs()) {
-            ui64 dataToWrite = Min(iovec.GetLength(), remainingBufferSize);
-            if (dataToWrite == 0) {
-                break;
+            ui64 currentOffset = 0;
+            while (iovec.GetLength() > currentOffset) {
+                ui64 dataToWrite =
+                    Min(iovec.GetLength() - currentOffset, remainingBufferSize);
+                if (dataToWrite == 0) {
+                    break;
+                }
+                TRopeUtils::Memcpy(
+                    reinterpret_cast<char*>(iovec.GetBase()),
+                    it,
+                    dataToWrite);
+                remainingBufferSize -= dataToWrite;
+                currentOffset += dataToWrite;
+                it += dataToWrite;
             }
-            TRopeUtils::Memcpy(
-                reinterpret_cast<char*>(iovec.GetBase()),
-                it,
-                dataToWrite);
-            remainingBufferSize -= dataToWrite;
-            it += dataToWrite;
-        }
-
-        if (remainingBufferSize != 0) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder()
-                    << "Failed to read buffer from payload. "
-                       " Expected buffer size: "
-                    << bufferSize << " Actual bytes copied from payload: "
-                    << bufferSize - remainingBufferSize);
         }
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
-        buffer.ReserveAndResize(remainingBufferSize);
-        TRopeUtils::Memcpy(buffer.begin(), it, remainingBufferSize);
+        buffer.ReserveAndResize(bufferSize);
+        TRopeUtils::Memcpy(buffer.begin(), it, payload.size());
+        remainingBufferSize -= payload.size();
     }
 
-    // Set the buffer offset to 0 because the response buffer/iovecs do not
-    // contain data before the offset anymore
-    readDataResponse.SetBufferOffset(0);
+    if (remainingBufferSize != 0) {
+        return MakeError(
+            E_BADMSG,
+            TStringBuilder()
+                << "Failed to read buffer from payload. "
+                   " Expected buffer size: "
+                << bufferSize << " Actual bytes copied from payload: "
+                << bufferSize - remainingBufferSize);
+    }
 
     return {};
 }
@@ -829,19 +812,19 @@ void TReadDataActor::HandleReadDataResponse(
 
         ui64 bufferSize = response->Record.GetLength();
         if (response->Record.GetBuffer().empty() && bufferSize != 0) {
-            if (msg->GetPayloadCount() != 1) {
+            if (msg->GetPayloadCount() != 1 ||
+                msg->GetTotalPayloadSize() != bufferSize)
+            {
                 HandleError(
                     ctx,
                     MakeError(
                         E_BADMSG,
-                        TStringBuilder()
-                            << "Payload is unavailable or message has more "
-                               "than one payload. Payload count: "
-                            << msg->GetPayloadCount()));
+                        "Payload is unavailable or has an incorrect size"));
                 return;
             }
-            auto err =
-                ProcessExternalPayload(msg->GetPayload(0), response->Record);
+            auto err = ProcessExternalPayload(
+                msg->GetPayload(0),
+                response->Record);
             if (HasError(err)) {
                 HandleError(ctx, err);
                 return;

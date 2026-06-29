@@ -479,12 +479,7 @@ void TAlterFileStoreActor::AlterShards(const TActorContext& ctx)
     }
 
     NextShardToAlter = 0;
-    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex =
-        (limit == 0) ? ShardsToAlter
-                     : std::min<ui32>(NextShardToAlter + limit, ShardsToAlter);
-
-    for (ui32 i = 0; i < endShardIndex; ++i) {
+    for (ui32 i = 0; i < ShardsToAlter; ++i) {
         AlterShard(ctx, i);
         NextShardToAlter = i + 1;
     }

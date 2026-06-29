@@ -14,6 +14,7 @@ void TTabletRequestMetrics::Update(
     TimeSumUs.fetch_add(
         d.MicroSeconds(),
         std::memory_order_relaxed);
+    Time.Record(d);
 }
 
 void TTabletRequestMetrics::UpdatePrev(TInstant now)

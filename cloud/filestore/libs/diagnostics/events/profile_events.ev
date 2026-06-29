@@ -120,8 +120,6 @@ message TProfileLogRequestInfo {
     optional bool BehaveAsShard = 13;
 
     optional uint32 Flags = 14;
-
-    optional uint64 CommitId = 15;
 };
 
 message TProfileLogRecord {

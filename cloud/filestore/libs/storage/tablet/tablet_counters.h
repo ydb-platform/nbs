@@ -4,10 +4,8 @@
 
 #include "tablet_tx.h"
 
-#include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
-
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/tablet_counters.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
@@ -256,9 +254,6 @@ struct TTabletMetrics
     std::atomic<i64> OrphanNodesCount{0};
 
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
-
-    using TLatHistogram =
-        NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
     TLatHistogram ReadDataPostponed;
     TLatHistogram WriteDataPostponed;
 

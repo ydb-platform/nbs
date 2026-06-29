@@ -83,18 +83,12 @@ NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<TString> CreateIovecs(size_t totalSize, size_t iovecSize)
+TVector<TString> CreateIovecs(size_t num, size_t size)
 {
     TVector<TString> iovecs;
-    size_t fullIovecsCount = totalSize / iovecSize;
-    size_t lastIovecSize = totalSize % iovecSize;
-    size_t totalIovecsCount = fullIovecsCount + (lastIovecSize != 0 ? 1 : 0);
-    iovecs.reserve(totalIovecsCount);
-    for (size_t i = 0; i < fullIovecsCount; ++i) {
-        iovecs.emplace_back(iovecSize, '\0');
-    }
-    if (lastIovecSize != 0) {
-        iovecs.emplace_back(lastIovecSize, '\0');
+    iovecs.reserve(num);
+    for (size_t i = 0; i < num; ++i) {
+        iovecs.emplace_back(size, '\0');
     }
     return iovecs;
 }
@@ -4864,9 +4858,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
-    void testReadDataRequestWithIovecs(
-        NProto::TStorageConfig config,
-        size_t iovecSize = 4_KB)
+    void testReadDataRequestWithIovecs(NProto::TStorageConfig config)
     {
         TTestEnv env({}, std::move(config));
         ui32 nodeIdx = env.AddDynamicNode();
@@ -4894,7 +4886,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto& data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
 
-        auto iovecs = CreateIovecs(data.size(), iovecSize);
+        auto iovecs = CreateIovecs(64, 4_KB);
         auto readDataResult =
             service
                 .ReadData(headers, fs, nodeId, handle, 0, data.size(), iovecs);
@@ -4936,23 +4928,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         testReadDataRequestWithIovecs(std::move(config));
     }
 
+
     Y_UNIT_TEST(ShouldUseExternalPayloadForReadDataRequest)
     {
         NProto::TStorageConfig config;
         config.SetExternalReadDataPayload(true);
-        for (auto iovecSize: std::vector<size_t>{124, 4_KB, 256_KB}) {
-            testReadDataRequestWithIovecs(config, iovecSize);
-        }
-    }
-
-    Y_UNIT_TEST(ShouldUseExternalPayloadWithIovecsForReadDataRequest)
-    {
-        NProto::TStorageConfig config;
-        config.SetExternalReadDataPayload(true);
-        config.SetZeroCopyReadEnabled(true);
-        for (auto iovecSize: std::vector<size_t>{124, 4_KB, 256_KB}) {
-            testReadDataRequestWithIovecs(config, iovecSize);
-        }
+        testReadDataRequestWithIovecs(std::move(config));
     }
 
     Y_UNIT_TEST(ShouldHandleToggleServiceState)

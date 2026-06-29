@@ -2,7 +2,6 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
-#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -322,29 +321,6 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     // each write's safe point. A single AddBlob is ever
     // in flight, so page faults cannot reorder
     Sort(recoverableCommitIds);
-
-    for (const ui64 commitId: recoverableCommitIds) {
-        auto it = UnconfirmedData.find(commitId);
-        TABLET_VERIFY(it != UnconfirmedData.end());
-        const auto& data = it->second.Data;
-        NProto::TProfileLogRequestInfo profileLogRequest;
-        InitTabletProfileLogRequestInfo(
-            profileLogRequest,
-            EFileStoreSystemRequest::RecoverUnconfirmedData,
-            ctx.Now());
-        AddRange(
-            data.GetNodeId(),
-            data.GetOffset(),
-            data.GetLength(),
-            profileLogRequest);
-        profileLogRequest.SetCommitId(commitId);
-        FinalizeProfileLogRequestInfo(
-            std::move(profileLogRequest),
-            ctx.Now(),
-            GetFileSystemId(),
-            {},
-            ProfileLog);
-    }
 
     RecoveredDataToConfirm.assign(
         recoverableCommitIds.begin(),
