@@ -114,7 +114,7 @@ ICertificateProviderPtr CreateCertificateProvider(
 
     auto certs = NTlsUtils::PrepareAndValidateCertificates(std::move(certificates));
     if (certs.empty()) {
-        return CreateCertificateProviderStub();
+        return CreateStaticCertificateProvider(std::move(rootCertPath), {});
     }
 
     return CreatePeriodicCertificateProvider(
