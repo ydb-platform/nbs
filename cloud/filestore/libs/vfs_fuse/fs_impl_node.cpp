@@ -37,7 +37,7 @@ void TFileSystem::Lookup(
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (auto future) {
@@ -153,7 +153,7 @@ void TFileSystem::RmDir(
     }
 
     auto request = StartRequest<NProto::TUnlinkNodeRequest>(parent);
-    request->SetName(std::move(name));
+    request->SetName(name);
     request->SetUnlinkDirectory(true);
 
     const auto reqId = callContext->RequestId;
@@ -171,6 +171,7 @@ void TFileSystem::RmDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntryInCache(parent, name);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
@@ -257,7 +258,7 @@ void TFileSystem::Unlink(
     }
 
     auto request = StartRequest<NProto::TUnlinkNodeRequest>(parent);
-    request->SetName(std::move(name));
+    request->SetName(name);
     request->SetUnlinkDirectory(false);
 
     const auto reqId = callContext->RequestId;
@@ -275,6 +276,7 @@ void TFileSystem::Unlink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntryInCache(parent, name);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
@@ -299,8 +301,8 @@ void TFileSystem::Rename(
     }
 
     auto request = StartRequest<NProto::TRenameNodeRequest>(parent);
-    request->SetName(std::move(name));
-    request->SetNewName(std::move(newname));
+    request->SetName(name);
+    request->SetNewName(newname);
     request->SetNewParentId(newparent);
     request->SetFlags(protoFlags);
 
@@ -319,6 +321,8 @@ void TFileSystem::Rename(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntryInCache(parent, name);
+                self->InvalidateDirectoryEntryInCache(newparent, newname);
                 // TODO: update tree
                 self->ReplyError(*callContext, error, req, 0);
             }

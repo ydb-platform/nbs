@@ -112,6 +112,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleChunkTest)
         TString testData = "Hello, this is test directory content!";
         content->Assign(testData.data(), testData.size());
         original.DirectoryContent.Content = content;
+        original.DirectoryContent.CacheVersion = 42;
 
         TBuffer buffer;
         TBufferOutput output(buffer);
@@ -123,6 +124,7 @@ Y_UNIT_TEST_SUITE(TDirectoryHandleChunkTest)
 
         UNIT_ASSERT(deserialized.has_value());
         AssertChunksEqual(original, *deserialized);
+        UNIT_ASSERT_VALUES_EQUAL(0, deserialized->DirectoryContent.CacheVersion);
     }
 
     Y_UNIT_TEST(ShouldSerializeAndDeserializeLargeContent)

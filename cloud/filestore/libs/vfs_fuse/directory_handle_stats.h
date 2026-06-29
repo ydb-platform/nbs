@@ -24,6 +24,7 @@ private:
     TMaxCounter<DirectoryHandleMaxBucketCount> CacheSize;
     TMaxCounter<DirectoryHandleMaxBucketCount> ChunkCount;
     TMaxCounter<DirectoryHandleMaxBucketCount> OpenHandleCount;
+    TMaxCounter<DirectoryHandleMaxBucketCount> EntryVersionCacheEntryCount;
     TRelaxedCounter RewindCount;
     // Optional; when null no storage sensors are registered or updated.
     IDirectoryHandleStorageStatsPtr StorageStats;
@@ -43,6 +44,7 @@ public:
     void ChangeCacheSize(i64 delta);
     void ChangeChunkCount(i64 delta);
     void ChangeOpenHandleCount(i64 delta);
+    void ChangeEntryVersionCacheEntryCount(i64 delta);
     void IncrementRewindCount();
 
     void UpdateStats(TInstant now) override;
@@ -59,5 +61,7 @@ using TDirectoryHandleModuleStatsPtr =
 TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStats(
     ITimerPtr timer,
     IDirectoryHandleStorageStatsPtr storageStats);
+
+TDirectoryHandleModuleStatsPtr CreateDirectoryHandleStatsStub();
 
 }   // namespace NCloud::NFileStore::NFuse

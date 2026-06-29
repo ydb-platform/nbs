@@ -539,4 +539,55 @@ struct TSetAttrRequest
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TUnlinkRequest
+    : public TRequestBase<void, void, void>
+{
+    TUnlinkRequest(const TString& name, ui64 parentNodeId)
+    {
+        In = TIn::Create(name.size() + 1);
+        In->Header.opcode = FUSE_UNLINK;
+        In->Header.nodeid = parentNodeId;
+        strcpy((char*)In->Data(), name.c_str());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TRmDirRequest
+    : public TRequestBase<void, void, void>
+{
+    TRmDirRequest(const TString& name, ui64 parentNodeId)
+    {
+        In = TIn::Create(name.size() + 1);
+        In->Header.opcode = FUSE_RMDIR;
+        In->Header.nodeid = parentNodeId;
+        char* data = static_cast<char*>(In->Data());
+        strcpy(data, name.c_str());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TRenameRequest
+    : public TRequestBase<fuse_rename_in, void, void>
+{
+    TRenameRequest(
+        const TString& name,
+        ui64 parentNodeId,
+        const TString& newName,
+        ui64 newParentNodeId)
+    {
+        In = TIn::Create(name.size() + 1 + newName.size() + 1);
+        In->Header.opcode = FUSE_RENAME;
+        In->Header.nodeid = parentNodeId;
+        In->Body.newdir = newParentNodeId;
+
+        char* data = static_cast<char*>(In->Data());
+        strcpy(data, name.c_str());
+        strcpy(data + name.size() + 1, newName.c_str());
+    }
+};
+
 }   // namespace NCloud::NFileStore::NVhost
