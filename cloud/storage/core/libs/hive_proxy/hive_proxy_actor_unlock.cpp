@@ -17,10 +17,9 @@ void THiveProxyActor::HandleUnlockTablet(
     const auto* msg = ev->Get();
 
     ui64 tabletId = msg->TabletId;
-    ui64 hive = GetHive(ctx, tabletId);
 
-    auto* states = HiveStates.FindPtr(hive);
-    auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
+    auto& states = HiveState;
+    auto* state = states.LockStates.FindPtr(tabletId);
     if (!state) {
         // Unlock with a paired lock
         auto error = MakeError(E_ARGUMENT, "Unlock without a matching Lock");
@@ -55,7 +54,7 @@ void THiveProxyActor::HandleUnlockTablet(
     if (state->Phase == PHASE_LOCKED) {
         // It is possible to send unlock request right now
         state->Phase = PHASE_UNLOCKING;
-        SendUnlockRequest(ctx, hive, tabletId);
+        SendUnlockRequest(ctx, HiveTabletId, tabletId);
     }
 }
 
@@ -66,14 +65,13 @@ void THiveProxyActor::HandleUnlockTabletExecutionResult(
     const auto* msg = ev->Get();
 
     ui64 tabletId = msg->Record.GetTabletID();
-    ui64 hive = GetHive(ctx, tabletId);
 
-    auto* states = HiveStates.FindPtr(hive);
-    auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
+    auto& states = HiveState;
+    auto* state = states.LockStates.FindPtr(tabletId);
     if (!state || state->Phase != PHASE_UNLOCKING) {
         // Unexpected unlock reply, ignore
         LOG_WARN_S(ctx, LogComponent,
-            "Unexpected unlock reply from hive " << hive
+            "Unexpected unlock reply from hive " << HiveTabletId
                 << " for tablet " << tabletId);
         return;
     }
@@ -91,7 +89,7 @@ void THiveProxyActor::HandleUnlockTabletExecutionResult(
     }
 
     SendUnlockReply(ctx, state, error);
-    states->LockStates.erase(tabletId);
+    states.LockStates.erase(tabletId);
 }
 
 }   // namespace NCloud::NStorage

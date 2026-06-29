@@ -167,7 +167,7 @@ private:
     static constexpr TDuration BatchTimeout = TDuration::Seconds(2);
 
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
-    THashMap<ui64, THiveState> HiveStates;
+    THiveState HiveState;
 
     const TDuration LockExpireTimeout;
     const int LogComponent;
@@ -176,7 +176,7 @@ private:
     bool UseBinaryFormatForTabletBootInfoBackup;
     NActors::TActorId TabletBootInfoBackup;
 
-    const ui64 TenantHiveTabletId;
+    ui64 HiveTabletId;
 
     const NMonitoring::TDynamicCounterPtr Counters;
     NMonitoring::TDynamicCounters::TCounterPtr HiveReconnectTimeCounter;
@@ -199,11 +199,6 @@ private:
         const NActors::TActorContext& ctx,
         ui64 hive,
         NActors::IEventBase* request);
-
-    ui64 GetHive(
-        const NActors::TActorContext& ctx,
-        ui64 tabletId,
-        ui32 hiveIdx = Max());
 
     void SendNextCreateOrLookupRequest(
         const NActors::TActorContext& ctx,

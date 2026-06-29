@@ -15,14 +15,13 @@ void THiveProxyActor::HandleGetStorageInfo(
     const auto* msg = ev->Get();
 
     ui64 tabletId = msg->TabletId;
-    ui64 hive = GetHive(ctx, tabletId);
 
-    auto& requests = HiveStates[hive].GetInfoRequests[tabletId];
+    auto& requests = HiveState.GetInfoRequests[tabletId];
     requests.emplace_back(ev->Sender, ev->Cookie);
 
     if (requests.size() == 1) {
         // Send request to hive on the first incoming request
-        SendGetTabletStorageInfoRequest(ctx, hive, tabletId);
+        SendGetTabletStorageInfoRequest(ctx, HiveTabletId, tabletId);
     }
 }
 
@@ -41,7 +40,6 @@ void THiveProxyActor::HandleGetTabletStorageInfoResult(
     const auto* msg = ev->Get();
 
     ui64 tabletId = msg->Record.GetTabletID();
-    ui64 hive = GetHive(ctx, tabletId);
 
     NProto::TError error;
     TTabletStorageInfoPtr storageInfo;
@@ -53,8 +51,8 @@ void THiveProxyActor::HandleGetTabletStorageInfoResult(
         storageInfo = TabletStorageInfoFromProto(msg->Record.GetInfo());
     }
 
-    auto& states = HiveStates[hive];
-    auto& requests = states.GetInfoRequests[tabletId];
+    auto& state = HiveState;
+    auto& requests = state.GetInfoRequests[tabletId];
     while (!requests.empty()) {
         auto response = std::make_unique<TEvHiveProxy::TEvGetStorageInfoResponse>(
             error,
@@ -63,7 +61,7 @@ void THiveProxyActor::HandleGetTabletStorageInfoResult(
         NCloud::Reply(ctx, requests.front(), std::move(response));
         requests.pop_front();
     }
-    states.GetInfoRequests.erase(tabletId);
+    state.GetInfoRequests.erase(tabletId);
 }
 
 }   // namespace NCloud::NStorage
