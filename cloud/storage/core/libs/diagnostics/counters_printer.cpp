@@ -1,6 +1,6 @@
 #include "counters_printer.h"
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,4 +62,4 @@ void TCountersPrinter::OnGroupEnd(
     Indent(Out, --Level) << "}\n";
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage
