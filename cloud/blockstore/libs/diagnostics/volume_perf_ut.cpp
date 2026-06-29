@@ -544,7 +544,7 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
     {
         TestSufferCount(
             calc,
-            TDuration::Seconds(14),
+            TDuration::Seconds(15),
             slow,
             expected,
             expectedSmooth,
@@ -739,7 +739,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         TestSufferCount(
             calc,
             requestTime,
-            TDuration::Seconds(1),
+            TDuration::Seconds(15),
             0,      // expected Suffer
             1,      // expected SmoothSuffer
             0);     // expected CriticalSuffer
@@ -788,7 +788,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         TestSufferCount(
             calc,
             requestTime,
-            TDuration::Seconds(1),
+            TDuration::Seconds(15),
             0,  // expected Suffer
             1,  // expected SmoothSuffer
             1); // expected CriticalSuffer
@@ -953,14 +953,16 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             calc.Register(*volumeCounters, volume);
 
             // Since config is clamped by profile limits, expectedScore becomes
-            // too large and DidSuffer() returns false even for "slow" requests.
+            // too large for the 1s window — per-second Suffer cannot fire even
+            // for "slow" requests. SmoothSuffer still fires because the 15s
+            // window has 15x more capacity.
             TestSuffer(
                 calc,
                 volumeCounters,
                 TDuration::Seconds(15),
                 true,   // slowRequest
                 0,      // expected Suffer
-                0,      // expected SmoothSuffer
+                1,      // expected SmoothSuffer
                 0);     // expected CriticalSuffer
         }
 
@@ -1245,7 +1247,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
         calc.Register(*volumeCounters, volume);
 
-        TestSufferCountPostponed(calc, TDuration::Seconds(1), 0, 0, 0);
+        TestSufferCountPostponed(calc, TDuration::Seconds(15), 0, 0, 0);
 
         UNIT_ASSERT_VALUES_EQUAL(false, calc.IsSuffering());
     }
