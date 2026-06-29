@@ -61,6 +61,8 @@ void TPartitionActor::WriteFreshBlocks(
                 r.Data.RequestInfo->CallContext->RequestId);
 
             NCloud::Reply(ctx, *r.Data.RequestInfo, std::move(response));
+
+            SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
         }
 
         return;
