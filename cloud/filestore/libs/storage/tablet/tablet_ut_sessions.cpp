@@ -820,6 +820,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
         config.SetPreferredBlockSizeMultiplier(2);
         config.SetAsyncDestroyHandleEnabled(true);
+        config.SetAsyncDestroyReadOnlyHandleEnabled(true);
         config.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
         config.SetGuestPageCacheDisabled(true);
@@ -850,6 +851,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetThreeStageWriteThreshold(10_MB);
         features.SetPreferredBlockSize(4_KB * 2);
         features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
         features.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
         features.SetGuestPageCacheDisabled(true);

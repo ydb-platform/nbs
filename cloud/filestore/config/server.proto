@@ -224,6 +224,9 @@ message TLocalServiceConfig
 
     // Maximum serialized size of one persistent handle.
     optional uint64 DirectoryHandlesPersistentHandleMaxSize = 41;
+
+    // Async processing of destroy handle requests only for read only handles.
+    optional bool AsyncDestroyReadOnlyHandleEnabled = 42;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

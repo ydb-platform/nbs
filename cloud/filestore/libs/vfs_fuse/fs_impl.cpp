@@ -99,14 +99,17 @@ void TFileSystem::Reset()
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
-    if (Config->GetAsyncDestroyHandleEnabled()) {
+    if (Config->GetAsyncDestroyHandleEnabled() ||
+        Config->GetAsyncDestroyReadOnlyHandleEnabled())
+    {
         Scheduler->Schedule(
-        Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
-        [=, ptr = weak_from_this()] () {
-            if (auto self = ptr.lock()) {
-                self->ProcessHandleOpsQueue();
-            }
-        });
+            Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+            [=, ptr = weak_from_this()]()
+            {
+                if (auto self = ptr.lock()) {
+                    self->ProcessHandleOpsQueue();
+                }
+            });
     }
 }
 

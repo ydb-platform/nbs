@@ -270,6 +270,7 @@ void TFileSystem::ReleaseImpl(
     fuse_req_t req,
     fuse_ino_t ino,
     ui64 handle,
+    bool processAsynchronously,
     const NCloud::NProto::TError& writeBackCacheError)
 {
     // If WriteBackCache was used, Release() previously asked it to flush the
@@ -280,7 +281,7 @@ void TFileSystem::ReleaseImpl(
     // - DestroyHandle fails -> return DestroyHandle error;
     // - DestroyHandle succeeds -> return writeBackCacheError
 
-    if (Config->GetAsyncDestroyHandleEnabled()) {
+    if (processAsynchronously) {
         if (!ProcessAsyncRelease(
                 callContext,
                 req,
@@ -329,6 +330,9 @@ void TFileSystem::Release(
     fuse_file_info* fi)
 {
     auto handle = fi->fh;
+    const bool readOnly = (fi->flags & O_ACCMODE) == O_RDONLY;
+    const bool processAsynchronously = Config->GetAsyncDestroyHandleEnabled() ||
+        (Config->GetAsyncDestroyReadOnlyHandleEnabled() && readOnly);
 
     STORAGE_DEBUG("Release #" << ino << " @" << handle);
 
@@ -347,13 +351,25 @@ void TFileSystem::Release(
                 {
                     if (auto self = ptr.lock()) {
                         const NProto::TError& error = future.GetValue();
-                        self->ReleaseImpl(callContext, req, ino, handle, error);
+                        self->ReleaseImpl(
+                            callContext,
+                            req,
+                            ino,
+                            handle,
+                            processAsynchronously,
+                            error);
                     }
                 });
         return;
     }
 
-    ReleaseImpl(std::move(callContext), req, ino, handle, {});
+    ReleaseImpl(
+        std::move(callContext),
+        req,
+        ino,
+        handle,
+        processAsynchronously,
+        {});
 }
 
 void TFileSystem::Read(

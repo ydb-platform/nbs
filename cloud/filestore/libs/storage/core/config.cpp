@@ -257,6 +257,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NonNetworkMetricsBalancingFactor,               ui32,       1_KB      )\
                                                                                \
     xxx(AsyncDestroyHandleEnabled,                      bool,       false     )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled,              bool,       false     )\
     xxx(TabletUnsafeAsyncReadOnlyCreateHandleEnabled,   bool,       false     )\
     xxx(TabletUnsafeAsyncDestroyHandleEnabled,          bool,       false     )\
     xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\

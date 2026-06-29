@@ -259,7 +259,9 @@ struct TBootstrap
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
-        if (featuresConfig.GetAsyncDestroyHandleEnabled()) {
+        if (featuresConfig.GetAsyncDestroyHandleEnabled() ||
+            featuresConfig.GetAsyncDestroyReadOnlyHandleEnabled())
+        {
             proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
             proto.SetHandleOpsQueueSize(handleOpsQueueSize);
         }
@@ -2716,6 +2718,101 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         responsePromise2.SetValue(NProto::TDestroyHandleResponse{});
 
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+    }
+
+    Y_UNIT_TEST(ShouldProcessReadOnlyDestroyHandleRequestsAsynchronously)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 readOnlyHandle = 2;
+        const ui64 readOnlyNodeId = 10;
+        const ui64 writeHandle = 5;
+        const ui64 writeNodeId = 11;
+        std::atomic_bool readOnlyReleaseFinished = false;
+        std::atomic_bool writeReleaseFinished = false;
+        std::atomic_uint handlerCalled = 0;
+        auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                            ->FindSubgroup("request", "DestroyHandle");
+        auto readOnlyResponsePromise =
+            NewPromise<NProto::TDestroyHandleResponse>();
+        auto writeResponsePromise =
+            NewPromise<NProto::TDestroyHandleResponse>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&,
+             readOnlyResponsePromise,
+             writeResponsePromise](auto callContext, auto request) mutable
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+
+                ++handlerCalled;
+                if (request->GetHandle() == readOnlyHandle) {
+                    UNIT_ASSERT(readOnlyReleaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        readOnlyNodeId,
+                        request->GetNodeId());
+                    return readOnlyResponsePromise;
+                }
+
+                if (request->GetHandle() == writeHandle) {
+                    UNIT_ASSERT(!writeReleaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(writeNodeId, request->GetNodeId());
+                    return writeResponsePromise;
+                }
+
+                UNIT_ASSERT_C(false, "Unexpected DestroyHandle request");
+                return NewPromise<NProto::TDestroyHandleResponse>();
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            readOnlyNodeId,
+            readOnlyHandle,
+            O_RDONLY);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        readOnlyReleaseFinished = true;
+        UNIT_ASSERT_VALUES_EQUAL(0U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+        readOnlyResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
+
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            writeNodeId,
+            writeHandle,
+            O_WRONLY);
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        writeResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        writeReleaseFinished = true;
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));

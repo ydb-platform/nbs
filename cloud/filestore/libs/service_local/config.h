@@ -105,6 +105,7 @@ public:
     void DumpHtml(IOutputStream& out) const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetOpenNodeByHandleEnabled() const;

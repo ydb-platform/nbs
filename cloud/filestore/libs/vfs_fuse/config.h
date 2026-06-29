@@ -38,6 +38,7 @@ public:
     ui32 GetPreferredBlockSize() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetDirectIoEnabled() const;

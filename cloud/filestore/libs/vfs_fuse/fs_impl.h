@@ -470,6 +470,7 @@ private:
         fuse_req_t req,
         fuse_ino_t ino,
         ui64 handle,
+        bool asyncDestroyHandleEnabled,
         const NCloud::NProto::TError& writeBackCacheError);
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,

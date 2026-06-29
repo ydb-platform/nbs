@@ -116,4 +116,7 @@ message TFileSystemConfig
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 34;
+
+    // Async processing of destroy handle requests only for read only handles.
+    optional bool AsyncDestroyReadOnlyHandleEnabled = 35;
 }

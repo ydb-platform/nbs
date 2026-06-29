@@ -830,4 +830,8 @@ message TStorageConfig
     optional uint32 SoftBackpressureMaxReadBandwidth = 519;    // in MiB/s
     optional uint32 SoftBackpressureMaxWriteIops = 520;
     optional uint32 SoftBackpressureMaxReadIops = 521;
+
+    // Async processing of destroy handle requests only for read only handles.
+    optional bool AsyncDestroyReadOnlyHandleEnabled = 522;
+
 }

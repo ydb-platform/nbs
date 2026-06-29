@@ -271,6 +271,7 @@ public:
     bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
     bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
