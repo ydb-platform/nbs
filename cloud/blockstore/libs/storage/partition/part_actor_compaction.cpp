@@ -703,19 +703,17 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         }
 
         for (auto& [blobId, blob]: rc.AffectedBlobs) {
-            if (std::holds_alternative<TAffectedBlob::TAlreadyGarbageBlob>(
-                    blob.BlockMask))
-            {
+            if (blob.BlobAlreadyInCleanupQueue) {
                 continue;
             }
 
             STORAGE_VERIFY_C(
-                std::holds_alternative<TBlockMask>(blob.BlockMask),
+                blob.BlockMask.Defined(),
                 TWellKnownEntityTypes::TABLET,
                 TabletId,
                 "unknown block mask for blob " << MakeBlobId(TabletId, blobId));
 
-            auto& blockMask = std::get<TBlockMask>(blob.BlockMask);
+            auto& blockMask = blob.BlockMask.GetRef();
             // mask overwritten blocks
             for (ui16 blobOffset: blob.Offsets) {
                 blockMask.Set(blobOffset);
@@ -734,7 +732,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blob.AffectedBlocks.begin(),
                     blob.AffectedBlocks.end());
 
-                std::get<TBlockMask>(affectedBlob.BlockMask) |= blockMask;
+                affectedBlob.BlockMask.GetRef() |= blockMask;
             }
         }
 

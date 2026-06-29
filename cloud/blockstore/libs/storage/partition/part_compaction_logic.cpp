@@ -428,7 +428,7 @@ void FillBlobsInfoToRead(
 {
     for (auto& kv: args.AffectedBlobs) {
         if (state.GetCleanupQueue().HasBlob(kv.first)) {
-            kv.second.BlockMask = TAffectedBlob::TAlreadyGarbageBlob{};
+            kv.second.BlobAlreadyInCleanupQueue = true;
             continue;
         }
 

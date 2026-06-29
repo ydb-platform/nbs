@@ -153,8 +153,9 @@ struct TAffectedBlob
     {
     };
 
-    std::variant<std::monostate, TAlreadyGarbageBlob, TBlockMask> BlockMask =
-        std::monostate{};
+    TMaybe<TBlockMask> BlockMask;
+
+    bool BlobAlreadyInCleanupQueue = false;
 
     TAffectedBlocks AffectedBlocks;
 
