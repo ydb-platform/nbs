@@ -112,7 +112,7 @@ void TChecksumRangeActorCompanion::HandleChecksumResponse(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s/%u Checksum error %s",
+            "%s[%u] Checksum error %s",
             LogTitle.GetWithTime().c_str(),
             Replicas[replicaIndex].ReplicaIndex,
             FormatError(error).c_str());
