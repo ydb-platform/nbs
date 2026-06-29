@@ -74,7 +74,7 @@ def setup_test_filestore(nfs_client, fs_name, shard_count=None):
     return session_id, node
 
 
-def create_mmap_region(nfs_client, filename, size, page_size=0) -> (int, str):
+def create_mmap_region(nfs_client, filename, size, page_size=0, map_populate=False) -> (int, str):
     """Create a file and mmap it, returning the region ID and file path."""
     base_path = os.path.join(common.output_path(), "shm")
     file_path = os.path.join(base_path, filename)
@@ -82,7 +82,12 @@ def create_mmap_region(nfs_client, filename, size, page_size=0) -> (int, str):
     with open(file_path, "wb") as f:
         f.truncate(size)
 
-    response = nfs_client.mmap(file_path=filename, size=size, page_size=page_size)
+    response = nfs_client.mmap(
+        file_path=filename,
+        size=size,
+        page_size=page_size,
+        map_populate=map_populate
+    )
     return response.Id, file_path
 
 
@@ -91,7 +96,7 @@ def test_mmap_unmmap():
     port = os.getenv("NFS_SERVER_PORT")
 
     with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
-        region_id, file_path = create_mmap_region(nfs_client, "testfile", 4096, 1024)
+        region_id, file_path = create_mmap_region(nfs_client, "testfile", 4096, 1024, True)
         logger.info(f"Successfully mmaped file with region ID: {region_id}")
 
         regions = nfs_client.list_mmap_regions()

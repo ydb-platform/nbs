@@ -139,7 +139,8 @@ public:
     TResultOrError<TMmapRegionMetadata> CreateMmapRegion(
         const TString& filePath,
         size_t size /* in bytes */,
-        ui32 pageSize /* in bytes */);
+        ui32 pageSize /* in bytes */,
+        bool mapPopulate = false);
 
     NProto::TError DestroyMmapRegion(ui64 mmapId);
 

@@ -50,9 +50,14 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
 
         const size_t fileSize = 4096;
         const ui32 pageSize = 1024;
+        bool mapPopulate = true;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
 
-        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
+        auto result = state.CreateMmapRegion(
+            relativePath,
+            fileSize,
+            pageSize,
+            mapPopulate);
 
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
