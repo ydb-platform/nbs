@@ -49,17 +49,17 @@ public:
         TString DiskId;
     };
 
+    struct TPartitionNonreplRdma
+    {
+        TString DiskId;
+    };
+
     struct TPartitionMirror
     {
         TString DiskId;
     };
 
     struct TPartitionMigration
-    {
-        TString DiskId;
-    };
-
-    struct TPartitionNonreplRdma
     {
         TString DiskId;
     };
@@ -109,12 +109,12 @@ private:
         TVolumeProxy,
         TPartition,
         TPartitionNonrepl,
+        TPartitionNonreplRdma,
         TSession,
         TClient,
         TDiskRegistry,
         TPartitionMirror,
         TPartitionMigration,
-        TPartitionNonreplRdma,
         TFreshBlocksWriter,
         TAgentAvailabilityMonitoringActor>;
 
