@@ -120,14 +120,18 @@ async def remove_images(
 ) -> None:
     for image in images_to_remove:
         logger.info("Removing image %s", image.metadata.id)
-        request = DeleteImageRequest(id=image.metadata.id)
-        operation = await service.delete(request)
-        await operation.wait()
-        logger.info(
-            "Image %s removed, operation status: %s",
-            image.metadata.id,
-            operation.status(),
-        )
+        await remove_image_by_id(service, image.metadata.id)
+
+
+async def remove_image_by_id(service: ImageServiceClient, image_id: str) -> None:
+    request = DeleteImageRequest(id=image_id)
+    operation = await service.delete(request)
+    await operation.wait()
+    logger.info(
+        "Image %s removed, operation status: %s",
+        image_id,
+        operation.status(),
+    )
 
 
 async def main(
@@ -215,23 +219,31 @@ if __name__ == "__main__":
         action="store_true",
         help="Remove old images",
     )
+    parser.add_argument(
+        "--delete-image-id",
+        default=None,
+        help="Delete a specific image by ID and exit",
+    )
 
     args = parser.parse_args()
     logger.info(args)
 
     sdk = SDK(config_reader=Config())
-    asyncio.run(
-        main(
-            sdk=sdk,
-            options=ManageImagesOptions(
-                github_token=args.github_token,
-                github_repository=args.github_repo,
-                new_image_id=args.new_image_id,
-                image_variable_name=args.image_variable_name,
-                update_image_id=args.update_image_id,
-                parent_id=args.parent_id,
-                images_to_keep=args.images_to_keep,
-                remove_old_images=args.remove_old_images,
-            ),
+    if args.delete_image_id:
+        asyncio.run(remove_image_by_id(ImageServiceClient(sdk), args.delete_image_id))
+    else:
+        asyncio.run(
+            main(
+                sdk=sdk,
+                options=ManageImagesOptions(
+                    github_token=args.github_token,
+                    github_repository=args.github_repo,
+                    new_image_id=args.new_image_id,
+                    image_variable_name=args.image_variable_name,
+                    update_image_id=args.update_image_id,
+                    parent_id=args.parent_id,
+                    images_to_keep=args.images_to_keep,
+                    remove_old_images=args.remove_old_images,
+                ),
+            )
         )
-    )
