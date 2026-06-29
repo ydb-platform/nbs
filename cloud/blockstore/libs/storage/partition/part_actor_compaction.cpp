@@ -709,27 +709,17 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 continue;
             }
 
-            if (std::holds_alternative<TBlockMask>(blob.BlockMask)) {
-                auto& blockMask = std::get<TBlockMask>(blob.BlockMask);
-                // mask overwritten blocks
-                for (ui16 blobOffset: blob.Offsets) {
-                    blockMask.Set(blobOffset);
-                }
-            } else if (
-                std::holds_alternative<TAffectedBlob::TFullBlockMask>(
-                    blob.BlockMask))
-            {
-                blob.BlockMask = GetFullBlockMask(MaxBlocksInBlob);
-            } else {
-                STORAGE_VERIFY_C(
-                    false,
-                    TWellKnownEntityTypes::TABLET,
-                    TabletId,
-                    "unknown block mask for blob "
-                        << MakeBlobId(TabletId, blobId));
-            }
+            STORAGE_VERIFY_C(
+                std::holds_alternative<TBlockMask>(blob.BlockMask),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "unknown block mask for blob " << MakeBlobId(TabletId, blobId));
 
             auto& blockMask = std::get<TBlockMask>(blob.BlockMask);
+            // mask overwritten blocks
+            for (ui16 blobOffset: blob.Offsets) {
+                blockMask.Set(blobOffset);
+            }
 
             auto [blobIt, inserted] =
                 affectedBlobs.try_emplace(blobId, std::move(blob));

@@ -148,19 +148,13 @@ struct TAffectedBlob
 
     TVector<ui16> Offsets;
 
-    // Marker that the mask is should be full after compaction.
-    struct TFullBlockMask
-    {
-    };
-
-    // Marker that the blob is already compacted.
+    // Already in the cleanup queue.
     struct TAlreadyGarbageBlob
     {
     };
 
-    std::
-        variant<std::monostate, TAlreadyGarbageBlob, TFullBlockMask, TBlockMask>
-            BlockMask = std::monostate();
+    std::variant<std::monostate, TAlreadyGarbageBlob, TBlockMask> BlockMask =
+        std::monostate{};
 
     TAffectedBlocks AffectedBlocks;
 

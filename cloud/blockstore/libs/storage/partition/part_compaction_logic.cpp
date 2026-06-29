@@ -437,7 +437,7 @@ void FillBlobsInfoToRead(
         {
             blobsToReadBlockMasks.emplace(kv.first);
         } else {
-            kv.second.BlockMask = TAffectedBlob::TFullBlockMask{};
+            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
         }
     }
 
