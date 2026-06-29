@@ -428,7 +428,7 @@ void FillBlobsInfoToRead(
 {
     for (auto& kv: args.AffectedBlobs) {
         if (state.GetCleanupQueue().HasBlob(kv.first)) {
-            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
+            kv.second.BlobAlreadyInCleanupQueue = true;
             continue;
         }
 
@@ -436,6 +436,11 @@ void FillBlobsInfoToRead(
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             blobsToReadBlockMasks.emplace(kv.first);
+        } else {
+            // The blob is fully available for range compaction and will be
+            // overwritten during compaction, so we can skip reading its block
+            // mask and use a full mask instead.
+            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
         }
     }
 

@@ -592,6 +592,13 @@ private:
     void ProcessAffectedBlobs(TPartitionDatabase& db)
     {
         for (const auto& kv: Args.AffectedBlobs) {
+            STORAGE_VERIFY_C(
+                kv.second.BlockMask.Defined(),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "unknown block mask for blob "
+                    << MakeBlobId(TabletId, kv.first));
+
             const auto& blockMask = kv.second.BlockMask.GetRef();
             db.WriteBlockMask(kv.first, blockMask);
 

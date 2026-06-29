@@ -94,7 +94,6 @@ private:
     const TString DiskId;
     const TActorId Tablet;
     const ui32 BlockSize;
-    const ui32 MaxBlocksInBlob;
     const ui32 MaxAffectedBlocksPerCompaction;
     const bool ForceChecksumsCalculation;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -149,7 +148,6 @@ public:
         TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
-        ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
         bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -224,7 +222,6 @@ TCompactionActor::TCompactionActor(
         TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
-        ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
         bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -243,7 +240,6 @@ TCompactionActor::TCompactionActor(
     , DiskId(std::move(diskId))
     , Tablet(tablet)
     , BlockSize(blockSize)
-    , MaxBlocksInBlob(maxBlocksInBlob)
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
     , ForceChecksumsCalculation(forceChecksumsCalculation)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -703,21 +699,21 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         }
 
         for (auto& [blobId, blob]: rc.AffectedBlobs) {
-            if (auto* blockMask = blob.BlockMask.Get()) {
-                // could already be full
-                if (IsBlockMaskFull(*blockMask, MaxBlocksInBlob)) {
-                    continue;
-                }
-
-                // mask overwritten blocks
-                for (ui16 blobOffset: blob.Offsets) {
-                    blockMask->Set(blobOffset);
-                }
-            } else {
-                blob.BlockMask = GetFullBlockMask(MaxBlocksInBlob);
+            if (blob.BlobAlreadyInCleanupQueue) {
+                continue;
             }
 
+            STORAGE_VERIFY_C(
+                blob.BlockMask.Defined(),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "unknown block mask for blob " << MakeBlobId(TabletId, blobId));
+
             auto& blockMask = blob.BlockMask.GetRef();
+            // mask overwritten blocks
+            for (ui16 blobOffset: blob.Offsets) {
+                blockMask.Set(blobOffset);
+            }
 
             auto [blobIt, inserted] =
                 affectedBlobs.try_emplace(blobId, std::move(blob));
@@ -731,9 +727,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     affectedBlob.AffectedBlocks.end(),
                     blob.AffectedBlocks.begin(),
                     blob.AffectedBlocks.end());
-                if (affectedBlob.BlockMask) {
-                    affectedBlob.BlockMask.GetRef() |= blockMask;
-                }
+
+                affectedBlob.BlockMask.GetRef() |= blockMask;
             }
         }
 
@@ -2026,7 +2021,6 @@ void TPartitionActor::CompleteCompaction(
         PartitionConfig.GetDiskId(),
         SelfId(),
         State->GetBlockSize(),
-        State->GetMaxBlocksInBlob(),
         Config->GetMaxAffectedBlocksPerCompaction(),
         Config->GetComputeDigestForEveryBlockOnCompaction(),
         BlockDigestGenerator,

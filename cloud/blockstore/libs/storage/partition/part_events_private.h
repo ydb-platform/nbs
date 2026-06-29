@@ -147,7 +147,11 @@ struct TAffectedBlob
     TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
 
     TVector<ui16> Offsets;
+
     TMaybe<TBlockMask> BlockMask;
+
+    bool BlobAlreadyInCleanupQueue = false;
+
     TAffectedBlocks AffectedBlocks;
 
     // Filled only if a flag is set. BlobMeta is needed only to do some extra
