@@ -65,6 +65,8 @@ void TPartitionActor::WriteFreshBlocks(
             SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
         }
 
+        SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
+
         return;
     }
 
