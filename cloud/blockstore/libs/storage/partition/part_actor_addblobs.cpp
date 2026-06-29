@@ -593,12 +593,13 @@ private:
     {
         for (const auto& kv: Args.AffectedBlobs) {
             STORAGE_VERIFY_C(
-                std::holds_alternative<TBlockMask>(kv.second.BlockMask),
+                kv.second.BlockMask.Defined(),
                 TWellKnownEntityTypes::TABLET,
                 TabletId,
-                "block mask is not a TBlockMask blobId: "
+                "unknown block mask for blob "
                     << MakeBlobId(TabletId, kv.first));
-            const auto& blockMask = std::get<TBlockMask>(kv.second.BlockMask);
+
+            const auto& blockMask = kv.second.BlockMask.GetRef();
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
