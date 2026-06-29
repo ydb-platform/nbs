@@ -2342,7 +2342,7 @@ Y_UNIT_TEST_SUITE(TModel)
         StorageConfig.SetSSDMaxWriteIops(Max<ui32>());
         StorageConfig.SetMaxShardCount(254);
 
-        auto OldMaxWriteIops = ClientPerformanceProfile.GetMaxWriteIops();
+        auto oldMaxWriteIops = ClientPerformanceProfile.GetMaxWriteIops();
         ClientPerformanceProfile.ClearMaxWriteIops();
 
         KikimrConfig.SetBlocksCount(4_TB / 4_KB);
@@ -2358,7 +2358,7 @@ Y_UNIT_TEST_SUITE(TModel)
             128000,
             fs.MainFileSystemConfig.GetPerformanceProfileMaxWriteIops());
 
-        ClientPerformanceProfile.SetMaxWriteIops(OldMaxWriteIops);
+        ClientPerformanceProfile.SetMaxWriteIops(oldMaxWriteIops);
 
         KikimrConfig.SetBlocksCount(4_TB / 4_KB + 1);
         fs = SetupMultiShardFileStorePerformanceAndChannels(
@@ -2408,6 +2408,63 @@ Y_UNIT_TEST_SUITE(TModel)
         UNIT_ASSERT(!fs.MainFileSystemConfig.GetIsSystem());
         for (const auto& sc: fs.ShardConfigs) {
             UNIT_ASSERT(sc.GetIsSystem());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldCreateMinNumberOfShards, TConfigs)
+    {
+        using namespace ::NCloud::NProto;
+        KikimrConfig.SetBlockSize(4_KB);
+
+        // Disable media type override.
+        StorageConfig.SetAutomaticShardCreationEnabled(true);
+        StorageConfig.SetShardAllocationUnit(4_TB);
+        StorageConfig.SetStrictFileSystemSizeEnforcementEnabled(true);
+        StorageConfig.SetMinShardCount(20);
+        StorageConfig.SetMaxShardCount(254);
+
+        KikimrConfig.SetBlocksCount(1_TB / 4_KB);
+        auto fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile,
+            0);
+        UNIT_ASSERT_VALUES_EQUAL(20, fs.ShardConfigs.size());
+
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                KikimrConfig.GetBlocksCount(),
+                sc.GetBlocksCount());
+        }
+
+        KikimrConfig.SetBlocksCount(
+            StorageConfig.GetShardAllocationUnit() * 19 / 4_KB);
+        fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile,
+            0);
+        UNIT_ASSERT_VALUES_EQUAL(20, fs.ShardConfigs.size());
+
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                KikimrConfig.GetBlocksCount(),
+                sc.GetBlocksCount());
+        }
+
+        KikimrConfig.SetBlocksCount(
+            StorageConfig.GetShardAllocationUnit() * 21 / 4_KB);
+        fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile,
+            0);
+        UNIT_ASSERT_VALUES_EQUAL(21, fs.ShardConfigs.size());
+
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                KikimrConfig.GetBlocksCount(),
+                sc.GetBlocksCount());
         }
     }
 

@@ -250,8 +250,11 @@ void TIndexTabletActor::HandleCreateSession(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
+    // TODO(#6310): Replace with a proper check. We need to test whether
+    // filesystem create operation has completed, expected-shard-count
+    // heuristic is too fragile.
     const auto expectedShardCount =
-        CalculateExpectedShardCount(Config->GetMaxShardCount());
+        CalculateMinExpectedShardCount(Config->GetMaxShardCount());
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
     if (actualShardCount < expectedShardCount) {
         auto message = TStringBuilder() << "Shard count smaller than expected: "

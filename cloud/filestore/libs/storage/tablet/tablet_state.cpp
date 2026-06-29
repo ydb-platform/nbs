@@ -322,7 +322,7 @@ THandlesStats TIndexTabletState::GetHandlesStats() const
     return Impl->HandlesStats;
 }
 
-ui64 TIndexTabletState::CalculateExpectedShardCount(
+ui64 TIndexTabletState::CalculateMinExpectedShardCount(
     const ui32 maxShardCount) const
 {
     if (FileSystem.GetShardNo()) {
@@ -339,6 +339,7 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
             FileSystem.GetBlocksCount(),
             FileSystem.GetBlockSize(),
             FileSystem.GetShardAllocationUnit(),
+            0 /* minShardCount */,
             maxShardCount);
     }
 
