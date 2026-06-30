@@ -137,6 +137,14 @@ def _write_issue_junit(
             """))
 
 
+def _write_message_only_chunk_junit(report: Path, suite_name: str) -> None:
+    root = ET.Element("testsuites")
+    suite = ET.SubElement(root, "testsuite", {"name": suite_name})
+    case = ET.SubElement(suite, "testcase", {"name": "sole chunk chunk"})
+    ET.SubElement(case, "failure", {"message": "RecipeTearDownError"})
+    ET.ElementTree(root).write(report)
+
+
 def test_transform_adds_links_and_copies_logs(tmp_path: Path) -> None:
     ya_out = tmp_path / "ya-out"
     logs_file = ya_out / "suite-name" / "stdout.log"
@@ -307,6 +315,72 @@ def test_transform_does_not_guess_ambiguous_chunk_trace(
         f"**JUnit transform warning:** Unable to disambiguate chunk logs for {suite_name} [0/1]; leaving log links empty"
         in github_summary.read_text()
     )
+
+
+def test_transform_does_not_guess_chunk_trace_without_failure_text(
+    tmp_path: Path,
+) -> None:
+    suite_name = "cloud/filestore/tests/fmdtest/qemu-kikimr-nemesis-test"
+    ya_out = tmp_path / "ya-out"
+
+    for runner in ("py3test", "flake8"):
+        _write_chunk_trace(ya_out, suite_name, runner)
+        log_file = ya_out / suite_name / "test-results" / runner / "run_test.log"
+        log_file.write_text(f"{runner}-log")
+
+    report = tmp_path / "junit.xml"
+    _write_message_only_chunk_junit(report, suite_name)
+
+    output = tmp_path / "out.xml"
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(ya_out),
+            False,
+            "https://logs/",
+            str(tmp_path / "logs-out"),
+            0,
+            str(output),
+            "https://data",
+        )
+
+    parsed_case = ET.parse(output).getroot().find("./testsuite/testcase")
+    assert parsed_case is not None
+    assert parsed_case.find("properties") is None
+
+
+def test_transform_warning_does_not_corrupt_stdout_xml(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    suite_name = "cloud/filestore/tests/fmdtest/qemu-kikimr-nemesis-test"
+    ya_out = tmp_path / "ya-out"
+
+    for runner in ("py3test", "flake8"):
+        _write_chunk_trace(ya_out, suite_name, runner)
+        log_file = ya_out / suite_name / "test-results" / runner / "run_test.log"
+        log_file.write_text(f"{runner}-log")
+
+    report = tmp_path / "junit.xml"
+    _write_issue_junit(report, suite_name, include_py3test_paths=False)
+
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(ya_out),
+            False,
+            "https://logs/",
+            str(tmp_path / "logs-out"),
+            0,
+            None,
+            "https://data",
+        )
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith("<testsuites>")
+    assert "::warning title=JUnit transform::" in captured.err
+    ET.fromstring(captured.out)
 
 
 @pytest.mark.parametrize(

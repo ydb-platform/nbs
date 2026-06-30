@@ -7,8 +7,9 @@ import logging
 import os
 import re
 import shutil
+import sys
 import urllib.parse
-from typing import Any, Pattern, TextIO, TypeAlias
+from typing import Any, NamedTuple, Pattern, TextIO, TypeAlias
 from xml.etree import ElementTree as ET
 
 from ..helpers import setup_logger
@@ -17,11 +18,23 @@ from .mute_utils import mute_target, pattern_to_re
 
 LOGGER = logging.getLogger(__name__)
 
+# TODO: Replace with a named mute rule type in a follow-up cleanup.
 CompiledPatternPair: TypeAlias = tuple[Pattern[str], Pattern[str]]
-TraceKey: TypeAlias = tuple[str, str]
-ChunkTraceKey: TypeAlias = tuple[str, int, int]
+# TODO: Replace these broad trace aliases with typed structures in a follow-up
+# cleanup.
 TraceEvent: TypeAlias = dict[str, Any]
 LogMap: TypeAlias = dict[str, str]
+
+
+class SubtestTraceKey(NamedTuple):
+    test_class: str
+    subtest: str
+
+
+class ChunkTraceKey(NamedTuple):
+    suite: str
+    chunk_index: int
+    chunks_total: int
 
 
 def _escape_github_command(value: str) -> str:
@@ -30,7 +43,10 @@ def _escape_github_command(value: str) -> str:
 
 def emit_transform_warning(message: str) -> None:
     LOGGER.warning(message)
-    print(f"::warning title=JUnit transform::{_escape_github_command(message)}")
+    print(
+        f"::warning title=JUnit transform::{_escape_github_command(message)}",
+        file=sys.stderr,
+    )
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_path:
@@ -119,7 +135,7 @@ class YaMuteCheck:
 class YTestReportTrace:
     def __init__(self, out_root: str) -> None:
         self.out_root = out_root
-        self.traces: dict[TraceKey, TraceEvent] = {}
+        self.traces: dict[SubtestTraceKey, TraceEvent] = {}
         self.chunk_traces: dict[ChunkTraceKey, list[TraceEvent]] = {}
 
     def load(self, subdir: str) -> None:
@@ -148,7 +164,7 @@ class YTestReportTrace:
                         class_event = event["class"].replace("::", ".")
                         subtest = event["subtest"]
                         LOGGER.info("loaded (%s, %s)", class_event, subtest)
-                        self.traces[(class_event, subtest)] = event
+                        self.traces[SubtestTraceKey(class_event, subtest)] = event
                     elif event["name"] == "chunk-event":
                         event = event["value"]
                         event["test_results_folder"] = folder
@@ -158,11 +174,11 @@ class YTestReportTrace:
                             "loaded (%s, %s, %s)", subdir, chunk_idx, chunk_total
                         )
                         self.chunk_traces.setdefault(
-                            (subdir, chunk_idx, chunk_total), []
+                            ChunkTraceKey(subdir, chunk_idx, chunk_total), []
                         ).append(event)
 
     def get_logs(self, class_event: str, name: str) -> LogMap:
-        trace = self.traces.get((class_event, name))
+        trace = self.traces.get(SubtestTraceKey(class_event, name))
         if not trace:
             return {}
 
@@ -176,13 +192,26 @@ class YTestReportTrace:
         return result
 
     def select_chunk_trace(
-        self, suite: str, idx: int, total: int, failure_text: str | None = None
+        self,
+        suite: str,
+        idx: int,
+        total: int,
+        failure_text: str | None = None,
+        warn_on_ambiguity: bool = True,
     ) -> TraceEvent | None:
-        traces = self.chunk_traces.get((suite, idx, total), [])
+        traces = self.chunk_traces.get(ChunkTraceKey(suite, idx, total), [])
         if not traces:
             return None
-        if len(traces) == 1 or not failure_text:
+        if len(traces) == 1:
             return traces[0]
+        if not failure_text:
+            if warn_on_ambiguity:
+                emit_transform_warning(
+                    "Unable to disambiguate chunk logs for "
+                    f"{suite} [{idx}/{total}]: failure text is empty; "
+                    "leaving log links empty"
+                )
+            return None
 
         for trace in traces:
             folder = trace.get("test_results_folder")
@@ -195,10 +224,11 @@ class YTestReportTrace:
                 if path.replace("$(BUILD_ROOT)", self.out_root) in failure_text:
                     return trace
 
-        emit_transform_warning(
-            "Unable to disambiguate chunk logs for "
-            f"{suite} [{idx}/{total}]; leaving log links empty"
-        )
+        if warn_on_ambiguity:
+            emit_transform_warning(
+                "Unable to disambiguate chunk logs for "
+                f"{suite} [{idx}/{total}]; leaving log links empty"
+            )
         return None
 
     def get_logs_chunks(
@@ -219,7 +249,9 @@ class YTestReportTrace:
 
     def get_log_dir(self, class_event: str, name: str) -> str | None:
         logs_dir = (
-            self.traces.get((class_event, name), {}).get("logs", {}).get("logsdir")
+            self.traces.get(SubtestTraceKey(class_event, name), {})
+            .get("logs", {})
+            .get("logsdir")
         )
 
         if logs_dir is None:
@@ -228,9 +260,20 @@ class YTestReportTrace:
         return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
 
     def get_log_dir_chunk(
-        self, suite: str, idx: int, total: int, failure_text: str | None = None
+        self,
+        suite: str,
+        idx: int,
+        total: int,
+        failure_text: str | None = None,
+        warn_on_ambiguity: bool = True,
     ) -> str | None:
-        trace = self.select_chunk_trace(suite, idx, total, failure_text)
+        trace = self.select_chunk_trace(
+            suite,
+            idx,
+            total,
+            failure_text,
+            warn_on_ambiguity=warn_on_ambiguity,
+        )
         logs_dir = trace.get("logs", {}).get("logsdir") if trace else None
 
         if logs_dir is None:
@@ -356,6 +399,7 @@ def transform(
                     chunk_idx,
                     chunks_total,
                     failure_text,
+                    warn_on_ambiguity=False,
                 )
             else:
                 continue
