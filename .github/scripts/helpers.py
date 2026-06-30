@@ -30,7 +30,7 @@ COMPONENTS: List[Tuple[str, str, str]] = [
 SAN_COMPONENTS = {"blockstore", "filestore", "storage"}
 SAN_TYPES = ("asan", "tsan", "msan", "ubsan")
 
-TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
 TEST_TYPE_SAN = "unittest,clang_tidy,gtest,py3test,py2test,pytest"
 
 SAN_PRESET = {
