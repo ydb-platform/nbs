@@ -910,11 +910,31 @@ void TVolumeActor::ForwardRequest(
             NProto::TError error;
 
             if (IsForwardedEvent(*ev)) {
+                const auto* oldPipe = clientInfo.ActivePipe;
                 error = clientInfo.CheckPipeRequest(
                     ev->Recipient,
                     RequiresReadWriteAccess<TMethod>,
                     TMethod::Name,
                     State->GetDiskId());
+                const auto* newPipe = clientInfo.ActivePipe;
+                if (oldPipe && newPipe && oldPipe != newPipe) {
+                    LOG_INFO(
+                        ctx,
+                        TBlockStoreComponents::VOLUME,
+                        "%s Active pipe changed from %s to %s",
+                        LogTitle.GetWithTime().c_str(),
+                        ToString(*oldPipe).c_str(),
+                        ToString(newPipe).c_str());
+                }
+                if (HasError(error)) {
+                    LOG_INFO(
+                        ctx,
+                        TBlockStoreComponents::VOLUME,
+                        "%s CheckPipeRequest failed: %s for serverId %s",
+                        LogTitle.GetWithTime().c_str(),
+                        error.GetMessage().c_str(),
+                        ToString(ev->Recipient).c_str());
+                }
             } else {
                 error = clientInfo.CheckLocalRequest(
                     ev->Sender.NodeId(),

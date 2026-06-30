@@ -66,7 +66,7 @@ public:
 
     using TPipes = THashMap<NActors::TActorId, TPipeInfo>;
 
-private:
+public:
     NProto::TVolumeClientInfo VolumeClientInfo;
     TPipes Pipes;
     TPipeInfo* ActivePipe = nullptr;
