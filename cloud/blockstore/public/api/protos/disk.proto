@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/blockstore/public/api/protos/local_ssd.proto";
 import "cloud/storage/core/protos/error.proto";
 
 package NCloud.NBlockStore.NProto;
@@ -217,6 +218,12 @@ message TDeviceInfo
 
     // Decomissioned space in bytes.
     uint64 DeviceDecommissionedSpaceInBytes = 9;
+
+    // Storage pool name.
+    string StoragePoolName = 10;
+
+    // Storage pool kind.
+    EStoragePoolKind StoragePoolKind = 11;
 }
 
 message TAgentInfo {
@@ -246,6 +253,10 @@ message TQueryAgentsInfoRequest
         // Filter out agents whose states are not in this list.
         // An empty list means that there is no filter.
         repeated EAgentState States = 1;
+
+        // Filter by agent ids.
+        // An empty list means that there is no filter.
+        repeated string AgentIds = 2;
     }
 
     // Optional request headers.

@@ -8223,11 +8223,34 @@ NProto::EVolumeIOMode TDiskRegistryState::GetIoMode(
 TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo(
     const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter) const
 {
+    THashSet<TString> agentIds(
+        filter.GetAgentIds().begin(),
+        filter.GetAgentIds().end());
+    THashSet<int> states(
+        filter.GetStates().begin(),
+        filter.GetStates().end());
+
     auto shouldFilterAgent = [&](const NProto::TAgentConfig& agent)
     {
-        return !filter.GetStates().empty() &&
-               std::ranges::find(filter.GetStates(), agent.GetState()) ==
-                   filter.GetStates().end();
+        if (!agentIds.empty() && !agentIds.contains(agent.GetAgentId())) {
+            return true;
+        }
+
+        return !states.empty() && !states.contains(agent.GetState());
+    };
+
+    auto toStoragePoolKind = [](NProto::EDevicePoolKind kind)
+    {
+        switch (kind) {
+            case NProto::DEVICE_POOL_KIND_LOCAL:
+                return NProto::STORAGE_POOL_KIND_LOCAL;
+            case NProto::DEVICE_POOL_KIND_GLOBAL:
+                return NProto::STORAGE_POOL_KIND_GLOBAL;
+            case NProto::DEVICE_POOL_KIND_DEFAULT:
+                return NProto::STORAGE_POOL_KIND_DEFAULT;
+            default:
+                return NProto::STORAGE_POOL_KIND_DEFAULT;
+        }
     };
 
     TVector<NProto::TAgentInfo> ret;
@@ -8249,6 +8272,9 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo(
             if (inserted) {
                 deviceInfo.SetDeviceName(device.GetDeviceName());
                 deviceInfo.SetDeviceSerialNumber(device.GetSerialNumber());
+                deviceInfo.SetStoragePoolName(device.GetPoolName());
+                deviceInfo.SetStoragePoolKind(
+                    toStoragePoolKind(device.GetPoolKind()));
             }
 
             deviceInfo.SetDeviceTotalSpaceInBytes(
