@@ -62,6 +62,7 @@ public:
         EPipeState State = EPipeState::WAIT_START;
         ui32 SenderNodeId = 0;
         bool IsLocal = false;
+        NActors::TActorId ServerId;
     };
 
     using TPipes = THashMap<NActors::TActorId, TPipeInfo>;

@@ -921,10 +921,12 @@ void TVolumeActor::ForwardRequest(
                     LOG_INFO(
                         ctx,
                         TBlockStoreComponents::VOLUME,
-                        "%s Active pipe changed from %s to %s",
+                        "%s Active pipe changed from %s (%u) to %s (%u)",
                         LogTitle.GetWithTime().c_str(),
-                        ToString(*oldPipe).c_str(),
-                        ToString(newPipe).c_str());
+                        oldPipe->ServerId.ToString().c_str(),
+                        oldPipe->SenderNodeId,
+                        newPipe->ServerId.ToString().c_str(),
+                        newPipe->SenderNodeId);
                 }
                 if (HasError(error)) {
                     LOG_INFO(
