@@ -18,9 +18,26 @@ from .mute_utils import mute_target, pattern_to_re
 LOGGER = logging.getLogger(__name__)
 
 CompiledPatternPair: TypeAlias = tuple[Pattern[str], Pattern[str]]
-TraceKey: TypeAlias = tuple[str, str] | tuple[str, int, int]
+TraceKey: TypeAlias = tuple[str, str]
+ChunkTraceKey: TypeAlias = tuple[str, int, int]
 TraceEvent: TypeAlias = dict[str, Any]
 LogMap: TypeAlias = dict[str, str]
+
+
+def _escape_github_command(value: str) -> str:
+    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def emit_transform_warning(message: str) -> None:
+    LOGGER.warning(message)
+    print(f"::warning title=JUnit transform::{_escape_github_command(message)}")
+
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+
+    with open(summary_path, "a") as fp:
+        fp.write(f"\n- **JUnit transform warning:** {message}\n")
 
 
 class YaMuteCheck:
@@ -103,6 +120,7 @@ class YTestReportTrace:
     def __init__(self, out_root: str) -> None:
         self.out_root = out_root
         self.traces: dict[TraceKey, TraceEvent] = {}
+        self.chunk_traces: dict[ChunkTraceKey, list[TraceEvent]] = {}
 
     def load(self, subdir: str) -> None:
         test_results_dir = os.path.join(self.out_root, f"{subdir}/test-results/")
@@ -133,12 +151,15 @@ class YTestReportTrace:
                         self.traces[(class_event, subtest)] = event
                     elif event["name"] == "chunk-event":
                         event = event["value"]
+                        event["test_results_folder"] = folder
                         chunk_idx = event["chunk_index"]
                         chunk_total = event["nchunks"]
                         LOGGER.info(
                             "loaded (%s, %s, %s)", subdir, chunk_idx, chunk_total
                         )
-                        self.traces[(subdir, chunk_idx, chunk_total)] = event
+                        self.chunk_traces.setdefault(
+                            (subdir, chunk_idx, chunk_total), []
+                        ).append(event)
 
     def get_logs(self, class_event: str, name: str) -> LogMap:
         trace = self.traces.get((class_event, name))
@@ -154,8 +175,36 @@ class YTestReportTrace:
 
         return result
 
-    def get_logs_chunks(self, suite: str, idx: int, total: int) -> LogMap:
-        trace = self.traces.get((suite, idx, total))
+    def select_chunk_trace(
+        self, suite: str, idx: int, total: int, failure_text: str | None = None
+    ) -> TraceEvent | None:
+        traces = self.chunk_traces.get((suite, idx, total), [])
+        if not traces:
+            return None
+        if len(traces) == 1 or not failure_text:
+            return traces[0]
+
+        for trace in traces:
+            folder = trace.get("test_results_folder")
+            if folder and f"test-results/{folder}" in failure_text:
+                return trace
+
+        for trace in traces:
+            logs = trace.get("logs", {})
+            for path in logs.values():
+                if path.replace("$(BUILD_ROOT)", self.out_root) in failure_text:
+                    return trace
+
+        emit_transform_warning(
+            "Unable to disambiguate chunk logs for "
+            f"{suite} [{idx}/{total}]; leaving log links empty"
+        )
+        return None
+
+    def get_logs_chunks(
+        self, suite: str, idx: int, total: int, failure_text: str | None = None
+    ) -> LogMap:
+        trace = self.select_chunk_trace(suite, idx, total, failure_text)
         if not trace:
             return {}
 
@@ -178,10 +227,11 @@ class YTestReportTrace:
 
         return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
 
-    def get_log_dir_chunk(self, suite: str, idx: int, total: int) -> str | None:
-        logs_dir = (
-            self.traces.get((suite, idx, total), {}).get("logs", {}).get("logsdir")
-        )
+    def get_log_dir_chunk(
+        self, suite: str, idx: int, total: int, failure_text: str | None = None
+    ) -> str | None:
+        trace = self.select_chunk_trace(suite, idx, total, failure_text)
+        logs_dir = trace.get("logs", {}).get("logsdir") if trace else None
 
         if logs_dir is None:
             return None
@@ -279,6 +329,10 @@ def transform(
                 logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
                 logs_directory = traces.get_log_dir(test_cls, test_method)
             elif "chunk" in test_name:
+                failure = case.find("failure")
+                if failure is None:
+                    failure = case.find("error")
+                failure_text = failure.text if failure is not None else None
                 if "sole" in test_name:
                     chunk_idx = 0
                     chunks_total = 1
@@ -293,12 +347,15 @@ def transform(
                     chunk_idx = int(match.group(1))
                     chunks_total = int(match.group(2))
                 logs = filter_empty_logs(
-                    traces.get_logs_chunks(suite_name, chunk_idx, chunks_total)
+                    traces.get_logs_chunks(
+                        suite_name, chunk_idx, chunks_total, failure_text
+                    )
                 )
                 logs_directory = traces.get_log_dir_chunk(
                     suite_name,
                     chunk_idx,
                     chunks_total,
+                    failure_text,
                 )
             else:
                 continue
