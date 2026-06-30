@@ -15,8 +15,8 @@ class Case(object):
 
 TESTS = [
     Case(
-        "datashard-like-read-write",
-        "cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test/datashard-like-read-write.txt",
+        "datashard-like-read-write-with-page-size",
+        "cloud/filestore/tests/loadtest/service-kikimr-datashard-like-with-page-size-test/datashard-like-read-write-with-page-size.txt"
     ),
 ]
 
