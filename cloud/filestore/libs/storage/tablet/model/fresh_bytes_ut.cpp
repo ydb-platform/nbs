@@ -191,6 +191,128 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             visitedDeletionMarkers.size()));
     }
 
+    Y_UNIT_TEST(ShouldApplyDeletionMarkersToPreviousChunks)
+    {
+        TFreshBytes freshBytes(TDefaultAllocator::Instance());
+
+        freshBytes.AddBytes(1, 100, "aAa", 10);
+        freshBytes.AddBytes(1, 101, "bBbB", 11);
+        freshBytes.AddBytes(1, 50, "cCc", 12);
+        freshBytes.AddBytes(1, 50, "dDd", 13);
+        freshBytes.AddBytes(2, 100, "eEeEe", 14);
+        freshBytes.AddBytes(2, 70, "12345678", 15);
+        freshBytes.AddDeletionMarker(2, 100, 3, 16);
+
+        TVector<TBytes> bytes;
+        TVector<TBytes> deletionMarkers;
+        auto info = freshBytes.StartCleanup(17, &bytes, &deletionMarkers);
+
+        COMPARE_BYTES(
+            TVector<TBytes>({
+                {1, 100, 3, 10, InvalidCommitId},
+                {1, 101, 4, 11, InvalidCommitId},
+                {1, 50, 3, 12, InvalidCommitId},
+                {1, 50, 3, 13, InvalidCommitId},
+                {2, 100, 5, 14, InvalidCommitId},
+                {2, 70, 8, 15, InvalidCommitId},
+            }), bytes);
+        COMPARE_BYTES(
+            TVector<TBytes>({
+                {2, 100, 3, 16, InvalidCommitId},
+            }), deletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(17, info.ClosingCommitId);
+
+        freshBytes.AddBytes(1, 106, "qwertyuiop", 18);
+        freshBytes.AddDeletionMarker(1, 102, 9, 19);
+
+        {
+            TFreshBytesVisitor visitor;
+            freshBytes.FindBytes(visitor, 1, TByteRange(0, 1000, 4_KB), 19);
+
+            COMPARE_BYTES(
+                TVector<TBytes>({
+                    {1, 50, 3, 13, InvalidCommitId},
+                    {1, 100, 1, 10, InvalidCommitId},
+                    //{1, 101, 1, 11, InvalidCommitId},
+                    {1, 101, 4, 11, InvalidCommitId}, // XXX
+                    {1, 111, 5, 18, InvalidCommitId},
+                }), visitor.Bytes);
+
+            //UNIT_ASSERT_VALUES_EQUAL("dDd|a|b|yuiop", visitor.Data);
+            UNIT_ASSERT_VALUES_EQUAL("dDd|a|bBbB|yuiop", visitor.Data); // XXX
+        }
+
+        {
+            TFreshBytesVisitor visitor;
+            freshBytes.FindBytes(visitor, 2, TByteRange(0, 1000, 4_KB), 19);
+
+            COMPARE_BYTES(
+                TVector<TBytes>({
+                    {2, 70, 8, 15, InvalidCommitId},
+                    {2, 103, 2, 14, InvalidCommitId},
+                }), visitor.Bytes);
+
+            UNIT_ASSERT_VALUES_EQUAL("12345678|Ee", visitor.Data);
+        }
+
+        TVector<TBytes> visitedBytes;
+        TVector<TBytes> visitedDeletionMarkers;
+        auto visitTop = [&] () {
+            visitedBytes.clear();
+            visitedDeletionMarkers.clear();
+            constexpr ui64 itemLimit = 100;
+            freshBytes.VisitTop(
+                itemLimit,
+                [&] (const TBytes& bytes, bool isDel) {
+                    if (isDel) {
+                        visitedDeletionMarkers.push_back(bytes);
+                    } else {
+                        visitedBytes.push_back(bytes);
+                    }
+                }
+            );
+        };
+
+        visitTop();
+        COMPARE_BYTES(bytes, visitedBytes);
+        COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
+
+        UNIT_ASSERT(freshBytes.FinishCleanup(
+            info.ChunkId,
+            visitedBytes.size(),
+            visitedDeletionMarkers.size()));
+
+        {
+            TFreshBytesVisitor visitor;
+            freshBytes.FindBytes(visitor, 1, TByteRange(0, 1000, 4_KB), 19);
+
+            COMPARE_BYTES(
+                TVector<TBytes>({
+                    {1, 111, 5, 18, InvalidCommitId},
+                }), visitor.Bytes);
+
+            UNIT_ASSERT_VALUES_EQUAL("yuiop", visitor.Data);
+        }
+
+        {
+            TFreshBytesVisitor visitor;
+            freshBytes.FindBytes(visitor, 2, TByteRange(0, 1000, 4_KB), 19);
+
+            COMPARE_BYTES(
+                TVector<TBytes>({
+                }), visitor.Bytes);
+
+            UNIT_ASSERT_VALUES_EQUAL("", visitor.Data);
+        }
+
+        bytes.clear();
+        deletionMarkers.clear();
+        info = freshBytes.StartCleanup(20, &bytes, &deletionMarkers);
+        visitTop();
+        COMPARE_BYTES(bytes, visitedBytes);
+        COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
+    }
+
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)
     {
         TFreshBytes freshBytes(TDefaultAllocator::Instance());

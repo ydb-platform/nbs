@@ -699,8 +699,6 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     };
 
-
-
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 
     struct TSrcBlobInfo
