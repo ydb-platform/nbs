@@ -2585,6 +2585,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             E_REJECTED,
             createHandleResponse->GetError().GetCode(),
             createHandleResponse->GetError().GetMessage());
+
+        // Check that we don't have a dangling link.
+        const auto getNodeRefResponse =
+            tablet.SendAndRecvUnsafeGetNodeRef(RootNodeId, fileName);
+
+        UNIT_ASSERT_EQUAL_C(
+            E_FS_NOENT,
+            getNodeRefResponse->GetError().GetCode(),
+            getNodeRefResponse->GetErrorReason());
     }
 }
 

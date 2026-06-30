@@ -155,22 +155,24 @@ void TIndexTabletActor::HandleCreateHandle(
     // because an UnlinkNode transaction may have already deleted the NodeRef
     // in the leader, while still holding the lock till a NodeRef is deleted
     // in the shard.
+    bool isNodeRefLocked = false;
     if (msg->Record.GetName() &&
-        HasFlag(
-            msg->Record.GetFlags(),
-            NProto::TCreateHandleRequest::E_CREATE) &&
-        !TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()}))
+        HasFlag(msg->Record.GetFlags(), NProto::TCreateHandleRequest::E_CREATE))
     {
-        auto error = MakeError(
-            E_REJECTED,
-            TStringBuilder()
-                << "node ref " << msg->Record.GetNodeId() << " "
-                << msg->Record.GetName() << " is locked for CreateHandle");
+        isNodeRefLocked =
+            TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
+        if (!isNodeRefLocked) {
+            auto error = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "node ref " << msg->Record.GetNodeId() << " "
+                    << msg->Record.GetName() << " is locked for CreateHandle");
 
-        auto response = std::make_unique<TResponse>(error);
-        NCloud::Reply(ctx, *ev, std::move(response));
-        onReply(error);
-        return;
+            auto response = std::make_unique<TResponse>(error);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(error);
+            return;
+        }
     }
 
     auto requestInfo = CreateRequestInfo(
@@ -185,7 +187,8 @@ void TIndexTabletActor::HandleCreateHandle(
         ctx,
         std::move(requestInfo),
         std::move(msg->Record),
-        std::move(profileLogRequest));
+        std::move(profileLogRequest),
+        isNodeRefLocked);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -585,7 +588,9 @@ void TIndexTabletActor::CompleteCreateHandle(
     // If the node is to be created in the shard the NodeRef will be unlocked in
     // TIndexTabletActor::HandleNodeCreatedInShard, otherwise it should be
     // unlocked here.
-    UnlockNodeRef({args.NodeId, args.Name});
+    if (args.IsNodeRefLocked) {
+        UnlockNodeRef({args.NodeId, args.Name});
+    }
 
     auto response =
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
