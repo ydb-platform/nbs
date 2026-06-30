@@ -9,6 +9,7 @@ RECURSE(
     diagnostics
     endpoints
     features
+    file_backed_containers
     grpc
     hive_proxy
     http

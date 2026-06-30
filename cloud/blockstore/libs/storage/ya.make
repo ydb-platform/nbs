@@ -22,4 +22,5 @@ RECURSE(
     volume
     volume_balancer
     volume_proxy
+    volume_throttling_manager
 )
