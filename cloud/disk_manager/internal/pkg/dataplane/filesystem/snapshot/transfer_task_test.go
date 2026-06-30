@@ -334,7 +334,7 @@ func (f *fixture) startSnapshotCollectionTaskRunner(
 				snapshotCollectionTimeout:       collectionTimeout,
 				snapshotCollectionInflightLimit: maxInflight,
 			}
-		},д
+		},
 	)
 	require.NoError(t, err)
 
