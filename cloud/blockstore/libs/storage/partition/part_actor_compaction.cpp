@@ -358,7 +358,17 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
 
 void TCompactionActor::ReadBlobFinished(const TActorContext& ctx)
 {
-    if (ReadBlobInfosState != EReadBlobInfosState::Done && BlobsToReadBlobMetas)
+    bool needToWaitToVerifyChecksums = false;
+
+    for (const auto& batch: BatchRequests) {
+        if (batch.RangeCompactionInfo->ChecksumFixups) {
+            needToWaitToVerifyChecksums = true;
+            break;
+        }
+    }
+
+    if (ReadBlobInfosState != EReadBlobInfosState::Done &&
+        needToWaitToVerifyChecksums)
     {
         STORAGE_VERIFY_C(
             ReadBlobInfosState == EReadBlobInfosState::Initial,
