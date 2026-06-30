@@ -1,6 +1,7 @@
 RECURSE_FOR_TESTS(
     service-kikimr-auth-test
     service-kikimr-datashard-like-test
+    service-kikimr-datashard-like-with-page-size-test
     service-kikimr-emergency-test
     service-kikimr-memshard-test
     service-kikimr-nemesis-test
