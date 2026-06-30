@@ -34,6 +34,12 @@ namespace {
 struct TFixture
     : public NUnitTest::TBaseFixture
 {
+    struct TSetUpRuntimeOptions
+    {
+        bool NonReplicatedDontSuspendDevices = true;
+        ui32 MaxInFlightCmsRequests = 0;
+    };
+
     const TVector<NProto::TAgentConfig> Agents {
         CreateAgentConfig("agent-1", {
             Device("dev-1", "uuid-1"),
@@ -65,7 +71,7 @@ struct TFixture
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {}
 
-    void SetUpRuntime(bool nonReplicatedDontSuspendDevices = true)
+    void SetUpRuntime(const TSetUpRuntimeOptions& options)
     {
         Runtime = TTestRuntimeBuilder()
             .WithAgents(Agents)
@@ -73,7 +79,8 @@ struct TFixture
                 auto config = CreateDefaultStorageConfig();
                 config.SetDiskRegistryCountersHost("test");
                 config.SetNonReplicatedDontSuspendDevices(
-                    nonReplicatedDontSuspendDevices);
+                    options.NonReplicatedDontSuspendDevices);
+                config.SetMaxInFlightCmsRequests(options.MaxInFlightCmsRequests);
 
                 return config;
             }())
@@ -178,7 +185,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
     Y_UNIT_TEST_F(ShouldSuspendDevices, TFixture)
     {
-        SetUpRuntime();
+        SetUpRuntime({});
 
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
@@ -276,7 +283,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldSuspendDevicesOnCMSRequest, TFixture)
     {
-        SetUpRuntime();
+        SetUpRuntime({});
 
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
@@ -435,7 +442,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldRejectResumeWhenAgentIsNotOnline, TFixture)
     {
-        SetUpRuntime();
+        SetUpRuntime({});
 
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
@@ -459,11 +466,58 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST_F(
+        ShouldNotReportResumeCriticalEventForRetriableError,
+        TFixture)
+    {
+        SetUpRuntime(
+            TSetUpRuntimeOptions{
+                .NonReplicatedDontSuspendDevices = true,
+                .MaxInFlightCmsRequests = 1});
+
+        DiskRegistry->WaitReady();
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, Agents)
+            | WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
+
+        RegisterAndWaitForAgents(*Runtime, Agents);
+
+        auto resumeFailed = CriticalEvents->FindCounter(
+            "AppCriticalEvents/DiskRegistryResumeDeviceFailed");
+        UNIT_ASSERT(resumeFailed);
+        UNIT_ASSERT_VALUES_EQUAL(0, resumeFailed->Val());
+
+        const auto& agentId = Agents[2].GetAgentId();
+        const auto& path = Agents[2].GetDevices()[0].GetDeviceName();
+
+        constexpr int RequestCount = 128;
+        for (int i = 0; i < RequestCount; ++i) {
+            DiskRegistry->SendResumeDeviceRequest(agentId, path);
+        }
+
+        int rejectedCount = 0;
+        for (int i = 0; i < RequestCount; ++i) {
+            auto response = DiskRegistry->RecvResumeDeviceResponse();
+            const auto code = response->GetStatus();
+
+            if (code == E_REJECTED) {
+                ++rejectedCount;
+                continue;
+            }
+
+            UNIT_ASSERT_C(SUCCEEDED(code), response->GetErrorReason());
+        }
+
+        UNIT_ASSERT_C(
+            rejectedCount > 0,
+            "Expected at least one E_REJECTED due to in-flight CMS limit");
+        UNIT_ASSERT_VALUES_EQUAL(0, resumeFailed->Val());
+    }
+
     Y_UNIT_TEST_F(ResumeDeviceShouldAddDevice, TFixture)
     {
         SetUpRuntime(
-            false   // nonReplicatedDontSuspendDevices
-        );
+            TSetUpRuntimeOptions{.NonReplicatedDontSuspendDevices = false});
 
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
@@ -538,8 +592,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
     Y_UNIT_TEST_F(ShouldSuspendLocalDevices, TFixture)
     {
         SetUpRuntime(
-            false   // nonReplicatedDontSuspendDevices
-        );
+            TSetUpRuntimeOptions{.NonReplicatedDontSuspendDevices = false});
 
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);

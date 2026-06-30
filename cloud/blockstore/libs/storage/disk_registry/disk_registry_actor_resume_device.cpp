@@ -88,9 +88,12 @@ void TResumeDeviceActor::HandleResponse(
 
     auto response = std::make_unique<TEvService::TEvResumeDeviceResponse>();
     *response->Record.MutableError() = msg->GetError();
-    if (HasError(msg->GetError()) && !Request.GetDryRun()) {
+    // Retriable errors can be caused by MaxInFlightCmsRequests limit.
+    if (!Request.GetDryRun() && HasError(msg->GetError()) &&
+        GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable)
+    {
         ReportDiskRegistryResumeDeviceFailed(
-            msg->GetErrorReason(),
+            FormatError(msg->GetError()),
             {{"AgentId", Request.GetAgentId()}, {"Path", Request.GetPath()}});
     }
 
