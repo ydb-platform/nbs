@@ -807,8 +807,6 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("PartitionBudgetManager initialized")
 
     if (Configs->LocalNVMeConfig->GetDevicesSourceUri()) {
-        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
-
         LocalNVMeDeviceProvider =
             ServerModuleFactories->LocalNVMeDeviceProviderFactory(
                 logging,
@@ -995,7 +993,7 @@ void TBootstrapYdb::SetupCellManager()
             GetComponentName(
                 TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
             Scheduler,
-            CreateLongRunningTaskExecutor("CertRefresh"),
+            LongRunningTaskExecutor,
             Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "server"),

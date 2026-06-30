@@ -226,6 +226,7 @@ void TBootstrapBase::Init()
     BackgroundScheduler = CreateBackgroundScheduler(
         Scheduler,
         BackgroundThreadPool);
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
 
     Executor = TExecutor::Create("SVC");
 
@@ -328,7 +329,7 @@ void TBootstrapBase::Init()
         Logging,
         "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
         Scheduler,
-        CreateLongRunningTaskExecutor("CertRefresh"),
+        LongRunningTaskExecutor,
         serverGroup,
         Configs->ServerConfig->GetRootCertsFile(),
         std::move(certPathList),
