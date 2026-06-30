@@ -187,8 +187,6 @@ TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
 }
 
 bool PrepareCleanupTransaction(
-    const bool useRecreatedBlobMeta,
-    const bool verifyRecreatedBlobMetasOnCleanup,
     const ui64 tabletId,
     const TString& diskId,
     TPartitionDatabase& db,
@@ -205,7 +203,7 @@ bool PrepareCleanupTransaction(
         // no need to read blob meta for blobs with already known blocks
         const bool hasValidMetaInCleanupQueue =
             item.BlobMeta.HasMixedBlocks() || item.BlobMeta.HasMergedBlocks();
-        if (hasValidMetaInCleanupQueue && useRecreatedBlobMeta) {
+        if (hasValidMetaInCleanupQueue && args.UseRecreatedBlobMeta) {
             blobMetas[item.BlobId] = item.BlobMeta;
             continue;
         }
@@ -220,8 +218,8 @@ bool PrepareCleanupTransaction(
             auto& meta = blobMetas[item.BlobId];
             meta = std::move(blobMeta.GetRef());
 
-            const bool needToVerify =
-                verifyRecreatedBlobMetasOnCleanup && hasValidMetaInCleanupQueue;
+            const bool needToVerify = args.VerifyRecreatedBlobMetasOnCleanup &&
+                                      hasValidMetaInCleanupQueue;
             if (!needToVerify) {
                 continue;
             }
@@ -279,7 +277,6 @@ void ExecuteCleanupTransaction(
     const NActors::TActorSystem* actorSystem,
     const TLogTitle& logTitle,
     const ui64 tabletId,
-    const bool useRecreatedBlobMeta,
     TPartitionDatabase& db,
     TTxPartition::TCleanup& args,
     TPartitionState& state)
@@ -316,7 +313,7 @@ void ExecuteCleanupTransaction(
             ++mixedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {
                 ui64 blockCountInBlob = 0;
-                if (useRecreatedBlobMeta) {
+                if (args.UseRecreatedBlobMeta) {
                     STORAGE_VERIFY_C(
                         item.BlobId.BlobSize() % state.GetBlockSize() == 0,
                         TWellKnownEntityTypes::TABLET,

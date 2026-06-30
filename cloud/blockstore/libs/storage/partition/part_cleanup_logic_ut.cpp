@@ -254,11 +254,15 @@ bool HasGarbageBlob(TPartitionDatabase& db, const TPartialBlobId& blobId)
 
 TTxPartition::TCleanup MakeCleanupArgs(
     const TVector<TCleanupQueueItem>& cleanupQueue,
-    ui64 cleanupCommitId)
+    ui64 cleanupCommitId,
+    bool useRecreatedBlobMeta,
+    bool verifyRecreatedBlobMetasOnCleanup)
 {
     return TTxPartition::TCleanup(
         MakeIntrusive<TRequestInfo>(),
         cleanupCommitId,
+        useRecreatedBlobMeta,
+        verifyRecreatedBlobMetasOnCleanup,
         cleanupQueue);
 }
 
@@ -266,16 +270,12 @@ void RunPrepareAndExecute(
     TTestExecutor& executor,
     TTestEnv& env,
     TPartitionState& state,
-    TTxPartition::TCleanup& args,
-    bool verifyRecreatedBlobMetasOnCleanup,
-    bool useRecreatedBlobMeta)
+    TTxPartition::TCleanup& args)
 {
     executor.ReadTx(
         [&](TPartitionDatabase db)
         {
             const bool ready = PrepareCleanupTransaction(
-                useRecreatedBlobMeta,
-                verifyRecreatedBlobMetasOnCleanup,
                 TTestExecutor::TabletId,
                 "test-disk",
                 db,
@@ -297,7 +297,6 @@ void RunPrepareAndExecute(
                         1,
                         0}),
                 TTestExecutor::TabletId,
-                useRecreatedBlobMeta,
                 db,
                 args,
                 state);
@@ -566,7 +565,10 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
 
         auto args = MakeCleanupArgs(
             state.GetCleanupQueue().GetItems(cleanupCommitId),
-            cleanupCommitId);
+            cleanupCommitId,
+            false,   // useRecreatedBlobMeta
+            false    // verifyRecreatedBlobMetasOnCleanup
+        );
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
@@ -577,14 +579,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 UNIT_ASSERT(HasMergedBlob(db, setup.MergedBlobId, 10, 13));
             });
 
-        RunPrepareAndExecute(
-            executor,
-            env,
-            state,
-            args,
-            false,   // verifyRecreatedBlobMetasOnCleanup
-            false    // useRecreatedBlobMeta
-        );
+        RunPrepareAndExecute(executor, env, state, args);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
@@ -641,16 +636,14 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             deletionCommitId,
             setup.MergedBlobMeta);
 
-        auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
-
-        RunPrepareAndExecute(
-            executor,
-            env,
-            state,
-            args,
-            true,   // verifyRecreatedBlobMetasOnCleanup
-            false   // useRecreatedBlobMeta
+        auto args = MakeCleanupArgs(
+            cleanupQueue,
+            cleanupCommitId,
+            false,   // useRecreatedBlobMeta
+            true     // verifyRecreatedBlobMetasOnCleanup
         );
+
+        RunPrepareAndExecute(executor, env, state, args);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
@@ -689,15 +682,13 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             deletionCommitId,
             setup.MergedBlobMeta);
 
-        auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
-        RunPrepareAndExecute(
-            executor,
-            env,
-            state,
-            args,
-            false,   // verifyRecreatedBlobMetasOnCleanup
-            true     // useRecreatedBlobMeta
+        auto args = MakeCleanupArgs(
+            cleanupQueue,
+            cleanupCommitId,
+            true,   // useRecreatedBlobMeta
+            false   // verifyRecreatedBlobMetasOnCleanup
         );
+        RunPrepareAndExecute(executor, env, state, args);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
@@ -744,15 +735,13 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             deletionCommitId,
             setup.MergedBlobMeta);
 
-        auto args = MakeCleanupArgs(cleanupQueue, cleanupCommitId);
-        RunPrepareAndExecute(
-            executor,
-            env,
-            state,
-            args,
-            false,   // verifyRecreatedBlobMetasOnCleanup
-            true     // useRecreatedBlobMeta
+        auto args = MakeCleanupArgs(
+            cleanupQueue,
+            cleanupCommitId,
+            true,   // useRecreatedBlobMeta
+            false   // verifyRecreatedBlobMetasOnCleanup
         );
+        RunPrepareAndExecute(executor, env, state, args);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
@@ -772,7 +761,6 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
             });
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

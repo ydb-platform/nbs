@@ -23,8 +23,6 @@ TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
     const NProto::TBlobMeta& recreatedBlobMeta);
 
 bool PrepareCleanupTransaction(
-    const bool useRecreatedBlobMeta,
-    const bool verifyRecreatedBlobMetasOnCleanup,
     const ui64 tabletId,
     const TString& diskId,
     TPartitionDatabase& db,
@@ -34,7 +32,6 @@ void ExecuteCleanupTransaction(
     const NActors::TActorSystem* actorSystem,
     const TLogTitle& logTitle,
     const ui64 tabletId,
-    const bool useRecreatedBlobMeta,
     TPartitionDatabase& db,
     TTxPartition::TCleanup& args,
     TPartitionState& state);
