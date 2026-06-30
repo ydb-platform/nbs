@@ -1881,7 +1881,7 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
         bool IsNewShardNode = false;
-        const bool IsNodeRefLocked = false;
+        const bool IsNodeRefLocked;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         TVector<ui64> UpdatedNodes;
