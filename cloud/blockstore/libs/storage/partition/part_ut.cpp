@@ -14256,6 +14256,137 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 partition.ReadBlocks(TBlockRange32::WithLength(0, 1024))));
     }
 
+    Y_UNIT_TEST(ShouldNotStartAddBlobsUntilBlobInfosAreReadWithSplitCompactionTx)
+    {
+        auto config = DefaultConfig();
+        config.SetSplitCompactionTxEnabled(true);
+        config.SetReadBlockMaskOnCompactionOptimizationEnabled(false);
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(0);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), '1');
+        partition.ZeroBlocks(TBlockRange32::WithLength(0, 1024));
+
+        bool intercept = true;
+
+        std::unique_ptr<IEventHandle> compactionReadBlobInfoRequest;
+        bool addCompactionBlobsRequestObserved = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionReadBlobInfoRequest:
+                        if (intercept) {
+                            compactionReadBlobInfoRequest.reset(
+                                event.Release());
+                            return true;
+                        }
+                        break;
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == EAddBlobMode::ADD_COMPACTION_RESULT) {
+                            addCompactionBlobsRequestObserved = true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        partition.SendCompactionRequest();
+
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(compactionReadBlobInfoRequest);
+        UNIT_ASSERT(!addCompactionBlobsRequestObserved);
+
+        intercept = false;
+
+        runtime->SendAsync(compactionReadBlobInfoRequest.release());
+
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotVerifyChecksumsUntilBlobInfosAreReadWithSplitCompactionTx)
+    {
+        auto config = DefaultConfig();
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), '1');
+        partition.WriteBlocks(TBlockRange32::WithLength(512, 512), '2');
+
+        partition.Compaction();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), '3');
+
+        bool intercept = true;
+
+        std::unique_ptr<IEventHandle> compactionReadBlobInfoRequest;
+        bool writeBlobRequestObserved = false;
+        bool addCompactionBlobsRequestObserved = false;
+        bool readBlobResponseObserved = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionReadBlobInfoRequest:
+                        if (intercept) {
+                            compactionReadBlobInfoRequest.reset(
+                                event.Release());
+                            return true;
+                        }
+                        break;
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest:
+                        writeBlobRequestObserved = true;
+                        break;
+                    case TEvPartitionCommonPrivate::EvReadBlobResponse:
+                        readBlobResponseObserved = true;
+                        break;
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == EAddBlobMode::ADD_COMPACTION_RESULT) {
+                            addCompactionBlobsRequestObserved = true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        partition.SendCompactionRequest();
+
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(compactionReadBlobInfoRequest);
+        UNIT_ASSERT(readBlobResponseObserved);
+        UNIT_ASSERT(!writeBlobRequestObserved);
+        UNIT_ASSERT(!addCompactionBlobsRequestObserved);
+
+        intercept = false;
+
+        runtime->SendAsync(compactionReadBlobInfoRequest.release());
+
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+
     Y_UNIT_TEST(
         ShouldNotLoseAnyMixedMergedBlocksWhileWaitingForCheckpointCreation)
     {
