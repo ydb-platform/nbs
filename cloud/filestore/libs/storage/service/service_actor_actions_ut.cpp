@@ -1146,8 +1146,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         {
             NProtoPrivate::TGetStorageStatsRequest request;
             request.SetFileSystemId(fsId);
-            request.SetAllowCache(true);
-            request.SetCacheTTL(30000); // in ms
+            request.SetCacheTTL(Max<ui32>()); // in ms
 
             NProtoPrivate::TGetStorageStatsResponse response =
                 GetStorageStats(service, request);
@@ -1158,7 +1157,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         for (ui64 i = 0; i < shardsCount; ++i) {
             NProtoPrivate::TGetStorageStatsRequest request;
             request.SetFileSystemId(fileSystems[i].Id);
-            request.SetAllowCache(false);
             request.SetMode(
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
 
@@ -1293,8 +1291,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         NProtoPrivate::TGetStorageStatsRequest request;
         request.SetFileSystemId(fsId);
-        request.SetAllowCache(true);
-        request.SetCacheTTL(30000); // in ms
+        request.SetCacheTTL(Max<ui32>()); // in ms
 
         NProtoPrivate::TGetStorageStatsResponse response =
             GetStorageStats(service, request);

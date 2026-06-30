@@ -764,9 +764,9 @@ void TIndexTabletActor::HandleGetStorageStats(
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
 
-    const bool allowCache = req.GetAllowCache() || (req.GetCacheTTL() &&
+    const bool allowCache = req.GetCacheTTL() &&
                             ctx.Now() - CachedAggregateStatsTs <
-                                TDuration::MilliSeconds(req.GetCacheTTL()));
+                                TDuration::MilliSeconds(req.GetCacheTTL());
 
     if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
