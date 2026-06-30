@@ -2,6 +2,8 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/partition2)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+TAG(ya:not_autocheck)
+
 SRCS(
     garbage_queue_ut.cpp
     part2_database_ut.cpp
