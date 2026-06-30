@@ -204,9 +204,7 @@ def main() -> int:
 
     reachable = _reachable_dirs(graph, roots, scopes, args.mode)
     all_yamakes = _all_yamake_dirs(scopes)
-    missing = sorted(
-        path for path in all_yamakes - reachable if path not in ignores
-    )
+    missing = sorted(path for path in all_yamakes - reachable if path not in ignores)
 
     if args.print_reachable_count:
         print(f"graph_nodes={len(graph)}", file=sys.stderr)
