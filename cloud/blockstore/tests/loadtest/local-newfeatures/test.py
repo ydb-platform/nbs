@@ -193,6 +193,13 @@ def storage_config_with_new_features_enabled():
     return storage
 
 
+def storage_config_with_use_recreated_blob_metas_on_cleanup_enabled():
+    storage = ordinary_prod_storage_config()
+    storage.UseRecreatedBlobMetasOnCleanup = True
+
+    return storage
+
+
 class TestCase(object):
 
     def __init__(
@@ -353,6 +360,14 @@ TESTS = [
             storage_config_with_read_block_mask_on_compaction_optimization_enabled(
                 True
             ),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-use-recreated-blob-metas-on-cleanup-enabled",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
+        [
+            storage_config_with_use_recreated_blob_metas_on_cleanup_enabled(),
         ],
         None,
     ),

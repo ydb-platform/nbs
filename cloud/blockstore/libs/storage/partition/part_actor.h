@@ -487,6 +487,7 @@ private:
     [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
     [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
     [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
+    [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupEnabled() const;
 
     void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,

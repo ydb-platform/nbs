@@ -23,7 +23,6 @@ TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
     const NProto::TBlobMeta& recreatedBlobMeta);
 
 bool PrepareCleanupTransaction(
-    const bool verifyRecreatedBlobMetasOnCleanup,
     const ui64 tabletId,
     const TString& diskId,
     TPartitionDatabase& db,

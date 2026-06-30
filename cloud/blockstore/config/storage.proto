@@ -1618,4 +1618,7 @@ message TStorageServiceConfig
     // If true, the recreated blob metas are verified on cleanup.
     // We check that there is no leaked blocks in the mixed index.
     optional bool VerifyRecreatedBlobMetasOnCleanup = 512;
+
+    // Use read or recreated compaction blob metas during cleanup.
+    optional bool UseRecreatedBlobMetasOnCleanup = 513;
 }

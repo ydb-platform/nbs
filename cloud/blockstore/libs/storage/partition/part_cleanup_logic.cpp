@@ -187,7 +187,6 @@ TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
 }
 
 bool PrepareCleanupTransaction(
-    const bool verifyRecreatedBlobMetasOnCleanup,
     const ui64 tabletId,
     const TString& diskId,
     TPartitionDatabase& db,
@@ -204,8 +203,13 @@ bool PrepareCleanupTransaction(
         // no need to read blob meta for blobs with already known blocks
         const bool hasValidMetaInCleanupQueue =
             item.BlobMeta.HasMixedBlocks() || item.BlobMeta.HasMergedBlocks();
+        if (hasValidMetaInCleanupQueue && args.UseRecreatedBlobMeta) {
+            blobMetas[item.BlobId] = item.BlobMeta;
+            continue;
+        }
 
         TMaybe<NProto::TBlobMeta> blobMeta;
+        ++args.ReadBlobMetasCount;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
             Y_ABORT_UNLESS(
                 blobMeta.Defined(),
@@ -214,8 +218,8 @@ bool PrepareCleanupTransaction(
             auto& meta = blobMetas[item.BlobId];
             meta = std::move(blobMeta.GetRef());
 
-            const bool needToVerify =
-                verifyRecreatedBlobMetasOnCleanup && hasValidMetaInCleanupQueue;
+            const bool needToVerify = args.VerifyRecreatedBlobMetasOnCleanup &&
+                                      hasValidMetaInCleanupQueue;
             if (!needToVerify) {
                 continue;
             }
@@ -253,7 +257,16 @@ bool PrepareCleanupTransaction(
         args.CleanupQueue.erase(itemsToRemove.begin(), itemsToRemove.end());
 
         for (const auto& item: args.CleanupQueue) {
-            args.BlobsMeta.push_back(std::move(blobMetas[item.BlobId]));
+            auto* blobMeta = blobMetas.FindPtr(item.BlobId);
+
+            STORAGE_VERIFY_C(
+                blobMeta,
+                TWellKnownEntityTypes::TABLET,
+                tabletId,
+                "Blob meta not found for blob "
+                    << MakeBlobId(tabletId, item.BlobId));
+
+            args.BlobsMeta.push_back(std::move(*blobMeta));
         }
     }
 
@@ -299,10 +312,25 @@ void ExecuteCleanupTransaction(
 
             ++mixedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {
-                // Mins for block counts are needed due to some inconsistencies caused by
-                // NBS-1422
+                ui64 blockCountInBlob = 0;
+                if (args.UseRecreatedBlobMeta) {
+                    STORAGE_VERIFY_C(
+                        state.GetBlockSize() > 0 &&
+                            item.BlobId.BlobSize() % state.GetBlockSize() == 0,
+                        TWellKnownEntityTypes::TABLET,
+                        state.GetConfig().GetDiskId(),
+                        "Blob size is not divisible by block size, blob: "
+                            << ToString(MakeBlobId(tabletId, item.BlobId)));
+                    blockCountInBlob =
+                        item.BlobId.BlobSize() / state.GetBlockSize();
+                } else {
+                    blockCountInBlob = mixedBlocks.BlocksSize();
+                }
+                // Mins for block counts are needed due to some
+                // inconsistencies
+                // caused by NBS-1422
                 state.DecrementMixedBlocksCount(
-                    Min(mixedBlocks.BlocksSize(), state.GetMixedBlocksCount()));
+                    Min(blockCountInBlob, state.GetMixedBlocksCount()));
             }
         } else if (blobMeta.HasMergedBlocks()) {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();

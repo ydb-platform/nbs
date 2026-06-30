@@ -176,9 +176,14 @@ void TPartitionActor::HandleCleanup(
 
     AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
 
-    ExecuteTx(
-        ctx,
-        CreateTx<TCleanup>(requestInfo, commitId, std::move(cleanupQueue)));
+    auto tx = CreateTx<TCleanup>(
+        requestInfo,
+        commitId,
+        IsUseRecreatedBlobMetasOnCleanupEnabled(),
+        IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
+        std::move(cleanupQueue));
+
+    ExecuteTx(ctx, std::move(tx));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -192,7 +197,6 @@ bool TPartitionActor::PrepareCleanup(
 
     TPartitionDatabase db(tx.DB);
     return PrepareCleanupTransaction(
-        IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
         TabletID(),
         PartitionConfig.GetDiskId(),
         db,

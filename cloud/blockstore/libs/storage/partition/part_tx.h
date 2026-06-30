@@ -626,21 +626,31 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
 
         const ui64 CommitId;
+        const bool UseRecreatedBlobMeta;
+        const bool VerifyRecreatedBlobMetasOnCleanup;
+
         TVector<TCleanupQueueItem> CleanupQueue;
 
         TVector<NProto::TBlobMeta> BlobsMeta;
 
+        ui64 ReadBlobMetasCount = 0;
+
         TCleanup(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
+                bool useRecreatedBlobMeta,
+                bool verifyRecreatedBlobMetasOnCleanup,
                 TVector<TCleanupQueueItem> cleanupQueue)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
+            , UseRecreatedBlobMeta(useRecreatedBlobMeta)
+            , VerifyRecreatedBlobMetasOnCleanup(verifyRecreatedBlobMetasOnCleanup)
             , CleanupQueue(std::move(cleanupQueue))
         {}
 
         void Clear()
         {
+            ReadBlobMetasCount = 0;
             BlobsMeta.clear();
         }
     };
