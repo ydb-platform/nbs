@@ -14276,15 +14276,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         std::unique_ptr<IEventHandle> compactionReadBlobInfoRequest;
         bool addCompactionBlobsRequestObserved = false;
 
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionReadBlobInfoRequest:
                         if (intercept) {
                             compactionReadBlobInfoRequest.reset(
                                 event.Release());
-                            return TTestActorRuntime::EEventAction::DROP;
+                            return true;
                         }
                         break;
                     case TEvPartitionPrivate::EvAddBlobsRequest: {
@@ -14297,7 +14297,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         partition.SendCompactionRequest();
@@ -14340,15 +14340,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool addCompactionBlobsRequestObserved = false;
         bool readBlobResponseObserved = false;
 
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionReadBlobInfoRequest:
                         if (intercept) {
                             compactionReadBlobInfoRequest.reset(
                                 event.Release());
-                            return TTestActorRuntime::EEventAction::DROP;
+                            return true;
                         }
                         break;
                     case TEvPartitionCommonPrivate::EvWriteBlobRequest:
@@ -14367,7 +14367,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         partition.SendCompactionRequest();

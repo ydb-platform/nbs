@@ -52,9 +52,21 @@ TVector<ui32> EnsureBlockChecksums(
     return result;
 }
 
-class TCompactionActor final
-    : public TActorBootstrapped<TCompactionActor>
+class TCompactionActor final: public TActorBootstrapped<TCompactionActor>
 {
+    // Possible state transitions:
+    // - Initial state -> WaitingToVerifyBlobChecksums -> Done
+    // - Initial state -> WaitingToAddBlobs -> Done
+    // - Initial state -> Done
+
+    enum class EReadBlobInfosState
+    {
+        Initial = 0,
+        WaitingToVerifyBlobChecksums = 1,
+        WaitingToAddBlobs = 2,
+        Done = 3,
+    };
+
 public:
     using TRequest = TBlobCompactionRequest;
 
@@ -114,11 +126,8 @@ private:
 
     TVector<TPartialBlobId> BlobsToReadBlockMasks;
     TVector<TPartialBlobId> BlobsToReadBlobMetas;
-    bool BlobInfosRead = !SplitCompactionTxEnabled;
 
-    // Callback to be called when blob infos are read.
-    std::optional<std::function<void(const TActorContext& ctx)>>
-        OnBlobInfosRead;
+    EReadBlobInfosState ReadBlobInfosState = EReadBlobInfosState::Initial;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
@@ -285,7 +294,7 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
 
         NCloud::Send(ctx, Tablet, std::move(request));
     } else {
-        BlobInfosRead = true;
+        ReadBlobInfosState = EReadBlobInfosState::Done;
         ApplyChecksumFixups();
     }
 
@@ -311,7 +320,6 @@ void TCompactionActor::ApplyChecksumFixups()
     }
 }
 
-
 NProto::TError TCompactionActor::VerifyBlockChecksums()
 {
     for (const auto& batch: BatchRequests) {
@@ -328,7 +336,7 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
                      {"blobOffset", r->BlobOffset}});
                 rc.BlockChecksums[r->IndexInBlobContent] = 0;
             }
-            const auto expectedChecksum =
+            const ui32 expectedChecksum =
                 *rc.BlockChecksums[r->IndexInBlobContent];
 
             auto error = VerifyBlockChecksum(
@@ -350,12 +358,16 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
 
 void TCompactionActor::ReadBlobFinished(const TActorContext& ctx)
 {
-    if (!BlobInfosRead && BlobsToReadBlobMetas) {
+    if (ReadBlobInfosState != EReadBlobInfosState::Done && BlobsToReadBlobMetas)
+    {
+        STORAGE_VERIFY_C(
+            ReadBlobInfosState == EReadBlobInfosState::Initial,
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            "Invalid read blob infos state: " << ui32(ReadBlobInfosState));
+
         // Postpone verification of block checksums until blob infos are read
-        OnBlobInfosRead = [this](const TActorContext& ctx)
-        {
-            ReadBlobFinished(ctx);
-        };
+        ReadBlobInfosState = EReadBlobInfosState::WaitingToVerifyBlobChecksums;
         return;
     }
 
@@ -676,12 +688,15 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
 void TCompactionActor::AddBlobs(const TActorContext& ctx)
 {
-    if (!BlobInfosRead) {
+    if (ReadBlobInfosState != EReadBlobInfosState::Done) {
+        STORAGE_VERIFY_C(
+            ReadBlobInfosState == EReadBlobInfosState::Initial,
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            "Invalid read blob infos state: " << ui32(ReadBlobInfosState));
+
         // Postpone adding blobs until blob infos are read
-        OnBlobInfosRead = [this](const TActorContext& ctx)
-        {
-            AddBlobs(ctx);
-        };
+        ReadBlobInfosState = EReadBlobInfosState::WaitingToAddBlobs;
         return;
     }
 
@@ -1105,11 +1120,26 @@ void TCompactionActor::HandleCompactionReadBlobInfoResponse(
         }
     }
 
-    BlobInfosRead = true;
     ApplyChecksumFixups();
 
-    if (OnBlobInfosRead) {
-        (*OnBlobInfosRead)(ctx);
+    auto oldState = ReadBlobInfosState;
+    ReadBlobInfosState = EReadBlobInfosState::Done;
+
+    switch (oldState) {
+        case EReadBlobInfosState::Initial:
+            return;
+        case EReadBlobInfosState::WaitingToVerifyBlobChecksums:
+            ReadBlobFinished(ctx);
+            return;
+        case EReadBlobInfosState::WaitingToAddBlobs:
+            AddBlobs(ctx);
+            return;
+        default:
+            STORAGE_VERIFY_C(
+                false,
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "Invalid read blob infos state: " << ui32(ReadBlobInfosState));
     }
 }
 
