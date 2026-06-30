@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from textwrap import dedent
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -47,6 +48,27 @@ def _write_trace(ya_out: Path) -> None:
     )
 
 
+def _write_chunk_trace(ya_out: Path, suite_name: str, runner: str) -> None:
+    trace_dir = ya_out / suite_name / "test-results" / runner
+    trace_dir.mkdir(parents=True)
+    trace = trace_dir / "ytest.report.trace"
+    trace.write_text(
+        json.dumps(
+            {
+                "name": "chunk-event",
+                "value": {
+                    "chunk_index": 0,
+                    "nchunks": 1,
+                    "logs": {
+                        "log": f"$(BUILD_ROOT)/{suite_name}/test-results/{runner}/run_test.log",
+                        "logsdir": f"$(BUILD_ROOT)/{suite_name}/test-results/{runner}/testing_out_stuff",
+                    },
+                },
+            }
+        )
+    )
+
+
 def _get_property_value(case: ET.Element, name: str) -> str | None:
     props = case.find("properties")
     if props is None:
@@ -55,6 +77,72 @@ def _get_property_value(case: ET.Element, name: str) -> str | None:
         if prop.get("name") == name:
             return prop.get("value")
     return None
+
+
+def _write_issue_junit(
+    report: Path, suite_name: str, *, include_py3test_paths: bool
+) -> None:
+    log_paths = (
+        f"""
+            log:
+            /home/github/tmp_test/out/{suite_name}/test-results/py3test/run_test.log
+            logsdir:
+            /home/github/tmp_test/out/{suite_name}/test-results/py3test/testing_out_stuff
+            recipe stderr:
+            /home/github/tmp_test/out/{suite_name}/test-results/py3test/testing_out_stuff/recipe_stop_vhost-endpoint-recipe-3.err
+            recipe stdout:
+            /home/github/tmp_test/out/{suite_name}/test-results/py3test/testing_out_stuff/recipe_stop_vhost-endpoint-recipe-3.out
+            stderr:
+            /home/github/tmp_test/out/{suite_name}/test-results/py3test/testing_out_stuff/stderr"""
+        if include_py3test_paths
+        else ""
+    )
+    stderr_tail = (
+        "Stderr tail:bf7e&quot;\\n"
+        "2026-06-29T16:03:20.195137Z :NFS_CLIENT TRACE: "
+        "cloud/filestore/libs/client/client.cpp:341: StopEndpoint "
+        "#12786235345919440230 response received: Error {{ Code: 2147614724 "
+        "Message: &quot;Deadline Exceeded&quot; }}\\n"
+        "2026-06-29T16:03:20.195191Z :NFS_CLIENT TRACE: "
+        "cloud/filestore/libs/client/client.cpp:367: StopEndpoint "
+        "#12786235345919440230 request completed\\n"
+        "filestore-client &quot;/home/github/tmp_test/out/cloud/filestore/apps/"
+        "client/filestore-client stopendpoint --socket-path "
+        "/tmp/test.vhost.eba2e719-d7ee-46ad-a48c-f6567c08bf7e "
+        "--server-address localhost --server-port 28502 --verbose trace&quot; "
+        "failed: (NCloud::TServiceError) "
+        "cloud/filestore/apps/client/lib/stop_endpoint.cpp:37: "
+        "E_RETRY_TIMEOUT Retry timeout (2147483662). Deadline Exceeded | \\n"
+        "2026-06-29T16:03:20.195739Z :NFS_CLIENT INFO: "
+        "cloud/filestore/libs/client/client.cpp:656: Shutting down\\n"
+        "2026-06-29T16:03:20.195750Z :NFS_CLIENT TRACE: "
+        "cloud/storage/core/libs/grpc/executor.h:113: "
+        "CLI1 executor's shutdown() started\\n'"
+    )
+
+    report.write_text(dedent(f"""\
+            <?xml version="1.0" ?>
+            <testsuites>
+                <testsuite name="{suite_name}" tests="3" time="204.62756158700086" failures="1" skipped="0">
+                    <testcase name="sole chunk chunk" time="0.0">
+                        <failure>RecipeTearDownError: vhost-endpoint-recipe-3 failed
+            {stderr_tail}
+            {log_paths}</failure>
+                    </testcase>
+                    <testcase name="test.py.test_create_unlink_steal" time="88.28822920200037"/>
+                    <testcase name="test.py.test_create_list" time="34.255492412999956"/>
+                    <testcase name="test.py.test_create_unlink_steal_list_nodes_internal" time="82.08383997200053"/>
+                </testsuite>
+            </testsuites>
+            """))
+
+
+def _write_message_only_chunk_junit(report: Path, suite_name: str) -> None:
+    root = ET.Element("testsuites")
+    suite = ET.SubElement(root, "testsuite", {"name": suite_name})
+    case = ET.SubElement(suite, "testcase", {"name": "sole chunk chunk"})
+    ET.SubElement(case, "failure", {"message": "RecipeTearDownError"})
+    ET.ElementTree(root).write(report)
 
 
 def test_transform_adds_links_and_copies_logs(tmp_path: Path) -> None:
@@ -143,6 +231,156 @@ def test_transform_skips_malformed_chunk_name_without_crash(tmp_path: Path) -> N
     parsed_case = tree.getroot().find("./testsuite/testcase")
     assert parsed_case is not None
     assert parsed_case.find("properties") is None
+
+
+def test_transform_uses_real_issue_xml_to_pick_py3test_chunk_trace(
+    tmp_path: Path,
+) -> None:
+    suite_name = "cloud/filestore/tests/fmdtest/qemu-kikimr-nemesis-test"
+    ya_out = tmp_path / "ya-out"
+
+    for runner in ("py3test", "flake8"):
+        _write_chunk_trace(ya_out, suite_name, runner)
+        log_file = ya_out / suite_name / "test-results" / runner / "run_test.log"
+        log_file.write_text(f"{runner}-log")
+
+    report = tmp_path / "junit.xml"
+    _write_issue_junit(report, suite_name, include_py3test_paths=True)
+
+    output = tmp_path / "out.xml"
+    logs_out = tmp_path / "logs-out"
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(ya_out),
+            False,
+            "https://logs/",
+            str(logs_out),
+            0,
+            str(output),
+            "https://data",
+        )
+
+    parsed_case = ET.parse(output).getroot().find("./testsuite/testcase")
+    assert parsed_case is not None
+    assert (
+        _get_property_value(parsed_case, "url:logs_directory")
+        == f"https://data/{suite_name}/test-results/py3test/testing_out_stuff"
+    )
+    assert (
+        _get_property_value(parsed_case, "url:log")
+        == f"https://logs/{suite_name}/test-results/py3test/run_test.log"
+    )
+    assert (
+        logs_out / suite_name / "test-results" / "py3test" / "run_test.log"
+    ).exists()
+
+
+def test_transform_does_not_guess_ambiguous_chunk_trace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    suite_name = "cloud/filestore/tests/fmdtest/qemu-kikimr-nemesis-test"
+    ya_out = tmp_path / "ya-out"
+
+    for runner in ("py3test", "flake8"):
+        _write_chunk_trace(ya_out, suite_name, runner)
+        log_file = ya_out / suite_name / "test-results" / runner / "run_test.log"
+        log_file.write_text(f"{runner}-log")
+
+    report = tmp_path / "junit.xml"
+    _write_issue_junit(report, suite_name, include_py3test_paths=False)
+
+    output = tmp_path / "out.xml"
+    github_summary = tmp_path / "github_step_summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(github_summary))
+
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(ya_out),
+            False,
+            "https://logs/",
+            str(tmp_path / "logs-out"),
+            0,
+            str(output),
+            "https://data",
+        )
+
+    parsed_case = ET.parse(output).getroot().find("./testsuite/testcase")
+    assert parsed_case is not None
+    assert parsed_case.find("properties") is None
+    assert (
+        f"**JUnit transform warning:** Unable to disambiguate chunk logs for {suite_name} [0/1]; leaving log links empty"
+        in github_summary.read_text()
+    )
+
+
+def test_transform_does_not_guess_chunk_trace_without_failure_text(
+    tmp_path: Path,
+) -> None:
+    suite_name = "cloud/filestore/tests/fmdtest/qemu-kikimr-nemesis-test"
+    ya_out = tmp_path / "ya-out"
+
+    for runner in ("py3test", "flake8"):
+        _write_chunk_trace(ya_out, suite_name, runner)
+        log_file = ya_out / suite_name / "test-results" / runner / "run_test.log"
+        log_file.write_text(f"{runner}-log")
+
+    report = tmp_path / "junit.xml"
+    _write_message_only_chunk_junit(report, suite_name)
+
+    output = tmp_path / "out.xml"
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(ya_out),
+            False,
+            "https://logs/",
+            str(tmp_path / "logs-out"),
+            0,
+            str(output),
+            "https://data",
+        )
+
+    parsed_case = ET.parse(output).getroot().find("./testsuite/testcase")
+    assert parsed_case is not None
+    assert parsed_case.find("properties") is None
+
+
+def test_transform_warning_does_not_corrupt_stdout_xml(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    suite_name = "cloud/filestore/tests/fmdtest/qemu-kikimr-nemesis-test"
+    ya_out = tmp_path / "ya-out"
+
+    for runner in ("py3test", "flake8"):
+        _write_chunk_trace(ya_out, suite_name, runner)
+        log_file = ya_out / suite_name / "test-results" / runner / "run_test.log"
+        log_file.write_text(f"{runner}-log")
+
+    report = tmp_path / "junit.xml"
+    _write_issue_junit(report, suite_name, include_py3test_paths=False)
+
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(ya_out),
+            False,
+            "https://logs/",
+            str(tmp_path / "logs-out"),
+            0,
+            None,
+            "https://data",
+        )
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith("<testsuites>")
+    assert "::warning title=JUnit transform::" in captured.err
+    ET.fromstring(captured.out)
 
 
 @pytest.mark.parametrize(
