@@ -111,9 +111,29 @@ struct TTestActorSystem
         return true;
     }
 
+    bool Send(TAutoPtr<IEventHandle> ev) override
+    {
+        Runtime.Send(ev);
+        return true;
+    }
+
+    void Schedule(
+        TDuration delta,
+        std::unique_ptr<IEventHandle> ev,
+        ISchedulerCookie* cookie) override
+    {
+        Y_UNUSED(cookie);
+        Runtime.Schedule(ev.release(), delta);
+    }
+
     TProgramShouldContinue& GetProgramShouldContinue() override
     {
         return ProgramShouldContinue;
+    }
+
+    NActors::NLog::TSettings* LoggerSettings() const override
+    {
+        return Runtime.GetLogSettings(0).Get();
     }
 };
 

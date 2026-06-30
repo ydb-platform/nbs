@@ -27,7 +27,6 @@ namespace {
 
 NProto::TKikimrServiceConfig DefaultConfig()
 {
-    // TODO
     return {};
 }
 
@@ -119,6 +118,68 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         UNIT_ASSERT(!HasError(response));
     }
 
+    Y_UNIT_TEST(ShouldUsePooledActors)
+    {
+        auto serviceActor = std::make_unique<TTestServiceActor>();
+        TVector<IEventHandlePtr> pingEvents;
+        serviceActor->PingHandler =
+            [&pingEvents](const TEvService::TEvPingRequest::TPtr& ev)
+        {
+            pingEvents.push_back(IEventHandlePtr(ev.Release()));
+            return nullptr;
+        };
+
+        auto actorSystem = MakeIntrusive<TTestActorSystem>();
+        actorSystem->RegisterTestService(std::move(serviceActor));
+
+        auto kikimrConfig = DefaultConfig();
+        // Some actors will be created as pooled and some as one-shot.
+        kikimrConfig.SetHotPoolSize(3);
+        kikimrConfig.SetColdPoolSize(3);
+        auto service = CreateKikimrService(actorSystem, kikimrConfig);
+
+        TSet<TActorId> requestActorIds;
+        for (int testLoop = 0; testLoop < 3; ++testLoop) {
+            constexpr int RequestCount = 10;
+            TVector<TFuture<NProto::TPingResponse>> pingResponses;
+            for (int i = 0; i < RequestCount; ++i) {
+                auto request = std::make_shared<NProto::TPingRequest>();
+                auto future = service->Ping(
+                    MakeIntrusive<TCallContext>(),
+                    std::move(request));
+                pingResponses.push_back(std::move(future));
+            }
+            actorSystem->DispatchEvents(TDuration::MilliSeconds(10));
+            UNIT_ASSERT_VALUES_EQUAL(RequestCount, pingEvents.size());
+            for (const auto& pingResponse: pingResponses) {
+                UNIT_ASSERT(!pingResponse.HasValue());
+            }
+
+            for (auto& pingEvent: pingEvents) {
+                requestActorIds.insert(pingEvent->Sender);
+                actorSystem->Send(new IEventHandle(
+                    pingEvent->Sender,   // recipient
+                    TActorId(),          // sender
+                    new TEvService::TEvPingResponse(),
+                    0,   // flags
+                    pingEvent->Cookie));
+            }
+            pingEvents.clear();
+            actorSystem->DispatchEvents(TDuration::MilliSeconds(10));
+
+            // 3 actors are pooled, 7 are one-shot
+            UNIT_ASSERT_VALUES_EQUAL((testLoop + 1) * 7 + 3, requestActorIds.size());
+
+            for (auto& pingResponse: pingResponses) {
+                const auto& response =
+                    pingResponse.GetValue(TDuration::MilliSeconds(10));
+                UNIT_ASSERT(!HasError(response));
+            }
+        }
+
+        actorSystem->Stop();
+    }
+
     Y_UNIT_TEST(ShouldHandleWriteAndZeroRequestTimeout)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
@@ -195,6 +256,51 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
             UNIT_ASSERT(!future.HasValue());
             UNIT_ASSERT_VALUES_EQUAL(3, counter->Val());
         }
+
+        actorSystem->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldHandleImmediateResponseWithTimeout)
+    {
+        auto serviceActor = std::make_unique<TTestServiceActor>();
+        serviceActor->PingHandler =
+            [](const TEvService::TEvPingRequest::TPtr& ev) {
+                Y_UNUSED(ev);
+                return std::make_unique<TEvService::TEvPingResponse>();
+            };
+
+        auto actorSystem = MakeIntrusive<TTestActorSystem>();
+        actorSystem->RegisterTestService(std::move(serviceActor));
+
+        NProto::TKikimrServiceConfig config;
+        config.SetColdPoolSize(1);
+
+        auto service = CreateKikimrService(actorSystem, config);
+
+        // Send multiple requests with timeouts. With ColdPoolSize=1, the
+        // first Ping actor is pooled; the rest are one-shot (no
+        // ReturnQueue, Die on WorkFinished).
+        constexpr int RequestCount = 5;
+        TVector<TFuture<NProto::TPingResponse>> futures;
+
+        for (int i = 0; i < RequestCount; ++i) {
+            auto request = std::make_shared<NProto::TPingRequest>();
+            auto& headers = *request->MutableHeaders();
+            headers.SetRequestTimeout(100);
+
+            futures.push_back(service->Ping(
+                MakeIntrusive<TCallContext>(),
+                std::move(request)));
+        }
+
+        actorSystem->DispatchEvents(TDuration::Seconds(5));
+
+        for (auto& future: futures) {
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+        }
+
+        actorSystem->Stop();
     }
 
     Y_UNIT_TEST(ShouldHandleOtherRequestTimeout)
