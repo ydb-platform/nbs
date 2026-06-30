@@ -54,7 +54,7 @@ void THiveProxyActor::HandleUnlockTablet(
     if (state->Phase == PHASE_LOCKED) {
         // It is possible to send unlock request right now
         state->Phase = PHASE_UNLOCKING;
-        SendUnlockRequest(ctx, HiveTabletId, tabletId);
+        SendUnlockRequest(ctx, tabletId);
     }
 }
 

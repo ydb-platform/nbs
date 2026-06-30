@@ -36,7 +36,7 @@ void THiveProxyActor::HandleLockTablet(
     state.Phase = PHASE_LOCKING;
     state.LockRequest = {ev->Sender, ev->Cookie};
 
-    SendLockRequest(ctx, HiveTabletId, tabletId);
+    SendLockRequest(ctx, tabletId);
 }
 
 void THiveProxyActor::HandleLockTabletExecutionResult(
@@ -54,7 +54,7 @@ void THiveProxyActor::HandleLockTabletExecutionResult(
         LOG_WARN_S(ctx, LogComponent,
             "Unexpected lock reply from hive " << HiveTabletId
                 << " for tablet " << tabletId);
-        SendUnlockRequest(ctx, HiveTabletId, tabletId);
+        SendUnlockRequest(ctx, tabletId);
         return;
     }
 
@@ -122,7 +122,7 @@ void THiveProxyActor::HandleLockTabletExecutionResult(
 
     if (state->UnlockRequest) {
         state->Phase = PHASE_UNLOCKING;
-        SendUnlockRequest(ctx, HiveTabletId, tabletId);
+        SendUnlockRequest(ctx, tabletId);
     }
 }
 

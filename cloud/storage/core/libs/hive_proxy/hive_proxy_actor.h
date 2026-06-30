@@ -197,7 +197,6 @@ private:
 
     void SendRequest(
         const NActors::TActorContext& ctx,
-        ui64 hive,
         NActors::IEventBase* request);
 
     void SendNextCreateOrLookupRequest(
@@ -219,7 +218,7 @@ private:
         TLockState* state,
         const NProto::TError& error = {});
 
-    void ScheduleSendTabletMetrics(const NActors::TActorContext& ctx, ui64 hive);
+    void ScheduleSendTabletMetrics(const NActors::TActorContext& ctx);
 
     void AddTabletMetrics(
         ui64 tabletId,
@@ -228,7 +227,6 @@ private:
 
     void SendTabletMetrics(
         const NActors::TActorContext& ctx,
-        ui64 hiveId,
         bool resend);
 
     void HandleConnect(
@@ -242,12 +240,10 @@ private:
     void HandleConnectionError(
         const NActors::TActorContext& ctx,
         const NProto::TError& error,
-        ui64 hive,
         bool connectFailed);
 
     void SendLockRequest(
         const NActors::TActorContext& ctx,
-        ui64 hive,
         ui64 tabletId,
         bool reconnect = false);
 
@@ -261,7 +257,6 @@ private:
 
     void SendUnlockRequest(
         const NActors::TActorContext& ctx,
-        ui64 hive,
         ui64 tabletId);
 
     void HandleUnlockTabletExecutionResult(
@@ -270,7 +265,6 @@ private:
 
     void SendGetTabletStorageInfoRequest(
         const NActors::TActorContext& ctx,
-        ui64 hive,
         ui64 tabletId);
 
     void HandleGetTabletStorageInfoRegistered(

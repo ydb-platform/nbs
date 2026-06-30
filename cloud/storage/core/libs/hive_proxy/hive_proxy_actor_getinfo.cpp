@@ -21,7 +21,7 @@ void THiveProxyActor::HandleGetStorageInfo(
 
     if (requests.size() == 1) {
         // Send request to hive on the first incoming request
-        SendGetTabletStorageInfoRequest(ctx, HiveTabletId, tabletId);
+        SendGetTabletStorageInfoRequest(ctx, tabletId);
     }
 }
 
