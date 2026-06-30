@@ -315,7 +315,8 @@ void ExecuteCleanupTransaction(
                 ui64 blockCountInBlob = 0;
                 if (args.UseRecreatedBlobMeta) {
                     STORAGE_VERIFY_C(
-                        item.BlobId.BlobSize() % state.GetBlockSize() == 0,
+                        state.GetBlockSize() > 0 &&
+                            item.BlobId.BlobSize() % state.GetBlockSize() == 0,
                         TWellKnownEntityTypes::TABLET,
                         state.GetConfig().GetDiskId(),
                         "Blob size is not divisible by block size, blob: "
