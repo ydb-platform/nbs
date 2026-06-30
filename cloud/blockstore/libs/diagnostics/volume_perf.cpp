@@ -159,8 +159,8 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
                 ExpectedScore,
                 GetExpectedWriteCost(requestBytes).MicroSeconds());
         }
-        auto requestTime = requestCompleted - requestStarted;
-        auto execTime = 0;
+        ui64 requestTime = requestCompleted - requestStarted;
+        ui64 execTime = 0;
         if (requestTime > waitTime) {
             execTime = requestTime - waitTime;
         }
