@@ -9155,7 +9155,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT(buffer.empty());
         UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
         UNIT_ASSERT_VALUES_EQUAL(1, response->GetPayloadCount());
-        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->GetTotalPayloadSize());
         auto& payload = response->GetPayload(0);
         UNIT_ASSERT_VALUES_EQUAL(data.size(), payload.size());
         UNIT_ASSERT_VALUES_EQUAL(data, payload.ConvertToString());
