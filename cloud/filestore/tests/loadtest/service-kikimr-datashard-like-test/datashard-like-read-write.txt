@@ -27,5 +27,5 @@ Tests {
         }
         IODepth: 4
         TestDuration: 30
-    },
+    }
 }
