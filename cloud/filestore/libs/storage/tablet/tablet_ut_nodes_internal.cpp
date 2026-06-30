@@ -2502,6 +2502,90 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             tabletConfig,
             false /* useRenameInDestination */);
     }
+
+    TABLET_TEST_4K_ONLY(ShouldRejectCreateHandleWhileUnlinking)
+    {
+        // The following sequence was observed:
+        // 1. TIndexTabletActor::ExecuteTx_UnlinkNode
+        // 2. TIndexTabletActor::ExecuteTx_CreateHandle
+        // 3. TIndexTabletActor::CompleteTx_UnlinkNode
+        // 4. TIndexTabletActor::CompleteTx_CreateHandle
+        // Before the fix, this sequence resulted in a dangling NodeRef.
+        // This test reproduces the same scenario, with one difference:
+        // TIndexTabletActor::ExecuteTx_CreateHandle is not actually called
+        // because TIndexTabletActor::HandleCreateHandle attempts to acquire the
+        // NodeRef lock early. The goal of this test is to verify that, under
+        // these circumstances, CreateHandle returns E_REJECTED.
+
+        NProto::TStorageConfig storageConfig;
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const TString fileName = "file1";
+        tablet.CreateNode(
+            TCreateNodeArgs::File(RootNodeId, fileName));
+
+        TAutoPtr<IEventHandle> event;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (!event &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvPut)
+                {
+                    event = std::move(ev);
+                    return true;
+                }
+                return false;
+            });
+
+        const ui64 requestId = 111;
+
+        // Send unlink node request and postpone completion of the transaction
+        // by catching TEvBlobStorage::EvPut.
+        tablet.SendUnlinkNodeRequest(
+            RootNodeId,
+            "file1",
+            false, // unlinkDirectory
+            requestId);
+
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return event != nullptr; }});
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // Send create handle request that should return E_REJECTED.
+        tablet.SendCreateHandleRequest(
+            RootNodeId,
+            fileName,
+            TCreateHandleArgs::CREATE_EXL);
+
+        env.GetRuntime().Send(event.Release(), nodeIdx);
+
+        auto unlinkResponse = tablet.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
+        auto createHandleResponse = tablet.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            createHandleResponse->GetError().GetCode(),
+            createHandleResponse->GetError().GetMessage());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -156,6 +156,9 @@ void TIndexTabletActor::HandleCreateHandle(
     // in the leader, while still holding the lock till a NodeRef is deleted
     // in the shard.
     if (msg->Record.GetName() &&
+        HasFlag(
+            msg->Record.GetFlags(),
+            NProto::TCreateHandleRequest::E_CREATE) &&
         !TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()}))
     {
         auto error = MakeError(
@@ -582,9 +585,7 @@ void TIndexTabletActor::CompleteCreateHandle(
     // If the node is to be created in the shard the NodeRef will be unlocked in
     // TIndexTabletActor::HandleNodeCreatedInShard, otherwise it should be
     // unlocked here.
-    if (args.Name) {
-        UnlockNodeRef({args.NodeId, args.Name});
-    }
+    UnlockNodeRef({args.NodeId, args.Name});
 
     auto response =
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
