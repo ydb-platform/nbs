@@ -108,7 +108,7 @@ jobs:
     timeout-minutes: 480
     steps:
     - name: Checkout PR
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       timeout-minutes: 10
       if: github.event.pull_request.head.sha != ''
       with:
@@ -130,7 +130,7 @@ jobs:
         git rebase origin/${{ github.event.pull_request.base.ref }}
         git submodule update --init --recursive
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       timeout-minutes: 10
       if: github.event.pull_request.head.sha == ''
       with:

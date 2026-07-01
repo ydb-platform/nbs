@@ -54,7 +54,7 @@ jobs:
       matrix_include: ${{ steps.build-matrix-include.outputs.matrix_include }}
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -75,7 +75,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
@@ -107,7 +107,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -128,7 +128,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false

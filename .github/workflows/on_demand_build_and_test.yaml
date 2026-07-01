@@ -145,7 +145,7 @@ jobs:
       link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -166,7 +166,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
@@ -264,7 +264,7 @@ jobs:
     if: always()
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -285,7 +285,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false

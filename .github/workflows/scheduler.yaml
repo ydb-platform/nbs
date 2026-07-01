@@ -113,7 +113,7 @@ jobs:
       date: ${{ steps.list.outputs.DATE }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           sparse-checkout: '.github'
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
@@ -147,7 +147,7 @@ jobs:
         vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_remove) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           sparse-checkout: '.github'
           clean: true
@@ -177,7 +177,7 @@ jobs:
         broken_vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.broken_vms_to_remove) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           sparse-checkout: '.github'
           clean: true
@@ -207,7 +207,7 @@ jobs:
         vms_to_create: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_create) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           sparse-checkout: '.github'
           clean: true
