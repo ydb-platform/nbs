@@ -15,13 +15,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TCreateDiskAgentBackendComponentsResult
 {
-    NNvme::INvmeManagerPtr NvmeManager;
     NServer::IFileIOServiceProviderPtr FileIOServiceProvider;
     IStorageProviderPtr StorageProvider;
 };
 
 TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
-    ILoggingServicePtr logging,
+    NNvme::INvmeManagerPtr nvmeManager,
     const TDiskAgentConfig& config);
 
 }   // namespace NCloud::NBlockStore::NStorage
