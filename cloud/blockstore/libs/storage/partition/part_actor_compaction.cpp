@@ -1540,6 +1540,49 @@ private:
     }
 };
 
+void FillBlobsInfo(
+    TPartitionDatabase& db,
+    TTxPartition::TCompaction& args,
+    bool& ready,
+    ui64 tabletId)
+{
+    auto blobsToReadBlockMasks = TVector<TPartialBlobId>(
+        args.BlobsToReadBlockMasks.begin(),
+        args.BlobsToReadBlockMasks.end());
+    auto blobsToReadBlobMetas = TVector<TPartialBlobId>(
+        args.BlobsToReadBlobMetas.begin(),
+        args.BlobsToReadBlobMetas.end());
+
+    auto blobsToOutputIndices = DeduplicateBlobInfos(
+        tabletId,
+        blobsToReadBlockMasks,
+        blobsToReadBlobMetas);
+
+    TVector<TBlockMask> blockMasks;
+    blockMasks.resize(args.BlobsToReadBlockMasks.size());
+    TVector<NProto::TBlobMeta> blobMetas;
+    blobMetas.resize(args.BlobsToReadBlobMetas.size());
+    if (!ReadBlobsInfo(
+            db,
+            blobsToOutputIndices,
+            tabletId,
+            blockMasks,
+            blobMetas))
+    {
+        ready = false;
+        return;
+    }
+
+    if (ready) {
+        FillRangeCompactionInfos(
+            args.RangeCompactions,
+            blobsToReadBlobMetas,
+            blobsToReadBlockMasks,
+            blobMetas,
+            blockMasks);
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2099,6 +2142,7 @@ bool TPartitionActor::PrepareCompaction(
             args.CommitId,
             TabletID(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
+            IsUseRecreatedBlobMetasOnCleanupEnabled(),
             ready,
             db,
             *State,
@@ -2125,34 +2169,7 @@ bool TPartitionActor::PrepareCompaction(
     State->IncrementBlockMaskReadDuringCompaction(
         args.BlobsToReadBlockMasks.size());
 
-    const TVector<TPartialBlobId> blobsToReadBlockMasks(
-        args.BlobsToReadBlockMasks.begin(),
-        args.BlobsToReadBlockMasks.end());
-    const TVector<TPartialBlobId> blobsToReadBlobMetas(
-        args.BlobsToReadBlobMetas.begin(),
-        args.BlobsToReadBlobMetas.end());
-
-    TVector<TBlockMask> blockMasks;
-    TVector<NProto::TBlobMeta> blobMetas;
-    if (!ReadBlobsInfo(
-            db,
-            blobsToReadBlockMasks,
-            blobsToReadBlobMetas,
-            TabletID(),
-            blockMasks,
-            blobMetas))
-    {
-        ready = false;
-    }
-
-    if (ready) {
-        FillRangeCompactionInfos(
-            args.RangeCompactions,
-            blobsToReadBlobMetas,
-            blobsToReadBlockMasks,
-            blobMetas,
-            blockMasks);
-    }
+    FillBlobsInfo(db, args, ready, TabletID());
 
     return ready;
 }

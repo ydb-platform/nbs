@@ -716,6 +716,7 @@ bool TPartitionDatabase::ReadBlobMeta(
     const TPartialBlobId& blobId,
     TMaybe<NProto::TBlobMeta>& meta)
 {
+    IncrementMethodCallCount(__PRETTY_FUNCTION__);
     using TTable = TPartitionSchema::BlobsIndex;
 
     auto it = Table<TTable>()
@@ -788,6 +789,7 @@ bool TPartitionDatabase::ReadBlockMask(
     const TPartialBlobId& blobId,
     TMaybe<TBlockMask>& blockMask)
 {
+    IncrementMethodCallCount(__PRETTY_FUNCTION__);
     using TTable = TPartitionSchema::BlobsIndex;
 
     auto it = Table<TTable>()
@@ -802,6 +804,31 @@ bool TPartitionDatabase::ReadBlockMask(
         blockMask = BlockMaskFromString(
             it.GetValueOrDefault<TTable::BlockMask>());
     }
+
+    return true;
+}
+
+bool TPartitionDatabase::ReadBlobInfo(
+    const TPartialBlobId& blobId,
+    TMaybe<TBlockMask>& blockMask,
+    TMaybe<NProto::TBlobMeta>& blobMeta)
+{
+    IncrementMethodCallCount(__PRETTY_FUNCTION__);
+    using TTable = TPartitionSchema::BlobsIndex;
+
+    auto it =
+        Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    if (!it.IsValid()) {
+        return true;
+    }
+
+    blockMask = BlockMaskFromString(it.GetValueOrDefault<TTable::BlockMask>());
+    blobMeta = it.GetValue<TTable::BlobMeta>();
 
     return true;
 }
