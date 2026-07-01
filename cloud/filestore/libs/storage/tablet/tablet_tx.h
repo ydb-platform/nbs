@@ -1881,7 +1881,7 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
         bool IsNewShardNode = false;
-        bool IsNodeRefLocked = false;
+        const bool IsNodeRefLocked;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         TVector<ui64> UpdatedNodes;
@@ -1894,7 +1894,8 @@ struct TTxIndexTablet
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
                 NProto::TCreateHandleRequest request,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                bool isNodeRefLocked)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
@@ -1906,6 +1907,7 @@ struct TTxIndexTablet
             , Gid(request.GetGid())
             , RequestShardId(request.GetShardFileSystemId())
             , Request(std::move(request))
+            , IsNodeRefLocked(isNodeRefLocked)
         {
         }
 
