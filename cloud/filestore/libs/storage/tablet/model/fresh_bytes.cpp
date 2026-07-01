@@ -56,7 +56,6 @@ void TDeletedRangeMap::AddRange(
 
     auto it = static_cast<const TImpl&>(Ranges)
         .upper_bound({.NodeId = nodeId, .End = offset});
-    TVector<TByteRange> result;
     while (it != Ranges.end()
             && it->first.NodeId == nodeId
             && it->second.Offset < end)

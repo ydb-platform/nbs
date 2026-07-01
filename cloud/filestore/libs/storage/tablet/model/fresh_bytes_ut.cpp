@@ -493,4 +493,330 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
     // TODO test with multiple chunks
 }
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeRanges(const TVector<TByteRange>& ranges)
+{
+    TStringBuilder sb;
+    for (const auto& r: ranges) {
+        if (sb.size()) {
+            sb << " ";
+        }
+        sb << r.Describe();
+    }
+    return sb;
+}
+
+TByteRange R(ui64 offset, ui64 length)
+{
+    return TByteRange(offset, length, 4_KB);
+}
+
+TString D(std::initializer_list<TByteRange> ranges)
+{
+    return DescribeRanges(TVector<TByteRange>(ranges));
+}
+
+TString Apply(
+    const TDeletedRangeMap& map,
+    ui64 nodeId,
+    ui64 offset,
+    ui64 length,
+    ui64 commitId)
+{
+    return DescribeRanges(map.ApplyRanges(nodeId, R(offset, length), commitId));
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TDeletedRangeMapTest)
+{
+    Y_UNIT_TEST(ShouldReturnFullRangeWhenEmpty)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        UNIT_ASSERT_VALUES_EQUAL(D({R(0, 100)}), Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldReturnEmptyWhenEmptyMapAndZeroLengthQuery)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 1, 10, 0, 10));
+    }
+
+    Y_UNIT_TEST(ShouldSubtractSingleDeletionFromMiddle)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 30, 20, 5);
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 30), R(50, 50)}),
+            Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldReturnEmptyWhenQueryEqualsDeletion)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 30, 20, 5);
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 1, 30, 20, 10));
+    }
+
+    Y_UNIT_TEST(ShouldReturnEmptyWhenQueryFullyInsideDeletion)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 0, 100, 5);
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 1, 25, 50, 10));
+    }
+
+    Y_UNIT_TEST(ShouldTrimQueryStartWhenDeletionCoversStart)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        // deletion [10, 30) intersects query [15, 40) at the start.
+        map.AddRange(1, 10, 20, 5);
+        UNIT_ASSERT_VALUES_EQUAL(D({R(30, 10)}), Apply(map, 1, 15, 25, 10));
+    }
+
+    Y_UNIT_TEST(ShouldTrimQueryEndWhenDeletionCoversEnd)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        // deletion [30, 60) intersects query [0, 40) at the end.
+        map.AddRange(1, 30, 30, 5);
+        UNIT_ASSERT_VALUES_EQUAL(D({R(0, 30)}), Apply(map, 1, 0, 40, 10));
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreDeletionOutsideOfQuery)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 200, 50, 5);
+        UNIT_ASSERT_VALUES_EQUAL(D({R(0, 100)}), Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreDeletionEndingAtQueryStart)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        // deletion [0, 50) ends exactly at query.Offset (50). No overlap.
+        map.AddRange(1, 0, 50, 5);
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(50, 50)}),
+            Apply(map, 1, 50, 50, 10));
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreDeletionStartingAtQueryEnd)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        // deletion [50, 100) starts exactly at query.End (50). No overlap.
+        map.AddRange(1, 50, 50, 5);
+        UNIT_ASSERT_VALUES_EQUAL(D({R(0, 50)}), Apply(map, 1, 0, 50, 10));
+    }
+
+    Y_UNIT_TEST(ShouldNotApplyDeletionWhenCommitIdTooLow)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 30, 20, 20);
+        // At commit 10 the deletion (commit 20) is not yet visible.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 100)}),
+            Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldApplyDeletionWhenCommitIdEqualsQueryCommitId)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 30, 20, 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 30), R(50, 50)}),
+            Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldSubtractMultipleNonOverlappingDeletions)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 20, 10, 5);
+        map.AddRange(1, 50, 10, 6);
+        map.AddRange(1, 80, 10, 7);
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 20), R(30, 20), R(60, 20), R(90, 10)}),
+            Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldPreserveAdjacentDeletions)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        // Adjacent (touching) ranges are stored as distinct entries and both
+        // apply on read.
+        map.AddRange(1, 0, 10, 5);
+        map.AddRange(1, 10, 10, 6);
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 1, 0, 20, 10));
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(20, 10)}),
+            Apply(map, 1, 0, 30, 10));
+    }
+
+    Y_UNIT_TEST(ShouldCoalesceOutputAcrossInvisibleDeletion)
+    {
+        // Deletions [0, 10)@5 and [20, 30)@15. Reading at commit 10 makes
+        // the second deletion invisible, and ApplyRanges does not split the
+        // output around invisible entries: the tail is returned as a single
+        // range spanning past the invisible deletion.
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 0, 10, 5);
+        map.AddRange(1, 20, 10, 15);
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(10, 30)}),
+            Apply(map, 1, 0, 40, 10));
+        // Reading at commit 15 makes both visible and the output is split.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(10, 10), R(30, 10)}),
+            Apply(map, 1, 0, 40, 15));
+    }
+
+    Y_UNIT_TEST(ShouldKeepOlderCommitIdOnOverlappingAdd)
+    {
+        // First deletion [0, 10)@5. Then AddRange [5, 15)@6. The overlap
+        // [5, 10) keeps commit 5 (older wins on overlap); only [10, 15)
+        // gets commit 6.
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 0, 10, 5);
+        map.AddRange(1, 5, 10, 6);
+
+        // At commit 5, only [0, 10) is visible.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(10, 10)}),
+            Apply(map, 1, 0, 20, 5));
+
+        // At commit 6, [10, 15) is now visible too.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(15, 5)}),
+            Apply(map, 1, 0, 20, 6));
+    }
+
+    Y_UNIT_TEST(ShouldSpanMultipleExistingRangesOnAdd)
+    {
+        // Preexisting deletions [10, 20)@5 and [30, 40)@6.
+        // Add [0, 100)@7: gaps [0,10), [20,30), [40,100) get commit 7.
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 10, 10, 5);
+        map.AddRange(1, 30, 10, 6);
+        map.AddRange(1, 0, 100, 7);
+
+        // At commit 4 nothing is visible.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 100)}),
+            Apply(map, 1, 0, 100, 4));
+
+        // At commit 5 only [10, 20) is visible.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 10), R(20, 80)}),
+            Apply(map, 1, 0, 100, 5));
+
+        // At commit 6 [10, 20) and [30, 40) are visible.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 10), R(20, 10), R(40, 60)}),
+            Apply(map, 1, 0, 100, 6));
+
+        // At commit 7 everything is deleted.
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 1, 0, 100, 7));
+    }
+
+    Y_UNIT_TEST(ShouldNotSplitExistingRangeWhenAddIsFullyContained)
+    {
+        // AddRange fully inside a lower-commit deletion is absorbed: the
+        // pre-existing deletion still covers everything, so the new commitId
+        // never becomes observable within the overlap.
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 0, 100, 5);
+        map.AddRange(1, 30, 20, 10);
+
+        // At commit 5 the whole [0, 100) is deleted.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({}),
+            Apply(map, 1, 0, 100, 5));
+
+        // At commit 4 nothing is deleted.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 100)}),
+            Apply(map, 1, 0, 100, 4));
+
+        // At commit 9 (between 5 and 10) still the [0, 100) deletion applies.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({}),
+            Apply(map, 1, 0, 100, 9));
+    }
+
+    Y_UNIT_TEST(ShouldSplitExistingRangeWhenAddCoversWithBiggerRange)
+    {
+        // Preexisting [30, 50)@5. AddRange [0, 100)@10 becomes
+        // [0, 30)@10, [30, 50)@5 (preserved), [50, 100)@10.
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 30, 20, 5);
+        map.AddRange(1, 0, 100, 10);
+
+        // At commit 7 only [30, 50)@5 is visible.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 30), R(50, 50)}),
+            Apply(map, 1, 0, 100, 7));
+
+        // At commit 10 all three cover the whole range.
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldIsolateDifferentNodeIds)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 0, 100, 5);
+        map.AddRange(2, 50, 20, 5);
+
+        // NodeId 1 has [0, 100) deleted.
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 1, 0, 100, 10));
+
+        // NodeId 2 only has [50, 70) deleted.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 50), R(70, 30)}),
+            Apply(map, 2, 0, 100, 10));
+
+        // NodeId 3 has no deletions.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 100)}),
+            Apply(map, 3, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldNotConsiderDeletionsFromOtherNodeIdWhenSpanning)
+    {
+        // A pre-existing deletion on node 1 must not be touched or spanned
+        // when AddRange is called for node 2.
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 30, 20, 5);
+        map.AddRange(2, 0, 100, 10);
+
+        // Node 2 has [0, 100) deleted.
+        UNIT_ASSERT_VALUES_EQUAL(D({}), Apply(map, 2, 0, 100, 10));
+
+        // Node 1 keeps its original [30, 50) deletion.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 30), R(50, 50)}),
+            Apply(map, 1, 0, 100, 10));
+    }
+
+    Y_UNIT_TEST(ShouldRespectQueryOffsetAfterMap)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 0, 100, 5);
+        // Query that starts past every deletion returns the query unchanged.
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(200, 50)}),
+            Apply(map, 1, 200, 50, 10));
+    }
+
+    Y_UNIT_TEST(ShouldRespectQueryEndBeforeMap)
+    {
+        TDeletedRangeMap map(TDefaultAllocator::Instance());
+        map.AddRange(1, 200, 50, 5);
+        UNIT_ASSERT_VALUES_EQUAL(
+            D({R(0, 100)}),
+            Apply(map, 1, 0, 100, 10));
+    }
+}
+
 }   // namespace NCloud::NFileStore::NStorage
