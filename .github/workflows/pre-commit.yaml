@@ -28,7 +28,7 @@ jobs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
     steps:
     - name: checkout workflow scripts
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         submodules: false
         sparse-checkout: '.github'
@@ -55,7 +55,7 @@ jobs:
     if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         clean: true

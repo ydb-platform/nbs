@@ -60,7 +60,7 @@ jobs:
         run: echo "result=true" >> "$GITHUB_OUTPUT"
 
       - name: checkout workflow scripts
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -144,7 +144,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -242,7 +242,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -436,7 +436,7 @@ jobs:
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -557,7 +557,7 @@ jobs:
       matrix_include_ubsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_ubsan }}
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -577,7 +577,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
@@ -635,7 +635,7 @@ jobs:
     timeout-minutes: 540
     steps:
       - name: checkout workflow scripts
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: '.github'
@@ -673,7 +673,7 @@ jobs:
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: '.github'
