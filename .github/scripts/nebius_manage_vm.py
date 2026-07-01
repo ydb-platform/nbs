@@ -20,14 +20,14 @@ from .helpers import (
     retry,
     GITHUB_API_RETRY_ATTEMPTS,
     GITHUB_API_RETRY_INTERVAL_SEC,
-    GITHUB_API_TIMEOUT_SEC,
     GITHUB_RUNNER_LATEST_VERSION,
-    format_github_response_debug,
     resolve_github_runner_release,
 )
 from github import Auth as GithubAuth
 from github import Github
 from github.GithubException import GithubException
+from github.Repository import Repository
+from github.SelfHostedActionsRunnerToken import SelfHostedActionsRunnerToken
 
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
@@ -236,45 +236,41 @@ def resolve_runner_release_for_update(
     return release.version, release.sha256_by_arch
 
 
+def _create_repository_self_hosted_runner_registration_token(
+    self: Repository,
+) -> SelfHostedActionsRunnerToken:
+    headers, data = self._requester.requestJsonAndCheck(
+        "POST",
+        f"{self.url}/actions/runners/registration-token",
+    )
+    return SelfHostedActionsRunnerToken(self._requester, headers, data)
+
+
+if not hasattr(Repository, "create_self_hosted_runner_registration_token"):
+    Repository.create_self_hosted_runner_registration_token = (  # type: ignore[attr-defined]
+        _create_repository_self_hosted_runner_registration_token
+    )
+
+
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(requests.exceptions.RequestException, ValueError),
+    retry_exceptions=(
+        GithubException,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+        ValueError,
+    ),
 )
 def get_runner_token(
     github_repo_owner: str, github_repo: str, github_token: str
 ) -> str:
-    response = requests.post(
-        f"https://api.github.com/repos/{github_repo_owner}/{github_repo}/actions/runners/registration-token",
-        headers={
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github+json",
-            "X-Github-Api-Version": "2022-11-28",
-        },
-        timeout=GITHUB_API_TIMEOUT_SEC,
+    repo = Github(auth=GithubAuth.Token(github_token)).get_repo(
+        f"{github_repo_owner}/{github_repo}"
     )
-    logger.debug(
-        "GitHub runner registration token response status=%s content_type=%s",
-        response.status_code,
-        response.headers.get("content-type"),
-    )
-
-    try:
-        result = response.json()
-    except ValueError as e:
-        raise ValueError(
-            "Failed to parse GitHub runner registration token response "
-            f"({format_github_response_debug(response)}): {e}"
-        ) from None
-
-    if not response.ok:
-        raise ValueError(
-            "GitHub runner registration token request failed "
-            f"({format_github_response_debug(response)}): {result}"
-        )
-
-    token = result.get("token")
-    expires_at = result.get("expires_at")
+    registration_token = repo.create_self_hosted_runner_registration_token()
+    token = registration_token.token
+    expires_at = registration_token.expires_at
     if token:
         # Mask the token in the logs
         print(f"::add-mask::{token}")
@@ -282,10 +278,7 @@ def get_runner_token(
         logger.debug("Got runner registration token valid till: %s", expires_at)
         return token
     else:
-        raise ValueError(
-            "Failed to get runner registration token "
-            f"({format_github_response_debug(response)}): {result}"
-        )
+        raise ValueError("Failed to get runner registration token")
 
 
 def find_runner_by_name(

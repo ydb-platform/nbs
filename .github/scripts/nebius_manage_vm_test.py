@@ -127,92 +127,159 @@ def test_build_disk_request():
     assert request.spec.type == m.DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED
 
 
-def test_get_runner_token_retries_json_decode_error(monkeypatch, capsys):
-    class FakeResponse:
-        def __init__(self, payload=None):
-            self.payload = payload
-            self.status_code = 200
-            self.reason = "OK"
-            self.headers = {"content-type": "application/json"}
-            self.text = "{}"
-            self.ok = True
-
-        def json(self):
-            if self.payload is None:
-                raise ValueError("bad json")
-            return self.payload
-
-    responses = [
-        FakeResponse(),
-        FakeResponse({"token": "runner-token", "expires_at": "2026-05-04T16:00:00Z"}),
-    ]
+def test_get_runner_token_retries_github_errors(monkeypatch, capsys):
+    attempts = []
     sleeps = []
 
-    def fake_post(url, headers, timeout):
-        assert url.endswith("/repos/owner/repo/actions/runners/registration-token")
-        assert headers["Authorization"] == "Bearer github-token"
-        assert timeout == m.GITHUB_API_TIMEOUT_SEC
-        return responses.pop(0)
+    class FakeRepo:
+        def create_self_hosted_runner_registration_token(self):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise m.GithubException(
+                    401,
+                    {"message": "Bad credentials", "status": "401"},
+                    {},
+                )
+            return SimpleNamespace(
+                token="runner-token",
+                expires_at="2026-05-04T16:00:00Z",
+            )
 
-    monkeypatch.setattr(m.requests, "post", fake_post)
+    class FakeGithub:
+        def __init__(self, auth):
+            assert auth == ("token", "github-token")
+
+        def get_repo(self, repo):
+            assert repo == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setattr(m.GithubAuth, "Token", lambda token: ("token", token))
+    monkeypatch.setattr(m, "Github", FakeGithub)
     monkeypatch.setattr(m.time, "sleep", sleeps.append)
 
     assert m.get_runner_token("owner", "repo", "github-token") == "runner-token"
+    assert len(attempts) == 2
     assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
     assert "::add-mask::runner-token" in capsys.readouterr().out
     assert m.SENSITIVE_DATA_VALUES["runner_token"] == "runner-token"
 
 
-def test_get_runner_token_reports_response_debug_after_retries(monkeypatch):
-    class FakeResponse:
-        status_code = 502
-        reason = "Bad Gateway"
-        headers = {"content-type": "text/html"}
-        text = "<html>bad gateway</html>"
-        ok = False
-
-        def json(self):
-            raise ValueError("bad json")
-
-    def fake_post(url, headers, timeout):
-        assert url.endswith("/repos/owner/repo/actions/runners/registration-token")
-        assert headers["Authorization"] == "Bearer github-token"
-        assert timeout == m.GITHUB_API_TIMEOUT_SEC
-        return FakeResponse()
-
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        m.requests.exceptions.ConnectionError,
+        m.requests.exceptions.Timeout,
+    ],
+)
+def test_get_runner_token_retries_transport_errors(monkeypatch, exception_type):
+    attempts = []
     sleeps = []
 
-    monkeypatch.setattr(m.requests, "post", fake_post)
+    class FakeRepo:
+        def create_self_hosted_runner_registration_token(self):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise exception_type("github transport error")
+            return SimpleNamespace(
+                token="runner-token",
+                expires_at="2026-05-04T16:00:00Z",
+            )
+
+    class FakeGithub:
+        def __init__(self, auth):
+            assert auth == ("token", "github-token")
+
+        def get_repo(self, repo):
+            assert repo == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setattr(m.GithubAuth, "Token", lambda token: ("token", token))
+    monkeypatch.setattr(m, "Github", FakeGithub)
+    monkeypatch.setattr(m.time, "sleep", sleeps.append)
+
+    assert m.get_runner_token("owner", "repo", "github-token") == "runner-token"
+    assert len(attempts) == 2
+    assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
+def test_get_runner_token_reports_missing_token_after_retries(monkeypatch):
+    attempts = []
+    sleeps = []
+
+    class FakeRepo:
+        def create_self_hosted_runner_registration_token(self):
+            attempts.append(1)
+            return SimpleNamespace(token="", expires_at="2026-05-04T16:00:00Z")
+
+    class FakeGithub:
+        def __init__(self, auth):
+            assert auth == ("token", "github-token")
+
+        def get_repo(self, repo):
+            assert repo == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setattr(m.GithubAuth, "Token", lambda token: ("token", token))
+    monkeypatch.setattr(m, "Github", FakeGithub)
     monkeypatch.setattr(m.time, "sleep", sleeps.append)
 
     with pytest.raises(ValueError) as err:
         m.get_runner_token("owner", "repo", "github-token")
 
-    message = str(err.value)
-    assert "status=502" in message
-    assert "content_type='text/html'" in message
-    assert "body_preview='<html>bad gateway</html>'" in message
+    assert str(err.value) == "Failed to get runner registration token"
+    assert len(attempts) == m.GITHUB_API_RETRY_ATTEMPTS
+    assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC] * (
+        m.GITHUB_API_RETRY_ATTEMPTS - 1
+    )
+
+
+def test_repository_registration_token_extension_uses_pygithub_requester():
+    class FakeRequester:
+        def requestJsonAndCheck(self, method, url):
+            assert method == "POST"
+            assert (
+                url
+                == "https://api.github.com/repos/owner/repo/actions/runners/registration-token"
+            )
+            return {}, {
+                "token": "runner-token",
+                "expires_at": "2026-05-04T16:00:00Z",
+            }
+
+    class FakeRepo:
+        url = "https://api.github.com/repos/owner/repo"
+        _requester = FakeRequester()
+
+    registration_token = m._create_repository_self_hosted_runner_registration_token(
+        FakeRepo()
+    )
+
+    assert registration_token.token == "runner-token"
+    assert registration_token.expires_at.isoformat() == "2026-05-04T16:00:00+00:00"
 
 
 def test_get_latest_github_runner_version_strips_tag_prefix(monkeypatch):
-    class FakeResponse:
-        status_code = 200
-        reason = "OK"
-        headers = {"content-type": "application/json"}
-        text = "{}"
-        ok = True
+    class FakeRepo:
+        def get_latest_release(self):
+            payload = make_runner_release_payload("2.332.0")
+            return SimpleNamespace(
+                tag_name=payload["tag_name"],
+                body=payload["body"],
+                get_assets=lambda: [
+                    SimpleNamespace(name=asset["name"]) for asset in payload["assets"]
+                ],
+            )
 
-        def json(self):
-            return make_runner_release_payload("2.332.0")
+    class FakeGithub:
+        def get_repo(self, repo):
+            assert repo == "actions/runner"
+            return FakeRepo()
 
-    def fake_get(url, headers, timeout):
-        assert url == h.GITHUB_RUNNER_LATEST_RELEASE_URL
-        assert headers["Authorization"] == "Bearer github-token"
-        assert headers["Accept"] == "application/vnd.github+json"
-        assert timeout == h.GITHUB_API_TIMEOUT_SEC
-        return FakeResponse()
+    def fake_github_client(token):
+        assert token == "github-token"
+        return FakeGithub()
 
-    monkeypatch.setattr(h.requests, "get", fake_get)
+    monkeypatch.setattr(h, "github_client", fake_github_client)
 
     assert h.get_latest_github_runner_version("github-token") == "2.332.0"
 
@@ -250,23 +317,28 @@ def test_extract_github_runner_release_returns_arch_sha_from_body():
 
 
 def test_get_github_runner_release_fetches_tag_and_sha(monkeypatch):
-    class FakeResponse:
-        status_code = 200
-        reason = "OK"
-        headers = {"content-type": "application/json"}
-        text = "{}"
-        ok = True
+    class FakeRepo:
+        def get_release(self, tag):
+            assert tag == "v2.331.0"
+            payload = make_runner_release_payload("2.331.0")
+            return SimpleNamespace(
+                tag_name=payload["tag_name"],
+                body=payload["body"],
+                get_assets=lambda: [
+                    SimpleNamespace(name=asset["name"]) for asset in payload["assets"]
+                ],
+            )
 
-        def json(self):
-            return make_runner_release_payload("2.331.0")
+    class FakeGithub:
+        def get_repo(self, repo):
+            assert repo == "actions/runner"
+            return FakeRepo()
 
-    def fake_get(url, headers, timeout):
-        assert url.endswith("/repos/actions/runner/releases/tags/v2.331.0")
-        assert headers["Authorization"] == "Bearer github-token"
-        assert timeout == h.GITHUB_API_TIMEOUT_SEC
-        return FakeResponse()
+    def fake_github_client(token):
+        assert token == "github-token"
+        return FakeGithub()
 
-    monkeypatch.setattr(h.requests, "get", fake_get)
+    monkeypatch.setattr(h, "github_client", fake_github_client)
 
     release = h.get_github_runner_release("v2.331.0", "github-token")
 
