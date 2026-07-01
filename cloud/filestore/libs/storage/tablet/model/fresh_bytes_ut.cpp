@@ -233,13 +233,11 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 TVector<TBytes>({
                     {1, 50, 3, 13, InvalidCommitId},
                     {1, 100, 1, 10, InvalidCommitId},
-                    //{1, 101, 1, 11, InvalidCommitId},
-                    {1, 101, 4, 11, InvalidCommitId}, // XXX
+                    {1, 101, 1, 11, InvalidCommitId},
                     {1, 111, 5, 18, InvalidCommitId},
                 }), visitor.Bytes);
 
-            //UNIT_ASSERT_VALUES_EQUAL("dDd|a|b|yuiop", visitor.Data);
-            UNIT_ASSERT_VALUES_EQUAL("dDd|a|bBbB|yuiop", visitor.Data); // XXX
+            UNIT_ASSERT_VALUES_EQUAL("dDd|a|b|yuiop", visitor.Data);
         }
 
         {

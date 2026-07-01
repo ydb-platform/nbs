@@ -13,6 +13,123 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TDeletedRangeMap::InsertRange(
+    ui64 nodeId,
+    ui64 offset,
+    ui64 len,
+    ui64 commitId)
+{
+    Ranges[{.NodeId = nodeId, .End = offset + len}] = {
+        .Len = len,
+        .Offset = offset,
+        .CommitId = commitId,
+    };
+}
+
+void TDeletedRangeMap::AddRange(
+    ui64 nodeId,
+    ui64 offset,
+    ui64 len,
+    ui64 commitId)
+{
+    const ui64 end = offset + len;
+
+    auto it = Ranges.upper_bound({.NodeId = nodeId, .End = offset});
+    while (it != Ranges.end() && it->first.NodeId == nodeId) {
+        //
+        // We expect AddRange calls to be ordered by commitId.
+        //
+
+        TABLET_VERIFY_C(
+            it->second.CommitId < commitId,
+            "range.CommitId=" << it->second.CommitId
+                << ", commitId=" << commitId);
+
+        const ui64 segmentOffset = it->second.Offset + it->second.Len;
+        TABLET_VERIFY_C(
+            segmentOffset > offset,
+            "segmentOffset=" << segmentOffset << ", offset=" << offset);
+        if (segmentOffset >= end) {
+            //
+            // Next ranges are past the end of our range.
+            //
+
+            offset = end;
+            break;
+        }
+
+        ++it;
+        ui64 segmentEnd = end;
+        if (it != Ranges.end() && it->first.NodeId == nodeId) {
+            segmentEnd = Min(end, it->second.Offset);
+        }
+
+        if (segmentOffset >= segmentEnd) {
+            //
+            // This range is empty.
+            //
+
+            TABLET_VERIFY_C(
+                segmentOffset == segmentEnd,
+                "segmentOffset=" << segmentOffset
+                    << ", segmentEnd=" << segmentEnd);
+            continue;
+        }
+
+        //
+        // Non-empty segment - inserting it and advancing our offset.
+        //
+
+        const ui64 segmentLen = segmentEnd - segmentOffset;
+        InsertRange(nodeId, segmentOffset, segmentLen, commitId);
+        offset = segmentEnd;
+    }
+
+    if (offset < end) {
+        const ui64 segmentLen = end - offset;
+        InsertRange(nodeId, offset, segmentLen, commitId);
+    }
+}
+
+TVector<TByteRange> TDeletedRangeMap::ApplyRanges(
+    ui64 nodeId,
+    TByteRange byteRange,
+    ui64 commitId) const
+{
+    auto it = Ranges.upper_bound({.NodeId = nodeId, .End = byteRange.Offset});
+    TVector<TByteRange> result;
+    while (it != Ranges.end()
+            && it->first.NodeId == nodeId
+            && it->second.Offset < byteRange.End())
+    {
+        if (it->second.CommitId > commitId) {
+            ++it;
+            continue;
+        }
+
+        if (byteRange.Offset < it->second.Offset) {
+            result.push_back(TByteRange(
+                byteRange.Offset,
+                it->second.Offset - byteRange.Offset,
+                byteRange.BlockSize));
+        }
+        const ui64 curDeletedRangeEnd = it->second.Offset + it->second.Len;
+        const ui64 shift =
+            Min(curDeletedRangeEnd - byteRange.Offset, byteRange.Length);
+        byteRange.Offset += shift;
+        byteRange.Length -= shift;
+        ++it;
+    }
+
+    if (byteRange.Length) {
+        result.push_back(byteRange);
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TFreshBytes::TFreshBytes(IAllocator* allocator)
     : Allocator(allocator)
     , Chunks(allocator)
@@ -33,8 +150,8 @@ void TFreshBytes::DeleteBytes(
 {
     auto end = offset + len;
 
-    auto lo = c.Refs.upper_bound({nodeId, offset});
-    auto hi = c.Refs.upper_bound({nodeId, end});
+    auto lo = c.Refs.upper_bound({.NodeId = nodeId, .End = offset});
+    auto hi = c.Refs.upper_bound({.NodeId = nodeId, .End = end});
 
     if (lo != c.Refs.end() && lo->first.NodeId == nodeId) {
         if (lo->second.Offset == offset && lo->first.End == end) {
@@ -46,7 +163,7 @@ void TFreshBytes::DeleteBytes(
         if (lo->second.Offset < offset) {
             // cutting lo from the right side
             TABLET_VERIFY_DEBUG(lo->second.CommitId < commitId);
-            auto& loRef = c.Refs[{nodeId, offset}];
+            auto& loRef = c.Refs[{.NodeId = nodeId, .End = offset}];
             loRef = lo->second;
             loRef.Buf = loRef.Buf.substr(0, offset - loRef.Offset);
 
@@ -107,6 +224,10 @@ void TFreshBytes::AddBytes(
     TStringBuf data,
     ui64 commitId)
 {
+    //
+    // Validate CommitId order.
+    //
+
     auto& c = Chunks.back();
     if (c.FirstCommitId == InvalidCommitId) {
         c.FirstCommitId = commitId;
@@ -114,20 +235,33 @@ void TFreshBytes::AddBytes(
         TABLET_VERIFY(commitId >= c.FirstCommitId);
     }
 
+    //
+    // Copy the data into a buffer and update stats.
+    //
+
     TByteVector buffer(Reserve(data.size()), Allocator);
     buffer.assign(data.begin(), data.end());
 
     c.TotalBytes += buffer.size();
     TotalBytes += buffer.size();
 
-    TBytes descriptor{nodeId, offset, buffer.size(), commitId, InvalidCommitId};
+    TBytes descriptor(nodeId, offset, buffer.size(), commitId, InvalidCommitId);
     c.Data.emplace_back(descriptor, std::move(buffer));
 
     TotalDataItemCount++;
 
     const auto& storage = c.Data.back().Data;
-    TKey key{nodeId, offset + storage.size()};
-    TRef ref{TStringBuf(storage.data(), storage.size()), offset, commitId};
+    TKey key{.NodeId = nodeId, .End = offset + storage.size()};
+    TRef ref{
+        .Buf = TStringBuf(storage.data(), storage.size()),
+        .Offset = offset,
+        .CommitId = commitId,
+    };
+
+    //
+    // Delete any data that we might have in this chunk that is covered by this
+    // range and then insert this range.
+    //
 
     DeleteBytes(c, nodeId, offset, data.size(), commitId);
 
@@ -140,8 +274,14 @@ void TFreshBytes::AddDeletionMarker(
     ui64 len,
     ui64 commitId)
 {
+    //
+    // Validate CommitId order.
+    //
+
     auto& c = Chunks.back();
-    if (c.FirstCommitId != InvalidCommitId) {
+    if (c.FirstCommitId == InvalidCommitId) {
+        c.FirstCommitId = commitId;
+    } else {
         TABLET_VERIFY(commitId >= c.FirstCommitId);
     }
 
@@ -154,7 +294,19 @@ void TFreshBytes::AddDeletionMarker(
         len,
         commitId,
         InvalidCommitId});
+
+    //
+    // We need to erase the data in this chunk that's covered by this marker.
+    //
+
     DeleteBytes(c, nodeId, offset, len, commitId);
+
+    //
+    // We need to mark this range as deleted to make the corresponding range
+    // invisible in the previous chunk if read at this commitId or higher.
+    //
+
+    c.DeletedRanges.AddRange(nodeId, offset, len, commitId);
 }
 
 void TFreshBytes::Barrier(ui64 commitId)
@@ -177,6 +329,11 @@ void TFreshBytes::Barrier(ui64 commitId)
 
 void TFreshBytes::OnCheckpoint(ui64 commitId)
 {
+    //
+    // We need to seal the current chunk because the last chunk is mutable and
+    // we want to freeze the current state for this checkpoint.
+    //
+
     Barrier(commitId);
 }
 
@@ -186,6 +343,13 @@ TFlushBytesCleanupInfo TFreshBytes::StartCleanup(
     TVector<TBytes>* deletionMarkers)
 {
     if (Chunks.size() == 1) {
+        //
+        // We need to seal the front chunk only if it's active - i.e. if it's
+        // not the only chunk that we have. The goal is to ensure that no
+        // updates are made to this chunk after that - we want to safely process
+        // it without worrying about any kind of races.
+        //
+
         Barrier(commitId);
     }
 
@@ -197,7 +361,10 @@ TFlushBytesCleanupInfo TFreshBytes::StartCleanup(
         deletionMarkers->push_back(descriptor);
     }
 
-    return {Chunks.front().Id, Chunks.front().ClosingCommitId};
+    return {
+        .ChunkId = Chunks.front().Id,
+        .ClosingCommitId = Chunks.front().ClosingCommitId
+    };
 }
 
 void TFreshBytes::VisitTop(
@@ -245,6 +412,12 @@ bool TFreshBytes::FinishCleanup(
         dataItemCount <= dataSize && deletionMarkerCount <= deletionSize;
     TABLET_VERIFY(check);
 
+    //
+    // Paged cleanup is used. We should just deleted the cleaned up ranges and
+    // then the caller will call StartCleanup again for this chunk and the next
+    // page will be processed.
+    //
+
     chunk.Data.erase(
         chunk.Data.begin(),
         std::next(chunk.Data.begin(), dataItemCount));
@@ -262,17 +435,28 @@ void TFreshBytes::FindBytes(
     TByteRange byteRange,
     ui64 commitId) const
 {
-    for (const auto& c: Chunks) {
+    for (ui64 i = 0; i < Chunks.size(); ++i) {
+        const auto& c = Chunks[i];
         if (c.FirstCommitId > commitId) {
+            //
+            // Chunk CommitId ranges do not overlap and are ordered by
+            // FirstCommitId so all the remaining ranges are not visible.
+            //
+
             break;
         }
 
-        FindBytes(c, visitor, nodeId, byteRange, commitId);
+        const TChunk* nextC = nullptr;
+        if (i + 1 < Chunks.size() && Chunks[i + 1].FirstCommitId <= commitId) {
+            nextC = &Chunks[i + 1];
+        }
+        FindBytes(c, nextC, visitor, nodeId, byteRange, commitId);
     }
 }
 
 void TFreshBytes::FindBytes(
     const TChunk& chunk,
+    const TChunk* nextChunk,
     IFreshBytesVisitor& visitor,
     ui64 nodeId,
     TByteRange byteRange,
@@ -291,17 +475,29 @@ void TFreshBytes::FindBytes(
 
         const auto intersection = itRange.Intersect(byteRange);
         if (it->second.CommitId <= commitId && intersection.Length) {
-            TStringBuf data = it->second.Buf.substr(
-                intersection.Offset - itRange.Offset,
-                intersection.Length);
+            TVector<TByteRange> actualRanges;
+            if (nextChunk) {
+                actualRanges = nextChunk->DeletedRanges.ApplyRanges(
+                    nodeId,
+                    intersection,
+                    commitId);
+            } else {
+                actualRanges.push_back(intersection);
+            }
 
-            visitor.Accept({
-                nodeId,
-                intersection.Offset,
-                intersection.Length,
-                it->second.CommitId,
-                InvalidCommitId
-            }, data);
+            for (const auto& actualRange: actualRanges) {
+                TStringBuf data = it->second.Buf.substr(
+                    actualRange.Offset - itRange.Offset,
+                    actualRange.Length);
+
+                visitor.Accept({
+                    nodeId,
+                    actualRange.Offset,
+                    actualRange.Length,
+                    it->second.CommitId,
+                    InvalidCommitId
+                }, data);
+            }
         }
 
         ++it;
