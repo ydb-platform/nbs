@@ -361,10 +361,14 @@ struct TBootstrap
         // Scheduled tasks are not run automatically when TTestScheduler is used
         auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
         if (testScheduler) {
-            testScheduler->RunAllScheduledTasks();
+            auto now = TInstant::Now();
+            while (!stop.HasValue() && !stop.HasException()) {
+                UNIT_ASSERT(TInstant::Now() - now < WaitTimeout);
+                testScheduler->RunAllScheduledTasks();
+            }
+        } else {
+            UNIT_ASSERT(stop.Wait(WaitTimeout));
         }
-
-        UNIT_ASSERT(stop.Wait(WaitTimeout));
 
         if (Scheduler) {
             // It is not allowed to stop Scheduler in the subscriber of
