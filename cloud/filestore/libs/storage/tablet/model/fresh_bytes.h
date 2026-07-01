@@ -207,32 +207,120 @@ public:
         }
     }
 
+    /**
+     * Validates whether the supplied bytes can be added. Can be called before
+     * AddBytes.
+     *
+     * @param nodeId - NodeId.
+     * @param offset - Offset within the file.
+     * @param data - Bytes to add.
+     * @param commitId - CommitId at which these bytes appeared.
+     *
+     * @return - E_REJECTED upon failure, S_OK - otherwise.
+     */
     NProto::TError CheckBytes(
         ui64 nodeId,
         ui64 offset,
         TStringBuf data,
         ui64 commitId) const;
+
+    /**
+     * Adds a range of bytes into the last chunk. CommitIds should grow
+     * monotonically.
+     *
+     * @param nodeId - NodeId.
+     * @param offset - Offset within the file.
+     * @param data - Bytes to add.
+     * @param commitId - CommitId at which these bytes appeared.
+     */
     void AddBytes(ui64 nodeId, ui64 offset, TStringBuf data, ui64 commitId);
+
+    /**
+     * Registers this range as deleted in the last chunk. Deletes overlapping
+     * byte ranges in this chunk in-place and remembers this range to apply this
+     * deletion when previous chunks are read.
+     *
+     * @param nodeId - NodeId.
+     * @param offset - Offset within the file.
+     * @param len - Length of the range.
+     * @param commitId - CommitId at which this range was deleted.
+     */
     void AddDeletionMarker(ui64 nodeId, ui64 offset, ui64 len, ui64 commitId);
 
+    /**
+     * Seals the last chunk and creates a new empty one. Needed to make a frozen
+     * snapshot of the current state of this data structure. CommitId order is
+     * again expected to be monotonic.
+     *
+     * @param commitId - CommitId of the checkpoint.
+     */
     void OnCheckpoint(ui64 commitId);
 
+    /**
+     * If there's only one chunk it gets sealed and a new chunk is created.
+     * This method is supposed to be used to copy the bytes in this chunk
+     * elsewhere and then delete this chunk via FinishCleanup.
+     *
+     * @param commitId - CommitId of the moment when cleanup starts.
+     * @param entries (out) - Returns the bytes in the last chunk.
+     * @param deletionMarkers (out) - Returns the deletion markers in the last
+     *  chunk.
+     *
+     * @return - Chunk meta of the sealed chunk.
+     */
     TFlushBytesCleanupInfo StartCleanup(
         ui64 commitId,
         TVector<TBytes>* entries,
         TVector<TBytes>* deletionMarkers);
+
+    /**
+     * Applies the supplied visitor to the items in the first chunk.
+     *
+     * @param itemLimit - Limits the number of traversed items.
+     * @param visitor - The visitor.
+     */
     void VisitTop(ui64 itemLimit, const TChunkVisitor& visitor);
+
+    /**
+     * Completes the cleanup that was initiated via StartCleanup.
+     *
+     * @param chunkId - The id of the chunk - supposed to be obtained from the
+     *  chunk meta returned by StartCleanup.
+     * @param dataItemCount - Limits the number of cleaned up byte items.
+     * @param deletionMarkerCount - Limits the number of cleaned up deletion
+     *  marker items.
+     *
+     * @return - true if the chunk is now empty, false - otherwise.
+     */
     bool FinishCleanup(
         ui64 chunkId,
         ui64 dataItemCount,
         ui64 deletionMarkerCount);
 
+    /**
+     * Applies the supplied visitor to the bytes stored in this structure that
+     * are visible at the supplied commit-id.
+     *
+     * @param visitor - The visitor.
+     * @param nodeId - NodeId filter.
+     * @param byteRange - Range filter.
+     * @param commitId - The commit-id at which we want to read, newer bytes and
+     *  deletions will be skipped.
+     */
     void FindBytes(
         IFreshBytesVisitor& visitor,
         ui64 nodeId,
         TByteRange byteRange,
         ui64 commitId) const;
 
+    /**
+     * Checks whether the supplied range overlaps with any of the stored ranges.
+     *
+     * @param nodeId - NodeId filter.
+     * @param byteRange - Range filter.
+     *
+     * @return - true if overlapping ranges exist, false - otherwise.
+     */
     bool Intersects(ui64 nodeId, TByteRange byteRange) const;
 
 private:
