@@ -1,5 +1,5 @@
 name: Build VM Image
-run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }}
+run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }} runner_version:${{ inputs.update_runner_version }}
   image_id:${{ inputs.image_id }} build_image:${{ inputs.build_image }} check_vm_creation:${{ inputs.check_vm_creation }}
 on:
   # schedule:
@@ -27,6 +27,11 @@ on:
         type: boolean
       update_pooled_image_ids:
         description: "Update pooled image ids"
+        required: false
+        default: false
+        type: boolean
+      update_runner_version:
+        description: "Update GitHub runner version repository variable"
         required: false
         default: false
         type: boolean
@@ -64,6 +69,11 @@ on:
         type: boolean
       update_pooled_image_ids:
         description: "Update pooled image ids"
+        required: false
+        default: false
+        type: boolean
+      update_runner_version:
+        description: "Update GitHub runner version repository variable"
         required: false
         default: false
         type: boolean
@@ -256,7 +266,12 @@ jobs:
           LIGHT_PARENT_ID: ${{ vars.POOLED_LIGHT_PARENT_ID }}
 
       - name: Set runner version
-        if: inputs.image_id == '' && inputs.build_image == true && steps.start-runner.outcome == 'success' && steps.runner-release.outputs.RUNNER_VERSION != vars.RUNNER_VERSION
+        if: >-
+          inputs.image_id == '' &&
+          inputs.build_image == true &&
+          inputs.update_runner_version == true &&
+          steps.start-runner.outcome == 'success' &&
+          steps.runner-release.outputs.RUNNER_VERSION != vars.RUNNER_VERSION
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           RUNNER_VERSION: ${{ steps.runner-release.outputs.RUNNER_VERSION }}

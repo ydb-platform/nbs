@@ -19,3 +19,4 @@ jobs:
       build_image: true
       check_vm_creation: true
       update_pooled_image_ids: true
+      update_runner_version: true

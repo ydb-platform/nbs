@@ -556,6 +556,7 @@ jobs:
       check_vm_creation: true
       update_image_id: false
       update_pooled_image_ids: false
+      update_runner_version: false
       cleanup_built_image: true
 
   create-build-and-test-target-var:
