@@ -163,7 +163,7 @@ enum class EFileStoreRequest
     ForgetMulti,
     OpenDir,
     ReleaseDir,
-    Flush,
+    FuseFlush,
     MAX
 };
 
