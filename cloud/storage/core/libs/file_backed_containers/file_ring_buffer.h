@@ -43,12 +43,16 @@ public:
     * metadata. If the size of the existing metadata is greater than the
     * specified capacity, the metadata area is shrunk to fit the existing
     * metadata.
+    *
+    * Argument version specifies the version of the file ring buffer format.
+    * It affects capabilities (like storing tags, enforcing checksum calculation
+    * for headers etc).
     */
     TFileRingBuffer(
         const TString& filePath,
         ui64 dataCapacity,
-        ui64 metadataCapacity = 0,
-        EFileRingBufferVersion version = EFileRingBufferVersion::V5);
+        ui64 metadataCapacity,
+        EFileRingBufferVersion version);
 
     ~TFileRingBuffer();
 
