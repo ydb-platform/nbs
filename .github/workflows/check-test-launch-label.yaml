@@ -39,6 +39,13 @@ jobs:
             rebase
             sleep
             disable_truncate
+            nightly-tests
+            nightly-asan
+            nightly-tsan
+            nightly-msan
+            nightly-ubsan
+            nightly-sanitizers
+            nightly-all
         run: |
           set -euo pipefail
 

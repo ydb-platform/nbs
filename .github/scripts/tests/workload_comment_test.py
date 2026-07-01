@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from scripts import helpers as h
 from scripts.tests import workload_comment as wc
 
 
@@ -24,9 +25,9 @@ def test_iter_components_preserves_matrix_order() -> None:
 def test_find_current_job_url_falls_back_to_run_url(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
-    monkeypatch.setattr(wc, "fetch_jobs", lambda: [])
+    monkeypatch.setattr(h, "fetch_jobs", lambda: [])
 
-    assert wc.find_current_job_url("job", "runner") == (
+    assert h.find_current_job_url("job", "runner") == (
         "https://github.com/org/repo/actions/runs/123"
     )
 
@@ -35,7 +36,7 @@ def test_find_current_job_url_matches_reusable_workflow_job_name(monkeypatch) ->
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
     monkeypatch.setattr(
-        wc,
+        h,
         "fetch_jobs",
         lambda: [
             {
@@ -48,7 +49,7 @@ def test_find_current_job_url_matches_reusable_workflow_job_name(monkeypatch) ->
     )
 
     assert (
-        wc.find_current_job_url(
+        h.find_current_job_url(
             "Build and test relwithdebinfo [id=1 ip=10.0.0.1]",
             "runner-1",
         )
@@ -60,7 +61,7 @@ def test_find_current_job_url_prefers_runner_specific_match(monkeypatch) -> None
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
     monkeypatch.setattr(
-        wc,
+        h,
         "fetch_jobs",
         lambda: [
             {
@@ -79,6 +80,6 @@ def test_find_current_job_url_prefers_runner_specific_match(monkeypatch) -> None
     )
 
     assert (
-        wc.find_current_job_url("Build and test relwithdebinfo", "runner-b")
+        h.find_current_job_url("Build and test relwithdebinfo", "runner-b")
         == "https://github.com/org/repo/actions/runs/123/job/222"
     )
