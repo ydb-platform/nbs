@@ -16,6 +16,8 @@ from urllib.parse import quote, urlparse
 from github import Auth as GithubAuth, Github
 from github.GithubException import GithubException
 from github.GitRelease import GitRelease
+from github.NamedUser import NamedUser
+from github.Team import Team
 from github.WorkflowJob import WorkflowJob
 
 SENSITIVE_DATA_VALUES = {}
@@ -178,6 +180,11 @@ GITHUB_API_RETRY_ATTEMPTS = 3
 GITHUB_API_RETRY_INTERVAL_SEC = 5
 GITHUB_API_TIMEOUT_SEC = 30
 GITHUB_RUNNER_LATEST_VERSION = "latest"
+PYGITHUB_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    GithubException,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+)
 
 
 @dataclass(frozen=True)
@@ -329,6 +336,56 @@ def fetch_repo_variable(github_client, github_repository: str, variable_name: st
     return repo, repo.get_variable(variable_name)
 
 
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_team(gh: Github, github_org: str, team_slug: str) -> Team:
+    org = gh.get_organization(github_org)
+    return org.get_team_by_slug(team_slug)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_team_members(team: Team) -> list[NamedUser]:
+    return [member for member in team.get_members()]
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_member_public_keys(member: NamedUser) -> list[str]:
+    return [key.key for key in member.get_keys()]
+
+
+def fetch_github_team_public_keys(
+    gh: Github, github_org: str, team_slug: str
+) -> list[str]:
+    logger = logging.getLogger(__name__)
+    team = fetch_github_team(gh, github_org, team_slug)
+    members: list[NamedUser] = fetch_github_team_members(team)
+
+    ssh_keys: list[str] = []
+    logger.info(
+        "Fetching SSH keys for members: %s",
+        ", ".join([member.login for member in members]),
+    )
+    for member in members:
+        member_keys: list[str] = fetch_github_member_public_keys(member)
+        ssh_keys.extend(member_keys)
+
+        logger.debug("Fetched %d SSH keys for %s", len(member_keys), member.login)
+
+    logger.debug("Fetched SSH keys: %s", ssh_keys)
+    return ssh_keys
+
+
 def format_github_response_debug(response: requests.Response) -> str:
     content_type = response.headers.get("content-type", "<missing>")
     body_preview = response.text[:1000].replace("\n", "\\n")
@@ -408,7 +465,7 @@ def git_release_payload(release: GitRelease) -> dict:
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_github_runner_release(
     version: str, github_token: str | None = None
@@ -422,7 +479,7 @@ def get_github_runner_release(
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_latest_github_runner_release(
     github_token: str | None = None,

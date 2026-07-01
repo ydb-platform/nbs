@@ -1,5 +1,5 @@
 name: Build VM Image
-run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }}
+run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }} runner_version:${{ inputs.update_runner_version }}
   image_id:${{ inputs.image_id }} build_image:${{ inputs.build_image }} check_vm_creation:${{ inputs.check_vm_creation }}
 on:
   # schedule:
@@ -30,11 +30,21 @@ on:
         required: false
         default: false
         type: boolean
+      update_runner_version:
+        description: "Update GitHub runner version repository variable"
+        required: false
+        default: false
+        type: boolean
       images_to_keep:
         description: "Number of latest images to keep during cleanup"
         required: false
         default: 14
         type: number
+      cleanup_built_image:
+        description: "Delete the image created by this workflow after checks finish"
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       image_id:
@@ -62,11 +72,21 @@ on:
         required: false
         default: false
         type: boolean
+      update_runner_version:
+        description: "Update GitHub runner version repository variable"
+        required: false
+        default: false
+        type: boolean
       images_to_keep:
         description: "Number of latest images to keep during cleanup"
         required: false
         default: 14
         type: number
+      cleanup_built_image:
+        description: "Delete the image created by this workflow after checks finish"
+        required: false
+        default: false
+        type: boolean
 
 defaults:
   run:
@@ -142,6 +162,7 @@ jobs:
         id: get-image-id
         env:
           IMAGE_ID: ${{ inputs.image_id }}
+          BUILT_IMAGE_ID: ${{ steps.build-image.outputs.IMAGE_ID_2204 }}
           PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
         run: |
           if [ -n "${IMAGE_ID}" ]; then
@@ -153,12 +174,18 @@ jobs:
               echo "Using image id provided by inputs: ${IMAGE_ID}"
               exit 0
           fi
+          if [ -n "${BUILT_IMAGE_ID}" ]; then
+              echo "IMAGE_ID_2204=${BUILT_IMAGE_ID}" >> $GITHUB_OUTPUT
+              echo "Using image id built by this workflow: ${BUILT_IMAGE_ID}"
+              exit 0
+          fi
           IMAGE_ID=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id "${PARENT_ID}" --format json | jq -r .metadata.id)
           echo "IMAGE_ID_2204=$IMAGE_ID" >> $GITHUB_OUTPUT
       - name: Start runner
         id: start-runner
         if: >-
           always() &&
+          inputs.check_vm_creation == true &&
           (inputs.image_id != '' || inputs.build_image != true || steps.build-image.outcome == 'success') &&
           steps.get-image-id.outputs.IMAGE_ID_2204 != '' &&
           (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 ||
@@ -239,7 +266,12 @@ jobs:
           LIGHT_PARENT_ID: ${{ vars.POOLED_LIGHT_PARENT_ID }}
 
       - name: Set runner version
-        if: inputs.image_id == '' && inputs.build_image == true && steps.start-runner.outcome == 'success' && steps.runner-release.outputs.RUNNER_VERSION != vars.RUNNER_VERSION
+        if: >-
+          inputs.image_id == '' &&
+          inputs.build_image == true &&
+          inputs.update_runner_version == true &&
+          steps.start-runner.outcome == 'success' &&
+          steps.runner-release.outputs.RUNNER_VERSION != vars.RUNNER_VERSION
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           RUNNER_VERSION: ${{ steps.runner-release.outputs.RUNNER_VERSION }}
@@ -248,3 +280,16 @@ jobs:
           python3 -m scripts.github_actions_variables \
               --variable-name RUNNER_VERSION \
               --value "${RUNNER_VERSION}"
+
+      - name: Remove built image
+        if: >-
+          always() &&
+          inputs.cleanup_built_image == true &&
+          inputs.update_image_id != true &&
+          inputs.update_pooled_image_ids != true &&
+          steps.build-image.outputs.IMAGE_ID_2204 != ''
+        env:
+          IMAGE_ID: ${{ steps.build-image.outputs.IMAGE_ID_2204 }}
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+          python3 -m scripts.nebius_manage_images --delete-image-id "${IMAGE_ID}"

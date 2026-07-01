@@ -204,28 +204,13 @@ fi
 [ -f /etc/profile.d/tmout.sh ] && rm /etc/profile.d/tmout.sh
 
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$ORG" ] && [ -n "$TEAM" ]; then
-    export LOGINS_FILE
     export KEYS_FILE
-    LOGINS_FILE=$(mktemp)
     KEYS_FILE=$(mktemp)
 
-    # Get team members
-    curl -s -L \
-        -H "Accept: application/vnd.github+json" \
-        -H "Authorization: Bearer $GITHUB_TOKEN" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        "https://api.github.com/orgs/${ORG}/teams/${TEAM}/members?per_page=100&page=1" | jq -r '.[].login' | tee -a "$LOGINS_FILE"
-
-    # Get members ssh keys
-    while read -r login; do
-        curl -s -L \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/users/${login}/keys" | jq -r '.[].key' | while read -r key; do
-            echo "$key $login" | tee -a "$KEYS_FILE"
-        done
-    done < "$LOGINS_FILE"
+    python3 /tmp/packer/github_team_public_keys.py \
+        --github-token "$GITHUB_TOKEN" \
+        --github-org "$ORG" \
+        --github-team-slug "$TEAM" | tee -a "$KEYS_FILE"
 fi
 
 if [ -f "$KEYS_FILE" ]; then

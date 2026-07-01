@@ -9,23 +9,23 @@ import time
 import grpc
 from typing import Optional
 import asyncio
-import requests
 import yaml
 from .helpers import (
     setup_logger,
     github_output,
     KeyValueAction,
+    PYGITHUB_RETRY_EXCEPTIONS,
     SENSITIVE_DATA_VALUES,
     truthy,
     retry,
     GITHUB_API_RETRY_ATTEMPTS,
     GITHUB_API_RETRY_INTERVAL_SEC,
     GITHUB_RUNNER_LATEST_VERSION,
+    fetch_github_team_public_keys,
     resolve_github_runner_release,
 )
 from github import Auth as GithubAuth
 from github import Github
-from github.GithubException import GithubException
 from github.Repository import Repository
 from github.SelfHostedActionsRunnerToken import SelfHostedActionsRunnerToken
 
@@ -96,29 +96,6 @@ def generate_github_label():
     )
     logger.info("Generated label: %s", generated_string)
     return generated_string
-
-
-def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):
-    org = gh.get_organization(github_org)
-    team = org.get_team_by_slug(team_slug)
-    members = [member for member in team.get_members()]
-
-    ssh_keys = []
-    logger.info(
-        "Fetching SSH keys for members: %s",
-        ", ".join([member.login for member in members]),
-    )
-    member_keys_count = 0
-    for member in members:
-
-        for key in member.get_keys():
-            member_keys_count += 1
-            ssh_keys.append(key.key)
-
-        logger.debug("Fetched %d SSH keys for %s", member_keys_count, member.login)
-
-    logger.debug(f"Fetched SSH keys: {ssh_keys}")
-    return ssh_keys
 
 
 def shell_quote_template_value(value) -> str:
@@ -255,12 +232,7 @@ if not hasattr(Repository, "create_self_hosted_runner_registration_token"):
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(
-        GithubException,
-        requests.exceptions.ConnectionError,
-        requests.exceptions.Timeout,
-        ValueError,
-    ),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS + (ValueError,),
 )
 def get_runner_token(
     github_repo_owner: str, github_repo: str, github_token: str
@@ -665,7 +637,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
     return client.get_repo(repo).get_self_hosted_runner(runner_id)
@@ -674,7 +646,7 @@ def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(GithubException,),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def remove_self_hosted_runner(client: Github, repo: str, runner_id: str) -> bool:
     return client.get_repo(repo).remove_self_hosted_runner(runner_id)

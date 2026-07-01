@@ -104,6 +104,29 @@ def test_list_ready_images_collects_all_pages():
     assert service.requests[1].page_token == "page-2"
 
 
+def test_remove_image_by_id_deletes_requested_image():
+    class FakeImageService:
+        def __init__(self):
+            self.removed_ids = []
+
+        async def delete(self, request):
+            class FakeOperation:
+                async def wait(self):
+                    return None
+
+                def status(self):
+                    return "done"
+
+            self.removed_ids.append(request.id)
+            return FakeOperation()
+
+    service = FakeImageService()
+
+    asyncio.run(m.remove_image_by_id(service, "created-image"))
+
+    assert service.removed_ids == ["created-image"]
+
+
 def test_main_updates_variable_and_removes_old_images():
     class FakeVariable:
         def __init__(self, value):

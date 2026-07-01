@@ -135,7 +135,7 @@ def test_get_runner_token_retries_github_errors(monkeypatch, capsys):
         def create_self_hosted_runner_registration_token(self):
             attempts.append(1)
             if len(attempts) == 1:
-                raise m.GithubException(
+                raise h.GithubException(
                     401,
                     {"message": "Bad credentials", "status": "401"},
                     {},
@@ -167,8 +167,8 @@ def test_get_runner_token_retries_github_errors(monkeypatch, capsys):
 @pytest.mark.parametrize(
     "exception_type",
     [
-        m.requests.exceptions.ConnectionError,
-        m.requests.exceptions.Timeout,
+        h.requests.exceptions.ConnectionError,
+        h.requests.exceptions.Timeout,
     ],
 )
 def test_get_runner_token_retries_transport_errors(monkeypatch, exception_type):
@@ -562,7 +562,7 @@ def test_remove_runner_from_github_retries_github_lookup_errors(monkeypatch):
             assert runner_id == "runner-id"
             get_runner_attempts.append(1)
             if len(get_runner_attempts) == 1:
-                raise m.GithubException(
+                raise h.GithubException(
                     401,
                     {"message": "Bad credentials", "status": "401"},
                     {},
@@ -614,7 +614,7 @@ def test_remove_runner_from_github_retries_github_remove_errors(monkeypatch):
             assert runner_id == "runner-id"
             remove_runner_attempts.append(1)
             if len(remove_runner_attempts) == 1:
-                raise m.GithubException(
+                raise h.GithubException(
                     401,
                     {"message": "Bad credentials", "status": "401"},
                     {},
