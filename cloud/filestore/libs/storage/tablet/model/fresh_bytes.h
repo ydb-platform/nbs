@@ -124,7 +124,7 @@ private:
         //
         // Ranges deleted in this chunk. Only the non-overlapping parts of newer
         // deletions are applied. Needed to apply this chunk's deletions upon
-        // reading previous chunk.
+        // reading previous chunks.
         //
 
         TDeletedRangeMap DeletedRanges;
@@ -167,7 +167,8 @@ private:
     //
 
     IAllocator* Allocator;
-    TDeque<TChunk, TStlAllocator> Chunks;
+    using TChunks = TDeque<TChunk, TStlAllocator>;
+    TChunks Chunks;
     ui64 LastChunkId = 0;
     TString LogTag;
 
@@ -245,12 +246,19 @@ private:
     void Barrier(ui64 commitId);
 
     void FindBytes(
-        const TChunk& chunk,
-        const TChunk* nextChunk,
+        const TChunks& chunks,
+        ui64 chunkIndex,
         IFreshBytesVisitor& visitor,
         ui64 nodeId,
         TByteRange byteRange,
         ui64 commitId) const;
+
+    static TVector<TByteRange> ApplyDeletedRanges(
+        const TChunks& chunks,
+        ui64 firstChunkIndex,
+        ui64 nodeId,
+        TByteRange initialRange,
+        ui64 commitId);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

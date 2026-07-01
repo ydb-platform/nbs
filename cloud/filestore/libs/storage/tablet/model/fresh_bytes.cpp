@@ -327,7 +327,7 @@ void TFreshBytes::AddDeletionMarker(
 
     //
     // We need to mark this range as deleted to make the corresponding range
-    // invisible in the previous chunk if read at this commitId or higher.
+    // invisible in the previous chunks if read at this commitId or higher.
     //
 
     c.DeletedRanges.AddRange(nodeId, offset, len, commitId);
@@ -460,8 +460,7 @@ void TFreshBytes::FindBytes(
     ui64 commitId) const
 {
     for (ui64 i = 0; i < Chunks.size(); ++i) {
-        const auto& c = Chunks[i];
-        if (c.FirstCommitId > commitId) {
+        if (Chunks[i].FirstCommitId > commitId) {
             //
             // Chunk CommitId ranges do not overlap and are ordered by
             // FirstCommitId so all the remaining ranges are not visible.
@@ -470,22 +469,59 @@ void TFreshBytes::FindBytes(
             break;
         }
 
-        const TChunk* nextC = nullptr;
-        if (i + 1 < Chunks.size() && Chunks[i + 1].FirstCommitId <= commitId) {
-            nextC = &Chunks[i + 1];
-        }
-        FindBytes(c, nextC, visitor, nodeId, byteRange, commitId);
+        FindBytes(Chunks, i, visitor, nodeId, byteRange, commitId);
     }
 }
 
+/* static */ TVector<TByteRange> TFreshBytes::ApplyDeletedRanges(
+    const TChunks& chunks,
+    ui64 firstChunkIndex,
+    ui64 nodeId,
+    TByteRange initialRange,
+    ui64 commitId)
+{
+    TVector<TByteRange> result(1, initialRange);
+
+    //
+    // Most of the time there will be no other chunks.
+    //
+
+    for (ui64 i = firstChunkIndex; i < chunks.size(); ++i) {
+        const auto& nextChunk = chunks[i];
+        if (nextChunk.FirstCommitId > commitId) {
+            break;
+        }
+
+        TVector<TByteRange> newResult;
+
+        //
+        // Most of the time we'll end up realizing that there're no
+        // deleted ranges to apply and thus we'll end up having just
+        // one range till the very end of this procedure.
+        //
+
+        for (const auto& r: result) {
+            auto split =
+                nextChunk.DeletedRanges.ApplyRanges(nodeId, r, commitId);
+            newResult.reserve(newResult.size() + split.size());
+            newResult.insert(newResult.end(), split.begin(), split.end());
+        }
+
+        result.swap(newResult);
+    }
+
+    return result;
+}
+
 void TFreshBytes::FindBytes(
-    const TChunk& chunk,
-    const TChunk* nextChunk,
+    const TChunks& chunks,
+    ui64 chunkIndex,
     IFreshBytesVisitor& visitor,
     ui64 nodeId,
     TByteRange byteRange,
     ui64 commitId) const
 {
+    const auto& chunk = chunks[chunkIndex];
     auto it = chunk.Refs.upper_bound({nodeId, byteRange.Offset});
     while (it != chunk.Refs.end()
             && it->first.NodeId == nodeId
@@ -499,15 +535,12 @@ void TFreshBytes::FindBytes(
 
         const auto intersection = itRange.Intersect(byteRange);
         if (it->second.CommitId <= commitId && intersection.Length) {
-            TVector<TByteRange> actualRanges;
-            if (nextChunk) {
-                actualRanges = nextChunk->DeletedRanges.ApplyRanges(
-                    nodeId,
-                    intersection,
-                    commitId);
-            } else {
-                actualRanges.push_back(intersection);
-            }
+            auto actualRanges = ApplyDeletedRanges(
+                chunks,
+                chunkIndex + 1,
+                nodeId,
+                intersection,
+                commitId);
 
             for (const auto& actualRange: actualRanges) {
                 TStringBuf data = it->second.Buf.substr(

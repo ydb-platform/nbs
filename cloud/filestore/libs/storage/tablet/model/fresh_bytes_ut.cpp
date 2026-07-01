@@ -311,6 +311,41 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
     }
 
+    Y_UNIT_TEST(ShouldApplyDeletionMarkersFromAllNextChunksToPreviousChunk)
+    {
+        TFreshBytes freshBytes(TDefaultAllocator::Instance());
+
+        freshBytes.AddBytes(1, 100, "abc", 10);
+        freshBytes.OnCheckpoint(11);
+        freshBytes.AddDeletionMarker(1, 100, 1, 12);
+        freshBytes.OnCheckpoint(13);
+        freshBytes.AddDeletionMarker(1, 102, 1, 14);
+
+        {
+            TFreshBytesVisitor visitor;
+            freshBytes.FindBytes(visitor, 1, TByteRange(0, 1000, 4_KB), 13);
+
+            COMPARE_BYTES(
+                TVector<TBytes>({
+                    {1, 101, 2, 10, InvalidCommitId},
+                }), visitor.Bytes);
+
+            UNIT_ASSERT_VALUES_EQUAL("bc", visitor.Data);
+        }
+
+        {
+            TFreshBytesVisitor visitor;
+            freshBytes.FindBytes(visitor, 1, TByteRange(0, 1000, 4_KB), 14);
+
+            COMPARE_BYTES(
+                TVector<TBytes>({
+                    {1, 101, 1, 10, InvalidCommitId},
+                }), visitor.Bytes);
+
+            UNIT_ASSERT_VALUES_EQUAL("b", visitor.Data);
+        }
+    }
+
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)
     {
         TFreshBytes freshBytes(TDefaultAllocator::Instance());
