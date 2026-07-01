@@ -1,5 +1,6 @@
 #include "write_back_cache_state.h"
 
+#include "node_flush_state.h"
 #include "queued_operations.h"
 #include "write_back_cache_stats.h"
 #include "write_data_request.h"
@@ -1303,6 +1304,63 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(w2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, w2.GetValue().GetCode());
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TNodeFlushStateTest)
+{
+    Y_UNIT_TEST(ShouldSurfaceNospcFromAnyParallelSubRequest)
+    {
+        // Under parallel flush a single node-flush dispatches N disjoint
+        // WriteData sub-requests ordered by ascending offset. If a lower-offset
+        // sub-request fails with a transient error while a higher-offset one
+        // fails with E_FS_NOSPC, the disk-full condition must still be surfaced
+        // so that TWriteBackCacheState::FlushFailed applies the cross-node
+        // E_FS_NOSPC backpressure (write_back_cache_state.cpp:398) instead of
+        // retrying forever against a full disk.
+
+        auto lowOffset = std::make_shared<NProto::TWriteDataRequest>();
+        lowOffset->SetNodeId(1);
+        lowOffset->SetOffset(0);
+
+        auto highOffset = std::make_shared<NProto::TWriteDataRequest>();
+        highOffset->SetNodeId(1);
+        highOffset->SetOffset(1000);
+
+        TVector<std::shared_ptr<NProto::TWriteDataRequest>> requests{
+            lowOffset,
+            highOffset};
+
+        TNodeFlushState flushState(
+            1,
+            requests,
+            /* affectedUnflushedRequestCount */ 2);
+
+        const auto toFlush = flushState.BeginFlush();
+        UNIT_ASSERT_VALUES_EQUAL(2, toFlush.size());
+
+        // Lower-offset sub-request (index 0) fails with a transient error.
+        NProto::TWriteDataResponse rejected;
+        *rejected.MutableError() = MakeError(E_REJECTED, "rejected");
+        UNIT_ASSERT_EQUAL(
+            EWriteDataRequestCompletedAction::ContinueExecution,
+            flushState.OnWriteDataRequestCompleted(0, rejected));
+
+        // Higher-offset sub-request (index 1) fails with disk-full.
+        NProto::TWriteDataResponse nospc;
+        *nospc.MutableError() = MakeError(E_FS_NOSPC, "no space left");
+        UNIT_ASSERT_EQUAL(
+            EWriteDataRequestCompletedAction::CollectFlushResult,
+            flushState.OnWriteDataRequestCompleted(1, nospc));
+
+        const auto error = flushState.CollectFlushResult();
+
+        // The aggregated error must preserve E_FS_NOSPC so disk-full
+        // backpressure is applied. Current code returns front() == E_REJECTED,
+        // masking the NOSPC.
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, error.GetCode());
     }
 }
 
