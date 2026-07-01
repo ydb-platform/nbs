@@ -109,8 +109,8 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::ReleaseDir:
             Y_ABORT("ReleaseDir must have been handled separately");
 
-        case EFileStoreRequest::Flush:
-            Y_ABORT("Flush must have been handled separately");
+        case EFileStoreRequest::FuseFlush:
+            Y_ABORT("FuseFlush must have been handled separately");
 
         case EFileStoreRequest::MAX:
             Y_ABORT("EFileStoreRequest::MAX is not valid");

@@ -1758,7 +1758,7 @@ private:
             CALL(FAllocate, EFileStoreRequest::AllocateData, length, req, ino, mode, offset, length, fi);
         };
         ops.flush = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(Flush, EFileStoreRequest::Flush, 0, req, ino, fi);
+            CALL(Flush, EFileStoreRequest::FuseFlush, 0, req, ino, fi);
         };
         ops.fsync = [] (fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi) {
             CALL(FSync, EFileStoreRequest::Fsync, 0, req, ino, datasync, fi);
