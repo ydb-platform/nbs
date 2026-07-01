@@ -45,11 +45,6 @@ struct TEvHiveProxyPrivate
 
     struct TSendTabletMetrics
     {
-        const ui64 Hive;
-
-        explicit TSendTabletMetrics(ui64 hive)
-            : Hive(hive)
-        {}
     };
 
     //

@@ -127,10 +127,9 @@ void THiveProxyActor::HandleDrainNode(
     const TEvHiveProxy::TEvDrainNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ui64 hive = GetHive(ctx, 0);
-    auto clientId = ClientCache->Prepare(ctx, hive);
+    auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
 
-    HiveStates[hive].Actors.insert(NCloud::Register<TDrainNodeRequestActor>(
+    HiveState.Actors.insert(NCloud::Register<TDrainNodeRequestActor>(
         ctx,
         SelfId(),
         ev->Get()->KeepDown,
