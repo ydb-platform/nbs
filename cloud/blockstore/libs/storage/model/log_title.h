@@ -49,6 +49,11 @@ public:
         TString DiskId;
     };
 
+    struct TPartitionNonreplRdma
+    {
+        TString DiskId;
+    };
+
     struct TPartitionMirror
     {
         TString DiskId;
@@ -104,6 +109,7 @@ private:
         TVolumeProxy,
         TPartition,
         TPartitionNonrepl,
+        TPartitionNonreplRdma,
         TSession,
         TClient,
         TDiskRegistry,

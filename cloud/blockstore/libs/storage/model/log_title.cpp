@@ -155,6 +155,11 @@ TString ToString(const TLogTitle::TPartitionNonrepl& data)
     return TStringBuilder() << "[nrd:" << data.DiskId;
 }
 
+TString ToString(const TLogTitle::TPartitionNonreplRdma& data)
+{
+    return TStringBuilder() << "[nrd_rdma:" << data.DiskId;
+}
+
 TString ToString(const TLogTitle::TPartitionMirror& data)
 {
     return TStringBuilder() << "[md:" << data.DiskId;

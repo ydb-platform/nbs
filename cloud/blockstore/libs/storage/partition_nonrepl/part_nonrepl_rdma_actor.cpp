@@ -54,6 +54,9 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
     , RdmaClient(std::move(rdmaClient))
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TPartitionNonreplRdma{.DiskId = PartConfig->GetName()})
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
@@ -474,8 +477,11 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete read blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete read blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -515,8 +521,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete write blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -550,8 +559,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWriteBlocksCompleted(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Complete multi-agent write blocks",
-        SelfId().ToString().c_str());
+        "%s Complete multi-agent write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -584,8 +593,11 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete zero blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete zero blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -612,8 +624,11 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete checksum blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete checksum blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -667,8 +682,8 @@ void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext&
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Reply and die",
-        SelfId().ToString().c_str());
+        "%s Reply and die",
+        LogTitle.GetWithTime().c_str());
 
     for (auto& [_, endpoint]: AgentId2EndpointFuture) {
         endpoint.Subscribe([](auto& future) {
@@ -696,8 +711,8 @@ void TNonreplicatedPartitionRdmaActor::HandlePoisonPill(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Postpone PoisonPill response. Wait for requests in progress",
-            SelfId().ToString().c_str());
+            "%s Postpone PoisonPill response. Wait for requests in progress",
+            LogTitle.GetWithTime().c_str());
 
         return;
     }
@@ -718,8 +733,8 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Agent %s has become unavailable (lagging)",
-        PartConfig->GetName().c_str(),
+        "%s Agent %s has become unavailable (lagging)",
+        LogTitle.GetWithTime().c_str(),
         laggingAgentId.Quote().c_str());
 
     if (!PartConfig->GetLaggingDevicesAllowed()) {
@@ -777,8 +792,8 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Lagging agent %s is back online",
-        PartConfig->GetName().c_str(),
+        "%s Lagging agent %s is back online",
+        LogTitle.GetWithTime().c_str(),
         agentId.Quote().c_str());
 
     const auto* ep = AgentId2Endpoint.FindPtr(agentId);
@@ -804,8 +819,8 @@ void TNonreplicatedPartitionRdmaActor::HandleDeviceTimedOutResponse(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Attempted to mark device %s as lagging. Result: %s",
-        PartConfig->GetName().c_str(),
+        "%s Attempted to mark device %s as lagging. Result: %s",
+        LogTitle.GetWithTime().c_str(),
         PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
         FormatError(msg->GetError()).c_str());
 }
