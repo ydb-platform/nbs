@@ -10,6 +10,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -18,6 +19,7 @@
 #include <library/cpp/monlib/service/pages/html_mon_page.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <library/cpp/string_utils/quote/quote.h>
 
 namespace NCloud::NBlockStore {
 
@@ -315,7 +317,7 @@ void TServerStats::RequestStarted(
             req.ClientId,
             RequestInstanceId)
         << " REQUEST " << message
-        << ", peer: " << req.Peer);
+        << ", peer: " << UrlUnescapeRet(req.Peer));
 
     LWTRACK(
         RequestStarted,
@@ -568,7 +570,7 @@ void TServerStats::RequestCompleted(
         << ", unaligned: " << req.Unaligned
         << maxTimeSuppressedMessage
         << ", error: " << FormatError(error)
-        << ", peer: " << req.Peer
+        << ", peer: " << UrlUnescapeRet(req.Peer)
         << ")");
 }
 
