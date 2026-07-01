@@ -47,6 +47,7 @@ cloud/storage/**
 cmake-build-debug-system/*
 cmake-build-debug/*
 cmake.*
+.build/
 ./build/
 .idea/
 ./.idea/*
