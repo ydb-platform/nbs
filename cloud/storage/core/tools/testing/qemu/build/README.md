@@ -1,5 +1,13 @@
 # Build static qemu emulator
 
+\# Build static libslirp for qemu 7.0+ `-netdev user`
+```
+./build-libslirp-static.sh --ref v4.9.3
+export PKG_CONFIG_PATH="$PWD/libslirp-static/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+```
+The qemu build script also runs this helper automatically when static libslirp
+is missing for qemu 7.0+ builds.
+
 \# Build from sources
 ```
 build-qemu --src 'src-dir' [--deps]

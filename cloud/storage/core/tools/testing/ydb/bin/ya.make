@@ -1,3 +1,7 @@
+IF(USE_BUNDLED_YDBD)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/apps/ydbd/ya.make)
+ELSE()
+
 PACKAGE()
 
 FROM_SANDBOX(
@@ -8,3 +12,5 @@ FROM_SANDBOX(
 )
 
 END()
+
+ENDIF()

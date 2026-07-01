@@ -33,6 +33,7 @@ SET(
 SET(QEMU_VIRTIO fs)
 SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
 SET(QEMU_NUM_REQUEST_QUEUES 8)
+SET(QEMU_MEM 6G)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-local-noserver.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
