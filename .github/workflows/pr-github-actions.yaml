@@ -60,7 +60,7 @@ jobs:
         run: echo "result=true" >> "$GITHUB_OUTPUT"
 
       - name: checkout workflow scripts
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -144,7 +144,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -242,7 +242,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -267,7 +267,7 @@ jobs:
           install: false
 
       - name: set up python environment
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v6.3.0
         with:
           # used in ubuntu 22.04
           python-version: "3.10"
@@ -436,7 +436,7 @@ jobs:
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: ".github"
@@ -543,6 +543,22 @@ jobs:
               status=1
           fi
           exit "$status"
+
+  packer:
+    needs: [check-running-allowed, check-trigger-label]
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    name: Packer build
+    uses: ./.github/workflows/packer.yaml
+    secrets: inherit
+    with:
+      image_id: ""
+      build_image: true
+      check_vm_creation: true
+      update_image_id: false
+      update_pooled_image_ids: false
+      update_runner_version: false
+      cleanup_built_image: true
+
   create-build-and-test-target-var:
     needs:
       - check-trigger-label
@@ -557,7 +573,7 @@ jobs:
       matrix_include_ubsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_ubsan }}
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -577,7 +593,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
@@ -615,13 +631,65 @@ jobs:
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
 
+  nightly-builds:
+    needs: [check-running-allowed, check-trigger-label]
+    if: >-
+      ${{
+        needs.check-running-allowed.outputs.result == 'true' &&
+        needs.check-trigger-label.outputs.allowed == 'true' &&
+        (
+          contains(github.event.pull_request.labels.*.name, 'nightly-tests') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-asan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-tsan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-msan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-ubsan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-sanitizers') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-all')
+        )
+      }}
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    timeout-minutes: 540
+    steps:
+      - name: checkout workflow scripts
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          clean: true
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+      - name: Prepare s3cmd
+        uses: ./.github/actions/s3cmd
+        continue-on-error: true
+        with:
+          s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: relwithdebinfo
+      - name: Dispatch and collect nightly builds
+        uses: ./.github/actions/nightly_pr_check
+        with:
+          github_token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+      - name: Cancel dispatched nightly builds
+        if: ${{ cancelled() }}
+        uses: ./.github/actions/nightly_pr_check
+        with:
+          mode: cancel
+          github_token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+
   finalize-build-and-test-comments:
     needs: [check-running-allowed, create-build-and-test-target-var, build_and_test]
     if: ${{ always() && needs.check-running-allowed.outputs.result == 'true' && needs.create-build-and-test-target-var.outputs.matrix_include != '' }}
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: '.github'

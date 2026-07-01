@@ -150,21 +150,24 @@ TListNodesTxStats GetListNodesTxStats(
 
     visitor.ValidateExpectedCountersWithPredicate({
         {{{"filesystem", "test"},
-          {"sensor", "ListNodes.RequestedBytesPrecharge"}},
+          {"sensor", "RequestedBytesPrecharge"},
+          {"request", "ListNodes"}},
          [&stats](i64 value)
          {
              stats.BytesPrecharge = value;
              return true;
          }},
         {{{"filesystem", "test"},
-          {"sensor", "ListNodes.PrepareAttempts"}},
+          {"sensor", "PrepareAttempts"},
+          {"request", "ListNodes"}},
          [&stats](i64 value)
          {
             stats.PrepareAttempts = value;
             return true;
          }},
         {{{"filesystem", "test"},
-          {"sensor", "ListNodes.ResponseNodeRefs"}},
+          {"sensor", "ResponseNodeRefs"},
+          {"request", "ListNodes"}},
          [&stats](i64 value)
          {
             stats.ResponseNodeRefs = value;

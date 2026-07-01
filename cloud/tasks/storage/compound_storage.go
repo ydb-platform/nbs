@@ -489,6 +489,13 @@ func NewStorage(
 		return nil, err
 	}
 
+	hangingTaskTimeoutByType, err := parseDurationByTaskType(
+		config.GetHangingTaskTimeoutByType(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	inflightHangingTaskTimeout, err := time.ParseDuration(
 		config.GetInflightHangingTaskTimeout(),
 	)
@@ -516,6 +523,7 @@ func NewStorage(
 
 			exceptHangingTaskTypes:            config.GetExceptHangingTaskTypes(),
 			hangingTaskTimeout:                hangingTaskTimeout,
+			hangingTaskTimeoutByType:          hangingTaskTimeoutByType,
 			inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
 			stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
@@ -544,4 +552,21 @@ func NewStorage(
 		storageFolder: config.GetStorageFolder(),
 		storage:       storage,
 	}, nil
+}
+
+func parseDurationByTaskType(
+	values map[string]string,
+) (map[string]time.Duration, error) {
+
+	result := make(map[string]time.Duration, len(values))
+	for taskType, value := range values {
+		duration, err := time.ParseDuration(value)
+		if err != nil {
+			return nil, err
+		}
+
+		result[taskType] = duration
+	}
+
+	return result, nil
 }

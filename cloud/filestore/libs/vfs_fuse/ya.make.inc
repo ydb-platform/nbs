@@ -1,5 +1,6 @@
 SRCS(
     config.cpp
+    directory_entry_version_cache.cpp
     directory_handle_cache.cpp
     directory_handle_stats.cpp
     directory_handle_storage.cpp

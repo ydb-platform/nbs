@@ -244,27 +244,24 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         });
         tp->Start();
 
-        auto threadPool = CreateThreadPool(20);
-        const auto runs = 100;
+        const ui32 runs = 100;
         // lwtrace depot sizes are limited by 1000
         static_assert(runs <= 1000 / REQUEST_COUNT);
 
-        auto doRuns = [&]()
-        {
-            std::latch enqueued{runs};
-
-            for (size_t j = 0; j < runs; ++j) {
-                threadPool->SafeAddFunc(
-                    [&enqueued]()
-                    {
+        auto doRuns = [&] () {
+            std::atomic<ui32> completed = 0;
+            TDeque<THolder<IThreadFactory::IThread>> threads;
+            for (ui32 i = 0; i < 20; ++i) {
+                threads.push_back(SystemThreadFactory()->Run([&]() {
+                    while (completed.fetch_add(1) < runs) {
                         Track();
-
-                        enqueued.count_down();
-                    });
+                    }
+                }));
             }
 
-
-            enqueued.wait();
+            for (auto& t: threads) {
+                t->Join();
+            }
         };
 
         doRuns();
@@ -278,8 +275,6 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         doRuns();
 
         Check(env, requestCount);
-
-        threadPool->Stop();
     }
 
     Y_UNIT_TEST(SlowRequestThresholdByTrackLength)

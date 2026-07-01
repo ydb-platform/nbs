@@ -24,12 +24,14 @@ class TDestroyFileStoreActor final
     : public TActorBootstrapped<TDestroyFileStoreActor>
 {
 private:
+    const TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const bool ForceDestroy;
     const bool AllowFileStoreDestroyWithOrphanSessions;
     TDuration RestartTabletUptimeThresholdDuringDestroy;
     TVector<TString> ShardIds;
+    ui32 NextShardToDestroy = 0;
     ui32 DestroyedShardCount = 0;
     ui64 ForceDestroySizeThreshold = 0;
     NProto::TFileStore FileStore;
@@ -38,6 +40,7 @@ private:
 
 public:
     TDestroyFileStoreActor(
+        TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
         bool forceDestroy,
@@ -56,6 +59,7 @@ private:
     void RestartTablet(const TActorContext& ctx);
     void GetFileSystemTopology(const TActorContext& ctx);
     void DestroyShards(const TActorContext& ctx);
+    void DestroyShard(const TActorContext& ctx, const ui32 shardIndex);
     void DestroyFileStore(const TActorContext& ctx);
 
     void HandleDescribeFileStoreResponse(
@@ -94,13 +98,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyFileStoreActor::TDestroyFileStoreActor(
+        TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
         bool forceDestroy,
         bool allowFileStoreDestroyWithOrphanSessions,
         ui64 forceDestroySizeThreshold,
         TDuration restartTabletUptimeThresholdDuringDestroy)
-    : RequestInfo(std::move(requestInfo))
+    : StorageConfig(std::move(storageConfig))
+    , RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)
     , AllowFileStoreDestroyWithOrphanSessions(
@@ -172,7 +178,7 @@ void TDestroyFileStoreActor::GetStorageStats(const TActorContext& ctx)
 {
     auto request =
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
-    request->Record.SetAllowCache(true);
+    request->Record.SetCacheTTL(Max<ui32>());
     request->Record.SetFileSystemId(FileSystemId);
     request->Record.SetMode(NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
 
@@ -354,16 +360,30 @@ void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
 
 void TDestroyFileStoreActor::DestroyShards(const TActorContext& ctx)
 {
-    for (ui32 i = 0; i < ShardIds.size(); ++i) {
-        auto request = std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(
-            ShardIds[i]);
-
-        NCloud::Send(
-            ctx,
-            MakeSSProxyServiceId(),
-            std::move(request),
-            i + 1);
+    NextShardToDestroy = 0;
+    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
+    const ui32 endShardIndex =
+        (limit == 0)
+            ? ShardIds.size()
+            : std::min<ui32>(NextShardToDestroy + limit, ShardIds.size());
+    for (ui32 i = 0; i < endShardIndex; ++i) {
+        DestroyShard(ctx, i);
+        NextShardToDestroy = i + 1;
     }
+}
+
+void TDestroyFileStoreActor::DestroyShard(
+    const TActorContext& ctx,
+    const ui32 shardIndex)
+{
+    auto request = std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(
+        ShardIds[shardIndex]);
+
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::move(request),
+        shardIndex + 1 /* cookie */);
 }
 
 void TDestroyFileStoreActor::DestroyFileStore(const TActorContext& ctx)
@@ -414,6 +434,11 @@ void TDestroyFileStoreActor::HandleDestroyFileStoreResponse(
 
         if (DestroyedShardCount == ShardIds.size()) {
             DestroyFileStore(ctx);
+        } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+            if (NextShardToDestroy < ShardIds.size()) {
+                DestroyShard(ctx, NextShardToDestroy);
+                ++NextShardToDestroy;
+            }
         }
 
         return;
@@ -533,6 +558,7 @@ void TStorageServiceActor::HandleDestroyFileStore(
         allowDestroyWithOrphanSessions = false;
     }
     auto actor = std::make_unique<TDestroyFileStoreActor>(
+        StorageConfig,
         std::move(requestInfo),
         msg->Record.GetFileSystemId(),
         forceDestroy,

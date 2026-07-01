@@ -226,6 +226,7 @@ void TBootstrapBase::Init()
     BackgroundScheduler = CreateBackgroundScheduler(
         Scheduler,
         BackgroundThreadPool);
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
 
     Executor = TExecutor::Create("SVC");
 
@@ -306,16 +307,33 @@ void TBootstrapBase::Init()
     InitCriticalEventsCounter(serverGroup);
 
     TVector<TCertificateFiles> certPathList;
-    for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback()) {
+    for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
+    {
         certPathList.push_back({
             cert.CertPrivateKeyFile,
             cert.CertFile
         });
     }
 
-    CertificateProvider = CreateStaticCertificateProvider(
+    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
+        ythrow yexception()
+            << "Secure port is configured without certificates";
+    }
+
+    // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
+    // because overwise it would break server_lightweight build.
+    // GetComponentName() depend on kikimr which is prohibited in
+    // server_lightweight.
+
+    CertificateProvider = CreateCertificateProvider(
+        Logging,
+        "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
+        Scheduler,
+        LongRunningTaskExecutor,
+        serverGroup,
         Configs->ServerConfig->GetRootCertsFile(),
-        std::move(certPathList));
+        std::move(certPathList),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(
@@ -1006,6 +1024,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
+    START_COMMON_COMPONENT(LongRunningTaskExecutor);
     START_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     START_COMMON_COMPONENT(LocalNVMeService);
 
@@ -1062,6 +1081,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
+    STOP_COMMON_COMPONENT(LongRunningTaskExecutor);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);

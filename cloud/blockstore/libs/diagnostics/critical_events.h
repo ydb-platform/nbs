@@ -132,6 +132,7 @@ using TCritEventParams =
     xxx(DiskDevicesSizeViolation)                                              \
     xxx(RdmaMessageTypeMismatch)                                               \
     xxx(BlockChecksumAbsent)                                                   \
+    xxx(CleanupBlobMetaBlocksMismatch)                                         \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -308,7 +308,7 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TConfirmAddDataRequest& request)
 {
-    Y_UNUSED(profileLogRequest, request);
+    profileLogRequest.SetCommitId(request.GetCommitId());
 }
 
 template <>
@@ -316,7 +316,7 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TCancelAddDataRequest& request)
 {
-    Y_UNUSED(profileLogRequest, request);
+    profileLogRequest.SetCommitId(request.GetCommitId());
 }
 
 template <>

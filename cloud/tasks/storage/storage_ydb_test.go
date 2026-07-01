@@ -1338,6 +1338,52 @@ func TestStorageYDBListHangingTasksWithExceptions(t *testing.T) {
 	)
 }
 
+func TestStorageYDBListHangingTasksWithTimeoutByType(t *testing.T) {
+	hangingTaskTimeout := 24 * time.Hour
+	hangingTaskTimeoutString := hangingTaskTimeout.String()
+	fastHangingTaskTimeout := time.Hour
+	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
+		HangingTaskTimeout: &hangingTaskTimeoutString,
+		HangingTaskTimeoutByType: map[string]string{
+			"fast": fastHangingTaskTimeout.String(),
+		},
+	})
+	defer fixture.teardown()
+
+	expectedTaskIDs := []string{
+		fixture.createTask(
+			"fast",
+			TaskStatusReadyToRun,
+			time.Now().Add(-fastHangingTaskTimeout).Add(-time.Minute),
+			0, 0, 0, 0,
+		),
+		fixture.createTask(
+			"default",
+			TaskStatusRunning,
+			time.Now().Add(-hangingTaskTimeout).Add(-time.Minute),
+			0, 0, 0, 0,
+		),
+	}
+	fixture.createTask(
+		"fast",
+		TaskStatusReadyToRun,
+		time.Now().Add(-fastHangingTaskTimeout).Add(time.Minute),
+		0, 0, 0, 0,
+	)
+	fixture.createTask(
+		"default",
+		TaskStatusReadyToRun,
+		time.Now().Add(-fastHangingTaskTimeout).Add(-time.Minute),
+		0, 0, 0, 0,
+	)
+
+	require.ElementsMatch(
+		t,
+		expectedTaskIDs,
+		fixture.ListHangingTasksIDs(),
+	)
+}
+
 func TestStorageYDBListTasksRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()

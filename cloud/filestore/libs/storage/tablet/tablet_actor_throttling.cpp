@@ -162,9 +162,22 @@ bool TIndexTabletActor::ThrottleIfNeeded(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    if (!Config->GetThrottlingEnabled() ||
-        !GetPerformanceProfile().GetThrottlingEnabled() ||
-        ev->Get()->Record.GetHeaders().GetThrottlingDisabled())
+    if (ev->Get()->Record.GetHeaders().GetThrottlingDisabled()) {
+        return false;
+    }
+
+    const bool throttlingEnabled =
+        Config->GetThrottlingEnabled() &&
+        GetPerformanceProfile().GetThrottlingEnabled();
+    const bool hasPostponedRequests = Throttler &&
+        Throttler->GetPostponedRequestsCount();
+    const bool softBackpressureThrottlingEnabled =
+        !throttlingEnabled &&
+        CalculateWriteCostMultiplierBackpressure() > 0.0;
+
+    if (!throttlingEnabled &&
+        !softBackpressureThrottlingEnabled &&
+        !hasPostponedRequests)
     {
         return false;
     }

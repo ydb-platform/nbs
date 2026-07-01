@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -317,14 +318,39 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     }
 
     // Recovery must replay confirmations in commitId order to preserve write
-    // order for overlapping ranges.
+    // order for overlapping ranges. Confirm them one at a time, advancing on
+    // each write's safe point. A single AddBlob is ever
+    // in flight, so page faults cannot reorder
     Sort(recoverableCommitIds);
 
-    for (ui64 commitId: recoverableCommitIds) {
-        // TODO(#5353) Support out of order insertion to unblock here
-        // immediately
-        ConfirmData(commitId, ctx);
+    for (const ui64 commitId: recoverableCommitIds) {
+        auto it = UnconfirmedData.find(commitId);
+        TABLET_VERIFY(it != UnconfirmedData.end());
+        const auto& data = it->second.Data;
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitTabletProfileLogRequestInfo(
+            profileLogRequest,
+            EFileStoreSystemRequest::RecoverUnconfirmedData,
+            ctx.Now());
+        AddRange(
+            data.GetNodeId(),
+            data.GetOffset(),
+            data.GetLength(),
+            profileLogRequest);
+        profileLogRequest.SetCommitId(commitId);
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            {},
+            ProfileLog);
     }
+
+    RecoveredDataToConfirm.assign(
+        recoverableCommitIds.begin(),
+        recoverableCommitIds.end());
+
+    ConfirmNextRecoveredData(ctx);
 }
 
 void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)

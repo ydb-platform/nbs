@@ -1,5 +1,8 @@
 #include "part_actor.h"
 
+#include "part_cleanup_logic.h"
+
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -11,12 +14,12 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
 
+using namespace NProto;
+
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 {
@@ -173,9 +176,14 @@ void TPartitionActor::HandleCleanup(
 
     AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
 
-    ExecuteTx(
-        ctx,
-        CreateTx<TCleanup>(requestInfo, commitId, std::move(cleanupQueue)));
+    auto tx = CreateTx<TCleanup>(
+        requestInfo,
+        commitId,
+        IsUseRecreatedBlobMetasOnCleanupEnabled(),
+        IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
+        std::move(cleanupQueue));
+
+    ExecuteTx(ctx, std::move(tx));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,25 +195,12 @@ bool TPartitionActor::PrepareCleanup(
 {
     Y_UNUSED(ctx);
 
-    TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
-
-    bool ready = true;
-
-    for (const auto& item: args.CleanupQueue) {
-        TMaybe<NProto::TBlobMeta> blobMeta;
-        if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
-            Y_ABORT_UNLESS(blobMeta.Defined(),
-                "Could not read meta data for blob: %s",
-                ToString(MakeBlobId(TabletID(), item.BlobId)).data());
-
-            args.BlobsMeta.emplace_back(std::move(blobMeta.GetRef()));
-        } else {
-            ready = false;
-        }
-    }
-
-    return ready;
+    return PrepareCleanupTransaction(
+        TabletID(),
+        PartitionConfig.GetDiskId(),
+        db,
+        args);
 }
 
 void TPartitionActor::ExecuteCleanup(
@@ -215,84 +210,14 @@ void TPartitionActor::ExecuteCleanup(
 {
     Y_UNUSED(ctx);
 
-    TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
-
-    size_t mixedBlobsCount = 0;
-    size_t mergedBlobsCount = 0;
-
-
-    Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
-    for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
-        const auto& item = args.CleanupQueue[i];
-        const auto& blobMeta = args.BlobsMeta[i];
-
-        if (blobMeta.HasMixedBlocks()) {
-            const auto& mixedBlocks = blobMeta.GetMixedBlocks();
-
-            if (mixedBlocks.CommitIdsSize() == 0) {
-                // every block shares the same commitId
-                ui64 commitId = item.BlobId.CommitId();
-                for (ui32 blockIndex: mixedBlocks.GetBlocks()) {
-                    State->DeleteMixedBlock(db, blockIndex, commitId);
-                }
-            } else {
-                // each block has its own commitId
-                Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
-                for (size_t j = 0; j < mixedBlocks.BlocksSize(); ++j) {
-                    ui32 blockIndex = mixedBlocks.GetBlocks(j);
-                    ui64 commitId = mixedBlocks.GetCommitIds(j);
-                    State->DeleteMixedBlock(db, blockIndex, commitId);
-                }
-            }
-
-            ++mixedBlobsCount;
-            if (!IsDeletionMarker(item.BlobId)) {
-                // Mins for block counts are needed due to some inconsistencies caused by
-                // NBS-1422
-                State->DecrementMixedBlocksCount(
-                    Min(mixedBlocks.BlocksSize(), State->GetMixedBlocksCount()));
-            }
-        } else if (blobMeta.HasMergedBlocks()) {
-            const auto& mergedBlocks = blobMeta.GetMergedBlocks();
-
-            auto blockRange = TBlockRange32::MakeClosedInterval(
-                mergedBlocks.GetStart(),
-                mergedBlocks.GetEnd());
-            db.DeleteMergedBlocks(item.BlobId, blockRange);
-
-            ++mergedBlobsCount;
-            if (!IsDeletionMarker(item.BlobId)) {
-                // Mins for block counts are needed due to some inconsistencies caused by
-                // NBS-1422
-                ui64 delta = blockRange.Size() - mergedBlocks.GetSkipped();
-                State->DecrementMergedBlocksCount(
-                    Min(delta, State->GetMergedBlocksCount()));
-            }
-        }
-
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Delete blob: %s",
-            LogTitle.GetWithTime().c_str(),
-            ToString(MakeBlobId(TabletID(), item.BlobId)).Quote().c_str());
-
-        State->RemoveCleanupQueueItem(item);
-
-        db.DeleteBlobMeta(item.BlobId);
-        db.DeleteCleanupQueue(item.BlobId, item.CommitId);
-
-        if (!IsDeletionMarker(item.BlobId)) {
-            db.WriteGarbageBlob(item.BlobId);
-        }
-    }
-
-    // Updating counters
-    State->DecrementMixedBlobsCount(mixedBlobsCount);
-    State->DecrementMergedBlobsCount(mergedBlobsCount);
-
-    db.WriteMeta(State->GetMeta());
+    ExecuteCleanupTransaction(
+        TActorContext::ActorSystem(),
+        LogTitle,
+        TabletID(),
+        db,
+        args,
+        *State);
 }
 
 void TPartitionActor::CompleteCleanup(

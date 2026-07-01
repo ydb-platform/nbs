@@ -118,7 +118,7 @@ private:
     // Reverse switching is not possible.
     std::atomic_bool SwitchedToSecondary{false};
 
-    TAdaptiveLock DifferedRequestsLock;
+    TAdaptiveLock DeferredRequestsLock;
     TDeferredRequestsHolders DeferredRequests;
 
 public:
@@ -165,7 +165,7 @@ public:
     {
         Y_ABORT_UNLESS(WillSwitchToSecondary);
 
-        with_lock (DifferedRequestsLock) {
+        with_lock (DeferredRequestsLock) {
             WillSwitchToSecondary = false;
 
             if (SwitchedToSecondary) {
@@ -253,7 +253,7 @@ private:
         }
 
         if (WillSwitchToSecondary) {
-            with_lock (DifferedRequestsLock) {
+            with_lock (DeferredRequestsLock) {
                 // A double check is necessary to avoid a race when a switch is
                 // cancelled.
                 if (WillSwitchToSecondary) {

@@ -155,6 +155,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
     xxx(GetOpLogEntry,                      __VA_ARGS__)                       \
+    xxx(ListOpLogEntries,                   __VA_ARGS__)                       \
     xxx(WriteOpLogEntry,                    __VA_ARGS__)                       \
     xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
                                                                                \
@@ -1880,7 +1881,7 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
         bool IsNewShardNode = false;
-        bool IsNodeRefLocked = false;
+        const bool IsNodeRefLocked;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         TVector<ui64> UpdatedNodes;
@@ -1893,7 +1894,8 @@ struct TTxIndexTablet
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
                 NProto::TCreateHandleRequest request,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                bool isNodeRefLocked)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
@@ -1905,6 +1907,7 @@ struct TTxIndexTablet
             , Gid(request.GetGid())
             , RequestShardId(request.GetShardFileSystemId())
             , Request(std::move(request))
+            , IsNodeRefLocked(isNodeRefLocked)
         {
         }
 
@@ -2855,7 +2858,7 @@ struct TTxIndexTablet
         const ui64 EntryId;
         TMaybe<NProto::TOpLogEntry> Entry;
 
-        explicit TGetOpLogEntry(TRequestInfoPtr requestInfo, ui64 entryId)
+        TGetOpLogEntry(TRequestInfoPtr requestInfo, ui64 entryId)
             : RequestInfo(std::move(requestInfo))
             , EntryId(entryId)
         {}
@@ -2863,6 +2866,25 @@ struct TTxIndexTablet
         void Clear() override
         {
             Entry.Clear();
+        }
+    };
+
+    //
+    // ListOpLogEntries
+    //
+
+    struct TListOpLogEntries: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        TVector<NProto::TOpLogEntry> Entries;
+
+        explicit TListOpLogEntries(TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear() override
+        {
+            Entries.clear();
         }
     };
 

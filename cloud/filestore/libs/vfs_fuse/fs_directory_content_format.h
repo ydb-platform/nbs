@@ -2,6 +2,8 @@
 
 #include "fs_directory_handle.h"
 
+#include <util/generic/strbuf.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,9 +38,11 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 using TNodeIdVisitor = std::function<bool(ui64)>;
-NProto::TError ResetAttrTimeout(
+using TDirectoryEntryVisitor = std::function<bool(TStringBuf)>;
+NProto::TError ResetCacheTimeouts(
     char* data,
     ui64 len,
-    const TNodeIdVisitor& visitor);
+    const TNodeIdVisitor& shouldResetAttrTimeout,
+    const TDirectoryEntryVisitor& shouldResetEntryTimeout);
 
 }   // namespace NCloud::NFileStore::NFuse

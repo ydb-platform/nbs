@@ -32,6 +32,7 @@ def default_storage_config():
     storage.V1GarbageCompactionEnabled = True
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30
     storage.CheckBlockChecksumsInBlobsUponRead = True
+    storage.VerifyRecreatedBlobMetasOnCleanup = True
 
     return storage
 
@@ -159,6 +160,7 @@ def ordinary_prod_storage_config():
     storage.FreshChannelWriteRequestsEnabled = True
     storage.BatchCompactionEnabled = True
     storage.HDDMaxBlobsPerRange = 5
+    storage.VerifyRecreatedBlobMetasOnCleanup = True
 
     return storage
 
@@ -187,6 +189,13 @@ def storage_config_with_new_features_enabled():
     storage.FreshChannelZeroRequestsEnabled = True
     storage.FreshBlocksWriterEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
+
+    return storage
+
+
+def storage_config_with_use_recreated_blob_metas_on_cleanup_enabled():
+    storage = ordinary_prod_storage_config()
+    storage.UseRecreatedBlobMetasOnCleanup = True
 
     return storage
 
@@ -351,6 +360,14 @@ TESTS = [
             storage_config_with_read_block_mask_on_compaction_optimization_enabled(
                 True
             ),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-use-recreated-blob-metas-on-cleanup-enabled",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
+        [
+            storage_config_with_use_recreated_blob_metas_on_cleanup_enabled(),
         ],
         None,
     ),
@@ -552,6 +569,7 @@ def __run_test(test_case):
             endpoint_storage_dir=endpoint_storage_dir,
             env_processes=[env.nbs],
         )
+
         if test_case.check_disk_size:
             compact_full_disk(nbs_client, test_case.disk_id)
             check_channel_bytes_invariant(nbs_client, test_case.disk_id)

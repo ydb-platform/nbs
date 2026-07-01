@@ -81,7 +81,8 @@ struct IBlobsVisitor
 
     virtual bool Visit(
         TBlockRange32 blockRange,
-        const TPartialBlobId& blobId) = 0;
+        const TPartialBlobId& blobId,
+        ui32 skippedBlocksCount) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

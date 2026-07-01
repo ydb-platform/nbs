@@ -21,7 +21,8 @@ IActorPtr CreateIndexTablet(
     ITraceSerializerPtr traceSerializer,
     TSystemCountersPtr systemCounters,
     NMetrics::IMetricsRegistryPtr metricsRegistry,
-    NFastShard::IServerPtr fastShardServer)
+    NFastShard::IServerPtr fastShardServer,
+    ITxReschedulerPtr txRescheduler)
 {
     return std::make_unique<TIndexTabletActor>(
         owner,
@@ -32,7 +33,8 @@ IActorPtr CreateIndexTablet(
         std::move(traceSerializer),
         std::move(systemCounters),
         std::move(metricsRegistry),
-        std::move(fastShardServer));
+        std::move(fastShardServer),
+        std::move(txRescheduler));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

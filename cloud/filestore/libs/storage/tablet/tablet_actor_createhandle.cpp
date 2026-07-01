@@ -149,6 +149,32 @@ void TIndexTabletActor::HandleCreateHandle(
         }
     }
 
+    // The NodeRef needs to be locked to prevent the node from being unlinked
+    // and to avoid races with other concurrent CreateHandle/CreateNode
+    // requests. It is important to lock the NodeRef even before it is created
+    // because an UnlinkNode transaction may have already deleted the NodeRef
+    // in the leader, while still holding the lock till a NodeRef is deleted
+    // in the shard.
+    bool isNodeRefLocked = false;
+    if (msg->Record.GetName() &&
+        HasFlag(msg->Record.GetFlags(), NProto::TCreateHandleRequest::E_CREATE))
+    {
+        isNodeRefLocked =
+            TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
+        if (!isNodeRefLocked) {
+            auto error = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "node ref " << msg->Record.GetNodeId() << " "
+                    << msg->Record.GetName() << " is locked for CreateHandle");
+
+            auto response = std::make_unique<TResponse>(error);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(error);
+            return;
+        }
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -161,7 +187,8 @@ void TIndexTabletActor::HandleCreateHandle(
         ctx,
         std::move(requestInfo),
         std::move(msg->Record),
-        std::move(profileLogRequest));
+        std::move(profileLogRequest),
+        isNodeRefLocked);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -458,17 +485,6 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
         args.Response.SetShardNodeName(args.ShardNodeName);
-
-        // When the NodeRef references a node in a shard we need to lock it to
-        // prevent the node from being unlinked and to avoid races with other
-        // concurrent CreateHandle/CreateNode requests.
-        args.IsNodeRefLocked = TryLockNodeRef({args.NodeId, args.Name});
-        if (!args.IsNodeRefLocked) {
-            args.Error = MakeError(E_REJECTED, TStringBuilder()
-                << "node ref " << args.NodeId << " " << args.Name
-                << " is locked for CreateHandle");
-            return;
-        }
     }
 
     if (args.IsNewShardNode) {

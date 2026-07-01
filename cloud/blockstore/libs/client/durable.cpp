@@ -443,7 +443,8 @@ private:
 
         // copy request without data (only TSgList).
         return std::make_shared<NProto::TWriteBlocksLocalRequest>(
-            request->CreateDependentRequest());
+            *request,
+            NProto::TWriteBlocksLocalRequest::TDependentTag{});
     }
 
     template <>

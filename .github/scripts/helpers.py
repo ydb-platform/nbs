@@ -11,7 +11,14 @@ import time
 from dataclasses import dataclass
 import datetime
 from typing import Callable, List, Tuple
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
+
+from github import Auth as GithubAuth, Github
+from github.GithubException import GithubException
+from github.GitRelease import GitRelease
+from github.NamedUser import NamedUser
+from github.Team import Team
+from github.WorkflowJob import WorkflowJob
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -30,7 +37,7 @@ COMPONENTS: List[Tuple[str, str, str]] = [
 SAN_COMPONENTS = {"blockstore", "filestore", "storage"}
 SAN_TYPES = ("asan", "tsan", "msan", "ubsan")
 
-TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
 TEST_TYPE_SAN = "unittest,clang_tidy,gtest,py3test,py2test,pytest"
 
 SAN_PRESET = {
@@ -50,6 +57,120 @@ SAN_PRESET_BY_SAN = {
 }
 
 
+def get_build_preset_from_workflow_name(workflow_name: str) -> str | None:
+    normalized = workflow_name.strip().lower()
+    if normalized in ("nightly.yaml", "nightly build"):
+        return "relwithdebinfo"
+
+    match = re.fullmatch(
+        r"nightly(?: build)? \((?P<san>asan|tsan|msan|ubsan)\)", normalized
+    )
+    if match is not None:
+        return SAN_PRESET_BY_SAN[match.group("san")]
+
+    match = re.fullmatch(r"nightly-(?P<san>asan|tsan|msan|ubsan)\.yaml", normalized)
+    if match is not None:
+        return SAN_PRESET_BY_SAN[match.group("san")]
+
+    return None
+
+
+def get_s3_website_origin(
+    bucket: str | None = None, website_suffix: str | None = None
+) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    website_suffix = (
+        website_suffix or os.environ.get("S3_WEBSITE_SUFFIX") or ""
+    ).strip()
+    if not bucket or not website_suffix:
+        return ""
+    return f"https://{bucket}.{website_suffix}"
+
+
+def get_s3_report_uri(path: str, bucket: str | None = None) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    if not bucket or not path:
+        return ""
+    return f"s3://{bucket}/{path}"
+
+
+def get_s3_report_url(
+    path: str,
+    bucket: str | None = None,
+    website_suffix: str | None = None,
+) -> str:
+    origin = get_s3_website_origin(bucket=bucket, website_suffix=website_suffix)
+    if not origin or not path:
+        return ""
+    return f"{origin}/{quote(path, safe='/')}"
+
+
+def get_s3_workflow_reports_path(
+    *,
+    repository: str,
+    workflow_file: str,
+    run_id: int | str,
+    run_attempt: int | str,
+    relative_path: str = "",
+) -> str:
+    return (
+        f"reports/{repository}/{workflow_file}/{run_id}/{run_attempt}/"
+        f"{relative_path.lstrip('/')}"
+    )
+
+
+def get_run_url() -> str:
+    return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+
+
+def fetch_jobs() -> list[WorkflowJob]:
+    repo = github_client(os.environ["GITHUB_TOKEN"]).get_repo(
+        os.environ["GITHUB_REPOSITORY"]
+    )
+    run = repo.get_workflow_run(int(os.environ["GITHUB_RUN_ID"]))
+    return list(run.jobs())
+
+
+def job_name_matches(expected_name: str, actual_name: str) -> bool:
+    if actual_name == expected_name:
+        return True
+
+    reusable_prefix = f"/ {expected_name}"
+    if actual_name.endswith(reusable_prefix):
+        return True
+
+    return False
+
+
+def find_current_job_url(current_job_name: str, runner_name: str) -> str:
+    try:
+        jobs = fetch_jobs()
+    except GithubException:
+        return get_run_url()
+
+    matching_jobs = [
+        job
+        for job in jobs
+        if job_name_matches(current_job_name, job.name or "")
+        and job.status in ("queued", "in_progress", "completed")
+    ]
+
+    if runner_name:
+        for job in matching_jobs:
+            if job.runner_name != runner_name:
+                continue
+            html_url = job.html_url
+            if html_url:
+                return html_url
+
+    for job in matching_jobs:
+        html_url = job.html_url
+        if html_url:
+            return html_url
+
+    return get_run_url()
+
+
 DEFAULT_BUILD_TARGET = "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
 DEFAULT_TEST_TARGET = (
     "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -59,11 +180,10 @@ GITHUB_API_RETRY_ATTEMPTS = 3
 GITHUB_API_RETRY_INTERVAL_SEC = 5
 GITHUB_API_TIMEOUT_SEC = 30
 GITHUB_RUNNER_LATEST_VERSION = "latest"
-GITHUB_RUNNER_LATEST_RELEASE_URL = (
-    "https://api.github.com/repos/actions/runner/releases/latest"
-)
-GITHUB_RUNNER_RELEASE_BY_TAG_URL = (
-    "https://api.github.com/repos/actions/runner/releases/tags/v{version}"
+PYGITHUB_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    GithubException,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
 )
 
 
@@ -216,6 +336,56 @@ def fetch_repo_variable(github_client, github_repository: str, variable_name: st
     return repo, repo.get_variable(variable_name)
 
 
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_team(gh: Github, github_org: str, team_slug: str) -> Team:
+    org = gh.get_organization(github_org)
+    return org.get_team_by_slug(team_slug)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_team_members(team: Team) -> list[NamedUser]:
+    return [member for member in team.get_members()]
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_member_public_keys(member: NamedUser) -> list[str]:
+    return [key.key for key in member.get_keys()]
+
+
+def fetch_github_team_public_keys(
+    gh: Github, github_org: str, team_slug: str
+) -> list[str]:
+    logger = logging.getLogger(__name__)
+    team = fetch_github_team(gh, github_org, team_slug)
+    members: list[NamedUser] = fetch_github_team_members(team)
+
+    ssh_keys: list[str] = []
+    logger.info(
+        "Fetching SSH keys for members: %s",
+        ", ".join([member.login for member in members]),
+    )
+    for member in members:
+        member_keys: list[str] = fetch_github_member_public_keys(member)
+        ssh_keys.extend(member_keys)
+
+        logger.debug("Fetched %d SSH keys for %s", len(member_keys), member.login)
+
+    logger.debug("Fetched SSH keys: %s", ssh_keys)
+    return ssh_keys
+
+
 def format_github_response_debug(response: requests.Response) -> str:
     content_type = response.headers.get("content-type", "<missing>")
     body_preview = response.text[:1000].replace("\n", "\\n")
@@ -230,16 +400,6 @@ def normalize_github_runner_version(version: str) -> str:
     if not version:
         raise ValueError("GitHub runner version is empty")
     return version.removeprefix("v")
-
-
-def github_api_headers(github_token: str | None = None) -> dict[str, str]:
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-Github-Api-Version": "2022-11-28",
-    }
-    if github_token:
-        headers["Authorization"] = f"Bearer {github_token}"
-    return headers
 
 
 def extract_github_runner_sha256_from_body(body: str, platform: str) -> str:
@@ -288,65 +448,45 @@ def extract_github_runner_release(payload: dict) -> GithubRunnerRelease:
     return GithubRunnerRelease(version=version, sha256_by_arch=sha256_by_arch)
 
 
+def github_client(github_token: str | None = None) -> Github:
+    if github_token:
+        return Github(auth=GithubAuth.Token(github_token))
+    return Github()
+
+
+def git_release_payload(release: GitRelease) -> dict:
+    return {
+        "tag_name": release.tag_name,
+        "body": release.body,
+        "assets": [{"name": asset.name} for asset in release.get_assets()],
+    }
+
+
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(requests.exceptions.RequestException, ValueError),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_github_runner_release(
     version: str, github_token: str | None = None
 ) -> GithubRunnerRelease:
     normalized_version = normalize_github_runner_version(version)
-    response = requests.get(
-        GITHUB_RUNNER_RELEASE_BY_TAG_URL.format(version=normalized_version),
-        headers=github_api_headers(github_token),
-        timeout=GITHUB_API_TIMEOUT_SEC,
-    )
-    try:
-        result = response.json()
-    except ValueError as e:
-        raise ValueError(
-            "Failed to parse GitHub runner release response "
-            f"({format_github_response_debug(response)}): {e}"
-        ) from None
-
-    if not response.ok:
-        raise ValueError(
-            "GitHub runner release request failed "
-            f"({format_github_response_debug(response)}): {result}"
-        )
-
-    return extract_github_runner_release(result)
+    repo = github_client(github_token).get_repo("actions/runner")
+    release = repo.get_release(f"v{normalized_version}")
+    return extract_github_runner_release(git_release_payload(release))
 
 
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(requests.exceptions.RequestException, ValueError),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_latest_github_runner_release(
     github_token: str | None = None,
 ) -> GithubRunnerRelease:
-    response = requests.get(
-        GITHUB_RUNNER_LATEST_RELEASE_URL,
-        headers=github_api_headers(github_token),
-        timeout=GITHUB_API_TIMEOUT_SEC,
-    )
-    try:
-        result = response.json()
-    except ValueError as e:
-        raise ValueError(
-            "Failed to parse GitHub runner latest release response "
-            f"({format_github_response_debug(response)}): {e}"
-        ) from None
-
-    if not response.ok:
-        raise ValueError(
-            "GitHub runner latest release request failed "
-            f"({format_github_response_debug(response)}): {result}"
-        )
-
-    return extract_github_runner_release(result)
+    repo = github_client(github_token).get_repo("actions/runner")
+    release = repo.get_latest_release()
+    return extract_github_runner_release(git_release_payload(release))
 
 
 def get_latest_github_runner_version(github_token: str | None = None) -> str:
@@ -548,52 +688,6 @@ def date_to_hms(date: datetime.datetime) -> str:
         return f"{age_minutes}m"
 
 
-@dataclass
-class Job:
-    workflow: str
-    id: int
-    run_id: int
-    name: str
-    runner_name: str
-    runner_type: str
-    created_at: datetime.datetime
-    completed_at: datetime.datetime
-    started_at: datetime.datetime
-    conclusion: str
-    status: str
-    labels: list[str] = None
-
-
-def get_jobs_raw(token, repo_full_name, run_id) -> list[Job]:
-    result = []
-    url = f"https://api.github.com/repos/{repo_full_name}/actions/runs/{run_id}/jobs"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-    }
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    jobs = response.json()["jobs"]
-
-    for job in jobs:
-        for t in ["created_at", "started_at", "completed_at"]:
-            if job[t] is not None:
-                job[t] = datetime.datetime.fromisoformat(job[t].replace("Z", "+00:00"))
-
-        result.append(
-            Job(
-                workflow=job["name"],
-                id=job["id"],
-                run_id=run_id,
-                name=job["name"],
-                runner_name=job["runner_name"],
-                runner_type=classify_runner(job.get("labels", [])),
-                created_at=job.get("created_at"),
-                started_at=job.get("started_at"),
-                completed_at=job.get("completed_at"),
-                conclusion=job["conclusion"],
-                status=job["status"],
-                labels=job.get("labels", []),
-            )
-        )
-    return result
+def get_jobs_raw(token, repo_full_name, run_id) -> list[WorkflowJob]:
+    repo = github_client(token).get_repo(repo_full_name)
+    return list(repo.get_workflow_run(run_id).jobs())

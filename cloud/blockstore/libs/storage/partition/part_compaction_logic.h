@@ -108,6 +108,10 @@ struct TBlobCompactionRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId);
+
+////////////////////////////////////////////////////////////////////////////////
+
 void PrepareRangeCompaction(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
@@ -126,6 +130,7 @@ void CompleteRangeCompaction(
     const ui32 mergedBlobThreshold,
     const ui64 commitId,
     const ui64 tabletId,
+    const bool shouldRecreateBlobMetas,
     NKikimr::TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,

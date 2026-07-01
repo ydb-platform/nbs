@@ -335,6 +335,8 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
             "disk-2",
             "session-2",
             EHandledOn::Primary);
+
+        scheduler->Stop();
     }
 
     Y_UNIT_TEST(ShouldForwardRequestsToSecondaryClientAfterSwitch)
@@ -397,6 +399,8 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
 
         drainFuture.Wait(TDuration::Seconds(15));
         UNIT_ASSERT_VALUES_EQUAL(true, drainFuture.HasValue());
+
+        scheduler->Stop();
     }
 
     Y_UNIT_TEST(ShouldForwardRetriedRequestsToSecondaryClientAfterSwitch)
@@ -498,6 +502,8 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
         // Checking that the old session has drained
         drainFuture.Wait(TDuration::Seconds(3));
         UNIT_ASSERT_VALUES_EQUAL(true, drainFuture.HasValue());
+
+        scheduler->Stop();
     }
 
     Y_UNIT_TEST(ShouldSwitchMultipleTimes)
@@ -555,6 +561,8 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
             oldDiskId = newDiskId;
             oldSessionId = newSessionId;
         }
+
+        scheduler->Stop();
     }
 }
 

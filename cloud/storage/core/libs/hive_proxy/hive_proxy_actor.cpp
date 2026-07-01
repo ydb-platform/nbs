@@ -42,7 +42,7 @@ THiveProxyActor::THiveProxyActor(
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
     , UseBinaryFormatForTabletBootInfoBackup(config.UseBinaryFormatForTabletBootInfoBackup)
-    , TenantHiveTabletId(config.TenantHiveTabletId)
+    , HiveTabletId(config.TenantHiveTabletId)
     , Counters(std::move(counters))
 {}
 
@@ -67,78 +67,50 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
     if (Counters) {
         HiveReconnectTimeCounter = Counters->GetCounter("HiveReconnectTime", true);
     }
+
+    if (!HiveTabletId) {
+        HiveTabletId = AppData(ctx)->DomainsInfo->GetHive();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void THiveProxyActor::SendRequest(
     const TActorContext& ctx,
-    ui64 hive,
     IEventBase* request)
 {
-    ClientCache->Send(ctx, hive, request);
+    ClientCache->Send(ctx, HiveTabletId, request);
     if (HiveDisconnected) {
         HiveReconnectStartCycles = GetCycleCount();
     }
 }
 
-ui64 THiveProxyActor::GetHive(
-    const TActorContext& ctx,
-    ui64 tabletId,
-    ui32 hiveIdx)
-{
-    if (TenantHiveTabletId) {
-        return TenantHiveTabletId;
-    }
-
-    auto domainsInfo = AppData(ctx)->DomainsInfo;
-    Y_ABORT_UNLESS(domainsInfo->Domains);
-
-    ui32 domainUid = TDomainsInfo::BadDomainId;
-    if (tabletId) {
-        domainUid = domainsInfo->GetDomainUidByTabletId(tabletId);
-        if (domainUid == TDomainsInfo::BadDomainId) {
-            LOG_WARN_S(ctx, LogComponent,
-                "Missing domain for tablet " << tabletId
-                    << " using default domain");
-        }
-    }
-    if (domainUid == TDomainsInfo::BadDomainId) {
-        domainUid = domainsInfo->Domains.begin()->first;
-    }
-
-    const auto& domain = domainsInfo->GetDomain(domainUid);
-    ui32 hiveUid = domain.GetHiveUidByIdx(hiveIdx);
-    ui64 hive = domainsInfo->GetHive(hiveUid);
-    return hive;
-}
-
 void THiveProxyActor::SendLockRequest(
-    const TActorContext& ctx, ui64 hive, ui64 tabletId, bool reconnect)
+    const TActorContext& ctx, ui64 tabletId, bool reconnect)
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvLockTabletExecution>(tabletId);
     hiveRequest->Record.SetMaxReconnectTimeout(
         LockExpireTimeout.MilliSeconds());
     hiveRequest->Record.SetReconnect(reconnect);
-    SendRequest(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hiveRequest.release());
 }
 
 void THiveProxyActor::SendUnlockRequest(
-    const TActorContext& ctx, ui64 hive, ui64 tabletId)
+    const TActorContext& ctx, ui64 tabletId)
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvUnlockTabletExecution>(tabletId);
-    SendRequest(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hiveRequest.release());
 }
 
 void THiveProxyActor::SendGetTabletStorageInfoRequest(
     const TActorContext& ctx,
-    ui64 hive, ui64 tabletId)
+    ui64 tabletId)
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvGetTabletStorageInfo>(tabletId);
-    SendRequest(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hiveRequest.release());
 }
 
 void THiveProxyActor::SendLockReply(
@@ -197,32 +169,29 @@ void THiveProxyActor::AddTabletMetrics(
     metrics.MutableResourceUsage()->MergeFrom(tabletData.ResourceValues);
 }
 
-void THiveProxyActor::ScheduleSendTabletMetrics(const TActorContext& ctx, ui64 hive)
+void THiveProxyActor::ScheduleSendTabletMetrics(const TActorContext& ctx)
 {
-    auto* state = HiveStates.FindPtr(hive);
-    STORAGE_VERIFY(state, "Hive", hive);
-    if (!state->ScheduledSendTabletMetrics) {
-        ctx.Schedule(BatchTimeout, new TEvHiveProxyPrivate::TEvSendTabletMetrics(hive));
-        state->ScheduledSendTabletMetrics = true;
+    auto& state = HiveState;
+    if (!state.ScheduledSendTabletMetrics) {
+        ctx.Schedule(BatchTimeout, new TEvHiveProxyPrivate::TEvSendTabletMetrics());
+        state.ScheduledSendTabletMetrics = true;
     }
 }
 
 void THiveProxyActor::SendTabletMetrics(
     const TActorContext& ctx,
-    ui64 hive,
     bool resend)
 {
-    auto* state = HiveStates.FindPtr(hive);
-    STORAGE_VERIFY(state, "Hive", hive);
-    state->ScheduledSendTabletMetrics = false;
+    auto& state = HiveState;
+    state.ScheduledSendTabletMetrics = false;
     TAutoPtr<TEvHive::TEvTabletMetrics> event = MakeHolder<TEvHive::TEvTabletMetrics>();
     NKikimrHive::TEvTabletMetrics& record = event->Record;
-    for (auto& prTabletId: state->UpdatedTabletMetrics) {
+    for (auto& prTabletId: state.UpdatedTabletMetrics) {
         AddTabletMetrics(prTabletId.first, prTabletId.second, record);
         prTabletId.second.OnSendStats(resend);
     }
     if (record.TabletMetricsSize() > 0) {
-        SendRequest(ctx, hive, event.Release());
+        SendRequest(ctx, event.Release());
     }
 }
 
@@ -234,12 +203,13 @@ void THiveProxyActor::HandleConnect(
 {
     const auto* msg = ev->Get();
 
-    ui64 hive = msg->TabletId;
+    Y_DEBUG_ABORT_UNLESS(msg->TabletId == HiveTabletId);
+
     if (!ClientCache->OnConnect(ev)) {
         // Connect to hive failed
         auto error = MakeKikimrError(msg->Status, TStringBuilder()
-            << "Connect to hive " << hive << " failed");
-        HandleConnectionError(ctx, error, hive, true);
+            << "Connect to hive " << HiveTabletId << " failed");
+        HandleConnectionError(ctx, error, true);
     } else if (HiveReconnectStartCycles) {
         if (HiveReconnectTimeCounter) {
             HiveReconnectTimeCounter->Add(
@@ -257,18 +227,18 @@ void THiveProxyActor::HandleDisconnect(
 {
     const auto* msg = ev->Get();
 
-    ui64 hive = msg->TabletId;
+    Y_DEBUG_ABORT_UNLESS(msg->TabletId == HiveTabletId);
+
     ClientCache->OnDisconnect(ev);
 
     auto error = MakeError(E_REJECTED, TStringBuilder()
-        << "Disconnected from hive " << hive);
-    HandleConnectionError(ctx, error, hive, false);
+        << "Disconnected from hive " << HiveTabletId);
+    HandleConnectionError(ctx, error, false);
 }
 
 void THiveProxyActor::HandleConnectionError(
     const TActorContext& ctx,
     const NProto::TError& error,
-    ui64 hive,
     bool connectFailed)
 {
     Y_UNUSED(error);
@@ -276,84 +246,83 @@ void THiveProxyActor::HandleConnectionError(
 
     HiveDisconnected = true;
 
-    LOG_ERROR_S(ctx, LogComponent,
-        "Pipe to hive" << hive << " has been reset ");
+    LOG_ERROR_S(
+        ctx,
+        LogComponent,
+        "Pipe to hive " << HiveTabletId << " has been reset ");
 
     // Hive is a tablet, so it should eventually get up
     // Re-send all outstanding requests
-    if (auto* states = HiveStates.FindPtr(hive)) {
-        for (auto& kv: states->LockStates) {
-            ui64 tabletId = kv.first;
-            auto* state = &kv.second;
-            if (state->Phase == PHASE_LOCKED) {
-                // Link failed while locked, need to reconnect
-                state->Phase = PHASE_RECONNECT;
-            }
-            if (state->Phase == PHASE_LOCKING ||
-                state->Phase == PHASE_RECONNECT)
-            {
-                SendLockRequest(
-                    ctx,
-                    hive,
-                    tabletId,
-                    state->Phase == PHASE_RECONNECT);
-            } else if (state->Phase == PHASE_UNLOCKING) {
-                // Hive is a tablet, keep retrying requests
-                SendUnlockRequest(ctx, hive, tabletId);
-            }
+    auto& states = HiveState;
+    for (auto& kv: states.LockStates) {
+        ui64 tabletId = kv.first;
+        auto* state = &kv.second;
+        if (state->Phase == PHASE_LOCKED) {
+            // Link failed while locked, need to reconnect
+            state->Phase = PHASE_RECONNECT;
         }
-
-        // SendNextCreateOrLookupRequest() won't send any requests after the
-        // first undelivery. Reject and hope that clients will retry.
-        for (auto& [_, queue]: states->CreateRequests) {
-            while (!queue.empty()) {
-                TCreateOrLookupRequest request = std::move(queue.front());
-                queue.pop_front();
-
-                std::unique_ptr<IEventBase> response;
-                auto error =
-                    MakeError(E_REJECTED, "Pipe to hive has been reset.");
-                if (request.IsLookup) {
-                    response =
-                        std::make_unique<TEvHiveProxy::TEvLookupTabletResponse>(
-                            error);
-                } else {
-                    response =
-                        std::make_unique<TEvHiveProxy::TEvCreateTabletResponse>(
-                            error);
-                }
-                NCloud::Reply(ctx, request, std::move(response));
-            }
-        }
-        states->CreateRequests.clear();
-
-        for (auto& kv: states->GetInfoRequests) {
-            ui64 tabletId = kv.first;
-            auto& requests = kv.second;
-            if (!requests.empty()) {
-                SendGetTabletStorageInfoRequest(ctx, hive, tabletId);
-            }
-        }
-
-        if (!states->ScheduledSendTabletMetrics) {
-            SendTabletMetrics(
+        if (state->Phase == PHASE_LOCKING ||
+            state->Phase == PHASE_RECONNECT)
+        {
+            SendLockRequest(
                 ctx,
-                hive,
-                true   // resend
-            );
+                tabletId,
+                state->Phase == PHASE_RECONNECT);
+        } else if (state->Phase == PHASE_UNLOCKING) {
+            // Hive is a tablet, keep retrying requests
+            SendUnlockRequest(ctx, tabletId);
         }
+    }
 
-        for (const auto& actorId: states->Actors) {
-            auto clientId = ClientCache->Prepare(ctx, hive);
-            if (!HiveReconnectStartCycles) {
-                HiveReconnectStartCycles = GetCycleCount();
+    // SendNextCreateOrLookupRequest() won't send any requests after the
+    // first undelivery. Reject and hope that clients will retry.
+    for (auto& [_, queue]: states.CreateRequests) {
+        while (!queue.empty()) {
+            TCreateOrLookupRequest request = std::move(queue.front());
+            queue.pop_front();
+
+            std::unique_ptr<IEventBase> response;
+            auto error =
+                MakeError(E_REJECTED, "Pipe to hive has been reset.");
+            if (request.IsLookup) {
+                response =
+                    std::make_unique<TEvHiveProxy::TEvLookupTabletResponse>(
+                        error);
+            } else {
+                response =
+                    std::make_unique<TEvHiveProxy::TEvCreateTabletResponse>(
+                        error);
             }
-            NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(
-                ctx,
-                actorId,
-                0,
-                clientId);
+            NCloud::Reply(ctx, request, std::move(response));
         }
+    }
+    states.CreateRequests.clear();
+
+    for (auto& kv: states.GetInfoRequests) {
+        ui64 tabletId = kv.first;
+        auto& requests = kv.second;
+        if (!requests.empty()) {
+            SendGetTabletStorageInfoRequest(ctx, tabletId);
+        }
+    }
+
+    if (!states.ScheduledSendTabletMetrics) {
+        SendTabletMetrics(
+            ctx,
+            true   // resend
+        );
+    }
+
+    for (const auto& actorId: states.Actors) {
+        auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
+        if (!HiveReconnectStartCycles) {
+            HiveReconnectStartCycles = GetCycleCount();
+        }
+        NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(
+            ctx,
+            actorId,
+            0,
+            clientId);
     }
 }
 
@@ -362,13 +331,12 @@ void THiveProxyActor::HandleLockTabletExecutionLost(
     const TActorContext& ctx)
 {
     ui64 tabletId = ev->Get()->Record.GetTabletID();
-    ui64 hive = GetHive(ctx, tabletId);
-    auto* states = HiveStates.FindPtr(hive);
-    auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
+    auto& states = HiveState;
+    auto* state = states.LockStates.FindPtr(tabletId);
     if (!state || state->Phase == PHASE_LOCKING) {
         // Unexpected notification, ignore
         LOG_WARN_S(ctx, LogComponent,
-            "Unexpected lock lost notification from hive " << hive
+            "Unexpected lock lost notification from hive " << HiveTabletId
                 << " for tablet " << tabletId);
         return;
     }
@@ -387,7 +355,7 @@ void THiveProxyActor::HandleLockTabletExecutionLost(
         ctx,
         state,
         MakeError(E_REJECTED, "Lock lost upon HIVE notification"));
-    states->LockStates.erase(tabletId);
+    states.LockStates.erase(tabletId);
 }
 
 bool THiveProxyActor::HandleRequests(STFUNC_SIG)
@@ -406,13 +374,8 @@ void THiveProxyActor::HandleRequestFinished(
     const TEvHiveProxyPrivate::TEvRequestFinished::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
-
-    ui64 hive = GetHive(ctx, msg->TabletId);
-
-    if (auto* state = HiveStates.FindPtr(hive)) {
-        state->Actors.erase(ev->Sender);
-    }
+    Y_UNUSED(ctx);
+    HiveState.Actors.erase(ev->Sender);
 }
 
 void THiveProxyActor::HandleTabletMetrics(
@@ -422,10 +385,8 @@ void THiveProxyActor::HandleTabletMetrics(
     const auto* msg = ev->Get();
 
     const auto& metrics = msg->ResourceValues;
-    ui64 hive = GetHive(ctx, msg->TabletId);
-    auto* state = HiveStates.FindPtr(hive);
-    STORAGE_VERIFY(state, "Hive", hive);
-    auto& tabletData = state->UpdatedTabletMetrics[msg->TabletId];
+    auto& state = HiveState;
+    auto& tabletData = state.UpdatedTabletMetrics[msg->TabletId];
     tabletData.SlaveID = msg->FollowerId;
 
     bool hasChanges = false;
@@ -481,8 +442,8 @@ void THiveProxyActor::HandleTabletMetrics(
 
     tabletData.OnUpdateStats();
 
-    if (!state->ScheduledSendTabletMetrics) {
-        ScheduleSendTabletMetrics(ctx, hive);
+    if (!state.ScheduledSendTabletMetrics) {
+        ScheduleSendTabletMetrics(ctx);
     }
 }
 
@@ -490,10 +451,9 @@ void THiveProxyActor::HandleSendTabletMetrics(
     const TEvHiveProxyPrivate::TEvSendTabletMetrics::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    Y_UNUSED(ev);
     SendTabletMetrics(
         ctx,
-        msg->Hive,
         false      // resend
     );
 }
@@ -506,18 +466,16 @@ void THiveProxyActor::HandleMetricsResponse(
     auto size = msg->Record.TabletIdSize();
     Y_DEBUG_ABORT_UNLESS(msg->Record.FollowerIdSize() == size);
 
+    auto& state = HiveState;
     for (size_t i = 0; i < size; ++i) {
-        ui64 hive = GetHive(ctx, msg->Record.GetTabletId(i));
-        auto* state = HiveStates.FindPtr(hive);
-        STORAGE_VERIFY(state, "Hive", hive);
-        auto uit = state->UpdatedTabletMetrics.find(msg->Record.GetTabletId(i));
-        if (uit != state->UpdatedTabletMetrics.end()) {
+        auto uit = state.UpdatedTabletMetrics.find(msg->Record.GetTabletId(i));
+        if (uit != state.UpdatedTabletMetrics.end()) {
             uit->second.OnHiveAck();
             if (uit->second.IsEmpty()) {
-                state->UpdatedTabletMetrics.erase(uit);
+                state.UpdatedTabletMetrics.erase(uit);
             } else {
-                if (!state->ScheduledSendTabletMetrics) {
-                    ScheduleSendTabletMetrics(ctx, hive);
+                if (!state.ScheduledSendTabletMetrics) {
+                    ScheduleSendTabletMetrics(ctx);
                 }
             }
         }

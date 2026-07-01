@@ -64,13 +64,13 @@ NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
 NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
     const TString& fsId,
-    const bool allowCache = false,
+    const ui32 cacheTTL = 0,
     const NProtoPrivate::EStatsRequestMode mode =
         NProtoPrivate::STATS_REQUEST_MODE_DEFAULT)
 {
     NProtoPrivate::TGetStorageStatsRequest request;
     request.SetFileSystemId(fsId);
-    request.SetAllowCache(allowCache);
+    request.SetCacheTTL(cacheTTL);
     request.SetMode(mode);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
@@ -89,16 +89,16 @@ void CheckShardsSize(
     const ui64 blocksCount)
 {
     const auto mainStats =
-        GetStorageStats(service, fsConfig.FsId, false /* allowCache */);
+        GetStorageStats(service, fsConfig.FsId);
     const auto shard1Stats = GetStorageStats(
         service,
         fsConfig.Shard1Id,
-        false /* allowCache */,
+        0 /* cacheTTL */,
         NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
     const auto shard2Stats = GetStorageStats(
         service,
         fsConfig.Shard2Id,
-        false /* allowCache */,
+        0 /* cacheTTL */,
         NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
     UNIT_ASSERT_EQUAL(blocksCount, mainStats.GetStats().GetTotalBlocksCount());
     UNIT_ASSERT_EQUAL(
@@ -136,6 +136,177 @@ NProtoPrivate::TUnsafeChangeTabletStateResponse SetCompressNodeRef(
 
     return response;
 }
+
+// Helper class to count Describe/Create/Alter/Destroy/Configure
+// shard requests. We intentionally skip Main FS requests and requests
+// made by proxies. That's because we want to process only original shard
+// requests to check max in-flight and request/response counters.
+class TShardRequestCounter
+{
+private:
+    TTestActorRuntimeBase& Runtime;
+    const TString ShardIdPrefix;
+    TTestActorRuntimeBase::TEventFilter PrevFilter;
+    THashMap<ui64, TActorId> DescribeRequestSenders;
+    THashMap<ui64, TActorId> ConfigureRequestSenders;
+
+public:
+    ui32 DescribeRequests = 0;
+    ui32 DescribeResponses = 0;
+    ui32 DescribeMaxInFlight = 0;
+    ui32 CreateRequests = 0;
+    ui32 CreateResponses = 0;
+    ui32 CreateMaxInFlight = 0;
+    ui32 ConfigureRequests = 0;
+    ui32 ConfigureResponses = 0;
+    ui32 ConfigureMaxInFlight = 0;
+    ui32 AlterRequests = 0;
+    ui32 AlterResponses = 0;
+    ui32 AlterMaxInFlight = 0;
+    ui32 DestroyRequests = 0;
+    ui32 DestroyResponses = 0;
+    ui32 DestroyMaxInFlight = 0;
+
+    TShardRequestCounter(TTestActorRuntimeBase& runtime, const TString& fsId)
+        : Runtime(runtime)
+        , ShardIdPrefix(TStringBuilder() << fsId << ShardNumPrefix)
+    {
+        PrevFilter = Runtime.SetEventFilter(
+            [this](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                CountEvent(event);
+                return PrevFilter ? PrevFilter(runtime, event) : false;
+            });
+    }
+
+    ~TShardRequestCounter()
+    {
+        Runtime.SetEventFilter(PrevFilter);
+    }
+
+private:
+    void CountEvent(const TAutoPtr<IEventHandle>& ev)
+    {
+        switch (ev->GetTypeRewrite()) {
+            case TEvSSProxy::EvCreateFileStoreRequest: {
+                if (++CreateRequests > CreateResponses) {
+                    CreateMaxInFlight = std::max(
+                        CreateMaxInFlight,
+                        CreateRequests - CreateResponses);
+                }
+                break;
+            }
+
+            case TEvSSProxy::EvCreateFileStoreResponse: {
+                ++CreateResponses;
+                break;
+            }
+
+            case TEvIndexTablet::EvConfigureAsShardRequest: {
+                // Skipping calls made by Proxies.
+                if (ev->Recipient != MakeIndexTabletProxyServiceId()) {
+                    return;
+                }
+                ConfigureRequestSenders[ev->Cookie] = ev->Sender;
+                if (++ConfigureRequests > ConfigureResponses) {
+                    ConfigureMaxInFlight = std::max(
+                        ConfigureMaxInFlight,
+                        ConfigureRequests - ConfigureResponses);
+                }
+                break;
+            }
+
+            case TEvIndexTablet::EvConfigureAsShardResponse: {
+                // We count only calls made by original actor.
+                auto it = ConfigureRequestSenders.find(ev->Cookie);
+                if (it == ConfigureRequestSenders.end() ||
+                    ev->Recipient != it->second)
+                {
+                    return;
+                }
+                ConfigureRequestSenders.erase(it);
+                ++ConfigureResponses;
+                break;
+            }
+
+            case TEvSSProxy::EvDescribeFileStoreRequest: {
+                using TRequest = TEvSSProxy::TEvDescribeFileStoreRequest;
+                const auto* msg = ev->Get<TRequest>();
+                // We need to count only DescribeShard operations, so excluding:
+                // 1. Cookie == Max<ui64>(): this is MainFileStoreCookie called
+                // from TAlterFileStoreActor::DescribeMainFileStore.
+                // 2. ShardIdPrefix we also need to check, as there is a call
+                // TIndexTabletProxyActor::DescribeFileStore with Cookie
+                // set to conn.Id.
+                if (ev->Cookie == Max<ui64>() ||
+                    !msg->FileSystemId.StartsWith(ShardIdPrefix))
+                {
+                    return;
+                }
+                DescribeRequestSenders[ev->Cookie] = ev->Sender;
+                if (++DescribeRequests > DescribeResponses) {
+                    DescribeMaxInFlight = std::max(
+                        DescribeMaxInFlight,
+                        DescribeRequests - DescribeResponses);
+                }
+                break;
+            }
+
+            case TEvSSProxy::EvDescribeFileStoreResponse: {
+                // Skipping this Cookie, it's MainFileStoreCookie called from
+                // TAlterFileStoreActor::DescribeMainFileStore.
+                if (ev->Cookie == Max<ui64>()) {
+                    return;
+                }
+                // Skipping calls made by TIndexTabletProxyActor.
+                auto it = DescribeRequestSenders.find(ev->Cookie);
+                if (it == DescribeRequestSenders.end() ||
+                    ev->Recipient != it->second)
+                {
+                    return;
+                }
+                ++DescribeResponses;
+                break;
+            }
+
+            case TEvSSProxy::EvAlterFileStoreRequest: {
+                // Skipping MainFileStoreCookie.
+                if (ev->Cookie == Max<ui64>()) {
+                    return;
+                }
+                if (++AlterRequests > AlterResponses) {
+                    AlterMaxInFlight = std::max(
+                        AlterMaxInFlight,
+                        AlterRequests - AlterResponses);
+                }
+                break;
+            }
+
+            case TEvSSProxy::EvAlterFileStoreResponse: {
+                // Skipping MainFileStoreCookie.
+                if (ev->Cookie == Max<ui64>()) {
+                    return;
+                }
+                ++AlterResponses;
+                break;
+            }
+
+            case TEvSSProxy::EvDestroyFileStoreRequest: {
+                if (++DestroyRequests > DestroyResponses) {
+                    DestroyMaxInFlight = std::max(
+                        DestroyMaxInFlight,
+                        DestroyRequests - DestroyResponses);
+                }
+                break;
+            }
+
+            case TEvSSProxy::EvDestroyFileStoreResponse: {
+                ++DestroyResponses;
+                break;
+            }
+        }
+    }
+};
 
 }   // namespace
 
@@ -2426,8 +2597,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fileStoreStats.GetUsedBlocksCount());
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2443,8 +2616,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.StatFileStore(headers, fsConfig.FsId);
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2575,7 +2750,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.FsId,
-                false /* allowCache */,
+                0, /* cacheTTL */
                 NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
             const auto& stats = response.GetStats();
             // No blocks are used by the main filesystem itself, all blocks are
@@ -2595,8 +2770,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             const auto response = GetStorageStats(
                 service,
-                fsConfig.Shard2Id,
-                false /* allowCache */);
+                fsConfig.Shard2Id);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 data2.size() / 4_KB,
@@ -2609,7 +2783,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.Shard1Id,
-                false /* allowCache */,
+                0 /* cacheTTL */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -2621,7 +2795,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto response = GetStorageStats(
                 service,
                 fsConfig.Shard2Id,
-                false /* allowCache */,
+                0 /* cacheTTL */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -2880,15 +3054,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
+        const TString fsId = "test";
         const ui64 fsSize = 1000;
         const ui64 shardsCount = 2;
-        service.CreateFileStore("test", fsSize);
-        service.ResizeFileStore("test", fsSize, false /* force */, shardsCount);
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.CreateFileStore(fsId, fsSize);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                counters.CreateMaxInFlight,
+                "#" << counters.CreateRequests << ", "
+                    << counters.CreateResponses);
+        }
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.ResizeFileStore(fsId, fsSize, false /* force */, shardsCount);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                shardsCount,
+                counters.CreateMaxInFlight,
+                "#" << counters.CreateRequests << ", "
+                    << counters.CreateResponses);
+        }
 
         WaitForTabletStart(service);
 
         {
-            const auto response = GetStorageStats(service, "test");
+            const auto response = GetStorageStats(service, fsId);
             const auto& stats = response.GetStats();
             for (const auto& stat: stats.GetShardStats()) {
                 UNIT_ASSERT_EQUAL(
@@ -2903,7 +3098,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         env.CreateAndRegisterStorageService(nodeIdx);
 
         service.ResizeFileStore(
-            "test",
+            fsId,
             fsSize,
             false /* force */,
             shardsCount,
@@ -2912,7 +3107,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         WaitForTabletStart(service);
 
         {
-            const auto response = GetStorageStats(service, "test");
+            const auto response = GetStorageStats(service, fsId);
             const auto& stats = response.GetStats();
             for (const auto& stat: stats.GetShardStats()) {
                 UNIT_ASSERT_EQUAL(fsSize, stat.GetTotalBlocksCount());
@@ -3033,8 +3228,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.AccessRuntime().DispatchEvents(options);
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3106,8 +3303,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // stats not updated yet
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3146,8 +3345,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // stats should be up to date now
 
         {
-            const auto response =
-                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto response = GetStorageStats(
+                service,
+                fsConfig.FsId,
+                Max<ui32>() /* cacheTTL */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -3166,7 +3367,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             ->FindSubgroup("component", "storage")
             ->FindSubgroup("type", "hdd");
         UNIT_ASSERT_LT(
-            tabletCounters->GetCounter("GetStorageStats.TimeSumUs")
+            tabletCounters->FindSubgroup("request", "GetStorageStats")
+                ->GetCounter("TimeSumUs")
                 ->GetAtomic(),
             10'000'000);
     }
@@ -4149,11 +4351,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             {fsId, fsId + "_s1", fsId + "_s2"});
     }
 
-    SERVICE_TEST(ShouldDeleteShardsAutomatically)
+    SERVICE_TEST(ShouldDeleteShardsBeThrottled)
     {
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(2);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -4188,7 +4391,68 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         Sort(ids);
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
 
-        service.DestroyFileStore(fsId2);
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId2);
+            service.DestroyFileStore(fsId2);
+            UNIT_ASSERT_VALUES_EQUAL(5, counters.DestroyRequests);
+            UNIT_ASSERT_VALUES_EQUAL(5, counters.DestroyResponses);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.DestroyMaxInFlight);
+        }
+
+        expected = {};
+
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
+    SERVICE_TEST(ShouldDeleteShardsAutomatically)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(0);
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId1 = "test1";
+        const TString fsId2 = "test2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId1, 2_GB / 4_KB);
+        service.CreateFileStore(fsId2, 4_GB / 4_KB);
+
+        TVector<TString> expected = {
+            fsId1, fsId1 + "_s1", fsId1 + "_s2",
+            fsId2, fsId2 + "_s1", fsId2 + "_s2", fsId2 + "_s3", fsId2 + "_s4",
+        };
+
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        service.DestroyFileStore(fsId1);
+
+        expected = {
+            fsId2, fsId2 + "_s1", fsId2 + "_s2", fsId2 + "_s3", fsId2 + "_s4",
+        };
+
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId2);
+            service.DestroyFileStore(fsId2);
+            UNIT_ASSERT_VALUES_EQUAL(4, counters.DestroyMaxInFlight);
+        }
 
         expected = {};
 
@@ -4338,11 +4602,87 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
     }
 
+    SERVICE_TEST(ShouldAddShardsAutomaticallyUponResizeThrottled)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(1);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.CreateFileStore(fsId, 2_GB / 4_KB);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(3, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.CreateMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureRequests);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.ConfigureResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.AlterRequests);
+        }
+
+        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.ResizeFileStore(fsId, 6_GB / 4_KB);
+
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.DescribeRequests);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.DescribeResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.DescribeMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(4, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(4, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.CreateMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureRequests);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.AlterRequests);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.AlterResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.AlterMaxInFlight);
+        }
+
+        expected = TVector<TString>{
+            fsId,
+            fsId + "_s1",
+            fsId + "_s2",
+            fsId + "_s3",
+            fsId + "_s4",
+            fsId + "_s5",
+            fsId + "_s6",
+        };
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
     SERVICE_TEST(ShouldAddShardsAutomaticallyUponResize)
     {
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(0);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -5383,28 +5723,44 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // counters->OutputPlainText(Cerr);
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            counters->GetCounter("CreateHandle.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateHandle")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            counters->GetCounter("CreateHandleInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateHandleInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            counters->GetCounter("CreateNode.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateNode")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             6,
-            counters->GetCounter("CreateNodeInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "CreateNodeInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("GetNodeAttr.Count")->GetAtomic());
+            counters->FindSubgroup("request", "GetNodeAttr")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("GetNodeAttrInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "GetNodeAttrInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("UnlinkNode.Count")->GetAtomic());
+            counters->FindSubgroup("request", "UnlinkNode")
+                ->GetCounter("Count")
+                ->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("UnlinkNodeInShard.Count")->GetAtomic());
+            counters->FindSubgroup("request", "UnlinkNodeInShard")
+                ->GetCounter("Count")
+                ->GetAtomic());
     }
 
     SERVICE_TEST(ShouldCreateFilesInFileShards)
@@ -6356,7 +6712,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             response = GetStorageStats(
                 service,
                 fsConfig.Shard1Id,
-                true /* allowCache */,
+                Max<ui32>() /* cacheTTL */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
@@ -7715,6 +8071,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
         config.SetMaxShardCount(1024);
+        config.SetMaxShardManagementRequestsInFlight(0);
 
         const TString fsId = "test";
 
@@ -7723,7 +8080,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, fsSize);
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.CreateFileStore(fsId, fsSize);
+
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(shardCount, counters.CreateMaxInFlight);
+        }
 
         WaitForTabletStart(service);
 
@@ -7794,6 +8159,53 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             sevenBytesHandlesCount,
             mainStats.GetStats().GetSevenBytesHandlesCount());
+    }
+
+    SERVICE_TEST(ShouldCreateALotOfShardsThrottled)
+    {
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 324;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+        const ui32 requestsLimit = 32;
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+        config.SetMaxShardCount(1024);
+        config.SetMaxShardManagementRequestsInFlight(requestsLimit);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.CreateFileStore(fsId, fsSize);
+
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(shardCount + 1, counters.CreateResponses);
+            UNIT_ASSERT_VALUES_EQUAL(requestsLimit, counters.CreateMaxInFlight);
+        }
+
+        WaitForTabletStart(service);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // Check that the main fs and all the shards have the same size
+        const auto stats = GetStorageStats(service, fsId).GetStats();
+        const auto& shardStats = stats.GetShardStats();
+        UNIT_ASSERT_EQUAL(shardCount, shardStats.size());
+        UNIT_ASSERT_EQUAL(fsSize, stats.GetTotalBlocksCount());
+        for (const auto& shardStat: shardStats) {
+            UNIT_ASSERT_EQUAL(fsSize, shardStat.GetTotalBlocksCount());
+        }
     }
 
     SERVICE_TEST(ShouldUseOldHandles)
@@ -9163,6 +9575,83 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 GetFileSystemTopology(service, fsId + "_s2");
             UNIT_ASSERT(shard2Topology.GetCompressNodeRef());
         }
+    }
+
+    SERVICE_TEST(ShouldUseCacheInStatFileStore)
+    {
+        constexpr ui64 cacheTTLMs = 1000;
+        config.SetStatFileStoreCacheTTL(cacheTTLMs);
+
+        // Create a filesystem with 2 shards.
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto writeToFile = [&](const TString& name, const TString& data)
+        {
+            auto createNodeResponse =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(RootNodeId, name))
+                    ->Record;
+            const auto nodeId = createNodeResponse.GetNode().GetId();
+            const ui64 handle = service
+                                    .CreateHandle(
+                                        headers,
+                                        fsConfig.FsId,
+                                        nodeId,
+                                        "",
+                                        TCreateHandleArgs::RDWR)
+                                    ->Record.GetHandle();
+            service.WriteData(
+                headers,
+                headers.FileSystemId,
+                nodeId,
+                handle,
+                0,
+                data);
+        };
+
+        constexpr ui64 data1Size = 256_KB;
+        constexpr ui64 data2Size = 128_KB;
+
+        writeToFile("file1", GenerateValidateData(data1Size));
+        writeToFile("file2", GenerateValidateData(data2Size));
+
+        env.GetRuntime().AdvanceCurrentTime(
+            TDuration::MilliSeconds(cacheTTLMs * 2));
+
+        // Get the latest stats as cache is older than the cache TTL.
+        auto stats =
+            service.StatFileStore(headers, fsConfig.FsId)->Record.GetStats();
+        UNIT_ASSERT_EQUAL(2, stats.GetUsedNodesCount());
+        UNIT_ASSERT_EQUAL(
+            (data1Size + data2Size) / 4_KB,
+            stats.GetUsedBlocksCount());
+
+        writeToFile("file3", GenerateValidateData(data1Size));
+        writeToFile("file4", GenerateValidateData(data2Size));
+
+        // Get stats again, it should be the same as the cache TTL = 1s.
+        stats =
+            service.StatFileStore(headers, fsConfig.FsId)->Record.GetStats();
+        UNIT_ASSERT_EQUAL(2, stats.GetUsedNodesCount());
+        UNIT_ASSERT_EQUAL(
+            (data1Size + data2Size) / 4_KB,
+            stats.GetUsedBlocksCount());
+
+        env.GetRuntime().AdvanceCurrentTime(
+            TDuration::MilliSeconds(cacheTTLMs * 2));
+
+        // Finally get updated stats.
+        stats =
+            service.StatFileStore(headers, fsConfig.FsId)->Record.GetStats();
+        UNIT_ASSERT_EQUAL(4, stats.GetUsedNodesCount());
+        UNIT_ASSERT_EQUAL(
+            2 * (data1Size + data2Size) / 4_KB,
+            stats.GetUsedBlocksCount());
     }
 }
 }   // namespace NCloud::NFileStore::NStorage

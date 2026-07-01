@@ -128,7 +128,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         state.IncrementUnflushedFreshBlobByteCount(100 * 4_KB);
         state.GetCompactionMap().Update(0, 10, 10, 10, 0, false);
-        state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111});
+        state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.FreshIndexScore, 1e-5);
@@ -145,7 +145,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         state.IncrementUnflushedFreshBlobByteCount(300 * 4_KB);
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
-        state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111});
+        state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.FreshIndexScore, 1e-5);
@@ -530,8 +530,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             threadSafeState
         );
 
-        TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111};
-        TCleanupQueueItem b2 {{1, 2, 4, 4096, 0, 0}, 112};
+        TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111, {}};
+        TCleanupQueueItem b2 {{1, 2, 4, 4096, 0, 0}, 112, {}};
 
         state.GetCleanupQueue().Add(b2);
         state.GetCleanupQueue().Add(b1);

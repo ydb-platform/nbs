@@ -197,7 +197,10 @@ public:
         return true;
     }
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        ui32 skippedBlocksCount) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
         ab.MaxCommitIdInCompactionRange = blobId.CommitId();
@@ -205,6 +208,10 @@ public:
         ab.CompactionRangeCount =
             CompactionMap.GetRangeIndex(blockRange.End) -
             CompactionMap.GetRangeIndex(blockRange.Start) + 1;
+
+        ab.MergedBlobsSpecificInfo.ConstructInPlace();
+        ab.MergedBlobsSpecificInfo->BlockRange = blockRange;
+        ab.MergedBlobsSpecificInfo->SkippedBlocksCount = skippedBlocksCount;
         return true;
     }
 
@@ -223,6 +230,16 @@ public:
         }
     }
 };
+
+bool IsBlobFullyAvailableForRangeCompaction(
+    const TAffectedBlob& ab,
+    ui64 commitId)
+{
+    const bool blobOnlyInOneCompactRange = ab.CompactionRangeCount == 1;
+
+    return ab.MaxCommitIdInCompactionRange <= commitId &&
+           blobOnlyInOneCompactRange;
+}
 
 struct TCompactionBlockCounts
 {
@@ -374,7 +391,7 @@ void ApplyIncrementalCompactionSkipping(
     for (const auto& x: liveBlocks) {
         auto ab = args.AffectedBlobs.find(x.first);
         Y_ABORT_UNLESS(ab != args.AffectedBlobs.end());
-        for (const ui32 blockIndex: ab->second.AffectedBlockIndices) {
+        for (const auto& [blockIndex, _]: ab->second.AffectedBlocks) {
             // we can actually add extra indices to skippedBlockIndices,
             // but it does not cause data corruption - the important thing
             // is to ensure that all skipped indices are added, not that
@@ -411,21 +428,19 @@ void FillBlobsInfoToRead(
 {
     for (auto& kv: args.AffectedBlobs) {
         if (state.GetCleanupQueue().HasBlob(kv.first)) {
-            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
+            kv.second.BlobAlreadyInCleanupQueue = true;
             continue;
         }
 
-        const bool blobOnlyInOneCompactRange =
-            kv.second.CompactionRangeCount == 1;
-
-        const bool blobFullyAvailableForRangeCompaction =
-            kv.second.MaxCommitIdInCompactionRange <= commitId &&
-            blobOnlyInOneCompactRange;
-
-        if (!blobFullyAvailableForRangeCompaction ||
+        if (!IsBlobFullyAvailableForRangeCompaction(kv.second, commitId) ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             blobsToReadBlockMasks.emplace(kv.first);
+        } else {
+            // The blob is fully available for range compaction and will be
+            // overwritten during compaction, so we can skip reading its block
+            // mask and use a full mask instead.
+            kv.second.BlockMask = GetFullBlockMask(state.GetMaxBlocksInBlob());
         }
     }
 
@@ -642,6 +657,34 @@ TBlobPatchingResult ResolveBlobPatchingCandidate(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
+{
+    for (auto& [blobId, ab]: args.AffectedBlobs) {
+        if (ab.MergedBlobsSpecificInfo) {
+            auto& info = ab.MergedBlobsSpecificInfo.GetRef();
+            auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
+            auto* mergedBlocks = meta.MutableMergedBlocks();
+            mergedBlocks->SetStart(info.BlockRange.Start);
+            mergedBlocks->SetEnd(info.BlockRange.End);
+            mergedBlocks->SetSkipped(info.SkippedBlocksCount);
+            continue;
+        }
+
+        // we can recreate blob meta for mixed blobs only if they are fully
+        // available for range compaction
+        if (!IsBlobFullyAvailableForRangeCompaction(ab, commitId)) {
+            continue;
+        }
+
+        auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
+        auto* mixedBlocks = meta.MutableMixedBlocks();
+        for (const auto& affectedBlock: ab.AffectedBlocks) {
+            mixedBlocks->AddBlocks(affectedBlock.BlockIndex);
+            mixedBlocks->AddCommitIds(affectedBlock.CommitId);
+        }
+    }
+}
+
 void PrepareRangeCompaction(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
@@ -701,6 +744,7 @@ void CompleteRangeCompaction(
     const ui32 mergedBlobThreshold,
     const ui64 commitId,
     const ui64 tabletId,
+    const bool shouldRecreateBlobMetas,
     TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
@@ -746,6 +790,10 @@ void CompleteRangeCompaction(
             args,
             tabletStorageInfo,
             state);
+    }
+
+    if (shouldRecreateBlobMetas) {
+        RecreateBlobMetas(args, commitId);
     }
 
     rangeCompactionInfos.emplace_back(

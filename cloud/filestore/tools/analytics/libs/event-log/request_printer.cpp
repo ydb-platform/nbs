@@ -400,6 +400,10 @@ public:
             out << PrintValue("request_flags", request.GetFlags()) << "\t";
         }
 
+        if (request.HasCommitId()) {
+            out << PrintValue("commit_id", request.GetCommitId()) << "\t";
+        }
+
         if (out.empty()) {
             out << "{no_info}";
         } else {

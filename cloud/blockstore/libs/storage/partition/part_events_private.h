@@ -122,24 +122,6 @@ struct TWriteFreshBlocksRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAffectedBlob
-{
-    ui8 CompactionRangeCount = 0;
-    ui64 MaxCommitIdInCompactionRange = 0;
-    ui64 MinCommitIdInCompactionRange = Max<ui64>();
-    TVector<ui16> Offsets;
-    TMaybe<TBlockMask> BlockMask;
-    TVector<ui32> AffectedBlockIndices;
-
-    // Filled only if a flag is set. BlobMeta is needed only to do some extra
-    // consistency checks.
-    TMaybe<NProto::TBlobMeta> BlobMeta;
-};
-
-using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TAffectedBlock
 {
     ui32 BlockIndex = 0;
@@ -147,6 +129,39 @@ struct TAffectedBlock
 };
 
 using TAffectedBlocks = TVector<TAffectedBlock>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAffectedBlob
+{
+    struct TMergedBlobsSpecificInfo
+    {
+        TBlockRange32 BlockRange;
+        ui32 SkippedBlocksCount = 0;
+    };
+
+    ui8 CompactionRangeCount = 0;
+    ui64 MaxCommitIdInCompactionRange = 0;
+    ui64 MinCommitIdInCompactionRange = Max<ui64>();
+    // Filled only for merged blobs.
+    TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
+
+    TVector<ui16> Offsets;
+
+    TMaybe<TBlockMask> BlockMask;
+
+    bool BlobAlreadyInCleanupQueue = false;
+
+    TAffectedBlocks AffectedBlocks;
+
+    // Filled only if a flag is set. BlobMeta is needed only to do some extra
+    // consistency checks.
+    TMaybe<NProto::TBlobMeta> BlobMeta;
+
+    TMaybe<NProto::TBlobMeta> RecreatedBlobMeta;
+};
+
+using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

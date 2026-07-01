@@ -651,6 +651,11 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                 response.GetError().GetCode(),
                 FormatError(response.GetError()));
         }
+
+        // Wait for session switcher complete and resources to be released.
+        Sleep(TDuration::Seconds(1));
+
+        scheduler->Stop();
     }
 }
 

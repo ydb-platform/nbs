@@ -62,7 +62,7 @@ on:
         default: "small,medium,large"
       test_type:
         type: string
-        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
       folder_prefix:
         type: string
         default: "nebius-"
@@ -108,7 +108,7 @@ jobs:
     timeout-minutes: 480
     steps:
     - name: Checkout PR
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       timeout-minutes: 10
       if: github.event.pull_request.head.sha != ''
       with:
@@ -130,7 +130,7 @@ jobs:
         git rebase origin/${{ github.event.pull_request.base.ref }}
         git submodule update --init --recursive
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       timeout-minutes: 10
       if: github.event.pull_request.head.sha == ''
       with:

@@ -9,24 +9,25 @@ import time
 import grpc
 from typing import Optional
 import asyncio
-import requests
 import yaml
 from .helpers import (
     setup_logger,
     github_output,
     KeyValueAction,
+    PYGITHUB_RETRY_EXCEPTIONS,
     SENSITIVE_DATA_VALUES,
     truthy,
     retry,
     GITHUB_API_RETRY_ATTEMPTS,
     GITHUB_API_RETRY_INTERVAL_SEC,
-    GITHUB_API_TIMEOUT_SEC,
     GITHUB_RUNNER_LATEST_VERSION,
-    format_github_response_debug,
+    fetch_github_team_public_keys,
     resolve_github_runner_release,
 )
 from github import Auth as GithubAuth
 from github import Github
+from github.Repository import Repository
+from github.SelfHostedActionsRunnerToken import SelfHostedActionsRunnerToken
 
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
@@ -95,29 +96,6 @@ def generate_github_label():
     )
     logger.info("Generated label: %s", generated_string)
     return generated_string
-
-
-def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):
-    org = gh.get_organization(github_org)
-    team = org.get_team_by_slug(team_slug)
-    members = [member for member in team.get_members()]
-
-    ssh_keys = []
-    logger.info(
-        "Fetching SSH keys for members: %s",
-        ", ".join([member.login for member in members]),
-    )
-    member_keys_count = 0
-    for member in members:
-
-        for key in member.get_keys():
-            member_keys_count += 1
-            ssh_keys.append(key.key)
-
-        logger.debug("Fetched %d SSH keys for %s", member_keys_count, member.login)
-
-    logger.debug(f"Fetched SSH keys: {ssh_keys}")
-    return ssh_keys
 
 
 def shell_quote_template_value(value) -> str:
@@ -235,45 +213,36 @@ def resolve_runner_release_for_update(
     return release.version, release.sha256_by_arch
 
 
+def _create_repository_self_hosted_runner_registration_token(
+    self: Repository,
+) -> SelfHostedActionsRunnerToken:
+    headers, data = self._requester.requestJsonAndCheck(
+        "POST",
+        f"{self.url}/actions/runners/registration-token",
+    )
+    return SelfHostedActionsRunnerToken(self._requester, headers, data)
+
+
+if not hasattr(Repository, "create_self_hosted_runner_registration_token"):
+    Repository.create_self_hosted_runner_registration_token = (  # type: ignore[attr-defined]
+        _create_repository_self_hosted_runner_registration_token
+    )
+
+
 @retry(
     attempts=GITHUB_API_RETRY_ATTEMPTS,
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=(requests.exceptions.RequestException, ValueError),
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS + (ValueError,),
 )
 def get_runner_token(
     github_repo_owner: str, github_repo: str, github_token: str
 ) -> str:
-    response = requests.post(
-        f"https://api.github.com/repos/{github_repo_owner}/{github_repo}/actions/runners/registration-token",
-        headers={
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github+json",
-            "X-Github-Api-Version": "2022-11-28",
-        },
-        timeout=GITHUB_API_TIMEOUT_SEC,
+    repo = Github(auth=GithubAuth.Token(github_token)).get_repo(
+        f"{github_repo_owner}/{github_repo}"
     )
-    logger.debug(
-        "GitHub runner registration token response status=%s content_type=%s",
-        response.status_code,
-        response.headers.get("content-type"),
-    )
-
-    try:
-        result = response.json()
-    except ValueError as e:
-        raise ValueError(
-            "Failed to parse GitHub runner registration token response "
-            f"({format_github_response_debug(response)}): {e}"
-        ) from None
-
-    if not response.ok:
-        raise ValueError(
-            "GitHub runner registration token request failed "
-            f"({format_github_response_debug(response)}): {result}"
-        )
-
-    token = result.get("token")
-    expires_at = result.get("expires_at")
+    registration_token = repo.create_self_hosted_runner_registration_token()
+    token = registration_token.token
+    expires_at = registration_token.expires_at
     if token:
         # Mask the token in the logs
         print(f"::add-mask::{token}")
@@ -281,10 +250,7 @@ def get_runner_token(
         logger.debug("Got runner registration token valid till: %s", expires_at)
         return token
     else:
-        raise ValueError(
-            "Failed to get runner registration token "
-            f"({format_github_response_debug(response)}): {result}"
-        )
+        raise ValueError("Failed to get runner registration token")
 
 
 def find_runner_by_name(
@@ -668,6 +634,24 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         logger.error("Response: %s", request.status, exc_info=True)
 
 
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
+    return client.get_repo(repo).get_self_hosted_runner(runner_id)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def remove_self_hosted_runner(client: Github, repo: str, runner_id: str) -> bool:
+    return client.get_repo(repo).remove_self_hosted_runner(runner_id)
+
+
 def remove_runner_from_github(
     client: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
 ) -> str:
@@ -680,7 +664,7 @@ def remove_runner_from_github(
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
 
-    runner = client.get_repo(repo).get_self_hosted_runner(runner_id)
+    runner = get_self_hosted_runner(client, repo, runner_id)
     if runner is None:
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
@@ -696,7 +680,7 @@ def remove_runner_from_github(
         return "busy"
 
     if apply:
-        result = client.get_repo(repo).remove_self_hosted_runner(runner_id)
+        result = remove_self_hosted_runner(client, repo, runner_id)
 
         if not result:
             # removed throwing exception here, because removing VM is more important

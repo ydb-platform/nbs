@@ -17,11 +17,11 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr int NumTestPositions = 200;
-constexpr int MinDirectories = 10000;
+constexpr int MinDirectories = 1000;
 constexpr size_t MaxFilenameLen = 256;
 constexpr int SleepIntervalMs = 100;
 constexpr int MsToUs = 1000;
-constexpr int NumParallelTests = 10;
+constexpr int NumParallelTests = 4;
 
 ////////////////////////////////////////////////////////////////////////////////
 

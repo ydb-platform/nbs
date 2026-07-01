@@ -159,8 +159,8 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
                 ExpectedScore,
                 GetExpectedWriteCost(requestBytes).MicroSeconds());
         }
-        auto requestTime = requestCompleted - requestStarted;
-        auto execTime = 0;
+        ui64 requestTime = requestCompleted - requestStarted;
+        ui64 execTime = 0;
         if (requestTime > waitTime) {
             execTime = requestTime - waitTime;
         }
@@ -169,11 +169,12 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
 }
 
 bool TVolumePerformanceCalculator::DidSuffer(
-    long expectedScore,
-    long actualScore) const
+    ui64 expectedScore,
+    ui64 actualScore,
+    TDuration window) const
 {
-    return (expectedScore < ExpectedIoParallelism * 1e6)
-        && (actualScore > expectedScore);
+    const ui64 windowCapacity = window.MicroSeconds() * ExpectedIoParallelism;
+    return (expectedScore < windowCapacity) && (actualScore > expectedScore);
 }
 
 bool TVolumePerformanceCalculator::UpdateStats()
@@ -182,9 +183,10 @@ bool TVolumePerformanceCalculator::UpdateStats()
         return false;
     }
 
-    auto expectedScore = AtomicGet(ExpectedScore);
-    auto actualScore = AtomicGet(CurrentScore);
-    bool suffered = DidSuffer(expectedScore, actualScore);
+    const auto expectedScore = AtomicGet(ExpectedScore);
+    const auto actualScore = AtomicGet(CurrentScore);
+    const bool suffered =
+        DidSuffer(expectedScore, actualScore, UpdateStatsInterval);
 
     AtomicAdd(SufferCount, suffered - Samples[UpdateCounter].Suffered);
     Samples[UpdateCounter] = {suffered, expectedScore, actualScore};
@@ -199,12 +201,18 @@ bool TVolumePerformanceCalculator::UpdateStats()
 
     AtomicSet(
         SmoothSufferCount,
-        DidSuffer(windowExpectedScore, windowActualScore));
+        DidSuffer(
+            windowExpectedScore,
+            windowActualScore,
+            UpdateCountersInterval));
 
     ui32 criticalFactor = Max(2u, ConfigSettings.CriticalFactor);
     AtomicSet(
         CriticalSufferCount,
-        DidSuffer(windowExpectedScore * criticalFactor, windowActualScore));
+        DidSuffer(
+            windowExpectedScore * criticalFactor,
+            windowActualScore,
+            UpdateCountersInterval));
 
     if (!UpdateCounter && Counter) {
         *Counter = SufferCount;

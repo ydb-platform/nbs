@@ -152,6 +152,16 @@ build {
     destination = "${local.tmp_directory}/github-release-tools.txt"
   }
 
+  provisioner "file" {
+    source      = "${path.cwd}/../scripts/helpers.py"
+    destination = "${local.tmp_directory}/helpers.py"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/../scripts/github_team_public_keys.py"
+    destination = "${local.tmp_directory}/github_team_public_keys.py"
+  }
+
   provisioner "shell" {
     environment_vars = [
       "RUNNER_VERSION=${var.RUNNER_VERSION}",

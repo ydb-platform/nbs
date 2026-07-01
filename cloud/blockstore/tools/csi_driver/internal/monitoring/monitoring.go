@@ -3,6 +3,7 @@ package monitoring
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -48,6 +49,7 @@ type MonitoringConfig struct {
 	Path                             string
 	Component                        string
 	RetriableErrorsDurationThreshold time.Duration
+	FilesystemPrefix                 string
 }
 
 type Monitoring struct {
@@ -55,6 +57,13 @@ type Monitoring struct {
 	registry                         metrics.Registry
 	Handler                          http.Handler
 	retriableErrorTimestampsByVolume map[string]time.Time
+}
+
+func (m *Monitoring) getService(volumeId string) string {
+	if m.cfg.FilesystemPrefix != "" && strings.HasPrefix(volumeId, m.cfg.FilesystemPrefix) {
+		return "filestore"
+	}
+	return "nbs"
 }
 
 func (m *Monitoring) StartListening() {
@@ -91,9 +100,10 @@ func (m *Monitoring) ReportExternalFsMountExpirationTimes(fsMountExpTimes map[st
 	}
 }
 
-func (m *Monitoring) ReportRequestReceived(method string) {
+func (m *Monitoring) ReportRequestReceived(volumeId string, method string) {
 	subregistry := m.registry.WithTags(map[string]string{
-		"method": method,
+		"method":  method,
+		"service": m.getService(volumeId),
 	})
 	subregistry.Counter("Count").Inc()
 	subregistry.IntGauge("InflightCount").Add(1)
@@ -110,7 +120,8 @@ func (m *Monitoring) ReportRequestCompleted(
 	elapsedTime time.Duration,
 ) {
 	subregistry := m.registry.WithTags(map[string]string{
-		"method": method,
+		"method":  method,
+		"service": m.getService(volumeId),
 	})
 
 	if elapsedTime > 0 {

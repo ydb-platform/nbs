@@ -30,6 +30,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Type = ydb_types.Type
+type StructOption = ydb_types.StructOption
 
 const (
 	TypeBool      = ydb_types.TypeBool
@@ -48,6 +49,10 @@ const (
 func Optional(t ydb_types.Type) ydb_types.Type { return ydb_types.Optional(t) }
 
 func List(t Type) ydb_types.Type { return ydb_types.List(t) }
+
+func Struct(opts ...StructOption) Type { return ydb_types.Struct(opts...) }
+
+func StructField(name string, t Type) StructOption { return ydb_types.StructField(name, t) }
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -769,7 +769,7 @@ message TStorageConfig
 
     // Use custom protobuf parser for TReadDataResponse
     // to optimize TReadDataActor performance.
-    optional bool UseCustomReadDataResponseParser = 498;
+    optional bool UseCustomReadDataResponseParser = 498 [deprecated = true];
 
     // If true, describes will be done using SchemeCache instead of TxProxy.
     optional bool UseSchemeCache = 499;
@@ -814,4 +814,24 @@ message TStorageConfig
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 514;
+
+    // Limit max number in-flight requests to create/configure/destroy shards.
+    // Zero means unlimited.
+    optional uint32 MaxShardManagementRequestsInFlight = 515;
+
+    // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
+    optional uint32 StatFileStoreCacheTTL = 516; // in ms
+
+    // Pass data buffer from the tablet as a message payload
+    optional bool ExternalReadDataPayload = 517;
+
+    // Throttling configuration for backpressure usecase, when global throttler is disabled
+    optional uint32 SoftBackpressureMaxWriteBandwidth = 518;   // in MiB/s
+    optional uint32 SoftBackpressureMaxReadBandwidth = 519;    // in MiB/s
+    optional uint32 SoftBackpressureMaxWriteIops = 520;
+    optional uint32 SoftBackpressureMaxReadIops = 521;
+
+    // Sets the minimum shard count that each filesystem would have regardless
+    // of its size.
+    optional uint32 MinShardCount = 522;
 }

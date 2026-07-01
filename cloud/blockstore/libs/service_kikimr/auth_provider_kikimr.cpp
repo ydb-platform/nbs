@@ -6,13 +6,15 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/auth/authorizer.h>
+#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
+#include <library/cpp/string_utils/quote/quote.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -162,7 +164,7 @@ private:
         if (FAILED(msg->GetStatus())) {
             LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
                 TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-                << " unauthorized request, peer: " << Peer);
+                << " unauthorized request, peer: " << UrlUnescapeRet(Peer));
         }
 
         CompleteRequest(ctx, msg->Error);
@@ -176,7 +178,7 @@ private:
 
         LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-            << " request timed out, peer: " << Peer);
+            << " request timed out, peer: " << UrlUnescapeRet(Peer));
 
         NProto::TError error;
         error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT

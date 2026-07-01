@@ -282,6 +282,8 @@ private:
     void RenderConfigDetailed(IOutputStream& out) const;
     void RenderDirtyDeviceList(IOutputStream& out) const;
     void RenderDirtyDeviceListDetailed(IOutputStream& out) const;
+    void RenderDirtyDevicesCleanupOverview(IOutputStream& out) const;
+    void RenderDirtyDevicesCleanupOverviewDetailed(IOutputStream& out) const;
     void RenderSuspendedDeviceList(IOutputStream& out) const;
     void RenderSuspendedDeviceListDetailed(IOutputStream& out) const;
     void RenderAutomaticallyReplacedDeviceList(IOutputStream& out) const;
@@ -422,6 +424,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_RenderDirtyDeviceList(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderDirtyDevicesCleanupOverview(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

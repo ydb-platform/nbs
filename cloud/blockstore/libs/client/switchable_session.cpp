@@ -5,6 +5,8 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/threading/hot_swap/hot_swap.h>
+
 #include <utility>
 
 namespace NCloud::NBlockStore::NClient {
@@ -15,7 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr auto CheckDrainCompletedPeriod = TDuration::Seconds(1);
+constexpr auto CheckDrainCompletedPeriod = TDuration::MilliSeconds(100);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -121,23 +123,25 @@ auto DoExecute(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSharedCounter: std::enable_shared_from_this<TSharedCounter>
+struct TSessionInfo: public TAtomicRefCount<TSessionInfo>
 {
-    std::atomic<i64> Count{0};
-};
-using TSharedCounterPtr = std::shared_ptr<TSharedCounter>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TSessionInfo
-{
-    TString DiskId;
-    ISessionPtr Session;
-    ISwitchableBlockStorePtr SwitchableClient;
+    const TString DiskId;
+    const ISessionPtr Session;
+    const ISwitchableBlockStorePtr SwitchableClient;
     TPromise<void> DrainPromise = NewPromise<void>();
-    TSharedCounterPtr InflightRequestCounter =
-        std::make_shared<TSharedCounter>();
+    std::atomic<i64> InflightRequestCounter = 0;
+
+    TSessionInfo(
+        TString diskId,
+        ISessionPtr session,
+        ISwitchableBlockStorePtr switchableClient)
+        : DiskId(std::move(diskId))
+        , Session(std::move(session))
+        , SwitchableClient(std::move(switchableClient))
+    {}
 };
+
+using TSessionInfoPtr = TIntrusivePtr<TSessionInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -149,8 +153,8 @@ private:
     const ISchedulerPtr Scheduler;
     TLog Log;
 
-    std::array<TSessionInfo, 2> Sessions;
-    std::atomic<size_t> ActiveSession{0};
+    THotSwap<TSessionInfo> Session;
+    size_t SwitchCount = 0;
 
 public:
     TSwitchableSession(
@@ -161,34 +165,34 @@ public:
         ISwitchableBlockStorePtr switchableClient)
         : Scheduler(std::move(scheduler))
         , Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
-        , Sessions{
-              TSessionInfo{
-                  .DiskId = std::move(diskId),
-                  .Session = std::move(session),
-                  .SwitchableClient = std::move(switchableClient)},
-              {}}
-    {}
+    {
+        TSessionInfoPtr sessionInfo = MakeIntrusive<TSessionInfo>(
+            std::move(diskId),
+            std::move(session),
+            std::move(switchableClient));
+        Session.AtomicStore(sessionInfo);
+    }
 
     template <typename TRequest>
     auto ExecuteRequestWithInflightCount(
         TCallContextPtr callContext,
         TRequest request)
     {
-        auto& current = GetCurrentSessionInfo();
-        auto counter = current.InflightRequestCounter;
-        ++counter->Count;
+        TSessionInfoPtr currentSession = Session.AtomicLoad();
+        ++currentSession->InflightRequestCounter;
 
         auto future = DoExecute(
-            current.Session.get(),
+            currentSession->Session.get(),
             std::move(callContext),
             std::move(request));
 
         future.Subscribe(
-            [counter = std::move(counter)](const auto& f)
+            [currentSession = std::move(currentSession)]   //
+            (const auto& f)
             {
                 Y_UNUSED(f);
 
-                i64 current = --counter->Count;
+                i64 current = --currentSession->InflightRequestCounter;
                 Y_DEBUG_ABORT_UNLESS(current >= 0);
             });
         return future;
@@ -201,33 +205,33 @@ public:
         ISessionPtr newSession,
         ISwitchableBlockStorePtr newSwitchableClient) override
     {
-        auto& oldSession = GetCurrentSessionInfo();
-        size_t activeSession = ActiveSession.load();
+        TSessionInfoPtr currentSession = Session.AtomicLoad();
+
         STORAGE_INFO(
-            "Switch #" << activeSession << " session from "
-                       << oldSession.DiskId.Quote() << " to "
+            "Switch #" << SwitchCount++ << " session from "
+                       << currentSession->DiskId.Quote() << " to "
                        << newDiskId.Quote() << ". Inflight requests:"
-                       << oldSession.InflightRequestCounter->Count.load());
-        oldSession.SwitchableClient->Switch(
+                       << currentSession->InflightRequestCounter.load());
+        currentSession->SwitchableClient->Switch(
             newSwitchableClient,
             newDiskId,
             newSessionId);
 
-        const size_t nextSession = (activeSession + 1) % Sessions.size();
-        Sessions[nextSession] = {
-            .DiskId = newDiskId,
-            .Session = std::move(newSession),
-            .SwitchableClient = std::move(newSwitchableClient)};
+        TSessionInfoPtr newSessionInfo = MakeIntrusive<TSessionInfo>(
+            newDiskId,
+            std::move(newSession),
+            std::move(newSwitchableClient));
+        Session.AtomicStore(newSessionInfo);
 
-        ActiveSession.store(nextSession, std::memory_order_release);
-        ScheduleCheckAllRequestsDrained(activeSession);
-        return oldSession.DrainPromise;
+        ScheduleCheckAllRequestsDrained(currentSession);
+        return currentSession->DrainPromise;
     }
 
     // Implements ISession
     ui32 GetMaxTransfer() const override
     {
-        return GetCurrentSession()->GetMaxTransfer();
+        TSessionInfoPtr currentSession = Session.AtomicLoad();
+        return currentSession->Session->GetMaxTransfer();
     }
 
     TFuture<NProto::TMountVolumeResponse> MountVolume(
@@ -308,50 +312,42 @@ public:
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
-        return GetCurrentSession()->AllocateBuffer(bytesCount);
+        TSessionInfoPtr currentSession = Session.AtomicLoad();
+        return currentSession->Session->AllocateBuffer(bytesCount);
     }
 
     void ReportIOError() override
     {
-        GetCurrentSession()->ReportIOError();
+        TSessionInfoPtr currentSession = Session.AtomicLoad();
+        currentSession->Session->ReportIOError();
     }
 
 private:
-    TSessionInfo& GetCurrentSessionInfo()
-    {
-        return Sessions[ActiveSession.load(std::memory_order_acquire)];
-    }
-
-    ISession* GetCurrentSession() const
-    {
-        return Sessions[ActiveSession.load(std::memory_order_acquire)]
-            .Session.get();
-    }
-
-    void ScheduleCheckAllRequestsDrained(size_t sessionIndex)
+    void ScheduleCheckAllRequestsDrained(TSessionInfoPtr sessionInfo)
     {
         Scheduler->Schedule(
             TInstant::Now() + CheckDrainCompletedPeriod,
-            [sessionIndex, weakSelf = weak_from_this()]
+            [sessionInfo = std::move(sessionInfo),
+             weakSelf = weak_from_this()]   //
+            () mutable
             {
                 if (auto self = weakSelf.lock()) {
-                    self->CheckAllRequestsDrained(sessionIndex);
+                    self->CheckAllRequestsDrained(std::move(sessionInfo));
                 }
             });
     }
 
-    void CheckAllRequestsDrained(size_t sessionIndex)
+    void CheckAllRequestsDrained(TSessionInfoPtr sessionInfo)
     {
-        auto& session = Sessions[sessionIndex];
-        size_t count = session.InflightRequestCounter->Count;
+        const size_t count = sessionInfo->InflightRequestCounter;
+
         STORAGE_INFO(
-            "Inflight request for " << session.DiskId.Quote() << ": " << count);
+            "Inflight request for " << sessionInfo->DiskId.Quote() << ": "
+                                    << count);
         if (count == 0) {
-            session.DrainPromise.SetValue();
-            session.Session.reset();
-            session.SwitchableClient.reset();
+            sessionInfo->DrainPromise.SetValue();
         } else {
-            ScheduleCheckAllRequestsDrained(sessionIndex);
+            ScheduleCheckAllRequestsDrained(std::move(sessionInfo));
         }
     }
 };

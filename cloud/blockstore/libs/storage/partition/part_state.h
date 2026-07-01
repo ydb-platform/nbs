@@ -1221,6 +1221,25 @@ public:
         auto statsToAdd = stats.Swap({});
         UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
     }
+
+    double GetStoredBytesCountToDiskSizeRatio() const
+    {
+        const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
+        const auto freshBytesCount =
+            static_cast<ui64>(GetUnflushedFreshBlocksCount()) * GetBlockSize();
+        const auto mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
+        const auto bytesCount = GetBlocksCount() * GetBlockSize();
+
+        STORAGE_VERIFY_C(
+            bytesCount != 0,
+            TWellKnownEntityTypes::DISK,
+            Config.GetDiskId(),
+            "bytesCount is zero");
+
+        return static_cast<double>(
+                   mixedBytesCount + freshBytesCount + mergedBytesCount) /
+               static_cast<double>(bytesCount);
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

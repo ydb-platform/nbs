@@ -134,6 +134,11 @@ func scanFilesystemSnapshotStates(ctx context.Context, res persistence.Result) (
 		}
 	}
 
+	// NOTE: always check query result after iteration.
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	return states, nil
 }
 

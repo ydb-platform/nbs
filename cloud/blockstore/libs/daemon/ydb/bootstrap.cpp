@@ -90,6 +90,7 @@ namespace NCloud::NBlockStore::NServer {
 using namespace NMonitoring;
 using namespace NNvme;
 
+using namespace NCloud::NBlockStore;
 using namespace NCloud::NBlockStore::NDiscovery;
 
 using namespace NCloud::NIamClient;
@@ -816,7 +817,8 @@ void TBootstrapYdb::InitKikimrService()
             logging,
             LocalNVMeDeviceProvider,
             NvmeManager,
-            Executor);
+            Executor,
+            LongRunningTaskExecutor);
     } else {
         LocalNVMeDeviceProvider = CreateLocalNVMeDeviceProviderStub();
         LocalNVMeService = CreateLocalNVMeServiceStub();
@@ -980,9 +982,24 @@ void TBootstrapYdb::SetupCellManager()
             .PrivateKeyPath = grpcConfig.GetCertPrivateKeyFile(),
             .CertChainPath  = grpcConfig.GetCertFile(),
         }};
-        auto cellCertProvider = NCloud::CreateStaticCertificateProvider(
+
+        if (grpcConfig.GetSecurePort() && certList.empty()) {
+            ythrow yexception()
+                << "Secure cells port is configured without certificates";
+        }
+
+        auto cellCertProvider = CreateCertificateProvider(
+            Logging,
+            GetComponentName(
+                TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
+            Scheduler,
+            LongRunningTaskExecutor,
+            Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server"),
             grpcConfig.GetRootCertsFile(),
-            std::move(certList));
+            std::move(certList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
 
         CellManager = CreateCellManager(
             Configs->CellsConfig,

@@ -75,6 +75,7 @@ type Config struct {
 	NfsVhostReplicaCountTotal        uint
 	NbsServerReplicaCountUsed        uint
 	NbsServerReplicaCountTotal       uint
+	FilesystemPrefix                 string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -231,6 +232,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 		Path:                             "/metrics",
 		Component:                        "server",
 		RetriableErrorsDurationThreshold: cfg.RetriableErrorsDurationThreshold,
+		FilesystemPrefix:                 cfg.FilesystemPrefix,
 	}
 
 	mon := monitoring.NewMonitoring(&monitoringCfg)
@@ -246,7 +248,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 		method := getCsiMethodName(info.FullMethod)
 		volumeId := GetVolumeId(req)
-		mon.ReportRequestReceived(method)
+		mon.ReportRequestReceived(volumeId, method)
 
 		startTime := time.Now()
 		resp, err := handler(ctx, req)

@@ -52,9 +52,21 @@ TVector<ui32> EnsureBlockChecksums(
     return result;
 }
 
-class TCompactionActor final
-    : public TActorBootstrapped<TCompactionActor>
+class TCompactionActor final: public TActorBootstrapped<TCompactionActor>
 {
+    // Possible state transitions:
+    // - Initial state -> WaitingToVerifyBlobChecksums -> Done
+    // - Initial state -> WaitingToAddBlobs -> Done
+    // - Initial state -> Done
+
+    enum class EReadBlobInfosState
+    {
+        Initial = 0,
+        WaitingToVerifyBlobChecksums = 1,
+        WaitingToAddBlobs = 2,
+        Done = 3,
+    };
+
 public:
     using TRequest = TBlobCompactionRequest;
 
@@ -67,6 +79,7 @@ public:
         TVector<TRequest*> Requests;
         TRangeCompactionInfo* RangeCompactionInfo = nullptr;
         ui32 GroupId = 0;
+        TVector<ui32> BlockChecksums;
 
         TBatchRequest() = default;
 
@@ -94,7 +107,6 @@ private:
     const TString DiskId;
     const TActorId Tablet;
     const ui32 BlockSize;
-    const ui32 MaxBlocksInBlob;
     const ui32 MaxAffectedBlocksPerCompaction;
     const bool ForceChecksumsCalculation;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -114,6 +126,8 @@ private:
 
     TVector<TPartialBlobId> BlobsToReadBlockMasks;
     TVector<TPartialBlobId> BlobsToReadBlobMetas;
+
+    EReadBlobInfosState ReadBlobInfosState = EReadBlobInfosState::Initial;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
@@ -149,7 +163,6 @@ public:
         TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
-        ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
         bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -174,7 +187,9 @@ private:
     void AddBlobs(const TActorContext& ctx);
     void MakeDiffs(TRangeCompactionInfo& rc);
 
-    void CompactionReadBlobInfosFinished(const TActorContext& ctx);
+    void ApplyChecksumFixups();
+    NProto::TError VerifyBlockChecksums();
+    void ReadBlobFinished(const TActorContext& ctx);
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
     bool HandleError(const TActorContext& ctx, const NProto::TError& error);
@@ -224,7 +239,6 @@ TCompactionActor::TCompactionActor(
         TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
-        ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
         bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -243,7 +257,6 @@ TCompactionActor::TCompactionActor(
     , DiskId(std::move(diskId))
     , Tablet(tablet)
     , BlockSize(blockSize)
-    , MaxBlocksInBlob(maxBlocksInBlob)
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
     , ForceChecksumsCalculation(forceChecksumsCalculation)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -280,16 +293,9 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
             BlobsToReadBlobMetas);
 
         NCloud::Send(ctx, Tablet, std::move(request));
-        return;
-    }
-
-    CompactionReadBlobInfosFinished(ctx);
-}
-
-void TCompactionActor::CompactionReadBlobInfosFinished(const TActorContext& ctx)
-{
-    for (auto& rc: RangeCompactionInfos) {
-        ApplyChecksumFixups(rc);
+    } else {
+        ReadBlobInfosState = EReadBlobInfosState::Done;
+        ApplyChecksumFixups();
     }
 
     if (Requests) {
@@ -305,6 +311,96 @@ void TCompactionActor::CompactionReadBlobInfosFinished(const TActorContext& ctx)
         // for zeroed range we only add deletion marker to the index
         AddBlobs(ctx);
     }
+}
+
+void TCompactionActor::ApplyChecksumFixups()
+{
+    for (auto& rc: RangeCompactionInfos) {
+        ::NCloud::NBlockStore::NStorage::NPartition::ApplyChecksumFixups(rc);
+    }
+}
+
+NProto::TError TCompactionActor::VerifyBlockChecksums()
+{
+    for (const auto& batch: BatchRequests) {
+        auto& rc = *batch.RangeCompactionInfo;
+
+        const auto n = Min(batch.Requests.size(), batch.BlockChecksums.size());
+        for (ui32 i = 0; i < n; ++i) {
+            const auto* r = batch.Requests[i];
+            if (!rc.BlockChecksums[r->IndexInBlobContent]) {
+                ReportBlockChecksumAbsent(
+                    "block checksum is absent",
+                    {{"blobId", ToString(MakeBlobId(TabletId, r->BlobId))},
+                     {"blockIndex", r->BlockIndex},
+                     {"blobOffset", r->BlobOffset}});
+                rc.BlockChecksums[r->IndexInBlobContent] = 0;
+            }
+            const ui32 expectedChecksum =
+                *rc.BlockChecksums[r->IndexInBlobContent];
+
+            auto error = VerifyBlockChecksum(
+                batch.BlockChecksums[i],
+                MakeBlobId(TabletId, r->BlobId),
+                r->BlockIndex,
+                r->BlobOffset,
+                expectedChecksum,
+                DiskId);
+
+            if (HasError(error)) {
+                return error;
+            }
+        }
+    }
+
+    return {};
+}
+
+void TCompactionActor::ReadBlobFinished(const TActorContext& ctx)
+{
+    bool needToWaitToVerifyChecksums = false;
+
+    for (const auto& batch: BatchRequests) {
+        if (batch.RangeCompactionInfo->ChecksumFixups) {
+            needToWaitToVerifyChecksums = true;
+            break;
+        }
+    }
+
+    if (ReadBlobInfosState != EReadBlobInfosState::Done &&
+        needToWaitToVerifyChecksums)
+    {
+        STORAGE_VERIFY_C(
+            ReadBlobInfosState == EReadBlobInfosState::Initial,
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            "Invalid read blob infos state: " << ui32(ReadBlobInfosState));
+
+        // Postpone verification of block checksums until blob infos are read
+        ReadBlobInfosState = EReadBlobInfosState::WaitingToVerifyBlobChecksums;
+        return;
+    }
+
+    auto error = VerifyBlockChecksums();
+    if (HasError(error)) {
+        HandleError(ctx, error);
+        return;
+    }
+
+    RequestInfo->AddExecCycles(MaxExecCyclesFromRead);
+
+    if (ReadBlobsStarted) {
+        ReadBlobsTime = ctx.Now() - ReadBlobsStarted;
+    }
+
+    ReadExecCycles = RequestInfo->GetExecCycles();
+    ReadWaitCycles = RequestInfo->GetWaitCycles();
+
+    for (auto context: ForkedReadCallContexts) {
+        RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
+    }
+
+    WriteBlobs(ctx);
 }
 
 void TCompactionActor::InitBlockDigests()
@@ -602,6 +698,18 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
 void TCompactionActor::AddBlobs(const TActorContext& ctx)
 {
+    if (ReadBlobInfosState != EReadBlobInfosState::Done) {
+        STORAGE_VERIFY_C(
+            ReadBlobInfosState == EReadBlobInfosState::Initial,
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            "Invalid read blob infos state: " << ui32(ReadBlobInfosState));
+
+        // Postpone adding blobs until blob infos are read
+        ReadBlobInfosState = EReadBlobInfosState::WaitingToAddBlobs;
+        return;
+    }
+
     AddBlobsStarted = ctx.Now();
 
     TVector<TAddMixedBlob> mixedBlobs;
@@ -703,21 +811,21 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         }
 
         for (auto& [blobId, blob]: rc.AffectedBlobs) {
-            if (auto* blockMask = blob.BlockMask.Get()) {
-                // could already be full
-                if (IsBlockMaskFull(*blockMask, MaxBlocksInBlob)) {
-                    continue;
-                }
-
-                // mask overwritten blocks
-                for (ui16 blobOffset: blob.Offsets) {
-                    blockMask->Set(blobOffset);
-                }
-            } else {
-                blob.BlockMask = GetFullBlockMask(MaxBlocksInBlob);
+            if (blob.BlobAlreadyInCleanupQueue) {
+                continue;
             }
 
+            STORAGE_VERIFY_C(
+                blob.BlockMask.Defined(),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "unknown block mask for blob " << MakeBlobId(TabletId, blobId));
+
             auto& blockMask = blob.BlockMask.GetRef();
+            // mask overwritten blocks
+            for (ui16 blobOffset: blob.Offsets) {
+                blockMask.Set(blobOffset);
+            }
 
             auto [blobIt, inserted] =
                 affectedBlobs.try_emplace(blobId, std::move(blob));
@@ -727,16 +835,12 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     affectedBlob.Offsets.end(),
                     blob.Offsets.begin(),
                     blob.Offsets.end());
-                affectedBlob.AffectedBlockIndices.insert(
-                    affectedBlob.AffectedBlockIndices.end(),
-                    blob.AffectedBlockIndices.begin(),
-                    blob.AffectedBlockIndices.end());
-                if (affectedBlob.BlockMask) {
-                    affectedBlob.BlockMask.GetRef() |= blockMask;
-                }
-                if (affectedBlob.BlobMeta && blob.BlobMeta) {
-                    affectedBlob.BlobMeta->MergeFrom(blob.BlobMeta.GetRef());
-                }
+                affectedBlob.AffectedBlocks.insert(
+                    affectedBlob.AffectedBlocks.end(),
+                    blob.AffectedBlocks.begin(),
+                    blob.AffectedBlocks.end());
+
+                affectedBlob.BlockMask.GetRef() |= blockMask;
             }
         }
 
@@ -908,34 +1012,7 @@ void TCompactionActor::HandleReadBlobResponse(
 
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
-    auto& rc = *batch.RangeCompactionInfo;
-
-    const auto n = Min(batch.Requests.size(), msg->BlockChecksums.size());
-    for (ui32 i = 0; i < n; ++i) {
-        const auto* r = batch.Requests[i];
-        if (!rc.BlockChecksums[r->IndexInBlobContent]) {
-            ReportBlockChecksumAbsent(
-                "block checksum is absent",
-                {{"blobId", ToString(MakeBlobId(TabletId, r->BlobId))},
-                 {"blockIndex", r->BlockIndex},
-                 {"blobOffset", r->BlobOffset}});
-            rc.BlockChecksums[r->IndexInBlobContent] = 0;
-        }
-        const auto expectedChecksum = *rc.BlockChecksums[r->IndexInBlobContent];
-
-        auto error = VerifyBlockChecksum(
-            msg->BlockChecksums[i],
-            MakeBlobId(TabletId, r->BlobId),
-            r->BlockIndex,
-            r->BlobOffset,
-            expectedChecksum,
-            DiskId);
-
-        if (HasError(error)) {
-            HandleError(ctx, error);
-            return;
-        }
-    }
+    batch.BlockChecksums = std::move(msg->BlockChecksums);
 
     RealReadRequestsCompleted += batch.Requests.size();
     ReadRequestsCompleted += batch.Requests.size();
@@ -944,20 +1021,7 @@ void TCompactionActor::HandleReadBlobResponse(
         return;
     }
 
-    RequestInfo->AddExecCycles(MaxExecCyclesFromRead);
-
-    if (ReadBlobsStarted) {
-        ReadBlobsTime = ctx.Now() - ReadBlobsStarted;
-    }
-
-    ReadExecCycles = RequestInfo->GetExecCycles();
-    ReadWaitCycles = RequestInfo->GetWaitCycles();
-
-    for (auto context: ForkedReadCallContexts) {
-        RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
-    }
-
-    WriteBlobs(ctx);
+    ReadBlobFinished(ctx);
 }
 
 template <typename TEvent>
@@ -1066,7 +1130,27 @@ void TCompactionActor::HandleCompactionReadBlobInfoResponse(
         }
     }
 
-    CompactionReadBlobInfosFinished(ctx);
+    ApplyChecksumFixups();
+
+    auto oldState = ReadBlobInfosState;
+    ReadBlobInfosState = EReadBlobInfosState::Done;
+
+    switch (oldState) {
+        case EReadBlobInfosState::Initial:
+            return;
+        case EReadBlobInfosState::WaitingToVerifyBlobChecksums:
+            ReadBlobFinished(ctx);
+            return;
+        case EReadBlobInfosState::WaitingToAddBlobs:
+            AddBlobs(ctx);
+            return;
+        default:
+            STORAGE_VERIFY_C(
+                false,
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "Invalid read blob infos state: " << ui32(ReadBlobInfosState));
+    }
 }
 
 void TCompactionActor::HandlePoisonPill(
@@ -1337,12 +1421,6 @@ private:
         ui64 rangeGarbage = 0;
 
         if (isIgnoringZeroedCompaction) {
-            Y_DEBUG_ABORT_UNLESS(
-                State.GetUsedBlocksIgnoringZeroed() <= GetBlockCount());
-            Y_DEBUG_ABORT_UNLESS(
-                TopByGarbageIgnoringZeroed.UsedBlocksIgnoringZeroed() <=
-                TopByGarbageIgnoringZeroed.BlockCount);
-
             diskGarbage = GetExcessPercentage(
                 GetBlockCount(),
                 State.GetUsedBlocksIgnoringZeroed());
@@ -2004,6 +2082,8 @@ void TPartitionActor::CompleteCompaction(
             mergedBlobThreshold,
             args.CommitId,
             TabletID(),
+            IsVerifyRecreatedBlobMetasOnCleanupEnabled() ||
+                IsUseRecreatedBlobMetasOnCleanupEnabled(),   // shouldRecreateBlobMetas
             *Info(),
             *State,
             rangeCompaction,
@@ -2034,7 +2114,6 @@ void TPartitionActor::CompleteCompaction(
         PartitionConfig.GetDiskId(),
         SelfId(),
         State->GetBlockSize(),
-        State->GetMaxBlocksInBlob(),
         Config->GetMaxAffectedBlocksPerCompaction(),
         Config->GetComputeDigestForEveryBlockOnCompaction(),
         BlockDigestGenerator,

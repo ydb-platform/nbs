@@ -291,6 +291,10 @@ message TServerConfig
 
     // Size of the thread pool for the external vhost server.
     optional uint32 ExternalVhostServerThreadPoolSize = 133;
+
+    // Certificate refresh period (in milliseconds) for automatic TLS certificate
+    // reloading. Zero disables periodic certificate reloading.
+    optional uint32 RefreshCertsPeriod = 134;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

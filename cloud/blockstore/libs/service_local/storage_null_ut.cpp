@@ -104,6 +104,9 @@ Y_UNIT_TEST_SUITE(TNullStorageTest)
 
         auto readResponse = ReadBlocksLocal(*storage, std::move(readSglist));
         UNIT_ASSERT_SUCCEEDED(readResponse.GetError());
+        UNIT_ASSERT(IsAllZeroes(
+            readBuffer.Get().data(),
+            readBuffer.Get().size()));
 
         auto zeroResponse = ZeroBlocks(*storage);
         UNIT_ASSERT_SUCCEEDED(writeResponse.GetError());

@@ -1,9 +1,11 @@
 #include "tls_certificate_provider.h"
 
+#include "tls_utils.h"
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
-
-#include <memory>
 
 namespace NCloud {
 
@@ -11,66 +13,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsEmptyPair(const TCertificateFiles& certPair)
-{
-    return !certPair.PrivateKeyPath && !certPair.CertChainPath;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ReadFile(const TString& fileName)
-{
-    TFileInput in(fileName);
-    return in.ReadAll();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TStaticCertificateProvider final
     : public ICertificateProvider
 {
-    struct TCertificatePair
-    {
-        TString PrivateKeyPath;
-        TString CertChainPath;
-        TString PrivateKey;
-        TString CertChain;
-    };
-
 private:
     const TString RootCert;
-    TVector<TCertificatePair> Certificates;
+    TVector<NTlsUtils::TCertificatePair> Certificates;
 
 public:
     TStaticCertificateProvider(
-            const TString& rootCertPath,
+            TString rootCertPath,
             TVector<TCertificateFiles> certificates)
-        : RootCert(rootCertPath ? ReadFile(rootCertPath) : "")
-    {
-        for (size_t i = 0; i < certificates.size(); ++i) {
-            const auto& cert = certificates[i];
-            if (IsEmptyPair(cert)) {
-                continue;
-            }
-            if (!cert.PrivateKeyPath) {
-                ythrow yexception()
-                    << "Empty PrivateKeyPath for certificate #"
-                    << i;
-            }
-            if (!cert.CertChainPath) {
-                ythrow yexception()
-                    << "Empty CertChainPath for certificate #"
-                    << i;
-            }
-            TCertificatePair certificate {
-                .PrivateKeyPath = cert.PrivateKeyPath,
-                .CertChainPath = cert.CertChainPath,
-                .PrivateKey = ReadFile(cert.PrivateKeyPath),
-                .CertChain = ReadFile(cert.CertChainPath)
-            };
-            Certificates.push_back(std::move(certificate));
-        }
-    }
+        : RootCert(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)).RootCa)
+        , Certificates(NTlsUtils::LoadCertificatePairs(std::move(certificates)))
+    {}
 
     NThreading::TFuture<void> UpdateCertificates() override
     {
@@ -127,17 +83,61 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 ICertificateProviderPtr CreateStaticCertificateProvider(
-    const TString& rootCertPath,
+    TString rootCertPath,
     TVector<TCertificateFiles> certificates)
 {
     return std::make_shared<TStaticCertificateProvider>(
-        rootCertPath,
+        std::move(rootCertPath),
         std::move(certificates));
 }
 
 ICertificateProviderPtr CreateCertificateProviderStub()
 {
     return CreateStaticCertificateProvider({}, {});
+}
+
+ICertificateProviderPtr CreateCertificateProvider(
+    ILoggingServicePtr logging,
+    TString logComponent,
+    ISchedulerPtr scheduler,
+    ITaskQueuePtr taskQueue,
+    NMonitoring::TDynamicCountersPtr serverGroup,
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates,
+    TDuration refreshInterval)
+{
+    if (refreshInterval == TDuration::Zero()) {
+        return CreateStaticCertificateProvider(
+            std::move(rootCertPath),
+            std::move(certificates));
+    }
+
+    auto certs = NTlsUtils::PrepareAndValidateCertificates(std::move(certificates));
+    if (certs.empty()) {
+        if (rootCertPath) {
+            return CreatePeriodicCertificateProvider(
+                std::move(logging),
+                std::move(logComponent),
+                std::move(scheduler),
+                std::move(taskQueue),
+                std::move(serverGroup),
+                std::move(rootCertPath),
+                {},
+                refreshInterval);
+        }
+
+        return CreateStaticCertificateProvider({}, {});
+    }
+
+    return CreatePeriodicCertificateProvider(
+        std::move(logging),
+        std::move(logComponent),
+        std::move(scheduler),
+        std::move(taskQueue),
+        std::move(serverGroup),
+        std::move(rootCertPath),
+        std::move(certs),
+        refreshInterval);
 }
 
 }   // namespace NCloud

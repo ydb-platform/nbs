@@ -75,6 +75,15 @@ func (s *StorageMock) CheckFilesystemSnapshotAlive(
 	return args.Error(0)
 }
 
+func (s *StorageMock) CheckFilesystemSnapshotReady(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
 func (s *StorageMock) GetFilesystemSnapshotCount(ctx context.Context) (uint64, error) {
 	args := s.Called(ctx)
 	return args.Get(0).(uint64), args.Error(1)

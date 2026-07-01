@@ -72,7 +72,6 @@ struct TTestSessionManager final
     NProto::EVolumeAccessMode LastAlterAccessMode;
     NProto::EVolumeMountMode LastAlterMountMode;
     ui64 LastAlterMountSeqNumber;
-
     TFuture<TSessionOrError> CreateSession(
         TCallContextPtr ctx,
         const NProto::TStartEndpointRequest& request) override
@@ -224,6 +223,7 @@ private:
 public:
     ui32 AlterEndpointCounter = 0;
     ui32 SwitchEndpointCounter = 0;
+    NProto::TError AlterEndpointError;
 
     using TStartEndpointHandler = std::function<TFuture<NProto::TError>(
         const NProto::TStartEndpointRequest& request,
@@ -271,7 +271,7 @@ public:
 
         ++AlterEndpointCounter;
 
-        return MakeFuture<NProto::TError>();
+        return MakeFuture(AlterEndpointError);
     }
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
@@ -1976,6 +1976,311 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
         }
+    }
+
+    Y_UNIT_TEST(ShouldUpdateStoredRequestAfterAlter)
+    {
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto sessionManager = std::make_shared<TTestSessionManager>();
+        bootstrap.SessionManager = sessionManager;
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{NProto::IPC_GRPC, listener}};
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+        manager->RestoreEndpoints().Wait(5s);
+
+        TTempDir dir;
+        TString socketPath = (dir.Path() / "testSocket").GetPath();
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId("testDiskId");
+        request.SetClientId(TestClientId);
+        request.SetIpcType(NProto::IPC_GRPC);
+        request.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_ONLY);
+        request.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
+        request.SetMountSeqNumber(1);
+
+        // start endpoint with RO-Remote
+        {
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(
+                S_OK == response.GetError().GetCode(),
+                response.GetError());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->CreateSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionManager->AlterSessionCounter);
+        }
+
+        // verify ListEndpoints returns initial access/mount modes
+        {
+            auto future = ListEndpoints(*manager);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(1, response.EndpointsSize());
+
+            const auto& ep = response.GetEndpoints(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::VOLUME_ACCESS_READ_ONLY),
+                static_cast<int>(ep.GetVolumeAccessMode()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::VOLUME_MOUNT_REMOTE),
+                static_cast<int>(ep.GetVolumeMountMode()));
+            UNIT_ASSERT_VALUES_EQUAL(1, ep.GetMountSeqNumber());
+        }
+
+        // alter to RW-Local (migration)
+        {
+            request.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_WRITE);
+            request.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
+            request.SetMountSeqNumber(2);
+
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(
+                S_OK == response.GetError().GetCode(),
+                response.GetError());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->CreateSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->AlterSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, listener->AlterEndpointCounter);
+        }
+
+        // Send the same RW-Local request again.
+        // Must return S_ALREADY without triggering another alter.
+        {
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(
+                S_ALREADY == response.GetError().GetCode(),
+                response.GetError());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->CreateSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->AlterSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, listener->AlterEndpointCounter);
+        }
+
+        // verify ListEndpoints returns updated access/mount modes
+        {
+            auto future = ListEndpoints(*manager);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(1, response.EndpointsSize());
+
+            const auto& ep = response.GetEndpoints(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::VOLUME_ACCESS_READ_WRITE),
+                static_cast<int>(ep.GetVolumeAccessMode()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::VOLUME_MOUNT_LOCAL),
+                static_cast<int>(ep.GetVolumeMountMode()));
+            UNIT_ASSERT_VALUES_EQUAL(2, ep.GetMountSeqNumber());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUpdatePersistentStorageAfterAlter)
+    {
+        TTempDir dir;
+        TString socketPath = (dir.Path() / "testSocket").GetPath();
+
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{NProto::IPC_GRPC, listener}};
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+        manager->RestoreEndpoints().Wait(5s);
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId("testDiskId");
+        request.SetClientId(TestClientId);
+        request.SetIpcType(NProto::IPC_GRPC);
+        request.SetPersistent(true);
+        request.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_ONLY);
+        request.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
+        request.SetMountSeqNumber(1);
+
+        // start persistent endpoint with RO-Remote
+        {
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+
+        // alter to RW-Local
+        {
+            request.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_WRITE);
+            request.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
+            request.SetMountSeqNumber(2);
+
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            UNIT_ASSERT_VALUES_EQUAL(1, listener->AlterEndpointCounter);
+        }
+
+        // verify that persistent storage has updated values
+        {
+            auto [str, error] =
+                bootstrap.EndpointStorage->GetEndpoint(socketPath);
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            auto stored =
+                DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
+            UNIT_ASSERT(stored);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::VOLUME_ACCESS_READ_WRITE),
+                static_cast<int>(stored->GetVolumeAccessMode()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::VOLUME_MOUNT_LOCAL),
+                static_cast<int>(stored->GetVolumeMountMode()));
+            UNIT_ASSERT_VALUES_EQUAL(2, stored->GetMountSeqNumber());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRestoreEndpointWithAlteredParams)
+    {
+        TTempDir dir;
+        TString socketPath = (dir.Path() / "testSocket").GetPath();
+        TString storageDirPath = "./" + CreateGuidAsString();
+        TTempDir storageDir(storageDirPath);
+
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+
+        const auto startEndpoint = [&](NProto::EVolumeAccessMode accessMode,
+                                       NProto::EVolumeMountMode mountMode,
+                                       ui64 seqNum,
+                                       ui32 alterEndpointCount)
+        {
+            mountedVolumes.clear();
+
+            TBootstrap bootstrap;
+            bootstrap.Service = CreateTestService(mountedVolumes);
+            bootstrap.EndpointStorage =
+                CreateFileEndpointStorage(storageDirPath);
+
+            auto listener = std::make_shared<TTestEndpointListener>();
+            bootstrap.EndpointListeners = {{NProto::IPC_GRPC, listener}};
+
+            auto manager = CreateEndpointManager(bootstrap);
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+            manager->RestoreEndpoints().Wait(5s);
+
+            NProto::TStartEndpointRequest request;
+            SetDefaultHeaders(request);
+            request.SetUnixSocketPath(socketPath);
+            request.SetDiskId("testDiskId");
+            request.SetClientId(TestClientId);
+            request.SetIpcType(NProto::IPC_GRPC);
+            request.SetPersistent(true);
+            request.SetVolumeAccessMode(accessMode);
+            request.SetVolumeMountMode(mountMode);
+            request.SetMountSeqNumber(seqNum);
+
+            {
+                auto future = StartEndpoint(*manager, request);
+                auto response = future.GetValue(TDuration::Seconds(5));
+                UNIT_ASSERT_C(!HasError(response), response.GetError());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    alterEndpointCount,
+                    listener->AlterEndpointCounter);
+            }
+        };
+
+        const auto checkPersisted = [&](NProto::EVolumeAccessMode accessMode,
+                                        NProto::EVolumeMountMode mountMode,
+                                        ui64 seqNum)
+        {
+            mountedVolumes.clear();
+
+            TBootstrap bootstrap;
+            bootstrap.Service = CreateTestService(mountedVolumes);
+            bootstrap.EndpointStorage =
+                CreateFileEndpointStorage(storageDirPath);
+
+            auto listener = std::make_shared<TTestEndpointListener>();
+            bootstrap.EndpointListeners = {{NProto::IPC_GRPC, listener}};
+
+            auto manager = CreateEndpointManager(bootstrap);
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+            manager->RestoreEndpoints().Wait(5s);
+
+            UNIT_ASSERT(mountedVolumes.contains("testDiskId"));
+            const auto& mountRequest =
+                mountedVolumes.find("testDiskId")->second;
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(accessMode),
+                static_cast<int>(mountRequest.GetVolumeAccessMode()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(mountMode),
+                static_cast<int>(mountRequest.GetVolumeMountMode()));
+            UNIT_ASSERT_VALUES_EQUAL(seqNum, mountRequest.GetMountSeqNumber());
+
+            auto future = ListEndpoints(*manager);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(1, response.EndpointsSize());
+
+            const auto& ep = response.GetEndpoints(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(accessMode),
+                static_cast<int>(ep.GetVolumeAccessMode()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(mountMode),
+                static_cast<int>(ep.GetVolumeMountMode()));
+            UNIT_ASSERT_VALUES_EQUAL(seqNum, ep.GetMountSeqNumber());
+        };
+
+        // start persistent endpoint RO, stop
+        startEndpoint(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            1,
+            0);
+        checkPersisted(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            1);
+
+        // alter to RW, stop
+        startEndpoint(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            2,
+            1);
+        checkPersisted(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            2);
     }
 }
 

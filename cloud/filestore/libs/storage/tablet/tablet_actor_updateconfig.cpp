@@ -1,5 +1,7 @@
 #include "tablet_actor.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/string/join.h>
@@ -283,12 +285,17 @@ void TIndexTabletActor::ExecuteTx_UpdateConfig(
     TTransactionContext& tx,
     TTxIndexTablet::TUpdateConfig& args)
 {
-    Y_UNUSED(ctx);
-
     TIndexTabletDatabase db(tx.DB);
 
-    TThrottlerConfig config;
-    Convert(args.FileSystem.GetPerformanceProfile(), config);
+    ApplyStorageConfigOverrides(
+        ctx,
+        args.FileSystem.GetCloudId(),
+        args.FileSystem.GetFolderId(),
+        args.FileSystem.GetFileSystemId());
+
+    const auto config = BuildThrottlerConfig(
+        *Config,
+        args.FileSystem.GetPerformanceProfile());
 
     UpdateConfig(db, *Config, args.FileSystem, config);
 }
@@ -302,12 +309,6 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
-
-    ApplyStorageConfigOverrides(
-        ctx,
-        GetCloudId(),
-        GetFolderId(),
-        GetFileSystemId());
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s Sending OK response for UpdateConfig with version=%u",

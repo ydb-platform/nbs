@@ -270,34 +270,44 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{
-                {"sensor", "ReadData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "ReadData"},
                 {"filesystem", "test"}}, 13_KB},
             {{
-                {"sensor", "ReadData.Count"},
+                {"sensor", "Count"},
+                {"request", "ReadData"},
                 {"filesystem", "test"}}, 2},
             {{
-                {"sensor", "WriteData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "WriteData"},
                 {"filesystem", "test"}}, 3_KB},
             {{
-                {"sensor", "WriteData.Count"},
+                {"sensor", "Count"},
+                {"request", "WriteData"},
                 {"filesystem", "test"}}, 2},
             {{
-                {"sensor", "GetNodeAttr.Count"},
+                {"sensor", "Count"},
+                {"request", "GetNodeAttr"},
                 {"filesystem", "test"}}, 5},
             {{
-                {"sensor", "CreateHandle.Count"},
+                {"sensor", "Count"},
+                {"request", "CreateHandle"},
                 {"filesystem", "test"}}, 3},
             {{
-                {"sensor", "DestroyHandle.Count"},
+                {"sensor", "Count"},
+                {"request", "DestroyHandle"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "CreateNode.Count"},
+                {"sensor", "Count"},
+                {"request", "CreateNode"},
                 {"filesystem", "test"}}, 2},
             {{
-                {"sensor", "UnlinkNode.Count"},
+                {"sensor", "Count"},
+                {"request", "UnlinkNode"},
                 {"filesystem", "test"}}, 2},
             {{
-                {"sensor", "GetNodeXAttr.Count"},
+                {"sensor", "Count"},
+                {"request", "GetNodeXAttr"},
                 {"filesystem", "test"}}, 0},
         });
 

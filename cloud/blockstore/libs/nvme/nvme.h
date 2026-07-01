@@ -30,7 +30,7 @@ struct INvmeManager
         ui64 offsetBytes,
         ui64 sizeBytes) = 0;
 
-    virtual NProto::TError Sanitize(const TString& ctrlPath) = 0;
+    virtual NProto::TError StartSanitize(const TString& ctrlPath) = 0;
 
     virtual TResultOrError<TSanitizeStatus> GetSanitizeStatus(
         const TString& ctrlPath) = 0;

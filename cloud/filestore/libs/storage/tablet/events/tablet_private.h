@@ -59,6 +59,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CompleteUnlinkNode,                     __VA_ARGS__)                   \
     xxx(DeleteOpLogEntry,                       __VA_ARGS__)                   \
     xxx(GetOpLogEntry,                          __VA_ARGS__)                   \
+    xxx(ListOpLogEntries,                       __VA_ARGS__)                   \
     xxx(WriteOpLogEntry,                        __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
@@ -950,6 +951,21 @@ struct TEvIndexTabletPrivate
     struct TGetOpLogEntryResponse
     {
         TMaybe<NProto::TOpLogEntry> OpLogEntry;
+    };
+
+    //
+    // ListOpLogEntries
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TListOpLogEntriesRequest
+    {
+    };
+
+    struct TListOpLogEntriesResponse
+    {
+        TVector<NProto::TOpLogEntry> OpLogEntries;
     };
 
     //

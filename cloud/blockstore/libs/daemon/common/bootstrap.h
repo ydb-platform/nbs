@@ -85,6 +85,7 @@ protected:
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
     NCloud::NStorage::NRdma::IServerPtr RdmaRequestServer;
     IStartablePtr RdmaTarget;
+    ITaskQueuePtr LongRunningTaskExecutor;
     ILocalNVMeDeviceProviderPtr LocalNVMeDeviceProvider;
     ILocalNVMeServicePtr LocalNVMeService;
     ICertificateProviderPtr CertificateProvider;

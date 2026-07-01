@@ -2337,6 +2337,264 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         UNIT_ASSERT_VALUES_EQUAL(0, nodeOpErrorFromShardCounter->Val());
     }
+
+    void DoTestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        bool intercepted = false;
+        bool shouldIntercept = true;
+        auto interceptor = [&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvService::EvUnlinkNodeRequest: {
+                    if (shouldIntercept) {
+                        intercepted = true;
+                        return true;
+                    }
+                    break;
+                }
+            }
+
+            return false;
+        };
+        OverrideDescribeFileStore(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            interceptor);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        auto critEventCounter = counters->GetCounter(
+            "AppCriticalEvents/InvalidNodeRefUponCompleteUnlinkNode",
+            true);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        //
+        //  Scenario:
+        //
+        //  uuid1 -> id1 (file)
+        //  name1 -> uuid1
+        //
+        //  uuid2 -> id2 (file)
+        //  name2 -> uuid2
+        //
+        //  move name1 to name2
+        //  intercept UnlinkNodeRequest
+        //  reboot
+        //  check that unlinking completes successfully
+        //
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
+        const TString name2 = "name2";
+        const TString uuid2 = CreateGuidAsString();
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid2));
+        CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
+
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+        } else {
+            tablet.SendRenameNodeRequest(RootNodeId, name1, RootNodeId, name2);
+        }
+
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(intercepted);
+
+        //
+        // OpLogEntry should be present.
+        //
+
+        {
+            auto response = tablet.ListOpLogEntries();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->OpLogEntries.size());
+            const auto& e = response->OpLogEntries[0];
+            UNIT_ASSERT_C(e.HasUnlinkNodeInShardRequest(), e.Utf8DebugString());
+            UNIT_ASSERT_C(
+                !e.GetUnlinkNodeInShardRequest().HasOriginalRequest(),
+                e.GetUnlinkNodeInShardRequest().GetOriginalRequest()
+                    .Utf8DebugString());
+        }
+
+        //
+        // Rebooting - Abort request should be re-sent upon tablet start.
+        //
+
+        shouldIntercept = false;
+        tablet.RebootTablet();
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.RecoverSession();
+
+        //
+        // E_REJECTED is expected because tablet actor died.
+        //
+
+        if (useRenameInDestination) {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // OpLogEntry should be deleted.
+        //
+
+        {
+            auto response = tablet.ListOpLogEntries();
+            UNIT_ASSERT_VALUES_EQUAL(0, response->OpLogEntries.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, critEventCounter->Val());
+    }
+
+    TABLET_TEST_4K_ONLY(
+        TestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNodeInDestination)
+    {
+        DoTestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(
+        TestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode)
+    {
+        DoTestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldRejectCreateHandleWhileUnlinking)
+    {
+        // The following sequence was observed:
+        // 1. TIndexTabletActor::ExecuteTx_UnlinkNode
+        // 2. TIndexTabletActor::ExecuteTx_CreateHandle
+        // 3. TIndexTabletActor::CompleteTx_UnlinkNode
+        // 4. TIndexTabletActor::CompleteTx_CreateHandle
+        // Before the fix, this sequence resulted in a dangling NodeRef.
+        // This test reproduces the same scenario, with one difference:
+        // TIndexTabletActor::ExecuteTx_CreateHandle is not actually called
+        // because TIndexTabletActor::HandleCreateHandle attempts to acquire the
+        // NodeRef lock early. The goal of this test is to verify that, under
+        // these circumstances, CreateHandle returns E_REJECTED.
+
+        NProto::TStorageConfig storageConfig;
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const TString fileName = "file1";
+        tablet.CreateNode(
+            TCreateNodeArgs::File(RootNodeId, fileName));
+
+        TAutoPtr<IEventHandle> event;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (!event &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvPut)
+                {
+                    event = std::move(ev);
+                    return true;
+                }
+                return false;
+            });
+
+        const ui64 requestId = 111;
+
+        // Send unlink node request and postpone completion of the transaction
+        // by catching TEvBlobStorage::EvPut.
+        tablet.SendUnlinkNodeRequest(
+            RootNodeId,
+            "file1",
+            false, // unlinkDirectory
+            requestId);
+
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return event != nullptr; }});
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // Send create handle request that should return E_REJECTED.
+        tablet.SendCreateHandleRequest(
+            RootNodeId,
+            fileName,
+            TCreateHandleArgs::CREATE_EXL);
+
+        env.GetRuntime().Send(event.Release(), nodeIdx);
+
+        auto unlinkResponse = tablet.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
+        auto createHandleResponse = tablet.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            createHandleResponse->GetError().GetCode(),
+            createHandleResponse->GetError().GetMessage());
+
+        // Check that we don't have a dangling link.
+        const auto getNodeRefResponse =
+            tablet.SendAndRecvUnsafeGetNodeRef(RootNodeId, fileName);
+
+        UNIT_ASSERT_EQUAL_C(
+            E_FS_NOENT,
+            getNodeRefResponse->GetError().GetCode(),
+            getNodeRefResponse->GetErrorReason());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

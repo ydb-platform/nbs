@@ -59,7 +59,7 @@ func copyFilesystemThroughSnapshot(
 	snapshotID string,
 ) {
 
-	taskID := testcommon.ScheduleTransferFromFilesystemToSnapshot(
+	taskID := testcommon.ScheduleCreateSnapshotFromFilesystem(
 		t, ctx, "zone-a", srcFilesystemID, "", snapshotID,
 	)
 	testcommon.WaitOperationEnded(t, ctx, taskID, time.Second*200)

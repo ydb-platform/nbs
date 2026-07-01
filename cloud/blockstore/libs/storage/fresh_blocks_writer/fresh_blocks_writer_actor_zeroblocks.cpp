@@ -112,6 +112,8 @@ void TFreshBlocksWriterActor::HandleZeroBlocksCompleted(
         commitId,
         blocksCount,
         HasError(msg->GetError()));
+
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
 }
 
 }  // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

@@ -1,5 +1,7 @@
 #include "tablet_state_impl.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -49,15 +51,6 @@ NProto::TFileStorePerformanceProfile GetDefaultPerformanceProfile()
     profile.SetDefaultPostponedRequestWeight(
         config.DefaultPostponedRequestWeight);
     return profile;
-}
-
-bool IsValid(const NProto::TFileStorePerformanceProfile& profile)
-{
-    return profile.GetMaxReadIops()
-        && profile.GetMaxReadBandwidth()
-        && profile.GetMaxPostponedWeight()
-        && profile.GetMaxPostponedTime()
-        && profile.GetDefaultPostponedRequestWeight();
 }
 
 ui64 CalculateInMemoryIndexCacheCapacity(
@@ -296,7 +289,7 @@ void TIndexTabletState::SetCompressNodeRef(
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&
-        IsValid(FileSystem.GetPerformanceProfile()))
+        IsValidPerformanceProfile(FileSystem.GetPerformanceProfile()))
     {
         return FileSystem.GetPerformanceProfile();
     }
@@ -329,7 +322,7 @@ THandlesStats TIndexTabletState::GetHandlesStats() const
     return Impl->HandlesStats;
 }
 
-ui64 TIndexTabletState::CalculateExpectedShardCount(
+ui64 TIndexTabletState::CalculateMinExpectedShardCount(
     const ui32 maxShardCount) const
 {
     if (FileSystem.GetShardNo()) {
@@ -346,6 +339,7 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
             FileSystem.GetBlocksCount(),
             FileSystem.GetBlockSize(),
             FileSystem.GetShardAllocationUnit(),
+            0 /* minShardCount */,
             maxShardCount);
     }
 

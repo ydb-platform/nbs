@@ -11,4 +11,9 @@ message TestConfig {
     required string ImageURL = 2;
     required uint64 ImageSize = 3;
     required uint32 ImageCrc32 = 4;
+    optional bool MetricsReportingEnabled = 5 [default = false];
+    optional bool PeriodicRunsEnabled = 6 [default = false];
+    repeated string SkippedTests = 7;
+    optional uint32 MonitoringPort = 8 [default = 10900];
+    optional string ResourceExpirationTimeout = 9 [default = "48h"];
 }

@@ -19,6 +19,7 @@ from .common import (
     get_qemu_bios,
     get_qemu_firmware,
     get_qemu_kvm,
+    sanitizer_core_options_exports,
 )
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
@@ -141,7 +142,7 @@ def start_instance(args, inst_index):
 
     if args.invoke_test:
         recipe_set_env("TEST_COMMAND_WRAPPER",
-                       " ".join(ssh.get_command("sudo /run_test.sh")),
+                       " ".join(ssh.get_command("sudo /run_test.sh", wrap_test_env=False)),
                        inst_index)
 
     ready_flag_path = recipe_get_env("QEMU_SET_READY_FLAG", inst_index)
@@ -149,7 +150,7 @@ def start_instance(args, inst_index):
         open(ready_flag_path, 'a')
 
 
-@retry(max_times=10)
+@retry(max_times=32)
 def _process_instance_coredumps(user, key, port):
 
     ssh = SshToGuest(user=user, port=port, key=key)
@@ -454,6 +455,17 @@ def _prepare_test_environment(ssh, virtio):
     library.python.testing.recipe.set_env(
         "TEST_ENV_WRAPPER", vm_env['TEST_ENV_WRAPPER'])
 
+    test_env_sh = '\n'.join(
+        [
+            "#!/bin/bash",
+            "ulimit -Hc unlimited || true",
+            "ulimit -Sc unlimited || true",
+        ] + sanitizer_core_options_exports() + [
+            'exec /bin/bash -lc "$1"',
+        ]
+    )
+    ssh("sudo tee /test_env.sh <<'TEST-ENV' && sudo chmod +x /test_env.sh\n{}\nTEST-ENV".format(test_env_sh))
+
     run_test_sh = '\n'.join(
         [
             "#!/bin/bash"
@@ -461,10 +473,15 @@ def _prepare_test_environment(ssh, virtio):
             "export {}={}".format(k, shlex.quote(v))
             for k, v in vm_env.items()
         ] + [
-            # this should be a part of `setup_coredumps`, but there seems to be
-            # no portable way to do this globally
-            "ulimit -c unlimited"
-        ] + [
+            # Keep this locally as well so the test wrapper records the
+            # effective limits in artifacts even when guest-wide limits are set.
+            "ulimit -Hc unlimited || true",
+            "ulimit -Sc unlimited || true",
+            "ulimit -Ha >/tmp/run_test.ulimit.hard.txt 2>&1",
+            "ulimit -Sa >/tmp/run_test.ulimit.soft.txt 2>&1",
+            "cat /proc/self/limits >/tmp/run_test.limits.txt 2>&1",
+            "printf '%s\\n' \"$1\" >/tmp/run_test.command.txt 2>&1",
+        ] + sanitizer_core_options_exports() + [
             '"$@"',
             "exit_code=$?",
             "sync",

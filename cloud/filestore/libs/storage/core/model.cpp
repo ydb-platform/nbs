@@ -505,17 +505,18 @@ ui32 ComputeShardCount(
     const ui64 blocksCount,
     const ui32 blockSize,
     const ui64 shardAllocationUnit,
+    const ui32 minShardCount,
     const ui32 maxShardCount)
 {
     const double fileStoreSize = blocksCount * blockSize;
 
-    if (fileStoreSize < shardAllocationUnit) {
+    if (!minShardCount && fileStoreSize < shardAllocationUnit) {
         // No need in using sharding for small enough filesystems
         return 0;
     }
 
     const ui32 shardCount = std::ceil(fileStoreSize / shardAllocationUnit);
-    return Min(shardCount, maxShardCount);
+    return Min(Max(shardCount, minShardCount), maxShardCount);
 }
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
@@ -538,6 +539,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
             fileStore.GetBlocksCount(),
             fileStore.GetBlockSize(),
             config.GetShardAllocationUnit(),
+            config.GetMinShardCount(),
             config.GetMaxShardCount());
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {

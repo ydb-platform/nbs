@@ -22,7 +22,12 @@ ELogPriority GetErrorPriority(ui32 code)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 NODE_CACHE_SHARD_COUNT = 16;
+constexpr ui32 CACHE_SHARD_COUNT = 16;
+
+ui64 GenerateCacheVersion(std::atomic<ui64>& version)
+{
+    return version.fetch_add(1, std::memory_order_release) + 1;
+}
 
 }   // namespace
 
@@ -50,11 +55,16 @@ TFileSystem::TFileSystem(
     , Log(Logging->CreateLog("NFS_FUSE"))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
-    , NodeCache(Config->GetFileSystemId(), NODE_CACHE_SHARD_COUNT)
+    , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
+    , DirectoryEntryVersionCache(
+          std::make_shared<TDirectoryEntryVersionCache>(
+              CACHE_SHARD_COUNT,
+              directoryHandleStats))
     , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
           Log,
           std::move(directoryHandleStats),
-          std::move(directoryHandleStorage)))
+          std::move(directoryHandleStorage),
+          DirectoryEntryVersionCache))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
@@ -183,13 +193,25 @@ bool TFileSystem::UpdateNodeAttrsInCache(
 
 void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
 {
-    const ui64 newVersion =
-        GlobalAttrVersion.fetch_add(1, std::memory_order_release) + 1;
+    const ui64 newVersion = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating node: " << nodeId
         << ", version: " << newVersion);
 
     NodeCache.InvalidateNode(nodeId, newVersion);
+}
+
+void TFileSystem::InvalidateDirectoryEntryInCache(
+    fuse_ino_t parent,
+    const TString& name)
+{
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating directory entry: " << parent
+        << " " << name.Quote()
+        << ", version: " << version);
+
+    DirectoryEntryVersionCache->AdvanceVersion(parent, name, version);
 }
 
 void TFileSystem::UpdateXAttrCache(

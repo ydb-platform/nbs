@@ -610,9 +610,11 @@ void TBootstrapVhost::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(TcMallocStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ModuleStatsUpdater);
 
-    const auto& serviceConfig = *Configs->VhostServiceConfig;
-    if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
-        NStorage::NFastShard::Destroy();
+    if (Configs->VhostServiceConfig) {
+        const auto& serviceConfig = *Configs->VhostServiceConfig;
+        if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
+            NStorage::NFastShard::Destroy();
+        }
     }
 }
 

@@ -256,6 +256,17 @@ void DumpDeviceLink(IOutputStream& out, ui64 tabletId, TStringBuf uuid)
         << "</a>";
 }
 
+void DumpAgentLink(IOutputStream& out, ui64 tabletId, const TString& agentId)
+{
+    out << "<a href='?action=agent&TabletID="
+        << tabletId
+        << "&AgentID="
+        << agentId
+        << "'>"
+        << agentId
+        << "</a>";
+}
+
 void DumpSquare(IOutputStream& out, const TStringBuf& color)
 {
     const char* utfBlackSquare = "&#9632";
@@ -294,6 +305,16 @@ auto GetSortedDisksView(
     std::sort(diskIndices.begin(), diskIndices.end(), sortByFailureThenByPartition);
     return diskIndices;
 }
+
+// Holds the display data for a single dirty device row.
+struct TDirtyDeviceEntry
+{
+    TString Uuid;
+    TInstant StateTs;
+    TString AgentId;
+    TString PoolName;
+    TString StateMessage;
+};
 
 }   // namespace
 
@@ -2216,6 +2237,159 @@ void TDiskRegistryActor::RenderDirtyDeviceListDetailed(IOutputStream& out) const
         additionalColumns);
 }
 
+void TDiskRegistryActor::HandleHttpInfo_RenderDirtyDevicesCleanupOverview(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    TStringStream out;
+    RenderDirtyDevicesCleanupOverviewDetailed(out);
+    SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
+void TDiskRegistryActor::RenderDirtyDevicesCleanupOverview(IOutputStream& out) const
+{
+    auto dirtyDevices = State->GetDirtyDevices();
+    if (dirtyDevices.empty()) {
+        return;
+    }
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderDirtyDevicesCleanupOverview",
+        "Dirty devices cleanup overview",
+        dirtyDevices.size());
+}
+
+void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
+    IOutputStream& out) const
+{
+    auto dirtyDevices = State->GetDirtyDevices();
+    TVector<TDirtyDeviceEntry> processing;
+    TVector<TDirtyDeviceEntry> cleaning;
+    TVector<TDirtyDeviceEntry> waiting;
+    TVector<TDirtyDeviceEntry> agentDown;
+    TVector<TDirtyDeviceEntry> broken;
+    TVector<TDirtyDeviceEntry> blocked;
+    for (const auto& device: dirtyDevices) {
+        TDirtyDeviceEntry entry{
+            .Uuid = device.GetDeviceUUID(),
+            .StateTs = TInstant::MicroSeconds(device.GetStateTs()),
+            .PoolName = device.GetPoolName(),
+            .StateMessage = device.GetStateMessage(),
+        };
+
+        if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+            broken.push_back(std::move(entry));
+            continue;
+        }
+
+        if (device.GetState() != NProto::DEVICE_STATE_ONLINE &&
+            device.GetState() != NProto::DEVICE_STATE_WARNING)
+        {
+            continue;
+        }
+
+        const NProto::TAgentConfig* agent =
+            State->FindAgent(device.GetNodeId());
+        if (!agent) {
+            waiting.push_back(std::move(entry));
+        } else if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
+            entry.AgentId = agent->GetAgentId();
+            agentDown.push_back(std::move(entry));
+        } else if (State->CanSecureErase(device)) {
+            entry.AgentId = agent->GetAgentId();
+            if (SecureEraseInProgressPerPool.contains(device.GetPoolName())) {
+                processing.push_back(std::move(entry));
+            } else {
+                cleaning.push_back(std::move(entry));
+            }
+        } else {
+            entry.AgentId = agent->GetAgentId();
+            blocked.push_back(std::move(entry));
+        }
+    }
+
+    HTML (out) {
+        auto renderTable = [&](const TString& title,
+                               const TVector<TDirtyDeviceEntry>& rows,
+                               bool agentRed)
+        {
+            TAG (TH3) {
+                out << title << " (" << rows.size() << ")";
+            }
+            if (rows.empty()) {
+                out << "<p>No devices</p>";
+                return;
+            }
+            TABLE_SORTABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "UUID";
+                        }
+                        TABLEH () {
+                            out << "Agent";
+                        }
+                        TABLEH () {
+                            out << "Pool";
+                        }
+                        TABLEH () {
+                            out << "State message";
+                        }
+                        TABLEH () {
+                            out << "In state since";
+                        }
+                        TABLEH () {
+                            out << "Time in state";
+                        }
+                    }
+                }
+                for (const auto& e: rows) {
+                    TABLER () {
+                        TABLED () {
+                            DumpDeviceLink(out, TabletID(), e.Uuid);
+                        }
+                        TABLED () {
+                            if (e.AgentId) {
+                                if (agentRed) {
+                                    out << "<font color='red'>";
+                                    DumpAgentLink(out, TabletID(), e.AgentId);
+                                    out << "</font>";
+                                } else {
+                                    DumpAgentLink(out, TabletID(), e.AgentId);
+                                }
+                            }
+                        }
+                        TABLED () {
+                            out << e.PoolName;
+                        }
+                        TABLED () {
+                            out << e.StateMessage;
+                        }
+                        TABLED () {
+                            out << e.StateTs.FormatGmTime(
+                                "%Y-%m-%d %H:%M:%S UTC");
+                        }
+                        TABLED () {
+                            out << FormatDuration(TInstant::Now() - e.StateTs);
+                        }
+                    }
+                }
+            }
+        };
+
+        renderTable("Clean up in progress", processing, false);
+        renderTable("Ready for cleanup", cleaning, false);
+        renderTable("Waiting for cleanup", waiting, false);
+        renderTable("Agent unavailable", agentDown, true);
+        renderTable("Cleanup blocked", blocked, false);
+        renderTable("Device broken", broken, false);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList(
@@ -2385,6 +2559,8 @@ void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
 
             RenderDirtyDeviceList(out);
 
+            RenderDirtyDevicesCleanupOverview(out);
+
             RenderBrokenDeviceList(out);
 
             RenderSuspendedDeviceList(out);
@@ -2468,6 +2644,8 @@ void TDiskRegistryActor::HandleHttpInfo(
         {"RenderConfig", &TDiskRegistryActor::HandleHttpInfo_RenderConfig},
         {"RenderDirtyDeviceList",
          &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDeviceList},
+        {"RenderDirtyDevicesCleanupOverview",
+         &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDevicesCleanupOverview},
         {"RenderSuspendedDeviceList",
          &TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList},
         {"RenderTransactionsLatency",
