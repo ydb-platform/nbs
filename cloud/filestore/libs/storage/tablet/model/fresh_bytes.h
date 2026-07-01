@@ -44,7 +44,8 @@ private:
 
 private:
     using TKey = TNodeByteRangeKey;
-    TMap<TKey, TDeletedRange, TLess<TKey>, TStlAllocator> Ranges;
+    using TImpl = TMap<TKey, TDeletedRange, TLess<TKey>, TStlAllocator>;
+    TImpl Ranges;
     TString LogTag;
 
 public:
@@ -67,6 +68,10 @@ public:
 
 private:
     void InsertRange(ui64 nodeId, ui64 offset, ui64 len, ui64 commitId);
+    void Advance(
+        ui64& offset,
+        ui64& len,
+        TImpl::const_iterator& it) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

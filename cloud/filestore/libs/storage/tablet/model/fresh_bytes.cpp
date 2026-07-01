@@ -26,6 +26,26 @@ void TDeletedRangeMap::InsertRange(
     };
 }
 
+void TDeletedRangeMap::Advance(
+    ui64& offset,
+    ui64& len,
+    TImpl::const_iterator& it) const
+{
+    TABLET_VERIFY_C(
+        it->first.End > offset,
+        "offset=" << offset << ", len=" << len
+            << ", it->first.NodeId=" << it->first.NodeId
+            << ", it->first.End=" << it->first.End
+            << ", it->second.Len=" << it->second.Len
+            << ", it->second.Offset=" << it->second.Offset
+            << ", it->second.CommitId=" << it->second.CommitId);
+
+    const ui64 shift = Min(it->first.End - offset, len);
+    offset += shift;
+    len -= shift;
+    ++it;
+}
+
 void TDeletedRangeMap::AddRange(
     ui64 nodeId,
     ui64 offset,
@@ -34,8 +54,13 @@ void TDeletedRangeMap::AddRange(
 {
     const ui64 end = offset + len;
 
-    auto it = Ranges.upper_bound({.NodeId = nodeId, .End = offset});
-    while (it != Ranges.end() && it->first.NodeId == nodeId) {
+    auto it = static_cast<const TImpl&>(Ranges)
+        .upper_bound({.NodeId = nodeId, .End = offset});
+    TVector<TByteRange> result;
+    while (it != Ranges.end()
+            && it->first.NodeId == nodeId
+            && it->second.Offset < end)
+    {
         //
         // We expect AddRange calls to be ordered by commitId.
         //
@@ -45,49 +70,32 @@ void TDeletedRangeMap::AddRange(
             "range.CommitId=" << it->second.CommitId
                 << ", commitId=" << commitId);
 
-        const ui64 segmentOffset = it->second.Offset + it->second.Len;
-        TABLET_VERIFY_C(
-            segmentOffset > offset,
-            "segmentOffset=" << segmentOffset << ", offset=" << offset);
-        if (segmentOffset >= end) {
-            //
-            // Next ranges are past the end of our range.
-            //
+        //
+        // [___________________) <--- input range
+        // ____[____) <--- range pointed to by `it`
+        // [___) <--- inserting this segment with `CommitId := commitId`
+        //
 
-            offset = end;
-            break;
-        }
-
-        ++it;
-        ui64 segmentEnd = end;
-        if (it != Ranges.end() && it->first.NodeId == nodeId) {
-            segmentEnd = Min(end, it->second.Offset);
-        }
-
-        if (segmentOffset >= segmentEnd) {
-            //
-            // This range is empty.
-            //
-
-            TABLET_VERIFY_C(
-                segmentOffset == segmentEnd,
-                "segmentOffset=" << segmentOffset
-                    << ", segmentEnd=" << segmentEnd);
-            continue;
+        if (offset < it->second.Offset) {
+            InsertRange(nodeId, offset, it->second.Offset - offset, commitId);
         }
 
         //
-        // Non-empty segment - inserting it and advancing our offset.
+        // [___________________) <--- input range
+        // ____[____) <--- range pointed to by `it`
+        // _________[__________) <--- updating the input range to point to this
         //
 
-        const ui64 segmentLen = segmentEnd - segmentOffset;
-        InsertRange(nodeId, segmentOffset, segmentLen, commitId);
-        offset = segmentEnd;
+        Advance(offset, len, it);
     }
 
-    if (offset < end) {
-        const ui64 segmentLen = end - offset;
-        InsertRange(nodeId, offset, segmentLen, commitId);
+    //
+    // If we still have a non-empty subrange after processing the overlapping
+    // ranges we should insert it as well.
+    //
+
+    if (len) {
+        InsertRange(nodeId, offset, len, commitId);
     }
 }
 
@@ -102,10 +110,20 @@ TVector<TByteRange> TDeletedRangeMap::ApplyRanges(
             && it->first.NodeId == nodeId
             && it->second.Offset < byteRange.End())
     {
+        //
+        // Skipping the ranges that are not visible at `commitId`.
+        //
+
         if (it->second.CommitId > commitId) {
             ++it;
             continue;
         }
+
+        //
+        // [___________________) <--- input range
+        // ____[____) <--- range pointed to by `it`
+        // [___) <--- adding this segment to the result
+        //
 
         if (byteRange.Offset < it->second.Offset) {
             result.push_back(TByteRange(
@@ -113,13 +131,20 @@ TVector<TByteRange> TDeletedRangeMap::ApplyRanges(
                 it->second.Offset - byteRange.Offset,
                 byteRange.BlockSize));
         }
-        const ui64 curDeletedRangeEnd = it->second.Offset + it->second.Len;
-        const ui64 shift =
-            Min(curDeletedRangeEnd - byteRange.Offset, byteRange.Length);
-        byteRange.Offset += shift;
-        byteRange.Length -= shift;
-        ++it;
+
+        //
+        // [___________________) <--- input range
+        // ____[____) <--- range pointed to by `it`
+        // _________[__________) <--- updating the input range to point to this
+        //
+
+        Advance(byteRange.Offset, byteRange.Length, it);
     }
+
+    //
+    // If we still have a non-empty subrange after processing the overlapping
+    // ranges we should insert it as well.
+    //
 
     if (byteRange.Length) {
         result.push_back(byteRange);
@@ -413,7 +438,7 @@ bool TFreshBytes::FinishCleanup(
     TABLET_VERIFY(check);
 
     //
-    // Paged cleanup is used. We should just deleted the cleaned up ranges and
+    // Paged cleanup is used. We should just delete the cleaned up ranges and
     // then the caller will call StartCleanup again for this chunk and the next
     // page will be processed.
     //
