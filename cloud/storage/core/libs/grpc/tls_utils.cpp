@@ -391,20 +391,11 @@ TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
 TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificateFiles> certificates)
 {
+    auto prepared = PrepareAndValidateCertificates(std::move(certificates));
+
     TVector<TCertificatePair> result;
-    for (size_t i = 0; i < certificates.size(); ++i) {
-        auto& cert = certificates[i];
-        if (IsEmptyPair(cert)) {
-            continue;
-        }
-        if (!cert.PrivateKeyPath) {
-            ythrow yexception()
-                << "Empty PrivateKeyPath for certificate #" << i;
-        }
-        if (!cert.CertChainPath) {
-            ythrow yexception()
-                << "Empty CertChainPath for certificate #" << i;
-        }
+    result.reserve(prepared.size());
+    for (auto& cert: prepared) {
         result.push_back({
             .Files = std::move(cert),
         });
