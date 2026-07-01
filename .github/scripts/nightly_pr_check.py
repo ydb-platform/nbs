@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import boto3
-import requests
 from botocore.exceptions import BotoCoreError, ClientError
 from github import Auth as GithubAuth, Github
 from github.PullRequest import PullRequest
@@ -21,8 +20,6 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from .helpers import (
     find_current_job_url,
-    format_github_response_debug,
-    github_api_headers,
     get_build_preset_from_workflow_name,
     get_s3_report_uri,
     get_s3_report_url,
@@ -484,15 +481,14 @@ def fetch_run_summaries(
 
 
 def cancel_workflow_run(repo: Repository, run_id: int) -> CancelRequestResult:
-    url = f"https://api.github.com/repos/{repo.full_name}/actions/runs/{run_id}/cancel"
-    logger.info("Requesting cancellation for run_id=%s via %s", run_id, url)
-    response = requests.post(
-        url,
-        headers=github_api_headers(os.environ.get("GITHUB_TOKEN")),
-        timeout=30,
+    workflow_run = repo.get_workflow_run(run_id)
+    logger.info(
+        "Requesting cancellation for run_id=%s via PyGithub WorkflowRun.cancel",
+        run_id,
     )
-    debug = format_github_response_debug(response)
-    accepted = response.status_code == 202
+    accepted = workflow_run.cancel()
+    status_code = 202 if accepted else 0
+    debug = f"WorkflowRun.cancel returned accepted={accepted}"
     if accepted:
         logger.info("Cancellation request for run_id=%s accepted: %s", run_id, debug)
     else:
@@ -503,7 +499,7 @@ def cancel_workflow_run(repo: Repository, run_id: int) -> CancelRequestResult:
         )
     return CancelRequestResult(
         accepted=accepted,
-        status_code=response.status_code,
+        status_code=status_code,
         debug=debug,
     )
 
