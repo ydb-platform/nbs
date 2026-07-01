@@ -316,6 +316,10 @@ public:
 
     void SetCompressNodeRef(TIndexTabletDatabase& db, bool compressNodeRef);
 
+    void SetResizeState(
+        TIndexTabletDatabase& db,
+        const NProtoPrivate::TFileSystemResizeState& resizeState);
+
     //
     // FileSystem
     //

@@ -913,6 +913,19 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
     if (args.Request.HasFrozen()) {
         SetFrozen(db, args.Request.GetFrozen());
     }
+
+    if (args.Request.HasResizeState()) {
+        const auto& requested = args.Request.GetResizeState();
+
+        if (requested.HasVersion() &&
+            requested.GetVersion() ==
+                GetFileSystem().GetResizeState().GetVersion())
+        {
+            auto newState = requested;
+            newState.SetVersion(requested.GetVersion() + 1);
+            SetResizeState(db, newState);
+        }
+    }
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
@@ -923,6 +936,10 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+    if (args.Request.HasResizeState()) {
+        *response->Record.MutableResizeState() =
+            GetFileSystem().GetResizeState();
+    }
 
     LOG_INFO(
         ctx,

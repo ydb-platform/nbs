@@ -846,6 +846,18 @@ message TUnsafeCreateHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FileSystem Resize State.
+
+message TFileSystemResizeState
+{
+    // Protecting from races. When unset in Request, we do not modify during
+    // the Request the TFileSystem.ResizeState and just return current state.
+    optional uint32 Version = 1;
+
+    bytes CreatedShardBitmap = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // UnsafeChangeTabletState request/response.
 
 message TUnsafeChangeTabletStateRequest
@@ -858,12 +870,18 @@ message TUnsafeChangeTabletStateRequest
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 3;
+
+    // Update resize state during large operations.
+    TFileSystemResizeState ResizeState = 4;
 }
 
 message TUnsafeChangeTabletStateResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Returns current resize state.
+    TFileSystemResizeState ResizeState = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
