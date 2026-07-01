@@ -373,13 +373,10 @@ bool TBootstrap::InitBackend()
         SpdkLogInitializer = std::move(spdkParts.LogInitializer);
     }
 
-    Y_ABORT_IF(NvmeManager);
     Y_ABORT_IF(FileIOServiceProvider);
     Y_ABORT_IF(LocalStorageProvider);
-    Y_ABORT_UNLESS(Logging);
 
-    auto r = CreateDiskAgentBackendComponents(Logging, config);
-    NvmeManager = std::move(r.NvmeManager);
+    auto r = CreateDiskAgentBackendComponents(NvmeManager, config);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);
 
@@ -494,6 +491,11 @@ bool TBootstrap::InitKikimrService()
 
         STORAGE_INFO("AsyncLogger initialized");
     }
+
+    NvmeManager = CreateNvmeManager(
+        Logging,
+        Configs->DiskAgentConfig->GetSecureEraseTimeout(),
+        Configs->DiskAgentConfig->GetNVMeAdminCmdTimeout());
 
     if (InitBackend() && Configs->RdmaConfig) {
         InitRdmaServer(*Configs->RdmaConfig);

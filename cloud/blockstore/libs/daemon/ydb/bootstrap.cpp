@@ -479,13 +479,10 @@ void TBootstrapYdb::InitDiskAgentBackend()
         Y_ABORT_UNLESS(Spdk, "SPDK backend should be already initialized");
     }
 
-    Y_ABORT_IF(NvmeManager);
     Y_ABORT_IF(FileIOServiceProvider);
     Y_ABORT_IF(LocalStorageProvider);
-    Y_ABORT_UNLESS(Logging);
 
-    auto r = CreateDiskAgentBackendComponents(Logging, config);
-    NvmeManager = std::move(r.NvmeManager);
+    auto r = CreateDiskAgentBackendComponents(NvmeManager, config);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);
 
@@ -595,6 +592,11 @@ void TBootstrapYdb::InitKikimrService()
     auto monitoring = std::make_shared<TMonitoringProxy>();
     Logging = logging;
     Monitoring = monitoring;
+
+    NvmeManager = CreateNvmeManager(
+        Logging,
+        Configs->DiskAgentConfig->GetSecureEraseTimeout(),
+        Configs->DiskAgentConfig->GetNVMeAdminCmdTimeout());
 
     std::shared_ptr<TFakeRdmaClientProxy> fakeRdmaClientProxy;
     if (Configs->ServerConfig->GetUseFakeRdmaClient() &&
