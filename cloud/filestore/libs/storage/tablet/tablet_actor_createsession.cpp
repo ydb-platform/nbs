@@ -203,6 +203,12 @@ void ProcessAdapterModeFeatures(NProto::TFileStoreFeatures& f)
 
     f.SetTwoStageReadEnabled(false);
     f.SetThreeStageWriteEnabled(false);
+
+    // Adapter mode doesn't support external read/write data payloads yet.
+    // Disabling external read/write data payloads for the whole FS for
+    // simplicity if at least one shard is configured in adapter mode.
+    f.SetExternalReadDataPayload(false);
+    f.SetExternalWriteDataPayload(false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
