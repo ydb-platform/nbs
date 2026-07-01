@@ -1,4 +1,0 @@
-ServerConfig {
-    SharedMemoryTransportEnabled: true
-    SharedMemoryBasePath: "{output_path}/shm"
-}
