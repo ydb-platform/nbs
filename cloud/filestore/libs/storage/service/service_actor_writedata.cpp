@@ -1055,7 +1055,7 @@ void TStorageServiceActor::HandleWriteData(
         inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
         if (blockChecksumsEnabled) {
             CalculateWriteDataRequestChecksums(
-                msg->Record,
+                *msg,
                 blockSize,
                 inflight->AccessProfileLogRequest());
         }

@@ -28,11 +28,14 @@ void CalculateRequestChecksums(
 }
 
 void CalculateRequestChecksums(
-    const NProto::TWriteDataRequest& request,
+    const TEvService::TEvWriteDataRequest& request,
     ui32 blockSize,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
-    CalculateWriteDataRequestChecksums(request, blockSize, profileLogRequest);
+    CalculateWriteDataRequestChecksums(
+        request,
+        blockSize,
+        profileLogRequest);
 }
 
 }   // namespace
@@ -173,7 +176,7 @@ void TStorageServiceActor::ForwardRequest(
         || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
     if (blockChecksumsEnabled) {
         CalculateRequestChecksums(
-            msg->Record,
+            *msg,
             filestore.GetBlockSize(),
             inflight->AccessProfileLogRequest());
     }

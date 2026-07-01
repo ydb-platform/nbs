@@ -5,6 +5,8 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
+#include <cloud/filestore/libs/storage/api/service.h>
+
 namespace google::protobuf {
 
     template <typename T>
@@ -123,7 +125,7 @@ bool CalculateChecksums(
  * @return false if the input is inconsistent, true - otherwise.
  */
 bool CalculateWriteDataRequestChecksums(
-    const NProto::TWriteDataRequest& request,
+    const NStorage::TEvService::TEvWriteDataRequest& request,
     ui32 blockSize,
     NProto::TProfileLogRequestInfo& profileLogRequest);
 

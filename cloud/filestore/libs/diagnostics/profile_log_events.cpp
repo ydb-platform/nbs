@@ -98,25 +98,25 @@ ui32 CalculateChecksum(TStringBuf buf)
 
 bool CalculateIovecsChecksums(
     const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    ui32 offset,
     ui32 blockSize,
     bool ignoreBufferOverflow,
     TStringBuf fsId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
-
     //
     // Making a copy for simplicity. Checksum calculation is more expensive
     // than memcpy anyway.
     //
 
-    TString buffer;
+    TString strIovecs;
     ui64 bytesToCopy = 0;
     for (const auto& iovec: iovecs) {
         bytesToCopy += iovec.GetLength();
     }
 
-    buffer.ReserveAndResize(bytesToCopy);
-    char* ptr = buffer.begin();
+    strIovecs.ReserveAndResize(bytesToCopy);
+    char* ptr = strIovecs.begin();
     for (const auto& iovec: iovecs) {
         memcpy(
             ptr,
@@ -124,6 +124,35 @@ bool CalculateIovecsChecksums(
             iovec.GetLength());
         ptr += iovec.GetLength();
     }
+
+    TStringBuf buffer(strIovecs);
+    buffer.Skip(offset);
+
+    return CalculateChecksums(
+        buffer,
+        blockSize,
+        ignoreBufferOverflow,
+        fsId,
+        profileLogRequest);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool CalculatePayloadChecksums(
+    const TRope& payload,
+    ui32 offset,
+    ui32 blockSize,
+    bool ignoreBufferOverflow,
+    TStringBuf fsId,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    //
+    // Making a copy for simplicity. Checksum calculation is more expensive
+    // than memcpy anyway.
+    //
+    TString strPayload = payload.ConvertToString();
+    TStringBuf buffer(strPayload);
+    buffer.Skip(offset);
 
     return CalculateChecksums(
         buffer,
@@ -903,27 +932,43 @@ bool CalculateChecksums(
 }
 
 bool CalculateWriteDataRequestChecksums(
-    const NProto::TWriteDataRequest& request,
+    const NStorage::TEvService::TEvWriteDataRequest& request,
     ui32 blockSize,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
-    if (request.GetIovecs().empty()) {
-        TStringBuf buffer(request.GetBuffer());
-        buffer.Skip(request.GetBufferOffset());
+    const auto& record = request.Record;
+    if (record.GetBuffer().size() > 0) {
+        TStringBuf buffer(record.GetBuffer());
+        buffer.Skip(record.GetBufferOffset());
         return CalculateChecksums(
             buffer,
             blockSize,
             false /* ignoreBufferOverflow */,
-            request.GetFileSystemId(),
+            record.GetFileSystemId(),
             profileLogRequest);
     }
 
-    return CalculateIovecsChecksums(
-        request.GetIovecs(),
-        blockSize,
-        false /* ignoreBufferOverflow */,
-        request.GetFileSystemId(),
-        profileLogRequest);
+    if (!record.GetIovecs().empty()) {
+        return CalculateIovecsChecksums(
+            record.GetIovecs(),
+            record.GetBufferOffset(),
+            blockSize,
+            false /* ignoreBufferOverflow */,
+            record.GetFileSystemId(),
+            profileLogRequest);
+    }
+
+    if (request.GetTotalPayloadSize() > 0) {
+        return CalculatePayloadChecksums(
+            request.GetPayload(0),
+            record.GetBufferOffset(),
+            blockSize,
+            false /* ignoreBufferOverflow */,
+            record.GetFileSystemId(),
+            profileLogRequest);
+    }
+
+    return false;
 }
 
 void CalculateReadDataResponseChecksums(
@@ -946,6 +991,7 @@ void CalculateReadDataResponseChecksums(
 
     CalculateIovecsChecksums(
         iovecs,
+        response.GetBufferOffset(),
         blockSize,
         true /* ignoreBufferOverflow */,
         {} /* fsId */,
