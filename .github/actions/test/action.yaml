@@ -92,6 +92,7 @@ runs:
         fi
         {
             echo "TMP_DIR=$TMP_DIR"
+            echo "BUILD_DIR=$TMP_DIR/build"
             echo "LOG_DIR=$TMP_DIR/logs"
             echo "OUT_DIR=$TMP_DIR/out"
             echo "ARTIFACTS_DIR=$TMP_DIR/artifacts"
@@ -110,7 +111,7 @@ runs:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
-        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        mkdir -p $TMP_DIR $BUILD_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         # shellcheck disable=SC2193
         if [ "$CLEAN_YA_DIR" == "yes" ] && [ -d /home/github/.ya/ ]; then
             echo "Cleaning ya dir"
@@ -158,6 +159,7 @@ runs:
             -T
             --nice 0
             --stat
+            --build-dir "$BUILD_DIR"
             --output "$OUT_DIR"
             -DGITHUB_CI=yes
         )
