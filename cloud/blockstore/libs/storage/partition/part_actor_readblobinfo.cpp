@@ -1,10 +1,14 @@
 #include "part_actor.h"
 
+#include "part_readblobinfo_logic.h"
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
 
 using namespace NKikimr::NTabletFlatExecutor;
+
+using TOutputIndex = TTxPartition::TCompactionReadBlobInfo::TOutputIndex;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -16,10 +20,8 @@ void TPartitionActor::HandleCompactionReadBlobInfo(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -29,6 +31,10 @@ void TPartitionActor::HandleCompactionReadBlobInfo(
         "CompactionReadBlobInfo",
         requestInfo->CallContext->RequestId);
 
+    auto blobsToOutputIndices = DeduplicateBlobInfos(
+        msg->BlobsToReadBlockMasks,
+        msg->BlobsToReadBlobMetas);
+
     AddTransaction<TEvPartitionPrivate::TCompactionReadBlobInfoMethod>(
         *requestInfo);
 
@@ -36,8 +42,9 @@ void TPartitionActor::HandleCompactionReadBlobInfo(
         ctx,
         CreateTx<TCompactionReadBlobInfo>(
             requestInfo,
-            std::move(msg->BlobsToReadBlockMasks),
-            std::move(msg->BlobsToReadBlobMetas)));
+            std::move(blobsToOutputIndices),
+            msg->BlobsToReadBlockMasks.size(),
+            msg->BlobsToReadBlobMetas.size()));
 }
 
 bool TPartitionActor::PrepareCompactionReadBlobInfo(
@@ -49,41 +56,15 @@ bool TPartitionActor::PrepareCompactionReadBlobInfo(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    bool ready = true;
+    args.BlockMasks.resize(args.BlockMaskCount);
+    args.BlobMetas.resize(args.BlobMetaCount);
 
-    for (size_t i = 0; i < args.BlobsToReadBlockMasks.size(); ++i) {
-        TMaybe<TBlockMask> mask;
-        if (!db.ReadBlockMask(args.BlobsToReadBlockMasks[i], mask)) {
-            ready = false;
-            continue;
-        }
-        STORAGE_VERIFY_C(
-            mask.Defined(),
-            TWellKnownEntityTypes::TABLET,
-            TabletID(),
-            TStringBuilder()
-                << "Could not read block mask for blob: "
-                << MakeBlobId(TabletID(), args.BlobsToReadBlockMasks[i]));
-        args.BlockMasks.emplace_back(*mask);
-    }
-
-    for (size_t i = 0; i < args.BlobsToReadBlobMetas.size(); ++i) {
-        TMaybe<NProto::TBlobMeta> meta;
-        if (!db.ReadBlobMeta(args.BlobsToReadBlobMetas[i], meta)) {
-            ready = false;
-            continue;
-        }
-        STORAGE_VERIFY_C(
-            meta.Defined(),
-            TWellKnownEntityTypes::TABLET,
-            TabletID(),
-            TStringBuilder()
-                << "Could not read blob meta for blob: "
-                << MakeBlobId(TabletID(), args.BlobsToReadBlobMetas[i]));
-        args.BlobMetas.emplace_back(std::move(*meta));
-    }
-
-    return ready;
+    return ReadBlobsInfo(
+        db,
+        args.BlobsToOutputIndices,
+        TabletID(),
+        args.BlockMasks,
+        args.BlobMetas);
 }
 
 void TPartitionActor::ExecuteCompactionReadBlobInfo(
@@ -101,22 +82,21 @@ void TPartitionActor::CompleteCompactionReadBlobInfo(
     TTxPartition::TCompactionReadBlobInfo& args)
 {
     STORAGE_VERIFY_C(
-        args.BlockMasks.size() == args.BlobsToReadBlockMasks.size(),
+        args.BlockMasks.size() == args.BlockMaskCount,
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         TStringBuilder() << "Block masks size mismatch: "
                          << args.BlockMasks.size()
-                         << " != " << args.BlobsToReadBlockMasks.size());
+                         << " != " << args.BlockMaskCount);
     STORAGE_VERIFY_C(
-        args.BlobMetas.size() == args.BlobsToReadBlobMetas.size(),
+        args.BlobMetas.size() == args.BlobMetaCount,
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         TStringBuilder() << "Blob metas size mismatch: "
                          << args.BlobMetas.size()
-                         << " != " << args.BlobsToReadBlobMetas.size());
+                         << " != " << args.BlobMetaCount);
 
-    State->IncrementBlockMaskReadDuringCompaction(
-        args.BlobsToReadBlockMasks.size());
+    State->IncrementBlockMaskReadDuringCompaction(args.BlockMaskCount);
 
     TRequestScope timer(*args.RequestInfo);
 

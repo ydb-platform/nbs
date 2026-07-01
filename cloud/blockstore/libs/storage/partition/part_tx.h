@@ -482,20 +482,31 @@ struct TTxPartition
 
     struct TCompactionReadBlobInfo
     {
+        struct TOutputIndex
+        {
+            std::optional<ui32> BlockMaskIndex;
+            std::optional<ui32> BlobMetaIndex;
+        };
+
         const TRequestInfoPtr RequestInfo;
-        const TVector<TPartialBlobId> BlobsToReadBlockMasks;
-        const TVector<TPartialBlobId> BlobsToReadBlobMetas;
+        const THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash>
+            BlobsToOutputIndices;
+        const size_t BlockMaskCount;
+        const size_t BlobMetaCount;
 
         TVector<TBlockMask> BlockMasks;
         TVector<NProto::TBlobMeta> BlobMetas;
 
         TCompactionReadBlobInfo(
                 TRequestInfoPtr requestInfo,
-                TVector<TPartialBlobId> blobsToReadBlockMasks,
-                TVector<TPartialBlobId> blobsToReadBlobMetas)
+                THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash>
+                    blobsToOutputIndices,
+                size_t blockMaskCount,
+                size_t blobMetaCount)
             : RequestInfo(std::move(requestInfo))
-            , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
-            , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
+            , BlobsToOutputIndices(std::move(blobsToOutputIndices))
+            , BlockMaskCount(blockMaskCount)
+            , BlobMetaCount(blobMetaCount)
         {}
 
         void Clear()

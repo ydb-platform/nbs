@@ -118,6 +118,7 @@ void PrepareRangeCompaction(
     const ui64 commitId,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
+    const bool useRecreatedBlobMetasOnCleanup,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,

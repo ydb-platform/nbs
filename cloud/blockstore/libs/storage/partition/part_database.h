@@ -36,6 +36,13 @@ public:
         Partial
     };
 
+    THashMap<TString, ui64> MethodCallCounts;
+
+    void IncrementMethodCallCount(const TString& methodName)
+    {
+        MethodCallCounts[methodName]++;
+    }
+
 public:
     TPartitionDatabase(NKikimr::NTable::TDatabase& database)
         : NKikimr::NIceDb::TNiceDb(database)
@@ -149,6 +156,11 @@ public:
     bool ReadBlockMask(
         const TPartialBlobId& blobId,
         TMaybe<TBlockMask>& blockMask);
+
+    bool ReadBlobInfo(
+        const TPartialBlobId& blobId,
+        TMaybe<TBlockMask>& blockMask,
+        TMaybe<NProto::TBlobMeta>& blobMeta);
 
     bool FindBlocksInBlobsIndex(
         IExtendedBlocksIndexVisitor& visitor,
