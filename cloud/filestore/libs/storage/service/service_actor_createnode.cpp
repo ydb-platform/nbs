@@ -36,7 +36,6 @@ private:
 
     // Response data
     bool ShardResponded = false;
-    NProto::TCreateNodeResponse ShardResponse;
 
     // Stats for reporting
     IProfileLogPtr ProfileLog;
@@ -161,14 +160,19 @@ void TLinkActor::HandleShardResponse(
     CreateNodeRequest.MutableLink()->SetTargetNode(
         msg->Record.GetNode().GetId());
     CreateNodeRequest.MutableLink()->SetShardNodeName(ShardNodeName);
-    ShardResponse = std::move(msg->Record);
+    // Carry the shard node attrs so the leader can write a complete DupCache
+    // entry (non-zero Id). Without this the leader stores a zero-id entry and
+    // returns E_REJECTED on any retry of the same requestId.
+    // TODO(#2667): remove once TLinkActor has a proper retry mechanism.
+    auto shardResponse = std::move(msg->Record);
+    *CreateNodeRequest.MutableShardNodeAttr() = shardResponse.GetNode();
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
         "[%s] Creating nodeRef in leader for %s, %lu",
         LogTag.c_str(),
-        ShardResponse.ShortDebugString().Quote().c_str(),
+        shardResponse.ShortDebugString().Quote().c_str(),
         CreateNodeRequest.GetLink().GetTargetNode());
 
     request->Record = std::move(CreateNodeRequest);
@@ -205,10 +209,6 @@ void TLinkActor::HandleLeaderResponse(
         "[%s] NodeRef created in leader for %lu",
         LogTag.c_str(),
         msg->Record.GetNode().GetId());
-
-    // TODO(#2667): some attributes from the shard response could be invalid
-    // by the time the leader response is received
-    msg->Record.MutableNode()->Swap(ShardResponse.MutableNode());
 
     ReplyAndDie(ctx, std::move(msg->Record));
 }
