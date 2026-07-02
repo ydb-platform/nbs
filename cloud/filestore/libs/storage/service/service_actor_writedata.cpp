@@ -152,6 +152,8 @@ private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
     TRope Rope;
 
+    const bool UseThreeStageWrite = true;
+
 public:
     TWriteDataActor(
         NProto::TWriteDataRequest request,
@@ -163,7 +165,8 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useThreeStageWrite)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -175,10 +178,17 @@ public:
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
+        , UseThreeStageWrite(useThreeStageWrite)
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
+        if (!UseThreeStageWrite) {
+            WriteData(ctx, NProto::TError());
+            Become(&TThis::StateWork);
+            return;
+        }
+
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
             RequestInfo->CallContext,
@@ -806,17 +816,19 @@ private:
 
         MoveIovecsToBuffer(WriteRequest);
 
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s Falling back to WriteData for %lu, %lu, %lu (%lu bytes). "
-            "Message: %s",
-            LogTag.c_str(),
-            WriteRequest.GetNodeId(),
-            WriteRequest.GetHandle(),
-            WriteRequest.GetOffset(),
-            NFileStore::CalculateByteCount(WriteRequest),
-            FormatError(error).Quote().c_str());
+        if (HasError(error)) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s Falling back to WriteData for %lu, %lu, %lu (%lu bytes). "
+                "Message: %s",
+                LogTag.c_str(),
+                WriteRequest.GetNodeId(),
+                WriteRequest.GetHandle(),
+                WriteRequest.GetOffset(),
+                NFileStore::CalculateByteCount(WriteRequest),
+                FormatError(error).Quote().c_str());
+        }
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
@@ -990,14 +1002,6 @@ void TStorageServiceActor::HandleWriteData(
 
     const auto threeStageWriteAllowed = IsThreeStageWriteEnabled(filestore);
 
-    if (!threeStageWriteAllowed) {
-        // If three-stage write is disabled, forward the request to the tablet
-        // in the same way as all other requests.
-        MoveIovecsToBuffer(msg->Record);
-        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
-        return;
-    }
-
     ui32 blockSize = filestore.GetBlockSize();
 
     const auto bytesCount = NFileStore::CalculateByteCount(msg->Record);
@@ -1012,55 +1016,54 @@ void TStorageServiceActor::HandleWriteData(
         filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled() ||
         StorageConfig->GetBlockChecksumsInProfileLogEnabled();
 
+    auto logTag = filestore.GetFileSystemId();
     if (threeStageWriteEnabled) {
-        auto logTag = filestore.GetFileSystemId();
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
             "%s Using three-stage write for request, size: %lu",
             logTag.c_str(),
             bytesCount);
-
-        auto [cookie, inflight] = CreateInFlightRequest(
-            TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-            session->MediaKind,
-            session->RequestStats,
-            startTime);
-
-        InitProfileLogRequestInfo(
-            inflight->AccessProfileLogRequest(),
-            msg->Record);
-        inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
-        if (blockChecksumsEnabled) {
-            CalculateWriteDataRequestChecksums(
-                msg->Record,
-                blockSize,
-                inflight->AccessProfileLogRequest());
-        }
-
-        auto requestInfo =
-            CreateRequestInfo(SelfId(), cookie, msg->CallContext);
-
-        auto actor = std::make_unique<TWriteDataActor>(
-            std::move(msg->Record),
-            range,
-            std::move(requestInfo),
-            std::move(logTag),
-            filestore.GetFeatures().GetWriteBlobDisabled(),
-            filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
-            session->RequestStats,
-            ProfileLog,
-            TraceSerializer,
-            session->MediaKind);
-        NCloud::Register(ctx, std::move(actor));
     } else {
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
             "Forwarding WriteData request to tablet");
-        MoveIovecsToBuffer(msg->Record);
-        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
     }
+
+    auto [cookie, inflight] = CreateInFlightRequest(
+        TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        session->MediaKind,
+        session->RequestStats,
+        startTime);
+
+    InitProfileLogRequestInfo(
+        inflight->AccessProfileLogRequest(),
+        msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
+    if (blockChecksumsEnabled) {
+        CalculateWriteDataRequestChecksums(
+            msg->Record,
+            blockSize,
+            inflight->AccessProfileLogRequest());
+    }
+
+    auto requestInfo =
+        CreateRequestInfo(SelfId(), cookie, msg->CallContext);
+
+    auto actor = std::make_unique<TWriteDataActor>(
+        std::move(msg->Record),
+        range,
+        std::move(requestInfo),
+        std::move(logTag),
+        filestore.GetFeatures().GetWriteBlobDisabled(),
+        filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
+        session->RequestStats,
+        ProfileLog,
+        TraceSerializer,
+        session->MediaKind,
+        threeStageWriteEnabled);
+    NCloud::Register(ctx, std::move(actor));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
