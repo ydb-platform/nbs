@@ -156,6 +156,7 @@ public:
         , Certificates(NTlsUtils::LoadCertificatePairs(std::move(certificates)))
         , CertificateMetrics(Certificates.size())
     {
+        ValidateInitialCertificates();
     }
 
     ~TPeriodicCertificateProvider() override
@@ -219,7 +220,6 @@ public:
             if (Started.load()) {
                 return;
             }
-            ValidateInitialCertificates();
             Started.store(true);
         }
 
@@ -276,23 +276,23 @@ private:
     void ValidateInitialCertificates() const
     {
         if (RootCaPair.RootCaPath) {
-            auto root =
-                NTlsUtils::ReadAndValidateRootCertificate(RootCaPair.RootCaPath);
-            if (HasError(root.GetError())) {
+            auto rootValidation = NTlsUtils::IsValidPemCertificate(RootCaPair.RootCa);
+            if (HasError(rootValidation.GetError())) {
                 ythrow yexception()
                     << "Invalid initial root certificate: "
-                    << FormatError(root.GetError());
+                    << FormatError(rootValidation.GetError());
             }
         }
 
         for (const auto& certificate: Certificates) {
-            auto identity =
-                NTlsUtils::ReadAndValidateIdentityPair(certificate.Files);
-            if (HasError(identity.GetError())) {
+            auto identityValidation = NTlsUtils::PrivateKeyAndCertificateMatch(
+                certificate.PrivateKey,
+                certificate.CertChain);
+            if (HasError(identityValidation.GetError())) {
                 ythrow yexception()
                     << "Invalid initial identity certificate "
                     << certificate.Files.CertChainPath.Quote() << ": "
-                    << FormatError(identity.GetError());
+                    << FormatError(identityValidation.GetError());
             }
         }
     }
