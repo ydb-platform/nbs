@@ -1040,9 +1040,7 @@ void TStorageServiceActor::HandleWriteData(
         session->RequestStats,
         startTime);
 
-    InitProfileLogRequestInfo(
-        inflight->AccessProfileLogRequest(),
-        msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
     inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
     if (blockChecksumsEnabled) {
         CalculateWriteDataRequestChecksums(
@@ -1051,8 +1049,7 @@ void TStorageServiceActor::HandleWriteData(
             inflight->AccessProfileLogRequest());
     }
 
-    auto requestInfo =
-        CreateRequestInfo(SelfId(), cookie, msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TWriteDataActor>(
         std::move(msg->Record),
