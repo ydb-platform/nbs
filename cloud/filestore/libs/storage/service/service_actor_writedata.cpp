@@ -816,7 +816,8 @@ private:
 
         MoveIovecsToBuffer(WriteRequest);
 
-        if (HasError(error)) {
+        bool isFallback = HasError(error);
+        if (isFallback) {
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
@@ -832,7 +833,9 @@ private:
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
-        request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        if (isFallback) {
+            request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        }
         request->CallContext = RequestInfo->CallContext;
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
