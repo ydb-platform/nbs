@@ -325,6 +325,7 @@ func (t *createSnapshotFromDiskTask) run(
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
 		ChunkSize:           chunkSize,
+		BatchSize:           t.config.GetBatchSize(),
 
 		ShallowCopyWorkerCount:   t.config.SnapshotConfig.GetShallowCopyWorkerCount(),
 		ShallowCopyInflightLimit: t.config.SnapshotConfig.GetShallowCopyInflightLimit(),
@@ -348,6 +349,7 @@ func (t *createSnapshotFromDiskTask) run(
 		common.Milestone{
 			ChunkIndex:            t.state.MilestoneChunkIndex,
 			TransferredChunkCount: t.state.TransferredChunkCount,
+			CurrentBatchBitmap:    t.state.CurrentBatchBitmap,
 		},
 		func(ctx context.Context, milestone common.Milestone) error {
 			if incremental {
@@ -367,6 +369,7 @@ func (t *createSnapshotFromDiskTask) run(
 
 			t.state.MilestoneChunkIndex = milestone.ChunkIndex
 			t.state.TransferredChunkCount = milestone.TransferredChunkCount
+			t.state.CurrentBatchBitmap = milestone.CurrentBatchBitmap
 			return t.saveProgress(ctx, execCtx)
 		},
 	)
