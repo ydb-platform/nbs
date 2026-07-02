@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
@@ -224,9 +225,12 @@ struct TTestEnv
             replicas.push_back(Replicas[idx]);
         }
 
+        TLogTitle testLogTitle{
+            0,
+            TLogTitle::TPartitionMirror{.DiskId = "diskId"}};
         std::unique_ptr<IActor> actor = MakeResyncRangeActor(
             std::move(requestInfo),
-            "diskId",
+            testLogTitle.GetChild(0),
             DefaultBlockSize,
             TBlockRange64::MakeClosedInterval(start, end),
             std::move(replicas),
