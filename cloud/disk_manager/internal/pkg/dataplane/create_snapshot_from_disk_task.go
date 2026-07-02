@@ -125,6 +125,28 @@ func (t *createSnapshotFromDiskTask) saveProgress(
 	return execCtx.SaveState(ctx)
 }
 
+// transferMilestone builds the milestone the transfer resumes from, restoring
+// the batch progress (including CurrentBatchBitmap) persisted in the task state.
+func (t *createSnapshotFromDiskTask) transferMilestone() common.Milestone {
+	return common.Milestone{
+		ChunkIndex:            t.state.MilestoneChunkIndex,
+		TransferredChunkCount: t.state.TransferredChunkCount,
+		CurrentBatchBitmap:    t.state.CurrentBatchBitmap,
+	}
+}
+
+// applyTransferMilestone persists transfer progress into the task state so a
+// rescheduled task resumes the current batch and redoes only its unwritten
+// chunks.
+func (t *createSnapshotFromDiskTask) applyTransferMilestone(
+	milestone common.Milestone,
+) {
+
+	t.state.MilestoneChunkIndex = milestone.ChunkIndex
+	t.state.TransferredChunkCount = milestone.TransferredChunkCount
+	t.state.CurrentBatchBitmap = milestone.CurrentBatchBitmap
+}
+
 func (t *createSnapshotFromDiskTask) getNbsClient(
 	ctx context.Context,
 ) (nbs_client.Client, error) {
@@ -325,6 +347,7 @@ func (t *createSnapshotFromDiskTask) run(
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
 		ChunkSize:           chunkSize,
+		BatchSize:           t.config.GetBatchSize(),
 
 		ShallowCopyWorkerCount:   t.config.SnapshotConfig.GetShallowCopyWorkerCount(),
 		ShallowCopyInflightLimit: t.config.SnapshotConfig.GetShallowCopyInflightLimit(),
@@ -345,10 +368,7 @@ func (t *createSnapshotFromDiskTask) run(
 		ctx,
 		source,
 		target,
-		common.Milestone{
-			ChunkIndex:            t.state.MilestoneChunkIndex,
-			TransferredChunkCount: t.state.TransferredChunkCount,
-		},
+		t.transferMilestone(),
 		func(ctx context.Context, milestone common.Milestone) error {
 			if incremental {
 				_, err := t.storage.CheckSnapshotReady(
@@ -365,8 +385,7 @@ func (t *createSnapshotFromDiskTask) run(
 				return err
 			}
 
-			t.state.MilestoneChunkIndex = milestone.ChunkIndex
-			t.state.TransferredChunkCount = milestone.TransferredChunkCount
+			t.applyTransferMilestone(milestone)
 			return t.saveProgress(ctx, execCtx)
 		},
 	)
