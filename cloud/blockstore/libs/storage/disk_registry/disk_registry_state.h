@@ -940,6 +940,8 @@ public:
     TVector<TString> GetPathsToAttachOnRegistration(
         const TAgentId& agentId) const;
 
+    bool IsDeviceDetached(const NProto::TDeviceConfig& device) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
