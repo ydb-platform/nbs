@@ -219,7 +219,6 @@ public:
             if (Started.load()) {
                 return;
             }
-            ValidateInitialCertificates();
             Started.store(true);
         }
 
@@ -269,31 +268,6 @@ public:
         }
         if (waitUpdate.Initialized()) {
             waitUpdate.Wait();
-        }
-    }
-
-private:
-    void ValidateInitialCertificates() const
-    {
-        if (RootCaPair.RootCaPath) {
-            auto root =
-                NTlsUtils::ReadAndValidateRootCertificate(RootCaPair.RootCaPath);
-            if (HasError(root.GetError())) {
-                ythrow yexception()
-                    << "Invalid initial root certificate: "
-                    << FormatError(root.GetError());
-            }
-        }
-
-        for (const auto& certificate: Certificates) {
-            auto identity =
-                NTlsUtils::ReadAndValidateIdentityPair(certificate.Files);
-            if (HasError(identity.GetError())) {
-                ythrow yexception()
-                    << "Invalid initial identity certificate "
-                    << certificate.Files.CertChainPath.Quote() << ": "
-                    << FormatError(identity.GetError());
-            }
         }
     }
 

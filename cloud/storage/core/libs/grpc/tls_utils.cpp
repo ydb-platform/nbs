@@ -391,13 +391,21 @@ TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
 TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificateFiles> certificates)
 {
-    auto prepared = PrepareAndValidateCertificates(std::move(certificates));
+    auto prepared = PrepareCertificateFilePairs(std::move(certificates));
 
     TVector<TCertificatePair> result;
     result.reserve(prepared.size());
     for (auto& cert: prepared) {
+        auto keyCertPair = ReadAndValidateIdentityPair(cert);
+        if (HasError(keyCertPair.GetError())) {
+            ythrow yexception() << keyCertPair.GetError().GetMessage();
+        }
+
+        const auto& keyCert = keyCertPair.GetResult().front();
         result.push_back({
             .Files = std::move(cert),
+            .PrivateKey = TString(keyCert.private_key()),
+            .CertChain = TString(keyCert.cert_chain()),
         });
     }
     return result;
@@ -408,12 +416,19 @@ TRootCaPair LoadRootCaPair(TString rootCaPath)
     if (!rootCaPath) {
         return {};
     }
+
+    auto rootCa = ReadAndValidateRootCertificate(rootCaPath);
+    if (HasError(rootCa.GetError())) {
+        ythrow yexception() << rootCa.GetError().GetMessage();
+    }
+
     return {
         .RootCaPath = std::move(rootCaPath),
+        .RootCa = rootCa.ExtractResult(),
     };
 }
 
-TVector<TCertificateFiles> PrepareAndValidateCertificates(
+TVector<TCertificateFiles> PrepareCertificateFilePairs(
     TVector<TCertificateFiles> certificates)
 {
     TVector<TCertificateFiles> res;

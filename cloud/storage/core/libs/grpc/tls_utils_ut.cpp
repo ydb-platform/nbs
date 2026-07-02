@@ -322,8 +322,12 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, pairs.size());
         UNIT_ASSERT_VALUES_EQUAL(files.PrivateKeyPath, pairs[0].Files.PrivateKeyPath);
         UNIT_ASSERT_VALUES_EQUAL(files.CertChainPath, pairs[0].Files.CertChainPath);
-        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].PrivateKey);
-        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].CertChain);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server1.key"),
+            pairs[0].PrivateKey);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server1.crt"),
+            pairs[0].CertChain);
     }
 
     Y_UNIT_TEST(ShouldThrowOnIncompletePairs)
@@ -336,15 +340,14 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             yexception);
     }
 
-    Y_UNIT_TEST(ShouldNotReadFilesWhileLoadingPairs)
+    Y_UNIT_TEST(ShouldThrowOnUnreadablePairs)
     {
-        const auto pairs = LoadCertificatePairs({TCertificateFiles{
-            .PrivateKeyPath = "/nonexistent/k",
-            .CertChainPath = "/nonexistent/c",
-        }});
-        UNIT_ASSERT_VALUES_EQUAL(1, pairs.size());
-        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].PrivateKey);
-        UNIT_ASSERT_VALUES_EQUAL("", pairs[0].CertChain);
+        UNIT_ASSERT_EXCEPTION(
+            LoadCertificatePairs({TCertificateFiles{
+                .PrivateKeyPath = "/nonexistent/k",
+                .CertChainPath = "/nonexistent/c",
+            }}),
+            yexception);
     }
 
     Y_UNIT_TEST(ShouldLoadRootCaPair)
@@ -358,14 +361,14 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
 
         const auto pair = LoadRootCaPair(rootPath);
         UNIT_ASSERT_VALUES_EQUAL(rootPath, pair.RootCaPath);
-        UNIT_ASSERT_VALUES_EQUAL("", pair.RootCa);
+        UNIT_ASSERT_VALUES_EQUAL(ReadCertResource("ca.crt"), pair.RootCa);
     }
 
-    Y_UNIT_TEST(ShouldNotReadRootFileWhileLoadingPair)
+    Y_UNIT_TEST(ShouldThrowOnUnreadableRootCaPair)
     {
-        const auto pair = LoadRootCaPair("/nonexistent/ca.crt");
-        UNIT_ASSERT_VALUES_EQUAL("/nonexistent/ca.crt", pair.RootCaPath);
-        UNIT_ASSERT_VALUES_EQUAL("", pair.RootCa);
+        UNIT_ASSERT_EXCEPTION(
+            LoadRootCaPair("/nonexistent/ca.crt"),
+            yexception);
     }
 }
 
