@@ -6,15 +6,16 @@ namespace NCloud::NFileStore::NStorage {
 
 /**
  * Block & byte index consists of 4 layers:
- * 1. fresh blocks (buffer for small aligned writes)
- * 2. mixed blocks (stores most of the data)
- * 3. large blocks (wide deletion markers)
- * 4. fresh bytes (buffer for unaligned writes)
+ * 1. fresh blocks - buffer for small block-aligned writes
+ * 2. mixed blocks - stores most of the data, block-aligned
+ * 3. large blocks - wide deletion markers, block-aligned
+ * 4. fresh bytes - buffer for unaligned writes, each item lies entirely within
+ *  one block
  *
  * Deletions (both overwrites and explicit deletions) are applied to:
  * 1. fresh blocks - always
- * 2. mixed blocks - if the deleted range is below some threshold
- * 3. large blocks - if the deleted range is above some threshold
+ * 2. mixed blocks - if the deleted range length is below some threshold
+ * 3. large blocks - if the deleted range length is above some threshold
  * 4. fresh bytes - always
  *
  * Each block has:
@@ -22,9 +23,12 @@ namespace NCloud::NFileStore::NStorage {
  * * MaxCommitId - when it got overwritten/deleted (if it's still visible, the
  *  value here is InvalidCommitId)
  *
- * Fresh bytes layer doesn't store MaxCommitIds so no deletion markers can be
- * applied to it post factum. That's why fresh bytes layer must be visited last
- * upon read.
+ * Since writes to fresh bytes by definition do not cover whole blocks there's
+ * no way to generate block-level deletion markers upon such writes so fresh
+ * bytes layer should be visited last upon read and any visited bytes should be
+ * assumed to overwrite anything visited before that. This is made possible
+ * because fresh bytes layer is assumed to be organized in such a way that newer
+ * byte ranges are visited after older byte ranges.
  *
  * Large blocks layer can hide some of the blocks in the mixed blocks layer so
  * it should be visited after mixed blocks layer.
