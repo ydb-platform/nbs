@@ -677,6 +677,54 @@ func (s *storageYDB) ClearDeletingFilesystemSnapshots(
 	return nil
 }
 
+func (s *storageYDB) TablesEmpty(ctx context.Context) (bool, error) {
+	// Used by tests to verify collection cleanup.
+	for _, table := range []string{
+		"filesystem_snapshots",
+		"deleting",
+		"node_refs",
+		"node_refs_by_shard",
+		"nodes",
+		"hardlinks",
+		"restoration_node_ids_mapping",
+	} {
+		res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+
+			select count(*)
+			from %v
+		`, s.tablesPath, table))
+		if err != nil {
+			return false, err
+		}
+
+		if !res.NextResultSet(ctx) || !res.NextRow() {
+			res.Close()
+			return false, nil
+		}
+
+		var count uint64
+		err = res.Scan(&count)
+		if err != nil {
+			res.Close()
+			return false, err
+		}
+
+		err = res.Err()
+		res.Close()
+		if err != nil {
+			return false, err
+		}
+
+		if count != 0 {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
 func (s *storageYDB) CheckFilesystemSnapshotAlive(
 	ctx context.Context,
 	snapshotID string,

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
@@ -25,11 +26,16 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	tasks_metrics_empty "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,6 +131,30 @@ func (f *fixture) prepareFilesystem(t *testing.T, filesystemID string) {
 	require.NoError(t, err)
 }
 
+func (f *fixture) prepareMultishardFilesystem(
+	t *testing.T,
+	filesystemID string,
+	shardCount uint32,
+) {
+
+	err := f.client.Create(f.ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+		ShardCount:  shardCount,
+	})
+	require.NoError(t, err)
+
+	err = f.client.EnableDirectoryCreationInShards(
+		f.ctx,
+		filesystemID,
+		shardCount,
+	)
+	require.NoError(t, err)
+}
+
 func (f *fixture) cleanupFilesystem(t *testing.T, filesystemID string) {
 	err := f.client.Delete(f.ctx, filesystemID, true /*force*/)
 	require.NoError(t, err)
@@ -186,6 +216,195 @@ func (f *fixture) newSlowConfig() *snapshot_config.FilesystemSnapshotConfig {
 		ListNodesMaxBytes:         &listNodesMaxBytes,
 		RestoreHardlinksBatchSize: &restoreHardlinksBatchSize,
 	}
+}
+
+func (f *fixture) newTasksConfig(t *testing.T) *tasks_config.TasksConfig {
+	pollForTaskUpdatesPeriod := "50ms"
+	pollForTasksPeriodMin := "50ms"
+	pollForTasksPeriodMax := "100ms"
+	pollForStallingTasksPeriodMin := "100ms"
+	pollForStallingTasksPeriodMax := "200ms"
+	taskPingPeriod := "100ms"
+	taskStallingTimeout := "1s"
+	taskWaitingTimeout := "10s"
+	scheduleRegularTasksPeriodMin := "100ms"
+	scheduleRegularTasksPeriodMax := "200ms"
+	storageFolder := fmt.Sprintf(
+		"snapshot_transfer_tests/%v/tasks",
+		t.Name(),
+	)
+	runnersCount := uint64(4)
+	stalkingRunnersCount := uint64(1)
+	maxRetriableErrorCount := uint64(100)
+	maxPanicCount := uint64(0)
+	regularSystemTasksEnabled := false
+	tasksToListLimit := uint64(100)
+
+	return &tasks_config.TasksConfig{
+		PollForTaskUpdatesPeriod:      &pollForTaskUpdatesPeriod,
+		PollForTasksPeriodMin:         &pollForTasksPeriodMin,
+		PollForTasksPeriodMax:         &pollForTasksPeriodMax,
+		PollForStallingTasksPeriodMin: &pollForStallingTasksPeriodMin,
+		PollForStallingTasksPeriodMax: &pollForStallingTasksPeriodMax,
+		TaskPingPeriod:                &taskPingPeriod,
+		TaskStallingTimeout:           &taskStallingTimeout,
+		TaskWaitingTimeout:            &taskWaitingTimeout,
+		ScheduleRegularTasksPeriodMin: &scheduleRegularTasksPeriodMin,
+		ScheduleRegularTasksPeriodMax: &scheduleRegularTasksPeriodMax,
+		RunnersCount:                  &runnersCount,
+		StalkingRunnersCount:          &stalkingRunnersCount,
+		StorageFolder:                 &storageFolder,
+		MaxRetriableErrorCount:        &maxRetriableErrorCount,
+		MaxPanicCount:                 &maxPanicCount,
+		RegularSystemTasksEnabled:     &regularSystemTasksEnabled,
+		TasksToListLimit:              &tasksToListLimit,
+	}
+}
+
+func (f *fixture) startSnapshotCollectionTaskRunner(
+	t *testing.T,
+	ctx context.Context,
+	maxInflight int,
+	collectionTimeout time.Duration,
+) tasks.Scheduler {
+
+	config := f.newTasksConfig(t)
+	err := tasks_storage.CreateYDBTables(f.ctx, config, f.db, false)
+	require.NoError(t, err)
+
+	taskStorage, err := tasks_storage.NewStorage(
+		config,
+		tasks_metrics_empty.NewRegistry(),
+		f.db,
+	)
+	require.NoError(t, err)
+
+	registry := tasks.NewRegistry()
+	scheduler, err := tasks.NewScheduler(
+		ctx,
+		registry,
+		taskStorage,
+		config,
+		tasks_metrics_empty.NewRegistry(),
+	)
+	require.NoError(t, err)
+
+	taskConfig := f.newConfig()
+	err = registry.RegisterForExecution(
+		"dataplane.CreateSnapshotFromFilesystem",
+		func() tasks.Task {
+			return &createSnapshotFromFilesystemTask{
+				config:           taskConfig,
+				factory:          f.factory,
+				storage:          f.snapshotStorage,
+				traversalStorage: f.traversalStorage,
+				nodesStorage:     f.nodesStorage,
+			}
+		},
+	)
+	require.NoError(t, err)
+
+	err = registry.RegisterForExecution(
+		"dataplane.DeleteFilesystemSnapshot",
+		func() tasks.Task {
+			return &deleteFilesystemSnapshotTask{
+				storage: f.snapshotStorage,
+			}
+		},
+	)
+	require.NoError(t, err)
+
+	err = registry.RegisterForExecution(
+		"dataplane.DeleteFilesystemSnapshotData",
+		func() tasks.Task {
+			return &deleteFilesystemSnapshotDataTask{
+				nodesStorage:     f.nodesStorage,
+				traversalStorage: f.traversalStorage,
+			}
+		},
+	)
+	require.NoError(t, err)
+
+	err = registry.RegisterForExecution(
+		"dataplane.CollectFilesystemSnapshots",
+		func() tasks.Task {
+			return &collectFilesystemSnapshotsTask{
+				scheduler:                       scheduler,
+				storage:                         f.snapshotStorage,
+				snapshotCollectionTimeout:       collectionTimeout,
+				snapshotCollectionInflightLimit: maxInflight,
+			}
+		},
+	)
+	require.NoError(t, err)
+
+	err = tasks.StartRunners(
+		ctx,
+		taskStorage,
+		registry,
+		tasks_metrics_empty.NewRegistry(),
+		config,
+		"localhost",
+	)
+	require.NoError(t, err)
+
+	return scheduler
+}
+
+func (f *fixture) requireSnapshotStorageTablesEmpty(t *testing.T) {
+	t.Helper()
+
+	require.True(t, f.snapshotStorageTablesEmpty(t))
+}
+
+func (f *fixture) snapshotStorageTablesEmpty(t *testing.T) bool {
+	t.Helper()
+
+	empty, err := f.snapshotStorage.TablesEmpty(f.ctx)
+	require.NoError(t, err)
+	return empty
+}
+
+func (f *fixture) requireTraversalQueuesEmpty(
+	t *testing.T,
+	snapshotIDs []string,
+) {
+	t.Helper()
+
+	require.True(t, f.traversalQueuesEmpty(t, snapshotIDs))
+}
+
+func (f *fixture) traversalQueuesEmpty(
+	t *testing.T,
+	snapshotIDs []string,
+) bool {
+	t.Helper()
+
+	for _, snapshotID := range snapshotIDs {
+		queueEntries, err := f.traversalStorage.SelectNodesToList(
+			f.ctx,
+			snapshotID,
+			map[uint64]struct{}{},
+			100,
+		)
+		require.NoError(t, err)
+
+		if len(queueEntries) != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (f *fixture) snapshotDataDeleted(
+	t *testing.T,
+	snapshotIDs []string,
+) bool {
+	t.Helper()
+
+	return f.snapshotStorageTablesEmpty(t) &&
+		f.traversalQueuesEmpty(t, snapshotIDs)
 }
 
 func TestValidateConfigRejectsZeroLimits(t *testing.T) {
@@ -255,6 +474,19 @@ func (f *fixture) newTransferFromSnapshotToFilesystemTask(
 	}
 }
 
+func (f *fixture) newDeleteFilesystemSnapshotTask(
+	snapshotID string,
+) *deleteFilesystemSnapshotTask {
+
+	return &deleteFilesystemSnapshotTask{
+		storage: f.snapshotStorage,
+		request: &snapshot_protos.DeleteFilesystemSnapshotRequest{
+			SnapshotId: snapshotID,
+		},
+		state: &snapshot_protos.DeleteFilesystemSnapshotTaskState{},
+	}
+}
+
 type cancelOnListNodesStorage struct {
 	nodes_storage.Storage
 	cancelAt int
@@ -267,37 +499,30 @@ type cancelOnListNodesStorage struct {
 
 type withDeletionNodeStorage struct {
 	nodes_storage.Storage
-	snapshotStorage snapshot_storage.Storage
-	deleteTaskID    string
-	deleteOnce      sync.Once
-	deleteResult    chan error
+	deleteSnapshotFunc func(context.Context, string) error
+	deleteOnce         sync.Once
+	deleteResult       chan error
 }
 
 func newWithDeletionNodeStorage(
 	storage nodes_storage.Storage,
-	snapshotStorage snapshot_storage.Storage,
+	deleteSnapshot func(context.Context, string) error,
 ) *withDeletionNodeStorage {
 
 	return &withDeletionNodeStorage{
-		Storage:         storage,
-		snapshotStorage: snapshotStorage,
-		deleteTaskID:    "delete-task",
-		deleteResult:    make(chan error, 1),
+		Storage:            storage,
+		deleteSnapshotFunc: deleteSnapshot,
+		deleteResult:       make(chan error, 1),
 	}
 }
 
-func (s *withDeletionNodeStorage) deleteSnapshot(
+func (s *withDeletionNodeStorage) deleteSnapshotOnce(
 	ctx context.Context,
 	snapshotID string,
 ) {
 
 	s.deleteOnce.Do(func() {
-		_, err := s.snapshotStorage.DeletingFilesystemSnapshot(
-			ctx,
-			snapshotID,
-			s.deleteTaskID,
-		)
-		s.deleteResult <- err
+		s.deleteResult <- s.deleteSnapshotFunc(ctx, snapshotID)
 	})
 }
 
@@ -323,7 +548,7 @@ func (s *withDeletionNodeStorage) SaveNodes(
 		return err
 	}
 
-	s.deleteSnapshot(ctx, snapshotID)
+	s.deleteSnapshotOnce(ctx, snapshotID)
 	return nil
 }
 
@@ -344,7 +569,7 @@ func (s *withDeletionNodeStorage) UpdateRestorationNodeIDMapping(
 		return err
 	}
 
-	s.deleteSnapshot(ctx, snapshotID)
+	s.deleteSnapshotOnce(ctx, snapshotID)
 	return nil
 }
 
@@ -1001,7 +1226,17 @@ func TestCreateSnapshotFromFilesystemStopsWhenDeletedDuringTransfer(t *testing.T
 		filesystemID,
 		snapshotID,
 	)
-	storage := newWithDeletionNodeStorage(f.nodesStorage, f.snapshotStorage)
+	storage := newWithDeletionNodeStorage(
+		f.nodesStorage,
+		func(ctx context.Context, snapshotID string) error {
+			_, err := f.snapshotStorage.DeletingFilesystemSnapshot(
+				ctx,
+				snapshotID,
+				"delete-task",
+			)
+			return err
+		},
+	)
 	task.nodesStorage = storage
 
 	err := task.Run(f.ctx, execCtx)
@@ -1101,7 +1336,16 @@ func TestRestoreFromSnapshotDeleted(t *testing.T) {
 		dstFilesystemID,
 		snapshotID,
 	)
-	storage := newWithDeletionNodeStorage(f.nodesStorage, f.snapshotStorage)
+	storage := newWithDeletionNodeStorage(
+		f.nodesStorage,
+		func(ctx context.Context, snapshotID string) error {
+			deleteExecCtx := tasks_mocks.NewExecutionContextMock()
+			deleteExecCtx.On("GetTaskID").Return("delete-snapshot")
+
+			deleteTask := f.newDeleteFilesystemSnapshotTask(snapshotID)
+			return deleteTask.Run(ctx, deleteExecCtx)
+		},
+	)
 	fromSnapshotTask.nodesStorage = storage
 
 	err = fromSnapshotTask.Run(f.ctx, restoreExecCtx)
@@ -1116,7 +1360,7 @@ func TestRestoreFromSnapshotDeleted(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
+func TestCreateFsFromSnapshotCancelCleansRestoreState(t *testing.T) {
 	f := newFixture(t)
 	defer f.close(t)
 
@@ -1241,4 +1485,237 @@ func TestTransferFromSnapshotToFilesystemCancelDeletesData(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, snapshotNodes)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCollectFilesystemSnapshotsTaskDeletesSnapshotData(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	runnerCtx, cancelRunner := context.WithCancel(f.ctx)
+	defer cancelRunner()
+
+	maxInflight := 2
+	collectionTimeout := 50 * time.Millisecond
+	scheduler := f.startSnapshotCollectionTaskRunner(
+		t,
+		runnerCtx,
+		maxInflight,
+		collectionTimeout,
+	)
+
+	filesystemID := t.Name()
+	shardCount := uint32(3)
+	f.prepareMultishardFilesystem(t, filesystemID, shardCount)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	fsModel := f.fillFilesystem(t, filesystemID, nfs_testing.StandardFilesystem)
+	defer fsModel.Close()
+
+	sourceSession, err := f.client.CreateSession(f.ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer sourceSession.Close(f.ctx)
+
+	etcNode, err := sourceSession.GetNodeAttr(f.ctx, nfs.RootNodeID, "etc")
+	require.NoError(t, err)
+	passwdNode, err := sourceSession.GetNodeAttr(f.ctx, etcNode.NodeID, "passwd")
+	require.NoError(t, err)
+
+	_, err = sourceSession.CreateNode(f.ctx, nfs.Node{
+		ParentNodeID: etcNode.NodeID,
+		NodeID:       passwdNode.NodeID,
+		Name:         "passwd-hardlink",
+		Type:         nfs.NODE_KIND_LINK,
+	})
+	require.NoError(t, err)
+
+	hardlinkNode, err := sourceSession.GetNodeAttr(
+		f.ctx,
+		etcNode.NodeID,
+		"passwd-hardlink",
+	)
+	require.NoError(t, err)
+	require.Equal(t, passwdNode.NodeID, hardlinkNode.NodeID)
+	require.GreaterOrEqual(t, hardlinkNode.Links, uint32(2))
+
+	sourceNodes := fsModel.ListAllNodesRecursively(true)
+	require.NotEmpty(t, sourceNodes)
+
+	shardIDs := tasks_common.NewStringSet()
+	for _, node := range sourceNodes {
+		require.NotEmpty(t, node.ShardFileSystemID)
+		require.NotEmpty(t, node.ShardNodeName)
+		shardIDs.Add(node.ShardFileSystemID)
+	}
+	require.NotZero(t, shardIDs.Size())
+
+	snapshotIDs := make([]string, maxInflight+2)
+	for i := range snapshotIDs {
+		snapshotIDs[i] = fmt.Sprintf("snapshot-%d", i)
+		taskID, err := scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(
+				f.ctx,
+				fmt.Sprintf("create-%s", snapshotIDs[i]),
+			),
+			"dataplane.CreateSnapshotFromFilesystem",
+			"",
+			&snapshot_protos.CreateFilesystemSnapshotRequest{
+				Filesystem: &types.Filesystem{
+					ZoneId:       "zone",
+					FilesystemId: filesystemID,
+				},
+				SnapshotId: snapshotIDs[i],
+			},
+		)
+		require.NoError(t, err)
+
+		_, err = scheduler.WaitTaskSync(f.ctx, taskID, 30*time.Second)
+		require.NoError(t, err)
+
+		for _, shardID := range shardIDs.List() {
+			nodes, nextCookie, err := f.nodesStorage.ListNodesByShard(
+				f.ctx,
+				snapshotIDs[i],
+				shardID,
+				100,
+				nil,
+			)
+			require.NoError(t, err)
+			require.NotEmpty(t, nodes)
+			require.Nil(t, nextCookie)
+		}
+	}
+
+	hardlinks, err := f.nodesStorage.ListHardLinks(
+		f.ctx,
+		snapshotIDs[0],
+		100,
+		0,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, hardlinks)
+
+	sourceNodeIDs := make([]uint64, 0, 2)
+	restorationMapping := make(map[uint64]uint64)
+	for _, node := range sourceNodes {
+		if len(sourceNodeIDs) == 2 {
+			break
+		}
+
+		sourceNodeIDs = append(sourceNodeIDs, node.NodeID)
+		restorationMapping[node.NodeID] = node.NodeID + 1000000
+	}
+	require.Len(t, sourceNodeIDs, 2)
+
+	restoredFilesystemID := filesystemID + "_restored"
+	err = f.nodesStorage.UpdateRestorationNodeIDMapping(
+		f.ctx,
+		snapshotIDs[0],
+		restoredFilesystemID,
+		restorationMapping,
+	)
+	require.NoError(t, err)
+
+	mappings, err := f.nodesStorage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotIDs[0],
+		restoredFilesystemID,
+		sourceNodeIDs,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, mappings)
+
+	err = f.traversalStorage.SchedulerDirectoryForTraversal(
+		f.ctx,
+		snapshotIDs[0],
+		nfs.RootNodeID,
+	)
+	require.NoError(t, err)
+	queueEntries, err := f.traversalStorage.SelectNodesToList(
+		f.ctx,
+		snapshotIDs[0],
+		map[uint64]struct{}{},
+		100,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, queueEntries)
+
+	for _, snapshotID := range snapshotIDs {
+		taskID, err := scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(
+				f.ctx,
+				fmt.Sprintf("delete-%s", snapshotID),
+			),
+			"dataplane.DeleteFilesystemSnapshot",
+			"",
+			&snapshot_protos.DeleteFilesystemSnapshotRequest{
+				SnapshotId: snapshotID,
+			},
+		)
+		require.NoError(t, err)
+
+		_, err = scheduler.WaitTaskSync(f.ctx, taskID, 30*time.Second)
+		require.NoError(t, err)
+	}
+
+	keys, err := f.snapshotStorage.GetFilesystemSnapshotsToDelete(
+		f.ctx,
+		time.Now().Add(time.Second),
+		len(snapshotIDs)+1,
+	)
+	require.NoError(t, err)
+	require.Len(t, keys, len(snapshotIDs))
+
+	time.Sleep(2 * collectionTimeout)
+
+	_, err = scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(f.ctx, "collect-filesystem-snapshots"),
+		"dataplane.CollectFilesystemSnapshots",
+		"",
+		&empty.Empty{},
+	)
+	require.NoError(t, err)
+
+	require.Eventually(
+		t,
+		func() bool {
+			return f.snapshotDataDeleted(t, snapshotIDs)
+		},
+		30*time.Second,
+		100*time.Millisecond,
+	)
+	f.requireSnapshotStorageTablesEmpty(t)
+	f.requireTraversalQueuesEmpty(t, snapshotIDs)
+
+	keys, err = f.snapshotStorage.GetFilesystemSnapshotsToDelete(
+		f.ctx,
+		time.Now().Add(time.Second),
+		len(snapshotIDs)+1,
+	)
+	require.NoError(t, err)
+	require.Empty(t, keys)
+
+	snapshots, err := f.snapshotStorage.ListFilesystemSnapshots(f.ctx)
+	require.NoError(t, err)
+	require.Zero(t, snapshots.Size())
+
+	snapshotCount, err := f.snapshotStorage.GetFilesystemSnapshotCount(f.ctx)
+	require.NoError(t, err)
+	require.Zero(t, snapshotCount)
+
+	for _, snapshotID := range snapshotIDs {
+		err = f.snapshotStorage.CheckFilesystemSnapshotReady(
+			f.ctx,
+			snapshotID,
+		)
+		require.Error(t, err)
+
+		meta, err := f.snapshotStorage.GetFilesystemSnapshotMeta(
+			f.ctx,
+			snapshotID,
+		)
+		require.NoError(t, err)
+		require.Nil(t, meta)
+	}
 }

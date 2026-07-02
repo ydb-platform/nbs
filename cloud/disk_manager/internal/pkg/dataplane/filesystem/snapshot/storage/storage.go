@@ -97,4 +97,7 @@ type Storage interface {
 	ListFilesystemSnapshots(
 		ctx context.Context,
 	) (tasks_common.StringSet, error)
+
+	// Used by tests to verify collection cleanup.
+	TablesEmpty(ctx context.Context) (bool, error)
 }
