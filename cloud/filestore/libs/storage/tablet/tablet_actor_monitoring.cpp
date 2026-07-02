@@ -1103,32 +1103,26 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                     if (shardNo < CachedAggregateStats.ShardStatsSize()) {
                         ss = CachedAggregateStats.GetShardStats(shardNo);
                     }
-                    TABLER () {
-                        TABLED () {
-                            out << ++shardNo;
-                        }
-                        TABLED () {
+                    TABLER() {
+                        TABLED() { out << ++shardNo; }
+                        TABLED() {
                             out << "<a href='../filestore/service?action=search"
-                                << "&Filesystem=" << shardId << "'>" << shardId
-                                << "</a>";
+                                << "&Filesystem=" << shardId << "'>"
+                                << shardId << "</a>";
                         }
-                        TABLED () {
+                        TABLED() {
                             out << ss.GetUsedBlocksCount() * GetBlockSize();
                         }
-                        TABLED () {
+                        TABLED() {
                             out << ss.GetUsedNodesCount();
                         }
-                        TABLED () {
+                        TABLED() {
                             out << (ss.GetTotalBlocksCount() -
                                     ss.GetUsedBlocksCount()) *
                                        GetBlockSize();
                         }
-                        TABLED () {
-                            out << ss.GetCurrentLoad();
-                        }
-                        TABLED () {
-                            out << ss.GetSuffer();
-                        }
+                        TABLED() { out << ss.GetCurrentLoad(); }
+                        TABLED() { out << ss.GetSuffer(); }
                     }
                 }
             }

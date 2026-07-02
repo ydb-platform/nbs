@@ -195,7 +195,7 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         dst.GetUsedNodesCount());
 
     if (shardIndex < ShardIds.size()) {
-        auto& ss = (*dst.MutableShardStats())[shardIndex];
+        auto& ss = *dst.MutableShardStats(shardIndex);
         ss.SetCurrentLoad(src.GetCurrentLoad());
         ss.SetSuffer(src.GetSuffer());
         ss.SetTotalBlocksCount(src.GetTotalBlocksCount());
