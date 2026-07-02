@@ -925,8 +925,13 @@ def update_workload_check_block(
         return body
 
     current_status = get_workload_check_status(body, component)
-    if current_status is not None and (
-        WORKLOAD_CHECK_STATUS_ORDER[current_status]
+    # Preserve build-failure details, including the build error log link, against
+    # later completion updates. A new running update is allowed to reset the row
+    # because it represents a fresh rerun attempt with a new job URL.
+    if (
+        current_status == "failed_build"
+        and status != "running"
+        and WORKLOAD_CHECK_STATUS_ORDER[current_status]
         > WORKLOAD_CHECK_STATUS_ORDER[status]
     ):
         LOGGER.info(

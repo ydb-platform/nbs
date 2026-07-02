@@ -409,6 +409,19 @@ jobs:
           vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
           tests_size: ${{ inputs.test_size }}
 
+      - name: mark workload retry as running
+        id: workload-comment
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+        uses: ./.github/actions/workload_comment
+        with:
+          command: update
+          build_preset: ${{ inputs.build_preset }}
+          component: ${{ inputs.component == '' && 'all' || inputs.component }}
+          workload_check_status: running
+          current_job_name: Retry tests
+          runner_name: ${{ runner.name }}
+          add_summary_link: yes
+
       - name: Prepare AWS CLI
         uses: ./.github/actions/s3cmd
         with:
@@ -440,3 +453,21 @@ jobs:
           use_network_cache: ${{ inputs.use_network_cache }}
           number_of_retries: ${{ inputs.number_of_retries }}
           test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}
+
+      - name: mark workload retry as cancelled
+        if: ${{ cancelled() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+        uses: ./.github/actions/workload_comment
+        with:
+          command: update
+          build_preset: ${{ inputs.build_preset }}
+          component: ${{ inputs.component == '' && 'all' || inputs.component }}
+          workload_check_status: cancelled
+
+      - name: mark workload retry as completed
+        if: ${{ always() && !cancelled() && steps.test.outputs.report_generated == 'yes' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+        uses: ./.github/actions/workload_comment
+        with:
+          command: update
+          build_preset: ${{ inputs.build_preset }}
+          component: ${{ inputs.component == '' && 'all' || inputs.component }}
+          workload_check_status: completed

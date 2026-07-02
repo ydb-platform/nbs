@@ -285,6 +285,7 @@ runs:
         FAIL_CHECKER_RC=1
 
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
+        echo "report_generated=no" >> "$GITHUB_OUTPUT"
         RETRY_FLAG=""
         i=0
         echo "LAST_STEP=0" | tee -a "$GITHUB_ENV"
@@ -296,6 +297,7 @@ runs:
             echo TEST_START_TIME=$TEST_START_TIME | tee -a "$GITHUB_ENV"
             RETRIES=$((RETRIES - 1))
             i=$((i + 1))
+            echo "report_generated=no" >> "$GITHUB_OUTPUT"
             RETRY_LOG_DIR="$LOG_DIR/$i"
             mkdir -p "$RETRY_LOG_DIR"
             echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"

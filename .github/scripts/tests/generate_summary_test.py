@@ -957,7 +957,7 @@ def test_update_pr_comment_workload_check_retries_lost_concurrent_edit(
     assert gs.get_comment_revision(existing.body) == 2
 
 
-def test_update_workload_check_block_does_not_downgrade_completed_status() -> None:
+def test_update_workload_check_block_allows_rerun_to_reset_completed_status() -> None:
     body = "\n".join(
         [
             gs.WORKLOAD_CHECKS_START,
@@ -973,7 +973,34 @@ def test_update_workload_check_block_does_not_downgrade_completed_status() -> No
         "https://github.example/job/123",
     )
 
-    assert updated == body
+    assert gs.get_workload_check_status(updated, "blockstore") == "running"
+    assert "https://github.example/job/123" in updated
+
+
+def test_update_workload_check_block_allows_successful_rerun_to_clear_cancelled_status() -> (
+    None
+):
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "cancelled",
+                "https://github.example/job/old",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.update_workload_check_block(
+        body,
+        "blockstore",
+        "completed",
+        "https://github.example/job/new",
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "completed"
+    assert "https://github.example/job/new" in updated
 
 
 def test_complete_workload_checks_block_preserves_failed_build_rows() -> None:
