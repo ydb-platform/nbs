@@ -185,7 +185,18 @@ TString MakeMirroredDiskDeviceReplacementMessage(
     return std::move(message);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
+
+bool IsDeviceDetached(
+    const NProto::TAgentConfig& agent,
+    const NProto::TDeviceConfig& device)
+{
+    const auto it = agent.GetPathAttachStates().find(device.GetDeviceName());
+    return it == agent.GetPathAttachStates().end() ||
+           it->second != NProto::PATH_ATTACH_STATE_ATTACHED;
+}
+
+/////////////////////////////////////////////////////////////////////////////////
 
 struct TDevicePoolCounters
 {
@@ -3145,10 +3156,7 @@ bool TDiskRegistryState::CanSecureErase(
     }
 
     if (StorageConfig->GetAttachDetachPathsEnabled()) {
-        if (auto it = agent->GetPathAttachStates().find(device.GetDeviceName());
-            it != agent->GetPathAttachStates().end() &&
-            it->second != NProto::PATH_ATTACH_STATE_ATTACHED)
-        {
+        if (NStorage::IsDeviceDetached(*agent, device)) {
             STORAGE_DEBUG(
                 "Skip SecureErase for device '%s'. Device is detached",
                 device.GetDeviceUUID().c_str());
@@ -4420,17 +4428,12 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                 case NProto::DEVICE_STATE_ONLINE: {
                     ++pool.DevicesInOnlineState;
 
-                    auto it = agent.GetPathAttachStates().find(
-                        device.GetDeviceName());
-
                     const bool deviceShouldBeAttached =
                         agent.GetState() == NProto::AGENT_STATE_ONLINE;
-                    const bool deviceIsAttached =
-                        it != agent.GetPathAttachStates().end() &&
-                        it->second == NProto::PATH_ATTACH_STATE_ATTACHED;
 
                     if (StorageConfig->GetAttachDetachPathsEnabled() &&
-                        deviceShouldBeAttached && !deviceIsAttached)
+                        deviceShouldBeAttached &&
+                        NStorage::IsDeviceDetached(agent, device))
                     {
                         ++detachedDevicesInOnlineState;
                     }
@@ -8697,6 +8700,19 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
     }
 
     return pathsToAttach;
+}
+
+bool TDiskRegistryState::IsDeviceDetached(
+    const NProto::TDeviceConfig& device) const
+{
+    if (!StorageConfig->GetAttachDetachPathsEnabled()) {
+        return false;
+    }
+    const auto* agent = AgentList.FindAgent(device.GetNodeId());
+    if (!agent) {
+        return false;
+    }
+    return NStorage::IsDeviceDetached(*agent, device);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

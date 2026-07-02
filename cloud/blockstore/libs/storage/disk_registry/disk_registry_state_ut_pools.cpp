@@ -1049,6 +1049,53 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             UNIT_ASSERT_VALUES_EQUAL(1, infos[0].FreeChunks);
         }
     }
+
+    Y_UNIT_TEST(ShouldReportDetachedDevice)
+    {
+        auto agent = AgentConfig(1, {
+            Device("dev-1", "uuid-1"),
+            Device("dev-2", "uuid-2"),
+            Device("dev-3", "uuid-3"),
+        });
+
+        (*agent.MutablePathAttachStates())["dev-1"] =
+            NProto::PATH_ATTACH_STATE_ATTACHED;
+        (*agent.MutablePathAttachStates())["dev-2"] =
+            NProto::PATH_ATTACH_STATE_DETACHED;
+        // dev-3 has no path attach state entry.
+
+        auto makeState = [&] (bool attachDetachEnabled) {
+            auto storageConfig = CreateDefaultStorageConfigProto();
+            storageConfig.SetAttachDetachPathsEnabled(attachDetachEnabled);
+
+            return TDiskRegistryStateBuilder()
+                .WithStorageConfig(std::move(storageConfig))
+                .WithKnownAgents({agent})
+                .Build();
+        };
+
+        {
+            auto state = makeState(false);
+
+            UNIT_ASSERT(!state->IsDeviceDetached(*state->FindDevice("uuid-1")));
+            UNIT_ASSERT(!state->IsDeviceDetached(*state->FindDevice("uuid-2")));
+            UNIT_ASSERT(!state->IsDeviceDetached(*state->FindDevice("uuid-3")));
+        }
+
+        {
+            auto state = makeState(true);
+
+            UNIT_ASSERT(!state->IsDeviceDetached(*state->FindDevice("uuid-1")));
+            UNIT_ASSERT(state->IsDeviceDetached(*state->FindDevice("uuid-2")));
+            UNIT_ASSERT(state->IsDeviceDetached(*state->FindDevice("uuid-3")));
+
+            constexpr ui32 UnknownNodeId = 42;
+            auto deviceFromUnknownAgent = Device("dev-2", "uuid-unknown");
+            deviceFromUnknownAgent.SetNodeId(UnknownNodeId);
+
+            UNIT_ASSERT(!state->IsDeviceDetached(deviceFromUnknownAgent));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

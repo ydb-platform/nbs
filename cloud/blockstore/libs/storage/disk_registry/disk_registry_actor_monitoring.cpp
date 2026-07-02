@@ -24,14 +24,17 @@ namespace {
 
 EDeviceStateFlags GetDeviceStateFlags(
     const TDiskRegistryState& state,
-    const TString& deviceUUID)
+    const NProto::TDeviceConfig& device)
 {
     EDeviceStateFlags deviceStateFlags = EDeviceStateFlags::NONE;
-    if (state.IsDirtyDevice(deviceUUID)) {
+    if (state.IsDirtyDevice(device.GetDeviceUUID())) {
         deviceStateFlags |= EDeviceStateFlags::DIRTY;
     }
-    if (state.IsSuspendedDevice(deviceUUID)) {
+    if (state.IsSuspendedDevice(device.GetDeviceUUID())) {
         deviceStateFlags |= EDeviceStateFlags::SUSPENDED;
+    }
+    if (state.IsDeviceDetached(device)) {
+        deviceStateFlags |= EDeviceStateFlags::DETACHED;
     }
     return deviceStateFlags;
 }
@@ -359,7 +362,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
             for (size_t index = 0; index < static_cast<size_t>(devices.size());
                  ++index)
             {
-                const auto& device = devices[index];
+                const NProto::TDeviceConfig& device = devices[index];
                 TABLER() {
                     TABLED() {
                         DumpDeviceLink(out, TabletID(), device.GetDeviceUUID());
@@ -371,9 +374,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                         DumpDeviceState(
                             out,
                             device.GetState(),
-                            GetDeviceStateFlags(
-                                *State,
-                                device.GetDeviceUUID()));
+                            GetDeviceStateFlags(*State, device));
                     }
                     TABLED() {
                         out << TInstant::MicroSeconds(device.GetStateTs());
@@ -544,7 +545,7 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
             DumpDeviceState(
                 out,
                 device.GetState(),
-                GetDeviceStateFlags(*State, id));
+                GetDeviceStateFlags(*State, device));
         }
         DIV() {
             out << "State Timestamp: "
@@ -671,10 +672,7 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
         if (agent->UnknownDevicesSize()) {
             auto unknownDevices = agent->GetUnknownDevices();
             SortBy(unknownDevices, dcomp);
-            RenderDevicesWithDetails(
-                out,
-                unknownDevices,
-                "Unknown devices");
+            RenderDevicesWithDetails(out, unknownDevices, "Unknown devices");
         }
     }
 }
@@ -835,8 +833,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 dumpAgent(device.GetNodeId());
             }
             TABLED() {
-                EDeviceStateFlags flags =
-                    GetDeviceStateFlags(*State, device.GetDeviceUUID());
+                EDeviceStateFlags flags = GetDeviceStateFlags(*State, device);
                 if (FindPtr(
                         info.MasterDiskId ? masterDiskInfo.DeviceReplacementIds
                                           : info.DeviceReplacementIds,
