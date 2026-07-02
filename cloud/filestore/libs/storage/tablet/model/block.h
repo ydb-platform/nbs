@@ -159,7 +159,6 @@ struct TBlockBytesMeta
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// XXX not the best place for this struct
 struct TFlushBytesCleanupInfo
 {
     ui64 ChunkId = 0;
