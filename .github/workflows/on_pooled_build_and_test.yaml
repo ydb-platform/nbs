@@ -173,5 +173,5 @@ jobs:
       use_network_cache: ${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
       truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
       number_of_retries: ${{ inputs.number_of_retries }}
-      test_timeout_minutes: ${{ inputs.test_timeout_minutes }}
+      test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}
     secrets: inherit

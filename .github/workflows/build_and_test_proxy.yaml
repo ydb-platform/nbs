@@ -189,7 +189,7 @@ jobs:
       cache_update_build: ${{ inputs.cache_update_build }}
       cache_update_tests: ${{ inputs.cache_update_tests }}
       number_of_retries: ${{ matrix.number_of_retries }}
-      test_timeout_minutes: ${{ matrix.test_timeout_minutes || inputs.test_timeout_minutes }}
+      test_timeout_minutes: ${{ matrix.test_timeout_minutes || inputs.test_timeout_minutes || '390' }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
     secrets: inherit
 
@@ -217,7 +217,7 @@ jobs:
       cache_update_build: ${{ inputs.cache_update_build }}
       cache_update_tests: ${{ inputs.cache_update_tests }}
       number_of_retries: ${{ matrix.number_of_retries }}
-      test_timeout_minutes: ${{ matrix.test_timeout_minutes || inputs.test_timeout_minutes }}
+      test_timeout_minutes: ${{ matrix.test_timeout_minutes || inputs.test_timeout_minutes || '390' }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
     secrets: inherit
 
@@ -246,6 +246,6 @@ jobs:
       cache_update_build: ${{ inputs.cache_update_build }}
       cache_update_tests: ${{ inputs.cache_update_tests }}
       number_of_retries: ${{ matrix.number_of_retries }}
-      test_timeout_minutes: ${{ matrix.test_timeout_minutes || inputs.test_timeout_minutes }}
+      test_timeout_minutes: ${{ matrix.test_timeout_minutes || inputs.test_timeout_minutes || '390' }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
     secrets: inherit

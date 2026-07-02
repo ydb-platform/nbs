@@ -252,7 +252,7 @@ jobs:
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
         number_of_retries: ${{ inputs.number_of_retries }}
-        test_timeout_minutes: ${{ inputs.test_timeout_minutes }}
+        test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}
         build_duration_seconds: ${{ steps.build.outputs.build_duration_seconds || '0' }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
 
@@ -429,4 +429,4 @@ jobs:
           clean_ya_dir: ${{ inputs.clean_ya_dir }}
           use_network_cache: ${{ inputs.use_network_cache }}
           number_of_retries: ${{ inputs.number_of_retries }}
-          test_timeout_minutes: ${{ inputs.test_timeout_minutes }}
+          test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}

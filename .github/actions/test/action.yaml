@@ -65,7 +65,7 @@ inputs:
     description: "Number of retries for ya make"
   test_timeout_minutes:
     required: false
-    default: "60"
+    default: "390"
     description: "Per ya make test attempt timeout in minutes"
   test_budget_minutes:
     required: false
@@ -310,6 +310,7 @@ runs:
             fi
             echo "ya make timeout for attempt ${i}: ${ATTEMPT_TIMEOUT_SECONDS}s (cap=${TEST_TIMEOUT_MINUTES}m remaining_budget=${REMAINING_TEST_BUDGET_SECONDS}s build=${BUILD_DURATION_SECONDS}s reserve=${TEST_BUDGET_RESERVE_MINUTES}m total=${TEST_BUDGET_MINUTES}m)"
             EXIT_CODE_FILE=$(mktemp)
+            YA_MAKE_ATTEMPT_STARTED_AT=$(date +%s)
             set +e
             {
                 timeout --signal=TERM --kill-after=60s "${ATTEMPT_TIMEOUT_SECONDS}s" \
@@ -323,6 +324,8 @@ runs:
                 echo $? > "$EXIT_CODE_FILE"
             } |& tee "$RETRY_LOG_DIR/ya_make_output.txt"
             set -e
+            YA_MAKE_ATTEMPT_FINISHED_AT=$(date +%s)
+            YA_MAKE_ATTEMPT_ELAPSED_SECONDS=$((YA_MAKE_ATTEMPT_FINISHED_AT - YA_MAKE_ATTEMPT_STARTED_AT))
             RC=$(< "$EXIT_CODE_FILE")
             rm -f "$EXIT_CODE_FILE"
             if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
@@ -347,15 +350,21 @@ runs:
                     fi
                     ;;
                 137)
-                    echo "ya test returned $RC it was killed by OOM killer"
-                    if [ $OOM_CAN_BE_RETRIED -eq 0 ]; then
-                        DO_RETRY=0
-                    else
+                    if [ "$YA_MAKE_ATTEMPT_ELAPSED_SECONDS" -ge "$ATTEMPT_TIMEOUT_SECONDS" ]; then
+                        echo "ya test returned $RC after timeout killed it with SIGKILL"
                         DO_RETRY=1
-                        OOM_CAN_BE_RETRIED=0
-                        RETRIES=$((RETRIES + 1))
-                        echo "RETRIES=$((RETRIES + 1))" | tee -a "$GITHUB_ENV"
-                        echo "Retrying once because OOM killer killed ya-bin, increasing retry count by 1"
+                        RETRY_FLAG="-X"
+                    else
+                        echo "ya test returned $RC it was killed by OOM killer"
+                        if [ $OOM_CAN_BE_RETRIED -eq 0 ]; then
+                            DO_RETRY=0
+                        else
+                            DO_RETRY=1
+                            OOM_CAN_BE_RETRIED=0
+                            RETRIES=$((RETRIES + 1))
+                            echo "RETRIES=$((RETRIES + 1))" | tee -a "$GITHUB_ENV"
+                            echo "Retrying once because OOM killer killed ya-bin, increasing retry count by 1"
+                        fi
                     fi
                     ;;
                 *)
