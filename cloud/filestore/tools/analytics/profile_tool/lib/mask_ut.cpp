@@ -158,6 +158,69 @@ Y_UNIT_TEST_SUITE(TMaskSensitiveData)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldMaskListNodesCookies)
+    {
+        {
+            TMaskSensitiveData mask(
+                TMaskSensitiveData::EMode::NodeId,
+                "seed",
+                5);
+
+            NProto::TProfileLogRequestInfo request;
+            request.MutableListNodesInfo()->SetNodeId(42);
+            request.MutableListNodesInfo()->SetRequestCookie("request.cpp");
+            request.MutableListNodesInfo()->SetResponseCookie("response.cpp");
+
+            mask.MaskRequest(request);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "nodeid-42.cpp",
+                request.GetListNodesInfo().GetRequestCookie());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "nodeid-42.cpp",
+                request.GetListNodesInfo().GetResponseCookie());
+        }
+
+        {
+            TMaskSensitiveData mask(TMaskSensitiveData::EMode::Hash, "seed", 5);
+
+            NProto::TProfileLogRequestInfo request;
+            request.MutableListNodesInfo()->SetNodeId(42);
+            request.MutableListNodesInfo()->SetRequestCookie("request.cpp");
+            request.MutableListNodesInfo()->SetResponseCookie("response.cpp");
+
+            mask.MaskRequest(request);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1bc470cbaa95e75013894b31306bb18d.cpp",
+                request.GetListNodesInfo().GetRequestCookie());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "b52a3e180f1bf42f331dd28a1bab6199.cpp",
+                request.GetListNodesInfo().GetResponseCookie());
+        }
+
+        {
+            TMaskSensitiveData mask(
+                TMaskSensitiveData::EMode::Empty,
+                "seed",
+                5);
+
+            NProto::TProfileLogRequestInfo request;
+            request.MutableListNodesInfo()->SetNodeId(42);
+            request.MutableListNodesInfo()->SetRequestCookie("request.cpp");
+            request.MutableListNodesInfo()->SetResponseCookie("response.cpp");
+
+            mask.MaskRequest(request);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                ".cpp",
+                request.GetListNodesInfo().GetRequestCookie());
+            UNIT_ASSERT_VALUES_EQUAL(
+                ".cpp",
+                request.GetListNodesInfo().GetResponseCookie());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NProfileTool

@@ -96,6 +96,19 @@ message TProfileLogCollectGarbageInfo {
     optional uint32 GarbageBlobsCount = 4;
 };
 
+message TProfileLogListNodesInfo {
+    option (message_id) = 9;
+
+    // from request
+    optional uint64 NodeId = 1;
+    optional uint32 MaxBytes = 2;
+    optional bytes RequestCookie = 3;
+
+    // from response
+    optional bytes ResponseCookie = 4;
+    optional uint64 Size = 5;
+};
+
 message TProfileLogRequestInfo {
     option (message_id) = 1;
 
@@ -122,6 +135,8 @@ message TProfileLogRequestInfo {
     optional uint32 Flags = 14;
 
     optional uint64 CommitId = 15;
+
+    optional TProfileLogListNodesInfo ListNodesInfo = 16;
 };
 
 message TProfileLogRecord {

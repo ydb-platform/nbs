@@ -480,8 +480,10 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TListNodesRequest& request)
 {
-    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
-    nodeInfo->SetNodeId(request.GetNodeId());
+    auto* listNodesInfo = profileLogRequest.MutableListNodesInfo();
+    listNodesInfo->SetNodeId(request.GetNodeId());
+    listNodesInfo->SetMaxBytes(request.GetMaxBytes());
+    listNodesInfo->SetRequestCookie(request.GetCookie());
 }
 
 template <>
@@ -731,8 +733,9 @@ void FinalizeProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TListNodesResponse& response)
 {
-    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
-    nodeInfo->SetSize(response.GetNames().size());
+    auto* listNodesInfo = profileLogRequest.MutableListNodesInfo();
+    listNodesInfo->SetSize(response.GetNames().size());
+    listNodesInfo->SetResponseCookie(response.GetCookie());
 }
 
 template <>
