@@ -344,6 +344,17 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
 
             UNIT_ASSERT_VALUES_EQUAL("b", visitor.Data);
         }
+
+        // Even though this range is not visible at current commit id,
+        // Intersects func is still supposed to return true because there's a
+        // range in one of the chunks that actually overlaps with the argument.
+        UNIT_ASSERT(freshBytes.Intersects(1, TByteRange(100, 1, 4_KB)));
+        UNIT_ASSERT(freshBytes.Intersects(1, TByteRange(102, 1, 4_KB)));
+        UNIT_ASSERT(!freshBytes.Intersects(1, TByteRange(103, 1, 4_KB)));
+        UNIT_ASSERT(!freshBytes.Intersects(1, TByteRange(99, 1, 4_KB)));
+        UNIT_ASSERT(freshBytes.Intersects(1, TByteRange(99, 2, 4_KB)));
+        UNIT_ASSERT(freshBytes.Intersects(1, TByteRange(102, 2, 4_KB)));
+        UNIT_ASSERT(!freshBytes.Intersects(2, TByteRange(0, 4_KB, 4_KB)));
     }
 
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)

@@ -245,13 +245,21 @@ private:
 
     void Barrier(ui64 commitId);
 
-    void FindBytes(
+    void FindBytesImpl(
+        IFreshBytesVisitor& visitor,
+        ui64 nodeId,
+        TByteRange byteRange,
+        ui64 commitId,
+        bool applyDeletedRanges) const;
+
+    static void FindBytesInChunk(
         const TChunks& chunks,
         ui64 chunkIndex,
         IFreshBytesVisitor& visitor,
         ui64 nodeId,
         TByteRange byteRange,
-        ui64 commitId) const;
+        ui64 commitId,
+        bool applyDeletedRanges);
 
     static TVector<TByteRange> ApplyDeletedRanges(
         const TChunks& chunks,

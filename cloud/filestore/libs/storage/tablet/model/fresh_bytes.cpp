@@ -348,6 +348,7 @@ void TFreshBytes::Barrier(ui64 commitId)
         Chunks.back().ClosingCommitId = commitId;
         Chunks.emplace_back(Allocator);
         Chunks.back().Id = ++LastChunkId;
+        Chunks.back().DeletedRanges.UpdateLogTag(LogTag);
     }
 }
 
@@ -459,6 +460,21 @@ void TFreshBytes::FindBytes(
     TByteRange byteRange,
     ui64 commitId) const
 {
+    FindBytesImpl(
+        visitor,
+        nodeId,
+        byteRange,
+        commitId,
+        true /* applyDeletedRanges */);
+}
+
+void TFreshBytes::FindBytesImpl(
+    IFreshBytesVisitor& visitor,
+    ui64 nodeId,
+    TByteRange byteRange,
+    ui64 commitId,
+    bool applyDeletedRanges) const
+{
     for (ui64 i = 0; i < Chunks.size(); ++i) {
         if (Chunks[i].FirstCommitId > commitId) {
             //
@@ -469,7 +485,14 @@ void TFreshBytes::FindBytes(
             break;
         }
 
-        FindBytes(Chunks, i, visitor, nodeId, byteRange, commitId);
+        FindBytesInChunk(
+            Chunks,
+            i,
+            visitor,
+            nodeId,
+            byteRange,
+            commitId,
+            applyDeletedRanges);
     }
 }
 
@@ -513,13 +536,14 @@ void TFreshBytes::FindBytes(
     return result;
 }
 
-void TFreshBytes::FindBytes(
+/* static */ void TFreshBytes::FindBytesInChunk(
     const TChunks& chunks,
     ui64 chunkIndex,
     IFreshBytesVisitor& visitor,
     ui64 nodeId,
     TByteRange byteRange,
-    ui64 commitId) const
+    ui64 commitId,
+    bool applyDeletedRanges)
 {
     const auto& chunk = chunks[chunkIndex];
     auto it = chunk.Refs.upper_bound({nodeId, byteRange.Offset});
@@ -535,12 +559,17 @@ void TFreshBytes::FindBytes(
 
         const auto intersection = itRange.Intersect(byteRange);
         if (it->second.CommitId <= commitId && intersection.Length) {
-            auto actualRanges = ApplyDeletedRanges(
-                chunks,
-                chunkIndex + 1,
-                nodeId,
-                intersection,
-                commitId);
+            TVector<TByteRange> actualRanges;
+            if (applyDeletedRanges) {
+                actualRanges = ApplyDeletedRanges(
+                    chunks,
+                    chunkIndex + 1,
+                    nodeId,
+                    intersection,
+                    commitId);
+            } else {
+                actualRanges.push_back(intersection);
+            }
 
             for (const auto& actualRange: actualRanges) {
                 TStringBuf data = it->second.Buf.substr(
@@ -576,7 +605,12 @@ bool TFreshBytes::Intersects(ui64 nodeId, TByteRange byteRange) const
         }
     } visitor;
 
-    FindBytes(visitor, nodeId, byteRange, InvalidCommitId);
+    FindBytesImpl(
+        visitor,
+        nodeId,
+        byteRange,
+        InvalidCommitId,
+        false /* applyDeletedRanges */);
 
     return visitor.FoundBytes;
 }
