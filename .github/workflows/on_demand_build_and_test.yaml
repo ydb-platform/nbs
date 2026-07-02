@@ -72,6 +72,10 @@ on:
         type: string
         default: "1"
         description: "Number of retries for tests"
+      test_timeout_minutes:
+        type: string
+        default: ""
+        description: "Per ya make test attempt timeout in minutes"
   workflow_call:
     inputs:
       component:
@@ -146,6 +150,10 @@ on:
         type: string
         default: "1"
         description: "Number of retries for tests"
+      test_timeout_minutes:
+        type: string
+        default: ""
+        description: "Per ya make test attempt timeout in minutes"
 
 env:
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
@@ -258,6 +266,7 @@ jobs:
       use_network_cache: ${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
       truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
       number_of_retries: ${{ inputs.number_of_retries }}
+      test_timeout_minutes: ${{ inputs.test_timeout_minutes }}
     secrets: inherit
 
   sleep-if-needed:

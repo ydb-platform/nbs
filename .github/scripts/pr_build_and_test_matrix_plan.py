@@ -14,6 +14,7 @@ from .helpers import (
     SAN_PRESET,
     TEST_TYPE_REGULAR,
     TEST_TYPE_SAN,
+    test_timeout_minutes_for,
 )
 
 
@@ -121,6 +122,7 @@ def build_matrix(inp: Inputs) -> list[dict]:
     modes = decide_modes(inp)
     build_target, test_target, build_target_san, test_target_san = compute_targets(inp)
     test_size = "small,medium,large" if inp.has_large_tests_label else "small,medium"
+    regular_test_timeout_minutes = test_timeout_minutes_for(test_size, test_target)
 
     include: List[dict] = []
 
@@ -141,6 +143,7 @@ def build_matrix(inp: Inputs) -> list[dict]:
                 "run_tests": True,
                 "allow_split_workload": True,
                 "target_platform": "",
+                "test_timeout_minutes": regular_test_timeout_minutes,
             }
         )
 
@@ -167,6 +170,9 @@ def build_matrix(inp: Inputs) -> list[dict]:
                         "run_tests": True,
                         "allow_split_workload": True,
                         "target_platform": "",
+                        "test_timeout_minutes": test_timeout_minutes_for(
+                            test_size, test_target_san[san]
+                        ),
                     }
                 )
 

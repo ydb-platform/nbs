@@ -52,6 +52,9 @@ outputs:
   build_error_log_url:
     description: "URL to Markdown summary of ya build errors"
     value: ${{ steps.build-errors.outputs.url }}
+  build_duration_seconds:
+    description: "Elapsed time of the ya make build step in seconds"
+    value: ${{ steps.build.outputs.build_duration_seconds }}
 
 runs:
   using: composite
@@ -90,6 +93,7 @@ runs:
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
     - name: build
+      id: build
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         NETWORK_RETRY_ATTEMPTS: ${{ inputs.network_retry_attempts }}
@@ -251,6 +255,7 @@ runs:
 
         YA_MAKE_EXIT_CODE=1
         attempt=0
+        BUILD_START_TIME=$(date +%s)
         while [ "$attempt" -lt "$RETRIES" ]; do
             attempt=$((attempt + 1))
             echo "ya build attempt ${attempt}/${RETRIES}"
@@ -274,6 +279,10 @@ runs:
                 break
             fi
         done
+        BUILD_END_TIME=$(date +%s)
+        BUILD_DURATION_SECONDS=$((BUILD_END_TIME - BUILD_START_TIME))
+        echo "BUILD_DURATION_SECONDS=$BUILD_DURATION_SECONDS" | tee -a "$GITHUB_ENV"
+        echo "build_duration_seconds=$BUILD_DURATION_SECONDS" | tee -a "$GITHUB_OUTPUT"
         echo "YA_MAKE_EXIT_CODE=$YA_MAKE_EXIT_CODE" >> "$GITHUB_ENV"
         date
     - name: Summarize build errors

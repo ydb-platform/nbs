@@ -154,6 +154,7 @@ def test_build_matrix_single_mode_no_sanitizers():
     assert row["run_tests"] is True
     assert row["allow_split_workload"] is True
     assert row["target_platform"] == ""
+    assert row["test_timeout_minutes"] == 120
 
     # targets match compute_targets()
     bt, tt, _, _ = compute_targets(inp)
@@ -211,6 +212,20 @@ def test_build_matrix_large_tests_propagates_to_all_rows():
     assert len(matrix) == 2
     for row in matrix:
         assert row["test_size"] == "small,medium,large"
+
+
+def test_build_matrix_sets_large_all_targets_default_timeout():
+    inp = mk_inputs(large_tests=True)
+    matrix = build_matrix(inp)
+
+    assert matrix[0]["test_timeout_minutes"] == 320
+
+
+def test_build_matrix_sets_large_component_timeout():
+    inp = mk_inputs(contains={"blockstore": True}, large_tests=True)
+    matrix = build_matrix(inp)
+
+    assert matrix[0]["test_timeout_minutes"] == 180
 
 
 def test_build_matrix_skips_empty_san_targets():

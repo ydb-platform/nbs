@@ -13,6 +13,7 @@ def mk(
     split_san=None,
     test_type: str = "",
     retries: str = "",
+    test_size: str = "",
 ):
     split_san = split_san or {
         "asan": False,
@@ -28,6 +29,7 @@ def mk(
         split_runners_san=split_san,
         test_type=test_type,
         number_of_retries=retries,
+        test_size=test_size,
     )
 
 
@@ -49,6 +51,7 @@ def test_regular_no_split_singleton():
     assert inc[0]["component"] == "all"
     assert inc[0]["vm_name_suffix"] == ""
     assert inc[0]["build_preset"] == "relwithdebinfo"
+    assert inc[0]["test_timeout_minutes"] == 60
 
 
 def test_regular_split_only_when_targets_are_exact_roots():
@@ -184,3 +187,76 @@ def test_empty_targets_raise():
                 build_preset="relwithdebinfo",
             )
         )
+
+
+def test_timeout_large_all_targets_gets_default_limit():
+    inc = parse(
+        mk(
+            build_target=(
+                "cloud/blockstore/apps/,cloud/filestore/apps/,"
+                "cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+            ),
+            test_target=(
+                "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,"
+                "cloud/tasks/,cloud/storage/"
+            ),
+            build_preset="relwithdebinfo",
+            split=False,
+            test_size="small,medium,large",
+        )
+    )
+
+    assert inc[0]["test_timeout_minutes"] == 320
+
+
+def test_timeout_large_split_components_get_component_limits():
+    inc = parse(
+        mk(
+            build_target=(
+                "cloud/blockstore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+            ),
+            test_target="cloud/blockstore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/",
+            build_preset="relwithdebinfo",
+            split=True,
+            test_size="small,medium,large",
+        )
+    )
+
+    by = {r["component"]: r for r in inc}
+    assert by["blockstore"]["test_timeout_minutes"] == 180
+    assert by["disk_manager"]["test_timeout_minutes"] == 120
+    assert by["tasks_storage"]["test_timeout_minutes"] == 60
+
+
+def test_timeout_large_unsplit_blockstore_filestore_gets_default_limit():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/filestore/apps/",
+            test_target="cloud/blockstore/,cloud/filestore/",
+            build_preset="relwithdebinfo",
+            split=False,
+            test_size="small,medium,large",
+        )
+    )
+
+    assert inc[0]["test_timeout_minutes"] == 320
+
+
+def test_timeout_medium_all_targets_gets_two_hours():
+    inc = parse(
+        mk(
+            build_target=(
+                "cloud/blockstore/apps/,cloud/filestore/apps/,"
+                "cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+            ),
+            test_target=(
+                "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,"
+                "cloud/tasks/,cloud/storage/"
+            ),
+            build_preset="relwithdebinfo",
+            split=False,
+            test_size="small,medium",
+        )
+    )
+
+    assert inc[0]["test_timeout_minutes"] == 120

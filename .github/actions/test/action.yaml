@@ -63,6 +63,22 @@ inputs:
     required: false
     default: "1"
     description: "Number of retries for ya make"
+  test_timeout_minutes:
+    required: false
+    default: "60"
+    description: "Per ya make test attempt timeout in minutes"
+  test_budget_minutes:
+    required: false
+    default: "480"
+    description: "Total job budget in minutes"
+  test_budget_reserve_minutes:
+    required: false
+    default: "30"
+    description: "Minutes reserved for uploading and processing after tests"
+  build_duration_seconds:
+    required: false
+    default: "0"
+    description: "Elapsed build time in seconds to subtract from test budget"
   tmpfs_mount_point:
     required: false
     default: "/mnt/ya_make_tmpfs"
@@ -132,6 +148,10 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
+        TEST_TIMEOUT_MINUTES: ${{ inputs.test_timeout_minutes }}
+        TEST_BUDGET_MINUTES: ${{ inputs.test_budget_minutes }}
+        TEST_BUDGET_RESERVE_MINUTES: ${{ inputs.test_budget_reserve_minutes }}
+        BUILD_DURATION_SECONDS: ${{ inputs.build_duration_seconds }}
         BUILD_PRESET: ${{ inputs.build_preset }}
         TEST_TARGET: ${{ inputs.test_target }}
         TEST_SIZE: ${{ inputs.test_size }}
@@ -238,13 +258,33 @@ runs:
 
         date
         ./ya --version
+
+        function remaining_test_budget_seconds() {
+            local now elapsed_test_seconds
+            now=$(date +%s)
+            elapsed_test_seconds=$((now - TEST_BUDGET_STARTED_AT))
+            echo $((TEST_BUDGET_MINUTES * 60 - TEST_BUDGET_RESERVE_MINUTES * 60 - BUILD_DURATION_SECONDS - elapsed_test_seconds))
+        }
+
+        if [ "$TEST_BUDGET_RESERVE_MINUTES" -ge "$TEST_BUDGET_MINUTES" ]; then
+            echo "Invalid test budget reserve (${TEST_BUDGET_RESERVE_MINUTES}m) for total budget (${TEST_BUDGET_MINUTES}m), using 30m reserve"
+            TEST_BUDGET_RESERVE_MINUTES=30
+        fi
+        TEST_BUDGET_STARTED_AT=$(date +%s)
+        echo "TEST_TIMEOUT_MINUTES=${TEST_TIMEOUT_MINUTES}" | tee -a "$GITHUB_ENV"
+        echo "TEST_BUDGET_MINUTES=${TEST_BUDGET_MINUTES}" | tee -a "$GITHUB_ENV"
+        echo "TEST_BUDGET_RESERVE_MINUTES=${TEST_BUDGET_RESERVE_MINUTES}" | tee -a "$GITHUB_ENV"
+        echo "BUILD_DURATION_SECONDS=${BUILD_DURATION_SECONDS}" | tee -a "$GITHUB_ENV"
+
         RETRIES="${NUMBER_OF_RETRIES}"
         OOM_CAN_BE_RETRIED=1
         BUILD_FAILED=0
+        FAIL_CHECKER_RC=1
 
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
         i=0
+        echo "LAST_STEP=0" | tee -a "$GITHUB_ENV"
         # setting variable in case that test will be interrupter by OOM killer that
         # will kill VM with runner
         echo "failed_tests=yes" >> $GITHUB_OUTPUT
@@ -257,10 +297,23 @@ runs:
             mkdir -p "$RETRY_LOG_DIR"
             echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
             echo "::group::ya-make-test-${i}"
+            REMAINING_TEST_BUDGET_SECONDS=$(remaining_test_budget_seconds)
+            ATTEMPT_TIMEOUT_SECONDS=$((TEST_TIMEOUT_MINUTES * 60))
+            if [ "$REMAINING_TEST_BUDGET_SECONDS" -lt "$ATTEMPT_TIMEOUT_SECONDS" ]; then
+                ATTEMPT_TIMEOUT_SECONDS="$REMAINING_TEST_BUDGET_SECONDS"
+            fi
+            if [ "$ATTEMPT_TIMEOUT_SECONDS" -lt 60 ]; then
+                echo "No test budget left: remaining=${REMAINING_TEST_BUDGET_SECONDS}s build=${BUILD_DURATION_SECONDS}s reserve=${TEST_BUDGET_RESERVE_MINUTES}m total=${TEST_BUDGET_MINUTES}m"
+                FAIL_CHECKER_RC=124
+                echo "::endgroup::"
+                break
+            fi
+            echo "ya make timeout for attempt ${i}: ${ATTEMPT_TIMEOUT_SECONDS}s (cap=${TEST_TIMEOUT_MINUTES}m remaining_budget=${REMAINING_TEST_BUDGET_SECONDS}s build=${BUILD_DURATION_SECONDS}s reserve=${TEST_BUDGET_RESERVE_MINUTES}m total=${TEST_BUDGET_MINUTES}m)"
             EXIT_CODE_FILE=$(mktemp)
             set +e
             {
-                ./ya make "${test_size[@]/#/--test-size=}" \
+                timeout --signal=TERM --kill-after=60s "${ATTEMPT_TIMEOUT_SECONDS}s" \
+                    ./ya make "${test_size[@]/#/--test-size=}" \
                     "${test_type[@]/#/--test-type=}" \
                     "${extra_params[@]}" \
                     --junit "${JUNIT_REPORT_XML}.${i}" \

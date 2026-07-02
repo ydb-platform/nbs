@@ -14,6 +14,7 @@ from .helpers import (
     vm_suffix_for_component,
     is_san_preset,
     san_from_preset,
+    test_timeout_minutes_for,
 )
 from .helpers import (
     COMPONENTS,
@@ -43,6 +44,7 @@ class Inputs:
 
     test_type: str
     number_of_retries: str
+    test_size: str
 
     @staticmethod
     def from_env(env=None) -> "Inputs":
@@ -70,6 +72,8 @@ class Inputs:
         if not number_of_retries:
             number_of_retries = "1" if is_san_preset(build_preset) else "3"
 
+        test_size = (env.get("TEST_SIZE") or "").strip()
+
         return Inputs(
             build_target=build_target,
             test_target=test_target,
@@ -78,6 +82,7 @@ class Inputs:
             split_runners_san=split_runners_san,
             test_type=test_type,
             number_of_retries=number_of_retries,
+            test_size=test_size,
         )
 
 
@@ -173,6 +178,9 @@ def compute_matrix_include(inp: Inputs) -> str:
                 "build_preset": preset,
                 "test_type": inp.test_type,
                 "number_of_retries": inp.number_of_retries,
+                "test_timeout_minutes": test_timeout_minutes_for(
+                    inp.test_size, inp.test_target, "all"
+                ),
                 "san": san or "",
                 "component": "all",
             }
@@ -214,6 +222,9 @@ def compute_matrix_include(inp: Inputs) -> str:
                 "build_preset": preset,
                 "test_type": inp.test_type,
                 "number_of_retries": inp.number_of_retries,
+                "test_timeout_minutes": test_timeout_minutes_for(
+                    inp.test_size, inp.test_target, "none"
+                ),
                 "san": san or "",
                 "component": "none",
             }
@@ -239,6 +250,9 @@ def compute_matrix_include(inp: Inputs) -> str:
                 "build_preset": preset,
                 "test_type": inp.test_type,
                 "number_of_retries": inp.number_of_retries,
+                "test_timeout_minutes": test_timeout_minutes_for(
+                    inp.test_size, test_group, "_".join(group)
+                ),
                 "san": san or "",
                 "component": "_".join(group),
             }
