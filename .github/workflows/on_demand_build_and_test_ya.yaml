@@ -249,8 +249,17 @@ jobs:
       with:
         sleep_after_tests: ${{ inputs.sleep_after_tests != '0' && inputs.sleep_after_tests || '7200' }}
 
+    - name: mark workload as cancelled
+      if: ${{ cancelled() && steps.build.outcome != 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: cancelled
+
     - name: mark workload as completed
-      if: ${{ always() && steps.build.outcome != 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      if: ${{ always() && !cancelled() && steps.build.outcome != 'failure' && (!inputs.run_tests || steps.test.outputs.report_generated == 'yes') && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
       uses: ./.github/actions/workload_comment
       with:
         command: update

@@ -998,9 +998,78 @@ def test_complete_workload_checks_block_preserves_failed_build_rows() -> None:
 
     assert ":red_circle:" in updated
     assert "build failed" in updated
-    assert ":white_check_mark:" in updated
+    assert "report update failed" in updated
     assert "https://github.example/job/123" in updated
     assert "https://github.example/job/456" in updated
+
+
+def test_complete_workload_checks_block_marks_cancelled_stale_row() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                "https://github.com/org/repo/actions/runs/1/job/123",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=lambda _url: "cancelled",
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "cancelled"
+    assert "cancelled or timed out before reporting completion" in updated
+    assert "https://github.com/org/repo/actions/runs/1/job/123" in updated
+
+
+def test_complete_workload_checks_block_marks_failed_stale_row() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                "https://github.com/org/repo/actions/runs/1/job/123",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=lambda _url: "failure",
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "failed"
+    assert "job failed before reporting completion" in updated
+
+
+def test_complete_workload_checks_block_marks_successful_stale_row_as_report_failed() -> (
+    None
+):
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                "https://github.com/org/repo/actions/runs/1/job/123",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=lambda _url: "success",
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "report_failed"
+    assert "job finished but report update failed" in updated
 
 
 def test_update_workload_check_block_adds_failed_build_log_link() -> None:

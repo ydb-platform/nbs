@@ -5,17 +5,8 @@ import argparse
 import json
 import os
 
-from github.PullRequest import PullRequest
-
-from ..helpers import find_current_job_url, github_client, setup_logger
+from ..helpers import find_current_job_url, get_pull_request_from_event, setup_logger
 from . import generate_summary as gs
-
-
-def get_pull_request(gh) -> PullRequest:
-    with open(os.environ["GITHUB_EVENT_PATH"]) as fp:
-        event = json.load(fp)
-
-    return gh.create_from_raw_data(PullRequest, event["pull_request"])
 
 
 def iter_components(matrix_include: str) -> list[str]:
@@ -55,7 +46,16 @@ def main() -> None:
     update_parser.add_argument("--component", required=True)
     update_parser.add_argument(
         "--workload-check-status",
-        choices=("running", "completed", "failed_build"),
+        choices=(
+            "running",
+            "completed",
+            "failed_build",
+            "failed",
+            "cancelled",
+            "timed_out",
+            "skipped",
+            "report_failed",
+        ),
         required=True,
     )
     update_parser.add_argument("--current-job-name", default="")
@@ -76,7 +76,10 @@ def main() -> None:
     ):
         return
 
-    pr = get_pull_request(github_client(os.environ["GITHUB_TOKEN"]))
+    pr = get_pull_request_from_event(
+        os.environ["GITHUB_TOKEN"],
+        os.environ["GITHUB_EVENT_PATH"],
+    )
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
 
     if args.command == "init":

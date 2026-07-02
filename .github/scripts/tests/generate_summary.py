@@ -21,7 +21,7 @@ from xml.etree import ElementTree as ET
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from ..helpers import github_client, setup_logger
+from ..helpers import get_pull_request_from_event, setup_logger
 from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
@@ -43,12 +43,22 @@ WORKLOAD_CHECK_STATUS_ICONS = {
     "running": ":hourglass_flowing_sand:",
     "completed": ":white_check_mark:",
     "failed_build": ":red_circle:",
+    "failed": ":x:",
+    "cancelled": ":no_entry_sign:",
+    "timed_out": ":alarm_clock:",
+    "skipped": ":black_circle:",
+    "report_failed": ":warning:",
 }
 WORKLOAD_CHECK_STATUS_ORDER = {
     "pending": 0,
     "running": 1,
     "completed": 2,
-    "failed_build": 3,
+    "failed": 3,
+    "cancelled": 3,
+    "timed_out": 3,
+    "skipped": 3,
+    "report_failed": 3,
+    "failed_build": 4,
 }
 BUILD_ERROR_ANCHOR_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
@@ -736,6 +746,11 @@ def get_workload_check_line(
         "running": "",
         "completed": "",
         "failed_build": " (build failed)",
+        "failed": " (job failed before reporting completion)",
+        "cancelled": " (cancelled or timed out before reporting completion)",
+        "timed_out": " (timed out before reporting completion)",
+        "skipped": " (job skipped)",
+        "report_failed": " (job finished but report update failed)",
     }
     label = get_workload_label(component)
     if job_url:
@@ -936,19 +951,48 @@ def update_workload_check_block(
     return updated
 
 
-def complete_workload_checks_block(body: str) -> str:
+def is_stale_workload_check_status(status: str | None) -> bool:
+    return status in ("pending", "running")
+
+
+def workload_check_status_for_job_conclusion(conclusion: str | None) -> str:
+    if conclusion == "cancelled":
+        return "cancelled"
+    if conclusion == "timed_out":
+        return "timed_out"
+    if conclusion == "skipped":
+        return "skipped"
+    if conclusion in ("failure", "action_required", "startup_failure"):
+        return "failed"
+    if conclusion in ("success", "neutral"):
+        return "report_failed"
+    return "report_failed"
+
+
+def complete_workload_checks_block(
+    body: str,
+    job_conclusion_resolver: Callable[[str], str | None] | None = None,
+) -> str:
     pattern = re.compile(
         r"^.*<!-- workload-check component=(?P<component>[^ ]+) -->$",
         re.MULTILINE,
     )
 
     def _replace(match: re.Match[str]) -> str:
-        if "build failed" in match.group(0):
-            return match.group(0)
         component = match.group("component")
+        status = get_workload_check_status(body, component)
+        if not is_stale_workload_check_status(status):
+            return match.group(0)
         job_url_match = re.search(r"\]\((?P<url>[^)]+)\)", match.group(0))
         job_url = job_url_match.group("url") if job_url_match else ""
-        return get_workload_check_line(component, "completed", job_url)
+        conclusion = (
+            job_conclusion_resolver(job_url) if job_conclusion_resolver else None
+        )
+        return get_workload_check_line(
+            component,
+            workload_check_status_for_job_conclusion(conclusion),
+            job_url,
+        )
 
     return pattern.sub(_replace, body)
 
@@ -1251,6 +1295,7 @@ def complete_pr_comment_workload_checks(
     pr: PullRequestLike,
     build_preset: str,
     is_dry_run: bool,
+    job_conclusion_resolver: Callable[[str], str | None] | None = None,
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,
@@ -1265,7 +1310,11 @@ def complete_pr_comment_workload_checks(
         return
 
     LOGGER.info("Completing workload checks for comment id=%s", comment.id)
-    comment.edit(bump_comment_revision(complete_workload_checks_block(comment.body)))
+    comment.edit(
+        bump_comment_revision(
+            complete_workload_checks_block(comment.body, job_conclusion_resolver)
+        )
+    )
 
 
 def parse_title_html_path_args(args: list[str]) -> list[TitlePathTriplet]:
@@ -1347,15 +1396,11 @@ def main() -> None:
     ):
         return
 
-    from github.PullRequest import PullRequest
-
-    gh = github_client(os.environ["GITHUB_TOKEN"])
-
-    with open(os.environ["GITHUB_EVENT_PATH"]) as fp:
-        event = json.load(fp)
-
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
-    pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
+    pr = get_pull_request_from_event(
+        os.environ["GITHUB_TOKEN"],
+        os.environ["GITHUB_EVENT_PATH"],
+    )
     if args.update_workload_status_only:
         update_pr_comment_workload_status(
             run_number,

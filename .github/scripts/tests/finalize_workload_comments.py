@@ -5,17 +5,16 @@ import argparse
 import json
 import os
 
-from github.PullRequest import PullRequest
-
-from ..helpers import github_client, setup_logger
+from ..helpers import (
+    PYGITHUB_RETRY_EXCEPTIONS,
+    get_jobs_raw,
+    get_pull_request_from_event,
+    parse_actions_job_url,
+    setup_logger,
+)
 from . import generate_summary as gs
 
-
-def get_pull_request(gh) -> PullRequest:
-    with open(os.environ["GITHUB_EVENT_PATH"]) as fp:
-        event = json.load(fp)
-
-    return gh.create_from_raw_data(PullRequest, event["pull_request"])
+JOB_LOOKUP_EXCEPTIONS = (AttributeError, ValueError) + PYGITHUB_RETRY_EXCEPTIONS
 
 
 def platform_name_for_target(default_platform_name: str, target_platform: str) -> str:
@@ -68,8 +67,38 @@ def main() -> None:
     ):
         return
 
-    pr = get_pull_request(github_client(os.environ["GITHUB_TOKEN"]))
+    pr = get_pull_request_from_event(
+        os.environ["GITHUB_TOKEN"],
+        os.environ["GITHUB_EVENT_PATH"],
+    )
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
+    job_conclusion_cache: dict[str, str | None] = {}
+
+    def resolve_job_conclusion(job_url: str) -> str | None:
+        if job_url in job_conclusion_cache:
+            return job_conclusion_cache[job_url]
+
+        job_ref = parse_actions_job_url(job_url)
+        if job_ref is None:
+            job_conclusion_cache[job_url] = None
+            return None
+        run_id, job_id = job_ref
+
+        try:
+            jobs = get_jobs_raw(
+                os.environ["GITHUB_TOKEN"],
+                os.environ["GITHUB_REPOSITORY"],
+                run_id,
+            )
+            conclusion = next(
+                (job.conclusion for job in jobs if int(job.id) == job_id),
+                None,
+            )
+        except JOB_LOOKUP_EXCEPTIONS:
+            conclusion = None
+
+        job_conclusion_cache[job_url] = conclusion
+        return conclusion
 
     for full_build_preset in iter_full_build_presets(
         args.matrix_include, args.platform_name
@@ -79,6 +108,7 @@ def main() -> None:
             pr=pr,
             build_preset=full_build_preset,
             is_dry_run=args.is_dry_run,
+            job_conclusion_resolver=resolve_job_conclusion,
         )
         gs.update_pr_comment_workload_status(
             run_number=run_number,
