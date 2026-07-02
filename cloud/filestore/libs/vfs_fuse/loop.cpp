@@ -1388,7 +1388,7 @@ private:
                     }
                 });
         } else {
-            StopAsyncDestroySession(std::move(stopCompleted));
+            StopAsyncFuseLoopUnmount(std::move(stopCompleted));
         }
     }
 
@@ -1422,14 +1422,41 @@ private:
                 Config->GetClientId().Quote().c_str()));
         }
 
-        StopAsyncDestroySession(std::move(stopCompleted));
+        StopAsyncFuseLoopUnmount(std::move(stopCompleted));
+    }
+
+    void StopAsyncFuseLoopUnmount(TPromise<void> stopCompleted)
+    {
+        // Calling FuseLoop->Unmount() from the scheduler thread may result
+        // in deadlock because of synchronous wait in ResetSessionState()
+        SystemThreadFactory()->Run(
+            [w = weak_from_this(), s = std::move(stopCompleted)]() mutable
+            {
+                if (auto p = w.lock()) {
+                    p->FuseLoop->Unmount();
+                    p->FuseLoop = nullptr;
+
+                    // Continuing execution on a non-joinable thread may result
+                    // in a race when global singletons are destroyed while
+                    // TFileSystemLoop that depends on them is still alive
+                    p->Scheduler->Schedule(
+                        TInstant::Zero(),
+                        [w = std::move(w), s = std::move(s)]() mutable
+                        {
+                            if (auto p = w.lock()) {
+                                p->StopAsyncDestroySession(std::move(s));
+                            } else {
+                                s.SetValue();
+                            }
+                        });
+                } else {
+                    s.SetValue();
+                }
+            });
     }
 
     void StopAsyncDestroySession(TPromise<void> stopCompleted)
     {
-        FuseLoop->Unmount();
-        FuseLoop = nullptr;
-
         auto callContext = MakeIntrusive<TCallContext>(
             Config->GetFileSystemId(),
             CreateRequestId());
