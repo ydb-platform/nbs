@@ -32,6 +32,7 @@ void TPartitionActor::HandleCompactionReadBlobInfo(
         requestInfo->CallContext->RequestId);
 
     auto blobsToOutputIndices = DeduplicateBlobInfos(
+        TabletID(),
         msg->BlobsToReadBlockMasks,
         msg->BlobsToReadBlobMetas);
 

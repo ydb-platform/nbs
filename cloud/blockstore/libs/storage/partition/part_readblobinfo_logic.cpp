@@ -86,8 +86,8 @@ void ReadBlockMask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash> DeduplicateBlobInfos(
+    ui64 tabletId,
     const TVector<TPartialBlobId>& blobsToReadBlockMasks,
     const TVector<TPartialBlobId>& blobsToReadBlobMetas)
 {
@@ -97,12 +97,28 @@ THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash> DeduplicateBlobInfos(
     for (size_t i = 0; i < blobsToReadBlockMasks.size(); ++i) {
         const auto& blobId = blobsToReadBlockMasks[i];
         auto& indexes = blobsToOutputIndices[blobId];
+
+        STORAGE_VERIFY_C(
+            !indexes.BlockMaskIndex,
+            TWellKnownEntityTypes::TABLET,
+            tabletId,
+            "All blobs in blobsToReadBlockMasks must be unique, but "
+                << MakeBlobId(tabletId, blobId) << " is duplicated");
+
         indexes.BlockMaskIndex = i;
     }
 
     for (size_t i = 0; i < blobsToReadBlobMetas.size(); ++i) {
         const auto& blobId = blobsToReadBlobMetas[i];
         auto& indexes = blobsToOutputIndices[blobId];
+
+        STORAGE_VERIFY_C(
+            !indexes.BlobMetaIndex,
+            TWellKnownEntityTypes::TABLET,
+            tabletId,
+            "All blobs in blobsToReadBlobMetas must be unique, but "
+                << MakeBlobId(tabletId, blobId) << " is duplicated");
+
         indexes.BlobMetaIndex = i;
     }
 

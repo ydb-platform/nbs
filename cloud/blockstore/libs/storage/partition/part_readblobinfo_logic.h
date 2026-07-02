@@ -12,6 +12,7 @@ THashMap<
     TTxPartition::TCompactionReadBlobInfo::TOutputIndex,
     TPartialBlobIdHash>
 DeduplicateBlobInfos(
+    ui64 tabletId,
     const TVector<TPartialBlobId>& blobsToReadBlockMasks,
     const TVector<TPartialBlobId>& blobsToReadBlobMetas);
 

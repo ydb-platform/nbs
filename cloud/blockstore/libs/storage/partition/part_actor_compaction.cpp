@@ -53,6 +53,41 @@ TVector<ui32> EnsureBlockChecksums(
     return result;
 }
 
+template <typename TRangeCompactionInfo>
+void FillRangeCompactionInfos(
+    TVector<TRangeCompactionInfo>& infos,
+    const TVector<TPartialBlobId>& blobsToReadBlobMetas,
+    const TVector<TPartialBlobId>& blobsToReadBlockMasks,
+    const TVector<NProto::TBlobMeta>& blobMetas,
+    const TVector<TBlockMask>& blockMasks)
+{
+    for (size_t i = 0; i < blobsToReadBlobMetas.size(); ++i) {
+        const auto& blobId = blobsToReadBlobMetas[i];
+        const auto& blobMeta = blobMetas[i];
+
+        for (auto& rc: infos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
+            }
+            ab->BlobMeta = blobMeta;
+        }
+    }
+
+    for (size_t i = 0; i < blobsToReadBlockMasks.size(); ++i) {
+        const auto& blobId = blobsToReadBlockMasks[i];
+        const auto& blockMask = blockMasks[i];
+
+        for (auto& rc: infos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
+            }
+            ab->BlockMask = blockMask;
+        }
+    }
+}
+
 class TCompactionActor final: public TActorBootstrapped<TCompactionActor>
 {
     // Possible state transitions:
@@ -1105,31 +1140,12 @@ void TCompactionActor::HandleCompactionReadBlobInfoResponse(
         return;
     }
 
-    for (size_t i = 0; i < BlobsToReadBlobMetas.size(); ++i) {
-        const auto& blobId = BlobsToReadBlobMetas[i];
-        const auto& blobMeta = msg->BlobMetasForBlobs[i];
-
-        for (auto& rc: RangeCompactionInfos) {
-            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
-            if (!ab) {
-                continue;
-            }
-            ab->BlobMeta = blobMeta;
-        }
-    }
-
-    for (size_t i = 0; i < BlobsToReadBlockMasks.size(); ++i) {
-        const auto& blobId = BlobsToReadBlockMasks[i];
-        const auto& blockMask = msg->BlockMasksForBlobs[i];
-
-        for (auto& rc: RangeCompactionInfos) {
-            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
-            if (!ab) {
-                continue;
-            }
-            ab->BlockMask = blockMask;
-        }
-    }
+    FillRangeCompactionInfos(
+        RangeCompactionInfos,
+        BlobsToReadBlobMetas,
+        BlobsToReadBlockMasks,
+        msg->BlobMetasForBlobs,
+        msg->BlockMasksForBlobs);
 
     ApplyChecksumFixups();
 
@@ -1486,8 +1502,10 @@ bool FillBlobsInfo(
         args.BlobsToReadBlobMetas.begin(),
         args.BlobsToReadBlobMetas.end());
 
-    auto blobsToOutputIndices =
-        DeduplicateBlobInfos(blobsToReadBlockMasks, blobsToReadBlobMetas);
+    auto blobsToOutputIndices = DeduplicateBlobInfos(
+        tabletId,
+        blobsToReadBlockMasks,
+        blobsToReadBlobMetas);
 
     TVector<TBlockMask> blockMasks;
     blockMasks.resize(args.BlobsToReadBlockMasks.size());
@@ -1503,25 +1521,12 @@ bool FillBlobsInfo(
         return false;
     }
 
-    for (size_t i = 0; i < blobsToReadBlockMasks.size(); ++i) {
-        const auto& blobId = blobsToReadBlockMasks[i];
-        const auto& blockMask = blockMasks[i];
-        for (auto& rangeCompaction: args.RangeCompactions) {
-            if (auto* ab = rangeCompaction.AffectedBlobs.FindPtr(blobId)) {
-                ab->BlockMask = blockMask;
-            }
-        }
-    }
-
-    for (size_t i = 0; i < blobsToReadBlobMetas.size(); ++i) {
-        const auto& blobId = blobsToReadBlobMetas[i];
-        const auto& blobMeta = blobMetas[i];
-        for (auto& rangeCompaction: args.RangeCompactions) {
-            if (auto* ab = rangeCompaction.AffectedBlobs.FindPtr(blobId)) {
-                ab->BlobMeta = blobMeta;
-            }
-        }
-    }
+    FillRangeCompactionInfos(
+        args.RangeCompactions,
+        blobsToReadBlobMetas,
+        blobsToReadBlockMasks,
+        blobMetas,
+        blockMasks);
 
     return true;
 }

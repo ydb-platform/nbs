@@ -12,9 +12,7 @@ namespace {
 
 using TOutputIndex = TTxPartition::TCompactionReadBlobInfo::TOutputIndex;
 
-ui64 GetMethodCallCount(
-    const TPartitionDatabase& db,
-    const TString& methodName)
+ui64 GetMethodCallCount(const TPartitionDatabase& db, const TString& methodName)
 {
     ui64 count = 0;
     for (const auto& [name, callCount]: db.MethodCallCounts) {
@@ -41,9 +39,7 @@ void AssertOutputIndex(
 
     if (expectedBlobMetaIndex) {
         UNIT_ASSERT(actual.BlobMetaIndex);
-        UNIT_ASSERT_VALUES_EQUAL(
-            *expectedBlobMetaIndex,
-            *actual.BlobMetaIndex);
+        UNIT_ASSERT_VALUES_EQUAL(*expectedBlobMetaIndex, *actual.BlobMetaIndex);
     } else {
         UNIT_ASSERT(!actual.BlobMetaIndex);
     }
@@ -68,9 +64,8 @@ Y_UNIT_TEST_SUITE(TDeduplicateBlobInfosTest)
         const TPartialBlobId blob1(1, 0);
         const TPartialBlobId blob2(2, 0);
 
-        const auto result = DeduplicateBlobInfos(
-            {blob1, blob2},
-            {});
+        const auto result =
+            DeduplicateBlobInfos(TTestExecutor::TabletId, {blob1, blob2}, {});
 
         UNIT_ASSERT_VALUES_EQUAL(2, result.size());
         AssertOutputIndex(result.at(blob1), 0u, Nothing());
@@ -82,9 +77,8 @@ Y_UNIT_TEST_SUITE(TDeduplicateBlobInfosTest)
         const TPartialBlobId blob1(1, 0);
         const TPartialBlobId blob2(2, 0);
 
-        const auto result = DeduplicateBlobInfos(
-            {},
-            {blob1, blob2});
+        const auto result =
+            DeduplicateBlobInfos(TTestExecutor::TabletId, {}, {blob1, blob2});
 
         UNIT_ASSERT_VALUES_EQUAL(2, result.size());
         AssertOutputIndex(result.at(blob1), Nothing(), 0u);
@@ -99,6 +93,7 @@ Y_UNIT_TEST_SUITE(TDeduplicateBlobInfosTest)
         const TPartialBlobId metaBlob2(4, 0);
 
         const auto result = DeduplicateBlobInfos(
+            TTestExecutor::TabletId,
             {maskBlob1, maskBlob2},
             {metaBlob1, metaBlob2});
 
@@ -116,6 +111,7 @@ Y_UNIT_TEST_SUITE(TDeduplicateBlobInfosTest)
         const TPartialBlobId metaOnlyBlob(3, 0);
 
         const auto result = DeduplicateBlobInfos(
+            TTestExecutor::TabletId,
             {sharedBlob, maskOnlyBlob},
             {sharedBlob, metaOnlyBlob});
 
@@ -131,9 +127,7 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
     Y_UNIT_TEST(ShouldReadBlobInfoOnceForOverlappingBlob)
     {
         TTestExecutor executor;
-        executor.WriteTx([](TPartitionDatabase db) {
-            db.InitSchema();
-        });
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId sharedBlob;
         NProto::TBlobMeta sharedBlobMeta;
@@ -142,34 +136,45 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
         sharedBlobMeta = MakeMergedBlobMeta(10, 20, 3);
         sharedBlockMask.Set(1, 5);
 
-        executor.WriteTx([&](TPartitionDatabase db) {
-            sharedBlob = executor.MakeBlobId();
-            db.WriteBlobMeta(sharedBlob, sharedBlobMeta);
-            db.WriteBlockMask(sharedBlob, sharedBlockMask);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                sharedBlob = executor.MakeBlobId();
+                db.WriteBlobMeta(sharedBlob, sharedBlobMeta);
+                db.WriteBlockMask(sharedBlob, sharedBlockMask);
+            });
 
         const auto blobsToOutputIndices = DeduplicateBlobInfos(
+            TTestExecutor::TabletId,
             {sharedBlob},
             {sharedBlob});
 
         TVector<TBlockMask> blockMasks(1);
         TVector<NProto::TBlobMeta> blobMetas(1);
 
-        executor.ReadTx([&](TPartitionDatabase db) {
-            db.MethodCallCounts.clear();
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                db.MethodCallCounts.clear();
 
-            const bool ready = ReadBlobsInfo(
-                db,
-                blobsToOutputIndices,
-                TTestExecutor::TabletId,
-                blockMasks,
-                blobMetas);
+                const bool ready = ReadBlobsInfo(
+                    db,
+                    blobsToOutputIndices,
+                    TTestExecutor::TabletId,
+                    blockMasks,
+                    blobMetas);
 
-            UNIT_ASSERT(ready);
-            UNIT_ASSERT_VALUES_EQUAL(1, GetMethodCallCount(db, "ReadBlobInfo"));
-            UNIT_ASSERT_VALUES_EQUAL(0, GetMethodCallCount(db, "ReadBlobMeta"));
-            UNIT_ASSERT_VALUES_EQUAL(0, GetMethodCallCount(db, "ReadBlockMask"));
-        });
+                UNIT_ASSERT(ready);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    GetMethodCallCount(db, "ReadBlobInfo"));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    GetMethodCallCount(db, "ReadBlobMeta"));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    GetMethodCallCount(db, "ReadBlockMask"));
+            });
 
         UNIT_ASSERT_VALUES_EQUAL(
             BlockMaskAsString(sharedBlockMask),
