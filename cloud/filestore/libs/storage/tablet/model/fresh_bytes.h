@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "block.h"
+#include "layer.h"
 
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/common/byte_vector.h>
