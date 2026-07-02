@@ -436,6 +436,7 @@ void TAppContext::ValidateRequest(
 
     internal.Clear();
     internal.SetRequestSource(*source);
+    internal.SetPeer(TString(context.peer()));
 
     // we will only get token from secure control channel
     if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {

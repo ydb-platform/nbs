@@ -30,12 +30,15 @@ struct TEvAuth
     {
         const TString Token;
         const TPermissionList Permissions;
+        const TString PeerName;
 
         TAuthorizationRequest(
                 TString token,
-                TPermissionList permissions)
+                TPermissionList permissions,
+                TString peerName)
             : Token(std::move(token))
             , Permissions(std::move(permissions))
+            , PeerName(std::move(peerName))
         {}
     };
 

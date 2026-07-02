@@ -50,6 +50,9 @@ message THeaders
         // If this request is sent from another tablet, that tablet can put its
         // TabletId into this field.
         uint64 ClientTabletId = 4;
+
+        // Peer address of the request sender.
+        string Peer = 5;
     }
 
     // Internal header, should not be used outside.
