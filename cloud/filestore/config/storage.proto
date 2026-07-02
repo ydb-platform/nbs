@@ -834,4 +834,7 @@ message TStorageConfig
     // Sets the minimum shard count that each filesystem would have regardless
     // of its size.
     optional uint32 MinShardCount = 522;
+
+    // Pass data buffer to the tablet as a message payload
+    optional bool ExternalWriteDataPayload = 523;
 }

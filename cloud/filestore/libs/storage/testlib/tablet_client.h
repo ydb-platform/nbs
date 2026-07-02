@@ -109,16 +109,20 @@ private:
 
     ui64 AutoRequestId = 0;
 
+    TStorageConfig StorageConfig;
+
 public:
     TIndexTabletClient(
             NKikimr::TTestActorRuntime& runtime,
             ui32 nodeIdx,
             ui64 tabletId,
             const TFileSystemConfig& config = {},
-            bool updateConfig = true)
+            bool updateConfig = true,
+            const TStorageConfig& storageConfig = {})
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
         , TabletId(tabletId)
+        , StorageConfig(storageConfig)
     {
         Sender = Runtime.AllocateEdgeActor(NodeIdx);
 
@@ -885,7 +889,12 @@ public:
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
-        request->Record.SetBuffer(CreateBuffer(len, fill));
+        TString buffer = CreateBuffer(len, fill);
+        if (StorageConfig.GetExternalWriteDataPayload()) {
+            request->AddPayload(TRope(std::move(buffer)));
+        } else {
+            request->Record.SetBuffer(std::move(buffer));
+        }
         if (node != InvalidNodeId) {
             request->Record.SetNodeId(node);
         }
@@ -902,7 +911,12 @@ public:
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
-        request->Record.MutableBuffer()->assign(data, len);
+        TString buffer(data, len);
+        if (StorageConfig.GetExternalWriteDataPayload()) {
+            request->AddPayload(TRope(std::move(buffer)));
+        } else {
+            request->Record.SetBuffer(std::move(buffer));
+        }
         if (node != InvalidNodeId) {
             request->Record.SetNodeId(node);
         }
