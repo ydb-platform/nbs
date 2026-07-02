@@ -14,7 +14,7 @@ namespace {
 void ReadBlobInfo(
     TPartitionDatabase& db,
     const TPartialBlobId& blobId,
-    ui32 tabletId,
+    ui64 tabletId,
     const TOutputIndex& outputIndex,
     TVector<TBlockMask>& blockMasks,
     TVector<NProto::TBlobMeta>& blobMetas,
@@ -40,7 +40,7 @@ void ReadBlobInfo(
 void ReadBlobMeta(
     TPartitionDatabase& db,
     const TPartialBlobId& blobId,
-    ui32 tabletId,
+    ui64 tabletId,
     const TOutputIndex& outputIndex,
     TVector<NProto::TBlobMeta>& blobMetas,
     bool& ready)
@@ -62,7 +62,7 @@ void ReadBlobMeta(
 void ReadBlockMask(
     TPartitionDatabase& db,
     const TPartialBlobId& blobId,
-    ui32 tabletId,
+    ui64 tabletId,
     const TOutputIndex& outputIndex,
     TVector<TBlockMask>& blockMasks,
     bool& ready)
@@ -131,7 +131,7 @@ bool ReadBlobsInfo(
         TPartialBlobId,
         TTxPartition::TCompactionReadBlobInfo::TOutputIndex,
         TPartialBlobIdHash>& blobsToOutputIndices,
-    ui32 tabletId,
+    ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
     TVector<NProto::TBlobMeta>& blobMetas)
 {

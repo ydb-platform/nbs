@@ -22,7 +22,7 @@ bool ReadBlobsInfo(
         TPartialBlobId,
         TTxPartition::TCompactionReadBlobInfo::TOutputIndex,
         TPartialBlobIdHash>& blobsToOutputIndices,
-    ui32 tabletId,
+    ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
     TVector<NProto::TBlobMeta>& blobMetas);
 
