@@ -16,6 +16,13 @@ message DataplaneConfig {
     optional uint32 WriterCount = 3 [default = 10];
     optional uint32 ChunksInflightLimit = 4 [default = 100];
 
+    // Enables batched snapshot transfer when greater than zero: chunks are
+    // written in batches of this many chunk indices and only not-yet-written
+    // chunks are retried (via task reschedule), so a degraded S3 makes monotonic
+    // progress instead of stalling. Zero keeps the streaming behavior. Currently
+    // honored by createSnapshotFromDisk for full (non-incremental) snapshots.
+    optional uint32 BatchSize = 21 [default = 0];
+
     optional string SnapshotCollectionTimeout = 5 [default = "30m"];
     optional string CollectSnapshotsTaskScheduleInterval = 6 [default = "1m"];
     optional uint32 SnapshotCollectionInflightLimit = 7 [default = 10];

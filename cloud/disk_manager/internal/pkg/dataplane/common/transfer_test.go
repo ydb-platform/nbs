@@ -487,3 +487,156 @@ func TestTransferShouldNotUpdateMilestoneWhenShallowCopyIsFailed(t *testing.T) {
 		shallowCopyMilestone.ChunkIndex,
 	)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// emitChunkIndices returns the channels for a sourceMock.ChunkIndices stub that
+// emits the contiguous indices [0, chunkCount).
+func emitChunkIndices(chunkCount uint32) (chan uint32, common.ChannelWithCancellation, chan error) {
+	chunkIndices := make(chan uint32, 100500)
+	duplicatedChunkIndices := common.NewChannelWithCancellation(100500)
+	chunkIndicesErrors := make(chan error, 1)
+
+	go func() {
+		for i := uint32(0); i < chunkCount; i++ {
+			chunkIndices <- i
+		}
+
+		chunkIndicesErrors <- nil
+		close(chunkIndices)
+		close(chunkIndicesErrors)
+	}()
+
+	return chunkIndices, duplicatedChunkIndices, chunkIndicesErrors
+}
+
+func TestTransferBatched(t *testing.T) {
+	ctx := newContext()
+	source := &sourceMock{}
+	target := &targetMock{}
+
+	chunkSize := 16
+	chunkCount := uint32(101)
+
+	chunkIndices, duplicatedChunkIndices, chunkIndicesErrors := emitChunkIndices(chunkCount)
+
+	source.On("ChunkCount", mock.Anything).Return(chunkCount, nil)
+	source.On("ChunkIndices", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		chunkIndices,
+		duplicatedChunkIndices,
+		chunkIndicesErrors,
+	)
+	source.On("Read", mock.Anything, mock.Anything).Return(nil)
+	target.On("Write", mock.Anything, mock.Anything).Return(nil)
+
+	transferer := Transferer{
+		ReaderCount:         uint32(11),
+		WriterCount:         uint32(22),
+		ChunksInflightLimit: uint32(100500),
+		ChunkSize:           chunkSize,
+		BatchSize:           uint32(10),
+	}
+
+	transferredChunkCount, err := transferer.Transfer(
+		ctx,
+		source,
+		target,
+		Milestone{},
+		func(context.Context, Milestone) error { return nil },
+	)
+	require.NoError(t, err)
+	require.Equal(t, int(chunkCount), int(transferredChunkCount))
+}
+
+// When some chunk writes fail, the batch is left incomplete, the bitmap is
+// persisted, and a rescheduled transfer redoes only the not-yet-written chunks.
+func TestTransferBatchedResumesOnlyUnwrittenChunks(t *testing.T) {
+	ctx := newContext()
+
+	chunkSize := 16
+	chunkCount := uint32(100)
+
+	transferer := Transferer{
+		ReaderCount:         uint32(4),
+		WriterCount:         uint32(4),
+		ChunksInflightLimit: uint32(100500),
+		ChunkSize:           chunkSize,
+		BatchSize:           uint32(128), // one batch covers all chunks
+	}
+
+	// First run: odd-index writes fail (retriable), even-index writes succeed.
+	source1 := &sourceMock{}
+	target1 := &targetMock{}
+	chunkIndices1, duplicated1, errors1 := emitChunkIndices(chunkCount)
+
+	source1.On("ChunkCount", mock.Anything).Return(chunkCount, nil)
+	source1.On("ChunkIndices", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		chunkIndices1,
+		duplicated1,
+		errors1,
+	)
+	source1.On("Read", mock.Anything, mock.Anything).Return(nil)
+	target1.On("Write", mock.Anything, mock.MatchedBy(func(c Chunk) bool {
+		return c.Index%2 == 0
+	})).Return(nil)
+	target1.On("Write", mock.Anything, mock.MatchedBy(func(c Chunk) bool {
+		return c.Index%2 == 1
+	})).Return(assert.AnError)
+
+	var savedMilestone Milestone
+	_, err := transferer.Transfer(
+		ctx,
+		source1,
+		target1,
+		Milestone{},
+		func(_ context.Context, milestone Milestone) error {
+			savedMilestone = milestone
+			return nil
+		},
+	)
+	require.Error(t, err)
+	require.NotEmpty(t, savedMilestone.CurrentBatchBitmap)
+
+	// Second run resumes with the persisted bitmap. All writes succeed now, and
+	// only the previously-failed (odd) chunks must be written again.
+	source2 := &sourceMock{}
+	target2 := &targetMock{}
+	chunkIndices2, duplicated2, errors2 := emitChunkIndices(chunkCount)
+
+	source2.On("ChunkCount", mock.Anything).Return(chunkCount, nil)
+	source2.On("ChunkIndices", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		chunkIndices2,
+		duplicated2,
+		errors2,
+	)
+	source2.On("Read", mock.Anything, mock.Anything).Return(nil)
+
+	var writeMutex sync.Mutex
+	writtenIndices := make(map[uint32]bool)
+	target2.On("Write", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+		chunk := args.Get(1).(Chunk)
+		writeMutex.Lock()
+		writtenIndices[chunk.Index] = true
+		writeMutex.Unlock()
+	})
+
+	transferredChunkCount, err := transferer.Transfer(
+		ctx,
+		source2,
+		target2,
+		savedMilestone,
+		func(context.Context, Milestone) error { return nil },
+	)
+	require.NoError(t, err)
+	require.Equal(t, int(chunkCount), int(transferredChunkCount))
+
+	require.Equal(t, int(chunkCount/2), len(writtenIndices))
+	for index := range writtenIndices {
+		require.Equal(
+			t,
+			uint32(1),
+			index%2,
+			"only previously-failed odd chunks should be rewritten",
+		)
+	}
+}
