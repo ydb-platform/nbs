@@ -1,4 +1,4 @@
-GO_PROGRAM()
+GO_PROGRAM(disk-manager-remote-test)
 
 SRCS(
     main.go
