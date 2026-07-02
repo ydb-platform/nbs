@@ -1201,7 +1201,6 @@ struct TEvIndexTabletPrivate
     struct TAggregateStatsCompleted
     {
         NProtoPrivate::TStorageStats AggregateStats;
-        TVector<TShardStats> ShardStats;
         TInstant StartedTs;
         bool IsBackgroundRequest = false;
     };

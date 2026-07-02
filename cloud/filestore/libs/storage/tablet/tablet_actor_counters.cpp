@@ -30,7 +30,6 @@ private:
     TString MainFileSystemId;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
-    TVector<TShardStats> ShardStats;
     int Responses = 0;
 
 public:
@@ -84,8 +83,15 @@ TAggregateStatsActor::TAggregateStatsActor(
     , MainFileSystemId(std::move(mainFileSystemId))
     , ShardIds(std::move(shardIds))
     , Response(std::move(response))
-    , ShardStats(ShardIds.size())
-{}
+{
+    auto& dst = *Response->Record.MutableStats();
+    auto& shardStats = *dst.MutableShardStats();
+    shardStats.Clear();
+    shardStats.Reserve(ShardIds.size());
+    for (const auto& shardId: ShardIds) {
+        shardStats.Add()->SetShardId(shardId);
+    }
+}
 
 void TAggregateStatsActor::Bootstrap(const TActorContext& ctx)
 {
@@ -189,12 +195,12 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         dst.GetUsedNodesCount());
 
     if (shardIndex < ShardIds.size()) {
-        auto& ss = ShardStats[shardIndex];
-        ss.CurrentLoad = src.GetCurrentLoad();
-        ss.Suffer = src.GetSuffer();
-        ss.TotalBlocksCount = src.GetTotalBlocksCount();
-        ss.UsedBlocksCount = src.GetUsedBlocksCount();
-        ss.UsedNodesCount = src.GetUsedNodesCount();
+        auto& ss = (*dst.MutableShardStats())[shardIndex];
+        ss.SetCurrentLoad(src.GetCurrentLoad());
+        ss.SetSuffer(src.GetSuffer());
+        ss.SetTotalBlocksCount(src.GetTotalBlocksCount());
+        ss.SetUsedBlocksCount(src.GetUsedBlocksCount());
+        ss.SetUsedNodesCount(src.GetUsedNodesCount());
     }
 
     if (++Responses == requestsCount) {
@@ -223,23 +229,12 @@ void TAggregateStatsActor::ReplyAndDie(
     NProtoPrivate::TStorageStats statsForTablet = Response->Record.GetStats();
     if (RequestInfo) {
         startedTs = RequestInfo->StartedTs;
-        auto* stats = Response->Record.MutableStats();
-        for (size_t i = 0; i < ShardStats.size(); ++i) {
-            auto* ss = stats->AddShardStats();
-            ss->SetShardId(ShardIds[i]);
-            ss->SetTotalBlocksCount(ShardStats[i].TotalBlocksCount);
-            ss->SetUsedBlocksCount(ShardStats[i].UsedBlocksCount);
-            ss->SetUsedNodesCount(ShardStats[i].UsedNodesCount);
-            ss->SetCurrentLoad(ShardStats[i].CurrentLoad);
-            ss->SetSuffer(ShardStats[i].Suffer);
-        }
         NCloud::Reply(ctx, *RequestInfo, std::move(Response));
     }
 
     auto response = std::make_unique<TCompletion>(
         error,
         std::move(statsForTablet),
-        std::move(ShardStats),
         startedTs,
         !RequestInfo /* isBackgroundRequest */);
     NCloud::Send(ctx, Tablet, std::move(response));
@@ -267,7 +262,7 @@ STFUNC(TAggregateStatsActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString DescribeShardList(const TVector<IShardBalancer::TShardDescr>& shards)
+TString DescribeShardList(const TVector<TShardStats>& shards)
 {
     TStringBuilder sb;
     for (ui32 i = 0; i < shards.size(); ++i) {
@@ -277,13 +272,29 @@ TString DescribeShardList(const TVector<IShardBalancer::TShardDescr>& shards)
 
         const auto& s = shards[i];
         sb << "id=" << s.ShardId
-            << " blocks=" << s.Stats.UsedBlocksCount
-            << "/" << s.Stats.TotalBlocksCount
-            << " nodes=" << s.Stats.UsedNodesCount
-            << " load=" << s.Stats.CurrentLoad
-            << " suffer=" << s.Stats.Suffer;
+            << " blocks=" << s.UsedBlocksCount
+            << "/" << s.TotalBlocksCount
+            << " nodes=" << s.UsedNodesCount
+            << " load=" << s.CurrentLoad
+            << " suffer=" << s.Suffer;
     }
     return sb;
+}
+
+void FillShardStats(
+    const NProtoPrivate::TStorageStats& storageStats,
+    TVector<TShardStats>& shardStats)
+{
+    shardStats.reserve(storageStats.ShardStatsSize());
+    for (const auto& srcShardStats: storageStats.GetShardStats()) {
+        shardStats.emplace_back(
+            srcShardStats.GetShardId(),
+            srcShardStats.GetTotalBlocksCount(),
+            srcShardStats.GetUsedBlocksCount(),
+            srcShardStats.GetUsedNodesCount(),
+            srcShardStats.GetCurrentLoad(),
+            srcShardStats.GetSuffer());
+    }
 }
 
 }   // namespace
@@ -770,17 +781,6 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
-        const ui32 shardMetricsCount =
-            Min<ui32>(shardIds.size(), CachedShardStats.size());
-        for (ui32 i = 0; i < shardMetricsCount; ++i) {
-            auto* ss = stats->AddShardStats();
-            ss->SetShardId(shardIds[i]);
-            ss->SetTotalBlocksCount(CachedShardStats[i].TotalBlocksCount);
-            ss->SetUsedBlocksCount(CachedShardStats[i].UsedBlocksCount);
-            ss->SetUsedNodesCount(CachedShardStats[i].UsedNodesCount);
-            ss->SetCurrentLoad(CachedShardStats[i].CurrentLoad);
-            ss->SetSuffer(CachedShardStats[i].Suffer);
-        }
     } else {
         FillSelfStorageStats(stats);
     }
@@ -866,7 +866,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
             "%s Background shard stats fetch completed in %s, ShardsCount: %lu",
             LogTag.c_str(),
             backgroundRequestDuration.ToString().c_str(),
-            msg->ShardStats.size());
+            msg->AggregateStats.GetShardStats().size());
         CachedStatsFetchingStartTs = TInstant::Zero();
     }
 
@@ -878,9 +878,10 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
             Metrics.GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
-        CachedShardStats = std::move(msg->ShardStats);
 
-        auto error = UpdateShardBalancer(CachedShardStats);
+        TVector<TShardStats> shardStats;
+        FillShardStats(CachedAggregateStats, shardStats);
+        auto error = UpdateShardBalancer(shardStats);
         if (HasError(error)) {
             LOG_WARN(
                 ctx,

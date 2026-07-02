@@ -1099,29 +1099,36 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
                 ui32 shardNo = 0;
                 for (const auto& shardId: shardIds) {
-                    TShardStats ss;
-                    if (shardNo < CachedShardStats.size()) {
-                        ss = CachedShardStats[shardNo];
+                    NProtoPrivate::TShardStats ss;
+                    if (shardNo < CachedAggregateStats.ShardStatsSize()) {
+                        ss = CachedAggregateStats.GetShardStats(shardNo);
                     }
-                    TABLER() {
-                        TABLED() { out << ++shardNo; }
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
+                            out << ++shardNo;
+                        }
+                        TABLED () {
                             out << "<a href='../filestore/service?action=search"
-                                << "&Filesystem=" << shardId << "'>"
-                                << shardId << "</a>";
+                                << "&Filesystem=" << shardId << "'>" << shardId
+                                << "</a>";
                         }
-                        TABLED() {
-                            out << ss.UsedBlocksCount * GetBlockSize();
+                        TABLED () {
+                            out << ss.GetUsedBlocksCount() * GetBlockSize();
                         }
-                        TABLED() {
-                            out << ss.UsedNodesCount;
+                        TABLED () {
+                            out << ss.GetUsedNodesCount();
                         }
-                        TABLED() {
-                            out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
-                                * GetBlockSize();
+                        TABLED () {
+                            out << (ss.GetTotalBlocksCount() -
+                                    ss.GetUsedBlocksCount()) *
+                                       GetBlockSize();
                         }
-                        TABLED() { out << ss.CurrentLoad; }
-                        TABLED() { out << ss.Suffer; }
+                        TABLED () {
+                            out << ss.GetCurrentLoad();
+                        }
+                        TABLED () {
+                            out << ss.GetSuffer();
+                        }
                     }
                 }
             }

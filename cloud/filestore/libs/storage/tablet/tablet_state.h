@@ -454,7 +454,7 @@ public:
 
     NProto::TError UpdateShardBalancer(const TVector<TShardStats>& stats);
 
-    TVector<IShardBalancer::TShardDescr> MakeOrderedShardList() const;
+    TVector<TShardStats> MakeOrderedShardList() const;
 
     //
     // FileSystem Stats

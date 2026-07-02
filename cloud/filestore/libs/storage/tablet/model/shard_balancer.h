@@ -15,6 +15,7 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TShardStats
 {
+    TString ShardId;
     ui64 TotalBlocksCount = 0;
     ui64 UsedBlocksCount = 0;
     ui64 UsedNodesCount = 0;
@@ -38,17 +39,6 @@ public:
         {}
     };
 
-    struct TShardDescr
-    {
-        TString ShardId;
-        TShardStats Stats;
-
-        TShardDescr(TString shardId, TShardStats stats)
-            : ShardId(std::move(shardId))
-            , Stats(stats)
-        {}
-    };
-
     virtual ~IShardBalancer() = default;
 
     virtual NProto::TError Update(
@@ -65,13 +55,13 @@ public:
     /**
      * @brief Builds and returns the shard list ordered from best to worst.
      *
-     * This method builds a new vector with shard descrs so it's not supposed to
+     * This method builds a new vector with TShardStats so it's not supposed to
      * be used often because it's expensive. The main intended use case is
      * introspection - log this info with debug loglevel or show it on monpages.
      *
-     * @return The list of shard descrs.
+     * @return The list of shard TShardStats.
      */
-    [[nodiscard]] virtual TVector<TShardDescr> MakeOrderedShardList() const = 0;
+    [[nodiscard]] virtual TVector<TShardStats> MakeOrderedShardList() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,7 +84,6 @@ private:
     ui64 MinFreeSpaceReserve = 0;
 
 protected:
-    TVector<TString> Ids;
     TVector<TShardMeta> Metas;
 
     /**
@@ -121,7 +110,7 @@ public:
         std::optional<ui64> desiredFreeSpaceReserve,
         std::optional<ui64> minFreeSpaceReserve) override;
 
-    [[nodiscard]] TVector<TShardDescr> MakeOrderedShardList() const override;
+    [[nodiscard]] TVector<TShardStats> MakeOrderedShardList() const override;
 };
 
 /////////////////////////////////////////////////////////////////////////////////

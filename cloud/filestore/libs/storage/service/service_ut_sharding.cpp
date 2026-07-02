@@ -8630,12 +8630,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             &TTestActorRuntimeBase::DefaultFilterFunc);
         using TCompletion = TEvIndexTabletPrivate::TEvAggregateStatsCompleted;
         NProtoPrivate::TStorageStats statsForTablet;
-        TVector<TShardStats> shardStats(2);
+        statsForTablet.AddShardStats()->SetShardId(fsConfig.Shard1Id);
+        statsForTablet.AddShardStats()->SetShardId(fsConfig.Shard2Id);
 
         auto completion = std::make_unique<TCompletion>(
             NProto::TError(),
             std::move(statsForTablet),
-            std::move(shardStats),
             TInstant());
 
         env.GetRuntime().Send(

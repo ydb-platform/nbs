@@ -140,7 +140,6 @@ private:
     TCPUUsageTimer CPUUsageTimer{Metrics.CPUUsageMicros};
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
-    TVector<TShardStats> CachedShardStats;
     TInstant CachedStatsFetchingStartTs;
     TInstant CachedAggregateStatsTs;
 
