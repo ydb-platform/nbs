@@ -48,6 +48,7 @@ SRCS(
     part_actor_zeroblocks.cpp
     part_cleanup_logic.cpp
     part_compaction_logic.cpp
+    part_readblobinfo_logic.cpp
     part_counters.cpp
     part_database.cpp
     part_schema.cpp

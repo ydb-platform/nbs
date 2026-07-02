@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include "part_compaction_logic.h"
+#include "part_readblobinfo_logic.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -50,6 +51,41 @@ TVector<ui32> EnsureBlockChecksums(
         result.push_back(*checksum);
     }
     return result;
+}
+
+template <typename TRangeCompactionInfo>
+void FillRangeCompactionInfos(
+    TVector<TRangeCompactionInfo>& infos,
+    const TVector<TPartialBlobId>& blobsToReadBlobMetas,
+    const TVector<TPartialBlobId>& blobsToReadBlockMasks,
+    const TVector<NProto::TBlobMeta>& blobMetas,
+    const TVector<TBlockMask>& blockMasks)
+{
+    for (size_t i = 0; i < blobsToReadBlobMetas.size(); ++i) {
+        const auto& blobId = blobsToReadBlobMetas[i];
+        const auto& blobMeta = blobMetas[i];
+
+        for (auto& rc: infos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
+            }
+            ab->BlobMeta = blobMeta;
+        }
+    }
+
+    for (size_t i = 0; i < blobsToReadBlockMasks.size(); ++i) {
+        const auto& blobId = blobsToReadBlockMasks[i];
+        const auto& blockMask = blockMasks[i];
+
+        for (auto& rc: infos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
+            }
+            ab->BlockMask = blockMask;
+        }
+    }
 }
 
 class TCompactionActor final: public TActorBootstrapped<TCompactionActor>
@@ -1104,31 +1140,12 @@ void TCompactionActor::HandleCompactionReadBlobInfoResponse(
         return;
     }
 
-    for (size_t i = 0; i < BlobsToReadBlobMetas.size(); ++i) {
-        const auto& blobId = BlobsToReadBlobMetas[i];
-        const auto& blobMeta = msg->BlobMetasForBlobs[i];
-
-        for (auto& rc: RangeCompactionInfos) {
-            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
-            if (!ab) {
-                continue;
-            }
-            ab->BlobMeta = blobMeta;
-        }
-    }
-
-    for (size_t i = 0; i < BlobsToReadBlockMasks.size(); ++i) {
-        const auto& blobId = BlobsToReadBlockMasks[i];
-        const auto& blockMask = msg->BlockMasksForBlobs[i];
-
-        for (auto& rc: RangeCompactionInfos) {
-            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
-            if (!ab) {
-                continue;
-            }
-            ab->BlockMask = blockMask;
-        }
-    }
+    FillRangeCompactionInfos(
+        RangeCompactionInfos,
+        BlobsToReadBlobMetas,
+        BlobsToReadBlockMasks,
+        msg->BlobMetasForBlobs,
+        msg->BlockMasksForBlobs);
 
     ApplyChecksumFixups();
 
@@ -1472,6 +1489,47 @@ private:
             true /* fullCompaction */);
     }
 };
+
+bool FillBlobsInfo(
+    TPartitionDatabase& db,
+    TTxPartition::TCompaction& args,
+    ui64 tabletId)
+{
+    auto blobsToReadBlockMasks = TVector<TPartialBlobId>(
+        args.BlobsToReadBlockMasks.begin(),
+        args.BlobsToReadBlockMasks.end());
+    auto blobsToReadBlobMetas = TVector<TPartialBlobId>(
+        args.BlobsToReadBlobMetas.begin(),
+        args.BlobsToReadBlobMetas.end());
+
+    auto blobsToOutputIndices = DeduplicateBlobInfos(
+        tabletId,
+        blobsToReadBlockMasks,
+        blobsToReadBlobMetas);
+
+    TVector<TBlockMask> blockMasks;
+    blockMasks.resize(args.BlobsToReadBlockMasks.size());
+    TVector<NProto::TBlobMeta> blobMetas;
+    blobMetas.resize(args.BlobsToReadBlobMetas.size());
+    if (!ReadBlobsInfo(
+            db,
+            blobsToOutputIndices,
+            tabletId,
+            blockMasks,
+            blobMetas))
+    {
+        return false;
+    }
+
+    FillRangeCompactionInfos(
+        args.RangeCompactions,
+        blobsToReadBlobMetas,
+        blobsToReadBlockMasks,
+        blobMetas,
+        blockMasks);
+
+    return true;
+}
 
 }   // namespace
 
@@ -1960,6 +2018,7 @@ bool TPartitionActor::PrepareCompaction(
             args.CommitId,
             TabletID(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
+            IsUseRecreatedBlobMetasOnCleanupEnabled(),
             ready,
             db,
             *State,
@@ -1986,47 +2045,7 @@ bool TPartitionActor::PrepareCompaction(
     State->IncrementBlockMaskReadDuringCompaction(
         args.BlobsToReadBlockMasks.size());
 
-    for (const auto& blobId: args.BlobsToReadBlockMasks) {
-        TMaybe<TBlockMask> blockMask;
-        if (db.ReadBlockMask(blobId, blockMask)) {
-            STORAGE_VERIFY_C(
-                blockMask.Defined(),
-                TWellKnownEntityTypes::TABLET,
-                TabletID(),
-                TStringBuilder() << "Could not read block mask for blob: "
-                                 << MakeBlobId(TabletID(), blobId));
-        } else {
-            ready = false;
-            continue;
-        }
-
-        for (auto& rangeCompaction: args.RangeCompactions) {
-            if (auto* ab = rangeCompaction.AffectedBlobs.FindPtr(blobId)) {
-                ab->BlockMask = *blockMask;
-            }
-        }
-    }
-
-    for (const auto& blobId: args.BlobsToReadBlobMetas) {
-        TMaybe<NProto::TBlobMeta> blobMeta;
-        if (db.ReadBlobMeta(blobId, blobMeta)) {
-            STORAGE_VERIFY_C(
-                blobMeta.Defined(),
-                TWellKnownEntityTypes::TABLET,
-                TabletID(),
-                TStringBuilder() << "Could not read blob meta for blob: "
-                                 << MakeBlobId(TabletID(), blobId));
-        } else {
-            ready = false;
-            continue;
-        }
-
-        for (auto& rangeCompaction: args.RangeCompactions) {
-            if (auto* ab = rangeCompaction.AffectedBlobs.FindPtr(blobId)) {
-                ab->BlobMeta = *blobMeta;
-            }
-        }
-    }
+    ready &= FillBlobsInfo(db, args, TabletID());
 
     return ready;
 }

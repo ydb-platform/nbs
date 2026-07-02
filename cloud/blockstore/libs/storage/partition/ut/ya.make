@@ -6,6 +6,7 @@ SRCS(
     part_cleanup_logic_ut.cpp
     part_compaction_logic_ut.cpp
     part_database_ut.cpp
+    part_readblobinfo_logic_ut.cpp
     part_state_ut.cpp
     part_ut.cpp
 )

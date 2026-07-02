@@ -421,6 +421,7 @@ void ApplyIncrementalCompactionSkipping(
 void FillBlobsInfoToRead(
     ui64 commitId,
     bool readBlockMaskOnCompactionOptimizationEnabled,
+    bool useRecreatedBlobMetasOnCleanup,
     TTxPartition::TRangeCompaction& args,
     TPartitionState& state,
     THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlockMasks,
@@ -436,6 +437,11 @@ void FillBlobsInfoToRead(
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             blobsToReadBlockMasks.emplace(kv.first);
+            if (useRecreatedBlobMetasOnCleanup) {
+                // additional blob meta read is cheap, so we will read it
+                // anyway, to avoid extra reads on cleanup
+                blobsToReadBlobMetas.emplace(kv.first);
+            }
         } else {
             // The blob is fully available for range compaction and will be
             // overwritten during compaction, so we can skip reading its block
@@ -691,6 +697,7 @@ void PrepareRangeCompaction(
     const ui64 commitId,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
+    const bool useRecreatedBlobMetasOnCleanup,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -733,6 +740,7 @@ void PrepareRangeCompaction(
     FillBlobsInfoToRead(
         commitId,
         readBlockMaskOnCompactionOptimizationEnabled,
+        useRecreatedBlobMetasOnCleanup,
         args,
         state,
         blobsToReadBlockMasks,
