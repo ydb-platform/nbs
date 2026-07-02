@@ -7,6 +7,7 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/generic/set.h>
 #include <util/stream/str.h>
 #include <util/string/join.h>
 
@@ -111,8 +112,16 @@ void BuildChangeDeviceStateButton(
     ui64 tabletId,
     const TString& deviceUUID)
 {
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "device-state-change");
+            out << "Change Device State";
+        }
+    }
+
     out << Sprintf(
-        R"(<form name="devtSateChange%s" method="post">
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="devtSateChange%s" method="post">
             <br>
             <label for="NewState">Change device state to:</label>
             <select name="NewState">
@@ -131,7 +140,9 @@ void BuildChangeDeviceStateButton(
             <input type='hidden' name='action' value='changeDeviceState'/>
             <input type='hidden' name='DeviceUUID' value='%s'/>
             <input type='hidden' name='TabletID' value='%lu'/>
-            </form>)",
+            </form>
+        </div>)",
+        "device-state-change",
         deviceUUID.c_str(),
         EDeviceState_Name(NProto::DEVICE_STATE_ONLINE).c_str(),
         EDeviceState_Name(NProto::DEVICE_STATE_WARNING).c_str(),
@@ -144,8 +155,16 @@ void BuildChangeAgentStateButton(
     ui64 tabletId,
     const TString& agentId)
 {
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "agent-state-change");
+            out << "Change Agent State";
+        }
+    }
+
     out << Sprintf(
-        R"(<form name="agentStateChange%s" method="post">
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="agentStateChange%s" method="post">
             <br>
             <label for="NewState">Change agent state to:</label>
             <select name="NewState">
@@ -164,10 +183,121 @@ void BuildChangeAgentStateButton(
             <input type='hidden' name='action' value='changeAgentState'/>
             <input type='hidden' name='AgentID' value='%s'/>
             <input type='hidden' name='TabletID' value='%lu'/>
-            </form>)",
+            </form>
+            <hr>
+        </div>)",
+        "agent-state-change",
         agentId.c_str(),
         EAgentState_Name(NProto::AGENT_STATE_ONLINE).c_str(),
         EAgentState_Name(NProto::AGENT_STATE_WARNING).c_str(),
+        agentId.c_str(),
+        tabletId);
+}
+
+void BuildSendCmsAgentRequestMenu(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& agentId)
+{
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "agent-cms-request");
+            out << "Agent CMS Requests";
+        }
+    }
+
+    out << Sprintf(
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="agentCmsRequest" method="post">
+            <br>
+            <label for="CmsAction">CMS request:</label>
+            <select name="CmsAction">
+                <option value="%u">ADD_HOST</option>
+                <option value="%u">REMOVE_HOST</option>
+                <option value="%u">PURGE_HOST</option>
+            </select>
+            <br>
+            <label>
+                <input type="checkbox" name="DryRun" value="1" checked>
+                Dry run
+            </label>
+            <br>
+            <input type="submit" value="Send request">
+            <input type='hidden' name='action' value='sendCmsHostRequest'/>
+            <input type='hidden' name='AgentID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>
+            <hr>
+        </div>)",
+        "agent-cms-request",
+        static_cast<ui32>(NProto::TAction::ADD_HOST),
+        static_cast<ui32>(NProto::TAction::REMOVE_HOST),
+        static_cast<ui32>(NProto::TAction::PURGE_HOST),
+        agentId.c_str(),
+        tabletId);
+}
+
+void BuildSendCmsDeviceRequestMenu(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& agentId,
+    const TSet<TString>& deviceNames)
+{
+    if (deviceNames.empty()) {
+        return;
+    }
+
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "device-cms-request");
+            out << "Device CMS Requests";
+        }
+    }
+
+    auto constructDeviceNameOptions = [&deviceNames]() -> TString
+    {
+        TStringBuilder result;
+        for (const auto& deviceName: deviceNames) {
+            result << Sprintf(
+                          R"(<option value="%s">%s</option>)",
+                          deviceName.c_str(),
+                          deviceName.c_str())
+                   << Endl;
+        }
+        return result;
+    };
+
+    out << Sprintf(
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="deviceCmsRequest" method="post">
+            <br>
+            <label for="CmsAction">CMS request:</label>
+            <select name="CmsAction">
+                <option value="%u">ADD_DEVICE</option>
+                <option value="%u">REMOVE_DEVICE</option>
+            </select>
+            <br>
+            <label for="DeviceName">Device path (Name):</label>
+            <select name="DeviceName">
+                %s
+            </select>
+            <br>
+            <label>
+                <input type="checkbox" name="DryRun" value="1" checked>
+                Dry run
+            </label>
+            <br>
+            <input type="submit" value="Send request">
+            <input type='hidden' name='action' value='sendCmsDeviceRequest'/>
+            <input type='hidden' name='AgentID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>
+            <hr>
+        </div>)",
+        "device-cms-request",
+        static_cast<ui32>(NProto::TAction::ADD_DEVICE),
+        static_cast<ui32>(NProto::TAction::REMOVE_DEVICE),
+        constructDeviceNameOptions().c_str(),
         agentId.c_str(),
         tabletId);
 }
@@ -637,19 +767,6 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(agent->GetStateTs());
         }
-        DIV() {
-            if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
-                if (agent->GetState() !=
-                    NProto::EAgentState::AGENT_STATE_UNAVAILABLE)
-                {
-                    BuildChangeAgentStateButton(
-                        out,
-                        TabletID(),
-                        agent->GetAgentId());
-                }
-            }
-
-        }
         DIV() { out << "State Message: " << agent->GetStateMessage(); }
         DIV() {
             out << "CMS Timestamp: "
@@ -658,6 +775,35 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
         DIV() {
             out << "Work Timestamp: "
                 << TInstant::Seconds(agent->GetWorkTs());
+        }
+        DIV () {
+            if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage() &&
+                agent->GetState() !=
+                    NProto::EAgentState::AGENT_STATE_UNAVAILABLE)
+            {
+                BuildChangeAgentStateButton(
+                    out,
+                    TabletID(),
+                    agent->GetAgentId());
+
+                BuildSendCmsAgentRequestMenu(
+                    out,
+                    TabletID(),
+                    agent->GetAgentId());
+
+                TSet<TString> deviceNames;
+                for (const auto& device: agent->GetDevices()) {
+                    deviceNames.insert(device.GetDeviceName());
+                }
+                for (const auto& device: agent->GetUnknownDevices()) {
+                    deviceNames.insert(device.GetDeviceName());
+                }
+                BuildSendCmsDeviceRequestMenu(
+                    out,
+                    TabletID(),
+                    agent->GetAgentId(),
+                    deviceNames);
+            }
         }
 
         auto dcomp = [] (const auto& d) {
@@ -2619,6 +2765,10 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
         {"changeAgentState",
          &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
+        {"sendCmsHostRequest",
+         &TDiskRegistryActor::HandleHttpInfo_SendCmsHostRequest},
+        {"sendCmsDeviceRequest",
+         &TDiskRegistryActor::HandleHttpInfo_SendCmsDeviceRequest},
         {"resetTransactionLatencyStats",
          &TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats},
     }};
