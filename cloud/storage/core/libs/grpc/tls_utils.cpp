@@ -391,7 +391,7 @@ TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
 TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificateFiles> certificates)
 {
-    auto prepared = PrepareAndValidateCertificates(std::move(certificates));
+    auto prepared = PrepareCertificateFilePairs(std::move(certificates));
 
     TVector<TCertificatePair> result;
     result.reserve(prepared.size());
@@ -428,7 +428,7 @@ TRootCaPair LoadRootCaPair(TString rootCaPath)
     };
 }
 
-TVector<TCertificateFiles> PrepareAndValidateCertificates(
+TVector<TCertificateFiles> PrepareCertificateFilePairs(
     TVector<TCertificateFiles> certificates)
 {
     TVector<TCertificateFiles> res;
