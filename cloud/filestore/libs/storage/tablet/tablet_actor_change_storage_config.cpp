@@ -15,7 +15,7 @@ bool TIndexTabletActor::PrepareTx_ChangeStorageConfig(
     TTransactionContext& tx,
     TTxIndexTablet::TChangeStorageConfig& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
     if (args.MergeWithStorageConfigFromTabletDB) {
         return db.ReadStorageConfig(args.StorageConfigFromDB);
     }

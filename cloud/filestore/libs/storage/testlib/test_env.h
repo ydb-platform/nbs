@@ -76,6 +76,10 @@ struct TTestEnvConfig
     NActors::NLog::EPriority LogPriority_NFS = NActors::NLog::PRI_TRACE;
     NActors::NLog::EPriority LogPriority_KiKiMR = NActors::NLog::PRI_WARN;
     NActors::NLog::EPriority LogPriority_Others = NActors::NLog::PRI_WARN;
+
+    // This controls probability that read will be restarted
+    bool PageFaultFakesEnabled = true;
+    float PageFaultProbabilityPercentage = 1;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +94,6 @@ private:
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
     TSystemCountersPtr SystemCounters;
-    ITxReschedulerPtr TxRescheduler = CreateNoOpTxRescheduler();
 
     NKikimr::TTestBasicRuntime Runtime;
     TVector<ui32> GroupIds;
@@ -118,14 +121,6 @@ public:
     NActors::TTestActorRuntime& GetRuntime()
     {
         return Runtime;
-    }
-
-    // Inject a transaction rescheduler.
-    // Defaults to a no-op stub; tests set a custom one to exercise the
-    // transaction restart/reorder path. Must be set before BootIndexTablet.
-    void SetTxRescheduler(ITxReschedulerPtr txRescheduler)
-    {
-        TxRescheduler = std::move(txRescheduler);
     }
 
     TStorageConfigPtr GetStorageConfig() const

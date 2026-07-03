@@ -47,7 +47,7 @@ bool TIndexTabletActor::PrepareTx_UnsafeCreateNode(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
     return ReadNode(db, args.Request.GetNode().GetId(), commitId, args.Node);
 }
 
@@ -140,7 +140,7 @@ bool TIndexTabletActor::PrepareTx_UnsafeDeleteNode(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
     return ReadNode(db, args.Request.GetId(), commitId, args.Node);
 }
 
@@ -226,7 +226,7 @@ bool TIndexTabletActor::PrepareTx_UnsafeUpdateNode(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
     return ReadNode(db, args.Request.GetNode().GetId(), commitId, args.Node);
 }
 
@@ -505,7 +505,7 @@ bool TIndexTabletActor::PrepareTx_UnsafeDeleteNodeRef(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
     return ReadNodeRef(
         db,
         args.Request.GetParentId(),
@@ -606,7 +606,7 @@ bool TIndexTabletActor::PrepareTx_UnsafeUpdateNodeRef(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
     return ReadNodeRef(
         db,
         args.Request.GetParentId(),

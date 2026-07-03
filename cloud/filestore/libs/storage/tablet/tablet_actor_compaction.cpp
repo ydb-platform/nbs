@@ -607,7 +607,7 @@ bool TIndexTabletActor::PrepareTx_Compaction(
 {
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 

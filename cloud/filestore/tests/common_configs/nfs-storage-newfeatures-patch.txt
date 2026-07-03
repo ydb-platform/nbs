@@ -33,3 +33,5 @@ GidPropagationEnabled: true
 NodeRefsNoAutoPrecharge: true
 UseCustomReadDataResponseParser: true
 MaxShardManagementRequestsInFlight: 3
+FakeReadFailuresEnabled: true
+FakeReadFailuresProbabilityPercentage: 0.1

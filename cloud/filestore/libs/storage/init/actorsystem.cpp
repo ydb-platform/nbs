@@ -246,7 +246,9 @@ public:
                     systemCounters,
                     metricsRegistry,
                     fastShardServer,
-                    CreateNoOpTxRescheduler());
+                    config->GetFakeReadFailuresEnabled() ?
+                        CreateRescheduler(config->GetFakeReadFailuresProbabilityPercentage()) :
+                        nullptr);
                 return actor.release();
             };
 

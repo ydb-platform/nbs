@@ -70,7 +70,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
 
     args.CommitId = checkpoint->GetCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     bool ready = true;
     switch (args.Mode) {

@@ -42,6 +42,11 @@ bool TIndexTabletDatabase::ReadFileSystem(NProto::TFileSystem& fileSystem)
 {
     using TTable = TIndexTabletSchema::FileSystem;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(FileSystemMetaId)
         .Select();
@@ -60,6 +65,11 @@ bool TIndexTabletDatabase::ReadFileSystem(NProto::TFileSystem& fileSystem)
 bool TIndexTabletDatabase::ReadFileSystemStats(NProto::TFileSystemStats& stats)
 {
     using TTable = TIndexTabletSchema::FileSystem;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Key(FileSystemMetaId)
@@ -112,6 +122,11 @@ bool TIndexTabletDatabase::ReadStorageConfig(
 {
     using TTable = TIndexTabletSchema::FileSystem;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(FileSystemMetaId)
         .Select<TTable::TColumns>();
@@ -161,6 +176,11 @@ bool TIndexTabletDatabase::ReadNode(
 {
     using TTable = TIndexTabletSchema::Nodes;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(nodeId)
         .Select();
@@ -193,6 +213,11 @@ bool TIndexTabletDatabase::ReadNodes(
     TVector<TNode>& nodes)
 {
     using TTable = TIndexTabletSchema::Nodes;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>().GreaterOrEqual(startNodeId).Select();
 
@@ -255,6 +280,11 @@ bool TIndexTabletDatabase::ReadNodeVer(
     TMaybe<TNode>& node)
 {
     using TTable = TIndexTabletSchema::Nodes_Ver;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, ReverseCommitId(commitId))
@@ -329,6 +359,11 @@ bool TIndexTabletDatabase::ReadNodeAttr(
 {
     using TTable = TIndexTabletSchema::NodeAttrs;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(nodeId, name)
         .Select();
@@ -362,6 +397,11 @@ bool TIndexTabletDatabase::ReadNodeAttrs(
     TVector<TNodeAttr>& attrs)
 {
     using TTable = TIndexTabletSchema::NodeAttrs;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(nodeId)
@@ -435,6 +475,11 @@ bool TIndexTabletDatabase::ReadNodeAttrVer(
 {
     using TTable = TIndexTabletSchema::NodeAttrs_Ver;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, name, ReverseCommitId(commitId))
         .Select();
@@ -480,6 +525,11 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
     TVector<TNodeAttr>& attrs)
 {
     using TTable = TIndexTabletSchema::NodeAttrs_Ver;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(nodeId)
@@ -548,6 +598,11 @@ bool TIndexTabletDatabase::ReadNodeRef(
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(nodeId, name)
         .Select();
@@ -586,6 +641,11 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
     ui32* skippedRefs,
     NProto::EListNodesSizeMode sizeMode)
 {
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     using TTableBase = typename TIndexTabletSchema::NodeRefs;
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, cookie)
@@ -708,6 +768,11 @@ bool TIndexTabletDatabase::ReadNodeRefs(
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     if (!startNodeId && startCookie.empty()) {
         Table<TTable>().Precharge();
     }
@@ -749,6 +814,11 @@ bool TIndexTabletDatabase::PrechargeNodeRefs(
     ui64 bytesToPrecharge)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     return Table<TTable>()
         .GreaterOrEqual(nodeId, cookie)
@@ -801,6 +871,11 @@ bool TIndexTabletDatabase::ReadNodeRefVer(
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, name, ReverseCommitId(commitId))
         .Select();
@@ -847,6 +922,11 @@ bool TIndexTabletDatabase::ReadNodeRefVers(
     TVector<TNodeRef>& refs)
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(nodeId)
@@ -907,6 +987,11 @@ bool TIndexTabletDatabase::ReadTruncateQueue(TVector<NProto::TTruncateEntry>& en
 {
     using TTable = TIndexTabletSchema::TruncateQueue;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -949,6 +1034,11 @@ void TIndexTabletDatabase::DeleteSession(const TString& sessionId)
 bool TIndexTabletDatabase::ReadSessions(TVector<NProto::TSession>& sessions)
 {
     using TTable = TIndexTabletSchema::Sessions;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();
@@ -1017,6 +1107,11 @@ bool TIndexTabletDatabase::ReadSessionHandles(
 {
     using TTable = TIndexTabletSchema::SessionHandles;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -1028,6 +1123,11 @@ bool TIndexTabletDatabase::ReadSessionHandles(
     TVector<NProto::TSessionHandle>& handles)
 {
     using TTable = TIndexTabletSchema::SessionHandles;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(sessionId)
@@ -1084,6 +1184,11 @@ bool TIndexTabletDatabase::ReadSessionLocks(
 {
     using TTable = TIndexTabletSchema::SessionLocks;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -1095,6 +1200,11 @@ bool TIndexTabletDatabase::ReadSessionLocks(
     TVector<NProto::TSessionLock>& locks)
 {
     using TTable = TIndexTabletSchema::SessionLocks;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(sessionId)
@@ -1130,6 +1240,11 @@ bool TIndexTabletDatabase::ReadSessionDupCacheEntries(
     TVector<NProto::TDupCacheEntry>& entries)
 {
     using TTable = TIndexTabletSchema::SessionDupCache;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();
@@ -1197,6 +1312,11 @@ void TIndexTabletDatabase::DeleteFreshBytes(
 bool TIndexTabletDatabase::ReadFreshBytes(TVector<TFreshBytesEntry>& bytes)
 {
     using TTable = TIndexTabletSchema::FreshBytes;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();
@@ -1277,6 +1397,11 @@ bool TIndexTabletDatabase::ReadFreshBlocks(TVector<TFreshBlock>& blocks)
 {
     using TTable = TIndexTabletSchema::FreshBlocks;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -1356,6 +1481,11 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 {
     using TTable = TIndexTabletSchema::MixedBlocks;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(rangeId, blobId.CommitId(), blobId.UniqueId())
         .Select();
@@ -1395,6 +1525,11 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
     IAllocator* alloc)
 {
     using TTable = TIndexTabletSchema::MixedBlocks;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(rangeId)
@@ -1470,6 +1605,11 @@ bool TIndexTabletDatabase::ReadDeletionMarkers(
 {
     using TTable = TIndexTabletSchema::DeletionMarkers;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Prefix(rangeId)
         .Select();
@@ -1526,6 +1666,11 @@ bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
 {
     using TTable = TIndexTabletSchema::LargeDeletionMarkers;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -1573,6 +1718,11 @@ bool TIndexTabletDatabase::ReadOrphanNodes(TVector<ui64>& nodeIds)
 {
     using TTable = TIndexTabletSchema::OrphanNodes;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -1615,6 +1765,11 @@ void TIndexTabletDatabase::DeleteNewBlob(const TPartialBlobId& blobId)
 bool TIndexTabletDatabase::ReadNewBlobs(TVector<TPartialBlobId>& blobIds)
 {
     using TTable = TIndexTabletSchema::NewBlobs;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();
@@ -1660,6 +1815,11 @@ void TIndexTabletDatabase::DeleteGarbageBlob(const TPartialBlobId& blobId)
 bool TIndexTabletDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
 {
     using TTable = TIndexTabletSchema::GarbageBlobs;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();
@@ -1708,6 +1868,11 @@ bool TIndexTabletDatabase::ReadCheckpoints(
 {
     using TTable = TIndexTabletSchema::Checkpoints;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -1753,6 +1918,11 @@ bool TIndexTabletDatabase::ReadCheckpointNodes(
     size_t maxCount)
 {
     using TTable = TIndexTabletSchema::CheckpointNodes;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(checkpointId)
@@ -1807,6 +1977,11 @@ bool TIndexTabletDatabase::ReadCheckpointBlobs(
     size_t maxCount)
 {
     using TTable = TIndexTabletSchema::CheckpointBlobs;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(checkpointId)
@@ -1888,6 +2063,11 @@ bool TIndexTabletDatabase::ReadCompactionMap(
 {
     using TTable = TIndexTabletSchema::CompactionMap;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     if (!firstRangeId && prechargeAll) {
         Table<TTable>().Precharge();
     }
@@ -1929,6 +2109,11 @@ bool TIndexTabletDatabase::ReadTabletStorageInfo(
     NCloud::NProto::TTabletStorageInfo& tabletStorageInfo)
 {
     using TTable = TIndexTabletSchema::TabletStorageInfo;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Key(FileSystemMetaId)
@@ -1982,6 +2167,11 @@ bool TIndexTabletDatabase::ReadSessionHistoryEntries(
 {
     using TTable = TIndexTabletSchema::SessionHistory;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Select();
 
@@ -2027,6 +2217,11 @@ bool TIndexTabletDatabase::ReadOpLogEntry(
 {
     using TTable = TIndexTabletSchema::OpLog;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(entryId)
         .Select();
@@ -2045,6 +2240,11 @@ bool TIndexTabletDatabase::ReadOpLogEntry(
 bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 {
     using TTable = TIndexTabletSchema::OpLog;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();
@@ -2095,6 +2295,11 @@ bool TIndexTabletDatabase::ReadResponseLogEntry(
 {
     using TTable = TIndexTabletSchema::ResponseLog;
 
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(clientTabletId, requestId)
         .Select();
@@ -2114,6 +2319,11 @@ bool TIndexTabletDatabase::ReadResponseLog(
     TVector<NProtoPrivate::TResponseLogEntry>& responseLog)
 {
     using TTable = TIndexTabletSchema::ResponseLog;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();
@@ -2137,8 +2347,9 @@ bool TIndexTabletDatabase::ReadResponseLog(
 
 TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
-    : TIndexTabletDatabase(database)
+        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates,
+        ITxReschedulerPtr rescheduler)
+    : TIndexTabletDatabase(database, std::move(rescheduler))
     , NodeUpdates(nodeUpdates)
 {}
 
@@ -2467,6 +2678,11 @@ bool TIndexTabletDatabase::ReadUnconfirmedData(
     TVector<TUnconfirmedDataEntry>& entries)
 {
     using TTable = TIndexTabletSchema::UnconfirmedData;
+
+    if (Y_UNLIKELY(ShouldFailReadInTest()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();

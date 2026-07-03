@@ -129,7 +129,7 @@ bool TIndexTabletActor::PrepareTx_AllocateData(
     args.NodeId = handle->GetNodeId();
     args.CommitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
         return false;

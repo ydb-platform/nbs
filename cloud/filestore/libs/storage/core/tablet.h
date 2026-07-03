@@ -143,26 +143,6 @@ protected:
             Generation = tx.Generation;
             Step = tx.Step;
 
-            // Reschedule (restart) the transaction from PrepareTx when the
-            // injected rescheduler asks for it. In production this is a no-op
-            // stub; tests inject an implementation to make the transaction
-            // restart/reorder path.
-            if (Self->TxRescheduler->ShouldReschedule()) {
-                LOG_INFO(
-                    ctx,
-                    T::LogComponent,
-                    "[%lu] Forced reschedule of %s (gen: %u, step: %u)",
-                    Self->TabletID(),
-                    TTx::Name,
-                    Generation,
-                    Step);
-
-                Args.Clear();
-                Args.OnRestart();
-                tx.Reschedule();
-                return false;
-            }
-
             TX_TRACK(TxPrepare);
             LOG_TRACE(ctx, T::LogComponent,
                 "[%lu] PrepareTx %s (gen: %u, step: %u)",
@@ -176,6 +156,22 @@ protected:
 
                 Args.Clear();
                 Args.OnRestart();
+
+                // Reschedules the transaction from PrepareTx assuming the rescheduler
+                // was triggered during PrepareTx() call.
+                if (Y_UNLIKELY(Self->TxRescheduler && Self->TxRescheduler->IsTriggered())) {
+                    Self->TxRescheduler->Reset();
+                    LOG_INFO(
+                        ctx,
+                        T::LogComponent,
+                        "[%lu] Forced reschedule of %s (gen: %u, step: %u)",
+                        Self->TabletID(),
+                        TTx::Name,
+                        Generation,
+                        Step);
+                    tx.Reschedule();
+                }
+
                 return false;
             }
 
@@ -355,7 +351,7 @@ protected:
         {                                                                      \
             TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             if (target.ValidateTx_##name(ctx, args)) {                         \
-                dbType db(tx.DB, args.NodeUpdates);                            \
+                dbType db(tx.DB, args.NodeUpdates, target.TxRescheduler);      \
                 return target.PrepareTx_##name(ctx, db, args);                 \
             }                                                                  \
             return true;                                                       \
