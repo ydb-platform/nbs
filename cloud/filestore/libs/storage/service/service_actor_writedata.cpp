@@ -152,7 +152,7 @@ private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
     TRope Rope;
 
-    const bool UseThreeStageWrite = true;
+    const bool UseThreeStageWrite = false;
 
 public:
     TWriteDataActor(
@@ -184,10 +184,22 @@ public:
     void Bootstrap(const TActorContext& ctx)
     {
         if (!UseThreeStageWrite) {
-            WriteData(ctx, NProto::TError());
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Forwarding WriteData request to tablet");
+
+            WriteData(ctx, false);
             Become(&TThis::StateWork);
             return;
         }
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s Using three-stage write for request, size: %lu",
+            LogTag.c_str(),
+            Range.Length);
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
@@ -286,7 +298,8 @@ private:
 
         if (HasError(error)) {
             if (error.GetCode() != E_FS_THROTTLED) {
-                WriteData(ctx, error);
+                LogFallbackToWriteData(ctx, error);
+                WriteData(ctx, true);
             } else {
                 HandleError(ctx, error);
             }
@@ -471,7 +484,7 @@ private:
                 return CancelAddData(ctx);
             }
 
-            return WriteData(ctx, error);
+            return WriteData(ctx, true);
         }
 
         // It is implicitly expected that cookies are generated in increasing
@@ -613,7 +626,8 @@ private:
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
 
         if (HasError(msg->GetError())) {
-            WriteData(ctx, msg->GetError());
+            LogFallbackToWriteData(ctx, msg->GetError());
+            WriteData(ctx, true);
             return;
         }
 
@@ -709,7 +723,8 @@ private:
             }
 
             ResetTabletProxyRetryState();
-            return WriteData(ctx, msg->GetError());
+            LogFallbackToWriteData(ctx, msg->GetError());
+            return WriteData(ctx, true);
         }
 
         ResetTabletProxyRetryState();
@@ -741,7 +756,7 @@ private:
         }
 
         ResetTabletProxyRetryState();
-        WriteData(ctx, WriteBlobError);
+        WriteData(ctx, true);
     }
 
     void HandleWakeup(
@@ -804,10 +819,30 @@ private:
         TabletProxyRetryDelayProvider.Reset();
     }
 
+    inline void LogFallbackToWriteData(
+        const TActorContext& ctx,
+        const NProto::TError& error)
+    {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s Falling back to WriteData for %lu, %lu, %lu (%lu bytes). "
+            "Message: %s",
+            LogTag.c_str(),
+            WriteRequest.GetNodeId(),
+            WriteRequest.GetHandle(),
+            WriteRequest.GetOffset(),
+            NFileStore::CalculateByteCount(WriteRequest),
+            FormatError(error).Quote().c_str());
+    }
+
     /**
-     * @brief Fallback to regular write if two-stage write fails for any reason
+     * @brief Use regular write if three-stage write fails for any reason or
+     * disabled in filesystem configuration
+     * @param isFallback true if this is a fallback write after three-stage
+     * write failed
      */
-    void WriteData(const TActorContext& ctx, const NProto::TError& error)
+    void WriteData(const TActorContext& ctx, bool isFallback)
     {
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
@@ -815,22 +850,6 @@ private:
             "WriteData");
 
         MoveIovecsToBuffer(WriteRequest);
-
-        bool isFallback = HasError(error);
-        if (isFallback) {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s Falling back to WriteData for %lu, %lu, %lu (%lu bytes). "
-                "Message: %s",
-                LogTag.c_str(),
-                WriteRequest.GetNodeId(),
-                WriteRequest.GetHandle(),
-                WriteRequest.GetOffset(),
-                NFileStore::CalculateByteCount(WriteRequest),
-                FormatError(error).Quote().c_str());
-        }
-
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
         if (isFallback) {
@@ -1020,20 +1039,6 @@ void TStorageServiceActor::HandleWriteData(
         StorageConfig->GetBlockChecksumsInProfileLogEnabled();
 
     auto logTag = filestore.GetFileSystemId();
-    if (threeStageWriteEnabled) {
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s Using three-stage write for request, size: %lu",
-            logTag.c_str(),
-            bytesCount);
-    } else {
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "Forwarding WriteData request to tablet");
-    }
-
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         session->MediaKind,
