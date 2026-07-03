@@ -50,6 +50,7 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
         std::move(requestInfo),
         std::move(msg->Host),
         msg->State,
+        std::move(msg->CustomMessage),
         msg->DryRun);
 }
 
@@ -80,6 +81,7 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
         db,
         args.Host,
         args.State,
+        args.CustomMessage,
         args.TxTs,
         args.DryRun,
         args.AffectedDisks,

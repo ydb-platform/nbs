@@ -1320,6 +1320,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     db,
                     agents[0].agentid(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -1404,6 +1405,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     db,
                     agents[0].agentid(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -1502,6 +1504,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     db,
                     agents[0].agentid(),
                     NProto::AGENT_STATE_ONLINE,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -1529,6 +1532,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     db,
                     agents[0].agentid(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -1573,6 +1577,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     agents[0].agentid(),
                     agents[0].GetDevices()[0].GetDeviceName(),
                     NProto::DEVICE_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,    // shouldResumeDevice
                     false);   // dryRun
@@ -1654,6 +1659,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     agents[0].agentid(),
                     agents[0].GetDevices()[0].GetDeviceName(),
                     NProto::DEVICE_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,    // shouldResumeDevice
                     false);   // dryRun
@@ -1697,6 +1703,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     agents[0].agentid(),
                     agents[0].GetDevices()[0].GetDeviceName(),
                     NProto::DEVICE_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,    // shouldResumeDevice
                     false);   // dryRun
@@ -1752,6 +1759,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     agents[0].agentid(),
                     agents[0].GetDevices()[0].GetDeviceName(),
                     NProto::DEVICE_STATE_ONLINE,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,    // shouldResumeDevice
                     false);   // dryRun
@@ -1774,6 +1782,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     agents[0].agentid(),
                     agents[0].GetDevices()[0].GetDeviceName(),
                     NProto::DEVICE_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,    // shouldResumeDevice
                     false);   // dryRun

@@ -98,6 +98,7 @@ void TSendCmsRequestActor::Bootstrap(const TActorContext& ctx)
                 TEvDiskRegistryPrivate::TEvUpdateCmsHostStateRequest>(
                 AgentID,
                 NProto::AGENT_STATE_ONLINE,
+                /*customMessage=*/"monpage",
                 DryRun);
 
             NCloud::Send(ctx, Owner, std::move(request));
@@ -109,6 +110,7 @@ void TSendCmsRequestActor::Bootstrap(const TActorContext& ctx)
                 TEvDiskRegistryPrivate::TEvUpdateCmsHostStateRequest>(
                 AgentID,
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/"monpage",
                 DryRun);
 
             NCloud::Send(ctx, Owner, std::move(request));
@@ -119,6 +121,7 @@ void TSendCmsRequestActor::Bootstrap(const TActorContext& ctx)
             auto request = std::make_unique<
                 TEvDiskRegistryPrivate::TEvPurgeHostCmsRequest>(
                 AgentID,
+                /*customMessage=*/"monpage",
                 DryRun);
 
             NCloud::Send(ctx, Owner, std::move(request));
@@ -131,7 +134,8 @@ void TSendCmsRequestActor::Bootstrap(const TActorContext& ctx)
                 AgentID,
                 DevicePath,
                 NProto::DEVICE_STATE_ONLINE,
-                false,
+                /*customMessage=*/"monpage",
+                /*shouldResumeDevice=*/false,
                 DryRun);
 
             NCloud::Send(ctx, Owner, std::move(request));
@@ -144,7 +148,8 @@ void TSendCmsRequestActor::Bootstrap(const TActorContext& ctx)
                 AgentID,
                 DevicePath,
                 NProto::DEVICE_STATE_WARNING,
-                false,
+                /*customMessage=*/"monpage",
+                /*shouldResumeDevice=*/false,
                 DryRun);
 
             NCloud::Send(ctx, Owner, std::move(request));

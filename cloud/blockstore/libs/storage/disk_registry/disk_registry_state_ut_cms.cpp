@@ -61,40 +61,45 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfigVersion());
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto result = state.UpdateCmsDeviceState(
-                db,
-                agentConfig.GetAgentId(),
-                "NVMENBS01",
-                NProto::DEVICE_STATE_ONLINE,
-                Now(),
-                false,  // shouldResumeDevice
-                false); // dryRun
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto result = state.UpdateCmsDeviceState(
+                    db,
+                    agentConfig.GetAgentId(),
+                    "NVMENBS01",
+                    NProto::DEVICE_STATE_ONLINE,
+                    /*customMessage=*/TString(),
+                    Now(),
+                    false,    // shouldResumeDevice
+                    false);   // dryRun
 
-            UNIT_ASSERT_SUCCESS(result.Error);
+                UNIT_ASSERT_SUCCESS(result.Error);
 
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfigVersion());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                state.GetConfig().GetKnownAgents(0).DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "uuid-1.1",
-                state.GetConfig().GetKnownAgents(0).GetDevices(0).GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfigVersion());
+                const NProto::TAgentConfig& knownAgent =
+                    state.GetConfig().GetKnownAgents(0);
+                UNIT_ASSERT_VALUES_EQUAL(1, knownAgent.DevicesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-1.1",
+                    knownAgent.GetDevices(0).GetDeviceUUID());
 
-            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, result.Timeout);
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+                ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
+                UNIT_ASSERT_VALUES_EQUAL(TDuration{}, result.Timeout);
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
 
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
 
-            const auto& agent = state.GetAgents()[0];
+                const auto& agent = state.GetAgents()[0];
 
-            UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(3, agent.UnknownDevicesSize());
-        });
+                UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
+                UNIT_ASSERT_VALUES_EQUAL(3, agent.UnknownDevicesSize());
+            });
     }
 
     Y_UNIT_TEST(ShouldRemoveDevice)
@@ -145,6 +150,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 agentConfig.GetAgentId(),
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString("test-message"),
                 Now(),
                 false,  // shouldResumeDevice
                 false); // dryRun
@@ -168,6 +174,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
             UNIT_ASSERT_VALUES_EQUAL(4, agent.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, agent.UnknownDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "cms remove device action (test-message)",
+                agent.GetDevices(0).GetStateMessage());
         });
     }
 
@@ -236,6 +245,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 agentConfig.GetAgentId(),
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 Now(),
                 false,  // shouldResumeDevice
                 false); // dryRun
@@ -266,6 +276,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 agentConfig.GetAgentId(),
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 Now(),
                 false,  // shouldResumeDevice
                 false); // dryRun
@@ -395,6 +406,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 db,
                 agentConfig.GetAgentId(),
                 NProto::AGENT_STATE_ONLINE,
+                /*customMessage=*/TString(),
                 Now(),
                 false, // dryRun
                 affectedDisks,
@@ -547,6 +559,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     db,
                     agents[0].GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString("test-message"),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -560,9 +573,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 UNIT_ASSERT_SUCCESS(state.PurgeHost(
                     db,
                     agents[0].GetAgentId(),
+                    /*customMessage=*/TString("test-purge-message"),
                     Now(),
                     false,   // dryRun
                     affectedDisks));
+
+                const NProto::TAgentConfig* agentPtr =
+                    state.FindAgent(agents[0].GetAgentId());
+                UNIT_ASSERT(agentPtr);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    agentPtr->GetStateMessage(),
+                    "cms action (test-purge-message)");
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     2,
@@ -595,11 +616,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     db,
                     agents[1].GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString("test-remove-message"),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
                     timeout);
                 UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+
+                const NProto::TAgentConfig* agentPtr =
+                    state.FindAgent(agents[1].GetAgentId());
+                UNIT_ASSERT(agentPtr);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "cms action (test-remove-message)",
+                    agentPtr->GetStateMessage());
 
                 UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "nrd0"));
                 UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "nrd0"));
@@ -609,6 +638,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     db,
                     agents[1].GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(""),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -622,9 +652,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 UNIT_ASSERT_SUCCESS(state.PurgeHost(
                     db,
                     agents[1].GetAgentId(),
+                    /*customMessage=*/TString(""),
                     Now(),
                     false,   // dryRun
                     affectedDisks));
+
+                agentPtr = state.FindAgent(agents[1].GetAgentId());
+                UNIT_ASSERT(agentPtr);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "cms action",
+                    agentPtr->GetStateMessage());
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     1,
@@ -683,6 +720,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     db,
                     agents[2].GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -696,6 +734,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 UNIT_ASSERT_SUCCESS(state.PurgeHost(
                     db,
                     agents[2].GetAgentId(),
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks));
@@ -785,6 +824,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     db,
                     agent.GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -795,6 +835,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 UNIT_ASSERT_SUCCESS(state.PurgeHost(
                     db,
                     agent.GetAgentId(),
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks));
@@ -930,6 +971,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 UNIT_ASSERT_SUCCESS(state.PurgeHost(
                     db,
                     agents[0].GetAgentId(),
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks));
@@ -1044,6 +1086,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     db,
                     agents[0].GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,
@@ -1100,6 +1143,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     db,
                     agents[0].GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     Now(),
                     false,   // dryRun
                     affectedDisks,

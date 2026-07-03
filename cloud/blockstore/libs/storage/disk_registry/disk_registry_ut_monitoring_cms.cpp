@@ -321,7 +321,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryMonitoringCmsTest)
                 {
                     auto* msg = event->Get<
                         TEvDiskRegistryPrivate::TEvUpdateCmsHostStateRequest>();
-                    captured.emplace(msg->Host, msg->State, msg->DryRun);
+                    captured.emplace(
+                        msg->Host,
+                        msg->State,
+                        msg->CustomMessage,
+                        msg->DryRun);
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -358,7 +362,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryMonitoringCmsTest)
                 {
                     auto* msg = event->Get<
                         TEvDiskRegistryPrivate::TEvUpdateCmsHostStateRequest>();
-                    captured.emplace(msg->Host, msg->State, msg->DryRun);
+                    captured.emplace(
+                        msg->Host,
+                        msg->State,
+                        msg->CustomMessage,
+                        msg->DryRun);
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -393,7 +401,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryMonitoringCmsTest)
                 {
                     auto* msg = event->Get<
                         TEvDiskRegistryPrivate::TEvPurgeHostCmsRequest>();
-                    captured.emplace(msg->Host, msg->DryRun);
+                    captured.emplace(msg->Host, msg->CustomMessage, msg->DryRun);
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -432,6 +440,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryMonitoringCmsTest)
                         msg->Host,
                         msg->Path,
                         msg->State,
+                        msg->CustomMessage,
                         msg->ShouldResumeDevice,
                         msg->DryRun);
                 }
@@ -480,6 +489,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryMonitoringCmsTest)
                         msg->Host,
                         msg->Path,
                         msg->State,
+                        msg->CustomMessage,
                         msg->ShouldResumeDevice,
                         msg->DryRun);
                 }

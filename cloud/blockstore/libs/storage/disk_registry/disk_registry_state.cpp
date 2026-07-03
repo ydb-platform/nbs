@@ -5603,6 +5603,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     TDiskRegistryDatabase& db,
     const TString& agentId,
     NProto::EAgentState newState,
+    const TString& customMessage,
     TInstant now,
     bool dryRun,
     TVector<TDiskId>& affectedDisks,
@@ -5683,7 +5684,12 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     }
 
     if (agent->GetState() != NProto::AGENT_STATE_UNAVAILABLE) {
-        ChangeAgentState(*agent, newState, now, "cms action");
+        TStringBuilder stateMessage;
+        stateMessage << "cms action";
+        if (!customMessage.empty()) {
+            stateMessage << " (" << customMessage << ")";
+        }
+        ChangeAgentState(*agent, newState, now, stateMessage);
     }
 
     agent->SetCmsTs(cmsTs.MicroSeconds());
@@ -5723,6 +5729,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 NProto::TError TDiskRegistryState::PurgeHost(
     TDiskRegistryDatabase& db,
     const TString& agentId,
+    const TString& customMessage,
     TInstant now,
     bool dryRun,
     TVector<TDiskId>& affectedDisks)
@@ -5740,6 +5747,7 @@ NProto::TError TDiskRegistryState::PurgeHost(
         db,
         agentId,
         NProto::AGENT_STATE_WARNING,
+        customMessage,
         now,
         dryRun,
         affectedDisks,
@@ -6165,6 +6173,7 @@ auto TDiskRegistryState::AddNewDevices(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
     const TString& path,
+    const TString& customMessage,
     TInstant now,
     bool shouldResume,
     bool dryRun) -> TUpdateCmsDeviceStateResult
@@ -6195,8 +6204,14 @@ auto TDiskRegistryState::AddNewDevices(
         ids.push_back(device->GetDeviceUUID());
 
         device->SetState(NProto::DEVICE_STATE_ONLINE);
-        device->SetStateMessage("cms add device action");
         device->SetStateTs(now.MicroSeconds());
+
+        TStringBuilder stateMessage;
+        stateMessage << "cms add device action";
+        if (!customMessage.empty()) {
+            stateMessage << " (" << customMessage << ")";
+        }
+        device->SetStateMessage(stateMessage);
     }
 
     STORAGE_INFO("add new devices: AgentId=" << agent.GetAgentId()
@@ -6242,6 +6257,7 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
     NProto::TDeviceConfig& device,
+    const TString& customMessage,
     TInstant now,
     bool shouldResume,
     bool dryRun,
@@ -6270,7 +6286,12 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
 
     if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
         device.SetState(NProto::DEVICE_STATE_ONLINE);
-        device.SetStateMessage("cms add device action");
+        TStringBuilder stateMessage;
+        stateMessage << "cms add device action";
+        if (!customMessage.empty()) {
+            stateMessage << " (" << customMessage << ")";
+        }
+        device.SetStateMessage(stateMessage);
     }
 
     device.SetStateTs(now.MicroSeconds());
@@ -6290,6 +6311,7 @@ NProto::TError TDiskRegistryState::CmsRemoveDevice(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
     NProto::TDeviceConfig& device,
+    const TString& customMessage,
     TInstant now,
     bool dryRun,
     TDiskId& affectedDisk,
@@ -6347,7 +6369,12 @@ NProto::TError TDiskRegistryState::CmsRemoveDevice(
 
     if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
         device.SetState(NProto::DEVICE_STATE_WARNING);
-        device.SetStateMessage("cms remove device action");
+        TStringBuilder stateMessage;
+        stateMessage << "cms remove device action";
+        if (!customMessage.empty()) {
+            stateMessage << " (" << customMessage << ")";
+        }
+        device.SetStateMessage(stateMessage);
     }
 
     device.SetStateTs(now.MicroSeconds());
@@ -6363,6 +6390,7 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     const TAgentId& agentId,
     const TString& path,
     NProto::EDeviceState newState,
+    const TString& customMessage,
     TInstant now,
     bool shouldResume,
     bool dryRun) -> TUpdateCmsDeviceStateResult
@@ -6376,7 +6404,14 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     auto [agent, devices] = ResolveDevices(agentId, path);
 
     if (agent && devices.empty() && newState == NProto::DEVICE_STATE_ONLINE) {
-        return AddNewDevices(db, *agent, path, now, shouldResume, dryRun);
+        return AddNewDevices(
+            db,
+            *agent,
+            path,
+            customMessage,
+            now,
+            shouldResume,
+            dryRun);
     }
 
     if (!agent || devices.empty()) {
@@ -6398,6 +6433,7 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
                 db,
                 *agent,
                 device,
+                customMessage,
                 now,
                 shouldResume,
                 dryRun,
@@ -6416,6 +6452,7 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
             db,
             *agent,
             device,
+            customMessage,
             now,
             dryRun,
             affectedDisk,
