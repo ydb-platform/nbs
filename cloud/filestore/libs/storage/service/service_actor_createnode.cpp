@@ -165,8 +165,6 @@ void TLinkActor::HandleShardResponse(
     // returns E_REJECTED on any retry of the same requestId.
     // TODO(#2667): remove once TLinkActor has a proper retry mechanism.
     auto shardResponse = std::move(msg->Record);
-    *CreateNodeRequest.MutableShardNodeAttr() = shardResponse.GetNode();
-
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
@@ -174,6 +172,8 @@ void TLinkActor::HandleShardResponse(
         LogTag.c_str(),
         shardResponse.ShortDebugString().Quote().c_str(),
         CreateNodeRequest.GetLink().GetTargetNode());
+
+    CreateNodeRequest.MutableShardNodeAttr()->Swap(shardResponse.MutableNode());
 
     request->Record = std::move(CreateNodeRequest);
 

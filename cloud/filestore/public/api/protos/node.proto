@@ -183,7 +183,7 @@ message TCreateNodeRequest
         TBlockDevice BlockDevice = 15;
     }
 
-    // TODO(#2667): remove once harlinks are created on the tablet side
+    // TODO(#2667): remove once hardlinks are created on the tablet side
     // If set, the node will be created in the shard FS.
     string ShardFileSystemId = 12;
 
@@ -202,7 +202,7 @@ message TCreateNodeRequest
     // creating the link. Carried by TLinkActor so the leader can write a
     // complete DupCache entry (non-zero Id) and return the correct response
     // on retry.
-    // TODO(#2667): remove once harlinks are created on the tablet side
+    // TODO(#2667): remove once hardlinks are created on the tablet side
     TNodeAttr ShardNodeAttr = 19;
 }
 
