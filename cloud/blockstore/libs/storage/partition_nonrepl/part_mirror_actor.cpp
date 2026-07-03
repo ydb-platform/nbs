@@ -310,7 +310,7 @@ void TMirrorPartitionActor::StartResyncRange(
                                 : Config->GetScrubbingResyncPolicy();
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
-        LogTitle.GetChild(GetCycleCount()),
+        LogTitle,
         State.GetBlockSize(),
         GetScrubbingRange(),
         std::move(replicas),

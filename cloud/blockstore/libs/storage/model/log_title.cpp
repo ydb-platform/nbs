@@ -55,6 +55,11 @@ concept HasTabletId = requires(T t) {
     t.TabletId = ui64();
 };
 
+template<typename T>
+concept HasRange = requires(T t) {
+    t.Range = TBlockRange64();
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TString GetPartitionPrefix(
@@ -167,7 +172,12 @@ TString ToString(const TLogTitle::TPartitionMigration& data)
 
 TString ToString(const TLogTitle::TMirrorPartitionResync& data)
 {
-    return TStringBuilder() << "[MirrorPartitionResync:" << data.DiskId;
+    TStringBuilder sb;
+    sb << "[MirrorPartitionResync:" << data.DiskId;
+    if (data.Range) {
+        sb << " r:" << data.Range->Start << "-" << data.Range->End;
+    }
+    return sb;
 }
 
 TString ToString(const TLogTitle::TDiskRegistry& data)
@@ -313,6 +323,19 @@ void TLogTitle::SetTabletId(ui64 tabletId)
         {
             if constexpr (HasTabletId<decltype(data)>) {
                 data.TabletId = tabletId;
+            }
+            CachedPrefix = ToString(data);
+        },
+        Data);
+}
+
+void TLogTitle::SetRange(TBlockRange64 range)
+{
+    std::visit(
+        [this, range]<typename T>(T& data)
+        {
+            if constexpr (HasRange<decltype(data)>) {
+                data.Range = range;
             }
             CachedPrefix = ToString(data);
         },

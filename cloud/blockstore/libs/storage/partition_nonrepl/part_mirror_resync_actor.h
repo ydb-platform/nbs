@@ -45,7 +45,7 @@ private:
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
     const NActors::TActorId VolumeActorId;
-    const TLogTitle LogTitle;
+    TLogTitle LogTitle;
     TString RWClientId;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;

@@ -83,13 +83,13 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     const auto resyncRange =
         RangeId2BlockRange(rangeId, PartConfig->GetBlockSize());
 
+    LogTitle.SetRange(resyncRange);
     if (WriteAndZeroRequestsInProgress.OverlapsWithWrites(resyncRange)) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s Resyncing range %s rejected due to inflight write",
-            LogTitle.GetWithTime().c_str(),
-            DescribeRange(resyncRange).c_str());
+            "%s Resyncing range rejected due to inflight write",
+            LogTitle.GetWithTime().c_str());
 
         // Reschedule range
         State.FinishResyncRange(rangeId);
@@ -101,9 +101,8 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Resyncing range %s",
-        LogTitle.GetWithTime().c_str(),
-        DescribeRange(resyncRange).c_str());
+        "%s Resyncing range",
+        LogTitle.GetWithTime().c_str());
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
@@ -122,7 +121,7 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
 
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
-        LogTitle.GetChild(GetCycleCount()),
+        LogTitle,
         PartConfig->GetBlockSize(),
         resyncRange,
         std::move(replicas),
@@ -170,12 +169,12 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const auto range = msg->Range;
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
+    LogTitle.SetRange(range);
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Range %s resync finished: %s",
+        "%s Range resync finished: %s",
         LogTitle.GetWithTime().c_str(),
-        DescribeRange(range).c_str(),
         FormatError(msg->GetError()).c_str());
 
     STORAGE_VERIFY(
@@ -235,9 +234,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s Range %s resync failed: %s",
+            "%s Range resync failed: %s",
             LogTitle.GetWithTime().c_str(),
-            DescribeRange(range).c_str(),
             FormatError(msg->GetError()).c_str());
 
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
@@ -272,9 +270,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Range %s resynced",
-        LogTitle.GetWithTime().c_str(),
-        DescribeRange(range).c_str());
+        "%s Range resynced",
+        LogTitle.GetWithTime().c_str());
 
     if (CritOnChecksumMismatch && msg->WriteStartTs > TInstant()) {
         ReportMirroredDiskResyncChecksumMismatch(

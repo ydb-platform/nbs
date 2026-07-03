@@ -230,7 +230,7 @@ struct TTestEnv
             TLogTitle::TPartitionMirror{.DiskId = "diskId"}};
         std::unique_ptr<IActor> actor = MakeResyncRangeActor(
             std::move(requestInfo),
-            testLogTitle.GetChild(0),
+            testLogTitle,
             DefaultBlockSize,
             TBlockRange64::MakeClosedInterval(start, end),
             std::move(replicas),

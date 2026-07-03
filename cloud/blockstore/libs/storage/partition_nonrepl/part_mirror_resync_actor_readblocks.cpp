@@ -88,10 +88,10 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
+    LogTitle.SetRange(range);
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "%s Resync read fast path %s",
-        LogTitle.GetWithTime().c_str(),
-        DescribeRange(range).c_str());
+        "%s Resync read fast path",
+        LogTitle.GetWithTime().c_str());
 
     TFastPathRecord fastPathRecord{
         .Ev{NActors::IEventHandlePtr(ev.Release())},
@@ -135,10 +135,10 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
+    LogTitle.SetRange(range);
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "%s Resync read local fast path %s",
-        LogTitle.GetWithTime().c_str(),
-        DescribeRange(range).c_str());
+        "%s Resync read local fast path",
+        LogTitle.GetWithTime().c_str());
 
     auto blockSize = PartConfig->GetBlockSize();
     auto msg = ev->Get();
@@ -172,10 +172,10 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSlowPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
+    LogTitle.SetRange(range);
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "%s Resync read slow path %s",
-        LogTitle.GetWithTime().c_str(),
-        DescribeRange(range).c_str());
+        "%s Resync read slow path",
+        LogTitle.GetWithTime().c_str());
 
     ResyncRangeAfterError(range, ctx);
     PostponedReads.push_back({NActors::IEventHandlePtr(ev.release()), range});
@@ -310,12 +310,12 @@ void TMirrorPartitionResyncActor::HandleResyncFastPathChecksumCompareResponse(
         return;
     }
 
+    LogTitle.SetRange(msg->BlockRange);
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Resync range %s after error: %s",
+        "%s Resync range after error: %s",
         LogTitle.GetWithTime().c_str(),
-        DescribeRange(msg->BlockRange).c_str(),
         FormatError(msg->GetError()).c_str());
 
     Y_DEBUG_ABORT_UNLESS(!FastPathRecords.contains(ev->Cookie));

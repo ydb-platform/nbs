@@ -148,7 +148,7 @@ IProfileLog::TReplicaChecksums MakeChecksums(
 
 TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
         TRequestInfoPtr requestInfo,
-        const TChildLogTitle& logTitle,
+        const TLogTitle& logTitle,
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,

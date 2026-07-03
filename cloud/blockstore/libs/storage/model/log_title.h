@@ -1,9 +1,12 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/printable_params.h>
 
 #include <util/generic/string.h>
 #include <util/system/types.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -62,6 +65,7 @@ public:
     struct TMirrorPartitionResync
     {
         TString DiskId;
+        std::optional<TBlockRange64> Range;
     };
 
     struct TSession
@@ -154,6 +158,7 @@ public:
     void SetDiskId(TString diskId);
     void SetGeneration(ui32 generation);
     void SetTabletId(ui64 tabletId);
+    void SetRange(TBlockRange64 range);
 
 private:
     void Rebuild();

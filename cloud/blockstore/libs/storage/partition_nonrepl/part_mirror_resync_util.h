@@ -46,7 +46,7 @@ bool CanFixMismatch(bool isMinor, NProto::EResyncPolicy resyncPolicy);
 
 std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     TRequestInfoPtr requestInfo,
-    const TChildLogTitle& logTitle,
+    const TLogTitle& logTitle,
     ui32 blockSize,
     TBlockRange64 range,
     TVector<TReplicaDescriptor> replicas,
