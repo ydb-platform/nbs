@@ -27,7 +27,7 @@ See a detailed description of `virtiofs <-> filestore-vhost` communication [here
 ### filestore-server
 Runs tablet code. A non-sharded filesystem is represented by a single tablet which manages the whole persistent state of the filesystem.
 A sharded filesystem is represented by N + 1 tablets:
-* 1 tablet (aka "main" tablet, "leader" tablet, "master" tablet) manages the root directory structure and serves `statfs1 requests, session management requests and root directory management requests
+* 1 tablet (aka "main" tablet, "leader" tablet, "master" tablet) manages the root directory structure and serves `statfs` requests, session management requests and root directory management requests
 * N tablets (aka "shards") manage all the other inodes apart from the root directory inode
 
 Sessions are established and destroyed via the main filesystem tablet but the set of open file handles, locks and duplicate request cache is spread across all filesystem shards - each shard being in charge of the entities related to the inodes managed by that shard.
@@ -39,9 +39,9 @@ Each filestore-server can run tablets belonging to many different logical filesy
 Any tablet can serve any filestore public API requests that map to FUSE calls with `statfs` being the only exception - it's currently served only by the main tablet. The shard that's going to process the request is selected based on the inode id supplied in the request:
 * for the requests that have parent inode id + child name parameter pairs this would be the shard in charge of the parent inode (i.e. parent directory)
 * for the requests that have only inode id this would be the shard in charge of the inode itself
-* for the requests that have file handle id in the param list with would be the shard in charge of the inode pointed to by this handle
+* for the requests that have file handle id in the param list this would be the shard in charge of the inode pointed to by this handle
 
-Shard id is encoded in the high 16 bits of the inode and handle ids.
+Shard id is encoded in the high 16 bits of the inode and handle ids. Each inode id and each handle id is 64 bits.
 
 Main API calls:
 * `GetNodeAttr` (`stat` syscall family and also FUSE `lookup`) by inode id
