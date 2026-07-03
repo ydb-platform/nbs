@@ -4110,7 +4110,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     sessionId / "write_back_cache";
 
         {
-            TFileRingBuffer ringBuffer(path, WriteBackCacheCapacity);
+            TFileRingBuffer ringBuffer(
+                path,
+                WriteBackCacheCapacity,
+                0,
+                EFileRingBufferVersion::V6);
+
             UNIT_ASSERT(!ringBuffer.Empty());
         }
 
@@ -4151,7 +4156,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
 
         {
-            TFileRingBuffer ringBuffer(path, WriteBackCacheCapacity);
+            TFileRingBuffer ringBuffer(
+                path,
+                WriteBackCacheCapacity,
+                0,
+                EFileRingBufferVersion::V6);
+
             UNIT_ASSERT(ringBuffer.Empty());
         }
 
