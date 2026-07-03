@@ -105,7 +105,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
 {
     auto* agentRegInfo = AgentRegInfo.FindPtr(args.Host);
     const bool agentAvailable = agentRegInfo && agentRegInfo->Connected;
-    const bool needToDetachPath = Config->GetAttachDetachPathsEnabled() &&
+    const bool needToDetachPath = !args.DryRun &&
+                                  Config->GetAttachDetachPathsEnabled() &&
                                   args.State == NProto::DEVICE_STATE_WARNING &&
                                   !HasError(args.Error) && agentAvailable;
 
