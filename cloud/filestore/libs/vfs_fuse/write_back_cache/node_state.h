@@ -1,5 +1,6 @@
 #pragma once
 
+#include "flush_backpressure_calculator.h"
 #include "node_cache.h"
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
@@ -185,6 +186,15 @@ struct TNodeState
             return ENodeFlushStatus::FlushRequested;
         }
         return ENodeFlushStatus::ReadyToFlush;
+    }
+
+    bool GetBackpressureStatus(
+        const TFlushBackpressureCalculator& flushBackpressureCalculator) const
+    {
+        return flushBackpressureCalculator.GetBackpressureStatus(
+            Cache.GetUnflushedRequestsCount(),
+            Cache.GetCachedDataContiguousIntervalCount(),
+            Cache.GetCachedDataByteCount());
     }
 };
 

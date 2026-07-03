@@ -26,9 +26,16 @@ struct TWriteDataRequestManagerMetrics
         NMetrics::IMetricPtr MaxTime;
     };
 
+    struct TNodesWithBackpressureMetrics
+    {
+        NMetrics::IMetricPtr Count;
+        NMetrics::IMetricPtr MaxCount;
+    };
+
     TExtendedQueueMetrics PendingQueue;
     TExtendedQueueMetrics UnflushedQueue;
     TQueueMetrics FlushedQueue;
+    TNodesWithBackpressureMetrics NodesWithBackpressure;
 
     void Register(
         NMetrics::IMetricsRegistry& localMetricsRegistry,
@@ -49,6 +56,9 @@ struct IWriteDataRequestManagerStats
 
     virtual void AddedFlushedRequest() = 0;
     virtual void RemovedFlushedRequest() = 0;
+
+    virtual void AddedNodeWithBackpressure() = 0;
+    virtual void RemovedNodeWithBackpressure() = 0;
 
     virtual TWriteDataRequestManagerMetrics CreateMetrics() const = 0;
 

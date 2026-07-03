@@ -65,6 +65,15 @@ struct TWriteBackCacheArgs
     // Note: the limit is applied per node.
     ui32 FlushMaxSumWriteRequestsSize = 0;
 
+    // Limit the amount of unflushed WriteData requests per node based on the
+    // number of flush batches needed to flush all of them. Pending requests
+    // will not become unflushed until the number of queued flush batches drops
+    // below this limit.
+    // The purpose of this limit is to prevent from excessive amount of time
+    // for requests that rely on flush like SetNodeAttr, ReleaseHandle, reads
+    // and writes with O_DIRECT.
+    ui32 FlushBatchCountBackpressureThreshold = 0;
+
     // If the flag is enabled, WriteBackCache will generate WriteData requests
     // with iovecs.
     bool ZeroCopyWriteEnabled = false;

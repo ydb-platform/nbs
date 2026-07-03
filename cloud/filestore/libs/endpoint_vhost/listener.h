@@ -32,6 +32,7 @@ struct TWriteBackCacheConfig
     ui32 FlushMaxWriteRequestSize = 0;
     ui32 FlushMaxWriteRequestsCount = 0;
     ui32 FlushMaxSumWriteRequestsSize = 0;
+    ui32 FlushBatchCountBackpressureThreshold = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

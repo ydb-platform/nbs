@@ -1,5 +1,6 @@
 #pragma once
 
+#include "flush_backpressure_calculator.h"
 #include "node_cache.h"
 #include "node_state.h"
 #include "node_state_holder.h"
@@ -48,6 +49,7 @@ private:
     const ITimerPtr Timer;
     const IWriteBackCacheStateStatsPtr Stats;
     const IWriteDataRequestManagerStatsPtr RequestManagerStats;
+    const TFlushBackpressureCalculator FlushBackpressureCalculator;
     const TString LogTag;
 
     TNodeStateHolder Nodes;
@@ -83,6 +85,7 @@ public:
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
         INodeStateHolderStatsPtr nodeStateHolderStats,
+        TFlushBackpressureCalculator flushBackpressureCalculator,
         TString logTag);
 
     // Read state from the persistent storage
@@ -195,6 +198,11 @@ private:
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
     void ProcessPendingRequests();
+
+    void EnqueueUnflushedRequest(
+        ui64 nodeId,
+        TNodeState& nodeState,
+        std::unique_ptr<TCachedWriteDataRequest> request);
 
     void RemoveActiveRequestFromHandleState(
         TNodeState& nodeState,

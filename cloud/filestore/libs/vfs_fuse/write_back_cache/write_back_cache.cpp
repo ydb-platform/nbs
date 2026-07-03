@@ -112,6 +112,9 @@ public:
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
+              TFlushBackpressureCalculator(
+                  BuildFlushBatchLimits(args),
+                  args.FlushBatchCountBackpressureThreshold),
               LogTag)
     {
         auto createPersistentStorageResult =

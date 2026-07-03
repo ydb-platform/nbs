@@ -63,47 +63,6 @@ TStringBuf SerializeWriteDataRequest(
     return data;
 }
 
-std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInPersistentStorage(
-    ui64 sequenceId,
-    TInstant time,
-    const NProto::TWriteDataRequest& request,
-    IPersistentStorage& storage)
-{
-    const ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request) -
-                           request.GetBufferOffset();
-
-    const ui64 allocationSize =
-        sizeof(TSerializedWriteDataRequestHeader) + byteCount;
-
-    auto allocationResult = storage.Alloc(allocationSize);
-
-    Y_ABORT_UNLESS(
-        !HasError(allocationResult),
-        "Allocation failed with error: %s",
-        allocationResult.GetError().GetMessage().data());
-
-    char* allocationPtr = allocationResult.GetResult();
-    if (allocationPtr == nullptr) {
-        return nullptr;
-    }
-
-    TMemoryOutput memoryOutput(allocationPtr, allocationSize);
-
-    auto data = SerializeWriteDataRequest(request, memoryOutput);
-
-    Y_ABORT_UNLESS(
-        memoryOutput.Exhausted(),
-        "Buffer is expected to be written completely");
-
-    storage.Commit();
-
-    return std::make_unique<TCachedWriteDataRequest>(
-        sequenceId,
-        time,
-        allocationPtr,
-        data);
-}
-
 std::unique_ptr<TCachedWriteDataRequest> DeserializeWriteDataRequest(
     ui64 sequenceId,
     TInstant time,
@@ -251,8 +210,7 @@ auto TWriteDataRequestManager::AddRequest(
         auto cachedRequest = TryStoreRequestInPersistentStorage(
             sequenceId,
             now,
-            *request,
-            *PersistentStorage);
+            *request);
 
         if (cachedRequest) {
             UnflushedRequestsPushBack(cachedRequest.get());
@@ -281,8 +239,7 @@ auto TWriteDataRequestManager::TryProcessPendingRequest()
     auto cachedRequest = TryStoreRequestInPersistentStorage(
         pendingRequest->GetSequenceId(),
         Timer->Now(),
-        pendingRequest->GetRequest(),
-        *PersistentStorage);
+        pendingRequest->GetRequest());
 
     if (cachedRequest) {
         PendingRequestsPopFront();
@@ -335,6 +292,23 @@ void TWriteDataRequestManager::Evict(
     PersistentStorage->Free(request->GetAllocationPtr());
 }
 
+void TWriteDataRequestManager::SetBackpressureStatusForNode(
+    ui64 nodeId,
+    bool backpressureStatus)
+{
+    if (backpressureStatus) {
+        auto [_, added] = NodesWithBackpressure.insert(nodeId);
+        if (added) {
+            Stats->AddedNodeWithBackpressure();
+        }
+    } else {
+        auto removed = NodesWithBackpressure.erase(nodeId);
+        if (removed) {
+            Stats->RemovedNodeWithBackpressure();
+        }
+    }
+}
+
 void TWriteDataRequestManager::UpdateStats() const
 {
     auto now = Timer->Now();
@@ -352,6 +326,55 @@ void TWriteDataRequestManager::UpdateStats() const
         maxUnflushedRequestDuration);
 
     PersistentStorage->UpdateStats();
+}
+
+// Private methods
+
+std::unique_ptr<TCachedWriteDataRequest>
+TWriteDataRequestManager::TryStoreRequestInPersistentStorage(
+    ui64 sequenceId,
+    TInstant time,
+    const NProto::TWriteDataRequest& request)
+{
+    if (NodesWithBackpressure.contains(request.GetNodeId())) {
+        // Reordering of requests in the pending queue is not supported
+        // Newer requests will wait even if they are not backpressured
+        return nullptr;
+    }
+
+    const ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request) -
+                           request.GetBufferOffset();
+
+    const ui64 allocationSize =
+        sizeof(TSerializedWriteDataRequestHeader) + byteCount;
+
+    auto allocationResult = PersistentStorage->Alloc(allocationSize);
+
+    Y_ABORT_UNLESS(
+        !HasError(allocationResult),
+        "Allocation failed with error: %s",
+        allocationResult.GetError().GetMessage().data());
+
+    char* allocationPtr = allocationResult.GetResult();
+    if (allocationPtr == nullptr) {
+        return nullptr;
+    }
+
+    TMemoryOutput memoryOutput(allocationPtr, allocationSize);
+
+    auto data = SerializeWriteDataRequest(request, memoryOutput);
+
+    Y_ABORT_UNLESS(
+        memoryOutput.Exhausted(),
+        "Buffer is expected to be written completely");
+
+    PersistentStorage->Commit();
+
+    return std::make_unique<TCachedWriteDataRequest>(
+        sequenceId,
+        time,
+        allocationPtr,
+        data);
 }
 
 // Access methods that triggers stats update

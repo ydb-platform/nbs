@@ -20,11 +20,13 @@ TWriteBackCacheState::TWriteBackCacheState(
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
     INodeStateHolderStatsPtr nodeStateHolderStats,
+    TFlushBackpressureCalculator flushBackpressureCalculator,
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
     , Stats(std::move(writeBackCacheStateStats))
     , RequestManagerStats(std::move(writeDataRequestManagerStats))
+    , FlushBackpressureCalculator(std::move(flushBackpressureCalculator))
     , LogTag(std::move(logTag))
     , Nodes(Timer, std::move(nodeStateHolderStats))
     , QueuedOperations(processor)
@@ -576,7 +578,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
         handleState.UnflushedRequests.PushBack(request.get());
     }
 
-    nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
+    EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
 
     UpdateFlushStatus(nodeId, nodeState);
 
@@ -698,6 +700,10 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         entriesEvicted = true;
     }
 
+    if (!nodeState.GetBackpressureStatus(FlushBackpressureCalculator)) {
+        RequestManager.SetBackpressureStatusForNode(nodeId, false);
+    }
+
     if (nodeState.CanBeDeleted()) {
         Nodes.DeleteNodeState(nodeId);
     } else {
@@ -788,9 +794,21 @@ void TWriteBackCacheState::ProcessPendingRequests()
         handleState.PendingRequests.Remove(pendingRequest.get());
         handleState.UnflushedRequests.PushBack(request.get());
 
-        nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
+        EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
 
         UpdateFlushStatus(nodeId, nodeState);
+    }
+}
+
+void TWriteBackCacheState::EnqueueUnflushedRequest(
+    ui64 nodeId,
+    TNodeState& nodeState,
+    std::unique_ptr<TCachedWriteDataRequest> request)
+{
+    nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
+
+    if (nodeState.GetBackpressureStatus(FlushBackpressureCalculator)) {
+        RequestManager.SetBackpressureStatusForNode(nodeId, true);
     }
 }
 

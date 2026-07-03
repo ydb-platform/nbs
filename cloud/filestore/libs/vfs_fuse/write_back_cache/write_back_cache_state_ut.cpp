@@ -63,12 +63,18 @@ struct TBootstrap
     TProcessor Processor;
     std::unique_ptr<TWriteBackCacheState> State;
     TWriteBackCacheMetrics Metrics;
+    TFlushBatchLimits FlushBatchLimits;
+    ui32 MaxQueuedFlushBatchesPerNode = 0;
 
     TBootstrap()
         : Timer(std::make_shared<TTestTimer>())
         , Stats(CreateWriteBackCacheStats())
         , Storage(CreateTestStorage(Stats))
         , Metrics(Stats->CreateMetrics())
+        , FlushBatchLimits(
+              {.MaxWriteRequestSize = 16,
+               .MaxWriteRequestsCount = 2,
+               .MaxSumWriteRequestsSize = 24})
     {
         Recreate();
     }
@@ -111,6 +117,9 @@ struct TBootstrap
             Stats->GetWriteBackCacheStateStats(),
             Stats->GetWriteDataRequestManagerStats(),
             Stats->GetNodeStateHolderStats(),
+            TFlushBackpressureCalculator(
+                FlushBatchLimits,
+                MaxQueuedFlushBatchesPerNode),
             "[test]");
 
         return State->Init(Storage);
@@ -1303,6 +1312,48 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(w2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, w2.GetValue().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldHandleBackpressure)
+    {
+        TBootstrap b;
+        b.MaxQueuedFlushBatchesPerNode = 2;
+        b.Recreate();
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 5, "def").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 10, "ghi").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 15, "jkl").GetValue());
+
+        auto metric = b.Metrics.NodesWithBackpressure.Count;
+        UNIT_ASSERT_VALUES_EQUAL(0, metric->Get());
+
+        // Flush batch limits: 2 requests per flush batch
+        // Backpressure will be set after this call
+        UNIT_ASSERT(b.Add(1, 101, 20, "mno").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(1, metric->Get());
+
+        auto f1 = b.Add(1, 101, 25, "pqr");
+        auto f2 = b.Add(2, 102, 0, "123");
+        auto f3 = b.Add(1, 101, 30, "stu");
+        auto f4 = b.Add(1, 101, 30, "vwx");
+
+        UNIT_ASSERT(!f1.HasValue());
+        UNIT_ASSERT(!f2.HasValue());
+        UNIT_ASSERT(!f3.HasValue());
+        UNIT_ASSERT(!f4.HasValue());
+
+        b.State->FlushSucceeded(1, 1);
+
+        UNIT_ASSERT(f1.GetValue());
+        UNIT_ASSERT(f2.GetValue());
+        UNIT_ASSERT(!f3.HasValue());
+        UNIT_ASSERT(!f4.HasValue());
+
+        b.State->FlushSucceeded(1, 2);
+
+        UNIT_ASSERT(f3.GetValue());
+        UNIT_ASSERT(f4.GetValue());
     }
 }
 

@@ -143,6 +143,8 @@ public:
             WriteBackCacheConfig.FlushMaxWriteRequestsCount);
         protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
+        protoConfig.SetWriteBackCacheFlushBatchCountBackpressureThreshold(
+            WriteBackCacheConfig.FlushBatchCountBackpressureThreshold);
         protoConfig.SetDirectoryHandlesStoragePath(
             DirectoryHandleStorageConfig.PathPrefix);
         protoConfig.SetDirectoryHandlesInitialDataSize(

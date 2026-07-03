@@ -434,6 +434,47 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
 
         TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(entries);
     }
+
+    Y_UNIT_TEST(ShouldCalculateCachedDataStats)
+    {
+        TBootstrap b;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedDataContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedDataByteCount());
+
+        b.PushUnflushed(3, "abc");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Cache.GetCachedDataContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedDataByteCount());
+
+        b.PushUnflushed(7, "def");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Cache.GetCachedDataContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(6, b.Cache.GetCachedDataByteCount());
+
+        b.PushUnflushed(5, "xyz");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Cache.GetCachedDataContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(7, b.Cache.GetCachedDataByteCount());
+
+         b.Cache.MoveFrontUnflushedRequestToFlushed();
+         b.Cache.DequeueFlushedRequest();
+
+         UNIT_ASSERT_VALUES_EQUAL(1, b.Cache.GetCachedDataContiguousIntervalCount());
+         UNIT_ASSERT_VALUES_EQUAL(5, b.Cache.GetCachedDataByteCount());
+
+         b.Cache.MoveFrontUnflushedRequestToFlushed();
+         b.Cache.DequeueFlushedRequest();
+
+         UNIT_ASSERT_VALUES_EQUAL(1, b.Cache.GetCachedDataContiguousIntervalCount());
+         UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedDataByteCount());
+
+         b.Cache.MoveFrontUnflushedRequestToFlushed();
+         b.Cache.DequeueFlushedRequest();
+
+         UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedDataContiguousIntervalCount());
+         UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedDataByteCount());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

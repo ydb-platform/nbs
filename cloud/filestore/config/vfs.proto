@@ -84,4 +84,13 @@ message TVFSConfig
 
     // Max single growth step for DirectoryHandles persistent table data area.
     optional uint64 DirectoryHandlesMaxDataAreaStepSize = 24;
+
+    // Limit the amount of unflushed WriteData requests per node based on the
+    // number of flush batches needed to flush all of them. Pending requests
+    // will not become unflushed until the number of queued flush batches drops
+    // below this limit.
+    // The purpose of this limit is to prevent from excessive amount of time
+    // for requests that rely on flush like SetNodeAttr, ReleaseHandle, reads
+    // and writes with O_DIRECT.
+    optional uint32 WriteBackCacheFlushBatchCountBackpressureThreshold = 25;
 }
