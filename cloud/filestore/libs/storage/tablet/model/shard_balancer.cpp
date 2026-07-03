@@ -63,14 +63,14 @@ TShardBalancerBase::TShardBalancerBase(
     , PrecisionBytes(precisionBytes)
     , DesiredFreeSpaceReserve(desiredFreeSpaceReserve)
     , MinFreeSpaceReserve(minFreeSpaceReserve)
-    , Ids(std::move(shardIds))
 {
-    for (ui32 i = 0; i < Ids.size(); ++i) {
+    for (ui32 i = 0; i < shardIds.size(); ++i) {
         Metas.emplace_back(
             i,
             // Before the first update shards are treated like empty with
-            // infinite capacity. maxFileBlocks is used as inifinity here.
+            // infinite capacity. maxFileBlocks is used as infinity here.
             TShardStats{
+                .ShardId = shardIds[i],
                 .TotalBlocksCount = maxFileBlocks,
                 .UsedBlocksCount = 0,
                 .UsedNodesCount = 0,
@@ -123,15 +123,15 @@ size_t TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
     return std::distance(Metas.begin(), e);
 }
 
-TVector<IShardBalancer::TShardDescr>
+TVector<TShardStats>
 TShardBalancerBase::MakeOrderedShardList() const
 {
-    TVector<TShardDescr> shardDescrs;
-    shardDescrs.reserve(Metas.size());
+    TVector<TShardStats> shardStats;
+    shardStats.reserve(Metas.size());
     for (const auto& meta: Metas) {
-        shardDescrs.emplace_back(Ids[meta.ShardIdx], meta.Stats);
+        shardStats.emplace_back(meta.Stats);
     }
-    return shardDescrs;
+    return shardStats;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,7 +145,7 @@ NProto::TError TShardBalancerRoundRobin::SelectShard(
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
 
-    *shardId = Ids[Metas[(ShardSelector++) % endIdx].ShardIdx];
+    *shardId = Metas[(ShardSelector++) % endIdx].Stats.ShardId;
     return {};
 }
 
@@ -161,7 +161,7 @@ NProto::TError TShardBalancerRandom::SelectShard(
     }
 
     const auto idx = RandomNumber<ui32>(endIdx);
-    *shardId = Ids[Metas[idx].ShardIdx];
+    *shardId = Metas[idx].Stats.ShardId;
     return {};
 }
 
@@ -240,7 +240,7 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
     Y_ABORT_UNLESS(it != WeightPrefixSums.begin());
     const size_t idx = std::distance(WeightPrefixSums.begin(), it) - 1;
     Y_ABORT_UNLESS(idx < Metas.size());
-    *shardId = Ids[Metas[idx].ShardIdx];
+    *shardId = Metas[idx].Stats.ShardId;
     return {};
 }
 

@@ -1627,7 +1627,7 @@ NProto::TError TIndexTabletState::UpdateShardBalancer(
         minFreeSpaceReserve);
 }
 
-TVector<IShardBalancer::TShardDescr>
+TVector<TShardStats>
 TIndexTabletState::MakeOrderedShardList() const
 {
     return Impl->ShardBalancer->MakeOrderedShardList();

@@ -1099,9 +1099,9 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
                 ui32 shardNo = 0;
                 for (const auto& shardId: shardIds) {
-                    TShardStats ss;
-                    if (shardNo < CachedShardStats.size()) {
-                        ss = CachedShardStats[shardNo];
+                    NProtoPrivate::TShardStats ss;
+                    if (shardNo < CachedAggregateStats.ShardStatsSize()) {
+                        ss = CachedAggregateStats.GetShardStats(shardNo);
                     }
                     TABLER() {
                         TABLED() { out << ++shardNo; }
@@ -1111,17 +1111,18 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                                 << shardId << "</a>";
                         }
                         TABLED() {
-                            out << ss.UsedBlocksCount * GetBlockSize();
+                            out << ss.GetUsedBlocksCount() * GetBlockSize();
                         }
                         TABLED() {
-                            out << ss.UsedNodesCount;
+                            out << ss.GetUsedNodesCount();
                         }
                         TABLED() {
-                            out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
-                                * GetBlockSize();
+                            out << (ss.GetTotalBlocksCount() -
+                                    ss.GetUsedBlocksCount()) *
+                                       GetBlockSize();
                         }
-                        TABLED() { out << ss.CurrentLoad; }
-                        TABLED() { out << ss.Suffer; }
+                        TABLED() { out << ss.GetCurrentLoad(); }
+                        TABLED() { out << ss.GetSuffer(); }
                     }
                 }
             }
