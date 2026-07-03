@@ -317,10 +317,20 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
         return BlobsConfirmed(ctx);
     }
 
-    // Recovery must replay confirmations in commitId order to preserve write
-    // order for overlapping ranges. Confirm them one at a time, advancing on
-    // each write's safe point. A single AddBlob is ever
-    // in flight, so page faults cannot reorder
+    // Recovery replays confirmations one at a time in commitId order: each
+    // write's AddBlob is submitted only after the previous one reaches its safe
+    // point, so a single AddBlob is ever in flight and page faults cannot
+    // reorder the AddBlob TXes for overlapping ranges.
+    //
+    // NOTE: preserving this order is not actually required today. From the
+    // vhost perspective, a sequential workload over three-stage (unconfirmed)
+    // writes can never have two unconfirmed writes in progress at once, so
+    // overlapping unconfirmed writes simply don't occur. If we ever do observe
+    // overlapping unconfirmed writes, it means the client issued them in
+    // parallel, and concurrent writes to the same range have no defined order,
+    // they may be reordered anyway, so any confirmation order is correct. We
+    // keep the strict ordering for now, because penatly is insignificant and
+    // there is a possibility that we can reuse this property in the future.
     Sort(recoverableCommitIds);
 
     for (const ui64 commitId: recoverableCommitIds) {
