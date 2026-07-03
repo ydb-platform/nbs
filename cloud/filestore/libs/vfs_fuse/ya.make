@@ -24,6 +24,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    bench
     fuzz
     ut
 )
