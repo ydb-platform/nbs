@@ -102,6 +102,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
             auto request = std::make_unique<TRequest>(
                 action.GetHost(),
                 NProto::EAgentState::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 action.GetDryRun());
 
             NCloud::Send(
@@ -118,6 +119,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 action.GetHost(),
                 action.GetDevice(),
                 NProto::EDeviceState::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 /*shouldResumeDevice=*/false,
                 action.GetDryRun());
 
@@ -151,6 +153,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 action.GetHost(),
                 action.GetDevice(),
                 NProto::EDeviceState::DEVICE_STATE_ONLINE,
+                /*customMessage=*/TString(),
                 /*shouldResumeDevice=*/false,
                 action.GetDryRun());
 
@@ -167,6 +170,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
             auto request = std::make_unique<TRequest>(
                 action.GetHost(),
                 NProto::EAgentState::AGENT_STATE_ONLINE,
+                /*customMessage=*/TString(),
                 action.GetDryRun());
 
             NCloud::Send(
@@ -180,6 +184,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
             using TRequest = TEvDiskRegistryPrivate::TEvPurgeHostCmsRequest;
             auto request = std::make_unique<TRequest>(
                 action.GetHost(),
+                /*customMessage=*/TString(),
                 action.GetDryRun());
 
             NCloud::Send(ctx, Owner, std::move(request));

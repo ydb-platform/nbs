@@ -182,6 +182,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                 Agents[1].GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_ONLINE,
+                /*customMessage=*/TString(),
                 TInstant::FromValue(1),
                 true,     // shouldResumeDevice
                 false);   // dryRun
@@ -289,6 +290,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                     Agents[1].GetAgentId(),
                     d.GetDeviceName(),
                     NProto::DEVICE_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     TInstant::FromValue(1),
                     false,  // shouldResumeDevice
                     false); // dryRun
@@ -311,8 +313,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                 auto r = state.PurgeHost(
                     db,
                     Agents[1].GetAgentId(),
+                    /*customMessage=*/TString(),
                     TInstant::FromValue(2),
-                    false,   // dryRun
+                    /*dryRun=*/false,
                     affectedDisks);
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, r.GetCode());
 
@@ -333,6 +336,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                 db,
                 Agents[2].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 TInstant::FromValue(3),
                 false,  // dryRun
                 affectedDisks,
@@ -351,8 +355,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             UNIT_ASSERT_SUCCESS(state.PurgeHost(
                 db,
                 Agents[2].GetAgentId(),
+                /*customMessage=*/TString(),
                 TInstant::FromValue(4),
-                false,  // dryRun
+                /*dryRun=*/false,
                 affectedDisks));
 
             const auto* agent = state.FindAgent(Agents[2].GetAgentId());

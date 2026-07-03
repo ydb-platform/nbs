@@ -48,6 +48,7 @@ void TDiskRegistryActor::HandlePurgeHostCms(
         ctx,
         std::move(requestInfo),
         std::move(msg->Host),
+        std::move(msg->CustomMessage),
         msg->DryRun);
 }
 
@@ -74,6 +75,7 @@ void TDiskRegistryActor::ExecutePurgeHostCms(
     args.Error = State->PurgeHost(
         db,
         args.Host,
+        args.CustomMessage,
         ctx.Now(),
         args.DryRun,
         args.AffectedDisks);

@@ -1242,6 +1242,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 agentConfig1.GetAgentId(),
                 "dev-3",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 Now(),
                 false,  // shouldResumeDevice
                 false); // dryRun
@@ -2984,6 +2985,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     db,
                     agentConfig1.GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     changeStateTs,
                     false,  // dryRun
                     affectedDisks,
@@ -2996,6 +2998,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     agentConfig1.GetAgentId(),
                     "dev-1",
                     NProto::DEVICE_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     changeStateTs,
                     false,  // shouldResumeDevice
                     false); // dryRun
@@ -3106,6 +3109,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     db,
                     agentConfig1.GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     changeStateTs,
                     false,  // dryRun
                     affectedDisks,
@@ -3118,6 +3122,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     agentConfig1.GetAgentId(),
                     "dev-1",
                     NProto::DEVICE_STATE_WARNING,
+                    /*customMessage=*/TString(),
                     changeStateTs,
                     false,  // shouldResumeDevice
                     false); // dryRun
