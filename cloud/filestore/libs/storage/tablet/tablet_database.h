@@ -6,6 +6,7 @@
 #include "tablet_state_iface.h"
 
 #include <cloud/filestore/config/storage.pb.h>
+#include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
@@ -68,8 +69,10 @@ class TIndexTabletDatabase
     , public NKikimr::NIceDb::TNiceDb
 {
 public:
-    TIndexTabletDatabase(NKikimr::NTable::TDatabase& database)
+    TIndexTabletDatabase(NKikimr::NTable::TDatabase& database,
+        ITxReschedulerPtr rescheduler = {})
         : NKikimr::NIceDb::TNiceDb(database)
+        , TestReadRescheduler(std::move(rescheduler))
     {}
 
     void InitSchema();
@@ -576,6 +579,9 @@ public:
     void DeleteUnconfirmedData(ui64 commitId);
 
     bool ReadUnconfirmedData(TVector<TUnconfirmedDataEntry>& entries);
+
+private:
+    ITxReschedulerPtr TestReadRescheduler;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -587,7 +593,8 @@ class TIndexTabletDatabaseProxy: public TIndexTabletDatabase
 public:
     TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
+        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates,
+        ITxReschedulerPtr rescheduler = {});
 
     //
     // Nodes

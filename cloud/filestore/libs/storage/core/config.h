@@ -435,6 +435,9 @@ public:
     ui32 GetSoftBackpressureMaxReadBandwidth() const;
     ui32 GetSoftBackpressureMaxWriteIops() const;
     ui32 GetSoftBackpressureMaxReadIops() const;
+
+    bool GetUnsafeTestReadFailuresEnabled() const;
+    ui32 GetUnsafeTestReadFailuresProbabilityPct() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

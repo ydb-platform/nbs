@@ -246,7 +246,9 @@ public:
                     systemCounters,
                     metricsRegistry,
                     fastShardServer,
-                    CreateNoOpTxRescheduler());
+                    config->GetUnsafeTestReadFailuresEnabled() ?
+                        CreateRescheduler(config->GetUnsafeTestReadFailuresProbabilityPct()) :
+                        CreateNoOpTxRescheduler());
                 return actor.release();
             };
 

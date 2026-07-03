@@ -90,7 +90,7 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
         args.SessionSeqNo,
         args.Request.GetSessionState().size());
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     bool ready = true;
     auto commitId = GetCurrentCommitId();

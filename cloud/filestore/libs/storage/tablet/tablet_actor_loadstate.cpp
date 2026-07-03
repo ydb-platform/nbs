@@ -95,7 +95,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet state data");
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
 
     std::initializer_list<bool> results = {
         db.ReadFileSystem(args.FileSystem),
@@ -143,7 +143,7 @@ void TIndexTabletActor::ExecuteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Preparing tablet state");
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
 
     if (!args.RootNode) {
         args.RootNode.ConstructInPlace();
@@ -671,7 +671,7 @@ bool TIndexTabletActor::PrepareTx_LoadCompactionMapChunk(
         LogTag << " Loading compaction map chunk "
             << args.FirstRangeId << ", " << args.RangeCount);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
 
     bool ready = db.ReadCompactionMap(
         args.CompactionMap,

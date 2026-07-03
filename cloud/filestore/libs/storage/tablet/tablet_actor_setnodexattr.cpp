@@ -72,7 +72,7 @@ bool TIndexTabletActor::PrepareTx_SetNodeXAttr(
 
     FILESTORE_VALIDATE_TX_SESSION(SetNodeXAttr, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 

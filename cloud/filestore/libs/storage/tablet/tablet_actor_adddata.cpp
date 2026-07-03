@@ -133,7 +133,7 @@ bool TIndexTabletActor::ValidateAddDataRequest(
     }
     ui64 commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
 
     if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
         return false;

@@ -74,7 +74,7 @@ bool TIndexTabletActor::PrepareTx_DestroyHandle(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
     if (!ReadNode(db, handle->GetNodeId(), commitId, args.Node)) {
         return false;
     }

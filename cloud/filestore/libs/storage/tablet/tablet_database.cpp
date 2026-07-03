@@ -42,6 +42,11 @@ bool TIndexTabletDatabase::ReadFileSystem(NProto::TFileSystem& fileSystem)
 {
     using TTable = TIndexTabletSchema::FileSystem;
 
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(FileSystemMetaId)
         .Select();
@@ -60,6 +65,11 @@ bool TIndexTabletDatabase::ReadFileSystem(NProto::TFileSystem& fileSystem)
 bool TIndexTabletDatabase::ReadFileSystemStats(NProto::TFileSystemStats& stats)
 {
     using TTable = TIndexTabletSchema::FileSystem;
+
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Key(FileSystemMetaId)
@@ -112,6 +122,11 @@ bool TIndexTabletDatabase::ReadStorageConfig(
 {
     using TTable = TIndexTabletSchema::FileSystem;
 
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(FileSystemMetaId)
         .Select<TTable::TColumns>();
@@ -161,6 +176,11 @@ bool TIndexTabletDatabase::ReadNode(
 {
     using TTable = TIndexTabletSchema::Nodes;
 
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(nodeId)
         .Select();
@@ -193,6 +213,11 @@ bool TIndexTabletDatabase::ReadNodes(
     TVector<TNode>& nodes)
 {
     using TTable = TIndexTabletSchema::Nodes;
+
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>().GreaterOrEqual(startNodeId).Select();
 
@@ -255,6 +280,11 @@ bool TIndexTabletDatabase::ReadNodeVer(
     TMaybe<TNode>& node)
 {
     using TTable = TIndexTabletSchema::Nodes_Ver;
+
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, ReverseCommitId(commitId))
@@ -329,6 +359,11 @@ bool TIndexTabletDatabase::ReadNodeAttr(
 {
     using TTable = TIndexTabletSchema::NodeAttrs;
 
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
+
     auto it = Table<TTable>()
         .Key(nodeId, name)
         .Select();
@@ -362,6 +397,11 @@ bool TIndexTabletDatabase::ReadNodeAttrs(
     TVector<TNodeAttr>& attrs)
 {
     using TTable = TIndexTabletSchema::NodeAttrs;
+
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Prefix(nodeId)
@@ -2137,8 +2177,9 @@ bool TIndexTabletDatabase::ReadResponseLog(
 
 TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
-    : TIndexTabletDatabase(database)
+        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates,
+        ITxReschedulerPtr rescheduler)
+    : TIndexTabletDatabase(database, std::move(rescheduler))
     , NodeUpdates(nodeUpdates)
 {}
 
@@ -2467,6 +2508,11 @@ bool TIndexTabletDatabase::ReadUnconfirmedData(
     TVector<TUnconfirmedDataEntry>& entries)
 {
     using TTable = TIndexTabletSchema::UnconfirmedData;
+
+    if (Y_UNLIKELY(TestReadRescheduler && TestReadRescheduler->ShouldReschedule()))
+    {
+        return false;
+    }
 
     auto it = Table<TTable>()
         .Select();

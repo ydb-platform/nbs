@@ -602,7 +602,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 

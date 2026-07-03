@@ -1,5 +1,7 @@
 #pragma once
 
+#include <util/system/types.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage {
@@ -14,11 +16,17 @@ struct ITxRescheduler
     virtual ~ITxRescheduler() = default;
 
     virtual bool ShouldReschedule() = 0;
+    virtual bool IsTriggered() const = 0;
+    virtual void Reset() = 0;
 };
 
 using ITxReschedulerPtr = std::shared_ptr<ITxRescheduler>;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// Creates a rescheduler that forces a read transaction to be restarted
+// with a given probability.
+ITxReschedulerPtr CreateRescheduler(ui32 probabilityPct);
 
 // Default rescheduler used in production: never reschedules.
 ITxReschedulerPtr CreateNoOpTxRescheduler();
