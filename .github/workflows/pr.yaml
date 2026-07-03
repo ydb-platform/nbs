@@ -28,7 +28,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  resolve-actions-checkout-ref:
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      actions_checkout_ref: ${{ steps.resolve-ref.outputs.actions_checkout_ref }}
+    steps:
+      - name: checkout actions from main
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          clean: true
+          ref: main
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+      - name: resolve actions checkout ref
+        id: resolve-ref
+        shell: bash
+        run: echo "actions_checkout_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   check-running-allowed:
+    needs:
+      - resolve-actions-checkout-ref
     if: >-
       (github.event.action == 'labeled' && github.event.label.name == 'recheck') ||
       github.event.pull_request.stack == null ||
@@ -43,7 +66,7 @@ jobs:
           submodules: false
           sparse-checkout: '.github'
           clean: true
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.resolve-actions-checkout-ref.outputs.actions_checkout_ref }}
       - name: Check if running tests is allowed
         id: check-ownership-membership
         uses: actions/github-script@v9
@@ -96,6 +119,7 @@ jobs:
 
   create-build-and-test-target-var:
     needs:
+      - resolve-actions-checkout-ref
       - check-trigger-label
       - check-running-allowed
     if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
@@ -103,34 +127,13 @@ jobs:
     outputs:
       matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
     steps:
-      - name: checkout PR
+      - name: checkout workflow actions
         uses: actions/checkout@v7
-        if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
           sparse-checkout: '.github'
           clean: true
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
-      - name: rebase PR
-        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
-        shell: bash
-        run: |
-          if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-              echo "Removing stale rebase state left on runner checkout"
-              rm -rf .git/rebase-merge .git/rebase-apply
-          fi
-          git config user.email "robot-nbs@nebius.com"
-          git config user.name "Robot NBS"
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git rebase origin/${{ github.event.pull_request.base.ref }}
-      - name: checkout
-        uses: actions/checkout@v7
-        if: github.event.pull_request.head.sha == ''
-        with:
-          submodules: false
-          clean: true
-          sparse-checkout: '.github'
+          ref: ${{ needs.resolve-actions-checkout-ref.outputs.actions_checkout_ref }}
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
         run: git config core.sparseCheckout false
@@ -142,7 +145,7 @@ jobs:
           scheduling_type: ${{ vars.NEBIUS_SCHEDULING_TYPE || 'on_demand' }}
 
   build_and_test:
-    needs: [check-running-allowed, create-build-and-test-target-var]
+    needs: [resolve-actions-checkout-ref, check-running-allowed, create-build-and-test-target-var]
     if: needs.check-running-allowed.outputs.result == 'true'
     strategy:
       fail-fast: false
@@ -150,6 +153,9 @@ jobs:
     name: Build and test (${{ matrix.mode }}${{ matrix.vm_name_suffix }})
     uses: ./.github/workflows/build_and_test_proxy.yaml
     with:
+      actions_checkout_ref: ${{ needs.resolve-actions-checkout-ref.outputs.actions_checkout_ref }}
+      code_checkout_ref: ${{ github.event.pull_request.head.sha }}
+      code_rebase_ref: ${{ github.event.pull_request.base.ref }}
       mode: ${{ matrix.mode }}
       allow_split_workload: ${{ !contains(toJSON(matrix), '"allow_split_workload"') || matrix.allow_split_workload }}
       build_target: ${{ matrix.build_target }}
@@ -168,38 +174,17 @@ jobs:
     secrets: inherit
 
   finalize-build-and-test-comments:
-    needs: [check-running-allowed, create-build-and-test-target-var, build_and_test]
+    needs: [resolve-actions-checkout-ref, check-running-allowed, create-build-and-test-target-var, build_and_test]
     if: ${{ always() && needs.check-running-allowed.outputs.result == 'true' && needs.create-build-and-test-target-var.outputs.matrix_include != '' }}
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
-      - name: checkout PR
+      - name: checkout workflow actions
         uses: actions/checkout@v7
-        if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
           sparse-checkout: '.github'
           clean: true
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
-      - name: rebase PR
-        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
-        shell: bash
-        run: |
-          if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
-              echo "Removing stale rebase state left on runner checkout"
-              rm -rf .git/rebase-merge .git/rebase-apply
-          fi
-          git config user.email "robot-nbs@nebius.com"
-          git config user.name "Robot NBS"
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git rebase origin/${{ github.event.pull_request.base.ref }}
-      - name: checkout
-        uses: actions/checkout@v7
-        if: github.event.pull_request.head.sha == ''
-        with:
-          submodules: false
-          clean: true
-          sparse-checkout: '.github'
+          ref: ${{ needs.resolve-actions-checkout-ref.outputs.actions_checkout_ref }}
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
         run: git config core.sparseCheckout false
