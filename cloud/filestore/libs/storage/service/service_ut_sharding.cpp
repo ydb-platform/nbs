@@ -6265,6 +6265,75 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TCreateNodeArgs::Link(dirId, "link1", file1Id));
     }
 
+    // Regression test for the DupCache bug with cross-shard hard links.
+    //
+    // When a hard link's target node lives in a shard, TLinkActor (service
+    // side) creates the shard node first and then sends a nodeRef-creation
+    // request to the leader. The leader used to write a DupCache entry with
+    // node id = 0 for such requests. On retry (same requestId) the zero-id
+    // guard in HandleCreateNode would fire and return E_REJECTED ("node not
+    // yet created in shard") even though the hard link was fully committed.
+    //
+    // After the fix TLinkActor forwards the shard node attrs in the leader
+    // request (ShardNodeAttr field). The leader populates the DupCache entry
+    // with a real node id so retry returns S_OK with the original node attrs.
+    SERVICE_TEST(ShouldNotReturnSpuriousRejectedOnCrossShardHardLinkRetry)
+    {
+        config.SetDirectoryCreationInShardsEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto dirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dirId));
+
+        const auto fileId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(dirId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(fileId));
+
+        // First attempt — must succeed.
+        const ui64 requestId = 111;
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::Link(dirId, "link", fileId),
+            requestId);
+
+        auto response = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetError().GetCode(),
+            response->GetError().GetMessage());
+
+        const auto firstNodeId = response->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, firstNodeId);
+
+        // Retry with the same requestId. Before the fix the DupCache zero-id
+        // entry caused E_REJECTED here. After the fix the DupCache entry holds
+        // the real node attrs so the retry returns S_OK with the same node id.
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::Link(dirId, "link", fileId),
+            requestId);
+
+        response = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetError().GetCode(),
+            response->GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(firstNodeId, response->Record.GetNode().GetId());
+    }
+
     // See #5826 for more details
     SERVICE_TEST(ShouldRejectHardLinkFromShardDirToMainTabletNode)
     {

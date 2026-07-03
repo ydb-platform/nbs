@@ -848,6 +848,13 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             *args.Response.MutableNode(),
             args.ChildNodeId,
             args.ChildNode->Attrs);
+    } else if (args.TargetNodeId != InvalidNodeId) {
+        // Cross-shard hard link: shard node was created by TLinkActor before
+        // this request reached the leader. The shard node attrs are forwarded
+        // in the request so the DupCache entry gets a non-zero Id and returns
+        // the correct response on retry.
+        // TODO(#2667): remove once TLinkActor has a proper retry mechanism.
+        *args.Response.MutableNode() = args.Request.GetShardNodeAttr();
     }
 
     // shards shouldn't commit CreateNode DupCache entries since:
