@@ -130,6 +130,10 @@ TTestEnv::TTestEnv(
         Runtime.GetAppData().Counters);
 
     SetupSubDomain();
+
+    // Inject a rescheduler so recovery confirmation is exercised under
+    // transaction restarts/reorderings.
+    SetTxRescheduler(CreateRescheduler(config.PageFaultProbabilityPct));
 }
 
 void TTestEnv::UpdateStorageConfig(NProto::TStorageConfig storageConfig)

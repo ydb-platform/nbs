@@ -426,7 +426,7 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(RenameNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -483,7 +483,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
         return; // nothing to do
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -698,7 +698,7 @@ bool TIndexTabletActor::PrepareTx_CommitRenameNodeInSource(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 

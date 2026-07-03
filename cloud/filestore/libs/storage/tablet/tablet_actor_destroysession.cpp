@@ -105,7 +105,7 @@ bool TIndexTabletActor::PrepareTx_DestroySession(
         args.SessionId.c_str(),
         args.SessionSeqNo);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     bool ready = true;
     auto commitId = GetCurrentCommitId();

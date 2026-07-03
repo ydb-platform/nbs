@@ -635,7 +635,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
     TTransactionContext& tx,
     TTxIndexTablet::TFlushBytes& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
 
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 

@@ -4,7 +4,6 @@
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/request.h>
-#include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -29,24 +28,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Reschedules transactions with probability 1/Ratio, to exercise the recovery
-// confirmation path under transaction restarts/reorderings.
-class TRandomTxRescheduler final
-    : public ITxRescheduler
-{
-private:
-    const ui32 Ratio;
-
-public:
-    explicit TRandomTxRescheduler(ui32 ratio)
-        : Ratio(ratio)
-    {}
-
-    bool ShouldReschedule() override
-    {
-        return Ratio > 0 && RandomNumber<ui32>(Ratio) == 0;
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1401,9 +1382,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
             TTestEnv env({}, std::move(storageConfig));
-            // Inject a rescheduler so recovery confirmation is exercised under
-            // transaction restarts/reorderings.
-            env.SetTxRescheduler(std::make_shared<TRandomTxRescheduler>(3));
             ui32 nodeIdx = env.AddDynamicNode();
             ui64 tabletId = env.BootIndexTablet(nodeIdx);
 

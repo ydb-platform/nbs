@@ -291,7 +291,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(RenameNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 

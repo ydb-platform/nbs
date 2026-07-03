@@ -219,8 +219,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         return true;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
     // There could be two cases:
     // * access by parentId/name
     // * access by nodeId

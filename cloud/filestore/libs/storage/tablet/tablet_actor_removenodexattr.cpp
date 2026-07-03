@@ -66,7 +66,7 @@ bool TIndexTabletActor::PrepareTx_RemoveNodeXAttr(
 
     FILESTORE_VALIDATE_TX_SESSION(RemoveNodeXAttr, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 

@@ -515,7 +515,7 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
 
     auto config = GetFileSystem();
     config.SetShardNo(args.Request.GetShardNo());

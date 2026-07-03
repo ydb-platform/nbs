@@ -111,7 +111,7 @@ bool TIndexTabletActor::PrepareTx_GetResponseLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
     return db.ReadResponseLogEntry(
         args.ClientTabletId,
         args.RequestId,

@@ -382,7 +382,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -669,7 +669,7 @@ bool TIndexTabletActor::PrepareTx_CompleteUnlinkNode(
 {
     Y_UNUSED(ctx, tx, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates, TxRescheduler);
 
     // TODO(2674): we should pass commitId from the request, not generate it
     args.CommitId = GetCurrentCommitId();

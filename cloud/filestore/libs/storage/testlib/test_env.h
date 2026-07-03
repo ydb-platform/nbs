@@ -73,6 +73,9 @@ struct TTestEnvConfig
     ui32 ChannelCount = DefaultChannelCount;
     ui32 Groups = 2;
 
+    // This controls probability that read transaction will be restarted
+    ui32 PageFaultProbabilityPct = 10;
+
     NActors::NLog::EPriority LogPriority_NFS = NActors::NLog::PRI_TRACE;
     NActors::NLog::EPriority LogPriority_KiKiMR = NActors::NLog::PRI_WARN;
     NActors::NLog::EPriority LogPriority_Others = NActors::NLog::PRI_WARN;

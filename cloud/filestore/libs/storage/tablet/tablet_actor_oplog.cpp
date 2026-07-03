@@ -280,7 +280,7 @@ bool TIndexTabletActor::PrepareTx_GetOpLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
     return db.ReadOpLogEntry(args.EntryId, args.Entry);
 }
 
@@ -342,7 +342,7 @@ bool TIndexTabletActor::PrepareTx_ListOpLogEntries(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabase db(tx.DB, TxRescheduler);
     return db.ReadOpLog(args.Entries);
 }
 
