@@ -220,7 +220,7 @@ public:
         TWriteDataRequestBuilderConfig config)
         : NodeId(nodeId)
         , Config(std::move(config))
-        , WriteDataRequestCounter(Config.MaxWriteRequestSize)
+        , WriteDataRequestCounter(Config.FlushBatchLimits.MaxWriteRequestSize)
     {}
 
     bool AddRequest(ui64 offset, TStringBuf data) override
@@ -230,9 +230,9 @@ public:
         WriteDataRequestCounter.AddInterval(offset, offset + data.size());
 
         if ((WriteDataRequestCounter.GetWriteRequestCount() >
-                 Config.MaxWriteRequestsCount ||
+                 Config.FlushBatchLimits.MaxWriteRequestsCount ||
              WriteDataRequestCounter.GetSumWriteRequestsSize() >
-                 Config.MaxSumWriteRequestsSize) &&
+                 Config.FlushBatchLimits.MaxSumWriteRequestsSize) &&
             !InputRequests.empty())
         {
             return false;
@@ -291,9 +291,10 @@ private:
             // should be treated as a special case when the request must never
             // be split and should be sent as is.
 
-            auto maxWriteRequestSize = Config.MaxWriteRequestsCount > 1
-                ? Config.MaxWriteRequestSize
-                : Max<ui32>();
+            auto maxWriteRequestSize =
+                Config.FlushBatchLimits.MaxWriteRequestsCount > 1
+                    ? Config.FlushBatchLimits.MaxWriteRequestSize
+                    : Max<ui32>();
 
             while (reader.GetRemainingSize() > 0) {
                 auto request = std::make_shared<NProto::TWriteDataRequest>();

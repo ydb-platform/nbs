@@ -1,5 +1,6 @@
 #include "write_back_cache.h"
 
+#include "flush_batch_limits.h"
 #include "node_flush_state.h"
 #include "persistent_storage.h"
 #include "read_response_builder.h"
@@ -32,6 +33,19 @@ struct TFlushConfig
     TDuration AutomaticFlushPeriod;
     TDuration FlushRetryPeriod;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+TFlushBatchLimits BuildFlushBatchLimits(const TWriteBackCacheArgs& args)
+{
+    return {
+        .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
+        .MaxWriteRequestsCount = args.FlushWritesInParallelEnabled
+                                     ? args.FlushMaxWriteRequestsCount
+                                     : 1,
+        .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,
+    };
+}
 
 }   // namespace
 
@@ -80,11 +94,7 @@ public:
         , Stats(args.Stats)
         , RequestBuilder(CreateWriteDataRequestBuilder(
               {.FileSystemId = args.FileSystemId,
-               .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
-               .MaxWriteRequestsCount = args.FlushWritesInParallelEnabled
-                                            ? args.FlushMaxWriteRequestsCount
-                                            : 1,
-               .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,
+               .FlushBatchLimits = BuildFlushBatchLimits(args),
                .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled}))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
         , FlushConfig(

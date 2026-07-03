@@ -88,9 +88,10 @@ struct TBootstrap
     {
         auto builder = CreateWriteDataRequestBuilder({
             .FileSystemId = "test_fs",
-            .MaxWriteRequestSize = maxWriteRequestSize,
-            .MaxWriteRequestsCount = maxWriteRequestsCount,
-            .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
+            .FlushBatchLimits =
+                {.MaxWriteRequestSize = maxWriteRequestSize,
+                 .MaxWriteRequestsCount = maxWriteRequestsCount,
+                 .MaxSumWriteRequestsSize = maxSumWriteRequestsSize},
             .ZeroCopyWriteEnabled = false,
         });
 
