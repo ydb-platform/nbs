@@ -28,11 +28,21 @@ See a detailed description of `virtiofs <-> filestore-vhost` communication [here
 Runs tablet code. A non-sharded filesystem is represented by a single tablet which manages the whole persistent state of the filesystem.
 A sharded filesystem is represented by N + 1 tablets:
 * 1 tablet (aka "main" tablet, "leader" tablet, "master" tablet) manages the root directory structure and serves `statfs` requests, session management requests and root directory management requests
-* N tablets (aka "shards") manage all the other inodes apart from the root directory inode
+* N tablets (aka "shards") manage all the other inodes apart from the root directory inode and the directory contents of the directory inodes apart from the root directory contents
+
+Example:
+![dirviewer_example_png](../img/dirviewer_example.png)
+* root always has `NodeId=1` and is managed by the main tablet
+* the other directories are managed by different shards, e.g.:
+    * right under the root we have a directory called `astr` (`NodeId=3386706919782618366`) managed by shard `s47`
+    * inside it we have a directory called `git` (`NodeId=288230376151711746`) managed by shard `s4`
+    * directory `nbs` (`NodeId=2089670227099910146`) managed by shard `s29`
+    * all the name to node ref mappings inside the `nbs` directory are managed by `s29` as well
+    * all the inodes and directory contents of the subdirectories of `nbs` are managed by different shards
 
 Sessions are established and destroyed via the main filesystem tablet but the set of open file handles, locks and duplicate request cache is spread across all filesystem shards - each shard being in charge of the entities related to the inodes managed by that shard.
 
-When an inode is created, the shard which would be in charge if this inode is selected in round-robin manner among the shards that have enough space. So we basically end up spreading the inodes more or less equally among all shards. The only caveat is that upon resize shards may be added but the inodes will not be automatically redistributed.
+When an inode is created, the shard which would be in charge if this inode is selected in round-robin manner among the shards that have enough space. So we basically end up spreading the inodes more or less equally among all shards. The only caveat is that upon resize shards may be added but the inodes will not be automatically redistributed - i.e. the inodes that had existed before the resize op happened will still be managed by the shards where they were initially created. New inodes will be spread across the whole new set of shards.
 
 Each filestore-server can run tablets belonging to many different logical filesystems. The diagram shows only one logical filesystem for simplicity.
 
