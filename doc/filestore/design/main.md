@@ -61,7 +61,7 @@ Main API calls:
 * `CreateNode` - name entry is created in the directory and regular inode is created in one of the shards, shards are selected in a round-robin manner
 * `CreateHandle` by parent inode id + child name - the shard in charge of the parent directory does name -> shard name resolution and then CreateHandle by inode id is sent to the proper shard
 * `CreateHandle` with `O_CREAT` flag is served similarly to a combination of `CreateNode` + `CreateHandle` without `O_CREAT`
-* `RenameNode` - name manipulations are done in the shard in charge of the parent directory and, if the destination name exists, an `UnlinkNode` request is sent to the corresponding shard
+* `RenameNode` - name manipulations are done in the shards in charge of the parent directories and, if the destination name exists, an `UnlinkNode` request is sent to the corresponding shard
 * `UnlinkNode` - name is removed from the corresponding directory and an `UnlinkNode` request is sent to the corresponding shard
 * `GetNodeAttr` by parent inode id + child name - the shard in charge of the parent directory does name -> shard name resolution and then `GetNodeAttr` by inode id is sent to the proper shard
 * `ListNodes` - the shard in charge of the directory does the name listing, performs names -> shard names resolution and then `GetNodeAttrBatch` requests are sent to the proper shards
