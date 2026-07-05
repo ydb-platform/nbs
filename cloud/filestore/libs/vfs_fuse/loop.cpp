@@ -33,6 +33,7 @@
 #include <util/generic/bitops.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
+#include <util/system/event.h>
 #include "util/system/file_lock.h"
 #include <util/system/fs.h>
 #include <util/system/info.h>
@@ -541,13 +542,16 @@ class TFuseLoopThread final
     : public ISimpleThread
 {
 private:
+    static constexpr TDuration SignalInterruptInterval =
+        TDuration::MilliSeconds(100);
+
     TSession& Session;
     const ui32 FuseLoopIndex = 0;
     const ui32 BackendQueueIndex = 0;
-    bool InterruptSignaled = false;
     TLog Log;
 
     pthread_t ThreadId = 0;
+    TManualEvent LoopFinished;
 
 public:
     TFuseLoopThread(
@@ -563,17 +567,11 @@ public:
 
     void SignalInterrupt()
     {
-        if (InterruptSignaled) {
-            return;
-        }
-
         if (auto threadId = AtomicGet(ThreadId)) {
             // session loop may get stuck on sem_wait/read.
             // Interrupt it by sending the thread a signal.
             pthread_kill(threadId, SIGUSR1);
         }
-
-        InterruptSignaled = true;
     }
 
     void Stop()
@@ -582,7 +580,16 @@ public:
             "stopping FUSE loop thread " << FuseLoopIndex << "."
                                          << BackendQueueIndex);
 
+        // A single signal is not enough: it may be delivered when the loop
+        // thread is not blocked on sem_wait/read yet (e.g. right after it has
+        // checked the session exit flag but before it has entered the
+        // syscall). Such a signal interrupts nothing and the loop thread then
+        // blocks indefinitely, so keep signalling until the loop actually
+        // finishes.
         SignalInterrupt();
+        while (!LoopFinished.WaitT(SignalInterruptInterval)) {
+            SignalInterrupt();
+        }
         Join();
 
         STORAGE_INFO(
@@ -605,6 +612,7 @@ private:
         fuse_session_loop(Session);
 #endif
 
+        LoopFinished.Signal();
         return nullptr;
     }
 };

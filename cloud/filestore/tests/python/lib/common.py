@@ -34,9 +34,13 @@ def shutdown(pid, timeout=60):
     try:
         os.kill(pid, signal.SIGTERM)
         if not wait_for(lambda: __is_dead(pid), timeout):
+            logger.warning(
+                f"process {pid} did not stop in {timeout}s after SIGTERM, "
+                "sending SIGKILL")
             os.kill(pid, signal.SIGKILL)
     except BaseException:
-        pass
+        logger.warning(
+            f"failed to shut down process {pid}", exc_info=True)
 
 
 def daemon_log_files(prefix, cwd):
