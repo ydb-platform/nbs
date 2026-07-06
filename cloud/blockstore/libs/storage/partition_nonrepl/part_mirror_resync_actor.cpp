@@ -48,6 +48,9 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , ResyncPolicy(resyncPolicy)
     , CritOnChecksumMismatch(critOnChecksumMismatch)
     , VolumeActorId(volumeActorId)
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TMirrorPartitionResync{.DiskId = partConfig->GetName()})
     , RWClientId(std::move(rwClientId))
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))

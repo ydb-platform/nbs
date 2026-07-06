@@ -4,6 +4,7 @@
 #include "part_nonrepl_events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -16,7 +17,7 @@ namespace NCloud::NBlockStore::NStorage {
 class TChecksumRangeActorCompanion
 {
 private:
-    TString DiskId;
+    const TChildLogTitle LogTitle;
     TVector<TReplicaDescriptor> Replicas;
 
     TBlockRange64 Range;
@@ -28,10 +29,8 @@ private:
 
 public:
     TChecksumRangeActorCompanion(
-        TString diskId,
+        const TChildLogTitle& logTitle,
         TVector<TReplicaDescriptor> replicas);
-
-    TChecksumRangeActorCompanion() = default;
 
     void CalculateChecksums(
         const NActors::TActorContext& ctx,

@@ -64,6 +64,11 @@ public:
         TString DiskId;
     };
 
+    struct TMirrorPartitionResync
+    {
+        TString DiskId;
+    };
+
     struct TSession
     {
         TString SessionId;
@@ -115,6 +120,7 @@ private:
         TDiskRegistry,
         TPartitionMirror,
         TPartitionMigration,
+        TMirrorPartitionResync,
         TFreshBlocksWriter,
         TAgentAvailabilityMonitoringActor>;
 

@@ -24,9 +24,9 @@ void TMirrorPartitionResyncActor::UpdateCounters(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "Partition %s for disk %s counters not found",
-            ToString(sender).c_str(),
-            PartConfig->GetName().Quote().c_str());
+            "%s Partition %s counters not found",
+            LogTitle.GetWithTime().c_str(),
+            ToString(sender).c_str());
 
         Y_DEBUG_ABORT_UNLESS(0);
         return;
@@ -137,20 +137,20 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "[%s] Failed to send mirror resync actor statistics due to empty "
+            "%s Failed to send mirror resync actor statistics due to empty "
             "StatisticRequestInfo.",
-            PartConfig->GetName().Quote().c_str());
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
     auto* msg = ev->Get();
 
-    if(HasError(msg->Error)) {
+    if (HasError(msg->Error)) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "[%s] Failed to send mirror resync actor statistics due to error: %s",
-            PartConfig->GetName().Quote().c_str(),
+            "%s Failed to send mirror resync actor statistics due to error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(msg->Error).c_str());
     }
 
