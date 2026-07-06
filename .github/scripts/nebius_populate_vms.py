@@ -5,6 +5,7 @@ import asyncio
 import argparse
 import datetime
 from grpc import StatusCode
+from github import Github
 from typing import List
 from .helpers import github_client
 from nebius.sdk import SDK
