@@ -101,7 +101,7 @@ jobs:
           base_mapping: ${{ steps.base-mapping.outputs.base_mapping }}
           bucket: 'nbs-yatool-resources'
           endpoint_url: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
-          local_base_url: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          local_base_url: https://nbs-yatool-resources.${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
           output_dir: ${{ runner.temp }}/yatool-resource-mirror
           post_comment: ${{ inputs.post_comment && 'true' || 'false' }}
           skip_upload: ${{ inputs.upload_resources && 'false' || 'true' }}

@@ -58,6 +58,44 @@ def validate_source_url(resource_id: str, url: str) -> str:
     return url
 
 
+def validate_local_base_url(local_base_url: str) -> str:
+    base = local_base_url.rstrip("/")
+    parsed = urlparse(base)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError(
+            "local base URL must be a full https URL, "
+            f"got {local_base_url!r}"
+        )
+    if parsed.username or parsed.password or parsed.port:
+        raise ValueError("local base URL must not contain authority extras")
+    if parsed.query or parsed.fragment:
+        raise ValueError("local base URL must not contain query or fragment")
+    return base
+
+
+def is_localized_resource_url(
+    resource_id: str, url: str, local_base_url: str
+) -> bool:
+    if not resource_id.isdigit():
+        return False
+
+    base = validate_local_base_url(local_base_url)
+    parsed_base = urlparse(base)
+    parsed_url = urlparse(url)
+    if parsed_url.scheme != parsed_base.scheme:
+        return False
+    if parsed_url.hostname != parsed_base.hostname:
+        return False
+    if parsed_url.username or parsed_url.password or parsed_url.port:
+        return False
+    if parsed_url.query or parsed_url.fragment:
+        return False
+
+    base_path = parsed_base.path.rstrip("/")
+    expected_path = f"{base_path}/{resource_id}" if base_path else f"/{resource_id}"
+    return parsed_url.path == expected_path
+
+
 def download(url: str, dst: Path, attempts: int) -> str:
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
@@ -153,7 +191,7 @@ def localize_mapping(mapping_path: Path, local_base_url: str) -> str:
     if not isinstance(resources, dict):
         raise ValueError(f"{mapping_path} does not contain a resources object")
 
-    base = local_base_url.rstrip("/")
+    base = validate_local_base_url(local_base_url)
     for resource_id in list(resources):
         resources[resource_id] = f"{base}/{resource_id}"
 
@@ -282,6 +320,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    local_base_url = validate_local_base_url(args.local_base_url)
     mapping = load_json(args.mapping)
     resources = mapping.get("resources")
     if not isinstance(resources, dict):
@@ -291,32 +330,31 @@ def main() -> int:
     args.summary_out.parent.mkdir(parents=True, exist_ok=True)
     args.comment_out.parent.mkdir(parents=True, exist_ok=True)
 
-    localized_text = localize_mapping(args.mapping, args.local_base_url)
+    localized_text = localize_mapping(args.mapping, local_base_url)
     write_patch(args.mapping, localized_text, args.patch_out)
 
     uploaded: list[str] = []
     skipped: list[str] = []
-    s3 = None if args.skip_upload else make_s3_client(args.endpoint_url)
+    if not args.skip_upload:
+        s3 = make_s3_client(args.endpoint_url)
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            for resource_id, url in sorted(
+                resources.items(), key=lambda item: int(item[0])
+            ):
+                if is_localized_resource_url(resource_id, str(url), local_base_url):
+                    skipped.append(resource_id)
+                    continue
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
-        for resource_id, url in sorted(
-            resources.items(), key=lambda item: int(item[0])
-        ):
-            dst = tmp_dir / resource_id
-            source_url = validate_source_url(resource_id, str(url))
-            md5 = download(source_url, dst, args.download_attempts)
-            existing_md5 = (
-                ""
-                if args.skip_upload
-                else get_existing_md5(s3, args.bucket, resource_id)
-            )
-            if existing_md5 == md5:
-                skipped.append(resource_id)
-                continue
-            if not args.skip_upload:
+                dst = tmp_dir / resource_id
+                source_url = validate_source_url(resource_id, str(url))
+                md5 = download(source_url, dst, args.download_attempts)
+                existing_md5 = get_existing_md5(s3, args.bucket, resource_id)
+                if existing_md5 == md5:
+                    skipped.append(resource_id)
+                    continue
                 upload_resource(s3, args.bucket, resource_id, dst, md5)
-            uploaded.append(resource_id)
+                uploaded.append(resource_id)
 
     added, removed = resource_delta(args.mapping, args.base_mapping)
     write_summary(
@@ -327,7 +365,7 @@ def main() -> int:
         added=added,
         removed=removed,
         patch_out=args.patch_out,
-        local_base_url=args.local_base_url,
+        local_base_url=local_base_url,
     )
     write_comment(args.comment_out, args.summary_out, args.patch_out)
     if args.post_comment:

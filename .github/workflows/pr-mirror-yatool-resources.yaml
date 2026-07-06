@@ -69,7 +69,7 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            let labelsToRemove = ['ok-to-test', 'recheck'];
+            let labelsToRemove = ['ok-to-test', 'recheck', 'allow-yatool-upload'];
             const prNumber = context.payload.pull_request.number;
             const prLabels = new Set(context.payload.pull_request.labels.map(l => l.name));
             for await (const label of labelsToRemove.filter(l => prLabels.has(l))) {
