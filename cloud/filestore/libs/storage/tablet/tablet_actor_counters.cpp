@@ -451,6 +451,8 @@ void TIndexTabletActor::UpdateMetrics(
     Store(Metrics.UnwritableChannelCount, channelsStats.UnwritableChannelCount);
     Store(Metrics.ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
     Store(Metrics.ReadAheadCacheNodeCount, readAheadStats.NodeCount);
+    Store(Metrics.ReadNodeCacheBypassCount, GetReadNodeCacheBypassCount());
+    Store(Metrics.ReadAheadCacheBypassCount, GetReadAheadCacheBypassCount());
 
     Store(
         Metrics.InMemoryIndexStateNodesCount,

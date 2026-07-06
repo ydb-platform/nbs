@@ -178,6 +178,41 @@ private:
         UpdateNodeAttrs(db, args);
     }
 
+    std::pair<ui64, ui64> CalculateCacheBypassRange(
+        const TTxIndexTablet::TAddBlob& args) const
+    {
+        const auto& writeRange = args.WriteRanges.front();
+
+        // On CommitIdOverflow no data is written, but the tablet is about to
+        // be stopped, so no assumptions are made and all reads for the node
+        // are bypassed.
+        if (args.CommitId == InvalidCommitId) {
+            return {0, Max<ui64>()};
+        }
+
+        const ui64 blockSize = Tablet.GetBlockSize();
+
+        ui64 begin = writeRange.MaxOffset;
+        for (const auto& blob: args.MergedBlobs) {
+            begin = Min(begin, blob.Block.BlockIndex * blockSize);
+        }
+        for (const auto& part: args.UnalignedDataParts) {
+            begin =
+                Min(begin, part.BlockIndex * blockSize + part.OffsetInBlock);
+        }
+
+        auto node = args.Nodes.find(writeRange.NodeId);
+        if (node == args.Nodes.end()) {
+            return {0, Max<ui64>()};
+        }
+
+        if (writeRange.MaxOffset > node->Attrs.GetSize()) {
+            return {Min(begin, node->Attrs.GetSize()), Max<ui64>()};
+        }
+
+        return {begin, writeRange.MaxOffset};
+    }
+
     void Execute_AddBlob_WriteUnconfirmed(
         const TActorContext& ctx,
         TIndexTabletDatabase& db,
@@ -200,9 +235,12 @@ private:
             !HasError(args.Error) || args.CommitIdOverflow,
             "Error: " << FormatError(args.Error));
 
+        const auto [bypassBegin, bypassEnd] = CalculateCacheBypassRange(args);
         Tablet.ActivateCacheReadBypass(
             args.WriteRanges.front().NodeId,
-            args.CommitId);
+            args.CommitId,
+            bypassBegin,
+            bypassEnd);
 
         if (HasError(args.Error)) {
             return;

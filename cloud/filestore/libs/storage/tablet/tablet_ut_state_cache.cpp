@@ -172,7 +172,9 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
         UNIT_ASSERT(node.Defined());
 
-        cacheBypass.Activate(nodeId1, commitId2);
+        // ReadNode is not bound to a byte range, so it should be bypassed by
+        // an active write to any range of the node.
+        cacheBypass.Activate(nodeId1, commitId2, 1000, 2000);
 
         node.Clear();
         UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
@@ -190,7 +192,9 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
         cacheBypass.Activate(
             nodeId1,
-            InvalidCommitId);
+            InvalidCommitId,
+            0,
+            Max<ui64>());
 
         node.Clear();
         UNIT_ASSERT(!state.ReadNode(nodeId1, commitId1, node));
@@ -221,7 +225,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .Node = nodeAttrs1,
             }}});
 
-        cacheBypass.Activate(nodeId1, commitId2);
+        cacheBypass.Activate(nodeId1, commitId2, 0, Max<ui64>());
 
         TMaybe<IIndexTabletDatabase::TNode> node;
         UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
@@ -238,6 +242,98 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         node.Clear();
         UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
         UNIT_ASSERT(node.Defined());
+    }
+
+    Y_UNIT_TEST(ShouldBypassCacheReadsByRange)
+    {
+        const ui64 commitId3 = 3;
+
+        TCacheReadBypass cacheBypass;
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        // write at [1000, 2000)
+        cacheBypass.Activate(nodeId1, commitId2, 1000, 2000);
+
+        // other nodes are not affected
+        UNIT_ASSERT(
+            !cacheBypass.ShouldBypassRead(nodeId2, commitId2, 0, Max<ui64>()));
+
+        // reads that do not intersect the write range
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(nodeId1, commitId2, 0, 1000));
+        UNIT_ASSERT(
+            !cacheBypass.ShouldBypassRead(nodeId1, commitId2, 2000, 3000));
+
+        // reads that intersect the write range
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId2, 0, 1001));
+        UNIT_ASSERT(
+            cacheBypass.ShouldBypassRead(nodeId1, commitId2, 1999, 3000));
+        UNIT_ASSERT(
+            cacheBypass.ShouldBypassRead(nodeId1, commitId2, 1200, 1300));
+
+        // the write is not visible to an older read snapshot
+        UNIT_ASSERT(
+            !cacheBypass.ShouldBypassRead(nodeId1, commitId1, 1200, 1300));
+
+        // reads without a byte range intersect any write
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId2));
+
+        // a size-changing write at [5000, +inf)
+        cacheBypass.Activate(nodeId1, commitId3, 5000, Max<ui64>());
+
+        UNIT_ASSERT(
+            !cacheBypass.ShouldBypassRead(nodeId1, commitId2, 5000, 6000));
+        UNIT_ASSERT(
+            cacheBypass.ShouldBypassRead(nodeId1, commitId3, 5000, 6000));
+        UNIT_ASSERT(
+            cacheBypass
+                .ShouldBypassRead(nodeId1, commitId3, 1'000'000, 1'000'001));
+
+        cacheBypass.Deactivate(nodeId1, commitId2);
+
+        UNIT_ASSERT(
+            !cacheBypass.ShouldBypassRead(nodeId1, commitId3, 1200, 1300));
+        UNIT_ASSERT(
+            cacheBypass.ShouldBypassRead(nodeId1, commitId3, 5000, 6000));
+
+        cacheBypass.Deactivate(nodeId1, commitId3);
+
+        UNIT_ASSERT(
+            !cacheBypass.ShouldBypassRead(nodeId1, commitId3, 5000, 6000));
+    }
+
+    Y_UNIT_TEST(ShouldCountBypassedReads)
+    {
+        TCacheReadBypass cacheBypass;
+
+        // recovery is not ready yet, all reads bypass the cache and are
+        // counted by the overload that was called
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId1));
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedNodeReadCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, cacheBypass.GetBypassedRangeReadCount());
+
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId1, 0, 100));
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedNodeReadCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedRangeReadCount());
+
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(nodeId1, commitId1));
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedNodeReadCount());
+
+        cacheBypass.Activate(nodeId1, commitId1, 0, 100);
+
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId1, 50, 150));
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedRangeReadCount());
+
+        UNIT_ASSERT(
+            !cacheBypass.ShouldBypassRead(nodeId1, commitId1, 100, 200));
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedRangeReadCount());
+
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId1));
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedNodeReadCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedRangeReadCount());
+
+        cacheBypass.Deactivate(nodeId1, commitId1);
     }
 
     const TString attrName1 = "name1";
@@ -287,6 +383,26 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         attr = {};
         UNIT_ASSERT(state.ReadNodeAttr(nodeId1, commitId1, attrName1, attr));
         UNIT_ASSERT(attr.Empty());
+    }
+
+    Y_UNIT_TEST(ShouldNotBypassNodeAttrsCacheReads)
+    {
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 0, 1, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        state.UpdateState({IInMemoryIndexState::TWriteNodeAttrsRequest{
+            .NodeAttrsKey = {nodeId1, attrName1},
+            .NodeAttrsRow = {commitId1, attrValue1, attrVersion1},
+        }});
+
+        cacheBypass.Activate(nodeId1, commitId1, 0, Max<ui64>());
+
+        TMaybe<IIndexTabletDatabase::TNodeAttr> attr;
+        UNIT_ASSERT(state.ReadNodeAttr(nodeId1, commitId1, attrName1, attr));
+        UNIT_ASSERT(attr.Defined());
+
+        cacheBypass.Deactivate(nodeId1, commitId1);
     }
 
     Y_UNIT_TEST(ShouldEvictNodeAttrs)

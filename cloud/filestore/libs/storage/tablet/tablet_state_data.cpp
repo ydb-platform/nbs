@@ -421,14 +421,28 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
     return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
 }
 
-void TIndexTabletState::ActivateCacheReadBypass(ui64 nodeId, ui64 commitId)
+void TIndexTabletState::ActivateCacheReadBypass(
+    ui64 nodeId,
+    ui64 commitId,
+    ui64 begin,
+    ui64 end)
 {
-    Impl->CacheReadBypass.Activate(nodeId, commitId);
+    Impl->CacheReadBypass.Activate(nodeId, commitId, begin, end);
 }
 
 void TIndexTabletState::DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId)
 {
     Impl->CacheReadBypass.Deactivate(nodeId, commitId);
+}
+
+ui64 TIndexTabletState::GetReadNodeCacheBypassCount() const
+{
+    return Impl->CacheReadBypass.GetBypassedNodeReadCount();
+}
+
+ui64 TIndexTabletState::GetReadAheadCacheBypassCount() const
+{
+    return Impl->CacheReadBypass.GetBypassedRangeReadCount();
 }
 
 void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
@@ -1525,7 +1539,12 @@ bool TIndexTabletState::TryFillDescribeResult(
     const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
-    if (Impl->CacheReadBypass.ShouldBypassRead(nodeId, commitId)) {
+    if (Impl->CacheReadBypass.ShouldBypassRead(
+            nodeId,
+            commitId,
+            range.Offset,
+            range.End()))
+    {
         return false;
     }
 
