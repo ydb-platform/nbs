@@ -1,5 +1,6 @@
 import asyncio
 import argparse
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -243,7 +244,7 @@ def test_repository_registration_token_extension_uses_pygithub_requester():
     assert registration_token.expires_at.isoformat() == "2026-05-04T16:00:00+00:00"
 
 
-def test_get_latest_github_runner_version_strips_tag_prefix(monkeypatch):
+def test_get_latest_github_runner_version_strips_tag_prefix():
     class FakeRepo:
         def get_latest_release(self):
             payload = make_runner_release_payload("2.332.0")
@@ -260,13 +261,7 @@ def test_get_latest_github_runner_version_strips_tag_prefix(monkeypatch):
             assert repo == "actions/runner"
             return FakeRepo()
 
-    def fake_github_client(token):
-        assert token == "github-token"
-        return FakeGithub()
-
-    monkeypatch.setattr(h, "github_client", fake_github_client)
-
-    assert h.get_latest_github_runner_version("github-token") == "2.332.0"
+    assert h.get_latest_github_runner_version(FakeGithub()) == "2.332.0"
 
 
 def make_runner_release_payload(version="2.332.0"):
@@ -301,7 +296,7 @@ def test_extract_github_runner_release_returns_arch_sha_from_body():
     }
 
 
-def test_get_github_runner_release_fetches_tag_and_sha(monkeypatch):
+def test_get_github_runner_release_fetches_tag_and_sha():
     class FakeRepo:
         def get_release(self, tag):
             assert tag == "v2.331.0"
@@ -319,13 +314,7 @@ def test_get_github_runner_release_fetches_tag_and_sha(monkeypatch):
             assert repo == "actions/runner"
             return FakeRepo()
 
-    def fake_github_client(token):
-        assert token == "github-token"
-        return FakeGithub()
-
-    monkeypatch.setattr(h, "github_client", fake_github_client)
-
-    release = h.get_github_runner_release("v2.331.0", "github-token")
+    release = h.get_github_runner_release(FakeGithub(), "v2.331.0")
 
     assert release.version == "2.331.0"
     assert release.sha256_by_arch["x64"] == "a" * 64
@@ -333,9 +322,10 @@ def test_get_github_runner_release_fetches_tag_and_sha(monkeypatch):
 
 def test_resolve_github_runner_release_fetches_latest(monkeypatch):
     calls = []
+    github = object()
 
-    def fake_get_latest(github_token):
-        calls.append(github_token)
+    def fake_get_latest(received_github):
+        calls.append(received_github)
         return h.GithubRunnerRelease(
             version="2.332.0",
             sha256_by_arch={"x64": "a" * 64, "arm64": "b" * 64},
@@ -343,17 +333,18 @@ def test_resolve_github_runner_release_fetches_latest(monkeypatch):
 
     monkeypatch.setattr(h, "get_latest_github_runner_release", fake_get_latest)
 
-    release = h.resolve_github_runner_release("latest", "github-token")
+    release = h.resolve_github_runner_release(github, "latest")
 
     assert release.version == "2.332.0"
-    assert calls == ["github-token"]
+    assert calls == [github]
 
 
 def test_resolve_github_runner_version_fetches_latest(monkeypatch):
     calls = []
+    github = object()
 
-    def fake_get_latest(github_token):
-        calls.append(github_token)
+    def fake_get_latest(received_github):
+        calls.append(received_github)
         return h.GithubRunnerRelease(
             version="2.332.0",
             sha256_by_arch={"x64": "a" * 64, "arm64": "b" * 64},
@@ -361,15 +352,16 @@ def test_resolve_github_runner_version_fetches_latest(monkeypatch):
 
     monkeypatch.setattr(h, "get_latest_github_runner_release", fake_get_latest)
 
-    assert h.resolve_github_runner_version("latest", "github-token") == "2.332.0"
-    assert calls == ["github-token"]
+    assert h.resolve_github_runner_version(github, "latest") == "2.332.0"
+    assert calls == [github]
 
 
 def test_resolve_github_runner_version_fetches_literal_release(monkeypatch):
     calls = []
+    github = object()
 
-    def fake_get_release(version, github_token):
-        calls.append((version, github_token))
+    def fake_get_release(received_github, version):
+        calls.append((received_github, version))
         return h.GithubRunnerRelease(
             version="2.331.0",
             sha256_by_arch={"x64": "a" * 64, "arm64": "b" * 64},
@@ -377,8 +369,8 @@ def test_resolve_github_runner_version_fetches_literal_release(monkeypatch):
 
     monkeypatch.setattr(h, "get_github_runner_release", fake_get_release)
 
-    assert h.resolve_github_runner_version("v2.331.0", "github-token") == "2.331.0"
-    assert calls == [("v2.331.0", "github-token")]
+    assert h.resolve_github_runner_version(github, "v2.331.0") == "2.331.0"
+    assert calls == [(github, "v2.331.0")]
 
 
 def test_generate_cloud_init_script_renders_repo_template(monkeypatch):
@@ -435,12 +427,12 @@ def test_generate_cloud_init_script_renders_repo_template(monkeypatch):
 def test_resolve_runner_release_for_update_skips_lookup_when_override_disabled(
     monkeypatch,
 ):
-    def fail_resolve(version, github_token):
-        raise AssertionError(f"unexpected release lookup for {version} {github_token}")
+    def fail_resolve(github, version):
+        raise AssertionError(f"unexpected release lookup for {github} {version}")
 
     monkeypatch.setattr(m, "resolve_github_runner_release", fail_resolve)
 
-    assert m.resolve_runner_release_for_update("latest", "github-token", "false") == (
+    assert m.resolve_runner_release_for_update(object(), "latest", "false") == (
         "",
         {},
     )
@@ -448,9 +440,10 @@ def test_resolve_runner_release_for_update_skips_lookup_when_override_disabled(
 
 def test_resolve_runner_release_for_update_resolves_when_override_enabled(monkeypatch):
     calls = []
+    github = object()
 
-    def fake_resolve(version, github_token):
-        calls.append((version, github_token))
+    def fake_resolve(received_github, version):
+        calls.append((received_github, version))
         return h.GithubRunnerRelease(
             version="2.332.0",
             sha256_by_arch={"x64": "a" * 64, "arm64": "b" * 64},
@@ -458,11 +451,11 @@ def test_resolve_runner_release_for_update_resolves_when_override_enabled(monkey
 
     monkeypatch.setattr(m, "resolve_github_runner_release", fake_resolve)
 
-    assert m.resolve_runner_release_for_update("latest", "github-token", "true") == (
+    assert m.resolve_runner_release_for_update(github, "latest", "true") == (
         "2.332.0",
         {"x64": "a" * 64, "arm64": "b" * 64},
     )
-    assert calls == [("latest", "github-token")]
+    assert calls == [(github, "latest")]
 
 
 def test_wait_runner_by_name_retries_github_lookup_errors(monkeypatch):
@@ -942,6 +935,52 @@ def test_remove_vm_with_empty_id_only_searches_by_labels(monkeypatch):
     sdk = object()
     args = argparse.Namespace(id="", labels={"run": "1-1"})
 
-    asyncio.run(m.remove_vm(sdk, args, None))
+    asyncio.run(m.remove_vm(sdk, args))
 
     assert searches == [(sdk, args)]
+
+
+def test_main_remove_with_empty_id_does_not_require_github_token(monkeypatch):
+    searches = []
+    sdk = object()
+
+    async def fake_search(search_sdk, args):
+        searches.append((search_sdk, args))
+        return []
+
+    def fake_github_client_from_env():
+        raise AssertionError("github_client_from_env should not be called")
+
+    def fake_sdk(**kwargs):
+        assert "config_reader" in kwargs
+        return sdk
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "nebius_manage_vm.py",
+            "remove",
+            "--parent-id",
+            "parent-id",
+            "--id",
+            "",
+            "--github-repo-owner",
+            "owner",
+            "--github-repo",
+            "repo",
+            "--labels",
+            "run=1-1",
+        ],
+    )
+    monkeypatch.setattr(m, "SDK", fake_sdk)
+    monkeypatch.setattr(m, "Config", lambda: object())
+    monkeypatch.setattr(m, "github_client_from_env", fake_github_client_from_env)
+    monkeypatch.setattr(m, "search_vm_cleanup_candidates_by_labels", fake_search)
+
+    asyncio.run(m.main())
+
+    assert len(searches) == 1
+    assert searches[0][0] is sdk
+    assert searches[0][1].labels == {"run": "1-1"}

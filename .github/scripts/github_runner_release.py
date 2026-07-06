@@ -3,6 +3,7 @@ import os
 
 from .helpers import (
     GITHUB_RUNNER_LATEST_VERSION,
+    github_client,
     github_output,
     resolve_github_runner_release,
     setup_logger,
@@ -27,7 +28,8 @@ def main():
     )
     args = parser.parse_args()
 
-    release = resolve_github_runner_release(args.version, args.github_token)
+    github = github_client(args.github_token)
+    release = resolve_github_runner_release(github, args.version)
     logger.info(
         "Resolved GitHub runner release version=%s sha256_by_arch=%s",
         release.version,
