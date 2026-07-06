@@ -164,11 +164,12 @@ protected:
                     LOG_INFO(
                         ctx,
                         T::LogComponent,
-                        "[%lu] Forced reschedule of %s (gen: %u, step: %u)",
+                        "[%lu] Forced reschedule of %s (gen: %u, step: %u, random seed=%lu)",
                         Self->TabletID(),
                         TTx::Name,
                         Generation,
-                        Step);
+                        Step,
+                        Self->TxRescheduler->GetSeed());
                     tx.Reschedule();
                 }
 

@@ -3,6 +3,7 @@
 #include <util/system/types.h>
 
 #include <memory>
+#include <optional>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -18,6 +19,7 @@ struct ITxRescheduler
     virtual bool ShouldReschedule() = 0;
     virtual bool IsTriggered() const = 0;
     virtual void Reset() = 0;
+    virtual ui64 GetSeed() const = 0;
 };
 
 using ITxReschedulerPtr = std::shared_ptr<ITxRescheduler>;
@@ -26,6 +28,12 @@ using ITxReschedulerPtr = std::shared_ptr<ITxRescheduler>;
 
 // Creates a rescheduler that forces a read transaction to be restarted
 // with a given probability.
-ITxReschedulerPtr CreateRescheduler(float probabilityPercentage);
+struct TReschedulerParams
+{
+    float ProbabilityPercentage = 1;
+    std::optional<ui64> RandomSeed;
+};
+
+ITxReschedulerPtr CreateRescheduler(TReschedulerParams params);
 
 }   // namespace NCloud::NFileStore::NStorage

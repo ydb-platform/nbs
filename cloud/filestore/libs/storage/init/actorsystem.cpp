@@ -247,8 +247,10 @@ public:
                     metricsRegistry,
                     fastShardServer,
                     config->GetFakeReadFailuresEnabled() ?
-                        CreateRescheduler(config->GetFakeReadFailuresProbabilityPercentage()) :
-                        nullptr);
+                        CreateRescheduler({
+                            .ProbabilityPercentage = config->GetFakeReadFailuresProbabilityPercentage(),
+                            .RandomSeed = std::nullopt
+                        }) : nullptr);
                 return actor.release();
             };
 

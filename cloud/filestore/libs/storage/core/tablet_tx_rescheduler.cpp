@@ -1,5 +1,11 @@
 #include "tablet_tx_rescheduler.h"
 
+#include <cloud/filestore/libs/storage/api/components.h>
+
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/log.h>
+
+#include <util/random/mersenne.h>
 #include <util/random/random.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -18,15 +24,21 @@ class TRandomTxRescheduler final
 private:
     const float Probability = 0;
     bool Triggered = false;
+    ui64 Seed;
+    TMersenne<ui64> RandomGen;
 
 public:
-    explicit TRandomTxRescheduler(float probabilityPercentage)
+    explicit TRandomTxRescheduler(float probabilityPercentage,
+                                  std::optional<ui64> randomSeed)
         : Probability(probabilityPercentage / 100.0F)
-    {}
+        , Seed(randomSeed ? *randomSeed : RandomNumber<ui64>())
+        , RandomGen(Seed)
+    {
+    }
 
     bool ShouldReschedule() override
     {
-        const bool ret = RandomNumber<float>() < Probability;
+        const bool ret = RandomGen.GenRandReal4() < Probability;
         Triggered |= ret;
         return ret;
     }
@@ -40,15 +52,22 @@ public:
     {
         Triggered = false;
     }
+
+    ui64 GetSeed() const override
+    {
+        return Seed;
+    }
 };
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITxReschedulerPtr CreateRescheduler(float probabilityPercentage)
+ITxReschedulerPtr CreateRescheduler(TReschedulerParams params)
 {
-    return std::make_shared<TRandomTxRescheduler>(probabilityPercentage);
+    return std::make_shared<TRandomTxRescheduler>(
+        params.ProbabilityPercentage,
+        params.RandomSeed);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
