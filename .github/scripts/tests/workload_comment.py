@@ -5,16 +5,13 @@ import argparse
 import json
 import os
 
-from github import Auth as GithubAuth, Github
 from github.PullRequest import PullRequest
 
-from ..helpers import find_current_job_url, setup_logger
+from ..helpers import find_current_job_url, github_client, setup_logger
 from . import generate_summary as gs
 
 
-def get_pull_request() -> PullRequest:
-    gh = Github(auth=GithubAuth.Token(os.environ["GITHUB_TOKEN"]))
-
+def get_pull_request(gh) -> PullRequest:
     with open(os.environ["GITHUB_EVENT_PATH"]) as fp:
         event = json.load(fp)
 
@@ -79,7 +76,7 @@ def main() -> None:
     ):
         return
 
-    pr = get_pull_request()
+    pr = get_pull_request(github_client(os.environ["GITHUB_TOKEN"]))
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
 
     if args.command == "init":

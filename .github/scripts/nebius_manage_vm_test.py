@@ -146,18 +146,13 @@ def test_get_runner_token_retries_github_errors(monkeypatch, capsys):
             )
 
     class FakeGithub:
-        def __init__(self, auth):
-            assert auth == ("token", "github-token")
-
         def get_repo(self, repo):
             assert repo == "owner/repo"
             return FakeRepo()
 
-    monkeypatch.setattr(m.GithubAuth, "Token", lambda token: ("token", token))
-    monkeypatch.setattr(m, "Github", FakeGithub)
     monkeypatch.setattr(m.time, "sleep", sleeps.append)
 
-    assert m.get_runner_token("owner", "repo", "github-token") == "runner-token"
+    assert m.get_runner_token(FakeGithub(), "owner", "repo") == "runner-token"
     assert len(attempts) == 2
     assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
     assert "::add-mask::runner-token" in capsys.readouterr().out
@@ -186,18 +181,13 @@ def test_get_runner_token_retries_transport_errors(monkeypatch, exception_type):
             )
 
     class FakeGithub:
-        def __init__(self, auth):
-            assert auth == ("token", "github-token")
-
         def get_repo(self, repo):
             assert repo == "owner/repo"
             return FakeRepo()
 
-    monkeypatch.setattr(m.GithubAuth, "Token", lambda token: ("token", token))
-    monkeypatch.setattr(m, "Github", FakeGithub)
     monkeypatch.setattr(m.time, "sleep", sleeps.append)
 
-    assert m.get_runner_token("owner", "repo", "github-token") == "runner-token"
+    assert m.get_runner_token(FakeGithub(), "owner", "repo") == "runner-token"
     assert len(attempts) == 2
     assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
 
@@ -212,19 +202,14 @@ def test_get_runner_token_reports_missing_token_after_retries(monkeypatch):
             return SimpleNamespace(token="", expires_at="2026-05-04T16:00:00Z")
 
     class FakeGithub:
-        def __init__(self, auth):
-            assert auth == ("token", "github-token")
-
         def get_repo(self, repo):
             assert repo == "owner/repo"
             return FakeRepo()
 
-    monkeypatch.setattr(m.GithubAuth, "Token", lambda token: ("token", token))
-    monkeypatch.setattr(m, "Github", FakeGithub)
     monkeypatch.setattr(m.time, "sleep", sleeps.append)
 
     with pytest.raises(ValueError) as err:
-        m.get_runner_token("owner", "repo", "github-token")
+        m.get_runner_token(FakeGithub(), "owner", "repo")
 
     assert str(err.value) == "Failed to get runner registration token"
     assert len(attempts) == m.GITHUB_API_RETRY_ATTEMPTS
@@ -957,6 +942,6 @@ def test_remove_vm_with_empty_id_only_searches_by_labels(monkeypatch):
     sdk = object()
     args = argparse.Namespace(id="", labels={"run": "1-1"})
 
-    asyncio.run(m.remove_vm(sdk, args))
+    asyncio.run(m.remove_vm(sdk, args, None))
 
     assert searches == [(sdk, args)]

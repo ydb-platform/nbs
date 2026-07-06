@@ -4,12 +4,11 @@ import os
 import argparse
 import datetime
 import numpy as np
-from github import Github
 from tabulate import tabulate
 from collections import defaultdict
 from dateutil import parser as dateparser
 from dateutil.relativedelta import relativedelta
-from .helpers import setup_logger, get_jobs_raw, classify_runner
+from .helpers import setup_logger, github_client, get_jobs_raw, classify_runner
 
 logger = setup_logger()
 
@@ -98,7 +97,7 @@ def output_results(all_jobs: list[dict], summary, threshold: int):
     )
 
 
-def main(start, end, threshold):
+def main(start, end, threshold, github_token, repo):
     logger.info(f"Fetching workflow runs from {start} to {end}")
     all_jobs = []
     summary = defaultdict(lambda: {"total_wait": 0.0, "count": 0, "waits": []})
@@ -113,7 +112,7 @@ def main(start, end, threshold):
             continue
 
         try:
-            jobs = get_jobs_raw(GITHUB_TOKEN, repo.full_name, run.id)
+            jobs = get_jobs_raw(github_token, repo.full_name, run.id)
         except Exception as e:
             logger.warning(f"Failed to get jobs for run {run.id}: {e}")
             continue
@@ -203,13 +202,13 @@ if __name__ == "__main__":
     start = parse_datetime(args.since, now)
     end = parse_datetime(args.until, now)
 
-    GITHUB_TOKEN = args.token if args.token else os.getenv("GITHUB_TOKEN")
-    if not GITHUB_TOKEN:
+    github_token = args.token if args.token else os.getenv("GITHUB_TOKEN")
+    if not github_token:
         raise EnvironmentError(
             "GITHUB_TOKEN environment variable not set or passed as argument."
         )
 
-    g = Github(GITHUB_TOKEN)
+    g = github_client(github_token)
     repo = g.get_repo(f"{args.owner}/{args.repo}")
 
-    main(start, end, args.threshold)
+    main(start, end, args.threshold, github_token, repo)

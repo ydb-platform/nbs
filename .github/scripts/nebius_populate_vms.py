@@ -4,9 +4,9 @@ import os
 import asyncio
 import argparse
 import datetime
-from github import Github
 from grpc import StatusCode
 from typing import List
+from .helpers import github_client
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
 from nebius.api.nebius.compute.v1 import (
@@ -515,7 +515,7 @@ async def main():
         raise RuntimeError("GITHUB_TOKEN environment variable is not set")
 
     sdk = SDK(config_reader=Config())
-    github = Github(github_token)
+    github = github_client(github_token)
 
     if args.loop:
         start_time = time.time()

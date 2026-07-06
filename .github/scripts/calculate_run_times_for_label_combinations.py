@@ -27,8 +27,12 @@ from datetime import datetime, timedelta, timezone
 from typing import DefaultDict, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
-from github import Github
 from tabulate import tabulate
+
+try:
+    from .helpers import github_client
+except ImportError:
+    from helpers import github_client
 
 LOG = logging.getLogger("pr_workflow_run_tests_stats")
 
@@ -482,7 +486,7 @@ def main() -> int:
         return 2
 
     owner, name = args.repo.split("/", 1)
-    gh = Github(token)
+    gh = github_client(token)
     repo = gh.get_repo(f"{owner}/{name}")
 
     # created_since vs days

@@ -12,7 +12,6 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from github import Auth as GithubAuth, Github
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
@@ -21,6 +20,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from .helpers import (
     find_current_job_url,
     get_build_preset_from_workflow_name,
+    github_client,
     get_s3_report_uri,
     get_s3_report_url,
     get_s3_workflow_reports_path,
@@ -112,9 +112,8 @@ def load_event() -> dict[str, Any]:
 
 
 def get_github_context(
-    token: str, repository: str, event: dict[str, Any]
+    gh, repository: str, event: dict[str, Any]
 ) -> tuple[Repository, PullRequest]:
-    gh = Github(auth=GithubAuth.Token(token))
     repo = gh.get_repo(repository)
     pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
     return repo, pr
@@ -832,7 +831,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_context() -> tuple[
+def load_context(gh) -> tuple[
     str,
     str,
     Repository,
@@ -849,7 +848,7 @@ def load_context() -> tuple[
     token = os.environ["GITHUB_TOKEN"]
     repository = os.environ["GITHUB_REPOSITORY"]
     event = load_event()
-    repo, pr_object = get_github_context(token, repository, event)
+    repo, pr_object = get_github_context(gh, repository, event)
     pr = event["pull_request"]
     pr_number = int(pr["number"])
     head_ref = pr["head"]["ref"]
@@ -877,7 +876,7 @@ def load_context() -> tuple[
     )
 
 
-def cancel_mode() -> int:
+def cancel_mode(gh) -> int:
     (
         _token,
         _repository,
@@ -891,7 +890,7 @@ def cancel_mode() -> int:
         runs,
         marker,
         collector_url,
-    ) = load_context()
+    ) = load_context(gh)
 
     if not runs:
         logger.info("No nightly PR labels found; nothing to cancel")
@@ -933,8 +932,9 @@ def main() -> int:
     signal.signal(signal.SIGTERM, request_cancellation)
 
     args = parse_args()
+    gh = github_client(os.environ["GITHUB_TOKEN"])
     if args.mode == "cancel":
-        return cancel_mode()
+        return cancel_mode(gh)
 
     (
         _token,
@@ -949,7 +949,7 @@ def main() -> int:
         runs,
         marker,
         collector_url,
-    ) = load_context()
+    ) = load_context(gh)
 
     if not runs:
         logger.info("No nightly PR labels found; nothing to dispatch")

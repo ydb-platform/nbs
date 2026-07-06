@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import math
 import os
 from pathlib import Path
@@ -22,9 +23,9 @@ from .helpers import (
     GITHUB_API_RETRY_INTERVAL_SEC,
     GITHUB_RUNNER_LATEST_VERSION,
     fetch_github_team_public_keys,
+    github_client,
     resolve_github_runner_release,
 )
-from github import Auth as GithubAuth
 from github import Github
 from github.Repository import Repository
 from github.SelfHostedActionsRunnerToken import SelfHostedActionsRunnerToken
@@ -234,12 +235,8 @@ if not hasattr(Repository, "create_self_hosted_runner_registration_token"):
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS + (ValueError,),
 )
-def get_runner_token(
-    github_repo_owner: str, github_repo: str, github_token: str
-) -> str:
-    repo = Github(auth=GithubAuth.Token(github_token)).get_repo(
-        f"{github_repo_owner}/{github_repo}"
-    )
+def get_runner_token(client: Github, github_repo_owner: str, github_repo: str) -> str:
+    repo = client.get_repo(f"{github_repo_owner}/{github_repo}")
     registration_token = repo.create_self_hosted_runner_registration_token()
     token = registration_token.token
     expires_at = registration_token.expires_at
@@ -347,15 +344,16 @@ async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     return request.resource_id
 
 
-def report_create_vm_final_failure(exception: BaseException) -> None:
+def report_create_vm_final_failure(
+    exception: BaseException, call_args: inspect.BoundArguments
+) -> None:
     if os.environ.get("GITHUB_EVENT_NAME") != "pull_request":
         return
 
     pr_number = int(os.environ.get("GITHUB_REF").split("/")[-1])
     repo_name = os.environ.get("GITHUB_REPOSITORY")
-    github_token = os.environ.get("GITHUB_TOKEN")
+    gh = call_args.arguments["github"]
     comment = f"VM creation failed after 30 minutes: {exception}"
-    gh = Github(auth=GithubAuth.Token(github_token))
     repo = gh.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     pr.create_issue_comment(comment)
@@ -472,7 +470,9 @@ def extract_instance_ips(instance, no_public_ip: bool) -> tuple[str, Optional[st
     attempt_arg="attempt",
     on_final_exception=report_create_vm_final_failure,
 )
-async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
+async def create_vm(
+    sdk: SDK, args: argparse.Namespace, github: Github, attempt: int = 0
+):
     logger.info(
         "Trying to create VM at %s (attempt=%d)",
         time.ctime(time.time()),
@@ -487,16 +487,14 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
-    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
-
     runner_registration_token = get_runner_token(
-        args.github_repo_owner, args.github_repo, GITHUB_TOKEN
+        github, args.github_repo_owner, args.github_repo
     )
 
     ssh_keys = []
     if args.github_org and args.github_team_slug:
         ssh_keys = fetch_github_team_public_keys(
-            gh, args.github_org, args.github_team_slug
+            github, args.github_org, args.github_team_slug
         )
     else:
         logger.info(
@@ -886,17 +884,13 @@ async def search_vm_cleanup_candidates_by_labels(sdk: SDK, args: argparse.Namesp
     return candidates
 
 
-async def remove_vm(sdk: SDK, args: argparse.Namespace):
+async def remove_vm(sdk: SDK, args: argparse.Namespace, github: Github):
     if not args.id:
         await search_vm_cleanup_candidates_by_labels(sdk, args)
         return
 
-    GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-
-    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
-
     result = remove_runner_from_github(
-        gh, args.github_repo_owner, args.github_repo, args.id, args.apply
+        github, args.github_repo_owner, args.github_repo, args.id, args.apply
     )
     if result == "not_found":
         logger.info("Runner with name %s not found in github, we can continue", args.id)
@@ -1082,7 +1076,8 @@ async def main() -> None:
     sdk = SDK(config_reader=Config())
 
     if hasattr(args, "func"):
-        await args.func(sdk, args)
+        github = github_client(os.environ["GITHUB_TOKEN"])
+        await args.func(sdk, args, github)
     else:
         parser.print_help()
 

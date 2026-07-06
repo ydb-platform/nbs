@@ -7,6 +7,7 @@ import requests
 import re
 import asyncio
 import functools
+import inspect
 import time
 from dataclasses import dataclass
 import datetime
@@ -219,9 +220,11 @@ def retry(
     retry_exceptions: tuple[type[BaseException], ...] = (Exception,),
     retry_result: Callable[[object], bool] | None = None,
     attempt_arg: str | None = None,
-    on_final_exception: Callable[[BaseException], None] | None = None,
+    on_final_exception: Callable[..., None] | None = None,
 ) -> callable:
     def decorator(func: callable) -> callable:
+        func_signature = inspect.signature(func)
+
         def build_call_kwargs(kwargs: dict, attempt: int) -> dict:
             call_kwargs = dict(kwargs)
             if attempt_arg:
@@ -262,6 +265,20 @@ def retry(
                 interval_sec,
             )
 
+        def call_final_exception_handler(
+            exception: BaseException, args: tuple, kwargs: dict
+        ) -> None:
+            if not on_final_exception:
+                return
+
+            parameters = inspect.signature(on_final_exception).parameters
+            if len(parameters) == 1:
+                on_final_exception(exception)
+            else:
+                on_final_exception(
+                    exception, func_signature.bind_partial(*args, **kwargs)
+                )
+
         if asyncio.iscoroutinefunction(func):
 
             @functools.wraps(func)
@@ -272,8 +289,7 @@ def retry(
                     except retry_exceptions as e:
                         if attempt == attempts:
                             log_final_exception(e)
-                            if on_final_exception:
-                                on_final_exception(e)
+                            call_final_exception_handler(e, args, kwargs)
                             raise
 
                         log_retry_exception(attempt, e)
@@ -304,8 +320,7 @@ def retry(
                 except retry_exceptions as e:
                     if attempt == attempts:
                         log_final_exception(e)
-                        if on_final_exception:
-                            on_final_exception(e)
+                        call_final_exception_handler(e, args, kwargs)
                         raise
 
                     log_retry_exception(attempt, e)
