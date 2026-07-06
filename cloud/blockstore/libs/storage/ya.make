@@ -2,6 +2,7 @@ RECURSE(
     api
     bootstrapper
     core
+    device_tcp_server
     disk_agent
     disk_common
     disk_registry

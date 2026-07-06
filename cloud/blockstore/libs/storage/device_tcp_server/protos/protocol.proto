@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/device_tcp_server/protos";
+
+import "cloud/blockstore/libs/storage/protos/disk.proto";
+import "cloud/storage/core/protos/error.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeviceProtocolRequest
+{
+    // Request identifier.
+    uint64 RequestId = 1;
+
+    oneof Request {
+        TAcquireDevicesRequest AcquireDevices = 2;
+        TReleaseDevicesRequest ReleaseDevices = 3;
+        TReadDeviceBlocksRequest ReadDeviceBlocks = 4;
+        TWriteDeviceBlocksRequest WriteDeviceBlocks = 5;
+        TZeroDeviceBlocksRequest ZeroDeviceBlocks = 6;
+    }
+}
+
+message TDeviceProtocolResponse
+{
+    // Request identifier copied from TDeviceProtocolRequest.
+    uint64 RequestId = 1;
+
+    oneof Response {
+        NCloud.NProto.TError ProtocolError = 2;
+
+        TAcquireDevicesResponse AcquireDevices = 3;
+        TReleaseDevicesResponse ReleaseDevices = 4;
+        TReadDeviceBlocksResponse ReadDeviceBlocks = 5;
+        TWriteDeviceBlocksResponse WriteDeviceBlocks = 6;
+        TZeroDeviceBlocksResponse ZeroDeviceBlocks = 7;
+    }
+}
