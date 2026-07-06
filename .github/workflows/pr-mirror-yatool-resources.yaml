@@ -1,0 +1,168 @@
+name: PR mirror yatool resources
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    paths:
+      - "build/mapping.conf.json"
+    types:
+      - "opened"
+      - "synchronize"
+      - "reopened"
+      - "labeled"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-running-allowed:
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      result: ${{ steps.check-ownership-membership.outputs.result }}
+    steps:
+      - name: Checkout workflow scripts
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: ".github"
+          clean: true
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: Check if running is allowed
+        id: check-ownership-membership
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          script: |
+            const checkOwnershipMembership = require('./.github/scripts/check-ownership-membership.js');
+            return await checkOwnershipMembership({ github, context, core });
+
+      - name: comment-if-waiting-on-ok
+        if: >-
+          ${{
+            steps.check-ownership-membership.outputs.result == 'false' &&
+            github.event.action == 'opened'
+          }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Hi! Thank you for contributing!\nThe yatool resources mirror workflow will run after a maintainer adds an `ok-to-test` label to this PR manually. Uploading to the mirror additionally requires an `allow-yatool-upload` label from an authorized team member. Thank you for your patience!'
+            });
+
+      - name: cleanup-labels
+        uses: actions/github-script@v9
+        with:
+          script: |
+            let labelsToRemove = ['ok-to-test', 'recheck'];
+            const prNumber = context.payload.pull_request.number;
+            const prLabels = new Set(context.payload.pull_request.labels.map(l => l.name));
+            for await (const label of labelsToRemove.filter(l => prLabels.has(l))) {
+              core.info(`remove label=${label} for pr=${prNumber}`);
+              try {
+                const result = await github.rest.issues.removeLabel({
+                  ...context.repo,
+                  issue_number: prNumber,
+                  name: label
+                });
+              } catch(error) {
+                if (error.status && error.status != 404) {
+                  throw error;
+                }
+              }
+            }
+
+  check-upload-label:
+    needs:
+      - check-running-allowed
+    if: ${{ needs.check-running-allowed.outputs.result == 'true' }}
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      result: ${{ steps.check-upload-label.outputs.result }}
+    steps:
+      - name: Checkout workflow scripts
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: ".github"
+          clean: true
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: Check allow-yatool-upload label
+        id: check-upload-label
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          script: |
+            const checkTeamLabel = require('./.github/scripts/check-team-label.js');
+            return await checkTeamLabel({
+              github,
+              context,
+              core,
+              labelName: 'allow-yatool-upload',
+              teamSlugs: ['nbs_nebius', 'nbs_yandex'],
+            });
+
+  detect-mapping-changes:
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      changed: ${{ steps.changed.outputs.result }}
+    steps:
+      - name: Detect mapping changes
+        id: changed
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            return files.some(file =>
+              file.filename === 'build/mapping.conf.json'
+            );
+
+  mirror:
+    needs:
+      - check-running-allowed
+      - check-upload-label
+      - detect-mapping-changes
+    if: >-
+      ${{
+        always() &&
+        needs.check-running-allowed.outputs.result == 'true' &&
+        needs.detect-mapping-changes.outputs.changed == 'true' &&
+        (
+          github.event.action != 'labeled' ||
+          github.event.label.name == 'ok-to-test' ||
+          github.event.label.name == 'recheck' ||
+          github.event.label.name == 'allow-yatool-upload'
+        )
+      }}
+    uses: ./.github/workflows/mirror-yatool-resources.yaml
+    with:
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      post_comment: ${{ needs.detect-mapping-changes.outputs.changed == 'true' }}
+      upload_resources: ${{ needs.check-upload-label.outputs.result == 'true' }}
+    secrets: inherit

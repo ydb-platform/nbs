@@ -12,6 +12,7 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
@@ -19,6 +20,7 @@ from botocore.exceptions import ClientError
 DEFAULT_LOCAL_BASE_URL = "https://storage.eu-north2.nebius.cloud/nbs-yatool-resources"
 COMMENT_MARKER = "<!-- nbs-yatool-resources-mirror -->"
 MAX_EMBEDDED_PATCH_BYTES = 52000
+ALLOWED_SOURCE_HOSTS = frozenset({"devtools-registry.s3.yandex.net"})
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -28,6 +30,32 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def dump_json(data: dict[str, Any]) -> str:
     return json.dumps(data, indent=4, ensure_ascii=False) + "\n"
+
+
+def validate_source_url(resource_id: str, url: str) -> str:
+    if not resource_id.isdigit():
+        raise ValueError(f"resource id must be numeric: {resource_id}")
+
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(f"resource {resource_id} must use https URL")
+    if parsed.hostname not in ALLOWED_SOURCE_HOSTS:
+        raise ValueError(
+            f"resource {resource_id} host {parsed.hostname!r} is not allowed"
+        )
+    if parsed.username or parsed.password or parsed.port:
+        raise ValueError(
+            f"resource {resource_id} URL must not contain authority extras"
+        )
+    if parsed.query or parsed.fragment:
+        raise ValueError(
+            f"resource {resource_id} URL must not contain query or fragment"
+        )
+    if parsed.path != f"/{resource_id}":
+        raise ValueError(
+            f"resource {resource_id} URL path must be exactly /{resource_id}"
+        )
+    return url
 
 
 def download(url: str, dst: Path, attempts: int) -> str:
@@ -194,7 +222,16 @@ def write_comment(comment_out: Path, summary_out: Path, patch_out: Path) -> None
     patch = patch_out.read_text(encoding="utf-8")
     body = [COMMENT_MARKER, summary.strip(), ""]
     if len(patch.encode("utf-8")) <= MAX_EMBEDDED_PATCH_BYTES:
-        body += ["```diff", patch.rstrip(), "```"]
+        body += [
+            "<details>",
+            "<summary>Resource localization patch</summary>",
+            "",
+            "```diff",
+            patch.rstrip(),
+            "```",
+            "",
+            "</details>",
+        ]
     else:
         body += [
             "The generated patch is too large for a reliable PR comment.",
@@ -267,7 +304,8 @@ def main() -> int:
             resources.items(), key=lambda item: int(item[0])
         ):
             dst = tmp_dir / resource_id
-            md5 = download(str(url), dst, args.download_attempts)
+            source_url = validate_source_url(resource_id, str(url))
+            md5 = download(source_url, dst, args.download_attempts)
             existing_md5 = (
                 ""
                 if args.skip_upload

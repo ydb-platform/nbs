@@ -1,19 +1,26 @@
 name: Mirror yatool resources
 
 on:
+  workflow_call:
+    inputs:
+      base_sha:
+        type: string
+        required: true
+      head_sha:
+        type: string
+        required: true
+      post_comment:
+        type: boolean
+        default: false
+      upload_resources:
+        type: boolean
+        default: false
   workflow_dispatch:
-  pull_request_target:
-    branches:
-      - main
-    paths:
-      - "build/mapping.conf.json"
-      - "build/ext_mapping.conf.json"
-      - "build/external_resources/**"
-    types:
-      - "opened"
-      - "synchronize"
-      - "reopened"
-      - "labeled"
+    inputs:
+      upload_resources:
+        type: boolean
+        default: false
+        description: "Upload refreshed resources to S3"
 
 permissions:
   contents: read
@@ -26,175 +33,78 @@ defaults:
 
 env:
   YATOOL_RESOURCES_BUCKET: nbs-yatool-resources
-  YATOOL_RESOURCES_URL: https://storage.eu-north2.nebius.cloud/nbs-yatool-resources
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
 
 jobs:
-  check-running-allowed:
-    runs-on: [self-hosted, "self-hosted", "runner_light"]
-    outputs:
-      result: ${{ steps.allow-dispatch.outputs.result || steps.check-ownership-membership.outputs.result }}
-    steps:
-      - name: Allow workflow dispatch
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        id: allow-dispatch
-        run: echo "result=true" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout workflow scripts
-        if: ${{ github.event_name != 'workflow_dispatch' }}
-        uses: actions/checkout@v7
-        with:
-          submodules: false
-          sparse-checkout: ".github"
-          clean: true
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Check if running is allowed
-        if: ${{ github.event_name != 'workflow_dispatch' }}
-        id: check-ownership-membership
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          script: |
-            const checkOwnershipMembership = require('./.github/scripts/check-ownership-membership.js');
-            return await checkOwnershipMembership({ github, context, core });
-
-      - name: comment-if-waiting-on-ok
-        if: >-
-          ${{
-            github.event_name != 'workflow_dispatch' &&
-            steps.check-ownership-membership.outputs.result == 'false' &&
-            github.event.action == 'opened'
-          }}
-        uses: actions/github-script@v9
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Hi! Thank you for contributing!\nThe yatool resources mirror workflow will run after a maintainer adds an `ok-to-test` label to this PR manually. Thank you for your patience!'
-            });
-
-      - name: cleanup-labels
-        if: ${{ github.event_name != 'workflow_dispatch' }}
-        uses: actions/github-script@v9
-        with:
-          script: |
-            let labelsToRemove = ['ok-to-test', 'recheck'];
-            const prNumber = context.payload.pull_request.number;
-            const prLabels = new Set(context.payload.pull_request.labels.map(l => l.name));
-            for await (const label of labelsToRemove.filter(l => prLabels.has(l))) {
-              core.info(`remove label=${label} for pr=${prNumber}`);
-              try {
-                const result = await github.rest.issues.removeLabel({
-                  ...context.repo,
-                  issue_number: prNumber,
-                  name: label
-                });
-              } catch(error) {
-                if (error.status && error.status != 404) {
-                  throw error;
-                }
-              }
-            }
-
-  check-trigger-label:
-    needs:
-      - check-running-allowed
-    if: ${{ github.event_name != 'workflow_dispatch' }}
-    uses: ./.github/workflows/check-test-launch-label.yaml
-
   mirror:
-    needs:
-      - check-running-allowed
-      - check-trigger-label
-    if: >-
-      ${{
-        always() &&
-        needs.check-running-allowed.outputs.result == 'true' &&
-        (
-          github.event_name == 'workflow_dispatch' ||
-          needs.check-trigger-label.outputs.allowed == 'true'
-        )
-      }}
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
-      - name: Checkout
+      - name: Checkout trusted base workflow code and resources
         uses: actions/checkout@v7
         with:
           submodules: false
           sparse-checkout: |
             .github/actions/s3cmd
+            .github/actions/mirror_yatool_resources
             .github/scripts
             build/mapping.conf.json
-            build/ext_mapping.conf.json
-            build/external_resources
-          fetch-depth: 0
+          fetch-depth: 1
           clean: true
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.base_sha || github.sha }}
 
-      - name: Detect PR mapping changes
-        id: mapping-changes
-        if: ${{ github.event_name == 'pull_request_target' }}
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: Checkout resource files to mirror
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: |
+            build/mapping.conf.json
+          fetch-depth: 1
+          clean: true
+          path: pr
+          ref: ${{ inputs.head_sha || github.sha }}
+
+      - name: disable sparse checkout for resource checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        working-directory: pr
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: Prepare base mapping
+        id: base-mapping
         run: |
-          git fetch origin "$BASE_REF" --depth=1
           BASE_MAPPING="$RUNNER_TEMP/base_mapping.conf.json"
-          git show FETCH_HEAD:build/mapping.conf.json > "$BASE_MAPPING" || true
-          git checkout FETCH_HEAD -- .github/scripts .github/actions/s3cmd || true
+          cp build/mapping.conf.json "$BASE_MAPPING" || true
           echo "base_mapping=$BASE_MAPPING" >> "$GITHUB_OUTPUT"
-          if git diff --quiet FETCH_HEAD...HEAD -- build/mapping.conf.json build/ext_mapping.conf.json build/external_resources/; then
-              echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Prepare AWS CLI
+        if: ${{ inputs.upload_resources }}
         uses: ./.github/actions/s3cmd
         with:
-          s3_bucket: ${{ env.YATOOL_RESOURCES_BUCKET }}
-          s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
-          s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
-          s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
-          s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
+          s3_bucket: 'nbs-yatool-resources'
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
           folder_prefix: yatool-resources-
           build_preset: relwithdebinfo
           install: false
 
       - name: Mirror resources and generate patch
-        env:
-          BASE_MAPPING: ${{ steps.mapping-changes.outputs.base_mapping }}
-          GITHUB_TOKEN: ${{ github.token }}
-          POST_COMMENT: ${{ github.event_name == 'pull_request_target' && steps.mapping-changes.outputs.changed == 'true' && 'true' || 'false' }}
-          PYTHONPATH: ${{ github.workspace }}/.github
-          SKIP_UPLOAD: "false"
-          S3_ENDPOINT_URL: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/yatool-resource-mirror"
-          args=(
-              --mapping build/mapping.conf.json
-              --bucket "$YATOOL_RESOURCES_BUCKET"
-              --endpoint-url "$S3_ENDPOINT_URL"
-              --local-base-url "$YATOOL_RESOURCES_URL"
-              --patch-out "$RUNNER_TEMP/yatool-resource-mirror/localize-yatool-resources.patch"
-              --summary-out "$RUNNER_TEMP/yatool-resource-mirror/summary.md"
-              --comment-out "$RUNNER_TEMP/yatool-resource-mirror/comment.md"
-          )
-          if [ -n "$BASE_MAPPING" ] && [ -s "$BASE_MAPPING" ]; then
-              args+=(--base-mapping "$BASE_MAPPING")
-          fi
-          if [ "$SKIP_UPLOAD" = "true" ]; then
-              args+=(--skip-upload)
-          fi
-          if [ "$POST_COMMENT" = "true" ]; then
-              args+=(--post-comment)
-          fi
-          python3 .github/scripts/mirror_yatool_resources.py "${args[@]}"
+        uses: ./.github/actions/mirror_yatool_resources
+        with:
+          working_directory: pr
+          mapping: build/mapping.conf.json
+          base_mapping: ${{ steps.base-mapping.outputs.base_mapping }}
+          bucket: 'nbs-yatool-resources'
+          endpoint_url: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          local_base_url: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          output_dir: ${{ runner.temp }}/yatool-resource-mirror
+          post_comment: ${{ inputs.post_comment && 'true' || 'false' }}
+          skip_upload: ${{ inputs.upload_resources && 'false' || 'true' }}
 
       - name: Upload generated patch
         uses: actions/upload-artifact@v7.0.1
