@@ -25,6 +25,7 @@ ANCHOR_ID_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 DEFAULT_MAX_CONFIGURE_ERRORS = 5
 DEFAULT_MAX_COMPILER_BLOCKS = 20
 DEFAULT_MAX_BLOCK_LINES = 24
+DEFAULT_MAX_RESOURCE_FETCH_ERRORS = 10
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,12 @@ class CompilerErrorBlock:
 class FailedBuildTarget:
     name: str
     testcase: str
+
+
+@dataclass(frozen=True)
+class ResourceFetchError:
+    resource: str
+    message: str
 
 
 def clean_log_text(text: str) -> str:
@@ -237,6 +244,64 @@ def collect_configure_errors(
     return errors
 
 
+def collect_resource_fetch_errors(
+    ya_make_output_path: Path | None,
+    *,
+    limit: int = DEFAULT_MAX_RESOURCE_FETCH_ERRORS,
+) -> list[ResourceFetchError]:
+    if ya_make_output_path is None or not ya_make_output_path.exists():
+        return []
+
+    errors: list[ResourceFetchError] = []
+    seen: set[ResourceFetchError] = set()
+    current_resource = ""
+    current_lines: list[str] = []
+
+    def flush_current() -> None:
+        nonlocal current_resource, current_lines
+        if not current_resource:
+            return
+
+        message = "\n".join(_compact_lines(current_lines))
+        error = ResourceFetchError(resource=current_resource, message=message)
+        if message and error not in seen:
+            seen.add(error)
+            errors.append(error)
+
+        current_resource = ""
+        current_lines = []
+
+    with ya_make_output_path.open(encoding="utf-8", errors="replace") as fp:
+        for raw_line in fp:
+            line = normalize_paths(clean_log_text(raw_line)).rstrip()
+            match = re.search(r"Unable to fetch resource (?P<resource>\S+)", line)
+            if match:
+                flush_current()
+                current_resource = match.group("resource")
+                current_lines = [line]
+                if len(errors) >= limit:
+                    break
+                continue
+
+            if current_resource:
+                if (
+                    "PREPARE $(" in line
+                    or "ERROR:" in line
+                    or "Exception:" in line
+                    or "Network unreachable" in line
+                    or "Truncated tar archive" in line
+                    or "unresolved patterns:" in line
+                ):
+                    current_lines.append(line)
+                if "unresolved patterns:" in line:
+                    flush_current()
+                    if len(errors) >= limit:
+                        break
+
+    flush_current()
+    return errors[:limit]
+
+
 def _strip_log_prefix(line: str) -> str:
     return LOG_RECORD_RE.sub("", line, count=1)
 
@@ -344,10 +409,12 @@ def build_report(
     *,
     configure_errors: list[ConfigureError],
     compiler_blocks: list[CompilerErrorBlock],
+    resource_fetch_errors: list[ResourceFetchError] | None = None,
     failed_build_targets: list[FailedBuildTarget] | None = None,
     only_if_junit_failed_build: bool = False,
 ) -> dict[str, object] | None:
     failed_build_targets = failed_build_targets or []
+    resource_fetch_errors = resource_fetch_errors or []
     if only_if_junit_failed_build and not failed_build_targets:
         return None
 
@@ -366,7 +433,10 @@ def build_report(
     ]
 
     has_content = (
-        bool(configure_errors) or bool(compiler_blocks) or bool(failed_build_targets)
+        bool(configure_errors)
+        or bool(compiler_blocks)
+        or bool(resource_fetch_errors)
+        or bool(failed_build_targets)
     )
     if not has_content:
         return None
@@ -375,6 +445,7 @@ def build_report(
         "configure_errors": configure_errors,
         "target_sections": target_sections,
         "unmatched_blocks": unmatched_blocks,
+        "resource_fetch_errors": resource_fetch_errors,
         "failed_build_targets": failed_build_targets,
     }
 
@@ -383,6 +454,7 @@ def render_html(
     *,
     configure_errors: list[ConfigureError],
     compiler_blocks: list[CompilerErrorBlock],
+    resource_fetch_errors: list[ResourceFetchError] | None = None,
     failed_build_targets: list[FailedBuildTarget] | None = None,
     ya_make_output_url: str = "",
     ya_log_url: str = "",
@@ -392,6 +464,7 @@ def render_html(
     report = build_report(
         configure_errors=configure_errors,
         compiler_blocks=compiler_blocks,
+        resource_fetch_errors=resource_fetch_errors,
         failed_build_targets=failed_build_targets,
         only_if_junit_failed_build=only_if_junit_failed_build,
     )
@@ -425,6 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--evlog", type=Path)
     parser.add_argument("--log", type=Path)
     parser.add_argument("--junit", type=Path)
+    parser.add_argument("--ya-make-output", type=Path)
     parser.add_argument("--ya-make-output-url", default="")
     parser.add_argument("--ya-log-url", default="")
     parser.add_argument("--evlog-url", default="")
@@ -442,6 +516,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-compiler-blocks",
         type=int,
         default=DEFAULT_MAX_COMPILER_BLOCKS,
+    )
+    parser.add_argument(
+        "--max-resource-fetch-errors",
+        type=int,
+        default=DEFAULT_MAX_RESOURCE_FETCH_ERRORS,
     )
     parser.add_argument(
         "--max-block-lines",
@@ -462,6 +541,10 @@ def main() -> None:
             args.log,
             max_blocks=args.max_compiler_blocks,
             max_lines_per_block=args.max_block_lines,
+        ),
+        resource_fetch_errors=collect_resource_fetch_errors(
+            args.ya_make_output,
+            limit=args.max_resource_fetch_errors,
         ),
         failed_build_targets=collect_failed_build_targets(args.junit),
         ya_make_output_url=args.ya_make_output_url,

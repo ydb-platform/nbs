@@ -99,6 +99,38 @@ def test_collect_compiler_error_blocks_limits_blocks_and_lines(
     assert '<a href="https://logs/ya_log.txt">ya_log.txt</a>' in html
 
 
+def test_render_html_includes_resource_fetch_errors(tmp_path: Path) -> None:
+    output = tmp_path / "ya_make_output.txt"
+    output.write_text(
+        "\n".join(
+            [
+                "Error: Unable to fetch resource CLANG14-1922233694",
+                "Exception: Fatal error executing function, message is: "
+                "b'Truncated tar archive detected while reading data'.",
+                "------- PREPARE $(CLANG14-1922233694)",
+                "ERROR: Fatal error executing function, message is: "
+                "b'Truncated tar archive detected while reading data'.",
+                "unresolved patterns: CLANG14-1922233694",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    errors = ybe.collect_resource_fetch_errors(output)
+    html = ybe.render_html(
+        configure_errors=[],
+        compiler_blocks=[],
+        resource_fetch_errors=errors,
+        ya_make_output_url="https://logs/ya_make_output.txt",
+    )
+
+    assert len(errors) == 1
+    assert errors[0].resource == "CLANG14-1922233694"
+    assert "Resource fetch errors" in html
+    assert "Truncated tar archive detected" in html
+    assert '<a href="https://logs/ya_make_output.txt">ya_make_output.txt</a>' in html
+
+
 def test_render_html_matches_failed_build_targets_to_compiler_blocks(
     tmp_path: Path,
 ) -> None:
