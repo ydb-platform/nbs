@@ -157,4 +157,8 @@ message TDiagnosticsConfig
 
     // Disable registration of throttling metrics in the metrics registry.
     optional bool ThrottlingHistogramsDisabled = 33;
+
+    // Disable registration of disaggregated (per-entity) metrics in the metrics
+    // registry. Aggregated totals are still reported.
+    optional bool DisaggregatedCountersDisabled = 34;
 }

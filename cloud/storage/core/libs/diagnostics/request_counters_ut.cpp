@@ -1319,6 +1319,43 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotRegisterDisaggregatedCounters)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto fsCounters = monitoring->GetCounters()->GetSubgroup("type", "fs");
+        auto totalCounters = monitoring->GetCounters()->GetSubgroup("type", "total");
+
+        auto aggregated = MakeRequestCountersPtr({});
+        aggregated->Register(*totalCounters);
+
+        auto perFs = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::DisaggregatedCountersDisabled});
+        perFs.Register(*fsCounters);
+        perFs.Subscribe(aggregated);
+
+        AddRequestStats(
+            perFs,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+            });
+
+        perFs.UpdateStats(true);
+        aggregated->UpdateStats(true);
+
+        // Per-fs monitoring group must have no request subgroups at all
+        UNIT_ASSERT_C(
+            !fsCounters->FindSubgroup("request", "WriteBlocks"),
+            "Per-fs request subgroup should not be registered");
+
+        // Aggregated must still receive the stats via subscription
+        auto count = totalCounters
+            ->GetSubgroup("request", "WriteBlocks")
+            ->GetCounter("Count", true);
+        UNIT_ASSERT_VALUES_EQUAL(1, count->Val());
+    }
+
     Y_UNIT_TEST(ShouldFillTimePercentilesForDifferentSizeClassesSeparately)
     {
         auto monitoring = CreateMonitoringServiceStub();

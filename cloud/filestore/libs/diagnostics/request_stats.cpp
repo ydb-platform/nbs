@@ -785,7 +785,10 @@ public:
                 DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
                 DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
                 DiagnosticsConfig->GetHistogramCounterOptions(),
-                CounterOptions);
+                CounterOptions |
+                    (DiagnosticsConfig->GetDisaggregatedCountersDisabled()
+                         ? TRequestCounters::EOption::DisaggregatedCountersDisabled
+                         : TRequestCounters::EOptions{}));
             it = StatsMap.emplace(
                 key,
                 TFileSystemStatsHolder{std::move(counters), stats}).first;

@@ -50,6 +50,7 @@ namespace {
     xxx(ProfileLogMaxFlushRecords,      ui64, 0                               )\
     xxx(ProfileLogMaxFrameFlushRecords, ui64, 0                               )\
     xxx(ThrottlingHistogramsDisabled,       bool,            false            )\
+    xxx(DisaggregatedCountersDisabled,      bool,            false            )\
 
 // FILESTORE_DIAGNOSTICS_CONFIG
 
