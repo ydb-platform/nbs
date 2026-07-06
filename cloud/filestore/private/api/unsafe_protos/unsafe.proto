@@ -43,13 +43,25 @@ message TUnsafeCreateNodeRefResponse
 ////////////////////////////////////////////////////////////////////////////////
 // FileSystem Resize State.
 
+message TCompressedBitmapChunk
+{
+    uint32 ChunkIdx = 1;
+    bytes Data = 2;
+}
+
+message TCompressedBitmapData
+{
+    uint64 BitCount = 1;
+    repeated TCompressedBitmapChunk Chunks = 2;
+}
+
 message TFileSystemResizeState
 {
     // Protecting from races. When unset in Request, we do not modify during
     // the Request the TFileSystem.ResizeState and just return current state.
     optional uint32 Version = 1;
 
-    bytes CreatedShardBitmap = 2;
+    TCompressedBitmapData CreatedShardBitmap = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
