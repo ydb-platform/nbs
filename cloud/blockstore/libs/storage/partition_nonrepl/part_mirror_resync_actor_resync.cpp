@@ -83,13 +83,13 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     const auto resyncRange =
         RangeId2BlockRange(rangeId, PartConfig->GetBlockSize());
 
-    LogTitle.SetRange(resyncRange);
     if (WriteAndZeroRequestsInProgress.OverlapsWithWrites(resyncRange)) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s Resyncing range rejected due to inflight write",
-            LogTitle.GetWithTime().c_str());
+            "%s Resyncing range %s rejected due to inflight write",
+            LogTitle.GetWithTime().c_str(),
+            DescribeRange(resyncRange).c_str());
 
         // Reschedule range
         State.FinishResyncRange(rangeId);
@@ -101,8 +101,9 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Resyncing range",
-        LogTitle.GetWithTime().c_str());
+        "%s Resyncing range %s",
+        LogTitle.GetWithTime().c_str(),
+        DescribeRange(resyncRange).c_str());
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
@@ -169,12 +170,12 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const auto range = msg->Range;
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
-    LogTitle.SetRange(range);
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Range resync finished: %s",
+        "%s Range %s resync finished: %s",
         LogTitle.GetWithTime().c_str(),
+        DescribeRange(range).c_str(),
         FormatError(msg->GetError()).c_str());
 
     STORAGE_VERIFY(

@@ -161,7 +161,7 @@ TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
     : RequestInfo(std::move(requestInfo))
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
-          {{"TResyncRangeBlockByBlockActor", std::monostate{}}}))
+          {{"r", range}}))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -308,11 +308,10 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Replica %lu elected as best healer. In range %s %lu blocks were "
-        "healed and %lu/%lu blocks were overwritten during resync. %s%s%s",
+        "%s Replica %lu elected as best healer. %lu blocks were healed and "
+        "%lu/%lu blocks were overwritten during resync. %s%s%s",
         LogTitle.GetWithTime().c_str(),
         bestHealer,
-        Range.Print().c_str(),
         fixedMinorErrorCount,
         fixedMajorErrorCount,
         foundMajorErrorCount,
@@ -455,10 +454,9 @@ void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s/%u] Overwrite block range %s during resync",
+        "%s Replica %u Overwrite block range during resync",
         LogTitle.GetWithTime().c_str(),
-        Replicas[replicaIndex].ReplicaIndex,
-        DescribeRange(Range).c_str());
+        Replicas[replicaIndex].ReplicaIndex);
 
     ctx.Send(event.release());
 }

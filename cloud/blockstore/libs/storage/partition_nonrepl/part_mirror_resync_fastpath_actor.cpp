@@ -31,7 +31,7 @@ TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
     : RequestInfo(std::move(requestInfo))
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
-          {{"TMirrorPartitionResyncFastPathActor", std::monostate{}}}))
+          {{"r", range}}))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -125,10 +125,8 @@ NProto::TError TMirrorPartitionResyncFastPathActor::CompareChecksums(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "%s Resync range %s: checksum mismatch, %u (data) != %u "
-            "(%u), %s",
+            "%s Resync range: checksum mismatch, %u (data) != %u (%u), %s",
             LogTitle.GetWithTime().c_str(),
-            DescribeRange(Range).c_str(),
             *DataChecksum,
             checksum,
             mismatchedReplica,

@@ -68,7 +68,7 @@ TResyncRangeActor::TResyncRangeActor(
     : RequestInfo(std::move(requestInfo))
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
-          {{"TResyncRangeActor", std::monostate{}}}))
+          {{"r", range}}))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -138,10 +138,8 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s Can't resync range %s with major error due to policy "
-            "restrictions",
-            LogTitle.GetWithTime().c_str(),
-            DescribeRange(Range).c_str());
+            "%s Can't resync range with major error due to policy restrictions",
+            LogTitle.GetWithTime().c_str());
         Done(ctx);
         return;
     }
@@ -149,10 +147,8 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Resync range %s: majority replica %lu, checksum %lu, count %u of "
-        "%u",
+        "%s Resync range: majority replica %lu, checksum %lu, count %u of %u",
         LogTitle.GetWithTime().c_str(),
-        DescribeRange(Range).c_str(),
         majorIdx,
         majorChecksum,
         majorCount,
@@ -164,11 +160,9 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "%s Replica %lu block range %s checksum %lu differs from "
-                "majority checksum %lu",
+                "%s Replica %lu checksum %lu differs from majority checksum %lu",
                 LogTitle.GetWithTime().c_str(),
                 Replicas[i].ReplicaIndex,
-                DescribeRange(Range).c_str(),
                 checksum,
                 majorChecksum);
 
@@ -276,10 +270,9 @@ void TResyncRangeActor::WriteReplicaBlocks(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Replica %lu Overwrite block range %s during resync",
+        "%s Replica %lu Overwrite block range during resync",
         LogTitle.GetWithTime().c_str(),
-        Replicas[idx].ReplicaIndex,
-        DescribeRange(Range).c_str());
+        Replicas[idx].ReplicaIndex);
 
     ctx.Send(event.release());
 }
