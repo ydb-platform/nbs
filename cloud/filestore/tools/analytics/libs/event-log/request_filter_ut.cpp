@@ -731,6 +731,36 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
     }
 
+    Y_UNIT_TEST(ShouldFilterByListNodesInfoNodeId)
+    {
+        NProto::TProfileLogRecord record;
+        record.SetFileSystemId("fs");
+
+        auto* firstRequest = record.AddRequests();
+        firstRequest->SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::ListNodes));
+        firstRequest->MutableListNodesInfo()->SetNodeId(1);
+
+        auto* secondRequest = record.AddRequests();
+        secondRequest->SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::ListNodes));
+        secondRequest->MutableListNodesInfo()->SetNodeId(2);
+        secondRequest->MutableListNodesInfo()->SetSize(3);
+
+        auto filter =
+            CreateRequestFilterByNodeId(CreateRequestFilterAccept(), 2);
+
+        const auto filtered = filter->GetFilteredRecord(record);
+        UNIT_ASSERT_VALUES_EQUAL("fs", filtered.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(1, filtered.RequestsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            filtered.GetRequests(0).GetListNodesInfo().GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            filtered.GetRequests(0).GetListNodesInfo().GetSize());
+    }
+
     Y_UNIT_TEST_F(ShouldFilterByNodeIdRecord, TEnv)
     {
         auto filter = CreateRequestFilterByNodeId(

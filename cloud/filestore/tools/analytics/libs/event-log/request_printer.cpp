@@ -173,6 +173,53 @@ TString PrintNodeInfo(
     return out;
 }
 
+TString PrintListNodesInfo(
+    const NProto::TProfileLogListNodesInfo& listNodesInfo)
+{
+    TStringBuilder out;
+    bool hasInfo = false;
+
+    out << "{";
+
+    if (listNodesInfo.HasNodeId()) {
+        out << PrintValue("node_id", listNodesInfo.GetNodeId()) << ", ";
+        hasInfo = true;
+    }
+    if (listNodesInfo.HasMaxBytes() && listNodesInfo.GetMaxBytes()) {
+        out << PrintValue("max_bytes", listNodesInfo.GetMaxBytes()) << ", ";
+        hasInfo = true;
+    }
+    if (listNodesInfo.HasRequestCookie() &&
+        !listNodesInfo.GetRequestCookie().empty())
+    {
+        out << PrintValue("request_cookie", listNodesInfo.GetRequestCookie())
+            << ", ";
+        hasInfo = true;
+    }
+    if (listNodesInfo.HasResponseCookie() &&
+        !listNodesInfo.GetResponseCookie().empty())
+    {
+        out << PrintValue("response_cookie", listNodesInfo.GetResponseCookie())
+            << ", ";
+        hasInfo = true;
+    }
+    if (listNodesInfo.HasSize()) {
+        out << PrintValue("size", listNodesInfo.GetSize()) << ", ";
+        hasInfo = true;
+    }
+
+    if (!hasInfo) {
+        out << "no_list_nodes_info";
+    } else {
+        out.pop_back();
+        out.pop_back();
+    }
+
+    out << "}";
+
+    return out;
+}
+
 TString PrintRanges(
     TStringBuf nodeIdLabel,
     TStringBuf handleLabel,
@@ -350,6 +397,10 @@ public:
                 "mtime",
                 "ctime",
                 request.GetNodeInfo()) << "\t";
+        }
+
+        if (request.HasListNodesInfo()) {
+            out << PrintListNodesInfo(request.GetListNodesInfo()) << "\t";
         }
 
         if (request.HasLockInfo()) {
