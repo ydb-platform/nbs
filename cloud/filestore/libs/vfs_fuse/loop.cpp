@@ -580,12 +580,14 @@ public:
             "stopping FUSE loop thread " << FuseLoopIndex << "."
                                          << BackendQueueIndex);
 
-        // A single signal is not enough: it may be delivered when the loop
-        // thread is not blocked on sem_wait/read yet (e.g. right after it has
-        // checked the session exit flag but before it has entered the
-        // syscall). Such a signal interrupts nothing and the loop thread then
-        // blocks indefinitely, so keep signalling until the loop actually
-        // finishes.
+        // A single signal is not enough. The loop thread runs
+        // fuse_session_loop() (contrib/libs/fuse/lib/fuse_loop.c), which
+        // checks fuse_session_exited() and then calls
+        // fuse_session_receive_buf(), blocking in read() on /dev/fuse. A
+        // signal delivered after the exit flag check but before the thread
+        // has entered the syscall interrupts nothing, and the loop thread
+        // then blocks indefinitely, so keep signalling until the loop
+        // actually finishes.
         SignalInterrupt();
         while (!LoopFinished.WaitT(SignalInterruptInterval)) {
             SignalInterrupt();
