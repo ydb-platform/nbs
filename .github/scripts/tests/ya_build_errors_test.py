@@ -195,8 +195,7 @@ def test_render_html_includes_multiple_unresolved_resources_without_fetch_prefix
         "WITH_JDK17-sbr:6431661101, GDB, WITH_JDK-sbr:6431661101"
     )
     output.write_text(
-        "2026-06-30T10:17:42.4191680Z "
-        f"unresolved patterns: {unresolved_patterns}",
+        "2026-06-30T10:17:42.4191680Z " f"unresolved patterns: {unresolved_patterns}",
         encoding="utf-8",
     )
 
