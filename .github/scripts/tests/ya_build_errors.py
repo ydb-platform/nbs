@@ -16,6 +16,9 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoes
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 YA_MARKUP_RE = re.compile(r"\[\[(?:imp|rst|bad|good|warn|unimp)\]\]")
 LOG_RECORD_RE = re.compile(r"^\d{4}-\d{2}-\d{2} .* \([^)]+\) \[[^]]+\] ")
+RESOURCE_FETCH_RE = re.compile(r"Unable to fetch resource (?P<resource>\S+)")
+UNRESOLVED_PATTERNS_RE = re.compile(r"unresolved patterns:\s*(?P<patterns>\S.*)$")
+RESOURCE_PATTERN_RE = re.compile(r"[A-Z][A-Za-z0-9_]*(?:[-:][A-Za-z0-9_]+)*")
 FAILED_TASK_RE = re.compile(
     r"Task (?P<task>Run\(.*\)) failed with (?P<exit_code>\d+) exit code: ?(?P<tail>.*)$"
 )
@@ -95,6 +98,20 @@ def _compact_lines(lines: Iterable[str]) -> list[str]:
     while result and result[-1] == "":
         result.pop()
     return result
+
+
+def _extract_unresolved_resources(line: str) -> str:
+    match = UNRESOLVED_PATTERNS_RE.search(line)
+    if not match:
+        return ""
+
+    resources = []
+    for pattern in match.group("patterns").split(","):
+        resource = pattern.strip()
+        if RESOURCE_PATTERN_RE.fullmatch(resource):
+            resources.append(resource)
+
+    return ", ".join(resources)
 
 
 def _normalize_path(path: str) -> str:
@@ -274,11 +291,20 @@ def collect_resource_fetch_errors(
     with ya_make_output_path.open(encoding="utf-8", errors="replace") as fp:
         for raw_line in fp:
             line = normalize_paths(clean_log_text(raw_line)).rstrip()
-            match = re.search(r"Unable to fetch resource (?P<resource>\S+)", line)
+            match = RESOURCE_FETCH_RE.search(line)
             if match:
                 flush_current()
                 current_resource = match.group("resource")
                 current_lines = [line]
+                if len(errors) >= limit:
+                    break
+                continue
+
+            unresolved_resources = _extract_unresolved_resources(line)
+            if unresolved_resources and not current_resource:
+                current_resource = unresolved_resources
+                current_lines = [line]
+                flush_current()
                 if len(errors) >= limit:
                     break
                 continue

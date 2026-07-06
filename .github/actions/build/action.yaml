@@ -231,7 +231,7 @@ runs:
         fi
 
         function should_retry_ya_build() {
-            grep -E -q "Unable to fetch resource|Network unreachable|Truncated tar archive detected" "$TMP_DIR/ya_make_output.txt"
+            grep -E -q "Unable to fetch resource|Network unreachable|Truncated tar archive detected|unresolved patterns:[[:space:]]*[A-Z][A-Za-z0-9_:-]*([[:space:]]*,|[[:space:]]*$)" "$TMP_DIR/ya_make_output.txt"
         }
 
         YA_MAKE_EXIT_CODE=1
