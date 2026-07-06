@@ -9,6 +9,7 @@ SRCS(
     deletion_markers_ut.cpp
     fresh_blocks_ut.cpp
     fresh_bytes_ut.cpp
+    fresh_bytes_ut_randomized.cpp
     garbage_queue_ut.cpp
     large_blocks_ut.cpp
     mixed_blocks_ut.cpp

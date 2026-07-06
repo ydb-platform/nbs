@@ -232,6 +232,91 @@ sequenceDiagram
     Note over V,TA: Response is sent from AddBlob Execute phase
 ```
 
+## Cache reads during the Execute→Complete window
+
+As noted above, for unconfirmed writes we answer the client from the `AddBlob`
+**Execute** phase. The in-memory caches, however, are only updated in the
+**Complete** phase. This opens a window where:
+
+- `AddBlob` Execute has already applied the new index data inside the
+  transaction and the client has received its `OK`, but
+- `CompleteTx_AddBlob` has not run yet, so the in-memory caches still hold the
+  pre-write view.
+
+A concurrent request served *from cache* during this window can observe **stale**
+metadata. Two caches are affected:
+
+- the in-memory index-state cache (`ReadNode` / `ReadNodeAttr`);
+- the read-ahead cache served by `DescribeData`
+  (`TryFillDescribeResult`). Here the danger is twofold: a concurrent *older*
+  `DescribeData` could even re-populate the read-ahead cache with the **old**
+  blob mapping inside this window.
+
+To close the window both caches share a single **cache read bypass**
+(`TCacheReadBypass`, in `tablet_cache_read_bypass.{h,cpp}`). The lifecycle is
+keyed by `(nodeId, commitId)`:
+
+- on `AddBlob` Execute for `WriteUnconfirmed` we
+  `ActivateCacheReadBypass(nodeId, commitId)` — registering the in-flight write
+  under its node;
+- on `CompleteTx_AddBlob` for `WriteUnconfirmed` we
+  `DeactivateCacheReadBypass(nodeId, commitId)`.
+
+While a node has active in-flight commit ids, a clashing cache read is forced to
+**bypass the cache** and go through the full DB transaction path. The decision
+is made by `ShouldBypassRead(nodeId, commitId)`:
+
+- recovery not finished (`!UnconfirmedRecoveryReady`) → always bypass;
+- no active commit ids for `nodeId` → read from cache;
+- otherwise compare the **oldest** active commit id for that node with the read
+  snapshot. Commit ids are generated monotonically and the per-node queue is
+  activated/deactivated in the same order, so the front item is the oldest write
+  that may still be missing from cache. A read at `commitId` can only observe
+  writes with commit id `<= commitId`, hence:
+  - `frontCommitId <= commitId` (or `frontCommitId == InvalidCommitId`, which
+    covers the commit-id-overflow case) → a visible write is still in flight →
+    **bypass**;
+  - otherwise the oldest in-flight write is newer than the read snapshot, so the
+    cache cannot be missing any data visible to this read → serve from cache.
+
+This keeps the read snapshot consistent without blocking: only clashing reads
+take the slower full-transaction path, and only for the short Execute→Complete
+window. Today this is a coarse "bypass and go full TX" approach; it can be
+replaced by a waiting queue that resumes the read once the write completes. See:
+[Filestore] use a waiting queue instead of going full TX flow for cache bypass
+- [Issue #5912](https://github.com/ydb-platform/nbs/issues/5912).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant V as vhost
+    participant TA as tablet_actor
+    participant C as caches (index-state + read-ahead)
+    participant X as tx_executor
+    participant DB as tablet_db
+
+    Note over TA: AddBlob (WriteUnconfirmed)
+    X->>TA: Execute_AddBlob_WriteUnconfirmed
+    TA->>C: ActivateCacheReadBypass(nodeId, commitId)
+    X->>DB: apply index updates (in tx)
+    TA-->>V: ConfirmAddDataResponse OK (from Execute)
+
+    rect rgb(255, 240, 240)
+        Note over TA,C: Window: response sent, caches not yet updated
+        V->>TA: concurrent ReadData / DescribeData / GetNodeAttr
+        TA->>TA: ShouldBypassRead(nodeId, readCommitId)?
+        alt oldest active commitId <= readCommitId
+            TA->>X: bypass cache, go full TX (consistent snapshot)
+        else oldest active commitId > readCommitId
+            TA->>C: safe to serve from cache
+        end
+    end
+
+    X->>TA: CompleteTx_AddBlob (WriteUnconfirmed)
+    TA->>C: in-memory caches now reflect the write
+    TA->>C: DeactivateCacheReadBypass(nodeId, commitId)
+```
+
 ## Session interuption
 
 Session interruptions during vhost (client) <-> tablet communication can happen
@@ -252,6 +337,44 @@ IDs).
 For such cases we return errors to client even if client somehow managed to
 receive response.
 
+### Cleanup by both session id and pipe server id
+
+A pipe disconnect arrives as `TEvServerDisconnected` and is handled by
+`HandleSessionDisconnectedInWork`. Cleanup is driven by **two** keys, because a
+single key is not sufficient:
+
+- **By session id.** From the disconnected pipe server we resolve the matching
+  session ids (`FindSessionIdsByPipeServer`) and call
+  `DeleteUnconfirmedDataForSession` for each.
+- **By pipe server id.** We additionally call
+  `DeleteUnconfirmedDataForPipeServer(msg.ServerId)`.
+
+Deletion by **session id** is not limited to the disconnect path.
+`DeleteUnconfirmedDataForSession` is also called when:
+
+- a session is **recreated/restored** — `CompleteTx_CreateSession` with
+  `SessionInterrupted` set (a client `CreateSession` that recovers an existing
+  session, by seqNo or via `RestoreClientSession`);
+- a session is **destroyed** — `CompleteTx_DestroySession`.
+
+So a session recreation still drops that session's unconfirmed data. Deletion by
+**pipe server id** is the part that is specific to the disconnect path.
+
+The pipe-server-id path matters for the **sharded WriteData** case. There,
+`GenerateBlobIds` can reach the shard through a *direct write pipe* created by
+the service write actor — **not** through the pipe that created the shard
+session. When such a direct write pipe disconnects, the shard cannot resolve it
+back to a session, so deleting by session id alone would leave the unconfirmed
+record behind. To cover this, `HandleGenerateBlobIds` stores the pipe server id
+(`ev->Recipient`) in each `TTrackedUnconfirmedData` entry (alongside
+`SessionId`), and on disconnect we also delete every entry owned by that pipe.
+
+Both paths funnel through the same `DeleteUnconfirmedData` helper (it just takes
+a different `shouldDelete` predicate), so they share the ordering guarantee
+described below: once commit ids are placed into the `DeletionQueue`, the
+`DeleteUnconfirmedData` tx must run before any later `AddBlob` execute, which is
+why it is kept page-fault-free.
+
 Some scenarios with such interruptions can be observed below. `CancelAddData`,
 generally speaking, has the same situation but in comparison with
 `ConfirmAddData` it schedules "delete" in all cases if it is not already
@@ -271,12 +394,13 @@ sequenceDiagram
 
     V->>T: ConfirmAddData commitId (arrived early)
 
-    alt Session disconnection
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
-    else Pipe disconnection
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
-    else Session recreation
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
+    alt Pipe / server disconnect (TEvServerDisconnected)
+        T->>T: DeleteUnconfirmedDataForSession (each matched session)
+        T->>T: DeleteUnconfirmedDataForPipeServer (msg.ServerId)
+    else Session recreation (CreateSession, SessionInterrupted)
+        T->>T: DeleteUnconfirmedDataForSession (this session)
+    else DestroySession
+        T->>T: DeleteUnconfirmedDataForSession (this session)
     end
 
     T->>T: Put commitId into DeletionQueue (delete_on_tx)
@@ -290,7 +414,7 @@ sequenceDiagram
     V->>T: ConfirmAddData commitId (arrived late)
     T-->>V: ConfirmAddDataResponse error unconfirmed data not found
 
-    Note over T: All 3 triggers use the same deletion path
+    Note over T: Session-id and pipe-id cleanup share DeleteUnconfirmedData
 ```
 
 ```mermaid
@@ -310,12 +434,13 @@ sequenceDiagram
     V->>T: ConfirmAddData commitId
     T->>T: commitId is in progress, store PendingConfirmation
 
-    alt Session disconnection
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
-    else Pipe disconnection
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
-    else Session recreation
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
+    alt Pipe / server disconnect (TEvServerDisconnected)
+        T->>T: DeleteUnconfirmedDataForSession (each matched session)
+        T->>T: DeleteUnconfirmedDataForPipeServer (msg.ServerId)
+    else Session recreation (CreateSession, SessionInterrupted)
+        T->>T: DeleteUnconfirmedDataForSession (this session)
+    else DestroySession
+        T->>T: DeleteUnconfirmedDataForSession (this session)
     end
 
     T->>T: Put commitId into DeletionQueue (delete_on_tx)
@@ -325,7 +450,7 @@ sequenceDiagram
     X->>T: Complete DeleteUnconfirmedData and release barrier
     T-->>V: Deferred ConfirmAddDataResponse error UnconfirmedData deleted
 
-    Note over T,X: All 3 triggers use the same deletion path
+    Note over T,X: Session-id and pipe-id cleanup share DeleteUnconfirmedData
 ```
 
 
@@ -344,12 +469,13 @@ sequenceDiagram
     X->>DB: WriteUnconfirmedData(commitId)
     X->>T: Complete AddDataUnconfirmed move to UnconfirmedData
 
-    alt Session disconnected
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
-    else Pipe disconnected
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
-    else Session recreated
-        T->>T: ScheduleUnconfirmedDataDeletionForSession
+    alt Pipe / server disconnect (TEvServerDisconnected)
+        T->>T: DeleteUnconfirmedDataForSession (each matched session)
+        T->>T: DeleteUnconfirmedDataForPipeServer (msg.ServerId)
+    else Session recreation (CreateSession, SessionInterrupted)
+        T->>T: DeleteUnconfirmedDataForSession (this session)
+    else DestroySession
+        T->>T: DeleteUnconfirmedDataForSession (this session)
     end
 
     T->>T: DeletionQueue add commitId

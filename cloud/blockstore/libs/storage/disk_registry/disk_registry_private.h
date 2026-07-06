@@ -528,6 +528,7 @@ struct TEvDiskRegistryPrivate
         TString Host;
         TString Path;
         NProto::EDeviceState State;
+        TString CustomMessage;
         bool ShouldResumeDevice;
         bool DryRun;
 
@@ -535,11 +536,13 @@ struct TEvDiskRegistryPrivate
                 TString host,
                 TString path,
                 NProto::EDeviceState state,
+                TString customMessage,
                 bool shouldResumeDevice,
                 bool dryRun)
             : Host(std::move(host))
             , Path(std::move(path))
             , State(state)
+            , CustomMessage(std::move(customMessage))
             , ShouldResumeDevice(shouldResumeDevice)
             , DryRun(dryRun)
         {}
@@ -553,14 +556,17 @@ struct TEvDiskRegistryPrivate
     {
         TString Host;
         NProto::EAgentState State;
+        TString CustomMessage;
         bool DryRun;
 
         TUpdateCmsHostStateRequest(
                 TString host,
                 NProto::EAgentState state,
+                TString customMessage,
                 bool dryRun)
             : Host(std::move(host))
             , State(state)
+            , CustomMessage(std::move(customMessage))
             , DryRun(dryRun)
         {}
     };
@@ -588,12 +594,15 @@ struct TEvDiskRegistryPrivate
     struct TPurgeHostCmsRequest
     {
         TString Host;
+        TString CustomMessage;
         bool DryRun;
 
         TPurgeHostCmsRequest(
                 TString host,
+                TString customMessage,
                 bool dryRun)
             : Host(std::move(host))
+            , CustomMessage(std::move(customMessage))
             , DryRun(dryRun)
         {}
     };

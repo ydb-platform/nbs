@@ -30,6 +30,7 @@ SRCS(
     disk_registry_actor_migration.cpp
     disk_registry_actor_monitoring_replace_device.cpp
     disk_registry_actor_monitoring_volume_realloc.cpp
+    disk_registry_actor_monitoring_cms.cpp
     disk_registry_actor_monitoring.cpp
     disk_registry_actor_notify.cpp
     disk_registry_actor_notify_users.cpp
@@ -111,6 +112,7 @@ RECURSE_FOR_TESTS(
     ut_create
     ut_migration
     ut_mirrored_disk_migration
+    ut_monitoring_cms
     ut_notify
     ut_pools
     ut_restore

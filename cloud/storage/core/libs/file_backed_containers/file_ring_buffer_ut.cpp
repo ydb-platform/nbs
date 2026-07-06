@@ -9,11 +9,29 @@
 #include <util/system/filemap.h>
 #include <util/system/tempfile.h>
 
-namespace NCloud {
+namespace NCloud::NTesting {
 
 using EVersion = EFileRingBufferVersion;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TFileRingBuffer: public NCloud::TFileRingBuffer
+{
+public:
+    TFileRingBuffer(
+        const TString& filePath,
+        ui64 dataCapacity,
+        ui64 metadataCapacity = 0,
+        EVersion version = EVersion::V5)
+        : NCloud::TFileRingBuffer(
+              filePath,
+              dataCapacity,
+              metadataCapacity,
+              version)
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

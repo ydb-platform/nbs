@@ -538,6 +538,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 agentConfig.GetAgentId(),
                 testDeviceName,
                 NProto::DEVICE_STATE_ONLINE,
+                /*customMessage=*/TString(),
                 Now(),
                 false,  // shouldResumeDevice
                 false); // dryRun

@@ -54,6 +54,7 @@ void TDiskRegistryActor::HandleUpdateCmsHostDeviceState(
         std::move(msg->Host),
         std::move(msg->Path),
         msg->State,
+        std::move(msg->CustomMessage),
         msg->ShouldResumeDevice,
         msg->DryRun);
 }
@@ -85,6 +86,7 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostDeviceState(
         args.Host,
         args.Path,
         args.State,
+        args.CustomMessage,
         args.TxTs,
         args.ShouldResumeDevice,
         args.DryRun);
@@ -105,7 +107,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
 {
     auto* agentRegInfo = AgentRegInfo.FindPtr(args.Host);
     const bool agentAvailable = agentRegInfo && agentRegInfo->Connected;
-    const bool needToDetachPath = Config->GetAttachDetachPathsEnabled() &&
+    const bool needToDetachPath = !args.DryRun &&
+                                  Config->GetAttachDetachPathsEnabled() &&
                                   args.State == NProto::DEVICE_STATE_WARNING &&
                                   !HasError(args.Error) && agentAvailable;
 

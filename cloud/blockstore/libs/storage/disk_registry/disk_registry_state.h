@@ -627,6 +627,7 @@ public:
         TDiskRegistryDatabase& db,
         const TString& agentId,
         NProto::EAgentState state,
+        const TString& customMessage,
         TInstant now,
         bool dryRun,
         TVector<TDiskId>& affectedDisks,
@@ -635,6 +636,7 @@ public:
     NProto::TError PurgeHost(
         TDiskRegistryDatabase& db,
         const TString& agentId,
+        const TString& customMessage,
         TInstant now,
         bool dryRun,
         TVector<TDiskId>& affectedDisks);
@@ -662,6 +664,7 @@ public:
         const TAgentId& agentId,
         const TString& path,
         NProto::EDeviceState state,
+        const TString& customMessage,
         TInstant now,
         bool shouldResume,
         bool dryRun);
@@ -1354,6 +1357,7 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         NProto::TDeviceConfig& device,
+        const TString& customMessage,
         TInstant now,
         bool shouldResume,
         bool dryRun,
@@ -1363,6 +1367,7 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         const TString& path,
+        const TString& customMessage,
         TInstant now,
         bool shouldResume,
         bool dryRun);
@@ -1376,6 +1381,7 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         NProto::TDeviceConfig& device,
+        const TString& customMessage,
         TInstant now,
         bool dryRun,
         TDiskId& affectedDisk,

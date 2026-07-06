@@ -1230,6 +1230,10 @@ void TRequestCounters::RequestCompletedImpl(
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const
 {
+    if (Options & EOption::DisaggregatedCountersDisabled) {
+        return false;
+    }
+
     if (requestType >= CountersByRequest.size()) {
         return false;
     }
