@@ -228,7 +228,9 @@ public:
         const auto pinId = State.PinCachedData(request->GetNodeId());
 
         TReadResponseBuilder responseBuilder(*request);
-        if (auto response = responseBuilder.TryFullyServeFromCache(State)) {
+        if (auto response =
+                responseBuilder.TryFullyServeFromCache(State, pinId))
+        {
             State.UnpinCachedData(request->GetNodeId(), pinId);
             InternalStats->AddReadDataStats(
                 EReadDataRequestCacheStatus::FullHit);
@@ -246,7 +248,8 @@ public:
                     bool cachedDataApplied =
                         responseBuilder.AugmentResponseWithCachedData(
                             response,
-                            self->State);
+                            self->State,
+                            pinId);
 
                     if (cachedDataApplied) {
                         self->InternalStats->AddReadDataStats(

@@ -85,7 +85,7 @@ public:
         }
 
         TReadResponseBuilder builder(*request);
-        builder.AugmentResponseWithCachedData(response, State);
+        builder.AugmentResponseWithCachedData(response, State, 0);
 
         return result.substr(0, response.GetLength());
     }

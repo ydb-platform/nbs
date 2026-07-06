@@ -113,8 +113,11 @@ public:
 
     void TriggerPeriodicFlushAll();
 
-    // Includes both flushed and unflushed data
-    TCachedData GetCachedData(ui64 nodeId, ui64 offset, ui64 byteCount) const;
+    // Includes both flushed and unflushed data.
+    // TCachedData::Parts is calculated over pinned data.
+    // TCachedData::ReadDataByteCount is calculated over all data.
+    TCachedData
+    GetCachedData(ui64 nodeId, ui64 offset, ui64 byteCount, TPin pinId) const;
 
     // Used to adjust node size according to cached data
     ui64 GetMaxWrittenOffset(ui64 nodeId) const;

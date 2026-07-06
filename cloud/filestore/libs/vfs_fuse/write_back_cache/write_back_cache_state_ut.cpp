@@ -128,12 +128,17 @@ struct TBootstrap
 
     TString VisitCachedData(ui64 nodeId) const
     {
-        return VisitCachedData(nodeId, 0, Max<ui64>());
+        return VisitCachedData(nodeId, 0, Max<ui64>(), 0);
     }
 
-    TString VisitCachedData(ui64 nodeId, ui64 offset, ui64 byteCount) const
+    TString VisitCachedData(
+        ui64 nodeId,
+        ui64 offset,
+        ui64 byteCount,
+        ui64 pinId = 0) const
     {
-        auto cachedData = State->GetCachedData(nodeId, offset, byteCount);
+        auto cachedData =
+            State->GetCachedData(nodeId, offset, byteCount, pinId);
 
         TStringBuilder out;
         for (const auto& part: cachedData.Parts) {
@@ -1303,6 +1308,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(w2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, w2.GetValue().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldHandlePinId)
+    {
+        TBootstrap b;
+
+        UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 2, "def").GetValue());
+
+        UNIT_ASSERT_VALUES_EQUAL("1:a, 2:def", b.VisitCachedData(1, 1, 4, 0));
+        UNIT_ASSERT_VALUES_EQUAL("2:def", b.VisitCachedData(1, 1, 4, 1));
+        UNIT_ASSERT_VALUES_EQUAL("", b.VisitCachedData(1, 1, 4, 2));
     }
 }
 

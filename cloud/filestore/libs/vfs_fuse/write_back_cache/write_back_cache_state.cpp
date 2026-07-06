@@ -177,7 +177,8 @@ void TWriteBackCacheState::TriggerPeriodicFlushAll()
 TCachedData TWriteBackCacheState::GetCachedData(
     ui64 nodeId,
     ui64 offset,
-    ui64 byteCount) const
+    ui64 byteCount,
+    TPin pinId) const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
@@ -186,7 +187,7 @@ TCachedData TWriteBackCacheState::GetCachedData(
         return {};
     }
 
-    return nodeState->Cache.GetCachedData(offset, byteCount);
+    return nodeState->Cache.GetCachedData(offset, byteCount, pinId);
 }
 
 ui64 TWriteBackCacheState::GetMaxWrittenOffset(ui64 nodeId) const
