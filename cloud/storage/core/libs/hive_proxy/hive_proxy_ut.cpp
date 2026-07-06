@@ -813,6 +813,42 @@ struct TTestEnv
             sender,
             request.release()));
     }
+
+    TEvHiveProxy::TGetTabletBootInfosResponse SendGetTabletBootInfos(
+        const TActorId& sender,
+        ui32 errorCode)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvGetTabletBootInfosRequest()));
+        auto ev =
+            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetTabletBootInfosResponse>(
+                sender);
+        UNIT_ASSERT(ev);
+        const auto* msg = ev->Get();
+        UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
+        return *msg;
+    }
+
+    TEvHiveProxy::TSetTabletBootInfosResponse SendSetTabletBootInfos(
+        const TActorId& sender,
+        TVector<TTabletBootInfo> tabletBootInfos,
+        ui32 errorCode)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvSetTabletBootInfosRequest(
+                std::move(tabletBootInfos))));
+        auto ev =
+            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvSetTabletBootInfosResponse>(
+                sender);
+        UNIT_ASSERT(ev);
+        const auto* msg = ev->Get();
+        UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
+        return *msg;
+    }
 };
 
 }   // namespace
@@ -1878,6 +1914,204 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
             env.SendListTabletBootInfoBackups(sender, S_OK);
         }
+    }
+
+    Y_UNIT_TEST(GetTabletBootInfosEmpty)
+    {
+        TString backupFilePath = "GetEmpty.tablet_boot_info_backup.txt";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto result = env.SendGetTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT(result.TabletBootInfos.empty());
+    }
+
+    Y_UNIT_TEST(GetTabletBootInfosAfterBoot)
+    {
+        TString backupFilePath = "GetAfterBoot.tablet_boot_info_backup.txt";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto bootResult =
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT(bootResult.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(1u, bootResult.SuggestedGeneration);
+
+        auto getResult = env.SendGetTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(1, getResult.TabletBootInfos.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            FakeTablet2,
+            getResult.TabletBootInfos[0].StorageInfoProto.GetTabletID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            getResult.TabletBootInfos[0].SuggestedGeneration);
+    }
+
+    Y_UNIT_TEST(SetTabletBootInfos)
+    {
+        TString backupFilePath = "Set.tablet_boot_info_backup.txt";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        // Create boot info entries to set.
+        TVector<TTabletBootInfo> toSet;
+        {
+            auto storageInfo = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            NKikimrTabletBase::TTabletStorageInfo storageInfoProto;
+            TabletStorageInfoToProto(*storageInfo, &storageInfoProto);
+            toSet.emplace_back(std::move(storageInfoProto), 42);
+        }
+        {
+            auto storageInfo = CreateTestTabletInfo(
+                FakeTablet3,
+                TTabletTypes::BlockStorePartition);
+            NKikimrTabletBase::TTabletStorageInfo storageInfoProto;
+            TabletStorageInfoToProto(*storageInfo, &storageInfoProto);
+            toSet.emplace_back(std::move(storageInfoProto), 10);
+        }
+
+        env.SendSetTabletBootInfos(sender, std::move(toSet), S_OK);
+
+        // Verify set data via get.
+        auto getResult = env.SendGetTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(2, getResult.TabletBootInfos.size());
+
+        THashMap<ui64, ui64> generations;
+        for (const auto& entry: getResult.TabletBootInfos) {
+            generations[entry.StorageInfoProto.GetTabletID()] =
+                entry.SuggestedGeneration;
+        }
+        UNIT_ASSERT_VALUES_EQUAL(42u, generations[FakeTablet2]);
+        UNIT_ASSERT_VALUES_EQUAL(10u, generations[FakeTablet3]);
+
+        // Verify backup file was written.
+        UNIT_ASSERT(TFsPath(backupFilePath).Exists());
+    }
+
+    Y_UNIT_TEST(SetTabletBootInfosInFallbackMode)
+    {
+        TString backupFilePath = "SetFallback.tablet_boot_info_backup.txt";
+
+        TVector<TTabletBootInfo> toSet;
+
+        // First, create a backup in normal mode.
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+            auto sender = runtime.AllocateEdgeActor();
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            env.SendBackupTabletBootInfos(sender, S_OK);
+
+            auto getResult = env.SendGetTabletBootInfos(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, getResult.TabletBootInfos.size());
+            toSet.emplace_back(std::move(getResult.TabletBootInfos[0]));
+        }
+
+        // Now set in fallback mode.
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/true);
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            {
+                auto storageInfo = CreateTestTabletInfo(
+                    FakeTablet3,
+                    TTabletTypes::BlockStorePartition);
+                NKikimrTabletBase::TTabletStorageInfo storageInfoProto;
+                TabletStorageInfoToProto(*storageInfo, &storageInfoProto);
+                toSet.emplace_back(std::move(storageInfoProto), 99);
+            }
+
+            env.SendSetTabletBootInfos(sender, std::move(toSet), S_OK);
+
+            // Verify set data is accessible in memory.
+            auto getResult = env.SendGetTabletBootInfos(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(2, getResult.TabletBootInfos.size());
+        }
+    }
+
+    Y_UNIT_TEST(GetAndSetRoundtrip)
+    {
+        TString backupFilePath1 = "Roundtrip1.tablet_boot_info_backup.txt";
+        TString backupFilePath2 = "Roundtrip2.tablet_boot_info_backup.txt";
+
+        // Create backup on "node 1".
+        TVector<TTabletBootInfo> got;
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath1, /*fallbackMode=*/false);
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+
+            auto getResult = env.SendGetTabletBootInfos(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, getResult.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2u,
+                getResult.TabletBootInfos[0].SuggestedGeneration);
+            got = std::move(getResult.TabletBootInfos);
+        }
+
+        // Set on "node 2".
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath2, /*fallbackMode=*/false);
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            env.SendSetTabletBootInfos(sender, std::move(got), S_OK);
+
+            // Verify the set data matches.
+            auto getResult2 = env.SendGetTabletBootInfos(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, getResult2.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet2,
+                getResult2.TabletBootInfos[0].StorageInfoProto.GetTabletID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2u,
+                getResult2.TabletBootInfos[0].SuggestedGeneration);
+        }
+    }
+
+    Y_UNIT_TEST(GetWithoutBackupFilePath)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, /*backupFilePath=*/"", /*fallbackMode=*/false);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto result = env.SendGetTabletBootInfos(sender, S_FALSE);
+        UNIT_ASSERT(result.TabletBootInfos.empty());
     }
 }
 

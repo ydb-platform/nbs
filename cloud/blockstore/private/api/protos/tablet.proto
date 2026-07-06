@@ -28,3 +28,36 @@ message TKillTabletRequest
 
 message TKillTabletResponse
 {}
+
+////////////////////////////////////////////////////////////////////////////////
+// TabletBootInfo — single tablet's boot info for Get/Set.
+
+message TTabletBootInfoProto
+{
+    // NKikimrTabletBase::TTabletStorageInfo serialized to bytes.
+    bytes StorageInfo = 1;
+    uint64 SuggestedGeneration = 2;
+    uint64 TabletId = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetTabletBootInfos request/response.
+
+message TGetTabletBootInfosRequest
+{}
+
+message TGetTabletBootInfosResponse
+{
+    repeated TTabletBootInfoProto TabletBootInfos = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SetTabletBootInfos request/response.
+
+message TSetTabletBootInfosRequest
+{
+    repeated TTabletBootInfoProto TabletBootInfos = 1;
+}
+
+message TSetTabletBootInfosResponse
+{}

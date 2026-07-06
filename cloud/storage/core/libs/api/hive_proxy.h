@@ -28,6 +28,8 @@ namespace NCloud::NStorage {
                                                                                \
     xxx(BackupTabletBootInfos,     __VA_ARGS__)                                \
     xxx(ListTabletBootInfoBackups, __VA_ARGS__)                                \
+    xxx(GetTabletBootInfos,        __VA_ARGS__)                                \
+    xxx(SetTabletBootInfos,        __VA_ARGS__)                                \
 // STORAGE_HIVE_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -276,6 +278,42 @@ struct TEvHiveProxy
     };
 
     //
+    // GetTabletBootInfos
+    //
+
+    struct TGetTabletBootInfosRequest
+    {
+    };
+
+    struct TGetTabletBootInfosResponse
+    {
+        TVector<TTabletBootInfo> TabletBootInfos;
+
+        explicit TGetTabletBootInfosResponse(
+                TVector<TTabletBootInfo> tabletBootInfos = {})
+            : TabletBootInfos(std::move(tabletBootInfos))
+        {}
+    };
+
+    //
+    // SetTabletBootInfos
+    //
+
+    struct TSetTabletBootInfosRequest
+    {
+        TVector<TTabletBootInfo> TabletBootInfos;
+
+        explicit TSetTabletBootInfosRequest(
+                TVector<TTabletBootInfo> tabletBootInfos = {})
+            : TabletBootInfos(std::move(tabletBootInfos))
+        {}
+    };
+
+    struct TSetTabletBootInfosResponse
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -314,6 +352,12 @@ struct TEvHiveProxy
 
         EvListTabletBootInfoBackupsRequest = EvBegin + 20,
         EvListTabletBootInfoBackupsResponse = EvBegin + 21,
+
+        EvGetTabletBootInfosRequest = EvBegin + 22,
+        EvGetTabletBootInfosResponse = EvBegin + 23,
+
+        EvSetTabletBootInfosRequest = EvBegin + 24,
+        EvSetTabletBootInfosResponse = EvBegin + 25,
 
         EvEnd
     };

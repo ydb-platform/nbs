@@ -323,6 +323,59 @@ void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TTabletBootInfoBackup::HandleGetTabletBootInfos(
+    const TEvHiveProxy::TEvGetTabletBootInfosRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    TVector<TTabletBootInfo> tabletBootInfos;
+    const auto& backupProto =
+        InitialBackupProto ? *InitialBackupProto : BackupProto;
+    for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
+        tabletBootInfos.emplace_back(
+            tabletBootInfo.GetStorageInfo(),
+            tabletBootInfo.GetSuggestedGeneration());
+    }
+
+    auto response =
+        std::make_unique<TEvHiveProxy::TEvGetTabletBootInfosResponse>(
+            std::move(tabletBootInfos));
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TTabletBootInfoBackup::HandleSetTabletBootInfos(
+    const TEvHiveProxy::TEvSetTabletBootInfosRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    using TResponse = TEvHiveProxy::TEvSetTabletBootInfosResponse;
+
+    auto* msg = ev->Get();
+
+    auto& data = *BackupProto.MutableData();
+    data.clear();
+
+    for (auto& entry: msg->TabletBootInfos) {
+        ui64 tabletId = entry.StorageInfoProto.GetTabletID();
+
+        NHiveProxy::NProto::TTabletBootInfo tabletBootInfo;
+        *tabletBootInfo.MutableStorageInfo() =
+            std::move(entry.StorageInfoProto);
+        tabletBootInfo.SetSuggestedGeneration(entry.SuggestedGeneration);
+
+        data[tabletId] = std::move(tabletBootInfo);
+    }
+
+    BackupProtoHasChanged = true;
+    InitialBackupProto.reset();
+
+    NProto::TError error;
+    if (!ReadOnlyMode) {
+        error = Backup(ctx);
+    }
+
+    auto response = std::make_unique<TResponse>(std::move(error));
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TTabletBootInfoBackup::StateWork)
@@ -333,6 +386,8 @@ STFUNC(TTabletBootInfoBackup::StateWork)
         HFunc(TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest, HandleUpdateTabletBootInfoBackup);
         HFunc(TEvHiveProxy::TEvBackupTabletBootInfosRequest, HandleBackupTabletBootInfos);
         HFunc(TEvHiveProxy::TEvListTabletBootInfoBackupsRequest, HandleListTabletBootInfoBackups);
+        HFunc(TEvHiveProxy::TEvGetTabletBootInfosRequest, HandleGetTabletBootInfos);
+        HFunc(TEvHiveProxy::TEvSetTabletBootInfosRequest, HandleSetTabletBootInfos);
 
         default:
             HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);

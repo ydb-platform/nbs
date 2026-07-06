@@ -448,6 +448,14 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateGetTabletBootInfosActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateSetTabletBootInfosActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateGetClusterCapacityActor(
         TRequestInfoPtr requestInfo,
         TString input);
