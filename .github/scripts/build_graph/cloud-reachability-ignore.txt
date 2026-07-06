@@ -1,0 +1,21 @@
+# Known non-actionable results for the cloud component graph.
+#
+# Entries may be either directories or ya.make paths. Keep comments explaining
+# why each path is not expected to be reachable from the cloud component roots.
+
+# Standalone aggregate targets, not part of regular root traversal.
+cloud/blockstore/buildall
+cloud/filestore/buildall
+
+# Conditional wrapper. The real package is pulled directly by CSI tests:
+# cloud/blockstore/tools/testing/csi-sanity/bin.
+cloud/blockstore/tools/testing/csi-sanity
+
+# Empty marker/data directory from the fs_posix_compliance imported suite.
+cloud/filestore/tools/testing/fs_posix_compliance/suite/tests/rmdir
+
+# Aggregator only. Users depend directly on cloud/storage/core/libs/iam/iface.
+cloud/storage/core/libs/iam
+
+# legacy
+cloud/vm/blockstore/lib/ut

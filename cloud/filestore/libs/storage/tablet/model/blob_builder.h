@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "blob.h"
+#include "layer.h"
 
 #include <cloud/filestore/libs/storage/model/public.h>
 

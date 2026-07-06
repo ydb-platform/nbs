@@ -64,6 +64,7 @@ void TResumeDeviceActor::Bootstrap(const TActorContext& ctx)
         Request.GetAgentId(),
         Request.GetPath(),
         NProto::EDeviceState::DEVICE_STATE_ONLINE,
+        /*customMessage=*/"resume device",
         /*shouldResumeDevice=*/true,
         Request.GetDryRun());
 

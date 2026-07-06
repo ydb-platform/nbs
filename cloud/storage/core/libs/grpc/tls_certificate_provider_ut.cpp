@@ -318,17 +318,41 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             scheduler->Stop();
         };
 
-        auto provider = CreatePeriodicCertificateProvider(
-            CreateLoggingService("console"),
-            "TLS_CERTIFICATE_PROVIDER",
-            scheduler,
-            CreateTaskQueueStub(),
-            MakeIntrusive<NMonitoring::TDynamicCounters>(),
-            rootPath,
-            TVector<TCertificateFiles>{pair},
-            TDuration::Seconds(1));
+        UNIT_ASSERT_EXCEPTION(
+            CreatePeriodicCertificateProvider(
+                CreateLoggingService("console"),
+                "TLS_CERTIFICATE_PROVIDER",
+                scheduler,
+                CreateTaskQueueStub(),
+                MakeIntrusive<NMonitoring::TDynamicCounters>(),
+                rootPath,
+                TVector<TCertificateFiles>{pair},
+                TDuration::Seconds(1)),
+            yexception);
+    }
 
-        UNIT_ASSERT_EXCEPTION(provider->Start(), yexception);
+    Y_UNIT_TEST(ShouldFailStartWhenInitialCertificateFilesMissing)
+    {
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER {
+            scheduler->Stop();
+        };
+
+        UNIT_ASSERT_EXCEPTION(
+            CreatePeriodicCertificateProvider(
+                CreateLoggingService("console"),
+                "TLS_CERTIFICATE_PROVIDER",
+                scheduler,
+                CreateTaskQueueStub(),
+                MakeIntrusive<NMonitoring::TDynamicCounters>(),
+                "/nonexistent/ca.crt",
+                TVector<TCertificateFiles>{{
+                    .PrivateKeyPath = "/nonexistent/server.key",
+                    .CertChainPath = "/nonexistent/server.crt",
+                }},
+                TDuration::Seconds(1)),
+            yexception);
     }
 
     Y_UNIT_TEST(ShouldSkipEmptyPairsInStaticProvider)

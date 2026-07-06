@@ -61,7 +61,7 @@ TResultOrError<TString> ReadAndValidateRootCertificate(
 TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
     const TCertificateFiles& files);
 
-TVector<TCertificateFiles> PrepareAndValidateCertificates(
+TVector<TCertificateFiles> PrepareCertificateFilePairs(
     TVector<TCertificateFiles> certificates);
 
 TVector<TCertificatePair> LoadCertificatePairs(

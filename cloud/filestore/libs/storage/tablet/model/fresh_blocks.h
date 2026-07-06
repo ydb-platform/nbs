@@ -4,6 +4,7 @@
 
 #include "alloc.h"
 #include "block.h"
+#include "layer.h"
 
 #include <util/generic/map.h>
 #include <util/generic/maybe.h>

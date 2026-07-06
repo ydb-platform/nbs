@@ -50,6 +50,7 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
         std::move(requestInfo),
         std::move(msg->Host),
         msg->State,
+        std::move(msg->CustomMessage),
         msg->DryRun);
 }
 
@@ -80,6 +81,7 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
         db,
         args.Host,
         args.State,
+        args.CustomMessage,
         args.TxTs,
         args.DryRun,
         args.AffectedDisks,
@@ -100,7 +102,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     auto* agentRegInfo = AgentRegInfo.FindPtr(args.Host);
     const bool agentAvailable =
         agent && agentRegInfo && agentRegInfo->Connected;
-    const bool needToDetachPaths = Config->GetAttachDetachPathsEnabled() &&
+    const bool needToDetachPaths = !args.DryRun &&
+                                   Config->GetAttachDetachPathsEnabled() &&
                                    args.State == NProto::AGENT_STATE_WARNING &&
                                    !HasError(args.Error) && agentAvailable;
 

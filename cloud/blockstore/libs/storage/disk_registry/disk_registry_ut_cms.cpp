@@ -58,49 +58,58 @@ struct TFixture
         return std::make_pair(r.GetResult(), r.GetTimeout());
     }
 
-    auto RemoveHost(const TString& agentId)
+    auto RemoveHost(const TString& agentId, bool dryRun = false)
     {
         NProto::TAction action;
         action.SetHost(agentId);
         action.SetType(NProto::TAction::REMOVE_HOST);
+        action.SetDryRun(dryRun);
 
         return CmsAction(std::move(action));
     }
 
-    auto PurgeHost(const TString& agentId)
+    auto PurgeHost(const TString& agentId, bool dryRun = false)
     {
         NProto::TAction action;
         action.SetHost(agentId);
         action.SetType(NProto::TAction::PURGE_HOST);
+        action.SetDryRun(dryRun);
 
         return CmsAction(std::move(action));
     }
 
-    auto AddHost(const TString& agentId)
+    auto AddHost(const TString& agentId, bool dryRun = false)
     {
         NProto::TAction action;
         action.SetHost(agentId);
         action.SetType(NProto::TAction::ADD_HOST);
+        action.SetDryRun(dryRun);
 
         return CmsAction(std::move(action));
     }
 
-    auto AddDevice(const TString& agentId, const TString& path)
+    auto
+    AddDevice(const TString& agentId, const TString& path, bool dryRun = false)
     {
         NProto::TAction action;
         action.SetHost(agentId);
         action.SetType(NProto::TAction::ADD_DEVICE);
         action.SetDevice(path);
+        action.SetDryRun(dryRun);
 
         return CmsAction(std::move(action));
     }
 
-    auto RemoveDevice(const TString& agentId, const TString& path)
+    auto RemoveDevice(
+        const TString& agentId,
+        const TString& path,
+        bool dryRun = false)
     {
         NProto::TAction action;
         action.SetHost(agentId);
         action.SetType(NProto::TAction::REMOVE_DEVICE);
         action.SetDevice(path);
+        action.SetDryRun(dryRun);
 
         return CmsAction(std::move(action));
     }
@@ -1586,6 +1595,74 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(2, pathsToDetach.size());
         UNIT_ASSERT(FindPtr(pathsToDetach, "dev-1"));
         UNIT_ASSERT(FindPtr(pathsToDetach, "dev-2"));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotDetachPathsIfDryRun, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAttachDetachPathsEnabled(true);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        ui64 detachRequests = 0;
+        TVector<TString> pathsToDetach;
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvDetachPathsRequest) {
+                    detachRequests += 1;
+                    auto* baseEvent =
+                        event->Get<TEvDiskAgent::TEvDetachPathsRequest>();
+                    for (const auto& path:
+                         baseEvent->Record.GetPathsToDetach()) {
+                        pathsToDetach.emplace_back(path);
+                    }
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        {
+            auto [error, timeout] =
+                RemoveDevice("agent-1", "dev-2", /*dryRun=*/true);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+            UNIT_ASSERT_VALUES_EQUAL(0, detachRequests);
+            UNIT_ASSERT_VALUES_EQUAL(0, pathsToDetach.size());
+        }
+
+
+        {
+            auto [error, timeout] = RemoveHost("agent-1", /*dryRun=*/true);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+            UNIT_ASSERT_VALUES_EQUAL(0, detachRequests);
+            UNIT_ASSERT_VALUES_EQUAL(0, pathsToDetach.size());
+        }
+
+        {
+            auto [error, timeout] =
+                RemoveDevice("agent-1", "dev-2", /*dryRun=*/false);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+            UNIT_ASSERT_VALUES_EQUAL(1, detachRequests);
+            UNIT_ASSERT_VALUES_EQUAL(1, pathsToDetach.size());
+            UNIT_ASSERT_VALUES_EQUAL("dev-2", pathsToDetach[0]);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldAttachPaths, TFixture)

@@ -250,6 +250,7 @@ static void AddHost(benchmark::State& benchmarkState)
                     db,
                     agentId,
                     NProto::AGENT_STATE_ONLINE,
+                    /*customMessage=*/TString(),
                     TInstant::Now(),
                     /*dryRun=*/false,
                     affectedDisks,
@@ -313,6 +314,7 @@ static void AddSameHostMultipleTimes(benchmark::State& benchmarkState)
                     db,
                     agentId,
                     NProto::AGENT_STATE_ONLINE,
+                    /*customMessage=*/TString(),
                     TInstant::Now(),
                     /*dryRun=*/false,
                     affectedDisks,
@@ -374,6 +376,7 @@ static void PurgeHost(benchmark::State& benchmarkState)
                 auto error = state.PurgeHost(
                     db,
                     agentId,
+                    /*customMessage=*/TString(),
                     TInstant::Now(),
                     /*dryRun=*/false,
                     affectedDisks);

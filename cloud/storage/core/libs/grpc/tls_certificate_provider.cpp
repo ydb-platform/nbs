@@ -112,7 +112,7 @@ ICertificateProviderPtr CreateCertificateProvider(
             std::move(certificates));
     }
 
-    auto certs = NTlsUtils::PrepareAndValidateCertificates(std::move(certificates));
+    auto certs = NTlsUtils::PrepareCertificateFilePairs(std::move(certificates));
     if (certs.empty()) {
         if (rootCertPath) {
             return CreatePeriodicCertificateProvider(
