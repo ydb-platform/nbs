@@ -607,7 +607,7 @@ async def create_vm(
         # VM to avoid orphaned resources
         try:
             runner_id = wait_runner_by_name(
-                gh, args.github_repo_owner, args.github_repo, instance_id
+                github, args.github_repo_owner, args.github_repo, instance_id
             )
         except Exception:
             logger.error(
