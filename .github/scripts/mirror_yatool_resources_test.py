@@ -122,8 +122,14 @@ def test_main_skips_already_localized_resources(
         del s3, bucket, path, md5
         uploaded.append(key)
 
-    monkeypatch.setattr(mirror, "make_s3_client", lambda endpoint_url: object())
-    monkeypatch.setattr(mirror, "get_existing_md5", lambda s3, bucket, key: "")
+    def fake_make_s3_client(*_args: object) -> object:
+        return object()
+
+    def fake_get_existing_md5(*_args: object) -> str:
+        return ""
+
+    monkeypatch.setattr(mirror, "make_s3_client", fake_make_s3_client)
+    monkeypatch.setattr(mirror, "get_existing_md5", fake_get_existing_md5)
     monkeypatch.setattr(mirror, "upload_resource", fake_upload_resource)
     monkeypatch.setattr(mirror, "download", fake_download)
     monkeypatch.setattr(

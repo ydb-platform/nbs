@@ -63,8 +63,7 @@ def validate_local_base_url(local_base_url: str) -> str:
     parsed = urlparse(base)
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError(
-            "local base URL must be a full https URL, "
-            f"got {local_base_url!r}"
+            f"local base URL must be a full https URL, got {local_base_url!r}"
         )
     if parsed.username or parsed.password or parsed.port:
         raise ValueError("local base URL must not contain authority extras")
@@ -73,9 +72,7 @@ def validate_local_base_url(local_base_url: str) -> str:
     return base
 
 
-def is_localized_resource_url(
-    resource_id: str, url: str, local_base_url: str
-) -> bool:
+def is_localized_resource_url(resource_id: str, url: str, local_base_url: str) -> bool:
     if not resource_id.isdigit():
         return False
 
