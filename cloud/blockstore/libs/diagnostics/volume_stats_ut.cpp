@@ -1194,6 +1194,276 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetCounter("DownDisks")->Val());
     }
 
+    Y_UNIT_TEST(ShouldTrackAvailabilityCounters)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto volumeCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId);
+
+        auto observed = volumeCounters->GetCounter("ObservedSeconds");
+        auto available = volumeCounters->GetCounter("AvailableSeconds");
+        auto healthy = volumeCounters->GetCounter("HealthySeconds");
+
+        // The first finished interval has no prior timestamp, so nothing is
+        // accumulated.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, healthy->Val());
+
+        // A healthy, served volume advances all three counters by the elapsed
+        // interval.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // updateIntervalFinished == false must not advance the counters and
+        // must not shift the interval baseline.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // The next finished interval accounts for the whole time elapsed since
+        // the previous finished interval (30s), including the skipped tick.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(45, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(45, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(45, healthy->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotAdvanceAvailableSecondsDuringDowntime)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto volumeCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId);
+
+        auto observed = volumeCounters->GetCounter("ObservedSeconds");
+        auto available = volumeCounters->GetCounter("AvailableSeconds");
+        auto healthy = volumeCounters->GetCounter("HealthySeconds");
+
+        // Baseline.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+
+        // Healthy interval: everything advances.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // Force downtime: a completed request whose measured duration exceeds
+        // the downtime threshold (requestStarted set far in the past in cycle
+        // terms), same trick as the DownDisks tests above.
+        volumeInfo->RequestCompleted(
+            EBlockStoreRequest::WriteBlocks,
+            timer->Now().MicroSeconds(),
+            TDuration::Zero(),   // postponedTime
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
+            1024,
+            {},
+            NCloud::NProto::EF_NONE,
+            false,
+            0);
+
+        // During downtime observed still advances, but available and healthy
+        // freeze.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFreezeHealthySecondsDuringCriticalSuffering)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+
+        NProto::TDiagnosticsConfig cfg;
+        cfg.MutableSsdPerfSettings()->MutableWrite()->SetIops(4200);
+        cfg.MutableSsdPerfSettings()->MutableWrite()->SetBandwidth(342000000);
+        cfg.MutableSsdPerfSettings()->MutableRead()->SetIops(4200);
+        cfg.MutableSsdPerfSettings()->MutableRead()->SetBandwidth(342000000);
+        auto config = std::make_shared<TDiagnosticsConfig>(std::move(cfg));
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto volumeCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId);
+
+        auto observed = volumeCounters->GetCounter("ObservedSeconds");
+        auto available = volumeCounters->GetCounter("AvailableSeconds");
+        auto healthy = volumeCounters->GetCounter("HealthySeconds");
+
+        // Baseline.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+
+        // Healthy interval: everything advances.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // A single, heavily over-latency write drives critical suffering (but
+        // stays well below the 5s SSD downtime threshold, so the volume is
+        // still "available").
+        auto requestDuration = TDuration::MilliSeconds(400) +
+            config->GetExpectedIoParallelism() * CostPerIO(
+                config->GetSsdPerfSettings().Write.Iops,
+                config->GetSsdPerfSettings().Write.Bandwidth,
+                1_MB);
+        auto durationInCycles = DurationToCyclesSafe(requestDuration);
+        auto now = GetCycleCount();
+        volumeInfo->RequestCompleted(
+            EBlockStoreRequest::WriteBlocks,
+            now - Min(now, durationInCycles),
+            TDuration::Zero(),   // postponedTime
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
+            1_MB,
+            {},
+            NCloud::NProto::EF_NONE,
+            false,
+            0);
+
+        // During critical suffering observed and available advance, but
+        // healthy freezes.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotAdvanceAvailabilityCountersForUnservedVolume)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto volumeCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId);
+
+        auto observed = volumeCounters->GetCounter("ObservedSeconds");
+
+        // Baseline + one accounted interval while served.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+
+        // Once unmounted the volume is no longer iterated, so the counter must
+        // stop advancing.
+        volumeStats->UnmountVolume("test1", "client1");
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+    }
+
     Y_UNIT_TEST(ShouldAlterVolume)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);

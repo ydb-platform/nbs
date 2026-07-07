@@ -257,6 +257,14 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
+    // Cumulative per-volume availability counters (derivative/RATE, seconds).
+    // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
+    // compute availability = Available/Observed and quality = Healthy/Observed
+    // over a window. Advance only while the volume is served.
+    TDynamicCounters::TCounterPtr ObservedSecondsCounter;
+    TDynamicCounters::TCounterPtr AvailableSecondsCounter;
+    TDynamicCounters::TCounterPtr HealthySecondsCounter;
+
     TInstant LastRemountTime;
 
     // Number of pins on the object.
@@ -545,6 +553,11 @@ private:
     >;
     TDownDisksCounters DownDisksCounters;
     TDynamicCounters::TCounterPtr TotalDownDisksCounter;
+
+    // Wall-clock time of the last finished update interval, used to measure the
+    // real elapsed duration for the cumulative availability counters. Accessed
+    // only from UpdateStats (single periodic updater).
+    TInstant LastUpdateStatsTime;
 
 public:
     TVolumeStats(
@@ -884,6 +897,18 @@ public:
         ui32 totalDownDisks = 0;
         std::array<ui32, NProto::EStorageMediaKind_ARRAYSIZE> downDisksCounters{};
 
+        // Real duration of the finished update interval, used to advance the
+        // cumulative availability counters. Zero on the very first interval
+        // (no prior timestamp), which is fine for RATE metrics.
+        ui64 intervalSeconds = 0;
+        if (updateIntervalFinished) {
+            const auto now = Timer->Now();
+            if (LastUpdateStatsTime != TInstant::Zero()) {
+                intervalSeconds = (now - LastUpdateStatsTime).Seconds();
+            }
+            LastUpdateStatsTime = now;
+        }
+
         for (auto& [logicalDiskId, holder]: Volumes) {
             TVolumeInfoBase& volumeBase = *holder.VolumeBase;
 
@@ -905,12 +930,30 @@ public:
                     : EDowntimeStateChange::UP);
             }
 
+            const bool isSufferingCritically =
+                volumeBase.PerfCalc.IsSufferingCritically();
+            const bool isAvailable = !hasDowntime;
+            const bool isHealthy = isAvailable && !isSufferingCritically;
+
             for (auto& [key, instance]: holder.VolumeInfos) {
                 instance->RequestCounters.UpdateStats(updateIntervalFinished);
                 if (updateIntervalFinished) {
                     Y_DEBUG_ABORT_UNLESS(instance->HasDowntimeCounter);
                     if (instance->HasDowntimeCounter) {
                         *instance->HasDowntimeCounter = hasDowntime;
+                    }
+
+                    if (intervalSeconds) {
+                        if (instance->ObservedSecondsCounter) {
+                            *instance->ObservedSecondsCounter += intervalSeconds;
+                        }
+                        if (isAvailable && instance->AvailableSecondsCounter) {
+                            *instance->AvailableSecondsCounter +=
+                                intervalSeconds;
+                        }
+                        if (isHealthy && instance->HealthySecondsCounter) {
+                            *instance->HealthySecondsCounter += intervalSeconds;
+                        }
                     }
                 }
             }
@@ -1075,6 +1118,12 @@ private:
                 ->GetSubgroup("folder", volumeConfig.GetFolderId());
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
+        info->ObservedSecondsCounter =
+            countersGroup->GetCounter("ObservedSeconds", true);
+        info->AvailableSecondsCounter =
+            countersGroup->GetCounter("AvailableSeconds", true);
+        info->HealthySecondsCounter =
+            countersGroup->GetCounter("HealthySeconds", true);
 
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
