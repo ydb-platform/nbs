@@ -1,5 +1,13 @@
 # Build static qemu emulator
 
+\# Build static libslirp for qemu 7.0+ `-netdev user`
+```
+./build-libslirp-static.sh --ref v4.9.3
+export PKG_CONFIG_PATH="$PWD/libslirp-static/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+```
+The qemu build script also runs this helper automatically when static libslirp
+is missing for qemu 7.0+ builds.
+
 \# Build from sources
 ```
 build-qemu --src 'src-dir' [--deps]
@@ -20,4 +28,15 @@ ya upload --ttl inf -a linux -d 'qemu static build' qemu-static.tgz
 Update resource id and list of files from 'tar --list -f qemu-static.tgz' in
 ```
 ./tools/testing/qemu/bin/ya.make
+```
+
+# Samples
+
+```
+./__main__.py --co --git-tag v11.0.0 --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v7.2.22 --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v7.1.0  --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v6.2.0  --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v5.2.0  --git https://github.com/qemu/qemu --deps
+
 ```
