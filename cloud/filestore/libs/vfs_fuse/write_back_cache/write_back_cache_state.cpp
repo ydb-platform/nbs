@@ -684,7 +684,7 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     ui64 nodeId,
     TNodeState& nodeState)
 {
-    bool entriesEvicted = false;
+    bool shouldProcessPendingRequests = false;
 
     const ui64 allowedToEvictMaxSequenceId =
         nodeState.CachedDataPins.empty() ? Max<ui64>()
@@ -697,11 +697,23 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         }
         auto cachedRequest = nodeState.Cache.DequeueFlushedRequest();
         RequestManager.Evict(std::move(cachedRequest));
-        entriesEvicted = true;
+        shouldProcessPendingRequests = true;
     }
 
     if (!nodeState.GetBackpressureStatus(FlushBackpressureCalculator)) {
-        RequestManager.SetBackpressureStatusForNode(nodeId, false);
+        // Backpressure clearing is intentionally tied to entries eviction.
+        //
+        // The calculator may report that backpressure is no longer needed
+        // before any entries are evicted, for example after requests move from
+        // the unflushed queue to the flushed queue. We deliberately do not
+        // resume pending writes at that point. Resuming on every
+        // Unflushed->Flushed transition would require more precise logic and is
+        // not needed for the current heuristic.
+        //
+        // Eviction is the synchronization point where we both reclaim cache
+        // pressure and retry pending writes.
+        shouldProcessPendingRequests |=
+            RequestManager.ClearBackpressureStatusForNode(nodeId);
     }
 
     if (nodeState.CanBeDeleted()) {
@@ -710,7 +722,7 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         CheckAndAcquireBarriers(nodeState);
     }
 
-    if (entriesEvicted) {
+    if (shouldProcessPendingRequests) {
         ProcessPendingRequests();
     }
 }
@@ -808,7 +820,7 @@ void TWriteBackCacheState::EnqueueUnflushedRequest(
     nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
 
     if (nodeState.GetBackpressureStatus(FlushBackpressureCalculator)) {
-        RequestManager.SetBackpressureStatusForNode(nodeId, true);
+        RequestManager.SetBackpressureStatusForNode(nodeId);
     }
 }
 

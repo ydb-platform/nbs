@@ -429,8 +429,10 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
 
         auto f1 = b.Add(1, 101, 0, "abc");
 
-        b.RequestManager.SetBackpressureStatusForNode(2, true);
-        b.RequestManager.SetBackpressureStatusForNode(3, true);
+        UNIT_ASSERT(b.RequestManager.SetBackpressureStatusForNode(2));
+        UNIT_ASSERT(b.RequestManager.SetBackpressureStatusForNode(3));
+
+        UNIT_ASSERT(!b.RequestManager.SetBackpressureStatusForNode(2));
 
         auto f2 = b.Add(2, 202, 0, "def");
         auto f3 = b.Add(3, 303, 0, "ghi");
@@ -439,14 +441,16 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
 
-        b.RequestManager.SetBackpressureStatusForNode(3, false);
+        UNIT_ASSERT(b.RequestManager.ClearBackpressureStatusForNode(3));
+        UNIT_ASSERT(!b.RequestManager.ClearBackpressureStatusForNode(3));
+
         b.TryProcessPendingRequests();
 
         // Request reordering in the pending queue is not allowed
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
 
-        b.RequestManager.SetBackpressureStatusForNode(2, false);
+        UNIT_ASSERT(b.RequestManager.ClearBackpressureStatusForNode(2));
         b.TryProcessPendingRequests();
 
         UNIT_ASSERT(f2.HasValue());

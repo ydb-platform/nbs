@@ -292,21 +292,24 @@ void TWriteDataRequestManager::Evict(
     PersistentStorage->Free(request->GetAllocationPtr());
 }
 
-void TWriteDataRequestManager::SetBackpressureStatusForNode(
-    ui64 nodeId,
-    bool backpressureStatus)
+bool TWriteDataRequestManager::SetBackpressureStatusForNode(ui64 nodeId)
 {
-    if (backpressureStatus) {
-        auto [_, added] = NodesWithBackpressure.insert(nodeId);
-        if (added) {
-            Stats->AddedNodeWithBackpressure();
-        }
-    } else {
-        auto removed = NodesWithBackpressure.erase(nodeId);
-        if (removed) {
-            Stats->RemovedNodeWithBackpressure();
-        }
+    auto [_, added] = NodesWithBackpressure.insert(nodeId);
+    if (added) {
+        Stats->AddedNodeWithBackpressure();
+        return true;
     }
+    return false;
+}
+
+bool TWriteDataRequestManager::ClearBackpressureStatusForNode(ui64 nodeId)
+{
+    auto removed = NodesWithBackpressure.erase(nodeId);
+    if (removed) {
+        Stats->RemovedNodeWithBackpressure();
+        return true;
+    }
+    return false;
 }
 
 void TWriteDataRequestManager::UpdateStats() const
@@ -337,8 +340,12 @@ TWriteDataRequestManager::TryStoreRequestInPersistentStorage(
     const NProto::TWriteDataRequest& request)
 {
     if (NodesWithBackpressure.contains(request.GetNodeId())) {
-        // Reordering of requests in the pending queue is not supported
-        // Newer requests will wait even if they are not backpressured
+        // Known limitation: pending requests are global FIFO.
+        // Although backpressure is tracked per node, the pending queue is not
+        // reordered. A front request for a backpressured node may therefore
+        // block requests for unrelated nodes. This is intentional for the
+        // current implementation; per-node pending queues/fair scheduling
+        // should be added separately.
         return nullptr;
     }
 

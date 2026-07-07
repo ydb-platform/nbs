@@ -114,8 +114,13 @@ public:
     // Removes previously flushed request from the persistent storage
     void Evict(std::unique_ptr<TCachedWriteDataRequest> request);
 
-    // Prevent from adding new requests to the unflushed queue
-    void SetBackpressureStatusForNode(ui64 nodeId, bool backpressureStatus);
+    // Prevent from adding new requests to the unflushed queue for the node
+    // Returns true if backpressure was not previously set, false otherwise
+    bool SetBackpressureStatusForNode(ui64 nodeId);
+
+    // Allows adding new requests to the unflushed queue for the node
+    // Returns true if backpressure was previously set, false otherwise
+    bool ClearBackpressureStatusForNode(ui64 nodeId);
 
     void UpdateStats() const;
 

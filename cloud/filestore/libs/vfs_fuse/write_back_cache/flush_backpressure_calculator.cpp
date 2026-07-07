@@ -21,15 +21,6 @@ bool TFlushBackpressureCalculator::GetBackpressureStatus(
     size_t cachedDataContiguousIntervalCount,
     ui64 cachedDataByteCount) const
 {
-    // The purpose of backpressure is to avoid high MaxTime for operations
-    // that trigger flush and wait for it (SetNodeAttr, ReleaseHandle,
-    // WriteDataDirect, ReadDataDirect) by preventing adding pending requests
-    // to unflushed queue when the queue is too big.
-    //
-    // The best predictor of the expected flush time is the number of flush
-    // batches needed to be executed in order to flush all requests from the
-    // unflushed queue.
-
     if (FlushBatchCountBackpressureThreshold == 0) {
         return false;
     }
