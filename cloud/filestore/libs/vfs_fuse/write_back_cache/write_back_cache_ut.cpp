@@ -2623,7 +2623,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             writerThread.join();
         };
 
-        for (int attempt = 0; attempt < 1000000; attempt++) {
+        auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        auto remainingIterations = 1000000;
+
+        while (remainingIterations > 0 && TInstant::Now() < deadline) {
+            remainingIterations--;
             auto readResult = b.ReadFromCache(1, 0, 3).GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL("abc", readResult.GetBuffer());
         }

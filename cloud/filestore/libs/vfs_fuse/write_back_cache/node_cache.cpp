@@ -193,8 +193,10 @@ void TNodeCache::VisitUnflushedRequests(
     }
 }
 
-TCachedData
-TNodeCache::GetCachedData(ui64 offset, ui64 byteCount, ui64 pinId) const
+TCachedData TNodeCache::GetCachedData(
+    ui64 offset,
+    ui64 byteCount,
+    ui64 maxEvictableSequenceId) const
 {
     if (CachedData.empty()) {
         return {};
@@ -213,18 +215,21 @@ TNodeCache::GetCachedData(ui64 offset, ui64 byteCount, ui64 pinId) const
     CachedData.VisitOverlapping(
         offset,
         offset + byteCount,
-        [&result, offset, end = offset + byteCount, pinId](auto it)
+        [&result, offset, end = offset + byteCount, maxEvictableSequenceId](
+            auto it)
         {
             const ui64 partOffset = Max(offset, it->second.Begin);
             const ui64 partByteCount = Min(end, it->second.End) - partOffset;
 
             TCachedWriteDataRequest* request = it->second.Value;
 
-            // Flushed requests with SequenceId > PinId are protected from
-            // eviction. Requests with SequenceId <= PinId may be evicted at
-            // any moment and data pointer may become dangling - these parts
-            // should be served from backend storage instead of cache.
-            if (request->GetSequenceId() > pinId) {
+            // Requests with SequenceId > maxEvictableSequenceId are pinned and
+            // are safe to be used.
+            // Requests with SequenceId <= maxEvictableSequenceId may be evicted
+            // at any moment and data pointers may become dangling - these parts
+            // should be taken from ReadData response from the backend storage
+            // instead of cache.
+            if (request->GetSequenceId() > maxEvictableSequenceId) {
                 TStringBuf data = request->GetBuffer(partOffset, partByteCount);
                 result.Parts.push_back({partOffset - offset, data});
             }

@@ -343,9 +343,9 @@ TReadResponseBuilder::TReadResponseBuilder(
 std::optional<NProto::TReadDataResponse>
 TReadResponseBuilder::TryFullyServeFromCache(
     TWriteBackCacheState& state,
-    TWriteBackCacheState::TPin pinId) const
+    TNodeCachedDataPin pin) const
 {
-    auto cachedData = state.GetCachedData(NodeId, Offset, Length, pinId);
+    auto cachedData = state.GetCachedData(NodeId, Offset, Length, pin);
     Validate(cachedData, Length);
 
     ui64 contiguousCachedDataByteCount = 0;
@@ -368,9 +368,9 @@ TReadResponseBuilder::TryFullyServeFromCache(
 bool TReadResponseBuilder::AugmentResponseWithCachedData(
     NProto::TReadDataResponse& response,
     TWriteBackCacheState& state,
-    TWriteBackCacheState::TPin pinId) const
+    TNodeCachedDataPin pin) const
 {
-    auto cachedData = state.GetCachedData(NodeId, Offset, Length, pinId);
+    auto cachedData = state.GetCachedData(NodeId, Offset, Length, pin);
     Validate(cachedData, Length);
 
     AugmentResponseWithCachedData(response, cachedData);

@@ -34,7 +34,7 @@ public:
     // a populated TReadDataResponse or std::nullopt otherwise
     std::optional<NProto::TReadDataResponse> TryFullyServeFromCache(
         TWriteBackCacheState& state,
-        TWriteBackCacheState::TPin pinId) const;
+        TNodeCachedDataPin pin) const;
 
     // Apply cached data on top of the response returned from backend.
     // Returns true if the response was augmented with cached data.
@@ -42,7 +42,7 @@ public:
     bool AugmentResponseWithCachedData(
         NProto::TReadDataResponse& response,
         TWriteBackCacheState& state,
-        TWriteBackCacheState::TPin pinId) const;
+        TNodeCachedDataPin pin) const;
 
 private:
     void AugmentResponseWithCachedData(

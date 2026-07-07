@@ -40,6 +40,13 @@ enum class EFlushRetryStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TNodeCachedDataPin
+{
+    const ui64 MaxEvictableSequenceId;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // The class is thread safe
 class TWriteBackCacheState
 {
@@ -75,7 +82,6 @@ private:
 
 public:
     using TEntryVisitor = TFunctionRef<bool(const TCachedWriteDataRequest*)>;
-    using TPin = ui64;
 
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
@@ -116,8 +122,11 @@ public:
     // Includes both flushed and unflushed data.
     // TCachedData::Parts is calculated over pinned data.
     // TCachedData::ReadDataByteCount is calculated over all data.
-    TCachedData
-    GetCachedData(ui64 nodeId, ui64 offset, ui64 byteCount, TPin pinId) const;
+    TCachedData GetCachedData(
+        ui64 nodeId,
+        ui64 offset,
+        ui64 byteCount,
+        TNodeCachedDataPin pin) const;
 
     // Used to adjust node size according to cached data
     ui64 GetMaxWrittenOffset(ui64 nodeId) const;
@@ -127,13 +136,13 @@ public:
     void ResetMaxWrittenOffset(ui64 nodeId);
 
     // Prevent WriteData requests from being evicted from cache after flush
-    TPin PinCachedData(ui64 nodeId);
-    void UnpinCachedData(ui64 nodeId, TPin pinId);
+    TNodeCachedDataPin PinCachedData(ui64 nodeId);
+    void UnpinCachedData(ui64 nodeId, TNodeCachedDataPin pin);
 
     // Keep NodeStates alive
     // Used to prevent data race and return correct node size
-    TPin PinNodeStates();
-    void UnpinNodeStates(TPin pinId);
+    TNodeStatePin PinNodeStates();
+    void UnpinNodeStates(TNodeStatePin pinId);
 
     // Visit unflushed cached requests in the increasing order of SequenceId
     void VisitUnflushedRequests(

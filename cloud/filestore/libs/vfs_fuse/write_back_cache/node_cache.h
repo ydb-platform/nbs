@@ -87,7 +87,11 @@ public:
         TCachedWriteDataRequestVisitor visitor,
         ui64 maxSequenceId) const;
 
-    TCachedData GetCachedData(ui64 offset, ui64 byteCount, ui64 pinId) const;
+    TCachedData GetCachedData(
+        ui64 offset,
+        ui64 byteCount,
+        ui64 maxEvictableSequenceId) const;
+
     ui64 GetMaxWrittenOffset() const;
     void ResetMaxWrittenOffset();
 };

@@ -138,9 +138,13 @@ struct TBootstrap
         return std::get<1>(std::move(res));
     }
 
-    TString GetCachedData(ui64 offset, ui64 byteCount, ui64 pinId = 0) const
+    TString GetCachedData(
+        ui64 offset,
+        ui64 byteCount,
+        ui64 maxEvictableSequenceId = 0) const
     {
-        auto cachedData = Cache.GetCachedData(offset, byteCount, pinId);
+        auto cachedData =
+            Cache.GetCachedData(offset, byteCount, maxEvictableSequenceId);
 
         TStringBuilder out;
         for (const auto& part: cachedData.Parts) {
@@ -174,8 +178,7 @@ struct TBootstrap
 TVector<TTestCaseWriteDataEntryPart> CalculateDataPartsToRead(
     const TVector<TTestCaseWriteDataEntry>& testCaseEntries,
     ui64 offset,
-    ui64 byteCount,
-    ui64 pinId = 0)
+    ui64 byteCount)
 {
     Y_ABORT_UNLESS(testCaseEntries.size() < 255);
 
@@ -185,7 +188,10 @@ TVector<TTestCaseWriteDataEntryPart> CalculateDataPartsToRead(
         char c = static_cast<char>(i + 1);
         b.PushUnflushed(e.Offset, TString(e.Length, c));   // dummy buffer
     }
-    auto cachedData = b.Cache.GetCachedData(offset, byteCount, pinId);
+    auto cachedData = b.Cache.GetCachedData(
+        offset,
+        byteCount,
+        /* maxEvictableSequenceId = */ 0);
     TVector<TTestCaseWriteDataEntryPart> res;
     for (const auto& part: cachedData.Parts) {
         ui32 i = part.Data[0] - 1;
