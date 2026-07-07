@@ -12,6 +12,7 @@ END()
 
 RECURSE(
     common
+    metrics
     qcow2
     vhd
     vmdk

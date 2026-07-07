@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	url_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -160,6 +161,7 @@ type httpClient struct {
 	client        *http.Client
 	url           string
 	requestsCount uint64
+	metrics       url_metrics.Metrics
 }
 
 func (c *httpClient) Head(ctx context.Context) (*http.Response, error) {
@@ -186,7 +188,9 @@ func (c *httpClient) RequestsCount() uint64 {
 
 func (c *httpClient) head(
 	ctx context.Context,
-) (*http.Response, error) {
+) (resp *http.Response, err error) {
+
+	defer c.metrics.StatRequest("head")(&resp, &err)
 
 	logging.Debug(
 		ctx,
@@ -194,7 +198,7 @@ func (c *httpClient) head(
 		removeParametersFromURL(c.url),
 	)
 
-	resp, err := c.client.Head(c.url)
+	resp, err = c.client.Head(c.url)
 	if err != nil {
 		// NBS-3324: should it be retriable?
 		return nil, errors.NewRetriableError(err)
@@ -218,7 +222,10 @@ func (c *httpClient) body(
 	ctx context.Context,
 	start, end uint64, // Half-open interval [start:end).
 	etag string,
-) (io.ReadCloser, error) {
+) (_ io.ReadCloser, err error) {
+
+	var resp *http.Response
+	defer c.metrics.StatRequest("get")(&resp, &err)
 
 	req, err := http.NewRequest(http.MethodGet, c.url, nil)
 	if err != nil {
@@ -237,7 +244,6 @@ func (c *httpClient) body(
 	// Use closed interval [start, last] for range request.
 	last := end - 1
 	req.Header.Set("RANGE", fmt.Sprintf("bytes=%v-%v", start, last))
-	var resp *http.Response
 
 	logging.Debug(
 		ctx,
@@ -281,6 +287,7 @@ func (c *httpClient) body(
 		)
 	}
 
+	c.metrics.OnRequestSize(end - start)
 	return httpReadCloser{
 		cancel:     cancelReqCtx,
 		readCloser: resp.Body,
@@ -312,6 +319,7 @@ func newHTTPClient(
 	maxRetryTimeout time.Duration,
 	maxRetries uint32,
 	url string,
+	metrics url_metrics.Metrics,
 ) *httpClient {
 
 	retryableClient := retryablehttp.NewClient()
@@ -326,8 +334,9 @@ func newHTTPClient(
 	)
 
 	return &httpClient{
-		client: retryableClient.StandardClient(),
-		url:    url,
+		client:  retryableClient.StandardClient(),
+		url:     url,
+		metrics: metrics,
 	}
 }
 

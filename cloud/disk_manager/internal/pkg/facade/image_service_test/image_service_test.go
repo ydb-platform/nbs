@@ -609,6 +609,28 @@ func testCreateQCOW2ImageFromURL(t *testing.T) {
 		testcommon.GetQCOW2ImageSize(t),
 		testcommon.GetQCOW2ImageCrc32(t),
 	)
+
+	// Verify URL source metrics are reported. QCOW2 images use the cache so
+	// cache hits (repeated metadata reads) must be non-zero after a successful
+	// transfer. Each cache miss is a GET request so it is tracked via responses.
+	urlSourceLabels := map[string]string{"component": "url_source"}
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t, "cacheHits", urlSourceLabels,
+	)[0], float64(0))
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t, "responses", map[string]string{
+			"component": "url_source",
+			"method":    "get",
+			"status":    "200",
+		},
+	)[0], float64(0))
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t, "responses", map[string]string{
+			"component": "url_source",
+			"method":    "head",
+			"status":    "200",
+		},
+	)[0], float64(0))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

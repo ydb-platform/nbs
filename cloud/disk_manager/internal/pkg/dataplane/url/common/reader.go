@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/cache"
+	url_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
@@ -44,6 +45,7 @@ type urlReader struct {
 	etag       string
 	size       uint64
 	cache      *cache.Cache
+	metrics    url_metrics.Metrics
 }
 
 func NewURLReader(
@@ -53,6 +55,7 @@ func NewURLReader(
 	httpClientMaxRetryTimeout time.Duration,
 	httpClientMaxRetries uint32,
 	url string,
+	metrics url_metrics.Metrics,
 ) (Reader, error) {
 
 	parsed, err := net_url.Parse(url)
@@ -74,6 +77,7 @@ func NewURLReader(
 		httpClientMaxRetryTimeout,
 		httpClientMaxRetries,
 		url,
+		metrics,
 	)
 
 	resp, err := httpClient.Head(ctx)
@@ -99,6 +103,7 @@ func NewURLReader(
 		url:        url,
 		etag:       etag,
 		size:       uint64(resp.ContentLength),
+		metrics:    metrics,
 	}, nil
 }
 
@@ -106,7 +111,7 @@ func NewURLReader(
 
 func (r *urlReader) EnableCache() {
 	if r.cache == nil {
-		r.cache = cache.NewCache(r.read)
+		r.cache = cache.NewCache(r.read, r.metrics.OnCacheHit)
 	}
 }
 
