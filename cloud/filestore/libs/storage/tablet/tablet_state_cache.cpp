@@ -160,11 +160,6 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeAttr(
     const TString& name,
     TMaybe<TNodeAttr>& attr)
 {
-    // TODO (#5912) use waiting queue instead of going full TX flow
-    if (CacheReadBypass.ShouldBypassRead(nodeId, commitId)) {
-        return false;
-    }
-
     auto it = NodeAttrs.Find(TNodeAttrsKey(nodeId, name));
     if (it == NodeAttrs.End()) {
         return false;

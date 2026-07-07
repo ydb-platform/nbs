@@ -172,7 +172,9 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
         UNIT_ASSERT(node.Defined());
 
-        cacheBypass.Activate(nodeId1, commitId2);
+        // ReadNode is not bound to a byte range, so it should be bypassed by
+        // an active write to any range of the node.
+        cacheBypass.Activate(nodeId1, commitId2, TByteRange(1000, 1000, 4_KB));
 
         node.Clear();
         UNIT_ASSERT(state.ReadNode(nodeId1, commitId1, node));
@@ -190,7 +192,8 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
         cacheBypass.Activate(
             nodeId1,
-            InvalidCommitId);
+            InvalidCommitId,
+            TByteRange::MaxEnd(0, 4_KB));
 
         node.Clear();
         UNIT_ASSERT(!state.ReadNode(nodeId1, commitId1, node));
@@ -221,7 +224,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .Node = nodeAttrs1,
             }}});
 
-        cacheBypass.Activate(nodeId1, commitId2);
+        cacheBypass.Activate(nodeId1, commitId2, TByteRange::MaxEnd(0, 4_KB));
 
         TMaybe<IIndexTabletDatabase::TNode> node;
         UNIT_ASSERT(!state.ReadNode(nodeId1, commitId2, node));
@@ -238,6 +241,133 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         node.Clear();
         UNIT_ASSERT(state.ReadNode(nodeId1, commitId2, node));
         UNIT_ASSERT(node.Defined());
+    }
+
+    Y_UNIT_TEST(ShouldBypassCacheReadsByRange)
+    {
+        const ui64 commitId3 = 3;
+
+        TCacheReadBypass cacheBypass;
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        // write at [1000, 2000)
+        cacheBypass.Activate(nodeId1, commitId2, TByteRange(1000, 1000, 4_KB));
+
+        // other nodes are not affected
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId2,
+            commitId2,
+            TByteRange::MaxEnd(0, 4_KB)));
+
+        // reads that do not intersect the write range
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId2,
+            TByteRange(0, 1000, 4_KB)));
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId2,
+            TByteRange(2000, 1000, 4_KB)));
+
+        // reads that intersect the write range
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId2,
+            TByteRange(0, 1001, 4_KB)));
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId2,
+            TByteRange(1999, 1001, 4_KB)));
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId2,
+            TByteRange(1200, 100, 4_KB)));
+
+        // the write is not visible to an older read snapshot
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId1,
+            TByteRange(1200, 100, 4_KB)));
+
+        // reads without a byte range intersect any write
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId2));
+
+        // a size-changing write at [5000, +inf)
+        cacheBypass.Activate(nodeId1, commitId3, TByteRange::MaxEnd(5000, 4_KB));
+
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId2,
+            TByteRange(5000, 1000, 4_KB)));
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId3,
+            TByteRange(5000, 1000, 4_KB)));
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId3,
+            TByteRange(1'000'000, 1, 4_KB)));
+
+        cacheBypass.Deactivate(nodeId1, commitId2);
+
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId3,
+            TByteRange(1200, 100, 4_KB)));
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId3,
+            TByteRange(5000, 1000, 4_KB)));
+
+        cacheBypass.Deactivate(nodeId1, commitId3);
+
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId3,
+            TByteRange(5000, 1000, 4_KB)));
+    }
+
+    Y_UNIT_TEST(ShouldCountBypassedReads)
+    {
+        TCacheReadBypass cacheBypass;
+
+        // recovery is not ready yet, all reads bypass the cache and are
+        // counted by the overload that was called
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId1));
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedNodeReadCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, cacheBypass.GetBypassedRangeReadCount());
+
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId1,
+            TByteRange(0, 100, 4_KB)));
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedNodeReadCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedRangeReadCount());
+
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(nodeId1, commitId1));
+        UNIT_ASSERT_VALUES_EQUAL(1, cacheBypass.GetBypassedNodeReadCount());
+
+        cacheBypass.Activate(nodeId1, commitId1, TByteRange(0, 100, 4_KB));
+
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId1,
+            TByteRange(50, 100, 4_KB)));
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedRangeReadCount());
+
+        UNIT_ASSERT(!cacheBypass.ShouldBypassRead(
+            nodeId1,
+            commitId1,
+            TByteRange(100, 100, 4_KB)));
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedRangeReadCount());
+
+        UNIT_ASSERT(cacheBypass.ShouldBypassRead(nodeId1, commitId1));
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedNodeReadCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, cacheBypass.GetBypassedRangeReadCount());
+
+        cacheBypass.Deactivate(nodeId1, commitId1);
     }
 
     const TString attrName1 = "name1";
@@ -287,6 +417,26 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         attr = {};
         UNIT_ASSERT(state.ReadNodeAttr(nodeId1, commitId1, attrName1, attr));
         UNIT_ASSERT(attr.Empty());
+    }
+
+    Y_UNIT_TEST(ShouldNotBypassNodeAttrsCacheReads)
+    {
+        TCacheReadBypass cacheBypass;
+        TStandardInMemoryIndexState state(Alloc(), cacheBypass, 0, 1, 0, 0);
+        cacheBypass.SetUnconfirmedRecoveryReady(true);
+
+        state.UpdateState({IInMemoryIndexState::TWriteNodeAttrsRequest{
+            .NodeAttrsKey = {nodeId1, attrName1},
+            .NodeAttrsRow = {commitId1, attrValue1, attrVersion1},
+        }});
+
+        cacheBypass.Activate(nodeId1, commitId1, TByteRange::MaxEnd(0, 4_KB));
+
+        TMaybe<IIndexTabletDatabase::TNodeAttr> attr;
+        UNIT_ASSERT(state.ReadNodeAttr(nodeId1, commitId1, attrName1, attr));
+        UNIT_ASSERT(attr.Defined());
+
+        cacheBypass.Deactivate(nodeId1, commitId1);
     }
 
     Y_UNIT_TEST(ShouldEvictNodeAttrs)
