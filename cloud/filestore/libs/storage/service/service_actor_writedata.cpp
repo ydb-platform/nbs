@@ -189,7 +189,7 @@ public:
                 TFileStoreComponents::SERVICE,
                 "Forwarding WriteData request to tablet");
 
-            WriteData(ctx, false);
+            WriteData(ctx, false /* isFallback */);
             Become(&TThis::StateWork);
             return;
         }
@@ -299,7 +299,7 @@ private:
         if (HasError(error)) {
             if (error.GetCode() != E_FS_THROTTLED) {
                 LogFallbackToWriteData(ctx, error);
-                WriteData(ctx, true);
+                WriteData(ctx, true /* isFallback */);
             } else {
                 HandleError(ctx, error);
             }
@@ -484,7 +484,7 @@ private:
                 return CancelAddData(ctx);
             }
 
-            return WriteData(ctx, true);
+            return WriteData(ctx, true /* isFallback */);
         }
 
         // It is implicitly expected that cookies are generated in increasing
@@ -627,7 +627,7 @@ private:
 
         if (HasError(msg->GetError())) {
             LogFallbackToWriteData(ctx, msg->GetError());
-            WriteData(ctx, true);
+            WriteData(ctx, true /* isFallback */);
             return;
         }
 
@@ -724,7 +724,7 @@ private:
 
             ResetTabletProxyRetryState();
             LogFallbackToWriteData(ctx, msg->GetError());
-            return WriteData(ctx, true);
+            return WriteData(ctx, true /* isFallback */);
         }
 
         ResetTabletProxyRetryState();
@@ -756,7 +756,7 @@ private:
         }
 
         ResetTabletProxyRetryState();
-        WriteData(ctx, true);
+        WriteData(ctx, true /* isFallback */);
     }
 
     void HandleWakeup(
