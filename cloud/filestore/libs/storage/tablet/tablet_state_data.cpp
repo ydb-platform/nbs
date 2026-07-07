@@ -424,10 +424,9 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
 void TIndexTabletState::ActivateCacheReadBypass(
     ui64 nodeId,
     ui64 commitId,
-    ui64 begin,
-    ui64 end)
+    const TByteRange& range)
 {
-    Impl->CacheReadBypass.Activate(nodeId, commitId, begin, end);
+    Impl->CacheReadBypass.Activate(nodeId, commitId, range);
 }
 
 void TIndexTabletState::DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId)
@@ -1539,12 +1538,7 @@ bool TIndexTabletState::TryFillDescribeResult(
     const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
-    if (Impl->CacheReadBypass.ShouldBypassRead(
-            nodeId,
-            commitId,
-            range.Offset,
-            range.End()))
-    {
+    if (Impl->CacheReadBypass.ShouldBypassRead(nodeId, commitId, range)) {
         return false;
     }
 

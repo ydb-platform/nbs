@@ -1019,13 +1019,11 @@ public:
         ui64 nodeId,
         const TByteRange& requestRange) const;
 
-    // [begin, end) is the byte range affected by the write, end == Max<ui64>()
-    // if the write may change the file size.
+    // range.End() == Max<ui64>() marks a write that may change the file size.
     void ActivateCacheReadBypass(
         ui64 nodeId,
         ui64 commitId,
-        ui64 begin,
-        ui64 end);
+        const TByteRange& range);
     void DeactivateCacheReadBypass(ui64 nodeId, ui64 commitId);
     ui64 GetReadNodeCacheBypassCount() const;
     ui64 GetReadAheadCacheBypassCount() const;

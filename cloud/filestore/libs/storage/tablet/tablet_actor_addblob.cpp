@@ -178,39 +178,42 @@ private:
         UpdateNodeAttrs(db, args);
     }
 
-    std::pair<ui64, ui64> CalculateCacheBypassRange(
+    TByteRange CalculateCacheBypassRange(
         const TTxIndexTablet::TAddBlob& args) const
     {
+        const ui32 blockSize = Tablet.GetBlockSize();
         const auto& writeRange = args.WriteRanges.front();
+        const auto node = args.Nodes.find(writeRange.NodeId);
 
         // On CommitIdOverflow no data is written, but the tablet is about to
-        // be stopped, so no assumptions are made and all reads for the node
+        // be stopped; a missing node means that the old file size is unknown.
+        // In both cases no assumptions are made and all reads for the node
         // are bypassed.
-        if (args.CommitId == InvalidCommitId) {
-            return {0, Max<ui64>()};
+        if (args.CommitId == InvalidCommitId || node == args.Nodes.end()) {
+            return TByteRange::MaxEnd(0, blockSize);
         }
-
-        const ui64 blockSize = Tablet.GetBlockSize();
 
         ui64 begin = writeRange.MaxOffset;
         for (const auto& blob: args.MergedBlobs) {
-            begin = Min(begin, blob.Block.BlockIndex * blockSize);
+            begin = Min(
+                begin,
+                static_cast<ui64>(blob.Block.BlockIndex) * blockSize);
         }
         for (const auto& part: args.UnalignedDataParts) {
-            begin =
-                Min(begin, part.BlockIndex * blockSize + part.OffsetInBlock);
+            begin = Min(
+                begin,
+                static_cast<ui64>(part.BlockIndex) * blockSize +
+                    part.OffsetInBlock);
         }
 
-        auto node = args.Nodes.find(writeRange.NodeId);
-        if (node == args.Nodes.end()) {
-            return {0, Max<ui64>()};
+        const ui64 fileSize = node->Attrs.GetSize();
+        if (writeRange.MaxOffset > fileSize) {
+            // The write changes the file size, so cached file sizes become
+            // stale for all offsets starting from the old one.
+            return TByteRange::MaxEnd(Min(begin, fileSize), blockSize);
         }
 
-        if (writeRange.MaxOffset > node->Attrs.GetSize()) {
-            return {Min(begin, node->Attrs.GetSize()), Max<ui64>()};
-        }
-
-        return {begin, writeRange.MaxOffset};
+        return TByteRange(begin, writeRange.MaxOffset - begin, blockSize);
     }
 
     void Execute_AddBlob_WriteUnconfirmed(
@@ -235,12 +238,10 @@ private:
             !HasError(args.Error) || args.CommitIdOverflow,
             "Error: " << FormatError(args.Error));
 
-        const auto [bypassBegin, bypassEnd] = CalculateCacheBypassRange(args);
         Tablet.ActivateCacheReadBypass(
             args.WriteRanges.front().NodeId,
             args.CommitId,
-            bypassBegin,
-            bypassEnd);
+            CalculateCacheBypassRange(args));
 
         if (HasError(args.Error)) {
             return;

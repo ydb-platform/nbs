@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/byte_range.h>
+
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
@@ -19,18 +21,16 @@ private:
     struct TActiveWrite
     {
         ui64 CommitId = 0;
-        // Affected byte range, End is exclusive. Writes that may change the
-        // file size are registered with End == Max<ui64>(), because cached
-        // file sizes become stale for all offsets starting from the old file
-        // size.
-        ui64 Begin = 0;
-        ui64 End = 0;
+        // Affected byte range. Writes that may change the file size are
+        // registered with Range.End() == Max<ui64>(), because cached file
+        // sizes become stale for all offsets starting from the old file size.
+        TByteRange Range;
     };
 
 public:
     void UpdateLogTag(TString logTag);
 
-    void Activate(ui64 nodeId, ui64 commitId, ui64 begin, ui64 end);
+    void Activate(ui64 nodeId, ui64 commitId, const TByteRange& range);
 
     void Deactivate(ui64 nodeId, ui64 commitId);
 
@@ -41,17 +41,20 @@ public:
     // is visible to them.
     bool ShouldBypassRead(ui64 nodeId, ui64 commitId) const;
 
-    // Checks reads bound to the [begin, end) byte range. Such reads bypass
-    // the cache only if some visible active write intersects the range.
-    bool ShouldBypassRead(ui64 nodeId, ui64 commitId, ui64 begin, ui64 end)
+    // Checks reads bound to a byte range. Such reads bypass the cache only if
+    // some visible active write intersects the range.
+    bool ShouldBypassRead(ui64 nodeId, ui64 commitId, const TByteRange& range)
         const;
 
     ui64 GetBypassedNodeReadCount() const;
     ui64 GetBypassedRangeReadCount() const;
 
 private:
-    bool ShouldBypassReadImpl(ui64 nodeId, ui64 commitId, ui64 begin, ui64 end)
-        const;
+    // range == nullptr checks reads of the whole node.
+    bool ShouldBypassReadImpl(
+        ui64 nodeId,
+        ui64 commitId,
+        const TByteRange* range) const;
 
 private:
     TString LogTag;

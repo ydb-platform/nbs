@@ -20,10 +20,9 @@ void TCacheReadBypass::UpdateLogTag(TString logTag)
 void TCacheReadBypass::Activate(
     ui64 nodeId,
     ui64 commitId,
-    ui64 begin,
-    ui64 end)
+    const TByteRange& range)
 {
-    ActiveWritesByNodeId[nodeId].push_back({commitId, begin, end});
+    ActiveWritesByNodeId[nodeId].push_back({commitId, range});
 }
 
 void TCacheReadBypass::Deactivate(ui64 nodeId, ui64 commitId)
@@ -57,7 +56,7 @@ bool TCacheReadBypass::ShouldBypassRead(ui64 nodeId, ui64 commitId) const
 {
     // Reads without a byte range may observe any part of the node, including
     // its size.
-    const bool bypass = ShouldBypassReadImpl(nodeId, commitId, 0, Max<ui64>());
+    const bool bypass = ShouldBypassReadImpl(nodeId, commitId, nullptr);
     if (bypass) {
         ++BypassedNodeReadCount;
     }
@@ -67,10 +66,9 @@ bool TCacheReadBypass::ShouldBypassRead(ui64 nodeId, ui64 commitId) const
 bool TCacheReadBypass::ShouldBypassRead(
     ui64 nodeId,
     ui64 commitId,
-    ui64 begin,
-    ui64 end) const
+    const TByteRange& range) const
 {
-    const bool bypass = ShouldBypassReadImpl(nodeId, commitId, begin, end);
+    const bool bypass = ShouldBypassReadImpl(nodeId, commitId, &range);
     if (bypass) {
         ++BypassedRangeReadCount;
     }
@@ -80,8 +78,7 @@ bool TCacheReadBypass::ShouldBypassRead(
 bool TCacheReadBypass::ShouldBypassReadImpl(
     ui64 nodeId,
     ui64 commitId,
-    ui64 begin,
-    ui64 end) const
+    const TByteRange* range) const
 {
     // If recovery is in progress, reading from the cache is not possible.
     if (!UnconfirmedRecoveryReady) {
@@ -101,17 +98,16 @@ bool TCacheReadBypass::ShouldBypassReadImpl(
         return false;
     }
 
-    // Commit ids are generated monotonically when unconfirmed data is
-    // materialized by AddBlob, and this queue is activated/deactivated in the
-    // same order.
-    //
     // A read at "commitId" can observe only writes with commit ids <=
-    // "commitId", so the writes visible to the read form a prefix of the
-    // queue. If some visible write intersects the read range, the caches may
-    // miss data visible to this read, so the read must bypass them and go
-    // through the database path to keep the snapshot consistent. Writes that
-    // are newer than the read snapshot or do not intersect the read range
-    // cannot affect the result of the read.
+    // "commitId", and commit ids in the queue are monotonically increasing
+    // (they are generated when unconfirmed data is materialized by AddBlob,
+    // and the queue is activated/deactivated in the same order), so the
+    // writes visible to the read form a prefix of the queue. If some visible
+    // write intersects the read range, the caches may miss data visible to
+    // this read, so the read must bypass them and go through the database
+    // path to keep the snapshot consistent. Writes that are newer than the
+    // read snapshot or do not intersect the read range cannot affect the
+    // result of the read.
     for (const auto& write: it->second) {
         // The InvalidCommitId comparison handles the CommitIdOverflow case.
         const bool visible =
@@ -120,7 +116,7 @@ bool TCacheReadBypass::ShouldBypassReadImpl(
             break;
         }
 
-        if (write.Begin < end && begin < write.End) {
+        if (!range || range->Overlaps(write.Range)) {
             return true;
         }
     }
