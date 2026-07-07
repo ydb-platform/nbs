@@ -64,7 +64,6 @@ struct TBootstrap
     std::unique_ptr<TWriteBackCacheState> State;
     TWriteBackCacheMetrics Metrics;
     TFlushBatchLimits FlushBatchLimits;
-    ui32 FlushBatchCountBackpressureThreshold = 0;
 
     TBootstrap()
         : Timer(std::make_shared<TTestTimer>())
@@ -74,7 +73,8 @@ struct TBootstrap
         , FlushBatchLimits(
               {.MaxWriteRequestSize = 16,
                .MaxWriteRequestsCount = 2,
-               .MaxSumWriteRequestsSize = 24})
+               .MaxSumWriteRequestsSize = 24,
+               .MaxQueuedFlushBatchesPerNode = 0})
     {
         Recreate();
     }
@@ -117,9 +117,7 @@ struct TBootstrap
             Stats->GetWriteBackCacheStateStats(),
             Stats->GetWriteDataRequestManagerStats(),
             Stats->GetNodeStateHolderStats(),
-            TFlushBackpressureCalculator(
-                FlushBatchLimits,
-                FlushBatchCountBackpressureThreshold),
+            TFlushBackpressureCalculator(FlushBatchLimits),
             "[test]");
 
         return State->Init(Storage);
@@ -1317,7 +1315,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
     Y_UNIT_TEST(ShouldHandleBackpressure)
     {
         TBootstrap b;
-        b.FlushBatchCountBackpressureThreshold = 2;
+        b.FlushBatchLimits.MaxQueuedFlushBatchesPerNode = 2;
         b.Recreate();
 
         UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());

@@ -5684,7 +5684,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             }
         };
 
-        // WriteBackCacheFlushBatchCountBackpressureThreshold is non-zero by
+        // WriteBackCacheMaxQueuedFlushBatchesPerNode is non-zero by
         // default - eventually backpressure will occur
         constexpr ui32 maxRequestCount = 1500;
 

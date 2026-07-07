@@ -6,14 +6,11 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 TFlushBackpressureCalculator::TFlushBackpressureCalculator()
     : Limits({})
-    , FlushBatchCountBackpressureThreshold(0)
 {}
 
 TFlushBackpressureCalculator::TFlushBackpressureCalculator(
-    const TFlushBatchLimits& limits,
-    ui32 flushBatchCountBackpressureThreshold)
+    const TFlushBatchLimits& limits)
     : Limits(limits)
-    , FlushBatchCountBackpressureThreshold(flushBatchCountBackpressureThreshold)
 {}
 
 bool TFlushBackpressureCalculator::GetBackpressureStatus(
@@ -21,11 +18,11 @@ bool TFlushBackpressureCalculator::GetBackpressureStatus(
     size_t cachedDataContiguousIntervalCount,
     ui64 cachedDataByteCount) const
 {
-    if (FlushBatchCountBackpressureThreshold == 0) {
+    if (Limits.MaxQueuedFlushBatchesPerNode == 0) {
         return false;
     }
 
-    if (unflushedWriteDataRequestCount <= FlushBatchCountBackpressureThreshold)
+    if (unflushedWriteDataRequestCount <= Limits.MaxQueuedFlushBatchesPerNode)
     {
         // WriteData requests cannot be split into multiple flush batches.
         // A single WriteData requests will be flushed in a single batch even
@@ -51,7 +48,7 @@ bool TFlushBackpressureCalculator::GetBackpressureStatus(
     if (Limits.MaxSumWriteRequestsSize != 0 &&
         (cachedDataByteCount + Limits.MaxSumWriteRequestsSize - 1) /
                 Limits.MaxSumWriteRequestsSize >
-            FlushBatchCountBackpressureThreshold)
+            Limits.MaxQueuedFlushBatchesPerNode)
     {
         return true;
     }
@@ -79,7 +76,7 @@ bool TFlushBackpressureCalculator::GetBackpressureStatus(
         (totalRequestCount + Limits.MaxWriteRequestsCount - 1) /
         Limits.MaxWriteRequestsCount;
 
-    return flushBatchCount > FlushBatchCountBackpressureThreshold;
+    return flushBatchCount > Limits.MaxQueuedFlushBatchesPerNode;
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

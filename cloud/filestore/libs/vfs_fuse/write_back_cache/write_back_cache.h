@@ -73,7 +73,7 @@ struct TWriteBackCacheArgs
     // flush batches needed to drain unflushed WriteData requests. The estimate
     // is not an exact model of flush batching and does not provide a strict
     // upper bound.
-    ui32 FlushBatchCountBackpressureThreshold = 0;
+    ui32 MaxQueuedFlushBatchesPerNode = 0;
 
     // If the flag is enabled, WriteBackCache will generate WriteData requests
     // with iovecs.

@@ -38,8 +38,7 @@ namespace {
     xxx(WriteBackCacheFlushMaxWriteRequestSize,     ui32,       1_MB          )\
     xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
     xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
-    xxx(WriteBackCacheFlushBatchCountBackpressureThreshold,                    \
-                                                    ui32,       1000          )\
+    xxx(WriteBackCacheMaxQueuedFlushBatchesPerNode, ui32,       1000          )\
                                                                                \
     xxx(DirectoryHandlesStoragePath,        TString,   ""                     )\
     xxx(DirectoryHandlesInitialDataSize,    ui64,      16_MB                  )\

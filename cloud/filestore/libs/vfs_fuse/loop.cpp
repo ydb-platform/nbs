@@ -1061,9 +1061,9 @@ private:
                          .FlushMaxSumWriteRequestsSize =
                              Config
                                  ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
-                         .FlushBatchCountBackpressureThreshold =
+                         .MaxQueuedFlushBatchesPerNode =
                              Config
-                                 ->GetWriteBackCacheFlushBatchCountBackpressureThreshold(),
+                                 ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled(),
                          .FlushWritesInParallelEnabled =

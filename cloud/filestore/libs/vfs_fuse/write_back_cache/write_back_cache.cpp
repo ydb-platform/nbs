@@ -44,6 +44,7 @@ TFlushBatchLimits BuildFlushBatchLimits(const TWriteBackCacheArgs& args)
                                      ? args.FlushMaxWriteRequestsCount
                                      : 1,
         .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,
+        .MaxQueuedFlushBatchesPerNode = args.MaxQueuedFlushBatchesPerNode
     };
 }
 
@@ -112,9 +113,7 @@ public:
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
-              TFlushBackpressureCalculator(
-                  BuildFlushBatchLimits(args),
-                  args.FlushBatchCountBackpressureThreshold),
+              TFlushBackpressureCalculator(BuildFlushBatchLimits(args)),
               LogTag)
     {
         auto createPersistentStorageResult =

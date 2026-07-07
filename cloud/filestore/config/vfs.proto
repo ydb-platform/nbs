@@ -93,5 +93,5 @@ message TVFSConfig
     // flush batches needed to drain unflushed WriteData requests. The estimate
     // is not an exact model of flush batching and does not provide a strict
     // upper bound.
-    optional uint32 WriteBackCacheFlushBatchCountBackpressureThreshold = 25;
+    optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
 }
