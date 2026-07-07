@@ -191,7 +191,7 @@ private:
 
     void TriggerFlushAll(bool includePendingRequests);
 
-    ENodeFlushStatus GetFlushStatus(const TNodeState& nodeState) const;
+    bool GetBackpressureStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
     void TriggerFlushCompletions(TNodeState& nodeState);
 

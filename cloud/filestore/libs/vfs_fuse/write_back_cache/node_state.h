@@ -187,15 +187,6 @@ struct TNodeState
         }
         return ENodeFlushStatus::ReadyToFlush;
     }
-
-    bool GetBackpressureStatus(
-        const TFlushBackpressureCalculator& flushBackpressureCalculator) const
-    {
-        return flushBackpressureCalculator.GetBackpressureStatus(
-            Cache.GetUnflushedRequestsCount(),
-            Cache.GetCachedDataContiguousIntervalCount(),
-            Cache.GetCachedDataByteCount());
-    }
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

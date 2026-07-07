@@ -604,6 +604,15 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
     NodesReadyToFlush.clear();
 }
 
+bool TWriteBackCacheState::GetBackpressureStatus(
+    const TNodeState& nodeState) const
+{
+    return FlushBackpressureCalculator.GetBackpressureStatus(
+        nodeState.Cache.GetUnflushedRequestsCount(),
+        nodeState.Cache.GetCachedDataContiguousIntervalCount(),
+        nodeState.Cache.GetCachedDataByteCount());
+}
+
 void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
 {
     auto newFlushStatus = nodeState.GetExpectedFlushStatus(FlushAllSequenceId);
@@ -700,18 +709,17 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         shouldProcessPendingRequests = true;
     }
 
-    if (!nodeState.GetBackpressureStatus(FlushBackpressureCalculator)) {
-        // Backpressure clearing is intentionally tied to entries eviction.
-        //
+    if (!GetBackpressureStatus(nodeState)) {
         // The calculator may report that backpressure is no longer needed
         // before any entries are evicted, for example after requests move from
-        // the unflushed queue to the flushed queue. We deliberately do not
-        // resume pending writes at that point. Resuming on every
-        // Unflushed->Flushed transition would require more precise logic and is
-        // not needed for the current heuristic.
+        // the unflushed queue to the flushed queue.
         //
-        // Eviction is the synchronization point where we both reclaim cache
-        // pressure and retry pending writes.
+        // We deliberately check and clear the backpressure condition only at
+        // request eviction because otherwise it would require more precise
+        // logic and is not needed for the current heuristic.
+        //
+        // This may keep backpressure slightly longer while pins block eviction,
+        // but pins are expected to be short-lived so this effect is negligible.
         shouldProcessPendingRequests |=
             RequestManager.ClearBackpressureStatusForNode(nodeId);
     }
@@ -819,7 +827,7 @@ void TWriteBackCacheState::EnqueueUnflushedRequest(
 {
     nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
 
-    if (nodeState.GetBackpressureStatus(FlushBackpressureCalculator)) {
+    if (GetBackpressureStatus(nodeState)) {
         RequestManager.SetBackpressureStatusForNode(nodeId);
     }
 }

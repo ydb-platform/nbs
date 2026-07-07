@@ -4,10 +4,6 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFlushBackpressureCalculator::TFlushBackpressureCalculator()
-    : Limits({})
-{}
-
 TFlushBackpressureCalculator::TFlushBackpressureCalculator(
     const TFlushBatchLimits& limits)
     : Limits(limits)
@@ -25,8 +21,8 @@ bool TFlushBackpressureCalculator::GetBackpressureStatus(
     if (unflushedWriteDataRequestCount <= Limits.MaxQueuedFlushBatchesPerNode)
     {
         // WriteData requests cannot be split into multiple flush batches.
-        // A single WriteData requests will be flushed in a single batch even
-        // if doesn't fit into flush limits. Therefore, the number of flush
+        // A single WriteData request will be flushed in a single batch even
+        // if it doesn't fit into flush limits. Therefore, the number of flush
         // batches will not exceed the number of unflushed requests.
         return false;
     }
