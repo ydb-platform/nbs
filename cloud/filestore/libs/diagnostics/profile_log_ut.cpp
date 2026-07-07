@@ -77,7 +77,7 @@ TString ListNodesInfoToString(
         << "," << listNodesInfo.GetMaxBytes()
         << "," << listNodesInfo.GetRequestCookie()
         << "," << listNodesInfo.GetResponseCookie()
-        << "," << listNodesInfo.GetSize();
+        << "," << listNodesInfo.GetNameCount();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -312,14 +312,14 @@ struct TRequestInfoBuilder
         ui32 maxBytes,
         TString requestCookie,
         TString responseCookie,
-        ui64 size)
+        ui64 nameCount)
     {
         auto listNodesInfo = R.MutableListNodesInfo();
         listNodesInfo->SetNodeId(nodeId);
         listNodesInfo->SetMaxBytes(maxBytes);
         listNodesInfo->SetRequestCookie(std::move(requestCookie));
         listNodesInfo->SetResponseCookie(std::move(responseCookie));
-        listNodesInfo->SetSize(size);
+        listNodesInfo->SetNameCount(nameCount);
         return *this;
     }
 

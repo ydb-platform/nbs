@@ -485,7 +485,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(maxBytes, listNodesInfo.GetMaxBytes());
         UNIT_ASSERT_VALUES_EQUAL(cookie, listNodesInfo.GetRequestCookie());
         UNIT_ASSERT(!listNodesInfo.HasResponseCookie());
-        UNIT_ASSERT(!listNodesInfo.HasSize());
+        UNIT_ASSERT(!listNodesInfo.HasNameCount());
     }
 
     Y_UNIT_TEST(ShouldReadLinkRequestInitializeFieldsCorrectly)
@@ -896,7 +896,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT(!listNodesInfo.HasMaxBytes());
         UNIT_ASSERT(!listNodesInfo.HasRequestCookie());
         UNIT_ASSERT_VALUES_EQUAL(cookie, listNodesInfo.GetResponseCookie());
-        UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesInfo.GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesInfo.GetNameCount());
     }
 
     Y_UNIT_TEST(ShouldSetNodeAttrResponseInitializeFieldsCorrectly)

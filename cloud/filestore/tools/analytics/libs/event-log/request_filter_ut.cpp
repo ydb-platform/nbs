@@ -745,7 +745,7 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
         secondRequest->SetRequestType(
             static_cast<ui32>(EFileStoreRequest::ListNodes));
         secondRequest->MutableListNodesInfo()->SetNodeId(2);
-        secondRequest->MutableListNodesInfo()->SetSize(3);
+        secondRequest->MutableListNodesInfo()->SetNameCount(3);
 
         auto filter =
             CreateRequestFilterByNodeId(CreateRequestFilterAccept(), 2);
@@ -758,7 +758,7 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             filtered.GetRequests(0).GetListNodesInfo().GetNodeId());
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            filtered.GetRequests(0).GetListNodesInfo().GetSize());
+            filtered.GetRequests(0).GetListNodesInfo().GetNameCount());
     }
 
     Y_UNIT_TEST_F(ShouldFilterByNodeIdRecord, TEnv)

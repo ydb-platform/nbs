@@ -203,8 +203,8 @@ TString PrintListNodesInfo(
             << ", ";
         hasInfo = true;
     }
-    if (listNodesInfo.HasSize()) {
-        out << PrintValue("size", listNodesInfo.GetSize()) << ", ";
+    if (listNodesInfo.HasNameCount()) {
+        out << PrintValue("name_count", listNodesInfo.GetNameCount()) << ", ";
         hasInfo = true;
     }
 

@@ -734,7 +734,7 @@ void FinalizeProfileLogRequestInfo(
     const NProto::TListNodesResponse& response)
 {
     auto* listNodesInfo = profileLogRequest.MutableListNodesInfo();
-    listNodesInfo->SetSize(response.GetNames().size());
+    listNodesInfo->SetNameCount(response.GetNames().size());
     listNodesInfo->SetResponseCookie(response.GetCookie());
 }
 

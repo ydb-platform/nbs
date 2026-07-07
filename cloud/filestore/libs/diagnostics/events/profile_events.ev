@@ -106,7 +106,7 @@ message TProfileLogListNodesInfo {
 
     // from response
     optional bytes ResponseCookie = 4;
-    optional uint64 Size = 5;
+    optional uint64 NameCount = 5;
 };
 
 message TProfileLogRequestInfo {
