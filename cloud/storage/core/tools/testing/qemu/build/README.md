@@ -33,7 +33,10 @@ Update resource id and list of files from 'tar --list -f qemu-static.tgz' in
 # Samples
 
 ```
-./__main__.py --co --git-tag v11.0.0 --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v11.0.2 --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v10.2.4 --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v9.2.3 --git https://github.com/qemu/qemu --deps
+./__main__.py --co --git-tag v8.2.10 --git https://github.com/qemu/qemu --deps
 ./__main__.py --co --git-tag v7.2.22 --git https://github.com/qemu/qemu --deps
 ./__main__.py --co --git-tag v7.1.0  --git https://github.com/qemu/qemu --deps
 ./__main__.py --co --git-tag v6.2.0  --git https://github.com/qemu/qemu --deps

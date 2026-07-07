@@ -105,18 +105,15 @@ QEMU_DEPS = [
 ]
 
 
-QEMU_CONFIG_MIN_VERSION = [
-    ("--disable-auth-pam", (5, 0, 0)),
-    ("--disable-gio", (7, 0, 0)),
-    ("--disable-libssh2", (7, 0, 0)),
-    ("--enable-slirp", (7, 0, 0)),
-]
-
-QEMU_CONFIG_MAX_VERSION = [
-    ("--disable-fdt", (6, 0, 0)),
-    ("--disable-tcmalloc", (6, 0, 0)),
-    ("--disable-tpm", (6, 0, 0)),
-    ("--enable-vnc-png", (6, 0, 0)),
+QEMU_CONFIG_VERSION = [
+    ("--disable-auth-pam", (5, 0, 0), None),
+    ("--disable-gio", (7, 0, 0), None),
+    ("--disable-libssh2", (7, 0, 0), (9, 0, 0)),
+    ("--enable-slirp", (7, 0, 0), None),
+    ("--disable-fdt", None, (6, 0, 0)),
+    ("--disable-tcmalloc", None, (6, 0, 0)),
+    ("--disable-tpm", None, (6, 0, 0)),
+    ("--enable-vnc-png", None, (6, 0, 0)),
 ]
 
 LIBSLIRP_BUILD_SCRIPT = 'build-libslirp-static.sh'
@@ -141,22 +138,6 @@ def git_tag_version_key(git_tag):
     )
 
 
-def git_tag_less_than(git_tag, version):
-    git_tag_version = git_tag_version_key(git_tag)
-    if git_tag_version is None:
-        return False
-
-    return git_tag_version < tuple(version) # + (1, 0)
-
-
-def git_tag_greater_than(git_tag, version):
-    git_tag_version = git_tag_version_key(git_tag)
-    if git_tag_version is None:
-        return False
-
-    return git_tag_version >= tuple(version) # + (1, 0)
-
-
 def add_config(config, package):
     if package not in config:
         config.append(package)
@@ -165,14 +146,18 @@ def add_config(config, package):
 def has_config(config, package):
     return package in config
 
-def config_matches_min_version(git_tag, version):
+def config_matches_version(git_tag, minver, maxver):
     git_tag_version = git_tag_version_key(git_tag)
-    return git_tag_version is not None and not git_tag_less_than(git_tag, version)
+    if git_tag_version is None:
+        return False
 
+    if minver is not None and git_tag_version < tuple(minver):
+        return False
 
-def config_matches_max_version(git_tag, version):
-    git_tag_version = git_tag_version_key(git_tag)
-    return git_tag_version is not None and not git_tag_greater_than(git_tag, version)
+    if maxver is not None and git_tag_version >= tuple(maxver):
+        return False
+
+    return True
 
 
 def tag_tgz_path(path, git_tag):
@@ -279,12 +264,8 @@ def qemu_config(args, src_dir):
     config = list(QEMU_CONFIG)
     config.append('--target-list=' + qemu_target_list())
 
-    for package, version in QEMU_CONFIG_MIN_VERSION:
-        if config_matches_min_version(args.git_tag, version):
-            add_config(config, package)
-
-    for package, version in QEMU_CONFIG_MAX_VERSION:
-        if config_matches_max_version(args.git_tag, version):
+    for package, minver, maxver in QEMU_CONFIG_VERSION:
+        if config_matches_version(args.git_tag, minver, maxver):
             add_config(config, package)
 
     return config
