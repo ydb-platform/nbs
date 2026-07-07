@@ -42,14 +42,11 @@ class _Counters:
 
         return None
 
-    def find_all(self, queries):
+    def find_all(self, query):
         r = []
         for s in self.__data["sensors"]:
-            for query in queries:
-                if _match(s.get("labels", {}), query):
-                    r.append(s)
-                    break
-
+            if _match(s.get("labels", {}), query):
+                r.append(s)
         return r
 
     def __rep__(self):
