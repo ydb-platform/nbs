@@ -27,9 +27,10 @@ bool TFlushBackpressureCalculator::GetBackpressureStatus(
 
     if (unflushedWriteDataRequestCount <= FlushBatchCountBackpressureThreshold)
     {
-        // Each flush batch consists of at least one WriteData request
-        // The number of flush batches cannot exceed the number of unflushed
-        // requests
+        // WriteData requests cannot be split into multiple flush batches.
+        // A single WriteData requests will be flushed in a single batch even
+        // if doesn't fit into flush limits. Therefore, the number of flush
+        // batches will not exceed the number of unflushed requests.
         return false;
     }
 

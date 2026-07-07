@@ -9,13 +9,13 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 struct TFlushBatchLimits
 {
     // The maximum size of a single consolidated WriteData request
-    const ui32 MaxWriteRequestSize;
+    ui32 MaxWriteRequestSize = 0;
 
     // The maximum number of consolidated WriteData requests
-    const ui32 MaxWriteRequestsCount;
+    ui32 MaxWriteRequestsCount = 0;
 
     // The maximum total size of all consolidated WriteData requests
-    const ui32 MaxSumWriteRequestsSize;
+    ui32 MaxSumWriteRequestsSize = 0;
 };
 
 } // namespace NCloud::NFileStore::NFuse::NWriteBackCache

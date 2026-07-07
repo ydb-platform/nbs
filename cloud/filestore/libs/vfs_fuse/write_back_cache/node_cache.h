@@ -60,15 +60,15 @@ public:
 
     std::unique_ptr<TPendingWriteDataRequest> DequeuePendingRequest();
 
-    // This method updates CachedDataContiguousIntervalCount and
-    // CachedDataByteCount
+    // This method updates CachedData stats returned by
+    // GetCachedDataContiguousIntervalCount(), GetCachedDataByteCount()
     void EnqueueUnflushedRequest(
         std::unique_ptr<TCachedWriteDataRequest> request);
 
     TCachedWriteDataRequest* MoveFrontUnflushedRequestToFlushed();
 
-    // This method updates CachedDataContiguousIntervalCount and
-    // CachedDataByteCount
+    // This method updates CachedData stats returned by
+    // GetCachedDataContiguousIntervalCount(), GetCachedDataByteCount()
     std::unique_ptr<TCachedWriteDataRequest> DequeueFlushedRequest();
 
     bool Empty() const;

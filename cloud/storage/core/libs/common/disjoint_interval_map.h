@@ -11,7 +11,7 @@ namespace NPrivate {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class TKey, class TValue>
-class TDisjointIntervalMap
+class TDisjointIntervalMapImpl
 {
 public:
     struct TItem
@@ -154,31 +154,48 @@ public:
 private:
     void UpdateStats(TConstIterator iterator, TStats& stats, bool isAdd) const
     {
+        const auto& interval = iterator->second;
+        const auto intervalDiff = interval.End - interval.Begin;
+
         if (isAdd) {
-            stats.IntervalSum += iterator->second.End - iterator->second.Begin;
+            stats.IntervalSum += intervalDiff;
             stats.ContiguousIntervalCount++;
         } else {
-            stats.IntervalSum -= iterator->second.End - iterator->second.Begin;
+            stats.IntervalSum -= intervalDiff;
             stats.ContiguousIntervalCount--;
         }
 
+        // A newly added interval merges with each adjacent contiguous interval;
+        // removing it splits those contiguous runs back apart.
         if (iterator != Data.begin()) {
             auto prev = std::prev(iterator);
-            if (prev->second.End == iterator->second.Begin) {
+            const TItem& prevInterval = prev->second;
+            if (prevInterval.End == interval.Begin) {
                 if (isAdd) {
+                    // Merge on addition
+                    // [prevInterval][interval] => [mergedInterval]
                     stats.ContiguousIntervalCount--;
                 } else {
+                    // Unmerge on deletion
+                    // [mergedInterval] => [prevInterval][interval]
                     stats.ContiguousIntervalCount++;
                 }
             }
         }
 
         auto next = std::next(iterator);
-        if (next != Data.end() && next->second.Begin == iterator->second.End) {
-            if (isAdd) {
-                stats.ContiguousIntervalCount--;
-            } else {
-                stats.ContiguousIntervalCount++;
+        if (next != Data.end()) {
+            const TItem& nextInterval = next->second;
+            if (nextInterval.Begin == interval.End) {
+                if (isAdd) {
+                    // Merge on addition
+                    // [interval][nextInterval] => [mergedInterval]
+                    stats.ContiguousIntervalCount--;
+                } else {
+                    // Unmerge on deletion
+                    // [mergedInterval] => [interval][nextInterval]
+                    stats.ContiguousIntervalCount++;
+                }
             }
         }
     }
@@ -189,10 +206,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class TKey, class TValue>
-class TDisjointIntervalMap: public NPrivate::TDisjointIntervalMap<TKey, TValue>
+class TDisjointIntervalMap
+    : public NPrivate::TDisjointIntervalMapImpl<TKey, TValue>
 {
 private:
-    using TBase = NPrivate::TDisjointIntervalMap<TKey, TValue>;
+    using TBase = NPrivate::TDisjointIntervalMapImpl<TKey, TValue>;
 
 public:
     void Add(TKey begin, TKey end, TValue value)
@@ -210,10 +228,10 @@ public:
 
 template <class TKey, class TValue>
 class TDisjointIntervalMapWithStats
-    : public NPrivate::TDisjointIntervalMap<TKey, TValue>
+    : public NPrivate::TDisjointIntervalMapImpl<TKey, TValue>
 {
 private:
-    using TBase = NPrivate::TDisjointIntervalMap<TKey, TValue>;
+    using TBase = NPrivate::TDisjointIntervalMapImpl<TKey, TValue>;
 
     typename TBase::TStats Stats;
 
