@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Headers.
+
+message TDeviceRequestHeaders
+{
+    // Client identifier for client detection.
+    string ClientId = 1;
+
+    // Request identifier.
+    uint64 RequestId = 2;
+
+    // Request timeout (in milliseconds).
+    uint32 RequestTimeout = 3;
+}
+
+message TDeviceResponseHeaders
+{
+    // Request identifier.
+    uint64 RequestId = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Read request/response.
+
+message TDevicePageGroupRef
+{
+    // The number of the first page in the response relative to the start of
+    // the device, starts from 0.
+    uint64 FirstPageNo = 1;
+
+    // The number of consecutive pages.
+    uint64 PageCount = 2;
+
+    // Logical page size.
+    uint32 PageSize = 3;
+}
+
+message TReadPagesRequest
+{
+    // Request headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // UUID of the device to read from.
+    string DeviceUUID = 2;
+
+    // Requested pages.
+    repeated TDevicePageGroupRef PageGroupRefs = 3;
+}
+
+message TDevicePageGroup
+{
+    // The number of the first page in the response relative to the start of
+    // the device, starts from 0.
+    uint64 FirstPageNo = 1;
+
+    // Page data for each of the response pages.
+    repeated bytes Content = 2;
+}
+
+message TReadPagesResponse
+{
+    // Response headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+
+    // Requested pages.
+    repeated TDevicePageGroup PageGroups = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Write request/response.
+
+message TWriteLogRecordRequest
+{
+    // Request headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // UUID of device to write to.
+    string DeviceUUID = 2;
+
+    // Pages to write.
+    repeated TDevicePageGroup PageGroups = 3;
+
+    // Log sequence number used to order the writes.
+    uint64 LogSequenceNumber = 4;
+}
+
+message TWriteLogRecordResponse
+{
+    // Response headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+}
