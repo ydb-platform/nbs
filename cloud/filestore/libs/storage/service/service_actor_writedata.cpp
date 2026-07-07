@@ -756,6 +756,7 @@ private:
         }
 
         ResetTabletProxyRetryState();
+        LogFallbackToWriteData(ctx, WriteBlobError);
         WriteData(ctx, true /* isFallback */);
     }
 
