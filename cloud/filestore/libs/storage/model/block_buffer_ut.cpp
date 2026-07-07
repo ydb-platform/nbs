@@ -27,7 +27,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
             , AlignedRange(Range.AlignedSuperRange())
         {
             Data.ReserveAndResize(AlignedRange.Length);
-            for (ui32 i = 0; i < Data.Size(); ++i) {
+            for (ui32 i = 0; i < Data.size(); ++i) {
                 Data[i] = 'a' + RandomNumber<ui32>('z' - 'a' + 1);
             }
             BlockBuffer = CreateBlockBuffer(AlignedRange, Data);
