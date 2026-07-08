@@ -1,9 +1,11 @@
 IF (NOT QEMU_BIN)
     DEPENDS(cloud/storage/core/tools/testing/qemu/bin)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
 ENDIF()
 
 IF (NOT QEMU_FIRMWARE)
     DEPENDS(cloud/storage/core/tools/testing/qemu/bin)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
 ENDIF()
 
 IF (NOT QEMU_ROOTFS)
@@ -18,6 +20,10 @@ ENDIF()
 IF (NOT QEMU_SSH_KEY)
     SET(QEMU_SSH_KEY cloud/storage/core/tools/testing/qemu/keys/id_rsa)
     DATA(arcadia/cloud/storage/core/tools/testing/qemu/keys)
+ENDIF()
+
+IF (NOT QEMU_RECONNECT)
+    SET(QEMU_RECONNECT 0)
 ENDIF()
 
 DEPENDS(
@@ -38,6 +44,7 @@ USE_RECIPE(
     cloud/storage/core/tests/recipes/qemu/qemu-recipe
     --qemu-bin $QEMU_BIN
     --qemu-firmware $QEMU_FIRMWARE
+    --qemu-bios $QEMU_BIOS
     --qemu-options $QEMU_OPTIONS
     --rootfs $QEMU_ROOTFS
     --proc $QEMU_PROC
@@ -50,6 +57,8 @@ USE_RECIPE(
     --invoke-test $QEMU_INVOKE_TEST
     --use-virtiofs-server $QEMU_USE_VIRTIOFS_SERVER
     --num-request-queues $QEMU_NUM_REQUEST_QUEUES
+    --reconnect $QEMU_RECONNECT
+    --virtiofs-migration $QEMU_VIRTIOFS_MIGRATION
 )
 
 REQUIREMENTS(kvm)

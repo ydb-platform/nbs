@@ -1,0 +1,6 @@
+IF(ARCH_X86_64)
+    SET(QEMU_RECONNECT 1)
+    SET(QEMU_VIRTIOFS_MIGRATION external)
+ELSEIF (ARCH_ARM64)
+    SET(QEMU_BIOS usr/share/qemu/edk2-aarch64-code.fd)
+ENDIF()
