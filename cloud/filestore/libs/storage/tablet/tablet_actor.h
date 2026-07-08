@@ -62,9 +62,9 @@ inline bool IsTabletOverloaded(
     ui32 tabletActorCpuUsageRate)
 {
     const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
-    return tabletActorCpuUsageRate
-            >= config.GetTabletActorCpuUsageOverloadThreshold()
-        || cl >= config.GetCpuLackOverloadThreshold();
+    return tabletActorCpuUsageRate >=
+               config.GetTabletActorCpuUsageOverloadThreshold() ||
+           cl >= config.GetCpuLackOverloadThreshold();
 }
 
 inline void BuildBackendInfo(
