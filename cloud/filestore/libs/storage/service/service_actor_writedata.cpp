@@ -152,6 +152,8 @@ private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
     TRope Rope;
 
+    const bool UseThreeStageWrite = false;
+
 public:
     TWriteDataActor(
         NProto::TWriteDataRequest request,
@@ -163,7 +165,8 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useThreeStageWrite)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -175,10 +178,29 @@ public:
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
+        , UseThreeStageWrite(useThreeStageWrite)
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
+        if (!UseThreeStageWrite) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Forwarding WriteData request to tablet");
+
+            WriteData(ctx, false /* isFallback */);
+            Become(&TThis::StateWork);
+            return;
+        }
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s Using three-stage write for request, size: %lu",
+            LogTag.c_str(),
+            Range.Length);
+
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
             RequestInfo->CallContext,
@@ -276,7 +298,8 @@ private:
 
         if (HasError(error)) {
             if (error.GetCode() != E_FS_THROTTLED) {
-                WriteData(ctx, error);
+                LogFallbackToWriteData(ctx, error);
+                WriteData(ctx, true /* isFallback */);
             } else {
                 HandleError(ctx, error);
             }
@@ -461,7 +484,7 @@ private:
                 return CancelAddData(ctx);
             }
 
-            return WriteData(ctx, error);
+            return WriteData(ctx, true /* isFallback */);
         }
 
         // It is implicitly expected that cookies are generated in increasing
@@ -603,7 +626,8 @@ private:
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
 
         if (HasError(msg->GetError())) {
-            WriteData(ctx, msg->GetError());
+            LogFallbackToWriteData(ctx, msg->GetError());
+            WriteData(ctx, true /* isFallback */);
             return;
         }
 
@@ -699,7 +723,8 @@ private:
             }
 
             ResetTabletProxyRetryState();
-            return WriteData(ctx, msg->GetError());
+            LogFallbackToWriteData(ctx, msg->GetError());
+            return WriteData(ctx, true /* isFallback */);
         }
 
         ResetTabletProxyRetryState();
@@ -731,7 +756,8 @@ private:
         }
 
         ResetTabletProxyRetryState();
-        WriteData(ctx, WriteBlobError);
+        LogFallbackToWriteData(ctx, WriteBlobError);
+        WriteData(ctx, true /* isFallback */);
     }
 
     void HandleWakeup(
@@ -794,18 +820,10 @@ private:
         TabletProxyRetryDelayProvider.Reset();
     }
 
-    /**
-     * @brief Fallback to regular write if two-stage write fails for any reason
-     */
-    void WriteData(const TActorContext& ctx, const NProto::TError& error)
+    inline void LogFallbackToWriteData(
+        const TActorContext& ctx,
+        const NProto::TError& error)
     {
-        FILESTORE_TRACK(
-            RequestReceived_ServiceWorker,
-            RequestInfo->CallContext,
-            "WriteData");
-
-        MoveIovecsToBuffer(WriteRequest);
-
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -817,10 +835,27 @@ private:
             WriteRequest.GetOffset(),
             NFileStore::CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
+    }
 
+    /**
+     * @brief Use regular write if three-stage write fails for any reason or
+     * disabled in filesystem configuration
+     * @param isFallback true if this is a fallback write after three-stage
+     * write failed
+     */
+    void WriteData(const TActorContext& ctx, bool isFallback)
+    {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
+
+        MoveIovecsToBuffer(WriteRequest);
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
-        request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        if (isFallback) {
+            request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        }
         request->CallContext = RequestInfo->CallContext;
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
@@ -990,14 +1025,6 @@ void TStorageServiceActor::HandleWriteData(
 
     const auto threeStageWriteAllowed = IsThreeStageWriteEnabled(filestore);
 
-    if (!threeStageWriteAllowed) {
-        // If three-stage write is disabled, forward the request to the tablet
-        // in the same way as all other requests.
-        MoveIovecsToBuffer(msg->Record);
-        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
-        return;
-    }
-
     ui32 blockSize = filestore.GetBlockSize();
 
     const auto bytesCount = NFileStore::CalculateByteCount(msg->Record);
@@ -1012,55 +1039,37 @@ void TStorageServiceActor::HandleWriteData(
         filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled() ||
         StorageConfig->GetBlockChecksumsInProfileLogEnabled();
 
-    if (threeStageWriteEnabled) {
-        auto logTag = filestore.GetFileSystemId();
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s Using three-stage write for request, size: %lu",
-            logTag.c_str(),
-            bytesCount);
+    auto logTag = filestore.GetFileSystemId();
+    auto [cookie, inflight] = CreateInFlightRequest(
+        TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        session->MediaKind,
+        session->RequestStats,
+        startTime);
 
-        auto [cookie, inflight] = CreateInFlightRequest(
-            TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-            session->MediaKind,
-            session->RequestStats,
-            startTime);
-
-        InitProfileLogRequestInfo(
-            inflight->AccessProfileLogRequest(),
-            msg->Record);
-        inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
-        if (blockChecksumsEnabled) {
-            CalculateWriteDataRequestChecksums(
-                msg->Record,
-                blockSize,
-                inflight->AccessProfileLogRequest());
-        }
-
-        auto requestInfo =
-            CreateRequestInfo(SelfId(), cookie, msg->CallContext);
-
-        auto actor = std::make_unique<TWriteDataActor>(
-            std::move(msg->Record),
-            range,
-            std::move(requestInfo),
-            std::move(logTag),
-            filestore.GetFeatures().GetWriteBlobDisabled(),
-            filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
-            session->RequestStats,
-            ProfileLog,
-            TraceSerializer,
-            session->MediaKind);
-        NCloud::Register(ctx, std::move(actor));
-    } else {
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "Forwarding WriteData request to tablet");
-        MoveIovecsToBuffer(msg->Record);
-        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
+    if (blockChecksumsEnabled) {
+        CalculateWriteDataRequestChecksums(
+            msg->Record,
+            blockSize,
+            inflight->AccessProfileLogRequest());
     }
+
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
+
+    auto actor = std::make_unique<TWriteDataActor>(
+        std::move(msg->Record),
+        range,
+        std::move(requestInfo),
+        std::move(logTag),
+        filestore.GetFeatures().GetWriteBlobDisabled(),
+        filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
+        session->RequestStats,
+        ProfileLog,
+        TraceSerializer,
+        session->MediaKind,
+        threeStageWriteEnabled);
+    NCloud::Register(ctx, std::move(actor));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
