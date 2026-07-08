@@ -1,20 +1,6 @@
 name: Mirror yatool resources
 
 on:
-  workflow_call:
-    inputs:
-      base_sha:
-        type: string
-        required: true
-      head_sha:
-        type: string
-        required: true
-      post_comment:
-        type: boolean
-        default: false
-      upload_resources:
-        type: boolean
-        default: false
   workflow_dispatch:
     inputs:
       upload_resources:
@@ -24,8 +10,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 defaults:
   run:
@@ -38,7 +22,7 @@ jobs:
   mirror:
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
-      - name: Checkout trusted base workflow code and resources
+      - name: Checkout
         uses: actions/checkout@v7
         with:
           submodules: false
@@ -49,42 +33,18 @@ jobs:
             build/mapping.conf.json
           fetch-depth: 1
           clean: true
-          ref: ${{ inputs.base_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
 
-      - name: Checkout resource files to mirror
-        uses: actions/checkout@v7
-        with:
-          submodules: false
-          sparse-checkout: |
-            build/mapping.conf.json
-          fetch-depth: 1
-          clean: true
-          path: pr
-          ref: ${{ inputs.head_sha || github.sha }}
-
-      - name: disable sparse checkout for resource checkout (workaround for actions/checkout/issues/2249)
-        if: ${{ always() }}
-        working-directory: pr
-        run: git config core.sparseCheckout false
-        continue-on-error: true
-
-      - name: Prepare base mapping
-        id: base-mapping
-        run: |
-          BASE_MAPPING="$RUNNER_TEMP/base_mapping.conf.json"
-          cp build/mapping.conf.json "$BASE_MAPPING" || true
-          echo "base_mapping=$BASE_MAPPING" >> "$GITHUB_OUTPUT"
-
       - name: Prepare AWS CLI
         if: ${{ inputs.upload_resources }}
         uses: ./.github/actions/s3cmd
         with:
-          s3_bucket: 'nbs-yatool-resources'
+          s3_bucket: ${{ env.YATOOL_RESOURCES_BUCKET }}
           s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
           s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
           s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
@@ -96,14 +56,11 @@ jobs:
       - name: Mirror resources and generate patch
         uses: ./.github/actions/mirror_yatool_resources
         with:
-          working_directory: pr
           mapping: build/mapping.conf.json
-          base_mapping: ${{ steps.base-mapping.outputs.base_mapping }}
-          bucket: 'nbs-yatool-resources'
+          bucket: ${{ env.YATOOL_RESOURCES_BUCKET }}
           endpoint_url: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
-          local_base_url: https://nbs-yatool-resources.${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          local_base_url: https://${{ env.YATOOL_RESOURCES_BUCKET }}.${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
           output_dir: ${{ runner.temp }}/yatool-resource-mirror
-          post_comment: ${{ inputs.post_comment && 'true' || 'false' }}
           skip_upload: ${{ inputs.upload_resources && 'false' || 'true' }}
 
       - name: Upload generated patch
