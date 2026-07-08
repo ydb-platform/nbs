@@ -1,11 +1,11 @@
 GTEST()
 
 SRCS(
-    ../server_ut.cpp
+    ../client_ut.cpp
 )
 
 PEERDIR(
-    cloud/filestore/libs/storage/fastshard/ipc
+    cloud/filestore/libs/storage/fastshard/sn/client
     cloud/filestore/libs/storage/fastshard/sn/iface
     cloud/filestore/libs/storage/fastshard/sn/server
     cloud/filestore/libs/storage/fastshard/testlib

@@ -2,7 +2,7 @@ LIBRARY()
 
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     SRCS(
-        server.cpp
+        client.cpp
     )
 
     PEERDIR(
@@ -12,7 +12,7 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     )
 ELSE()
     SRCS(
-        server_stub.cpp
+        client_stub.cpp
     )
 ENDIF()
 
