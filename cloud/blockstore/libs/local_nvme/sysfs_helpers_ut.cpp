@@ -94,6 +94,8 @@ struct TFixture: public NUnitTest::TBaseFixture
 
             TFileOutput(ctrlPath / "serial").Write(device.GetSerialNumber());
             TFileOutput(ctrlPath / "model").Write(device.GetModel());
+            TFileOutput(ctrlPath / "firmware_rev")
+                .Write(device.GetFirmwareRev());
         }
 
         // NVME_1 bound to the vfio-pci driver
@@ -153,6 +155,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
                 NumaNode: 0
+                FirmwareRev: "FW4242"
             }
             Devices {
                 SerialNumber: "NVME_1"

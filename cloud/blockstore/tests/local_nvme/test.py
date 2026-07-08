@@ -1,6 +1,7 @@
 import json
 import os
 import pytest
+import time
 
 from google.protobuf.text_format import MessageToString
 
@@ -27,6 +28,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x200,
         Model="Test NVMe 1",
+        FirmwareRev="FW4242",
     ),
     TNVMeDevice(
         SerialNumber="NVME_1",
@@ -35,6 +37,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x300,
         Model="Test NVMe 2",
+        FirmwareRev="FW4243",
     ),
     TNVMeDevice(
         SerialNumber="NVME_2",
@@ -43,6 +46,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x300,
         Model="Test NVMe 2",
+        FirmwareRev="FW4243",
     ),
     TNVMeDevice(
         SerialNumber="NVME_3",
@@ -51,6 +55,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x200,
         Model="Test NVMe 1",
+        FirmwareRev="FW4242",
     ),
 ]
 
@@ -86,7 +91,9 @@ def create_local_nvme_config():
 
     return TLocalNVMeConfig(
         DevicesSourceUri=f"file://{devicesPath}",
-        StateCacheFilePath=cacheFilePath)
+        StateCacheFilePath=cacheFilePath,
+        UpdateCountersInterval=1000,    # 1s
+    )
 
 
 @pytest.fixture(name='nbs_socket')
@@ -111,7 +118,7 @@ def start_nbs_daemon(ydb, local_nvme_config, nbs_socket):
 
 
 @pytest.mark.parametrize("transport", ["http", "uds"])
-def test_list_nvme_devices(nbs, nbs_socket, transport):
+def test_list_nvme_devices(nbs, nbs_socket, local_nvme_config, transport):
 
     endpoint = f"localhost:{nbs.port}"
     if transport == "uds":
@@ -141,3 +148,21 @@ def test_list_nvme_devices(nbs, nbs_socket, transport):
         assert lhs.SerialNumber == rhs['SerialNumber']
         assert lhs.PCIAddress == rhs['PCIAddress']
         assert lhs.IOMMUGroup == rhs['IOMMUGroup']
+
+    time.sleep(local_nvme_config.UpdateCountersInterval / 1000)
+
+    counters = {}
+    for c in nbs.counters.find_all({'component': 'local_nvme'}):
+        sn = c['labels'].get('device')
+        if not sn:
+            continue
+        counters[sn] = c
+
+    assert len(counters) == len(LOCAL_NVME_DEVICES)
+
+    for sn, c in counters.items():
+        d = next((d for d in LOCAL_NVME_DEVICES if d.SerialNumber == sn), None)
+
+        assert d, sn
+        assert c['labels']['firmware'] == d.FirmwareRev
+        assert c['value'] == 1

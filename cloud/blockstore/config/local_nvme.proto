@@ -16,4 +16,7 @@ message TLocalNVMeConfig {
 
     // How often to poll the device provider while no NVMe devices are available (in milliseconds).
     optional uint32 UpdateDevicesInterval = 3;
+
+    // Update counters interval (in milliseconds).
+    optional uint32 UpdateCountersInterval = 4;
 }

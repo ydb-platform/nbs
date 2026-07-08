@@ -175,6 +175,10 @@ public:
 
             device.SetSerialNumber(ReadFile(nvme / "serial"));
             device.SetModel(ReadFile(nvme / "model"));
+
+            if (auto fwRev = nvme / "firmware_rev"; NFs::Exists(fwRev)) {
+                device.SetFirmwareRev(ReadFile(fwRev));
+            }
         }
 
         if (auto group = GetIOMMUGroup(pciDevicePath)) {

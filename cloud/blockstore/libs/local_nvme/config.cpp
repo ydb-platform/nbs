@@ -18,6 +18,7 @@ namespace {
     xxx(DevicesSourceUri,                TString,          ""                 )\
     xxx(StateCacheFilePath,              TString,          ""                 )\
     xxx(UpdateDevicesInterval,           TDuration,        1min               )\
+    xxx(UpdateCountersInterval,           TDuration,        15s               )\
 // BLOCKSTORE_LOCAL_NVME_CONFIG
 
 #define BLOCKSTORE_LOCAL_NVME_DECLARE_CONFIG(name, type, value)                \

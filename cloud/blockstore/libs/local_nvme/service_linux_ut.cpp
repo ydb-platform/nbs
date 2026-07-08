@@ -12,7 +12,9 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -247,6 +249,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
     TLocalNVMeConfigPtr Config;
     ILoggingServicePtr Logging;
+    IMonitoringServicePtr Monitoring;
     std::shared_ptr<TTestNVMeManager> NVMeManager;
     TExecutorPtr Executor;
     ITaskQueuePtr BackgroundThreadPool;
@@ -265,6 +268,9 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
             CreateLoggingService("console", {.FiltrationLevel = TLOG_DEBUG});
         Logging->Start();
 
+        Monitoring = CreateMonitoringServiceStub();
+        Monitoring->Start();
+
         NVMeManager = std::make_shared<TTestNVMeManager>();
 
         BackgroundThreadPool = CreateLongRunningTaskExecutor("BG");
@@ -279,6 +285,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
         Service->Stop();
         Executor->Stop();
         BackgroundThreadPool->Stop();
+        Monitoring->Stop();
         Logging->Stop();
 
         if (StateCacheFile) {
@@ -292,6 +299,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
         return CreateLocalNVMeService(
             Config,
             Logging,
+            Monitoring,
             std::move(deviceProvider),
             std::static_pointer_cast<INvmeManager>(NVMeManager),
             Executor,
@@ -311,6 +319,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
                 VendorId: 0x100
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
+                FirmwareRev: "FW4242"
             }
             Devices {
                 SerialNumber: "NVME_1"
@@ -319,6 +328,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
                 VendorId: 0x300
                 DeviceId: 0x400
                 Model: "Test NVMe 2"
+                FirmwareRev: "FW4243"
             }
             Devices {
                 SerialNumber: "NVME_2"
@@ -327,6 +337,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
                 VendorId: 0x100
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
+                FirmwareRev: "FW4242"
             }
             Devices {
                 SerialNumber: "NVME_3"
@@ -335,6 +346,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
                 VendorId: 0x100
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
+                FirmwareRev: "FW4242"
             }
         )",
             list);
@@ -361,7 +373,8 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
 
         NProto::TLocalNVMeConfig proto;
         proto.SetStateCacheFilePath(StateCacheFile);
-        proto.SetUpdateDevicesInterval(TDuration::Seconds(1).MilliSeconds());
+        proto.SetUpdateDevicesInterval(TDuration(1s).MilliSeconds());
+        proto.SetUpdateCountersInterval(TDuration(100ms).MilliSeconds());
 
         Config = std::make_shared<TLocalNVMeConfig>(proto);
     }
@@ -459,6 +472,18 @@ struct TFixture: public TFixtureBase
     {
         DeviceProvider->ListNVMeDevicesImpl.SetValue(
             [&] { return MakeFuture(CreateDeviceList()); });
+    }
+
+    void WaitCountersUpdate()
+    {
+        Executor
+            ->Execute(
+                [&]
+                {
+                    RunningCont()->SleepT(
+                        Config->GetUpdateCountersInterval() * 2);
+                })
+            .Wait();
     }
 };
 
@@ -1573,6 +1598,121 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(lastAttempt, attempts.load());
 
         Service->Stop();
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldUpdateNvmeFirmwareRevisionMetricWhenDiskFirmwareRevisionChanges,
+        TFixture)
+    {
+        SetProviderReady();
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        WaitCountersUpdate();
+
+        auto rootGroup =
+            Monitoring->GetCounters()->FindSubgroup("counters", "blockstore");
+        UNIT_ASSERT(rootGroup);
+
+        auto counters = rootGroup->FindSubgroup("component", "local_nvme");
+        UNIT_ASSERT(counters);
+
+        for (const auto& d: Devices) {
+            auto deviceGroup =
+                counters->FindSubgroup("device", d.GetSerialNumber());
+            UNIT_ASSERT(deviceGroup);
+            auto fwGroup =
+                deviceGroup->FindSubgroup("firmware", d.GetFirmwareRev());
+            UNIT_ASSERT(fwGroup);
+            auto revisionCounter = fwGroup->FindCounter("revision");
+            UNIT_ASSERT(revisionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, revisionCounter->Val());
+        }
+
+        auto& device = Devices[1];
+        const TString sn = device.GetSerialNumber();
+
+        {
+            auto future = Service->AcquireNVMeDevice(sn, EmptyIdempotenceId);
+
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const TString ctrlPath = "/dev/nvme1";
+        const TString oldFwRev = Devices[1].GetFirmwareRev();
+        const TString newFwRev = "new-fw";
+
+        // Simulate a firmware revision change while the NVMe device is detached
+        // from the nvme driver. The service should not observe this change yet
+        SysFs->AddrToDevice[Devices[1].GetPCIAddress()].SetFirmwareRev(
+            newFwRev);
+
+        WaitCountersUpdate();
+
+        // The firmware revision metric should remain unchanged while the device
+        // is acquired and detached from the nvme driver
+        {
+            auto deviceGroup = counters->FindSubgroup("device", sn);
+            UNIT_ASSERT(deviceGroup);
+
+            UNIT_ASSERT(!deviceGroup->FindSubgroup("firmware", newFwRev));
+
+            auto fwGroup = deviceGroup->FindSubgroup("firmware", oldFwRev);
+            UNIT_ASSERT(fwGroup);
+            auto revisionCounter = fwGroup->FindCounter("revision");
+            UNIT_ASSERT(revisionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, revisionCounter->Val());
+        }
+
+        // Release the NVMe device back to the nvme driver so the service can
+        // observe the updated firmware revision
+        {
+            auto future = Service->ReleaseNVMeDevice(sn, EmptyIdempotenceId);
+
+            NVMeManager->WaitSanitizeRequested();
+            NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
+
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        WaitCountersUpdate();
+
+        // After the device is released, the metric should expose the new
+        // firmware revision while keeping the old revision series present
+        {
+            auto deviceGroup = counters->FindSubgroup("device", sn);
+            UNIT_ASSERT(deviceGroup);
+
+            auto newFwGroup = deviceGroup->FindSubgroup("firmware", newFwRev);
+            {
+                UNIT_ASSERT(newFwGroup);
+                auto revisionCounter = newFwGroup->FindCounter("revision");
+                UNIT_ASSERT(revisionCounter);
+                UNIT_ASSERT_VALUES_EQUAL(1, revisionCounter->Val());
+            }
+
+            auto oldFwGroup = deviceGroup->FindSubgroup("firmware", oldFwRev);
+            {
+                UNIT_ASSERT(oldFwGroup);
+                auto revisionCounter = oldFwGroup->FindCounter("revision");
+                UNIT_ASSERT(revisionCounter);
+                UNIT_ASSERT_VALUES_EQUAL(1, revisionCounter->Val());
+            }
+        }
     }
 
     Y_UNIT_TEST_F(ShouldGetDevicesFromInfra, TFixtureInfra)

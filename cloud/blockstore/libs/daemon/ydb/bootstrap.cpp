@@ -815,6 +815,7 @@ void TBootstrapYdb::InitKikimrService()
         LocalNVMeService = CreateLocalNVMeService(
             Configs->LocalNVMeConfig,
             logging,
+            Monitoring,
             LocalNVMeDeviceProvider,
             NvmeManager,
             Executor,
