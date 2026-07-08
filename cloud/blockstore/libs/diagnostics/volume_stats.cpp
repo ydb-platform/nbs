@@ -265,6 +265,11 @@ private:
     TDynamicCounters::TCounterPtr AvailableSecondsCounter;
     TDynamicCounters::TCounterPtr HealthySecondsCounter;
 
+    // Wall-clock time up to which the availability counters have been credited
+    // for this instance. Seeded at construction (mount time) so that time
+    // before the volume was served is never counted.
+    TInstant AvailabilityLastUpdateTime;
+
     TInstant LastRemountTime;
 
     // Number of pins on the object.
@@ -301,6 +306,7 @@ public:
               GetRequestCountersOptions(*VolumeBase),
               histogramCounterOptions,
               executionTimeSizeClasses))
+        , AvailabilityLastUpdateTime(VolumeBase->Timer->Now())
     {}
 
     bool IsPinned() const noexcept
@@ -553,11 +559,6 @@ private:
     >;
     TDownDisksCounters DownDisksCounters;
     TDynamicCounters::TCounterPtr TotalDownDisksCounter;
-
-    // Wall-clock time of the last finished update interval, used to measure the
-    // real elapsed duration for the cumulative availability counters. Accessed
-    // only from UpdateStats (single periodic updater).
-    TInstant LastUpdateStatsTime;
 
 public:
     TVolumeStats(
@@ -897,17 +898,11 @@ public:
         ui32 totalDownDisks = 0;
         std::array<ui32, NProto::EStorageMediaKind_ARRAYSIZE> downDisksCounters{};
 
-        // Real duration of the finished update interval, used to advance the
-        // cumulative availability counters. Zero on the very first interval
-        // (no prior timestamp), which is fine for RATE metrics.
-        ui64 intervalSeconds = 0;
-        if (updateIntervalFinished) {
-            const auto now = Timer->Now();
-            if (LastUpdateStatsTime != TInstant::Zero()) {
-                intervalSeconds = (now - LastUpdateStatsTime).Seconds();
-            }
-            LastUpdateStatsTime = now;
-        }
+        // Wall-clock time of this stats tick. The cumulative availability
+        // counters advance on every tick (not only on the publish tick) by the
+        // real per-volume elapsed time, so state changes are sampled at tick
+        // resolution and newly mounted volumes are not over-credited.
+        const auto now = Timer->Now();
 
         for (auto& [logicalDiskId, holder]: Volumes) {
             TVolumeInfoBase& volumeBase = *holder.VolumeBase;
@@ -924,7 +919,7 @@ public:
 
             if (updateIntervalFinished) {
                 volumeBase.DowntimeHistory.PushBack(
-                    Timer->Now(),
+                    now,
                     hasDowntime
                     ? EDowntimeStateChange::DOWN
                     : EDowntimeStateChange::UP);
@@ -942,18 +937,31 @@ public:
                     if (instance->HasDowntimeCounter) {
                         *instance->HasDowntimeCounter = hasDowntime;
                     }
+                }
 
-                    if (intervalSeconds) {
-                        if (instance->ObservedSecondsCounter) {
-                            *instance->ObservedSecondsCounter += intervalSeconds;
-                        }
+                // Advance the cumulative availability counters by the real time
+                // this instance has been served since the last accounted tick.
+                // Sampling every tick (not only on the publish tick) tracks the
+                // downtime/suffering signal at tick resolution; the per-instance
+                // timestamp (seeded at mount) avoids crediting time before the
+                // volume was served; advancing the timestamp only by the whole
+                // seconds credited keeps the sub-second remainder and avoids
+                // drift.
+                if (instance->ObservedSecondsCounter &&
+                    now > instance->AvailabilityLastUpdateTime)
+                {
+                    const ui64 seconds =
+                        (now - instance->AvailabilityLastUpdateTime).Seconds();
+                    if (seconds) {
+                        *instance->ObservedSecondsCounter += seconds;
                         if (isAvailable && instance->AvailableSecondsCounter) {
-                            *instance->AvailableSecondsCounter +=
-                                intervalSeconds;
+                            *instance->AvailableSecondsCounter += seconds;
                         }
                         if (isHealthy && instance->HealthySecondsCounter) {
-                            *instance->HealthySecondsCounter += intervalSeconds;
+                            *instance->HealthySecondsCounter += seconds;
                         }
+                        instance->AvailabilityLastUpdateTime +=
+                            TDuration::Seconds(seconds);
                     }
                 }
             }

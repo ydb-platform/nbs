@@ -1229,37 +1229,76 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto available = volumeCounters->GetCounter("AvailableSeconds");
         auto healthy = volumeCounters->GetCounter("HealthySeconds");
 
-        // The first finished interval has no prior timestamp, so nothing is
-        // accumulated.
-        timer->AdvanceTime(TDuration::Seconds(15));
-        volumeStats->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(0, observed->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, available->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, healthy->Val());
-
-        // A healthy, served volume advances all three counters by the elapsed
-        // interval.
+        // A healthy, served volume advances all three counters by the real time
+        // elapsed since it was mounted (seeded at mount time).
         timer->AdvanceTime(TDuration::Seconds(15));
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
         UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
         UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
 
-        // updateIntervalFinished == false must not advance the counters and
-        // must not shift the interval baseline.
-        timer->AdvanceTime(TDuration::Seconds(15));
+        // Accumulation happens on every tick, not only on the publish tick, so
+        // updateIntervalFinished == false must still advance the counters.
+        timer->AdvanceTime(TDuration::Seconds(1));
         volumeStats->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
-        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
-        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, healthy->Val());
 
-        // The next finished interval accounts for the whole time elapsed since
-        // the previous finished interval (30s), including the skipped tick.
-        timer->AdvanceTime(TDuration::Seconds(15));
+        // A tick with no elapsed time credits nothing.
         volumeStats->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(45, observed->Val());
-        UNIT_ASSERT_VALUES_EQUAL(45, available->Val());
-        UNIT_ASSERT_VALUES_EQUAL(45, healthy->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, healthy->Val());
+
+        timer->AdvanceTime(TDuration::Seconds(14));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, healthy->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCreditAvailabilityFromMountTime)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(volumeStats, "test1", "client1", "instance1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        // The service has already ticked for a while on the first volume.
+        timer->AdvanceTime(TDuration::Seconds(10));
+        volumeStats->UpdateStats(true);
+
+        // A second volume is mounted mid-interval, well after the previous tick.
+        Mount(volumeStats, "test2", "client2", "instance2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto observed2 = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test2")
+            ->GetSubgroup("instance", "instance2")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetCounter("ObservedSeconds");
+
+        // Five seconds later the new volume must be credited only for the 5s it
+        // was actually served, not for the whole tick interval.
+        timer->AdvanceTime(TDuration::Seconds(5));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(5, observed2->Val());
     }
 
     Y_UNIT_TEST(ShouldNotAdvanceAvailableSecondsDuringDowntime)
@@ -1298,11 +1337,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto available = volumeCounters->GetCounter("AvailableSeconds");
         auto healthy = volumeCounters->GetCounter("HealthySeconds");
 
-        // Baseline.
-        timer->AdvanceTime(TDuration::Seconds(15));
-        volumeStats->UpdateStats(true);
-
-        // Healthy interval: everything advances.
+        // One healthy interval: everything advances.
         timer->AdvanceTime(TDuration::Seconds(15));
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
@@ -1374,11 +1409,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto available = volumeCounters->GetCounter("AvailableSeconds");
         auto healthy = volumeCounters->GetCounter("HealthySeconds");
 
-        // Baseline.
-        timer->AdvanceTime(TDuration::Seconds(15));
-        volumeStats->UpdateStats(true);
-
-        // Healthy interval: everything advances.
+        // One healthy interval: everything advances.
         timer->AdvanceTime(TDuration::Seconds(15));
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
@@ -1416,7 +1447,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
     }
 
-    Y_UNIT_TEST(ShouldNotAdvanceAvailabilityCountersForUnservedVolume)
+    Y_UNIT_TEST(ShouldStopAccruingAvailabilityAfterVolumeTrimmed)
     {
         auto timer = std::make_shared<TTestTimer>();
         const auto config =
@@ -1424,10 +1455,15 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto monitoring = CreateMonitoringServiceStub();
 
+        // Finite inactivity timeout so that TrimVolumes() actually removes the
+        // instance. NOTE: UnmountVolume() is intentionally a no-op for this
+        // class (an instance may back several endpoints / live migration), so a
+        // volume keeps accruing during the grace period until it is trimmed —
+        // this mirrors the existing HasDowntime/RequestCounters behaviour.
         auto volumeStats = CreateVolumeStats(
             monitoring,
             config,
-            TDuration::Max(),
+            TDuration::Seconds(10),
             EVolumeStatsType::EServerStats,
             timer);
 
@@ -1449,16 +1485,19 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto observed = volumeCounters->GetCounter("ObservedSeconds");
 
-        // Baseline + one accounted interval while served.
-        timer->AdvanceTime(TDuration::Seconds(15));
-        volumeStats->UpdateStats(true);
+        // One accounted interval while served.
         timer->AdvanceTime(TDuration::Seconds(15));
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
 
-        // Once unmounted the volume is no longer iterated, so the counter must
-        // stop advancing.
+        // Unmount is a no-op; the instance is only removed by TrimVolumes once
+        // it has been inactive longer than the timeout (now - LastRemountTime
+        // = 15s > 10s).
         volumeStats->UnmountVolume("test1", "client1");
+        volumeStats->TrimVolumes();
+
+        // After the instance is trimmed it is no longer iterated, so the
+        // counter must stop advancing.
         timer->AdvanceTime(TDuration::Seconds(15));
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
