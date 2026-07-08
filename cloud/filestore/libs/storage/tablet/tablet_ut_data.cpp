@@ -9071,7 +9071,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetExternalReadDataPayload(true);
         storageConfig.SetExternalWriteDataPayload(true);
 
-        TTestEnv env({} /* config */, std::move(storageConfig));
+        TTestEnv env({} /* config */, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -9081,7 +9081,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             nodeIdx,
             tabletId,
             tabletConfig,
-            true,
+            true /*updateConfig*/,
             storageConfig);
         tablet.InitSession("client", "session");
 

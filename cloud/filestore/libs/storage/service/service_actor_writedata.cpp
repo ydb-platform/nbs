@@ -83,38 +83,40 @@ ui64 CopyBufferFromRope(
  *
  * If the request payload is represented by iovecs, this function copies the
  * required data slice from the iovecs into the request buffer, or into the
- * request payload when @p externalPayload is set. The iovecs are then cleared
- * from the request.
+ * request payload when @p useExternalPayload is set. The iovecs are then
+ * cleared from the request.
  *
  * @param request The write request containing iovecs used as the data source.
- * @param externalPayload If true, stores the copied data as an external payload;
- *                        otherwise, stores it in the request buffer.
+ * @param useExternalPayload If true, stores the copied data as an external
+ * payload; otherwise, stores it in the request buffer.
  */
-void PrepareWriteDataRequestPayload(auto* msg, bool externalPayload)
+void PrepareWriteDataRequestPayload(
+    TEvService::TEvWriteDataRequest& request,
+    bool useExternalPayload)
 {
-    auto& request = msg->Record;
-    if (request.GetIovecs().empty()) {
-        if (externalPayload) {
-            auto& buffer = *request.MutableBuffer();
-            msg->AddPayload(TRope(std::move(buffer)));
+    auto& record = request.Record;
+    if (record.GetIovecs().empty()) {
+        if (useExternalPayload) {
+            auto& buffer = *record.MutableBuffer();
+            request.AddPayload(TRope(std::move(buffer)));
             buffer.clear();
         }
         return;
     }
 
-    auto rope = CreateRope(request.GetIovecs());
+    auto rope = CreateRope(record.GetIovecs());
     TString buffer;
     const auto bytesToCopy = NFileStore::CalculateByteCount(request);
     buffer.ReserveAndResize(bytesToCopy);
     auto bytesCopied =
         TRopeUtils::SafeMemcpy(buffer.begin(), rope.Begin(), bytesToCopy);
-    request.MutableIovecs()->Clear();
+    record.MutableIovecs()->Clear();
     Y_ABORT_UNLESS(bytesCopied == bytesToCopy);
 
-    if (externalPayload) {
-        msg->AddPayload(TRope(std::move(buffer)));
+    if (useExternalPayload) {
+        request.AddPayload(TRope(std::move(buffer)));
     } else {
-        request.SetBuffer(std::move(buffer));
+        record.SetBuffer(std::move(buffer));
     }
 }
 
@@ -873,7 +875,7 @@ private:
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
-        PrepareWriteDataRequestPayload(request.get(), ExternalWriteDataPayload);
+        PrepareWriteDataRequestPayload(*request, ExternalWriteDataPayload);
         if (isFallback) {
             request->Record.MutableHeaders()->SetThrottlingDisabled(true);
         }
