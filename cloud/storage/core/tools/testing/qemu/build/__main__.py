@@ -290,8 +290,7 @@ def checkout(args):
     if not os.path.exists(args.src):
         os.mkdir(args.src)
     else:
-        return
-    #    raise RuntimeError("src path already exists {}".format(args.src))
+        raise RuntimeError("src path already exists {}".format(args.src))
 
     run(['git', 'clone', '--recursive', args.git, args.src])
     if args.git_tag is not None:
