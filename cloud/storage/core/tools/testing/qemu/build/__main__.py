@@ -293,7 +293,7 @@ def run(args, **kwargs):
 
 
 def install_deps(args):
-    run(['sudo', 'apt', 'install', '--no-install-recommends', '-y'] + QEMU_DEPS)
+    run(['sudo', 'apt-get', 'install', '--no-install-recommends', '-y'] + QEMU_DEPS)
 
 
 def preprocess(args):
