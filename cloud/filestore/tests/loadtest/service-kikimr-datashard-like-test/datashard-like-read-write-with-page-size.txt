@@ -24,7 +24,6 @@ Tests {
             SharedMemoryFilePath: "shm-loadtest.bin"
             SharedMemorySizeBytes: 33554432
             SharedMemoryPageSize: 4096
-            AllowOverlappingSharedMemoryPages: true
         }
         IODepth: 4
         TestDuration: 30

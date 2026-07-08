@@ -107,7 +107,7 @@ private:
 
     bool ScrubbingScheduled = false;
     ui64 ScrubbingRangeId = 0;
-    TChecksumRangeActorCompanion ChecksumRangeActorCompanion;
+    std::unique_ptr<TChecksumRangeActorCompanion> ChecksumRangeActorCompanion;
     bool WriteIntersectsWithScrubbing = false;
     ui64 ScrubbingThroughput = 0;
     TInstant ScrubbingRangeStarted;

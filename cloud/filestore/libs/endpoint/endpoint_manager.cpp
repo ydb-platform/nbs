@@ -103,6 +103,7 @@ private:
     const ui32 SocketAccessMode;
 
     TExecutorPtr Executor = TExecutor::Create("SVC");
+    bool Started = false;
     TLog Log;
 
     // Fields may only be accessed from the Executor thread
@@ -131,6 +132,7 @@ public:
     void Start() override
     {
         Executor->Start();
+        Started = true;
     }
 
     void Stop() override
@@ -140,7 +142,11 @@ public:
 
     void Drain() override
     {
-        Executor->Execute([this]() { return DoDrain(); }).GetValueSync();
+        if (Started) {
+            Executor->Execute([this]() {
+                return DoDrain();
+            }).GetValueSync();
+        }
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -149,6 +155,7 @@ public:                                                                        \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
+        Y_ABORT_UNLESS(Started);                                               \
         Y_UNUSED(callContext);                                                 \
         return Executor->Execute([this, request = std::move(request)] {        \
             return Do##name(*request);                                         \

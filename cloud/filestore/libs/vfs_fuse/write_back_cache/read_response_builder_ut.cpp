@@ -86,7 +86,7 @@ public:
         }
 
         TReadResponseBuilder builder(*request);
-        builder.AugmentResponseWithCachedData(response, State);
+        builder.AugmentResponseWithCachedData(response, State, /* pin = */ {});
 
         return result.substr(0, response.GetLength());
     }

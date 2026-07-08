@@ -179,7 +179,8 @@ void TWriteBackCacheState::TriggerPeriodicFlushAll()
 TCachedData TWriteBackCacheState::GetCachedData(
     ui64 nodeId,
     ui64 offset,
-    ui64 byteCount) const
+    ui64 byteCount,
+    TNodeCachedDataPin pin) const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
@@ -188,7 +189,10 @@ TCachedData TWriteBackCacheState::GetCachedData(
         return {};
     }
 
-    return nodeState->Cache.GetCachedData(offset, byteCount);
+    return nodeState->Cache.GetCachedData(
+        offset,
+        byteCount,
+        pin.MaxEvictableSequenceId);
 }
 
 ui64 TWriteBackCacheState::GetMaxWrittenOffset(ui64 nodeId) const
@@ -215,7 +219,7 @@ void TWriteBackCacheState::ResetMaxWrittenOffset(ui64 nodeId)
     nodeState.Cache.ResetMaxWrittenOffset();
 }
 
-TWriteBackCacheState::TPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
+TNodeCachedDataPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
@@ -231,21 +235,21 @@ TWriteBackCacheState::TPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
 
     nodeState.CachedDataPins.insert(allowedToEvictMaxSequenceId);
 
-    return allowedToEvictMaxSequenceId;
+    return {.MaxEvictableSequenceId = allowedToEvictMaxSequenceId};
 }
 
-void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
+void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TNodeCachedDataPin pin)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted= */ false);
     Y_ABORT_UNLESS(nodeState, "Node %lu not found", nodeId);
 
-    auto it = nodeState->CachedDataPins.find(pinId);
+    auto it = nodeState->CachedDataPins.find(pin.MaxEvictableSequenceId);
     Y_ABORT_UNLESS(
         it != nodeState->CachedDataPins.end(),
         "Pin %lu not found for node %lu",
-        pinId,
+        pin.MaxEvictableSequenceId,
         nodeId);
 
     nodeState->CachedDataPins.erase(it);
@@ -253,14 +257,14 @@ void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
     EvictUnpinnedFlushedEntries(nodeId, *nodeState);
 }
 
-TWriteBackCacheState::TPin TWriteBackCacheState::PinNodeStates()
+TNodeStatePin TWriteBackCacheState::PinNodeStates()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
     return Nodes.Pin();
 }
 
-void TWriteBackCacheState::UnpinNodeStates(TPin pinId)
+void TWriteBackCacheState::UnpinNodeStates(TNodeStatePin pinId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 

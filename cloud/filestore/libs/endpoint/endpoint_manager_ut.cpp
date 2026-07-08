@@ -763,6 +763,26 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, endpoint->SuspendCalls.load());
     }
+
+    Y_UNIT_TEST(DrainShouldBeNoOpIfNotStarted)
+    {
+        const TString dirPath = "./" + CreateGuidAsString();
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        TTempDir endpointDir(dirPath);
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->CreateEndpointHandler =
+            [&] (const NProto::TEndpointConfig&) {
+                return nullptr;
+            };
+
+        auto service = CreateEndpointManager(
+            CreateLoggingService("console"),
+            endpointStorage,
+            listener,
+            MODE0660);
+
+        service->Drain();
+    }
 }
 
 }   // namespace NCloud::NFileStore::NServer

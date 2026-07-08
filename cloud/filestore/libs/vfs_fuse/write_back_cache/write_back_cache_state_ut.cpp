@@ -135,12 +135,20 @@ struct TBootstrap
 
     TString VisitCachedData(ui64 nodeId) const
     {
-        return VisitCachedData(nodeId, 0, Max<ui64>());
+        return VisitCachedData(nodeId, 0, Max<ui64>(), {});
     }
 
-    TString VisitCachedData(ui64 nodeId, ui64 offset, ui64 byteCount) const
+    TString VisitCachedData(
+        ui64 nodeId,
+        ui64 offset,
+        ui64 byteCount,
+        ui64 maxEvictableSequenceId = 0) const
     {
-        auto cachedData = State->GetCachedData(nodeId, offset, byteCount);
+        auto pin = TNodeCachedDataPin{
+            .MaxEvictableSequenceId = maxEvictableSequenceId};
+
+        auto cachedData =
+            State->GetCachedData(nodeId, offset, byteCount, pin);
 
         TStringBuilder out;
         for (const auto& part: cachedData.Parts) {
@@ -237,7 +245,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         // pin0 references to SequenceId = 0
         auto pin0 = b.State->PinCachedData(1);
-        UNIT_ASSERT_VALUES_EQUAL(0, pin0);
+        UNIT_ASSERT_VALUES_EQUAL(0, pin0.MaxEvictableSequenceId);
 
         UNIT_ASSERT(b.Add(1, 101, 0, "0").GetValue());  // SequenceId = 1
         b.State->AddFlushRequest(1);    // SequenceId = 2
@@ -247,14 +255,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         // pin1, pin2 reference to the same SequenceId = 1
         auto pin1 = b.State->PinCachedData(1);
         auto pin2 = b.State->PinCachedData(1);
-        UNIT_ASSERT_VALUES_EQUAL(1, pin1);
-        UNIT_ASSERT_VALUES_EQUAL(1, pin2);
+        UNIT_ASSERT_VALUES_EQUAL(1, pin1.MaxEvictableSequenceId);
+        UNIT_ASSERT_VALUES_EQUAL(1, pin2.MaxEvictableSequenceId);
 
         // pin3 references to the same SequenceId = 1 because no requests were
         // flushed
         UNIT_ASSERT(b.Add(1, 101, 1, "a").GetValue());  // SequenceId = 3
         auto pin3 = b.State->PinCachedData(1);
-        UNIT_ASSERT_VALUES_EQUAL(1, pin3);
+        UNIT_ASSERT_VALUES_EQUAL(1, pin3.MaxEvictableSequenceId);
 
         // Evict data pinned by pin0
         UNIT_ASSERT_VALUES_EQUAL("0:0, 1:a", b.VisitCachedData(1));
@@ -271,7 +279,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         // pin4 references to SequenceId = 4
         auto pin4 = b.State->PinCachedData(1);
-        UNIT_ASSERT_VALUES_EQUAL(4, pin4);
+        UNIT_ASSERT_VALUES_EQUAL(4, pin4.MaxEvictableSequenceId);
         UNIT_ASSERT(b.Add(1, 104, 4, "d").GetValue());  // SequenceId = 6
 
         b.State->UnpinCachedData(1, pin2);
@@ -1352,6 +1360,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(f3.GetValue());
         UNIT_ASSERT(f4.GetValue());
+    }
+
+    Y_UNIT_TEST(ShouldHandlePinId)
+    {
+        TBootstrap b;
+
+        UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 2, "def").GetValue());
+
+        UNIT_ASSERT_VALUES_EQUAL("1:a, 2:def", b.VisitCachedData(1, 1, 4, 0));
+        UNIT_ASSERT_VALUES_EQUAL("2:def", b.VisitCachedData(1, 1, 4, 1));
+        UNIT_ASSERT_VALUES_EQUAL("", b.VisitCachedData(1, 1, 4, 2));
     }
 }
 

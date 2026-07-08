@@ -81,7 +81,7 @@ void TNodeStateHolder::DeleteNodeState(ui64 nodeId)
     Stats->IncrementDeletedNodeCount();
 }
 
-ui64 TNodeStateHolder::Pin()
+TNodeStatePin TNodeStateHolder::Pin()
 {
     const ui64 pinId = ++SequenceId;
     Pins[pinId] = Timer->Now();
@@ -89,7 +89,7 @@ ui64 TNodeStateHolder::Pin()
     return pinId;
 }
 
-void TNodeStateHolder::Unpin(ui64 pinId)
+void TNodeStateHolder::Unpin(TNodeStatePin pinId)
 {
     auto pinIt = Pins.find(pinId);
     Y_ABORT_UNLESS(pinIt != Pins.end(), "Pin %lu is not found", pinId);

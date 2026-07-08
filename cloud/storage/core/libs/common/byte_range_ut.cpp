@@ -95,6 +95,25 @@ Y_UNIT_TEST_SUITE(TByteRangeTest)
 
         UNIT_ASSERT(!range.Overlaps({0, 0, 4_KB}));
     }
+
+    Y_UNIT_TEST(MaxRange)
+    {
+        TByteRange range = TByteRange::MaxEnd(0, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(range.Offset, 0);
+        UNIT_ASSERT_VALUES_EQUAL(range.End(), Max<ui64>());
+
+        UNIT_ASSERT(range.Overlaps({0, 100, 4_KB}));
+        UNIT_ASSERT(range.Overlaps({Max<ui64>() - 100, 100, 4_KB}));
+        UNIT_ASSERT(!range.Overlaps({100, 0, 4_KB}));
+
+        range = TByteRange::MaxEnd(16_KB, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(range.Offset, 16_KB);
+        UNIT_ASSERT_VALUES_EQUAL(range.End(), Max<ui64>());
+
+        UNIT_ASSERT(!range.Overlaps({0, 16_KB, 4_KB}));
+        UNIT_ASSERT(range.Overlaps({0, 16_KB + 1, 4_KB}));
+        UNIT_ASSERT(range.Overlaps({Max<ui64>() - 100, 100, 4_KB}));
+    }
 }
 
 }   // namespace NCloud
