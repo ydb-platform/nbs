@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -44,7 +43,7 @@ func newRequestMetrics(registry common_metrics.Registry) *requestMetrics {
 	return &requestMetrics{
 		registry:    registry,
 		errors:      registry.Counter("errors"),
-		requestTime: registry.DurationHistogram("requestTime", requestDurationBuckets()),
+		requestTime: registry.DurationHistogram("time", requestDurationBuckets()),
 		responses:   make(map[int]common_metrics.Counter),
 	}
 }
@@ -64,12 +63,13 @@ func (m *requestMetrics) getOrNewResponseCounter(statusCode int) common_metrics.
 	return c
 }
 
-func (m *requestMetrics) stat() func(**http.Response, *error) {
+func (m *requestMetrics) onHttpStatus(statusCode int) {
+	m.getOrNewResponseCounter(statusCode).Inc()
+}
+
+func (m *requestMetrics) stat() func(*error) {
 	start := time.Now()
-	return func(resp **http.Response, err *error) {
-		if *resp != nil {
-			m.getOrNewResponseCounter((*resp).StatusCode).Inc()
-		}
+	return func(err *error) {
 		if *err != nil {
 			m.errors.Inc()
 		} else {
@@ -81,8 +81,9 @@ func (m *requestMetrics) stat() func(**http.Response, *error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type urlMetricsImpl struct {
-	get         *requestMetrics
-	head        *requestMetrics
+	registry    common_metrics.Registry
+	requests    map[string]*requestMetrics
+	requestsMu  sync.Mutex
 	requestSize common_metrics.Histogram
 	cacheHits   common_metrics.Counter
 }
@@ -92,20 +93,34 @@ func newMetricsImpl(registry common_metrics.Registry) *urlMetricsImpl {
 		"component": "url_source",
 	})
 	return &urlMetricsImpl{
-		get:         newRequestMetrics(subRegistry.WithTags(map[string]string{"method": "get"})),
-		head:        newRequestMetrics(subRegistry.WithTags(map[string]string{"method": "head"})),
+		registry:    subRegistry,
+		requests:    make(map[string]*requestMetrics),
 		requestSize: subRegistry.Histogram("requestSize", requestSizeBuckets()),
 		cacheHits:   subRegistry.Counter("cacheHits"),
 	}
 }
 
-func (m *urlMetricsImpl) StatRequest(method string) func(**http.Response, *error) {
-	switch method {
-	case "get":
-		return m.get.stat()
-	default:
-		return m.head.stat()
+func (m *urlMetricsImpl) requestMetrics(request string) *requestMetrics {
+	m.requestsMu.Lock()
+	defer m.requestsMu.Unlock()
+
+	requestMetrics, ok := m.requests[request]
+	if !ok {
+		requestMetrics = newRequestMetrics(m.registry.WithTags(map[string]string{
+			"method": request,
+		}))
+		m.requests[request] = requestMetrics
 	}
+
+	return requestMetrics
+}
+
+func (m *urlMetricsImpl) StatRequest(request string) func(*error) {
+	return m.requestMetrics(request).stat()
+}
+
+func (m *urlMetricsImpl) OnHttpStatus(request string, status int) {
+	m.requestMetrics(request).onHttpStatus(status)
 }
 
 func (m *urlMetricsImpl) OnRequestSize(size uint64) {

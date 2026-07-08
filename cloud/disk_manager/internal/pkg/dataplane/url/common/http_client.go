@@ -190,8 +190,6 @@ func (c *httpClient) head(
 	ctx context.Context,
 ) (resp *http.Response, err error) {
 
-	defer c.metrics.StatRequest("head")(&resp, &err)
-
 	logging.Debug(
 		ctx,
 		"Sending http get header request to %q",
@@ -199,6 +197,9 @@ func (c *httpClient) head(
 	)
 
 	resp, err = c.client.Head(c.url)
+	if resp != nil {
+		c.metrics.OnHttpStatus("head", resp.StatusCode)
+	}
 	if err != nil {
 		// NBS-3324: should it be retriable?
 		return nil, errors.NewRetriableError(err)
@@ -223,9 +224,6 @@ func (c *httpClient) body(
 	start, end uint64, // Half-open interval [start:end).
 	etag string,
 ) (_ io.ReadCloser, err error) {
-
-	var resp *http.Response
-	defer c.metrics.StatRequest("get")(&resp, &err)
 
 	req, err := http.NewRequest(http.MethodGet, c.url, nil)
 	if err != nil {
@@ -255,7 +253,10 @@ func (c *httpClient) body(
 	)
 
 	// TODO: try to use http2 streams NBS-3253.
-	resp, err = c.client.Do(req)
+	resp, err := c.client.Do(req)
+	if resp != nil {
+		c.metrics.OnHttpStatus("get", resp.StatusCode)
+	}
 	if err != nil {
 		return nil, errors.NewRetriableErrorf(
 			"range [%v:%v]: %v",

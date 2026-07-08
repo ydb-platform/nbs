@@ -621,14 +621,14 @@ func testCreateQCOW2ImageFromURL(t *testing.T) {
 		t, "responses", map[string]string{
 			"component": "url_source",
 			"method":    "get",
-			"status":    "200",
+			"status":    "206",
 		},
 	)[0], float64(0))
 	require.Greater(t, testcommon.GetCountersDataplane(
 		t, "responses", map[string]string{
 			"component": "url_source",
 			"method":    "head",
-			"status":    "200",
+			"status":    "206",
 		},
 	)[0], float64(0))
 }

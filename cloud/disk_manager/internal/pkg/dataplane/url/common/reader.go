@@ -56,7 +56,7 @@ func NewURLReader(
 	httpClientMaxRetries uint32,
 	url string,
 	metrics url_metrics.Metrics,
-) (Reader, error) {
+) (_ Reader, err error) {
 
 	parsed, err := net_url.Parse(url)
 	if err != nil {
@@ -79,6 +79,8 @@ func NewURLReader(
 		url,
 		metrics,
 	)
+
+	defer metrics.StatRequest("head")(&err)
 
 	resp, err := httpClient.Head(ctx)
 	if err != nil {
@@ -142,7 +144,9 @@ func (r *urlReader) read(
 	ctx context.Context,
 	start uint64,
 	data []byte,
-) error {
+) (err error) {
+
+	defer r.metrics.StatRequest("get")(&err)
 
 	end := start + uint64(len(data))
 	if end > r.size {
@@ -160,7 +164,7 @@ func (r *urlReader) read(
 		data = data[:r.size-start]
 	}
 
-	err := r.validateRange(start, end)
+	err = r.validateRange(start, end)
 	if err != nil {
 		return err
 	}
