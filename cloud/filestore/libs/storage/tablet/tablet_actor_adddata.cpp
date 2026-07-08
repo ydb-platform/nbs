@@ -337,9 +337,9 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateBlobIds");
     }
 
-    // TODO (#5468) consider take into account isOverloaded
     const bool canUseUnconfirmed =
-        msg->Record.GetUnconfirmedFlowRequested() && CanUseUnconfirmedData();
+        msg->Record.GetUnconfirmedFlowRequested() && CanUseUnconfirmedData() &&
+        !IsTabletConsideredOverloaded();
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
     {

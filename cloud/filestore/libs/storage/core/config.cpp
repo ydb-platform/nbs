@@ -326,6 +326,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(CpuLackOverloadThreshold,               ui32,      101                )\
     xxx(TabletActorCpuUsageOverloadThreshold,   ui32,      101                )\
+    xxx(AllowTabletOverload,                    bool,      false              )\
                                                                                \
     xxx(MaxTabletStep,                     ui32,      Max<ui32>()             )\
                                                                                \

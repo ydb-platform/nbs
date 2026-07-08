@@ -391,6 +391,7 @@ public:
 
     ui32 GetCpuLackOverloadThreshold() const;
     ui32 GetTabletActorCpuUsageOverloadThreshold() const;
+    [[nodiscard]] bool GetAllowTabletOverload() const;
 
     ui32 GetMaxTabletStep() const;
 

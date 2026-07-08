@@ -577,6 +577,15 @@ bool TIndexTabletActor::CanUseUnconfirmedData() const
     return true;
 }
 
+bool TIndexTabletActor::IsTabletConsideredOverloaded() const
+{
+    if (Config->GetAllowTabletOverload()) {
+        return false;
+    }
+
+    return IsTabletOverloaded(*Config, *SystemCounters, Metrics.CPUUsageRate);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ui32 TIndexTabletActor::ScaleCompactionThreshold(ui32 t) const
