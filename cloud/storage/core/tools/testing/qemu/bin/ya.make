@@ -9,6 +9,7 @@ IF(ARCH_X86_64)
         OUT_NOAUTO qemu-bin.tar.gz
     )
 ELSEIF (ARCH_ARM64)
+    # cloud/storage/core/tools/testing/qemu/build/__main__.py --co --git-tag v11.0.2 --git https://github.com/qemu/qemu --deps
     FROM_SANDBOX(
         FILE
         14444444444
