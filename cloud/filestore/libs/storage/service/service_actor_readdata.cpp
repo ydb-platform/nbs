@@ -957,6 +957,9 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
             zeroInterval.End - zeroInterval.Start);
     }
 
+    // The actual file size may already be bigger than the returned one (see
+    // TDescribeDataResponse::FileSize), it can only be used to clamp the read
+    // range.
     const auto end = Min(DescribeResponse.GetFileSize(), OriginByteRange.End());
     if (end <= OriginByteRange.Offset) {
         BlockBuffer->clear();

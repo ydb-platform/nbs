@@ -12,6 +12,10 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TNodeStatePin = ui64;
+
+////////////////////////////////////////////////////////////////////////////////
+
 // TNodeStateHolder owns in-memory node state objects and supports a simple
 // "logical delete" mechanism combined with pinning.
 // Not thread-safe: the caller is responsible for synchronization.
@@ -70,8 +74,8 @@ public:
     // than DeletionSequenceId.
     void DeleteNodeState(ui64 nodeId);
 
-    [[nodiscard]] ui64 Pin();
-    void Unpin(ui64 pinId);
+    [[nodiscard]] TNodeStatePin Pin();
+    void Unpin(TNodeStatePin pinId);
 
     void UpdateStats() const;
 };

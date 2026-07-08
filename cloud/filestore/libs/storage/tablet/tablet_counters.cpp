@@ -200,6 +200,12 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(
         ReadAheadCacheNodeCount,
         EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        ReadNodeCacheBypassCount,
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        ReadAheadCacheBypassCount,
+        EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM(
         InMemoryIndexStateROCacheHitCount,

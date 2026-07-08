@@ -178,6 +178,44 @@ private:
         UpdateNodeAttrs(db, args);
     }
 
+    TByteRange CalculateCacheBypassRange(
+        const TTxIndexTablet::TAddBlob& args) const
+    {
+        const ui32 blockSize = Tablet.GetBlockSize();
+        const auto& writeRange = args.WriteRanges.front();
+        const auto node = args.Nodes.find(writeRange.NodeId);
+
+        // On CommitIdOverflow no data is written, but the tablet is about to
+        // be stopped; a missing node means that the old file size is unknown.
+        // In both cases no assumptions are made and all reads for the node
+        // are bypassed.
+        if (args.CommitId == InvalidCommitId || node == args.Nodes.end()) {
+            return TByteRange::MaxEnd(0, blockSize);
+        }
+
+        ui64 begin = writeRange.MaxOffset;
+        for (const auto& blob: args.MergedBlobs) {
+            begin = Min(
+                begin,
+                static_cast<ui64>(blob.Block.BlockIndex) * blockSize);
+        }
+        for (const auto& part: args.UnalignedDataParts) {
+            begin = Min(
+                begin,
+                static_cast<ui64>(part.BlockIndex) * blockSize +
+                    part.OffsetInBlock);
+        }
+
+        const ui64 fileSize = node->Attrs.GetSize();
+        if (writeRange.MaxOffset > fileSize) {
+            // The write changes the file size, so cached file sizes become
+            // stale for all offsets starting from the old one.
+            return TByteRange::MaxEnd(Min(begin, fileSize), blockSize);
+        }
+
+        return TByteRange(begin, writeRange.MaxOffset - begin, blockSize);
+    }
+
     void Execute_AddBlob_WriteUnconfirmed(
         const TActorContext& ctx,
         TIndexTabletDatabase& db,
@@ -202,7 +240,8 @@ private:
 
         Tablet.ActivateCacheReadBypass(
             args.WriteRanges.front().NodeId,
-            args.CommitId);
+            args.CommitId,
+            CalculateCacheBypassRange(args));
 
         if (HasError(args.Error)) {
             return;

@@ -163,6 +163,11 @@ struct TByteRange
         return {0, 0, blockSize};
     }
 
+    static TByteRange MaxEnd(ui64 offset, ui32 blockSize)
+    {
+        return {offset, ::Max<ui64>() - offset, blockSize};
+    }
+
     static TByteRange BlockRange(ui64 blockIndex, ui32 blockSize)
     {
         return {blockIndex * blockSize, blockSize, blockSize};

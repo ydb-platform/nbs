@@ -2566,6 +2566,72 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         writerThread2.join();
     }
+
+    Y_UNIT_TEST(UseOnlyPinnedDataForReadData)
+    {
+        // ReadData acquires pin that prevents unflushed requests from being
+        // evicted from cache. But this pin doesn’t affect already flushed
+        // requests that are held by another pin. If that pin is released while
+        // ReadData is in TReadResponseBuilder::AugmentResponseWithCachedData,
+        // it may return garbage.
+
+        TBootstrap b;
+
+        // Writing to a log consumes a lot of CPU and significantly decreases
+        // reproduction probability
+        b.Log.CloseLog();
+
+        // Manually control ReadData completion
+        auto promise = NewPromise<NProto::TReadDataResponse>();
+
+        b.Session->ReadDataHandler = [&](auto, auto request)
+        {
+            if (request->GetLength() == 10) {
+                return promise.GetFuture();
+            }
+
+            NProto::TReadDataResponse res;
+            res.SetBuffer("abc");
+            return MakeFuture(std::move(res));
+        };
+
+        std::atomic<bool> stopRequested = false;
+
+        std::thread writerThread(
+            [&]()
+            {
+                while (!stopRequested) {
+                    b.ReadFromCache(1, 0, 10);
+                    b.WriteToCacheSync(1, 0, "abc");
+                    b.FlushCache(1);
+
+                    NProto::TReadDataResponse res;
+                    res.SetBuffer("abc");
+                    promise.SetValue(std::move(res));
+                    promise = NewPromise<NProto::TReadDataResponse>();
+
+                    // WriteData request is evicted here and is replaced by
+                    // a new request in the same memory address
+                    b.WriteToCacheSync(2, 0, "def");
+                    b.FlushCache(2);
+                }
+            });
+
+        Y_DEFER
+        {
+            stopRequested = true;
+            writerThread.join();
+        };
+
+        auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        auto remainingIterations = 1000000;
+
+        while (remainingIterations > 0 && TInstant::Now() < deadline) {
+            remainingIterations--;
+            auto readResult = b.ReadFromCache(1, 0, 3).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL("abc", readResult.GetBuffer());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

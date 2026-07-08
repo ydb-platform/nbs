@@ -304,7 +304,7 @@ struct TFreshBytesVisitor final
             << " " << bytes.Length << Endl;
 
         auto& content = NodeId2Content[bytes.NodeId];
-        if (content.Size() < bytes.Offset + bytes.Length) {
+        if (content.size() < bytes.Offset + bytes.Length) {
             content.resize(bytes.Offset + bytes.Length, 0);
         }
         UNIT_ASSERT_VALUES_EQUAL(bytes.Length, data.size());

@@ -193,7 +193,10 @@ void TNodeCache::VisitUnflushedRequests(
     }
 }
 
-TCachedData TNodeCache::GetCachedData(ui64 offset, ui64 byteCount) const
+TCachedData TNodeCache::GetCachedData(
+    ui64 offset,
+    ui64 byteCount,
+    ui64 maxEvictableSequenceId) const
 {
     if (CachedData.empty()) {
         return {};
@@ -202,18 +205,34 @@ TCachedData TNodeCache::GetCachedData(ui64 offset, ui64 byteCount) const
     const ui64 end = CachedData.rbegin()->second.End;
 
     TCachedData result;
+
+    // ReadDataByteCount is intentionally computed from the maximal cached write
+    // end offset, not only from the parts visible under this read pin.
+    // This value is only a response-size hint: writes can only extend the node
+    // size, so the maximal observed written offset is safe to expose.
     result.ReadDataByteCount = end > offset ? Min(byteCount, end - offset) : 0;
 
     CachedData.VisitOverlapping(
         offset,
         offset + byteCount,
-        [&result, offset, end = offset + byteCount](auto it)
+        [&result, offset, end = offset + byteCount, maxEvictableSequenceId](
+            auto it)
         {
             const ui64 partOffset = Max(offset, it->second.Begin);
             const ui64 partByteCount = Min(end, it->second.End) - partOffset;
+
             TCachedWriteDataRequest* request = it->second.Value;
-            TStringBuf data = request->GetBuffer(partOffset, partByteCount);
-            result.Parts.push_back({partOffset - offset, data});
+
+            // Requests with SequenceId > maxEvictableSequenceId are pinned and
+            // are safe to be used.
+            // Requests with SequenceId <= maxEvictableSequenceId may be evicted
+            // at any moment and data pointers may become dangling - these parts
+            // should be taken from ReadData response from the backend storage
+            // instead of cache.
+            if (request->GetSequenceId() > maxEvictableSequenceId) {
+                TStringBuf data = request->GetBuffer(partOffset, partByteCount);
+                result.Parts.push_back({partOffset - offset, data});
+            }
         });
 
     return result;

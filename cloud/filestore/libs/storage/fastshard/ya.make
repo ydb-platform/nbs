@@ -5,4 +5,5 @@ RECURSE(
     impl
     ipc
     server
+    sn
 )

@@ -397,7 +397,10 @@ message TDescribeDataResponse
     repeated TFreshDataRange FreshDataRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
 
-    // File size.
+    // File size. When the response is served from the read-ahead cache, the
+    // actual file size may already be bigger (e.g. an unconfirmed write is
+    // extending the file). Suitable only for clamping the read range, not as
+    // the actual file size.
     uint64 FileSize = 4;
 
     // This constitutes a “fake” response, meaning it is not related to real
