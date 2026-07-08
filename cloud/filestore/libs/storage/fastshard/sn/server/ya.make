@@ -27,7 +27,8 @@ PEERDIR(
 
 END()
 
-IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
+# TODO(#5895): fix silk bootstrap/shutdown under msan
+IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB AND SANITIZER_TYPE != "memory")
     RECURSE_FOR_TESTS(
         ut
     )

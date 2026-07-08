@@ -8,11 +8,15 @@
 #include <silk/fibers/future.h>
 #include <silk/util/logger.h>
 
+#include <util/generic/deque.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
+#include <util/generic/yexception.h>
+#include <util/system/spinlock.h>
 
 #include <cerrno>
 #include <cstring>
+#include <memory>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -39,6 +43,118 @@ constexpr ui64 MaxMessageSize = 64_MB;
 constexpr int SocketBacklog = 128;
 
 ////////////////////////////////////////////////////////////////////////////////
+// Handler bookkeeping.
+//
+// Every accepted connection is represented by a THandler which owns the
+// accepted fd and the FiberFuture the ConnFiberMain fiber signals on
+// completion. THandlerRegistry keeps them so Stop() can shut every live
+// connection down and wait for its fiber to actually exit before returning.
+
+struct THandler
+{
+    int Fd;
+    FiberFuture Future;
+
+    explicit THandler(int fd)
+        : Fd(fd)
+    {}
+
+    ~THandler()
+    {
+        if (Fd >= 0) {
+            ::close(Fd);
+        }
+    }
+
+    // FiberFuture holds an atomic, so THandler cannot be copied or moved.
+    // The registry stores it via std::unique_ptr, giving it a stable
+    // address for the whole ConnFiberMain lifetime.
+    THandler(const THandler&) = delete;
+    THandler& operator=(const THandler&) = delete;
+};
+
+class THandlerRegistry
+{
+public:
+    // Consume the handler on success; return it back if the registry is
+    // shutting down. The caller then lets the returned handler's dtor
+    // close the fd (see the Register() call site for the shutdown/wait
+    // logic that keeps the already-spawned fiber from touching a
+    // destroyed future).
+    std::unique_ptr<THandler> Register(std::unique_ptr<THandler> h)
+    {
+        with_lock (Lock) {
+            if (Stopping) {
+                return h;
+            }
+            Handlers.push_back(std::move(h));
+        }
+        return nullptr;
+    }
+
+    // Drop any entries whose fiber has already finished. Called from the
+    // accept loop so the deque doesn't grow without bound while the server
+    // is running.
+    void Prune()
+    {
+        with_lock (Lock) {
+            for (auto it = Handlers.begin(); it != Handlers.end();) {
+                int err = 0;
+                if ((*it)->Future.isSet(&err)) {
+                    if (err) {
+                        SILK_WARN(
+                            "conn fd=%d: error: %s",
+                            (*it)->Fd,
+                            ::strerror(err));
+                    }
+
+                    // ~THandler closes the fd.
+                    it = Handlers.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+    }
+
+    // Shut down every still-open connection and wait for its fiber to
+    // finish. After this returns no ConnFiberMain fiber is still running
+    // and no future Register() call will succeed.
+    void Stop()
+    {
+        TDeque<std::unique_ptr<THandler>> local;
+        with_lock (Lock) {
+            Stopping = true;
+            std::swap(local, Handlers);
+        }
+
+        // Half-close each fd so any recv/send inside the handler wakes
+        // with EOF/EPIPE; the fd itself stays owned by THandler until
+        // wait() returns and we let the unique_ptr fall out of scope.
+        for (const auto& h: local) {
+            int err = 0;
+            if (h->Future.isSet(&err)) {
+                continue;
+            }
+            ::shutdown(h->Fd, SHUT_RDWR);
+        }
+
+        for (auto& h: local) {
+            h->Future.wait();
+        }
+        // local goes out of scope: unique_ptr dtors close each fd exactly
+        // once, after we know no fiber can still reference it.
+    }
+
+private:
+    TAdaptiveLock Lock;
+    TDeque<std::unique_ptr<THandler>> Handlers;
+    bool Stopping = false;
+};
+
+using THandlerRegistryPtr = std::shared_ptr<THandlerRegistry>;
+
+////////////////////////////////////////////////////////////////////////////////
 // Bridge NThreading::TFuture to silk FiberFuture.
 
 template <typename T>
@@ -49,7 +165,11 @@ T WaitFiber(const NThreading::TFuture<T>& future)
         fiberFuture.set(0);
     });
     fiberFuture.wait();
-    return future.GetValue();
+    try {
+        return future.GetValue();
+    } catch (...) {
+        Y_ABORT("unexpected: %s", CurrentExceptionMessage().c_str());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,13 +217,16 @@ static_assert(sizeof(TConnParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int ConnFiberMain(TConnParams* params) noexcept
 {
+    //
+    // The fd is owned by THandler in the server's registry, not by this
+    // fiber. We just use it and return; the server closes it after our
+    // future is set (via ~THandler in Prune() or Stop()).
+    //
+
     int fd = params->Fd;
     auto storage = params->Storage.lock();
     if (!storage) {
-        SILK_WARN(
-            "conn fd=%d: storage gone before handshake, dropping",
-            fd);
-        ::close(fd);
+        SILK_WARN("conn fd=%d: storage gone before handshake, dropping", fd);
         return ECANCELED;
     }
 
@@ -112,13 +235,14 @@ int ConnFiberMain(TConnParams* params) noexcept
         ui32 lenBe = 0;
         if (int r = RecvAll(fd, &lenBe, sizeof(lenBe)); r) {
             if (r != EIO) {
-                SILK_WARN(
-                    "conn fd=%d: recv length: %s",
-                    fd,
-                    ::strerror(r));
+                SILK_WARN("conn fd=%d: recv length: %s", fd, ::strerror(r));
             }
-            ::close(fd);
-            // EIO means the client closed the connection cleanly.
+
+            //
+            // EIO means the client closed the connection cleanly, or
+            // the server half-closed us from Stop().
+            //
+
             return r == EIO ? 0 : r;
         }
         ui32 len = ntohl(lenBe);
@@ -128,7 +252,6 @@ int ConnFiberMain(TConnParams* params) noexcept
                 fd,
                 len,
                 MaxMessageSize);
-            ::close(fd);
             return EMSGSIZE;
         }
 
@@ -140,7 +263,6 @@ int ConnFiberMain(TConnParams* params) noexcept
                 "conn fd=%d: recv body: %s",
                 fd,
                 ::strerror(r));
-            ::close(fd);
             return r;
         }
 
@@ -150,7 +272,6 @@ int ConnFiberMain(TConnParams* params) noexcept
                 "conn fd=%d: parse request failed, len=%u",
                 fd,
                 len);
-            ::close(fd);
             return EBADMSG;
         }
 
@@ -175,7 +296,6 @@ int ConnFiberMain(TConnParams* params) noexcept
                 "conn fd=%d: send resp length: %s",
                 fd,
                 ::strerror(r));
-            ::close(fd);
             return r;
         }
         if (int r = SendAll(fd, respBuf.data(), respBuf.size()); r) {
@@ -183,7 +303,6 @@ int ConnFiberMain(TConnParams* params) noexcept
                 "conn fd=%d: send resp body: %s",
                 fd,
                 ::strerror(r));
-            ::close(fd);
             return r;
         }
     }
@@ -197,20 +316,77 @@ struct TAcceptParams
     int ListenFd;
     int ShutdownFd;
     std::weak_ptr<IStorageNode> Storage;
+    std::weak_ptr<THandlerRegistry> Handlers;
 };
 static_assert(sizeof(TAcceptParams) <= silk::FIBER_PARAMETERS_SIZE);
+
+void RegisterHandler(
+    int cfd,
+    THandlerRegistry& handlers,
+    std::weak_ptr<IStorageNode> storage) noexcept
+{
+    int one = 1;
+    ::setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+
+    //
+    // Package the fd + a future the spawned fiber will signal on
+    // exit. THandler owns the fd (its dtor closes it) once we
+    // hand it to the registry, so we do not ::close(cfd) on any
+    // path below — the registry's Prune()/Stop() will.
+    //
+
+    auto handler = std::make_unique<THandler>(cfd);
+    FiberFuture* fut = &handler->Future;
+
+    int r = FiberScheduler::run(
+        ConnFiberMain,
+        TConnParams{.Fd = cfd, .Storage = std::move(storage)},
+        fut);
+    if (r) {
+        SILK_ERROR("spawn handler fiber: %s", ::strerror(r));
+
+        //
+        // Fiber wasn't scheduled; the runtime won't touch the
+        // future, and no one will read from cfd. Handler dtor
+        // closes cfd on scope exit.
+        //
+
+        return;
+    }
+
+    //
+    // Spawn succeeded — the fiber holds a pointer to
+    // handler->Future. If the registry is already shutting down
+    // we cannot destroy `handler` (that would free the future
+    // while the fiber may still write to it): shutdown the fd so
+    // the fiber wakes with EOF/EPIPE, wait for it, then let
+    // ~THandler close the fd.
+    //
+
+    if (auto rejected = handlers.Register(std::move(handler))) {
+        SILK_INFO(
+            "registry stopping; waking spawned handler fd=%d",
+            rejected->Fd);
+        ::shutdown(rejected->Fd, SHUT_RDWR);
+        rejected->Future.wait();
+    }
+}
 
 int AcceptFiberMain(TAcceptParams* params) noexcept
 {
     int lfd = params->ListenFd;
     int sfd = params->ShutdownFd;
     auto storage = params->Storage.lock();
-    if (!storage) {
-        SILK_WARN("accept fiber: storage gone before startup, exiting");
+    auto handlers = params->Handlers.lock();
+    if (!storage || !handlers) {
+        SILK_WARN("accept fiber: server gone before startup, exiting");
         return ECANCELED;
     }
 
     for (;;) {
+        // Reap completed handlers so the registry deque doesn't grow.
+        handlers->Prune();
+
         sockaddr_in addr{};
         socklen_t addrLen = sizeof(addr);
         int cfd = ::accept4(
@@ -219,23 +395,13 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
             &addrLen,
             SOCK_NONBLOCK | SOCK_CLOEXEC);
         if (cfd >= 0) {
-            int one = 1;
-            ::setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-
-            int r = FiberScheduler::run(
-                ConnFiberMain,
-                TConnParams{.Fd = cfd, .Storage = storage},
-                nullptr /* future */);
-            if (r) {
-                SILK_ERROR("spawn handler fiber: %s", ::strerror(r));
-                ::close(cfd);
-            }
-            continue;
+            RegisterHandler(cfd, *handlers, storage);
         }
 
         if (errno == EINTR || errno == ECONNABORTED) {
             continue;
         }
+
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             const int savedErrno = errno;
             SILK_ERROR(
@@ -273,6 +439,7 @@ public:
     TServer(ui16 port, IStorageNodePtr storage)
         : Port(port)
         , Storage(std::move(storage))
+        , Handlers(std::make_shared<THandlerRegistry>())
     {}
 
     ~TServer() override
@@ -307,9 +474,11 @@ public:
                 .ListenFd = ListenFd,
                 .ShutdownFd = ShutdownFd,
                 .Storage = Storage,
+                .Handlers = Handlers,
             },
             &AcceptFuture);
         Y_ENSURE(r == 0, "failed to spawn accept fiber: " << ::strerror(r));
+        AcceptFiberSpawned = true;
     }
 
     void Stop() override
@@ -321,16 +490,34 @@ public:
             }
         }
 
-        // Wait for the accept fiber to exit; surface its exit code so that
-        // an unclean shutdown (e.g. accept4 failure) is visible in logs.
-        const int r = AcceptFuture.wait();
-        if (r) {
-            SILK_WARN(
-                "accept fiber exited with error: %s",
-                ::strerror(r));
-        } else {
-            SILK_INFO("sn server stopped");
+        //
+        // Wait for the accept fiber to exit; surface its exit code so
+        // that an unclean shutdown (e.g. accept4 failure) is visible in
+        // logs. AcceptFuture is only set after AcceptFiberMain returns,
+        // so once this returns we know no new handlers can be
+        // registered.
+        //
+        // Skip the wait if Start() bailed before scheduling the fiber
+        // (eventfd/socket/bind/listen failure): AcceptFuture stays
+        // unset and .wait() would block forever.
+        //
+
+        if (AcceptFiberSpawned) {
+            const int r = AcceptFuture.wait();
+            if (r) {
+                SILK_WARN("accept fiber exited with error: %s", ::strerror(r));
+            }
         }
+
+        //
+        // Half-close every still-live connection and wait for its
+        // handler fiber to finish. After this returns there are no
+        // ConnFiberMain fibers left running against this server.
+        //
+
+        Handlers->Stop();
+
+        SILK_INFO("sn server stopped");
     }
 
 private:
@@ -371,8 +558,10 @@ private:
 
     ui16 Port;
     IStorageNodePtr Storage;
+    THandlerRegistryPtr Handlers;
     int ListenFd = -1;
     int ShutdownFd = -1;
+    bool AcceptFiberSpawned = false;
     FiberFuture AcceptFuture;
 };
 

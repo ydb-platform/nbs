@@ -429,3 +429,39 @@ TEST(ServerTest, HandlesMultipleRequestsPerConnection)
         0);
     EXPECT_EQ(0, r);
 }
+
+TEST(ServerTest, StopClosesIdleConnection)
+{
+    // A client opens a connection but never sends a request. The handler
+    // fiber ends up parked in RecvAll on the length prefix. When the
+    // fixture is torn down, Server->Stop() must half-close that fd so the
+    // handler can wake, exit, and be waited on -- otherwise the fiber
+    // outlives the server and FiberScheduler::destroy() would be running
+    // with a live fiber against a freed IStorageNode.
+    //
+    // Regression guard: without the THandlerRegistry / Stop path this
+    // test hangs (RecvAll on the client side never gets EOF because the
+    // server never shuts down cfd).
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int {
+            int fd;
+            {
+                TServerFixture fx;
+                fd = ConnectTo(fx.Port);
+                EXPECT_GE(fd, 0);
+                // Do not send anything. Fixture goes out of scope,
+                // Server->Stop() runs, and the handler must be woken.
+            }
+
+            // After Stop() the server has half-closed our socket, so the
+            // next recv on our side must return EOF (RecvAll translates
+            // that into EIO).
+            char buf = 0;
+            const int recvR = RecvAll(fd, &buf, sizeof(buf));
+            EXPECT_EQ(EIO, recvR);
+            ::close(fd);
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
