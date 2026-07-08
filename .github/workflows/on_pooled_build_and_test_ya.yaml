@@ -177,8 +177,17 @@ jobs:
       if: ${{ inputs.actions_checkout_ref != '' }}
       shell: bash
       run: |
+        code_config="$(mktemp -d)"
+        if [ -e .github/config ]; then
+            cp -a .github/config "$code_config/config"
+        fi
         rm -rf .github
         cp -a trusted-actions/.github .github
+        rm -rf .github/config
+        if [ -e "$code_config/config" ]; then
+            mv "$code_config/config" .github/config
+        fi
+        rm -rf "$code_config"
         rm -rf trusted-actions
 
     - name: set up nebius cli
@@ -419,8 +428,17 @@ jobs:
         if: ${{ inputs.actions_checkout_ref != '' }}
         shell: bash
         run: |
+          code_config="$(mktemp -d)"
+          if [ -e .github/config ]; then
+              cp -a .github/config "$code_config/config"
+          fi
           rm -rf .github
           cp -a trusted-actions/.github .github
+          rm -rf .github/config
+          if [ -e "$code_config/config" ]; then
+              mv "$code_config/config" .github/config
+          fi
+          rm -rf "$code_config"
           rm -rf trusted-actions
 
       - name: set up nebius cli
