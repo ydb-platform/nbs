@@ -167,6 +167,20 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
             printer->DumpInfo(Request));
     }
 
+    Y_UNIT_TEST_F(ShouldPrintLegacyListNodesRequestInfo, TEnv)
+    {
+        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::ListNodes));
+
+        auto* nodeInfo = Request.MutableNodeInfo();
+        nodeInfo->SetNodeId(10);
+        nodeInfo->SetSize(0);
+
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{node_id=10, size=0}",
+            printer->DumpInfo(Request));
+    }
+
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForAccessNodeRequestType, TEnv)
     {
         Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::AccessNode));
