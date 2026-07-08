@@ -108,7 +108,6 @@ QEMU_DEPS = [
 QEMU_CONFIG_VERSION = [
     ("--disable-auth-pam", (5, 0, 0), None),
     ("--disable-gio", (7, 0, 0), None),
-    ("--disable-libssh2", (7, 0, 0), (9, 0, 0)),
     ("--enable-slirp", (7, 0, 0), None),
     ("--disable-fdt", None, (6, 0, 0)),
     ("--disable-tcmalloc", None, (6, 0, 0)),
@@ -116,8 +115,11 @@ QEMU_CONFIG_VERSION = [
     ("--enable-vnc-png", None, (6, 0, 0)),
 ]
 
-LIBSLIRP_BUILD_SCRIPT = 'build-libslirp-static.sh'
+DEFAULT_GIT_TAG = 'yc-5.0'
+DEFAULT_OUT_BASENAME = 'qemu-static'
+LIBSLIRP_GIT = 'https://gitlab.freedesktop.org/slirp/libslirp.git'
 LIBSLIRP_DEFAULT_REF = 'v4.9.3'
+QEMU_VERSION_FILES = ('VERSION', 'NEBIUS-VERSION')
 
 GIT_TAG_VERSION_RE = re.compile(
     r'(?:^|[^0-9])(\d+)\.(\d+)(?:\.(\d+))?(?:[-.]?rc(\d+))?(?=$|[^0-9])')
@@ -160,31 +162,35 @@ def config_matches_version(git_tag, minver, maxver):
     return True
 
 
-def tag_tgz_path(path, git_tag):
-    directory, filename = os.path.split(path)
-
-    if filename.endswith('.tar.gz'):
-        basename = filename[:-len('.tar.gz')]
-        extension = '.tar.gz'
-    else:
-        basename, extension = os.path.splitext(filename)
-
-    tags = []
-    if git_tag:
-        tags.append(re.sub(r'[^A-Za-z0-9._-]+', '_', git_tag))
-    tags.append(platform.machine().lower())
-
-    return os.path.join(directory, '{}-{}{}'.format(
-        basename,
-        '-'.join(tags),
-        extension))
-
-
 def qemu_target_list():
     if platform.machine().lower() in ("aarch64", "arm64"):
         return "aarch64-softmmu"
 
     return "x86_64-softmmu"
+
+
+def qemu_source_version(src_dir):
+    for name in QEMU_VERSION_FILES:
+        path = os.path.join(src_dir, name)
+        if not os.path.exists(path):
+            continue
+
+        with open(path) as version_file:
+            version = version_file.readline().strip()
+            if version:
+                return version
+
+    return None
+
+
+def default_out_path(qemu_version):
+    if not qemu_version:
+        raise RuntimeError("Cannot derive default --out name; pass --out explicitly")
+
+    tag = re.sub(r'[^A-Za-z0-9._-]+', '_', qemu_version)
+    machine = platform.machine().lower()
+    return "{}-{}-{}.tgz".format(DEFAULT_OUT_BASENAME, tag, machine)
+
 
 def pkg_config_variable(package, variable):
     try:
@@ -214,30 +220,39 @@ def prepend_env_path(name, path):
 
 
 def build_static_slirp():
-    script = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), LIBSLIRP_BUILD_SCRIPT
-    )
-
     prefix = os.path.abspath("libslirp-static")
     src_dir = os.path.abspath("libslirp-src")
     build_dir = os.path.abspath("build-libslirp")
+    libslirp_git = os.environ.get("LIBSLIRP_GIT", LIBSLIRP_GIT)
+    libslirp_ref = os.environ.get("LIBSLIRP_REF", LIBSLIRP_DEFAULT_REF)
 
-    cmd = [
-        script,
-        "--prefix",
-        prefix,
-        "--src-dir",
-        src_dir,
-        "--build-dir",
+    if os.path.exists(src_dir) and not os.path.isdir(os.path.join(src_dir, ".git")):
+        raise RuntimeError("libslirp source path is not a git checkout: {}".format(src_dir))
+
+    if not os.path.isdir(os.path.join(src_dir, ".git")):
+        run(["git", "clone", libslirp_git, src_dir])
+
+    if libslirp_ref:
+        run(["git", "-C", src_dir, "checkout", libslirp_ref])
+
+    if not os.path.exists(prefix):
+        os.makedirs(prefix)
+
+    setup_args = [
         build_dir,
+        src_dir,
+        "--prefix=" + prefix,
+        "--libdir=lib",
+        "--default-library=static",
     ]
 
-    libslirp_ref = os.environ.get("LIBSLIRP_REF", LIBSLIRP_DEFAULT_REF)
-    if libslirp_ref:
-        cmd += ["--ref", libslirp_ref]
+    if os.path.exists(os.path.join(build_dir, "build.ninja")):
+        run(["meson", "setup", "--reconfigure"] + setup_args)
+    else:
+        run(["meson", "setup"] + setup_args)
 
-    run(cmd)
-
+    run(["ninja", "-C", build_dir, "-j", str(os.sysconf("SC_NPROCESSORS_ONLN"))])
+    run(["ninja", "-C", build_dir, "install"])
     prepend_env_path("PKG_CONFIG_PATH", os.path.join(prefix, "lib", "pkgconfig"))
 
 
@@ -255,17 +270,18 @@ def ensure_static_slirp(config):
 
     raise RuntimeError(
         "Static QEMU with -netdev user support requires libslirp.a. "
-        "build-libslirp-static.sh did not make it visible to pkg-config. "
-        "Check the helper output or build QEMU without --static."
+        "Automatic libslirp build did not make it visible to pkg-config. "
+        "Check the build output or build QEMU without --static."
     )
 
 
 def qemu_config(args, src_dir):
     config = list(QEMU_CONFIG)
     config.append('--target-list=' + qemu_target_list())
+    qemu_version = args.git_tag or qemu_source_version(src_dir)
 
     for package, minver, maxver in QEMU_CONFIG_VERSION:
-        if config_matches_version(args.git_tag, minver, maxver):
+        if config_matches_version(qemu_version, minver, maxver):
             add_config(config, package)
 
     return config
@@ -281,6 +297,9 @@ def install_deps(args):
 
 
 def preprocess(args):
+    if args.src is None and args.git_tag is None:
+        args.git_tag = DEFAULT_GIT_TAG
+
     if args.src is None:
         args.src = os.path.abspath(
             os.path.join(os.getcwd(), 'qemu-' + args.git_tag if args.git_tag else 'src'))
@@ -292,9 +311,10 @@ def checkout(args):
     else:
         raise RuntimeError("src path already exists {}".format(args.src))
 
-    run(['git', 'clone', '--recursive', args.git, args.src])
+    run(['git', 'clone', args.git, args.src])
     if args.git_tag is not None:
         run(['git', 'checkout', args.git_tag], cwd=args.src)
+    run(['git', 'submodule', 'update', '--init', '--recursive'], cwd=args.src)
 
 
 def build(args):
@@ -305,6 +325,10 @@ def build(args):
             run(['tar', '--strip-components=1', '-xf',
                 os.path.abspath(args.src)], cwd=build_dir)
             src_dir = build_dir
+
+        qemu_version = args.git_tag or qemu_source_version(src_dir)
+        if args.out is None:
+            args.out = default_out_path(qemu_version)
 
         config = qemu_config(args, src_dir)
         ensure_static_slirp(config)
@@ -333,7 +357,7 @@ def build(args):
         else:
             with tmpdir(prefix='out-' + os.path.basename(args.src)) as out_dir:
                 target_dir = os.path.abspath(out_dir) + '/qemu'
-                target = os.path.abspath(tag_tgz_path(args.out, args.git_tag))
+                target = os.path.abspath(args.out)
 
                 run(['make', 'install', 'DESTDIR=' + target_dir], cwd=build_dir)
                 with tarfile.open(target, 'w:gz') as tar:
@@ -374,7 +398,7 @@ if __name__ == '__main__':
         "--git-tag",
         help="specific tag",
         action="store",
-        default="yc-5.0")
+        default=None)
     parser.add_argument(
         "--deps",
         help="do install deps",
@@ -382,9 +406,9 @@ if __name__ == '__main__':
         default=False)
     parser.add_argument(
         "--out",
-        help="target directory or tarball",
+        help="target directory or tarball; defaults to qemu-static-<version>-<arch>.tgz",
         action="store",
-        default="qemu-static.tgz")
+        default=None)
 
     args = parser.parse_args()
     main(args)
