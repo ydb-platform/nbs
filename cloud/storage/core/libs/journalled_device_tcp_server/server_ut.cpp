@@ -6,6 +6,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
+#include <library/cpp/threading/future/async.h>
+
+#include <util/generic/vector.h>
 
 #include <functional>
 
@@ -490,6 +493,68 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             expectedWriteLogRecordRequest.DebugString(),
             writeLogRecordRequest->DebugString());
+    }
+
+    Y_UNIT_TEST_F(ShouldServeMultipleConnectionsConcurrently, TFixture)
+    {
+        const ui32 requestCount = 100;
+
+        Backend->AcquireDevicesImpl.SetValue(
+            [&](auto)
+            { return MakeFuture(NProto::TAcquireDevicesResponse()); });
+
+        TTestClient client1{Port};
+        TTestClient client2{Port};
+
+        auto send = [](TTestClient& client)
+        {
+            for (ui32 i = 0; i != requestCount; ++i) {
+                NProto::TDeviceProtocolRequest request;
+                request.SetRequestId(i);
+                request.MutableAcquireDevices();
+                client.Send(request);
+            }
+        };
+
+        auto receive = [](TTestClient& client)
+        {
+            TVector<ui32> ids(requestCount);
+
+            for (ui32 i = 0; i != requestCount; ++i) {
+                ids[i] = client.Receive().GetRequestId();
+            }
+
+            Sort(ids);
+
+            return ids;
+        };
+
+        TSimpleThreadPool queue;
+        queue.Start(4);
+
+        auto load1 = Async([&] { send(client1); }, queue);
+        auto load2 = Async([&] { send(client2); }, queue);
+
+        auto receive1 = Async([&] { return receive(client1); }, queue);
+        auto receive2 = Async([&] { return receive(client2); }, queue);
+
+        const auto& ids1 = receive1.GetValueSync();
+        const auto& ids2 = receive2.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(requestCount, ids1.size());
+        UNIT_ASSERT_VALUES_EQUAL(requestCount, ids2.size());
+
+        const auto expectedIds = []
+        {
+            TVector<ui32> ids(requestCount);
+            std::iota(ids.begin(), ids.end(), 0);
+            return ids;
+        }();
+
+        UNIT_ASSERT_EQUAL(expectedIds, ids1);
+        UNIT_ASSERT_EQUAL(expectedIds, ids2);
+
+        queue.Stop();
     }
 }
 

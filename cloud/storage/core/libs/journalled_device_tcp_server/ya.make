@@ -10,6 +10,8 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics
+
+    library/cpp/coroutine/listener
 )
 
 END()

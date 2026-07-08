@@ -8,6 +8,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/testing/unittest
+    library/cpp/threading/future
 )
 
 YQL_LAST_ABI_VERSION()

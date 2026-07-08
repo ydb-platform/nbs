@@ -21,7 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConnection: TThrRefBase
+struct TConnection
 {
     TSocketHolder Socket;
     TContLockFreeQueue<NProto::TDeviceProtocolResponse> ResponseQueue;
@@ -33,6 +33,40 @@ struct TConnection: TThrRefBase
         : Socket(std::move(socket))
         , ResponseQueue(e)
     {}
+
+    void OnReceiveStopped()
+    {
+        Recv = nullptr;
+
+        // Empty response is used as a sentinel to stop response dequeuing
+        ResponseQueue.Enqueue({});
+    }
+
+    void OnSendStopped()
+    {
+        Send = nullptr;
+    }
+
+    bool DequeueResponse(NProto::TDeviceProtocolResponse* response)
+    {
+        if (!ResponseQueue.Dequeue(response)) {
+            return false;
+        }
+
+        return !IsShutdownSentinel(*response);
+    }
+
+    bool IsAlive() const
+    {
+        return Recv || Send;
+    }
+
+    static bool IsShutdownSentinel(
+        const NProto::TDeviceProtocolResponse& response)
+    {
+        return response.GetResponseCase() ==
+               NProto::TDeviceProtocolResponse::ResponseCase::RESPONSE_NOT_SET;
+    }
 };
 
 using TConnectionPtr = std::shared_ptr<TConnection>;
@@ -106,7 +140,7 @@ void TServer::Start()
     Log = Logging->CreateLog("DEVICE_SERVER");
 
     auto future = Executor->Execute([this] { StartListen(); });
-    future.Wait();
+    future.GetValueSync();
 }
 
 void TServer::Stop()
@@ -126,7 +160,7 @@ void TServer::OnAcceptFull(const TAcceptFull& accept)
 {
     TSocketHolder socket(accept.S->Release());
 
-    auto address = NAddr::GetSockAddr(socket);
+    auto address = NAddr::GetPeerAddr(socket);
     STORAGE_DEBUG("new connection from " << PrintHostAndPort(*address));
 
     SetNoDelay(socket, true);
@@ -165,6 +199,8 @@ void TServer::StartListen()
 
 void TServer::StopImpl()
 {
+    STORAGE_DEBUG("Stopping");
+
     if (Listener) {
         Listener->Stop();
     }
@@ -194,7 +230,7 @@ void TServer::Receive(TConnectionPtr conn)
         STORAGE_ERROR("Receive: " << CurrentExceptionMessage());
     }
 
-    conn->Recv = nullptr;
+    conn->OnReceiveStopped();
     OnExit(conn);
 }
 
@@ -204,7 +240,7 @@ void TServer::Send(TConnectionPtr conn)
         TContIO io(conn->Socket, RunningCont());
 
         NProto::TDeviceProtocolResponse response;
-        while (conn->ResponseQueue.Dequeue(&response)) {
+        while (conn->DequeueResponse(&response)) {
             TString payload;
 
             const bool ok = response.SerializeToString(&payload);
@@ -223,19 +259,19 @@ void TServer::Send(TConnectionPtr conn)
         STORAGE_ERROR("Send: " << CurrentExceptionMessage());
     }
 
-    conn->Send = nullptr;
+    conn->OnSendStopped();
     OnExit(conn);
 }
 
 void TServer::OnExit(TConnectionPtr conn)
 {
-    if (conn->Send != nullptr || conn->Recv != nullptr) {
+    if (conn->IsAlive()) {
         return;
     }
 
     STORAGE_DEBUG(
         "remove connection "
-        << PrintHostAndPort(*NAddr::GetSockAddr(conn->Socket)));
+        << PrintHostAndPort(*NAddr::GetPeerAddr(conn->Socket)));
 
     std::erase(Connections, conn);
 }
@@ -246,7 +282,9 @@ auto TServer::ReadDeviceProtocolRequest(TContIO& io)
     ui32 wireSize = 0;
     io.LoadOrFail(&wireSize, sizeof(wireSize));
 
-    ui32 size = InetToHost(wireSize);
+    const ui32 size = InetToHost(wireSize);
+
+    // TODO(sharpeye): define and enforce the maximum request payload size
 
     TString payload;
     payload.resize(size);
@@ -268,8 +306,6 @@ void TServer::HandleRequest(
 
     switch (request.GetRequestCase()) {
         case ERequestCase::kAcquireDevices: {
-            STORAGE_DEBUG("Acquire: " << request.GetAcquireDevices());
-
             auto future = Backend->AcquireDevices(
                 Now(),
                 std::move(*request.MutableAcquireDevices()));
@@ -289,8 +325,6 @@ void TServer::HandleRequest(
             break;
         }
         case ERequestCase::kReleaseDevices: {
-            STORAGE_DEBUG("Release: " << request.GetReleaseDevices());
-
             auto future = Backend->ReleaseDevices(
                 Now(),
                 std::move(*request.MutableReleaseDevices()));
