@@ -90,7 +90,7 @@ def start_instance(args, inst_index):
 
     qemu = Qemu(qemu_kvm=_get_qemu_kvm(args),
                 qemu_firmware=_get_qemu_firmware(args),
-                qemu_bios=get_qemu_bios(),
+                qemu_bios=_get_qemu_bios(args),
                 rootfs=_get_rootfs(args),
                 kernel=_get_kernel(args),
                 kcmdline=_get_kcmdline(args),
@@ -104,7 +104,9 @@ def start_instance(args, inst_index):
                 inst_index=inst_index,
                 shared_nic_port=args.shared_nic_port,
                 use_virtiofs_server=use_virtiofs_server,
-                num_request_queues=_get_num_request_queues(args))
+                num_request_queues=_get_num_request_queues(args),
+                reconnect=_get_reconnect(args),
+                virtiofs_migration=_get_virtiofs_migration(args))
 
     qemu.set_mount_paths(mount_paths)
     qemu.start()
@@ -211,6 +213,8 @@ def _parse_args(argv):
     parser.add_argument(
         "--qemu-firmware", help="Path to qemu firmware directory (Arcadia related)")
     parser.add_argument(
+        "--qemu-bios", help="Path to qemu bios file (Arcadia related)")
+    parser.add_argument(
         "--kernel", help="Path to kernel image (Arcadia related)")
     parser.add_argument(
         "--kcmdline", help="Path to kernel cmdline config (Arcadia related)")
@@ -236,6 +240,8 @@ def _parse_args(argv):
         "--num-request-queues",
         default=1,
         help="Number of request queues for virtiofs")
+    parser.add_argument("--reconnect", default="$QEMU_RECONNECT")
+    parser.add_argument("--virtiofs-migration", default="$QEMU_VIRTIOFS_MIGRATION")
 
     args = parser.parse_args(argv)
     if args.instance_count == "$QEMU_INSTANCE_COUNT":
@@ -279,6 +285,28 @@ def _get_qemu_firmware(args):
             "cannot find qemu firmware directory by path '{}'".format(qemu_firmware))
 
     return qemu_firmware
+
+
+def _get_qemu_bios(args):
+    if not args.qemu_bios or args.qemu_bios == "$QEMU_BIOS":
+        return get_qemu_bios()
+
+    if os.path.isabs(args.qemu_bios) and os.path.exists(args.qemu_bios):
+        return args.qemu_bios
+
+    qemu_bios = yatest.common.build_path(args.qemu_bios)
+    if not os.path.exists(qemu_bios):
+        qemu_bios = yatest.common.source_path(args.qemu_bios)
+
+    if not os.path.exists(qemu_bios):
+        qemu_bindir = os.path.dirname(os.path.dirname(os.path.dirname(_get_qemu_kvm(args))))
+        qemu_bios = os.path.join(qemu_bindir, args.qemu_bios)
+
+    if not os.path.exists(qemu_bios):
+        raise QemuKvmRecipeException(
+            "cannot find qemu bios by path '{}'".format(args.qemu_bios))
+
+    return qemu_bios
 
 
 def _get_rootfs(args):
@@ -403,6 +431,19 @@ def _get_num_request_queues(args):
     if args.num_request_queues == "$QEMU_NUM_REQUEST_QUEUES":
         return 1
     return int(args.num_request_queues)
+
+
+def _get_reconnect(args):
+    if not args.reconnect or args.reconnect == "$QEMU_RECONNECT":
+        return None
+    return int(args.reconnect)
+
+
+def _get_virtiofs_migration(args):
+    if (not args.virtiofs_migration or
+            args.virtiofs_migration == "$QEMU_VIRTIOFS_MIGRATION"):
+        return None
+    return args.virtiofs_migration
 
 
 def _prepare_test_environment(ssh, virtio):
