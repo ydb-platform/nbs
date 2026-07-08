@@ -138,9 +138,13 @@ struct TBootstrap
         return std::get<1>(std::move(res));
     }
 
-    TString GetCachedData(ui64 offset, ui64 byteCount) const
+    TString GetCachedData(
+        ui64 offset,
+        ui64 byteCount,
+        ui64 maxEvictableSequenceId = 0) const
     {
-        auto cachedData = Cache.GetCachedData(offset, byteCount);
+        auto cachedData =
+            Cache.GetCachedData(offset, byteCount, maxEvictableSequenceId);
 
         TStringBuilder out;
         for (const auto& part: cachedData.Parts) {
@@ -184,7 +188,10 @@ TVector<TTestCaseWriteDataEntryPart> CalculateDataPartsToRead(
         char c = static_cast<char>(i + 1);
         b.PushUnflushed(e.Offset, TString(e.Length, c));   // dummy buffer
     }
-    auto cachedData = b.Cache.GetCachedData(offset, byteCount);
+    auto cachedData = b.Cache.GetCachedData(
+        offset,
+        byteCount,
+        /* maxEvictableSequenceId = */ 0);
     TVector<TTestCaseWriteDataEntryPart> res;
     for (const auto& part: cachedData.Parts) {
         ui32 i = part.Data[0] - 1;
@@ -433,6 +440,22 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         }
 
         TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(entries);
+    }
+
+    Y_UNIT_TEST(ShouldHandlePinId)
+    {
+        TBootstrap b;
+
+        b.PushUnflushed(1, "abc");
+        b.PushUnflushed(3, "def");
+        b.PushUnflushed(5, "xyz");
+
+        b.Cache.MoveFrontUnflushedRequestToFlushed();
+
+        UNIT_ASSERT_VALUES_EQUAL("1:ab, 3:de, 5:xyz", b.GetCachedData(0, 9, 0));
+        UNIT_ASSERT_VALUES_EQUAL("3:de, 5:xyz", b.GetCachedData(0, 9, 1));
+        UNIT_ASSERT_VALUES_EQUAL("5:xyz", b.GetCachedData(0, 9, 2));
+        UNIT_ASSERT_VALUES_EQUAL("", b.GetCachedData(0, 9, 3));
     }
 }
 
