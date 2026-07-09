@@ -81,11 +81,11 @@ message TStorageConfig
     // Timeout for establishing session.
     optional uint32 EstablishSessionTimeout = 6;
 
-    // Write batching timeout.
-    optional bool WriteBatchEnabled = 7;
+    // Obsolete.
+    optional bool WriteBatchEnabled = 7 [deprecated = true];
 
-    // Write batching timeout.
-    optional uint32 WriteBatchTimeout = 8;
+    // Obsolete.
+    optional uint32 WriteBatchTimeout = 8 [deprecated = true];
 
     // Minimum write request size (in bytes) that lets us write the data
     // directly to blobstorage (as a mixed/merged blob).

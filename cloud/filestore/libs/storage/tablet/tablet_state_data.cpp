@@ -35,19 +35,6 @@ bool IntersectsWithFresh(
 ////////////////////////////////////////////////////////////////////////////////
 // Writes
 
-bool TIndexTabletState::EnqueueWriteBatch(std::unique_ptr<TWriteRequest> request)
-{
-    bool shouldTriggerWrite = Impl->WriteBatch.Empty();
-    Impl->WriteBatch.PushBack(request.release());
-    return shouldTriggerWrite;
-}
-
-TWriteRequestList TIndexTabletState::DequeueWriteBatch()
-{
-    // TODO: deduplicate writes (NBS-2161)
-    return std::move(Impl->WriteBatch);
-}
-
 bool TIndexTabletState::GenerateBlobId(
     ui64 commitId,
     ui32 blobSize,

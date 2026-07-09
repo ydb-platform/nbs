@@ -134,7 +134,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AddData,                            __VA_ARGS__)                       \
     xxx(AddDataUnconfirmed,                 __VA_ARGS__)                       \
     xxx(DeleteUnconfirmedData,              __VA_ARGS__)                       \
-    xxx(WriteBatch,                         __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
     xxx(AddBlob,                            __VA_ARGS__)                       \
@@ -274,35 +273,6 @@ struct TTxIndexTabletBase
     virtual void OnRestart()
     {}
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TWriteRequest
-    : TIntrusiveListItem<TWriteRequest>
-    , TErrorAware
-    , TSessionAware
-{
-    const TRequestInfoPtr RequestInfo;
-    const ui64 Handle;
-    const TByteRange ByteRange;
-    const IBlockBufferPtr Buffer;
-
-    ui64 NodeId = InvalidNodeId;
-
-    TWriteRequest(
-            TRequestInfoPtr requestInfo,
-            const NProto::TWriteDataRequest& request,
-            TByteRange byteRange,
-            IBlockBufferPtr buffer)
-        : TSessionAware(request)
-        , RequestInfo(std::move(requestInfo))
-        , Handle(request.GetHandle())
-        , ByteRange(byteRange)
-        , Buffer(std::move(buffer))
-    {}
-};
-
-using TWriteRequestList = TIntrusiveListWithAutoDelete<TWriteRequest, TDelete>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -2311,43 +2281,6 @@ struct TTxIndexTablet
 
         void Clear() override
         {}
-    };
-
-    //
-    // WriteBatch
-    //
-
-    struct TWriteBatch
-        : TTxIndexTabletBase
-        , TErrorAware
-        , TIndexStateNodeUpdates
-    {
-        const TRequestInfoPtr RequestInfo;
-        const bool SkipFresh;
-        /*const*/ TWriteRequestList WriteBatch;
-
-        ui64 CommitId = InvalidCommitId;
-        TMap<ui64, ui64> WriteRanges;
-        TNodeSet Nodes;
-
-        TWriteBatch(
-                TRequestInfoPtr requestInfo,
-                bool skipFresh,
-                TWriteRequestList writeBatch)
-            : RequestInfo(std::move(requestInfo))
-            , SkipFresh(skipFresh)
-            , WriteBatch(std::move(writeBatch))
-        {}
-
-        void Clear() override
-        {
-            TErrorAware::Clear();
-            TIndexStateNodeUpdates::Clear();
-
-            CommitId = InvalidCommitId;
-            WriteRanges.clear();
-            Nodes.clear();
-        }
     };
 
     //

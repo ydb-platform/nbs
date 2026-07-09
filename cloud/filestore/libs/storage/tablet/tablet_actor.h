@@ -322,30 +322,6 @@ private:
         TVector<TString> shardIds);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
-    template <typename TMethod>
-    void EnqueueWriteBatch(
-        const NActors::TActorContext& ctx,
-        std::unique_ptr<TWriteRequest> request)
-    {
-        request->RequestInfo->CancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
-        {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "tablet is shutting down"));
-
-            NCloud::Reply(ctx, requestInfo, std::move(response));
-        };
-
-        if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
-            if (auto timeout = Config->GetWriteBatchTimeout()) {
-                ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-            } else {
-                ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-            }
-        }
-    }
-
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
     void AddBlobIndexOpIfNeeded(
