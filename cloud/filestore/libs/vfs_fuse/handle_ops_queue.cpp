@@ -10,7 +10,7 @@ THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
     : RequestsToProcess(filePath, size, 0, EFileRingBufferVersion::V5)
     , Stats(CreateHandleOpsQueueStats(size))
 {
-    Stats->SetSize(RequestsToProcess.Size());
+    Stats->SetEntryCount(RequestsToProcess.Size());
 }
 
 IModuleStatsPtr THandleOpsQueue::CreateModuleStats() const
@@ -37,7 +37,7 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
         return THandleOpsQueue::EResult::QueueOverflow;
     }
 
-    Stats->SetSize(RequestsToProcess.Size());
+    Stats->SetEntryCount(RequestsToProcess.Size());
     return THandleOpsQueue::EResult::Ok;
 }
 
@@ -62,7 +62,7 @@ bool THandleOpsQueue::Empty() const
 void THandleOpsQueue::PopFront()
 {
     RequestsToProcess.PopFront();
-    Stats->SetSize(RequestsToProcess.Size());
+    Stats->SetEntryCount(RequestsToProcess.Size());
 }
 
 ui64 THandleOpsQueue::Size() const

@@ -3323,10 +3323,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            moduleCounters->GetCounter("Size")->GetAtomic());
+            moduleCounters->GetCounter("EntryCount")->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             20,
-            moduleCounters->GetCounter("MaxSize")->GetAtomic());
+            moduleCounters->GetCounter("CapacityBytes")->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             moduleCounters->GetCounter("OverflowErrorCount")->GetAtomic());
@@ -3349,10 +3349,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            moduleCounters->GetCounter("Size")->GetAtomic());
+            moduleCounters->GetCounter("EntryCount")->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             20,
-            moduleCounters->GetCounter("MaxSize")->GetAtomic());
+            moduleCounters->GetCounter("CapacityBytes")->GetAtomic());
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -3370,7 +3370,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            moduleCounters->GetCounter("Size")->GetAtomic());
+            moduleCounters->GetCounter("EntryCount")->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             moduleCounters->GetCounter("OverflowErrorCount")->GetAtomic());

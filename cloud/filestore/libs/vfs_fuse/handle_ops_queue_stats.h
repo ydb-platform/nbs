@@ -16,14 +16,14 @@ class THandleOpsQueueStats final
     , public IModuleStats
 {
 private:
-    const ui64 MaxSize;
-    TRelaxedCounter Size;
+    const ui64 CapacityBytes;
+    TRelaxedCounter EntryCount;
     TRelaxedCounter OverflowErrorCount;
     TRelaxedCounter SerializationErrorCount;
     TRelaxedCounter ParseErrorCount;
 
 public:
-    explicit THandleOpsQueueStats(ui64 maxSize);
+    explicit THandleOpsQueueStats(ui64 capacityBytes);
 
     TStringBuf GetName() const override;
 
@@ -34,7 +34,7 @@ public:
 
     void UpdateStats(TInstant now) override;
 
-    void SetSize(ui64 size);
+    void SetEntryCount(ui64 entryCount);
     void IncrementOverflowErrorCount();
     void IncrementSerializationErrorCount();
     void IncrementParseErrorCount();
@@ -44,6 +44,6 @@ using THandleOpsQueueStatsPtr = std::shared_ptr<THandleOpsQueueStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueueStatsPtr CreateHandleOpsQueueStats(ui64 maxSize);
+THandleOpsQueueStatsPtr CreateHandleOpsQueueStats(ui64 capacityBytes);
 
 }   // namespace NCloud::NFileStore::NFuse

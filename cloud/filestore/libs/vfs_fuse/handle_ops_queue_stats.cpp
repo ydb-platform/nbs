@@ -10,8 +10,8 @@ using namespace NMetrics;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueueStats::THandleOpsQueueStats(ui64 maxSize)
-    : MaxSize(maxSize)
+THandleOpsQueueStats::THandleOpsQueueStats(ui64 capacityBytes)
+    : CapacityBytes(capacityBytes)
 {}
 
 TStringBuf THandleOpsQueueStats::GetName() const
@@ -28,11 +28,11 @@ void THandleOpsQueueStats::RegisterCounters(
     auto self = shared_from_this();
 
     localMetricsRegistry->Register(
-        {CreateSensor("Size")},
-        CreateMetric([self] { return self->Size.Get(); }));
+        {CreateSensor("EntryCount")},
+        CreateMetric([self] { return self->EntryCount.Get(); }));
     localMetricsRegistry->Register(
-        {CreateSensor("MaxSize")},
-        CreateMetric([self] { return static_cast<i64>(self->MaxSize); }),
+        {CreateSensor("CapacityBytes")},
+        CreateMetric([self] { return static_cast<i64>(self->CapacityBytes); }),
         EAggregationType::AT_MAX);
     localMetricsRegistry->Register(
         {CreateSensor("OverflowErrorCount")},
@@ -56,9 +56,9 @@ void THandleOpsQueueStats::UpdateStats(TInstant now)
     Y_UNUSED(now);
 }
 
-void THandleOpsQueueStats::SetSize(ui64 size)
+void THandleOpsQueueStats::SetEntryCount(ui64 entryCount)
 {
-    Size.Set(static_cast<i64>(size));
+    EntryCount.Set(static_cast<i64>(entryCount));
 }
 
 void THandleOpsQueueStats::IncrementOverflowErrorCount()
@@ -78,9 +78,9 @@ void THandleOpsQueueStats::IncrementParseErrorCount()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueueStatsPtr CreateHandleOpsQueueStats(ui64 maxSize)
+THandleOpsQueueStatsPtr CreateHandleOpsQueueStats(ui64 capacityBytes)
 {
-    return std::make_shared<THandleOpsQueueStats>(maxSize);
+    return std::make_shared<THandleOpsQueueStats>(capacityBytes);
 }
 
 }   // namespace NCloud::NFileStore::NFuse
