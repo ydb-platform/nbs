@@ -56,6 +56,17 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+inline bool IsTabletOverloaded(
+    const TStorageConfig& config,
+    const TSystemCounters& systemCounters,
+    ui32 tabletActorCpuUsageRate)
+{
+    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
+    return tabletActorCpuUsageRate >=
+               config.GetTabletActorCpuUsageOverloadThreshold() ||
+           cl >= config.GetCpuLackOverloadThreshold();
+}
+
 inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
@@ -63,11 +74,8 @@ inline void BuildBackendInfo(
     ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
-    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
     backendInfo->SetIsOverloaded(
-        tabletActorCpuUsageRate
-            >= config.GetTabletActorCpuUsageOverloadThreshold()
-        || cl >= config.GetCpuLackOverloadThreshold());
+        IsTabletOverloaded(config, systemCounters, tabletActorCpuUsageRate));
 
     const ui32 fastShardPort = config.GetFastShardServerPort();
     if (fastShardPort) {
@@ -591,6 +599,7 @@ private:
 
     NProto::TError IsDataOperationAllowed() const;
     bool CanUseUnconfirmedData() const;
+    bool IsTabletConsideredOverloaded() const;
 
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
