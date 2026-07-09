@@ -45,11 +45,23 @@ TString PrintOverlapping(
     return Print(tmp);
 }
 
+template <class TKey>
+auto Find(const auto& map, TKey begin, TKey end)
+{
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        if (it->second.Begin == begin && it->second.End == end) {
+            return it;
+        }
+    }
+    return map.end();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 using TMap = TDisjointIntervalMap<ui64, TString>;
+using TMapWithStats = TDisjointIntervalMapWithStats<ui64, TString>;
 
 Y_UNIT_TEST_SUITE(TDisjointIntervalMapTest)
 {
@@ -112,6 +124,84 @@ Y_UNIT_TEST_SUITE(TDisjointIntervalMapTest)
             "[(1, 3): vasya, (3, 5): petya, (9, 12): ben]",
             Print(map));
     }
+
+    Y_UNIT_TEST(ShouldCalculateStats)
+    {
+        TMapWithStats map;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, map.GetIntervalSum());
+
+        map.Add(1, 3, "a");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetIntervalSum());
+
+        map.Add(7, 10, "b");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(5, map.GetIntervalSum());
+
+        map.Add(0, 1, "c");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(6, map.GetIntervalSum());
+
+        map.Add(3, 4, "d");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(7, map.GetIntervalSum());
+
+        map.Add(6, 7, "e");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(8, map.GetIntervalSum());
+
+        map.Add(10, 11, "f");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(9, map.GetIntervalSum());
+
+        map.Add(4, 6, "g");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(11, map.GetIntervalSum());
+
+        map.Remove(Find(map, 1UL, 3UL));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(9, map.GetIntervalSum());
+
+        map.Remove(Find(map, 3UL, 4UL));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(8, map.GetIntervalSum());
+
+        map.Remove(Find(map, 0UL, 1UL));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(7, map.GetIntervalSum());
+
+        map.Remove(Find(map, 10UL, 11UL));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(6, map.GetIntervalSum());
+
+        map.Remove(Find(map, 6UL, 7UL));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(5, map.GetIntervalSum());
+
+        map.Remove(Find(map, 7UL, 10UL));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, map.GetIntervalSum());
+
+        map.Remove(Find(map, 4UL, 6UL));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, map.GetContiguousIntervalCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, map.GetIntervalSum());
+    }
 }
 
-}   // namespace NCloud::NFileStore::NFuse
+}   // namespace NCloud

@@ -164,6 +164,11 @@ public:
                         .MaxCount = CreateMetric(432),
                         .ProcessedCount = CreateMetric(433),
                     },
+                .NodesWithBackpressure =
+                    {
+                        .Count = CreateMetric(441),
+                        .MaxCount = CreateMetric(442),
+                    },
             },
             TPersistentStorageMetrics{
                 .Storage =
@@ -334,6 +339,8 @@ component=client_fs:
                             sensor=FlushedQueue_Count: 431
                             sensor=FlushedQueue_MaxCount: 432
                             sensor=FlushedQueue_ProcessedCount: 433
+                            sensor=NodesWithBackpressure_Count: 441
+                            sensor=NodesWithBackpressure_MaxCount: 442
                             sensor=Nodes_Count: 311
                             sensor=Nodes_MaxCount: 312
                             sensor=PendingQueue_Count: 411
@@ -415,6 +422,8 @@ component=client_fs:
                             sensor=FlushedQueue_Count: 4310
                             sensor=FlushedQueue_MaxCount: 4320
                             sensor=FlushedQueue_ProcessedCount: 4330
+                            sensor=NodesWithBackpressure_Count: 4410
+                            sensor=NodesWithBackpressure_MaxCount: 4420
                             sensor=Nodes_Count: 3110
                             sensor=Nodes_MaxCount: 3120
                             sensor=PendingQueue_Count: 4110
@@ -521,6 +530,8 @@ component=client_fs:
                             sensor=FlushedQueue_Count: 4310
                             sensor=FlushedQueue_MaxCount: 4320
                             sensor=FlushedQueue_ProcessedCount: 4330
+                            sensor=NodesWithBackpressure_Count: 4410
+                            sensor=NodesWithBackpressure_MaxCount: 4420
                             sensor=Nodes_Count: 3110
                             sensor=Nodes_MaxCount: 3120
                             sensor=PendingQueue_Count: 4110

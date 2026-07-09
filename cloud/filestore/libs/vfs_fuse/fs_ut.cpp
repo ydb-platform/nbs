@@ -5644,6 +5644,120 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Rename("file", "target");
             });
     }
+
+    Y_UNIT_TEST(ShouldNotCacheRequestsOnWriteBackCacheFlushBatchBackpressure)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        // Disable parallel writes in order to ensure that each flush batch
+        // will consist of a single WriteData request
+        features.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            /* handleOpsQueueSize = */ 0,
+            /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto firstWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
+        auto secondWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
+        auto restWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            switch (writeDataCalled++) {
+                case 0:
+                    return firstWriteDataPromise.GetFuture();
+                case 1:
+                    return secondWriteDataPromise.GetFuture();
+                default:
+                    return restWriteDataPromise.GetFuture();
+            }
+        };
+
+        // WriteBackCacheMaxQueuedFlushBatchesPerNode is non-zero by
+        // default - eventually backpressure will occur
+        constexpr ui32 maxRequestCount = 1500;
+
+        auto counterGroup =
+            bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
+                ->FindSubgroup("host", "cluster")
+                ->FindSubgroup("filesystem", FileSystemId)
+                ->FindSubgroup("client", "")
+                ->FindSubgroup("cloud", "")
+                ->FindSubgroup("folder", "")
+                ->FindSubgroup("module", "WriteBackCache");
+
+        auto pendingQueueCount = counterGroup->GetCounter("PendingQueue_Count");
+
+        auto unflushedQueueCount =
+            counterGroup->GetCounter("UnflushedQueue_Count");
+
+        auto backpressureCount =
+            counterGroup->GetCounter("NodesWithBackpressure_Count");
+
+        TFuture<ui32> writeFuture;
+
+        for (ui32 i = 1; i <= maxRequestCount; i++) {
+            // Requests should not overlap nor touch in order to be put into
+            // separate flush batches
+            writeFuture = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                1,
+                101,
+                i * 100,
+                "abc");
+
+            // Request should be put in either unflushed or pending queue
+            UNIT_ASSERT(WaitForCondition(
+                WaitTimeout,
+                [&]()
+                {
+                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                    return unflushedQueueCount->Val() == i ||
+                           pendingQueueCount->Val() == 1;
+                }));
+
+            if (pendingQueueCount->Val() == 1) {
+                // This happens when backpressure is applied
+                break;
+            } else {
+                UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, pendingQueueCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, backpressureCount->Val());
+        UNIT_ASSERT(!writeFuture.HasValue());
+
+        firstWriteDataPromise.SetValue({});
+
+        UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingQueueCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, backpressureCount->Val());
+
+        secondWriteDataPromise.SetValue({});
+
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]()
+            {
+                bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                return backpressureCount->Val() == 0;
+            }));
+
+        restWriteDataPromise.SetValue({});
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

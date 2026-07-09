@@ -21,6 +21,7 @@ private:
     TRelaxedEventCounterWithTimeStats<> PendingRequestCounter;
     TRelaxedEventCounterWithTimeStats<> UnflushedRequestCounter;
     TRelaxedEventCounter<> FlushedRequestCounter;
+    TRelaxedCombinedMaxCounter<> NodesWithBackpressureCounter;
 
 public:
     void AddedPendingRequest() override
@@ -51,6 +52,16 @@ public:
     void RemovedFlushedRequest() override
     {
         FlushedRequestCounter.Completed();
+    }
+
+    void AddedNodeWithBackpressure() override
+    {
+        NodesWithBackpressureCounter.Inc();
+    }
+
+    void RemovedNodeWithBackpressure() override
+    {
+        NodesWithBackpressureCounter.Dec();
     }
 
     TWriteDataRequestManagerMetrics CreateMetrics() const override
@@ -121,6 +132,15 @@ public:
                      {
                          return self->FlushedRequestCounter.GetCompletedCount();
                      })},
+            .NodesWithBackpressure =
+                {.Count = CreateMetric(
+                     [self]
+                     {
+                         return self->NodesWithBackpressureCounter.GetCurrent();
+                     }),
+                 .MaxCount = CreateMetric(
+                     [self]
+                     { return self->NodesWithBackpressureCounter.GetMax(); })},
         };
     }
 
@@ -131,6 +151,7 @@ public:
         PendingRequestCounter.Update(maxPendingRequestDuration);
         UnflushedRequestCounter.Update(maxUnflushedRequestDuration);
         FlushedRequestCounter.Update();
+        NodesWithBackpressureCounter.Update();
     }
 };
 
@@ -219,6 +240,18 @@ void TWriteDataRequestManagerMetrics::Register(
         FlushedQueue.ProcessedCount,
         EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("NodesWithBackpressure_Count")},
+        NodesWithBackpressure.Count,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("NodesWithBackpressure_MaxCount")},
+        NodesWithBackpressure.MaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

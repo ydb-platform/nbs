@@ -20,11 +20,13 @@ TWriteBackCacheState::TWriteBackCacheState(
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
     INodeStateHolderStatsPtr nodeStateHolderStats,
+    TFlushBackpressureCalculator flushBackpressureCalculator,
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
     , Stats(std::move(writeBackCacheStateStats))
     , RequestManagerStats(std::move(writeDataRequestManagerStats))
+    , FlushBackpressureCalculator(std::move(flushBackpressureCalculator))
     , LogTag(std::move(logTag))
     , Nodes(Timer, std::move(nodeStateHolderStats))
     , QueuedOperations(processor)
@@ -580,7 +582,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
         handleState.UnflushedRequests.PushBack(request.get());
     }
 
-    nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
+    EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
 
     UpdateFlushStatus(nodeId, nodeState);
 
@@ -604,6 +606,15 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
     }
 
     NodesReadyToFlush.clear();
+}
+
+bool TWriteBackCacheState::GetBackpressureStatus(
+    const TNodeState& nodeState) const
+{
+    return FlushBackpressureCalculator.GetBackpressureStatus(
+        nodeState.Cache.GetUnflushedRequestsCount(),
+        nodeState.Cache.GetCachedDataContiguousIntervalCount(),
+        nodeState.Cache.GetCachedDataByteCount());
 }
 
 void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
@@ -686,7 +697,7 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     ui64 nodeId,
     TNodeState& nodeState)
 {
-    bool entriesEvicted = false;
+    bool shouldProcessPendingRequests = false;
 
     const ui64 allowedToEvictMaxSequenceId =
         nodeState.CachedDataPins.empty() ? Max<ui64>()
@@ -699,7 +710,22 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         }
         auto cachedRequest = nodeState.Cache.DequeueFlushedRequest();
         RequestManager.Evict(std::move(cachedRequest));
-        entriesEvicted = true;
+        shouldProcessPendingRequests = true;
+    }
+
+    if (!GetBackpressureStatus(nodeState)) {
+        // The calculator may report that backpressure is no longer needed
+        // before any entries are evicted, for example after requests move from
+        // the unflushed queue to the flushed queue.
+        //
+        // We deliberately check and clear the backpressure condition only at
+        // request eviction because otherwise it would require more precise
+        // logic and is not needed for the current heuristic.
+        //
+        // This may keep backpressure slightly longer while pins block eviction,
+        // but pins are expected to be short-lived so this effect is negligible.
+        shouldProcessPendingRequests |=
+            RequestManager.ClearBackpressureStatusForNode(nodeId);
     }
 
     if (nodeState.CanBeDeleted()) {
@@ -708,7 +734,7 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         CheckAndAcquireBarriers(nodeState);
     }
 
-    if (entriesEvicted) {
+    if (shouldProcessPendingRequests) {
         ProcessPendingRequests();
     }
 }
@@ -792,9 +818,21 @@ void TWriteBackCacheState::ProcessPendingRequests()
         handleState.PendingRequests.Remove(pendingRequest.get());
         handleState.UnflushedRequests.PushBack(request.get());
 
-        nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
+        EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
 
         UpdateFlushStatus(nodeId, nodeState);
+    }
+}
+
+void TWriteBackCacheState::EnqueueUnflushedRequest(
+    ui64 nodeId,
+    TNodeState& nodeState,
+    std::unique_ptr<TCachedWriteDataRequest> request)
+{
+    nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
+
+    if (GetBackpressureStatus(nodeState)) {
+        RequestManager.SetBackpressureStatusForNode(nodeId);
     }
 }
 

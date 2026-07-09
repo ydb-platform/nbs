@@ -422,6 +422,40 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         b.CheckUnflushedQueueMetrics(0, 0, 0, 4, 18000);
         b.CheckFlushedQueueMetrics(0, 0, 4);
     }
+
+    Y_UNIT_TEST(ShouldSupportBackpressure)
+    {
+        TBootstrap b;
+
+        auto f1 = b.Add(1, 101, 0, "abc");
+
+        UNIT_ASSERT(b.RequestManager.SetBackpressureStatusForNode(2));
+        UNIT_ASSERT(b.RequestManager.SetBackpressureStatusForNode(3));
+
+        UNIT_ASSERT(!b.RequestManager.SetBackpressureStatusForNode(2));
+
+        auto f2 = b.Add(2, 202, 0, "def");
+        auto f3 = b.Add(3, 303, 0, "ghi");
+
+        UNIT_ASSERT(f1.HasValue());
+        UNIT_ASSERT(!f2.HasValue());
+        UNIT_ASSERT(!f3.HasValue());
+
+        UNIT_ASSERT(b.RequestManager.ClearBackpressureStatusForNode(3));
+        UNIT_ASSERT(!b.RequestManager.ClearBackpressureStatusForNode(3));
+
+        b.TryProcessPendingRequests();
+
+        // Request reordering in the pending queue is not allowed
+        UNIT_ASSERT(!f2.HasValue());
+        UNIT_ASSERT(!f3.HasValue());
+
+        UNIT_ASSERT(b.RequestManager.ClearBackpressureStatusForNode(2));
+        b.TryProcessPendingRequests();
+
+        UNIT_ASSERT(f2.HasValue());
+        UNIT_ASSERT(f3.HasValue());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
