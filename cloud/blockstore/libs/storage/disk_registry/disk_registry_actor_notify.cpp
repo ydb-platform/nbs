@@ -19,7 +19,7 @@ class TNotifyActor final
 {
 private:
     const TActorId Owner;
-    const ui64 TabletID;
+    const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
     const TVector<TDiskNotification> DiskNotifications;
@@ -30,7 +30,7 @@ private:
 public:
     TNotifyActor(
         const TActorId& owner,
-        ui64 tabletID,
+        const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TVector<TDiskNotification> diskIds);
@@ -61,12 +61,14 @@ private:
 
 TNotifyActor::TNotifyActor(
         const TActorId& owner,
-        const ui64 tabletID,
+        const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TVector<TDiskNotification> diskIds)
     : Owner(owner)
-    , TabletID(tabletID)
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"TNotifyActor", std::monostate{}}}))
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskNotifications(std::move(diskIds))
@@ -86,7 +88,11 @@ void TNotifyActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, "Nothing to do");
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "%s Nothing to do",
+        LogTitle.GetWithTime().c_str());
     ReplyAndDie(ctx);
 }
 
@@ -112,9 +118,11 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
 
     ui64 cookie = 0;
     for (const auto& [diskId, seqNo]: DiskNotifications) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%lu] Notifying volume: DiskId=%s",
-            TabletID,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s Notifying volume %s",
+            LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
 
         auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
@@ -144,8 +152,11 @@ void TNotifyActor::HandleTimeout(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "Notify disks request timed out");
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "%s Notify disks request timed out",
+        LogTitle.GetWithTime().c_str());
 
     ReplyAndDie(ctx);
 }
@@ -167,16 +178,16 @@ void TNotifyActor::HandleReallocateDiskResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%lu] Volume notification failed: DiskId=%s, Error=%s",
-            TabletID,
+            "%s Volume notification failed for %s: %s",
+            LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str(),
             msg->Record.GetError().GetMessage().Quote().c_str());
     } else {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%lu] Volume notification succeeded: DiskId=%s",
-            TabletID,
+            "%s Volume notification succeeded for %s",
+            LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
 
         auto* laggingDevices = msg->Record.MutableOutdatedLaggingDevices();
@@ -249,17 +260,21 @@ void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
     auto deadline = Min(DisksNotificationStartTs, ctx.Now()) +
                     Config->GetDiskRegistryDisksNotificationTimeout();
     if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Scheduled disks notification, now: %lu, deadline: %lu",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Scheduled disks notification, now: %lu, deadline: %lu",
+            LogTitle.GetWithTime().c_str(),
             ctx.Now().MicroSeconds(),
             deadline.MicroSeconds());
 
         ctx.Schedule(deadline, request.release());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Sending disks notification request",
-            TabletID());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Sending disks notification request",
+            LogTitle.GetWithTime().c_str());
 
         NCloud::Send(ctx, ctx.SelfID, std::move(request));
     }
@@ -283,7 +298,7 @@ void TDiskRegistryActor::HandleNotifyDisks(
     auto actor = NCloud::Register<TNotifyActor>(
         ctx,
         SelfId(),
-        TabletID(),
+        LogTitle,
         CreateRequestInfo(
             SelfId(),
             0,

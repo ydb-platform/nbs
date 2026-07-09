@@ -23,8 +23,12 @@ void TDiskRegistryActor::HandleMarkDiskForCleanup(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "mark disk %s for cleanup", diskId.Quote().data());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Mark disk for cleanup: %s",
+        LogTitle.GetWithTime().c_str(),
+        diskId.Quote().data());
 
     ExecuteTx<TMarkDiskForCleanup>(
         ctx,

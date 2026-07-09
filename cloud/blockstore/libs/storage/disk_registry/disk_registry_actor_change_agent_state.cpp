@@ -239,7 +239,8 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "Change state of agent[%s] on monitoring page from %s to %s",
+        "%s Change state of agent[%s] from %s to %s via monpage",
+        LogTitle.GetWithTime().c_str(),
         agentId.Quote().c_str(),
         EAgentState_Name(*agentState.Get()).c_str(),
         EAgentState_Name(newState).c_str());

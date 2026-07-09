@@ -56,7 +56,7 @@ class TNotifyActor final
 {
 private:
     const TActorId Owner;
-    const ui64 TabletID;
+    const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
 
     TVector<NProto::TUserNotification> Notifications;
@@ -68,7 +68,7 @@ private:
 public:
     TNotifyActor(
         const TActorId& owner,
-        ui64 tabletID,
+        const TLogTitle& logTitle,
         TRequestInfoPtr request,
         TVector<NProto::TUserNotification> notifications);
 
@@ -94,11 +94,13 @@ private:
 
 TNotifyActor::TNotifyActor(
         const TActorId& owner,
-        ui64 tabletID,
+        const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TVector<NProto::TUserNotification> notifications)
     : Owner(owner)
-    , TabletID(tabletID)
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"TNotifyActor", std::monostate{}}}))
     , RequestInfo(std::move(requestInfo))
     , Notifications(std::move(notifications))
 {}
@@ -136,9 +138,11 @@ void TNotifyActor::NotifyUsers(const TActorContext& ctx)
 
     ui64 cookie = 0;
     for (const auto& notif: Notifications) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Notifying users: %s",
-            TabletID,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Notifying users: %s",
+            LogTitle.GetWithTime().c_str(),
             ToString(notif).c_str());
 
         auto request =
@@ -176,24 +180,26 @@ void TNotifyActor::HandleNotifyUserEventResponse(
     const auto& error = ev->Get()->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Users notification failed: %s, Error=%s",
-            TabletID,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Users notification failed: %s, Error=%s",
+            LogTitle.GetWithTime().c_str(),
             ToString(notif).c_str(),
             FormatError(error).c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            ReportUserNotificationError(
-                {{"TabletID", TabletID}, {"Notification", ToString(notif)}});
+            ReportUserNotificationError({{"Notification", ToString(notif)}});
 
             Failures.push_back(MakeNotificationKey(notif));
         }
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Users notification succeeded: %s, Error=%s",
-            TabletID,
-            ToString(notif).c_str(),
-            FormatError(error).c_str());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Users notification succeeded: %s",
+            LogTitle.GetWithTime().c_str(),
+            ToString(notif).c_str());
 
         Succeeded.push_back(MakeNotificationKey(notif));
     }
@@ -249,9 +255,11 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
     auto error = State->GetDiskInfo(diskId, diskInfo);
 
     if (error.GetCode() == E_NOT_FOUND) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Disk not found. Cancel notification of the event %s.",
-            TabletID(),
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Disk not found, cancel notification of event %s",
+            LogTitle.GetWithTime().c_str(),
             ToString(notif).c_str());
 
         auto response = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyUserEventResponse>(
@@ -263,17 +271,21 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
     }
 
     if (HasError(error)) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Unexpected error %s for disk %s. Try send notification anyway.",
-            TabletID(),
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Unexpected error %s for disk %s, try send notification anyway",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str(),
             diskId.Quote().c_str());
     }
 
     if (diskInfo.CloudId.empty()) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Empty Cloud Id for disk %s. Postpone notification.",
-            TabletID(),
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Empty Cloud Id for disk %s, postpone notification",
+            LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
 
         auto response = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyUserEventResponse>(
@@ -288,9 +300,11 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
     auto eventOrError = ConvertNotificationEvent(notif);
 
     if (HasError(eventOrError)) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Bad event: %s. Drop it.",
-            TabletID(),
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Bad event: %s, dropping",
+            LogTitle.GetWithTime().c_str(),
             FormatError(eventOrError.GetError()).c_str());
 
         auto response = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyUserEventResponse>(
@@ -302,9 +316,11 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Notify users: %s, CloudId=%s, FolderId=%s, UserId=%s",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Notify users: %s, CloudId=%s, FolderId=%s, UserId=%s",
+        LogTitle.GetWithTime().c_str(),
         ToString(notif).c_str(),
         diskInfo.CloudId.Quote().c_str(),
         diskInfo.FolderId.Quote().c_str(),
@@ -355,7 +371,7 @@ void TDiskRegistryActor::HandleNotifyUsers(
     auto actor = NCloud::Register<TNotifyActor>(
         ctx,
         SelfId(),
-        TabletID(),
+        LogTitle,
         CreateRequestInfo(
             SelfId(),
             0,
@@ -377,17 +393,21 @@ void TDiskRegistryActor::NotifyUsers(const NActors::TActorContext& ctx)
 
     auto deadline = Min(UsersNotificationStartTs, ctx.Now()) + TDuration::Seconds(5);
     if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Scheduled users notification, now: %lu, deadline: %lu",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Scheduled users notification, now: %lu, deadline: %lu",
+            LogTitle.GetWithTime().c_str(),
             ctx.Now().MicroSeconds(),
             deadline.MicroSeconds());
 
         ctx.Schedule(deadline, request.release());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Sending users notification request",
-            TabletID());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Sending users notification request",
+            LogTitle.GetWithTime().c_str());
 
         NCloud::Send(ctx, ctx.SelfID, std::move(request));
     }
@@ -436,9 +456,11 @@ void TDiskRegistryActor::ExecuteDeleteUserNotifications(
 {
     Y_UNUSED(ctx);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Delete notifications: %d",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Delete notifications: %d",
+        LogTitle.GetWithTime().c_str(),
         args.Notifications.size());
 
     TDiskRegistryDatabase db(tx.DB);

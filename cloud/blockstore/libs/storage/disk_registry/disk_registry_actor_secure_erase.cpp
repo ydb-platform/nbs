@@ -59,7 +59,7 @@ private:
 
 public:
     TSecureEraseActor(
-        TChildLogTitle logTitle,
+        const TLogTitle& logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
@@ -100,13 +100,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSecureEraseActor::TSecureEraseActor(
-        TChildLogTitle logTitle,
+        const TLogTitle& logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
         TString poolName,
         TVector<NProto::TDeviceConfig> devicesToClean)
-    : LogTitle(std::move(logTitle))
+    : LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"pool", TStringBuf(poolName)}}))
     , Owner(owner)
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
@@ -453,7 +455,7 @@ void TDiskRegistryActor::HandleSecureErase(
 
     auto actor = NCloud::Register<TSecureEraseActor>(
         ctx,
-        LogTitle.GetChild(GetCycleCount()),
+        LogTitle,
         ctx.SelfID,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         msg->RequestTimeout,

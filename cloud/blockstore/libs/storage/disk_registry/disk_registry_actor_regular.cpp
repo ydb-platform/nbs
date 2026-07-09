@@ -24,9 +24,12 @@ void TDiskRegistryActor::ProcessAutomaticallyReplacedDevices(
     const auto until = ctx.Now() - delay;
     AutomaticallyReplacedDevicesDeletionInProgress = true;
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Processing AutomaticallyReplacedDevices, count: "
-        << State->GetAutomaticallyReplacedDevices().size());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Processing AutomaticallyReplacedDevices, count: %lu",
+        LogTitle.GetWithTime().c_str(),
+        State->GetAutomaticallyReplacedDevices().size());
 
     ExecuteTx<TProcessAutomaticallyReplacedDevices>(
         ctx,

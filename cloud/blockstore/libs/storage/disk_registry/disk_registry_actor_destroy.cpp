@@ -18,7 +18,7 @@ class TDestroyActor final
 {
 private:
     const TActorId Owner;
-    const ui64 TabletID;
+    const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
 
@@ -28,7 +28,7 @@ private:
 public:
     TDestroyActor(
         const TActorId& owner,
-        ui64 tabletID,
+        const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TVector<TString> diskIds);
@@ -55,12 +55,14 @@ private:
 
 TDestroyActor::TDestroyActor(
         const TActorId& owner,
-        const ui64 tabletID,
+        const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TVector<TString> diskIds)
     : Owner(owner)
-    , TabletID(tabletID)
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"TDestroyActor", std::monostate{}}}))
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskIds(std::move(diskIds))
@@ -103,9 +105,11 @@ void TDestroyActor::DestroyDisks(const TActorContext& ctx)
 
     ui64 cookie = 0;
     for (const auto& diskId: DiskIds) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Destroying broken volume: DiskId=%s",
-            TabletID,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Destroying broken volume: DiskId=%s",
+            LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
 
         auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
@@ -141,16 +145,20 @@ void TDestroyActor::HandleDestroyVolumeResponse(
     Y_ABORT_UNLESS(PendingOperations >= 0);
 
     if (HasError(ev->Get()->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Volume destruction failed: DiskId=%s, Error=%s",
-            TabletID,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Volume destruction failed: DiskId=%s, Error=%s",
+            LogTitle.GetWithTime().c_str(),
             DiskIds[cookie].Quote().c_str(),
             FormatError(ev->Get()->Record.GetError()).c_str());
         DiskIds[cookie] = {};
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Volume destruction succeeded: DiskId=%s",
-            TabletID,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Volume destruction succeeded: DiskId=%s",
+            LogTitle.GetWithTime().c_str(),
             DiskIds[cookie].Quote().c_str());
     }
 
@@ -213,9 +221,11 @@ void TDiskRegistryActor::DestroyBrokenDisks(const TActorContext& ctx)
 
     auto deadline = ctx.Now() + Config->GetBrokenDiskDestructionDelay();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Scheduled broken disks destruction, now: %lu, deadline: %lu",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Scheduled broken disks destruction, now: %lu, deadline: %lu",
+        LogTitle.GetWithTime().c_str(),
         ctx.Now().MicroSeconds(),
         deadline.MicroSeconds());
 
@@ -247,7 +257,7 @@ void TDiskRegistryActor::HandleDestroyBrokenDisks(
     auto actor = NCloud::Register<TDestroyActor>(
         ctx,
         SelfId(),
-        TabletID(),
+        LogTitle,
         CreateRequestInfo(
             SelfId(),
             0,

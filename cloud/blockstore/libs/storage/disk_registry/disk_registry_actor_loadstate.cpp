@@ -205,10 +205,12 @@ void TDiskRegistryActor::CompleteLoadState(
     if (TDuration timeout = Config->GetNonReplicatedAgentMaxTimeout()) {
         const auto deadline = timeout.ToDeadLine(ctx.Now());
 
-        LOG_INFO_S(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Schedule the initial agents rejection phase to " << deadline);
+            "%s Schedule the initial agents rejection phase to %s",
+            LogTitle.GetWithTime().c_str(),
+            ToString(deadline).c_str());
 
         auto request =
             std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>();
@@ -249,8 +251,9 @@ void TDiskRegistryActor::CompleteLoadState(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Found devices without agent and try to remove them: "
+            "%s Found devices without agent, trying to remove them: "
             "DeviceUUIDs=%s",
+            LogTitle.GetWithTime().c_str(),
             JoinSeq(" ", orphanDevices).c_str());
 
         ExecuteTx<TRemoveOrphanDevices>(ctx, std::move(orphanDevices));
