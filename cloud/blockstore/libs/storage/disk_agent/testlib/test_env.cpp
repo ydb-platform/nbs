@@ -256,6 +256,14 @@ NSpdk::ISpdkDevicePtr TTestSpdkTarget::GetDevice(const TString& name)
 
 TTestEnv::~TTestEnv()
 {
+    for (const auto& actorId: Actors) {
+        Runtime.Send(actorId, TActorId(), new TEvents::TEvPoisonPill());
+    }
+
+    Runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+    BackgroundThreadPool->Stop();
+
     if (FileIOService) {
         FileIOService->Stop();
     }
@@ -317,6 +325,8 @@ TTestEnvBuilder& TTestEnvBuilder::With(TDiskRegistryState::TPtr diskRegistryStat
 
 TTestEnv TTestEnvBuilder::Build()
 {
+    THashSet<TActorId> actors;
+
     Runtime.AppendToLogSettings(
         TBlockStoreComponents::START,
         TBlockStoreComponents::END,
@@ -400,9 +410,13 @@ TTestEnv TTestEnvBuilder::Build()
         CreateLocalNVMeServiceStub());
 
     const ui32 firstDiskAgentNodeIndex = 0;
+    const TActorId firstDiskAgentActorId =
+        MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex));
+
+    actors.emplace(firstDiskAgentActorId);
 
     Runtime.AddLocalService(
-        MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex)),
+        firstDiskAgentActorId,
         TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0),
         firstDiskAgentNodeIndex);
 
@@ -426,8 +440,13 @@ TTestEnv TTestEnvBuilder::Build()
             CreateThreadPool("Background", 1),
             CreateLocalNVMeServiceStub());
 
+        const TActorId additionalDiskAgentActorId = MakeDiskAgentServiceId(
+            Runtime.GetNodeId(additionalDiskAgentNodeIndex));
+
+        actors.emplace(additionalDiskAgentActorId);
+
         Runtime.AddLocalService(
-            MakeDiskAgentServiceId(Runtime.GetNodeId(additionalDiskAgentNodeIndex)),
+            additionalDiskAgentActorId,
             TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0),
             additionalDiskAgentNodeIndex);
         ++additionalDiskAgentNodeIndex;
@@ -449,8 +468,9 @@ TTestEnv TTestEnvBuilder::Build()
         .DiskRegistryState = std::move(DiskRegistryState),
         .FileIOService = FileIOService,
         .NvmeManager = NvmeManager,
-        .DiskAgentActorId =
-            MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex))
+        .DiskAgentActorId = firstDiskAgentActorId,
+        .BackgroundThreadPool = std::move(backgroundThreadPool),
+        .Actors = std::move(actors),
     };
 }
 

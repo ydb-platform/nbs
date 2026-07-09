@@ -29,6 +29,7 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/generic/guid.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NStorage::NDiskAgentTest {
@@ -495,6 +496,10 @@ struct TTestEnv
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
     NActors::TActorId DiskAgentActorId;
+
+    ITaskQueuePtr BackgroundThreadPool;
+
+    THashSet<NActors::TActorId> Actors;
 
     ~TTestEnv();
 };

@@ -196,6 +196,11 @@ public:
         TVector<IStoragePtr> devices,
         TVector<TStorageIoStatsPtr> stats);
 
+    TDeviceClientPtr GetDeviceClient()
+    {
+        return DeviceClient;
+    }
+
 private:
     TStorageAdapterPtr GetDeviceStorageAdapter(
         const TString& uuid,
