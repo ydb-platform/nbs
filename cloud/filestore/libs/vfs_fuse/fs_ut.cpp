@@ -5654,6 +5654,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // will consist of a single WriteData request
         features.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
 
+        auto firstWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
+        auto secondWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
+        auto restWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
+        std::atomic<int> writeDataCalled = 0;
+
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
@@ -5666,11 +5671,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             bootstrap.Stop();
         };
-
-        auto firstWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
-        auto secondWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
-        auto restWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
-        std::atomic<int> writeDataCalled = 0;
 
         bootstrap.Service->WriteDataHandler = [&](auto, auto)
         {
