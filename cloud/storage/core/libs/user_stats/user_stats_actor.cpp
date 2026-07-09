@@ -42,25 +42,24 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
         auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
         const auto registerActorPage = [&] (
-            TString relPath,
-            TString title,
+            const TString& relPath,
+            const TString& title,
             bool preTag)
         {
-            mon->RegisterActorPage({
-                .Title = std::move(title),
-                .RelPath = std::move(relPath),
-                .ActorSystem = ctx.ActorSystem(),
-                .Index = rootPage,
-                .PreTag = preTag,
-                .ActorId = SelfId(),
-                .UseAuth = false,
-            });
+            mon->RegisterActorPage(
+                rootPage,
+                relPath,
+                title,
+                preTag,
+                ctx.ActorSystem(),
+                SelfId(),
+                false);
         };
 
         registerActorPage("user_stats/human", "UserStats", true);
-        registerActorPage("user_stats/json", {}, false);
-        registerActorPage("user_stats/spack", {}, false);
-        registerActorPage("user_stats/prometheus", {}, false);
+        registerActorPage("user_stats/json", TString(), false);
+        registerActorPage("user_stats/spack", TString(), false);
+        registerActorPage("user_stats/prometheus", TString(), false);
     }
 }
 
