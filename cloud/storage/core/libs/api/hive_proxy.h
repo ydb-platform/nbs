@@ -29,7 +29,6 @@ namespace NCloud::NStorage {
     xxx(BackupTabletBootInfos,     __VA_ARGS__)                                \
     xxx(ListTabletBootInfoBackups, __VA_ARGS__)                                \
     xxx(GetTabletBootInfos,        __VA_ARGS__)                                \
-    xxx(SetTabletBootInfos,        __VA_ARGS__)                                \
 // STORAGE_HIVE_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -291,19 +290,6 @@ struct TEvHiveProxy
     };
 
     //
-    // SetTabletBootInfos
-    //
-
-    struct TSetTabletBootInfosRequest
-    {
-        TVector<TTabletBootInfo> TabletBootInfos;
-    };
-
-    struct TSetTabletBootInfosResponse
-    {
-    };
-
-    //
     // Events declaration
     //
 
@@ -345,9 +331,6 @@ struct TEvHiveProxy
 
         EvGetTabletBootInfosRequest = EvBegin + 22,
         EvGetTabletBootInfosResponse = EvBegin + 23,
-
-        EvSetTabletBootInfosRequest = EvBegin + 24,
-        EvSetTabletBootInfosResponse = EvBegin + 25,
 
         EvEnd
     };

@@ -86,10 +86,6 @@ private:
     void HandleGetTabletBootInfos(
         const TEvHiveProxy::TEvGetTabletBootInfosRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
-
-    void HandleSetTabletBootInfos(
-        const TEvHiveProxy::TEvSetTabletBootInfosRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NStorage

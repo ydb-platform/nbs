@@ -50,14 +50,3 @@ message TGetTabletBootInfosResponse
 {
     repeated TTabletBootInfoProto TabletBootInfos = 1;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// SetTabletBootInfos request/response.
-
-message TSetTabletBootInfosRequest
-{
-    repeated TTabletBootInfoProto TabletBootInfos = 1;
-}
-
-message TSetTabletBootInfosResponse
-{}
