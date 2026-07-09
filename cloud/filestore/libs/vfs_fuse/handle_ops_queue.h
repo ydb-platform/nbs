@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/vfs_fuse/protos/queue_entry.pb.h>
 
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
@@ -14,6 +15,7 @@ class THandleOpsQueue
 {
 private:
     TFileRingBuffer RequestsToProcess;
+    std::shared_ptr<class THandleOpsQueueStats> Stats;
 
 public:
     enum class EResult
@@ -24,6 +26,8 @@ public:
     };
 
     explicit THandleOpsQueue(const TString& filePath, ui32 size);
+
+    IModuleStatsPtr CreateModuleStats() const;
 
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();

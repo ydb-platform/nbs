@@ -313,6 +313,18 @@ struct TBootstrap
             ->FindSubgroup("module", "DirectoryHandles");
     }
 
+    NMonitoring::TDynamicCountersPtr GetHandleOpsQueueCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "HandleOpsQueue");
+    }
+
     ~TBootstrap()
     {
         Stop();
@@ -3307,6 +3319,25 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
+        auto moduleCounters = bootstrap.GetHandleOpsQueueCounters();
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            moduleCounters->GetCounter("Size")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            moduleCounters->GetCounter("MaxSize")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            moduleCounters->GetCounter("OverflowErrorCount")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            moduleCounters->GetCounter("SerializationErrorCount")
+                ->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            moduleCounters->GetCounter("ParseErrorCount")->GetAtomic());
+
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "DestroyHandle");
@@ -3315,6 +3346,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             handle1,
             O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            moduleCounters->GetCounter("Size")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            moduleCounters->GetCounter("MaxSize")->GetAtomic());
+
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
@@ -3328,6 +3367,20 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(
             future.GetValue(ExceptionWaitTimeout),
             yexception);
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            moduleCounters->GetCounter("Size")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            moduleCounters->GetCounter("OverflowErrorCount")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            moduleCounters->GetCounter("SerializationErrorCount")
+                ->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            moduleCounters->GetCounter("ParseErrorCount")->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
