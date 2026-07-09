@@ -552,7 +552,7 @@ struct TSetXAttrValueRequest
 struct TReleaseRequest
     : public TRequestBase<fuse_release_in, void, void>
 {
-    TReleaseRequest(ui64 nodeId, ui64 fh, int flags = 0)
+    TReleaseRequest(ui64 nodeId, ui64 fh, int flags)
     {
         In->Header.opcode = FUSE_RELEASE;
         In->Header.nodeid = nodeId;
