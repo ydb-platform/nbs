@@ -99,9 +99,7 @@ void TFileSystem::Reset()
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
-    if (Config->GetAsyncDestroyHandleEnabled() ||
-        Config->GetAsyncDestroyReadOnlyHandleEnabled())
-    {
+    if (HandleOpsQueue) {
         Scheduler->Schedule(
             Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
             [=, ptr = weak_from_this()]()
