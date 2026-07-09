@@ -40,7 +40,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(Truncate,                               __VA_ARGS__)                   \
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
-    xxx(WriteBatch,                             __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
@@ -152,7 +151,6 @@ enum class EAddBlobMode
 {
     Write,
     WriteUnconfirmed,
-    WriteBatch,
     Flush,
     FlushBytes,
     Compaction,
@@ -256,19 +254,6 @@ struct TEvIndexTabletPrivate
     };
 
     using TCleanupSessionsCompleted = TEmpty;
-
-    //
-    // WriteBatch
-    //
-    struct TWriteBatchRequest
-    {
-    };
-
-    struct TWriteBatchResponse
-    {
-    };
-
-    using TWriteBatchCompleted = TIndexOperationCompleted;
 
     //
     // ReadBlob

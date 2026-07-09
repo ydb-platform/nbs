@@ -32,8 +32,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
     xxx(IdleSessionTimeout,            TDuration, TDuration::Hours(1)         )\
                                                                                \
-    xxx(WriteBatchEnabled,             bool,      false                       )\
-    xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
     xxx(WriteBlobThreshold,            ui32,      128_KB                      )\
                                                                                \
     xxx(MaxBlobSize,                        ui32,   4_MB                      )\

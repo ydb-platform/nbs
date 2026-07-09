@@ -58,8 +58,6 @@ struct TIndexTabletState::TImpl
 
     THandlesStats HandlesStats;
 
-    TWriteRequestList WriteBatch;
-
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;
     TFreshBlocks FreshBlocks;

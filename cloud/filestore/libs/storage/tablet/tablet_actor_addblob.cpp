@@ -58,11 +58,6 @@ public:
                 Execute_AddBlob_WriteUnconfirmed(ctx, db, args);
                 break;
 
-            case EAddBlobMode::WriteBatch:
-                args.CommitIdOverflowMessage = "AddBlobWriteBatch";
-                Execute_AddBlob_WriteBatch(ctx, db, args);
-                break;
-
             case EAddBlobMode::Flush:
                 args.CommitIdOverflowMessage = "AddBlobFlush";
                 Execute_AddBlob_Flush(db, args);
@@ -248,75 +243,6 @@ private:
         }
 
         Tablet.ConfirmedDataAdded(db, args.ConfirmedDataRefCommitId);
-    }
-
-    void Execute_AddBlob_WriteBatch(
-        const TActorContext& ctx,
-        TIndexTabletDatabase& db,
-        TTxIndexTablet::TAddBlob& args)
-    {
-        Y_UNUSED(ctx);
-
-        TABLET_VERIFY(!args.SrcBlobs);
-        TABLET_VERIFY(!args.MergedBlobs);
-        TABLET_VERIFY(!args.UnalignedDataParts);
-
-        AddBlobsInfo(
-            Tablet.GetBlockSize(),
-            args.MixedBlobs,
-            args.ProfileLogRequest);
-
-        // Flush/Compaction just transfers blocks from one place to another,
-        // but Write is different: we need to generate MinCommitId
-        // and mark overwritten blocks now
-        args.CommitId = Tablet.GenerateCommitId();
-        if (args.CommitId == InvalidCommitId) {
-            args.OnCommitIdOverflow();
-            return;
-        }
-
-        TVector<bool> isMixedBlobWritten(args.MixedBlobs.size());
-        for (ui32 i = 0; i < args.MixedBlobs.size(); ++i) {
-            auto& blob = args.MixedBlobs[i];
-
-            for (auto& block: blob.Blocks) {
-                TABLET_VERIFY(block.MinCommitId == InvalidCommitId
-                    && block.MaxCommitId == InvalidCommitId);
-                block.MinCommitId = args.CommitId;
-            }
-
-            GroupBy(
-                MakeArrayRef(blob.Blocks),
-                [] (const auto& l, const auto& r) {
-                    return r.NodeId == l.NodeId
-                        && r.BlockIndex == l.BlockIndex + 1;
-                },
-                [&] (TArrayRef<const TBlock> group) {
-                    Tablet.MarkFreshBlocksDeleted(
-                        db,
-                        group[0].NodeId,
-                        args.CommitId,
-                        group[0].BlockIndex,
-                        group.size());
-
-                    Tablet.MarkMixedBlocksDeleted(
-                        db,
-                        group[0].NodeId,
-                        args.CommitId,
-                        group[0].BlockIndex,
-                        group.size());
-                });
-
-            auto writeBlocksResult = Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
-            if (writeBlocksResult.NewBlob) {
-                ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-                AccessCompactionRangeInfo(rangeId).BlobsCount += 1;
-                AccessCompactionRangeInfo(rangeId).GarbageBlocksCount +=
-                    writeBlocksResult.GarbageBlocksCount;
-            }
-        }
-
-        UpdateNodeAttrs(db, args);
     }
 
     void Execute_AddBlob_Flush(
