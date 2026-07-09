@@ -139,15 +139,16 @@ TResultOrError<IActorPtr> TServiceActor::CreateSetTabletBootInfosActor(
     tabletBootInfos.reserve(request.TabletBootInfosSize());
     for (const auto& entry: request.GetTabletBootInfos()) {
         NKikimrTabletBase::TTabletStorageInfo storageInfo;
-        if (!storageInfo.ParseFromString(entry.GetStorageInfo())) {
+        if (!storageInfo.ParseFromString(entry.GetSerializedTabletStorageInfo())) {
             return MakeError(E_ARGUMENT, "Failed to parse StorageInfo");
         }
         if (entry.GetTabletId() != storageInfo.GetTabletID()) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
-                    << "TabletId mismatch: entry=" << entry.GetTabletId()
-                    << ", storageInfo=" << storageInfo.GetTabletID());
+                    << "TabletId mismatch: entry contains "
+                    << entry.GetTabletId() << ", while storage info contains "
+                    << storageInfo.GetTabletID());
         }
         tabletBootInfos.emplace_back(
             std::move(storageInfo),

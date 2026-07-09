@@ -2110,7 +2110,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        auto result = env.SendGetTabletBootInfos(sender, S_FALSE);
+        auto result = env.SendGetTabletBootInfos(sender, E_PRECONDITION_FAILED);
         UNIT_ASSERT(result.TabletBootInfos.empty());
     }
 }

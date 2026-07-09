@@ -98,7 +98,7 @@ void TGetTabletBootInfosActor::HandleGetTabletBootInfosResponse(
     NPrivateProto::TGetTabletBootInfosResponse result;
     for (const auto& info: msg->TabletBootInfos) {
         auto* entry = result.AddTabletBootInfos();
-        entry->SetStorageInfo(info.StorageInfoProto.SerializeAsString());
+        entry->SetSerializedTabletStorageInfo(info.StorageInfoProto.SerializeAsString());
         entry->SetSuggestedGeneration(info.SuggestedGeneration);
         entry->SetTabletId(info.StorageInfoProto.GetTabletID());
     }

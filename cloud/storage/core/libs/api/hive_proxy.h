@@ -288,11 +288,6 @@ struct TEvHiveProxy
     struct TGetTabletBootInfosResponse
     {
         TVector<TTabletBootInfo> TabletBootInfos;
-
-        explicit TGetTabletBootInfosResponse(
-                TVector<TTabletBootInfo> tabletBootInfos = {})
-            : TabletBootInfos(std::move(tabletBootInfos))
-        {}
     };
 
     //
@@ -302,11 +297,6 @@ struct TEvHiveProxy
     struct TSetTabletBootInfosRequest
     {
         TVector<TTabletBootInfo> TabletBootInfos;
-
-        explicit TSetTabletBootInfosRequest(
-                TVector<TTabletBootInfo> tabletBootInfos = {})
-            : TabletBootInfos(std::move(tabletBootInfos))
-        {}
     };
 
     struct TSetTabletBootInfosResponse
