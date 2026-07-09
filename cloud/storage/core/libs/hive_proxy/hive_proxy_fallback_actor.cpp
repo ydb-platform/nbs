@@ -346,7 +346,7 @@ void THiveProxyFallbackActor::HandleGetTabletBootInfos(
     } else {
         auto response =
             std::make_unique<TEvHiveProxy::TEvGetTabletBootInfosResponse>(
-                MakeError(S_FALSE));
+                MakeError(E_PRECONDITION_FAILED));
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 }
@@ -360,7 +360,7 @@ void THiveProxyFallbackActor::HandleSetTabletBootInfos(
     } else {
         auto response =
             std::make_unique<TEvHiveProxy::TEvSetTabletBootInfosResponse>(
-                MakeError(S_FALSE));
+                MakeError(E_PRECONDITION_FAILED));
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 }

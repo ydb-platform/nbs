@@ -35,10 +35,9 @@ message TKillTabletResponse
 message TTabletBootInfoProto
 {
     // NKikimrTabletBase::TTabletStorageInfo serialized to bytes.
+    // There is a serialized field used because we don't want to depend on YDB.
     bytes SerializedTabletStorageInfo = 1;
     uint64 SuggestedGeneration = 2;
-    // The TabletId must be equal to the TabletId in the SerializedTabletStorageInfo.
-    uint64 TabletId = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

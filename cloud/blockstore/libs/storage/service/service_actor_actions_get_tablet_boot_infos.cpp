@@ -100,7 +100,6 @@ void TGetTabletBootInfosActor::HandleGetTabletBootInfosResponse(
         auto* entry = result.AddTabletBootInfos();
         entry->SetSerializedTabletStorageInfo(info.StorageInfoProto.SerializeAsString());
         entry->SetSuggestedGeneration(info.SuggestedGeneration);
-        entry->SetTabletId(info.StorageInfoProto.GetTabletID());
     }
 
     TString output;

@@ -142,14 +142,6 @@ TResultOrError<IActorPtr> TServiceActor::CreateSetTabletBootInfosActor(
         if (!storageInfo.ParseFromString(entry.GetSerializedTabletStorageInfo())) {
             return MakeError(E_ARGUMENT, "Failed to parse StorageInfo");
         }
-        if (entry.GetTabletId() != storageInfo.GetTabletID()) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "TabletId mismatch: entry contains "
-                    << entry.GetTabletId() << ", while storage info contains "
-                    << storageInfo.GetTabletID());
-        }
         tabletBootInfos.emplace_back(
             std::move(storageInfo),
             entry.GetSuggestedGeneration());
