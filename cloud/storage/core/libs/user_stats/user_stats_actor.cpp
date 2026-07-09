@@ -138,18 +138,18 @@ void TUserStatsActor::HandleHttpInfo(
     const NActors::TActorContext& ctx)
 {
     TStringStream out;
-    auto contentType = NActors::NMon::IEvHttpInfoRes::Html;
+    auto responseFormat = NActors::NMon::IEvHttpInfoRes::Html;
 
     const TStringBuf path = ev->Get()->Request.GetPath();
     if (path.EndsWith(TStringBuf("/user_stats/json"))) {
         OutputJsonPage(out);
-        contentType = NActors::NMon::IEvHttpInfoRes::Custom;
+        responseFormat = NActors::NMon::IEvHttpInfoRes::Custom;
     } else if (path.EndsWith(TStringBuf("/user_stats/spack"))) {
         OutputSpackPage(out);
-        contentType = NActors::NMon::IEvHttpInfoRes::Custom;
+        responseFormat = NActors::NMon::IEvHttpInfoRes::Custom;
     } else if (path.EndsWith(TStringBuf("/user_stats/prometheus"))) {
         OutputPrometheusPage(out);
-        contentType = NActors::NMon::IEvHttpInfoRes::Custom;
+        responseFormat = NActors::NMon::IEvHttpInfoRes::Custom;
     } else {
         RenderHtmlInfo(out);
     }
@@ -160,7 +160,7 @@ void TUserStatsActor::HandleHttpInfo(
         std::make_unique<NActors::NMon::TEvHttpInfoRes>(
             out.Str(),
             0,
-            contentType));
+            responseFormat));
 }
 
 void TUserStatsActor::HandleUserStatsProviderCreate(
