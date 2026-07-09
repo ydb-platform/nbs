@@ -8,6 +8,8 @@
 #include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
+#include <util/string/builder.h>
+#include <util/string/cast.h>
 
 #include <google/protobuf/text_format.h>
 
@@ -625,7 +627,27 @@ void TStorageConfig::SetFeaturesConfig(
     FeaturesConfig = std::move(featuresConfig);
 }
 
-void TStorageConfig::SetCloudFolderEntity(
+namespace {
+
+template <typename T>
+bool FromString(
+    const TString& fieldName,
+    const TString& strValue,
+    T& value,
+    TString& errStr)
+{
+    if (!TryFromString(strValue, value)) {
+        errStr += TStringBuilder() << "String '" << strValue
+                                   << "' can't be converted to the type of '"
+                                   << fieldName << "' ";
+        return false;
+    }
+    return true;
+}
+
+}   // namespace
+
+NProto::TError TStorageConfig::SetCloudFolderEntity(
     const TString& cloudId,
     const TString& folderId,
     const TString& entityId)
@@ -634,20 +656,90 @@ void TStorageConfig::SetCloudFolderEntity(
         ProtoConfig.GetDescriptor();
     const auto* reflection = ProtoConfig.GetReflection();
 
+    TString errStr;
     for (int i = 0; i < descriptor->field_count(); ++i) {
         const google::protobuf::FieldDescriptor* field = descriptor->field(i);
-        if (field->cpp_type() ==
-                google::protobuf::FieldDescriptor::CPPTYPE_BOOL &&
-            !field->is_repeated())
+        const TString name = field->name();
+        TString featureValue;
+        if (!FeaturesConfig.GetFeature(
+                cloudId,
+                folderId,
+                entityId,
+                name,
+                &featureValue) ||
+            field->is_repeated())
         {
-            const auto& name = field->name();
-            if (FeaturesConfig
-                    .IsFeatureEnabled(cloudId, folderId, entityId, name))
-            {
+            continue;
+        }
+
+        switch (field->cpp_type()) {
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT32: {
+                i32 val{};
+                if (FromString(name, featureValue, val, errStr)) {
+                    reflection->SetInt32(&ProtoConfig, field, val);
+                }
+            } break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT64: {
+                i64 val{};
+                if (FromString(name, featureValue, val, errStr)) {
+                    reflection->SetInt64(&ProtoConfig, field, val);
+                }
+            } break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT32: {
+                ui32 val{};
+                if (FromString(name, featureValue, val, errStr)) {
+                    reflection->SetUInt32(&ProtoConfig, field, val);
+                }
+            } break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT64: {
+                ui64 val{};
+                if (FromString(name, featureValue, val, errStr)) {
+                    reflection->SetUInt64(&ProtoConfig, field, val);
+                }
+            } break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE: {
+                double val{};
+                if (FromString(name, featureValue, val, errStr)) {
+                    reflection->SetDouble(&ProtoConfig, field, val);
+                }
+            } break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT: {
+                float val{};
+                if (FromString(name, featureValue, val, errStr)) {
+                    reflection->SetFloat(&ProtoConfig, field, val);
+                }
+            } break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
                 reflection->SetBool(&ProtoConfig, field, true);
-            }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_ENUM: {
+                const auto* val =
+                    field->enum_type()->FindValueByName(featureValue);
+                if (val) {
+                    reflection->SetEnum(&ProtoConfig, field, val);
+                } else {
+                    errStr += TStringBuilder()
+                              << "Unknown enum value '" << featureValue
+                              << "' of '" << name << "' ";
+                }
+            } break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+                reflection->SetString(&ProtoConfig, field, featureValue);
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
+                errStr +=
+                    TStringBuilder()
+                    << "Setting values to fields of CPPTYPE_MESSAGE is not "
+                       "supported. field: '"
+                    << name << "' ";
+                break;
         }
     }
+
+    if (errStr) {
+        return MakeError(E_ARGUMENT, errStr);
+    }
+    return {};
 }
 
 void TStorageConfig::Merge(const NProto::TStorageConfig& storageConfig)

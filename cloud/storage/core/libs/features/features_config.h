@@ -48,7 +48,6 @@ public:
 
     TVector<TString> CollectAllFeatures() const;
 
-private:
     bool GetFeature(
         const TString& cloudId,
         const TString& folderId,
