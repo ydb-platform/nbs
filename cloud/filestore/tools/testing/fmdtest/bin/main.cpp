@@ -19,5 +19,10 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    return AppMain(options);
+    try {
+        return AppMain(options);
+    } catch (...) {
+        Cerr << CurrentExceptionMessage() << Endl;
+        return 1;
+    }
 }
