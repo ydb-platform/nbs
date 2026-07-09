@@ -5930,11 +5930,14 @@ bool TDiskRegistryState::TryUpdateDiskState(
         auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
 
         if (masterDisk) {
-            TryUpdateDiskStateImpl(
+            const bool masterUpdated = TryUpdateDiskStateImpl(
                 db,
                 disk.MasterDiskId,
                 *masterDisk,
                 timestamp);
+            if (masterUpdated) {
+                masterDisk->History.back().SetReplicaId(diskId);
+            }
         } else {
             Y_DEBUG_ABORT_UNLESS(masterDisk);
             ReportDiskRegistryDiskNotFound(
