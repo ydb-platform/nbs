@@ -377,6 +377,7 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
             SOCK_NONBLOCK | SOCK_CLOEXEC);
         if (cfd >= 0) {
             RegisterHandler(cfd, *handlers, storage);
+            continue;
         }
 
         if (errno == EINTR || errno == ECONNABORTED) {
