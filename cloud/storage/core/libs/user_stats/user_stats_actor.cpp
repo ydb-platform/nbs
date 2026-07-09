@@ -1,7 +1,5 @@
 #include "user_stats_actor.h"
 
-#include "mon_page_wrapper.h"
-
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -43,31 +41,26 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
-        mon->RegisterActorPage({
-            .Title = "UserStats",
-            .RelPath = "user_stats/human",
-            .ActorSystem = ctx.ActorSystem(),
-            .Index = rootPage,
-            .PreTag = true,
-            .ActorId = SelfId(),
-            .UseAuth = false,
-        });
+        const auto registerActorPage = [&] (
+            TString relPath,
+            TString title,
+            bool preTag)
+        {
+            mon->RegisterActorPage({
+                .Title = std::move(title),
+                .RelPath = std::move(relPath),
+                .ActorSystem = ctx.ActorSystem(),
+                .Index = rootPage,
+                .PreTag = preTag,
+                .ActorId = SelfId(),
+                .UseAuth = false,
+            });
+        };
 
-        mon->Register(new TMonPageWrapper(
-            Path + "/user_stats/json",
-            [this] (IOutputStream& out) {
-                return OutputJsonPage(out);
-            }));
-        mon->Register(new TMonPageWrapper(
-            Path + "/user_stats/spack",
-            [this] (IOutputStream& out) {
-                return OutputSpackPage(out);
-            }));
-        mon->Register(new TMonPageWrapper(
-            Path + "/user_stats/prometheus",
-            [this] (IOutputStream& out) {
-                return OutputPrometheusPage(out);
-            }));
+        registerActorPage("user_stats/human", "UserStats", true);
+        registerActorPage("user_stats/json", {}, false);
+        registerActorPage("user_stats/spack", {}, false);
+        registerActorPage("user_stats/prometheus", {}, false);
     }
 }
 
@@ -146,12 +139,29 @@ void TUserStatsActor::HandleHttpInfo(
     const NActors::TActorContext& ctx)
 {
     TStringStream out;
-    RenderHtmlInfo(out);
+    auto contentType = NActors::NMon::IEvHttpInfoRes::Html;
+
+    const TStringBuf path = ev->Get()->Request.GetPath();
+    if (path.EndsWith(TStringBuf("/user_stats/json"))) {
+        OutputJsonPage(out);
+        contentType = NActors::NMon::IEvHttpInfoRes::Custom;
+    } else if (path.EndsWith(TStringBuf("/user_stats/spack"))) {
+        OutputSpackPage(out);
+        contentType = NActors::NMon::IEvHttpInfoRes::Custom;
+    } else if (path.EndsWith(TStringBuf("/user_stats/prometheus"))) {
+        OutputPrometheusPage(out);
+        contentType = NActors::NMon::IEvHttpInfoRes::Custom;
+    } else {
+        RenderHtmlInfo(out);
+    }
 
     NCloud::Reply(
         ctx,
         *ev,
-        std::make_unique<NActors::NMon::TEvHttpInfoRes>(out.Str()));
+        std::make_unique<NActors::NMon::TEvHttpInfoRes>(
+            out.Str(),
+            0,
+            contentType));
 }
 
 void TUserStatsActor::HandleUserStatsProviderCreate(
