@@ -43,8 +43,15 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
-        mon->RegisterActorPage(rootPage, "user_stats/human", "UserStats",
-            true, ctx.ActorSystem(), SelfId());
+        mon->RegisterActorPage({
+            .Title = "UserStats",
+            .RelPath = "user_stats/human",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .PreTag = true,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
 
         mon->Register(new TMonPageWrapper(
             Path + "/user_stats/json",
